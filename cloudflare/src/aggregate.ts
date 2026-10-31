@@ -1,0 +1,415 @@
+import type { Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
+import type { Delta } from "./delta";
+
+export type RangeKey = "1h" | "6h" | "24h" | "7d" | "90d";
+export type HistoryKind = "summary" | "disks" | "nets" | "filesystems";
+
+export const RANGE_MS: Record<RangeKey, number> = {
+  "1h": 60 * 60 * 1000,
+  "6h": 6 * 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "90d": 90 * 24 * 60 * 60 * 1000
+};
+export const MINUTE_MS = 60_000;
+export const HOUR_MS = 60 * MINUTE_MS;
+export const MAX_POINTS = 900;
+
+export interface CpuPercent {
+  readonly user: number;
+  readonly system: number;
+  readonly idle: number;
+  readonly iowait: number;
+  readonly steal: number;
+}
+export interface LoadValues {
+  readonly one: number;
+  readonly five: number;
+  readonly fifteen: number;
+}
+export interface MemValues {
+  readonly total: number;
+  readonly available: number;
+  readonly swapUsed: number;
+}
+export interface PsiAverages {
+  readonly cpu?: { readonly some10: number; readonly some60: number; readonly some300: number };
+  readonly memory?: { readonly some10: number; readonly some60: number; readonly some300: number };
+  readonly io?: { readonly some10: number; readonly some60: number; readonly some300: number };
+}
+export interface SummaryPoint {
+  readonly atMs: number;
+  readonly coverageMs: number;
+  readonly partial: boolean;
+  readonly cpu?: CpuPercent;
+  readonly load?: LoadValues;
+  readonly mem?: MemValues;
+  readonly psi?: PsiAverages;
+}
+export interface DiskPoint {
+  readonly atMs: number;
+  readonly readBytesPerSec: number;
+  readonly writeBytesPerSec: number;
+  readonly readsPerSec: number;
+  readonly writesPerSec: number;
+  readonly busyPct: number;
+}
+export interface NetPoint {
+  readonly atMs: number;
+  readonly rxBytesPerSec: number;
+  readonly txBytesPerSec: number;
+  readonly rxPacketsPerSec: number;
+  readonly txPacketsPerSec: number;
+  readonly rxDropsPerSec: number;
+  readonly txDropsPerSec: number;
+  readonly rxErrorsPerSec: number;
+  readonly txErrorsPerSec: number;
+}
+export interface FilesystemPoint {
+  readonly atMs: number;
+  readonly total: number;
+  readonly available: number;
+}
+export interface Series<P> {
+  readonly id: string;
+  readonly name?: string;
+  readonly points: P[];
+}
+
+interface Gauge {
+  readonly sum: number;
+  readonly count: number;
+}
+interface FileSums {
+  readonly total: Gauge;
+  readonly available: Gauge;
+}
+export interface RollupPayload {
+  readonly v: 1;
+  readonly bucketMs: number;
+  readonly samples: number;
+  readonly coverageMs: number;
+  readonly partial: boolean;
+  readonly cpu?: Readonly<Record<string, string>>;
+  readonly gauges: Readonly<Record<string, Gauge>>;
+  readonly psi: Readonly<Record<string, Readonly<Record<string, Gauge>>>>;
+  readonly disks: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly nets: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly filesystems: Readonly<Record<string, FileSums>>;
+}
+
+export interface RawRow {
+  readonly sample: Sample;
+  readonly delta: Delta;
+}
+
+export function rangeKey(value: string | null): RangeKey | null {
+  return value !== null && Object.hasOwn(RANGE_MS, value) ? value as RangeKey : null;
+}
+
+export function kindValue(value: string | null): HistoryKind | null {
+  return value === "summary" || value === "disks" || value === "nets" || value === "filesystems" ? value : null;
+}
+
+function gaugeAdd(gauges: Record<string, Gauge>, key: string, value: number): void {
+  const current = gauges[key];
+  gauges[key] = { sum: (current?.sum ?? 0) + value, count: (current?.count ?? 0) + 1 };
+}
+
+function gaugeAverage(gauges: Readonly<Record<string, Gauge>>, key: string): number | undefined {
+  const value = gauges[key];
+  return value === undefined || value.count === 0 ? undefined : value.sum / value.count;
+}
+
+function psiAverages(sample: Sample): PsiAverages | undefined {
+  if (sample.psi === undefined) return undefined;
+  const group = (value: { some10: string; some60: string; some300: string }): { some10: number; some60: number; some300: number } => ({ some10: Number(value.some10), some60: Number(value.some60), some300: Number(value.some300) });
+  return {
+    ...(sample.psi.cpu === undefined ? {} : { cpu: group(sample.psi.cpu) }),
+    ...(sample.psi.memory === undefined ? {} : { memory: group(sample.psi.memory) }),
+    ...(sample.psi.io === undefined ? {} : { io: group(sample.psi.io) })
+  };
+}
+
+function cpuPercent(cpu: { user: string; system: string; idle: string; iowait: string; steal: string; total: string }): CpuPercent | undefined {
+  const total = Number(cpu.total);
+  if (!Number.isFinite(total) || total <= 0) return undefined;
+  return { user: (Number(cpu.user) / total) * 100, system: (Number(cpu.system) / total) * 100, idle: (Number(cpu.idle) / total) * 100, iowait: (Number(cpu.iowait) / total) * 100, steal: (Number(cpu.steal) / total) * 100 };
+}
+
+function sumCpu(cpu: Record<string, string> | Cpu, add: Record<string, string> | Cpu): Record<string, string> {
+  const result: Record<string, string> = { ...cpu };
+  for (const [key, value] of Object.entries(add)) result[key] = (BigInt(result[key] ?? "0") + BigInt(value)).toString();
+  return result;
+}
+
+function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
+  for (const [id, values] of Object.entries(source)) {
+    const current = target[id] ?? {};
+    const next: Record<string, string> = { ...current };
+    for (const [key, value] of Object.entries(values)) next[key] = (BigInt(current[key] ?? "0") + BigInt(value)).toString();
+    target[id] = next;
+  }
+}
+
+export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs: number): RollupPayload | null {
+  if (rows.length === 0) return null;
+  const coverageMs = rows.reduce((total, row) => total + row.delta.intervalMs, 0);
+  let cpu: Record<string, string> | undefined;
+  const gauges: Record<string, Gauge> = {};
+  const psi: Record<string, Record<string, Gauge>> = {};
+  const disks: Record<string, Record<string, string>> = {};
+  const nets: Record<string, Record<string, string>> = {};
+  const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  for (const { sample, delta } of rows) {
+    if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
+    if (sample.load !== undefined) {
+      gaugeAdd(gauges, "load.one", Number(sample.load.one));
+      gaugeAdd(gauges, "load.five", Number(sample.load.five));
+      gaugeAdd(gauges, "load.fifteen", Number(sample.load.fifteen));
+    }
+    if (sample.mem !== undefined) {
+      gaugeAdd(gauges, "mem.total", Number(sample.mem.total));
+      gaugeAdd(gauges, "mem.available", Number(sample.mem.available));
+      gaugeAdd(gauges, "mem.swapUsed", Number(sample.mem.swapTotal) - Number(sample.mem.swapFree));
+    }
+    if (sample.uptimeMs !== undefined) gaugeAdd(gauges, "uptimeMs", Number(sample.uptimeMs));
+    if (sample.cpuCount !== undefined) gaugeAdd(gauges, "cpuCount", sample.cpuCount);
+    if (sample.psi !== undefined) {
+      for (const [name, group] of Object.entries(sample.psi)) {
+        if (group === undefined) continue;
+        const target = psi[name] ?? {};
+        for (const field of ["some10", "some60", "some300"] as const) gaugeAdd(target, field, Number(group[field]));
+        psi[name] = target;
+      }
+    }
+    for (const [id, disk] of Object.entries(delta.disks)) {
+      disks[id] = disks[id] ?? {};
+      for (const [key, value] of Object.entries(disk)) if (key !== "id" && key !== "name") disks[id]![key] = (BigInt(disks[id]![key] ?? "0") + BigInt(value as string)).toString();
+    }
+    for (const [id, net] of Object.entries(delta.nets)) {
+      nets[id] = nets[id] ?? {};
+      for (const [key, value] of Object.entries(net)) if (key !== "id") nets[id]![key] = (BigInt(nets[id]![key] ?? "0") + BigInt(value as string)).toString();
+    }
+    for (const filesystem of sample.filesystems ?? []) {
+      const target = filesystems[filesystem.id] ?? { total: { sum: 0, count: 0 }, available: { sum: 0, count: 0 } };
+      filesystems[filesystem.id] = {
+        total: { sum: target.total.sum + Number(filesystem.total), count: target.total.count + 1 },
+        available: { sum: target.available.sum + Number(filesystem.available), count: target.available.count + 1 }
+      };
+    }
+  }
+  return {
+    v: 1,
+    bucketMs,
+    samples: rows.length,
+    coverageMs,
+    partial: coverageMs < spanMs * 0.8,
+    ...(cpu === undefined ? {} : { cpu }),
+    gauges,
+    psi,
+    disks,
+    nets,
+    filesystems
+  };
+}
+
+export function combineRollups(payloads: readonly RollupPayload[], bucketMs: number, spanMs: number): RollupPayload | null {
+  if (payloads.length === 0) return null;
+  let cpu: Record<string, string> | undefined;
+  const gauges: Record<string, Gauge> = {};
+  const psi: Record<string, Record<string, Gauge>> = {};
+  const disks: Record<string, Record<string, string>> = {};
+  const nets: Record<string, Record<string, string>> = {};
+  const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  let coverageMs = 0;
+  let samples = 0;
+  for (const payload of payloads) {
+    coverageMs += payload.coverageMs;
+    samples += payload.samples;
+    if (payload.cpu !== undefined) cpu = cpu === undefined ? { ...payload.cpu } : sumCpu(cpu, payload.cpu);
+    for (const [key, value] of Object.entries(payload.gauges)) {
+      const target = gauges[key] ?? { sum: 0, count: 0 };
+      gauges[key] = { sum: target.sum + value.sum, count: target.count + value.count };
+    }
+    for (const [name, group] of Object.entries(payload.psi)) {
+      const target = psi[name] ?? {};
+      for (const [field, value] of Object.entries(group)) {
+        const current = target[field] ?? { sum: 0, count: 0 };
+        target[field] = { sum: current.sum + value.sum, count: current.count + value.count };
+      }
+      psi[name] = target;
+    }
+    sumDevices(disks, payload.disks);
+    sumDevices(nets, payload.nets);
+    for (const [id, value] of Object.entries(payload.filesystems)) {
+      const target = filesystems[id] ?? { total: { sum: 0, count: 0 }, available: { sum: 0, count: 0 } };
+      filesystems[id] = {
+        total: { sum: target.total.sum + value.total.sum, count: target.total.count + value.total.count },
+        available: { sum: target.available.sum + value.available.sum, count: target.available.count + value.available.count }
+      };
+    }
+  }
+  return {
+    v: 1,
+    bucketMs,
+    samples,
+    coverageMs,
+    partial: coverageMs < spanMs * 0.8,
+    ...(cpu === undefined ? {} : { cpu }),
+    gauges,
+    psi,
+    disks,
+    nets,
+    filesystems
+  };
+}
+
+function summaryFromRollup(payload: RollupPayload): SummaryPoint {
+  const cpu = payload.cpu === undefined ? undefined : cpuPercent(payload.cpu as { user: string; system: string; idle: string; iowait: string; steal: string; total: string });
+  const load = gaugeAverage(payload.gauges, "load.one") === undefined ? undefined : {
+    one: gaugeAverage(payload.gauges, "load.one")!,
+    five: gaugeAverage(payload.gauges, "load.five")!,
+    fifteen: gaugeAverage(payload.gauges, "load.fifteen")!
+  };
+  const mem = gaugeAverage(payload.gauges, "mem.total") === undefined ? undefined : {
+    total: gaugeAverage(payload.gauges, "mem.total")!,
+    available: gaugeAverage(payload.gauges, "mem.available")!,
+    swapUsed: gaugeAverage(payload.gauges, "mem.swapUsed")!
+  };
+  const psi = Object.keys(payload.psi).length === 0 ? undefined : Object.fromEntries(Object.entries(payload.psi).map(([name, group]) => [name, {
+    some10: gaugeAverage(group, "some10")!,
+    some60: gaugeAverage(group, "some60")!,
+    some300: gaugeAverage(group, "some300")!
+  }])) as PsiAverages;
+  return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }) };
+}
+
+function summaryFromRaw(row: RawRow): SummaryPoint {
+  const atMs = Number(row.sample.atMs);
+  const cpu = row.delta.cpu === undefined ? undefined : cpuPercent(row.delta.cpu);
+  const load = row.sample.load === undefined ? undefined : { one: Number(row.sample.load.one), five: Number(row.sample.load.five), fifteen: Number(row.sample.load.fifteen) };
+  const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree) };
+  const psi = psiAverages(row.sample);
+  return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }) };
+}
+
+function diskPoints(row: RawRow): Array<{ id: string; name: string; point: DiskPoint }> {
+  if (row.delta.intervalMs <= 0) return [];
+  const atMs = Number(row.sample.atMs);
+  return Object.values(row.delta.disks).map((disk: Disk) => ({
+    id: disk.id,
+    name: disk.name,
+    point: {
+      atMs,
+      readBytesPerSec: (Number(disk.readSectors) * 512 * 1000) / row.delta.intervalMs,
+      writeBytesPerSec: (Number(disk.writeSectors) * 512 * 1000) / row.delta.intervalMs,
+      readsPerSec: (Number(disk.reads) * 1000) / row.delta.intervalMs,
+      writesPerSec: (Number(disk.writes) * 1000) / row.delta.intervalMs,
+      busyPct: (Number(disk.ioMs) / row.delta.intervalMs) * 100
+    }
+  }));
+}
+
+function netPoints(row: RawRow): Array<{ id: string; point: NetPoint }> {
+  if (row.delta.intervalMs <= 0) return [];
+  const atMs = Number(row.sample.atMs);
+  return Object.values(row.delta.nets).map((net: Net) => ({
+    id: net.id,
+    point: {
+      atMs,
+      rxBytesPerSec: (Number(net.rxBytes) * 1000) / row.delta.intervalMs,
+      txBytesPerSec: (Number(net.txBytes) * 1000) / row.delta.intervalMs,
+      rxPacketsPerSec: (Number(net.rxPackets) * 1000) / row.delta.intervalMs,
+      txPacketsPerSec: (Number(net.txPackets) * 1000) / row.delta.intervalMs,
+      rxDropsPerSec: (Number(net.rxDrops) * 1000) / row.delta.intervalMs,
+      txDropsPerSec: (Number(net.txDrops) * 1000) / row.delta.intervalMs,
+      rxErrorsPerSec: (Number(net.rxErrors) * 1000) / row.delta.intervalMs,
+      txErrorsPerSec: (Number(net.txErrors) * 1000) / row.delta.intervalMs
+    }
+  }));
+}
+
+function filesystemPoints(row: RawRow): Array<{ id: string; point: FilesystemPoint }> {
+  const atMs = Number(row.sample.atMs);
+  return (row.sample.filesystems ?? []).map((filesystem: FileSystem) => ({ id: filesystem.id, point: { atMs, total: Number(filesystem.total), available: Number(filesystem.available) } }));
+}
+
+export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] {
+  if (kind === "summary") return rows.map(summaryFromRaw);
+  const grouped = new Map<string, { name?: string; points: unknown[] }>();
+  for (const row of rows) {
+    const values = kind === "disks" ? diskPoints(row) : kind === "nets" ? netPoints(row) : filesystemPoints(row);
+    for (const value of values) {
+      const group = grouped.get(value.id) ?? { points: [] };
+      if (kind === "disks" && "name" in value) group.name = value.name as string;
+      group.points.push(value.point);
+      grouped.set(value.id, group);
+    }
+  }
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, group]) => ({ id, ...(group.name === undefined ? {} : { name: group.name }), points: group.points })) as never;
+}
+
+function rate(value: string | undefined, coverage: number, multiplier = 1): number {
+  return value === undefined || coverage <= 0 ? 0 : (Number(value) * multiplier * 1000) / coverage;
+}
+
+export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] {
+  if (kind === "summary") return payloads.map(summaryFromRollup);
+  if (kind === "filesystems") {
+    const grouped = new Map<string, FilesystemPoint[]>();
+    for (const payload of payloads) {
+      for (const [id, value] of Object.entries(payload.filesystems)) {
+        const points = grouped.get(id) ?? [];
+        points.push({ atMs: payload.bucketMs, total: value.total.sum / Math.max(1, value.total.count), available: value.available.sum / Math.max(1, value.available.count) });
+        grouped.set(id, points);
+      }
+    }
+    return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, points]) => ({ id, points }));
+  }
+  if (kind === "disks") {
+    const grouped = new Map<string, DiskPoint[]>();
+    for (const payload of payloads) {
+      for (const [id, values] of Object.entries(payload.disks)) {
+        const points = grouped.get(id) ?? [];
+        points.push({
+          atMs: payload.bucketMs,
+          readBytesPerSec: rate(values.readSectors, payload.coverageMs, 512),
+          writeBytesPerSec: rate(values.writeSectors, payload.coverageMs, 512),
+          readsPerSec: rate(values.reads, payload.coverageMs),
+          writesPerSec: rate(values.writes, payload.coverageMs),
+          busyPct: rate(values.ioMs, payload.coverageMs) / 1000 * 100
+        });
+        grouped.set(id, points);
+      }
+    }
+    return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, points]) => ({ id, points }));
+  }
+  const grouped = new Map<string, NetPoint[]>();
+  for (const payload of payloads) {
+    for (const [id, values] of Object.entries(payload.nets)) {
+      const points = grouped.get(id) ?? [];
+      points.push({
+        atMs: payload.bucketMs,
+        rxBytesPerSec: rate(values.rxBytes, payload.coverageMs),
+        txBytesPerSec: rate(values.txBytes, payload.coverageMs),
+        rxPacketsPerSec: rate(values.rxPackets, payload.coverageMs),
+        txPacketsPerSec: rate(values.txPackets, payload.coverageMs),
+        rxDropsPerSec: rate(values.rxDrops, payload.coverageMs),
+        txDropsPerSec: rate(values.txDrops, payload.coverageMs),
+        rxErrorsPerSec: rate(values.rxErrors, payload.coverageMs),
+        txErrorsPerSec: rate(values.txErrors, payload.coverageMs)
+      });
+      grouped.set(id, points);
+    }
+  }
+  return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, points]) => ({ id, points }));
+}
+
+export function downsample<T>(items: readonly T[], max = MAX_POINTS): { items: T[]; stride: number } {
+  if (items.length <= max) return { items: [...items], stride: 1 };
+  const stride = Math.ceil(items.length / max);
+  const sampled: T[] = [];
+  for (let index = 0; index < items.length; index += stride) sampled.push(items[index]!);
+  return { items: sampled, stride };
+}

@@ -1,0 +1,71 @@
+import { env, SELF } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+import { privateJwk } from "./access-key";
+
+const encoder = new TextEncoder();
+const team = "test.cloudflareaccess.com";
+const audience = "test-aud";
+
+function b64url(value: Uint8Array | string): string {
+  const bytes = typeof value === "string" ? encoder.encode(value) : value;
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
+}
+
+async function accessToken(overrides: Record<string, unknown> = {}, header: Record<string, unknown> = {}): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const headerValue = { alg: "RS256", kid: "test-key", typ: "JWT", ...header };
+  const claims = { iss: `https://${team}`, aud: audience, exp: now + 3600, nbf: now - 10, iat: now - 10, ...overrides };
+  const key = await crypto.subtle.importKey("jwk", privateJwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(`${b64url(JSON.stringify(headerValue))}.${b64url(JSON.stringify(claims))}`));
+  return `${b64url(JSON.stringify(headerValue))}.${b64url(JSON.stringify(claims))}.${b64url(new Uint8Array(signature))}`;
+}
+
+function api(token?: string): Promise<Response> {
+  return SELF.fetch("https://example.com/api/v1/hosts", { headers: token === undefined ? {} : { "Cf-Access-Jwt-Assertion": token } });
+}
+
+describe("Access authorization", () => {
+  it("accepts a signed assertion and rejects every invalid shape", async () => {
+    expect((await api()).status).toBe(401);
+    expect((await api(await accessToken({ aud: "other" }))).status).toBe(401);
+    expect((await api(await accessToken({ iss: "https://other.cloudflareaccess.com" }))).status).toBe(401);
+    expect((await api(await accessToken({ exp: Math.floor(Date.now() / 1000) - 120 }))).status).toBe(401);
+    expect((await api(await accessToken({}, { kid: "unknown" }))).status).toBe(401);
+    expect((await api(await accessToken({}, { alg: "HS256" }))).status).toBe(401);
+    expect((await api(`${await accessToken()}.x`)).status).toBe(401);
+    const valid = await accessToken();
+    const response = await api(valid);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("protects static assets behind Access", async () => {
+    expect((await SELF.fetch("https://example.com/")).status).toBe(401);
+    const response = await SELF.fetch("https://example.com/", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Niceforge telemetry");
+  });
+
+  it("provisions, rotates, and revokes a host", async () => {
+    const token = await accessToken();
+    const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };
+    const created = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: JSON.stringify({ name: "alpha" }) });
+    expect(created.status).toBe(201);
+    const host = await created.json() as { hostId: string; token: string; name: string };
+    expect(host.hostId).toMatch(/^h_[0-9a-f]{32}$/u);
+    expect(host.token).toMatch(/^nft_[A-Za-z0-9_-]{43}$/u);
+
+    const list = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: { "Cf-Access-Jwt-Assertion": token } });
+    const listText = await list.text();
+    expect((JSON.parse(listText) as { hosts: { hostId: string }[] }).hosts.some(entry => entry.hostId === host.hostId)).toBe(true);
+    expect(listText.includes(host.token)).toBe(false);
+
+    const rotated = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/rotate`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect((await rotated.json() as { token: string }).token).not.toBe(host.token);
+    const revoked = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect(revoked.status).toBe(204);
+  });
+});

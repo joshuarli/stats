@@ -5,7 +5,7 @@ import { parseBatch } from "../src/protocol";
 
 const files: Record<string, string> = JSON.parse(env.FIXTURES ?? "{}");
 const manifest = JSON.parse(files["manifest.json"] ?? "{}") as { fixtures: { file: string; expect: "accept" | "reject"; code?: string }[] };
-const now = 1_793_510_400_000;
+const now = 1_793_510_415_000;
 
 function fixture(name: string): string {
   return files[name]!;

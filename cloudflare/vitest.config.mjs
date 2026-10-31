@@ -9,6 +9,6 @@ const fixtureDir = join(here, "..", "fixtures", "v1");
 const fixtures = Object.fromEntries(readdirSync(fixtureDir).map(name => [name, readFileSync(join(fixtureDir, name), "utf8")]));
 
 export default defineConfig({
-  plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510400000" } } })],
+  plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
   test: { include: ["test/**/*.test.ts"], testTimeout: 30_000 }
 });

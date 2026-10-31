@@ -2,13 +2,37 @@
   "name": "niceforge-telemetry",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-30",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "durable_objects": {
-    "bindings": [{ "name": "INSTALLATION", "class_name": "Installation" }]
+    "bindings": [
+      {
+        "name": "INSTALLATION",
+        "class_name": "Installation"
+      }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Installation"] }],
-  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Installation"
+      ]
+    }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "ENVIRONMENT": "test", "TEST_NOW_MS": "1793510400000" }
+  "vars": {
+    "ENVIRONMENT": "test",
+    "TEST_NOW_MS": "1793510415000",
+    "ACCESS_TEAM_DOMAIN": "test.cloudflareaccess.com",
+    "ACCESS_AUD": "test-aud",
+    "ACCESS_JWKS_JSON": "{\"keys\":[{\"kty\":\"RSA\",\"n\":\"qA4IPs0iZehTD525JxA93Hto9lkj62-D1PDybLDBljT8lmWSRKK4Zid1nUqBuQ5c8hWz0n_WiwFDB-e7mSVwqZkwGHmXQyVtpz1JHCr3_hOoQyxXJQWxTdUy-cQwCvsMja84s_mBQmDsA3m6lpfzEVC9nB6RiQT9F7nXByxoX-FO_XguKWJdlNMZ6HqKddAI7GWJpQYSUhntD6-vRCfwrfTr8HwBpd5I8JEWX-B3bhk_s7EcnfilTqKgo9st-6Qe_e5DNRu7k9jNwi2cu9z7G-V9WiEOUcuBba9dwI-II4KHpPwcSdHraEK9ulTcm039ve9Due5_gjtEILfpEpSgIQ\",\"e\":\"AQAB\",\"kid\":\"test-key\",\"alg\":\"RS256\",\"use\":\"sig\"}]}"
+  }
 }

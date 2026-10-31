@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
+import { computeDelta, parseDelta, type Delta } from "./delta";
+import { combineRollups, downsample, HOUR_MS, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -20,6 +22,7 @@ type HostRow = {
 
 type SampleRow = {
   readonly mono_ms: number;
+  readonly at_ms: number;
   readonly payload: string;
   readonly seq: string;
 };
@@ -37,6 +40,18 @@ export interface LatestSample {
   readonly hostId: string;
   readonly receivedAtMs: number;
   readonly sample: Sample;
+}
+
+export interface History {
+  readonly hostId: string;
+  readonly range: RangeKey;
+  readonly kind: HistoryKind;
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly resolution: "raw" | "1m" | "1h";
+  readonly stepMs: number;
+  readonly points?: readonly unknown[];
+  readonly series?: readonly unknown[];
 }
 
 const HOSTS = `CREATE TABLE IF NOT EXISTS hosts (
@@ -57,6 +72,7 @@ const SAMPLES = `CREATE TABLE IF NOT EXISTS samples (
   received_at_ms INTEGER NOT NULL,
   mono_ms INTEGER NOT NULL,
   elapsed_ms INTEGER NOT NULL,
+  delta TEXT NOT NULL DEFAULT '{}',
   payload TEXT NOT NULL,
   PRIMARY KEY (host_id, boot_id, seq)
 ) STRICT`;
@@ -175,6 +191,78 @@ export class Installation extends DurableObject<Env> {
     return { hostId, receivedAtMs: row.received_at_ms, sample: JSON.parse(row.payload) as Sample };
   }
 
+  private rebuildMinute(hostId: string, bucketMs: number): void {
+    const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string }>("SELECT payload, delta FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms < ? ORDER BY mono_ms", hostId, bucketMs, bucketMs + MINUTE_MS).toArray();
+    if (rows.length === 0) {
+      this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms = ?", hostId, bucketMs);
+      return;
+    }
+    const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
+    const payload = rollupFromRaw(raw, bucketMs, MINUTE_MS);
+    if (payload === null) {
+      this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms = ?", hostId, bucketMs);
+      return;
+    }
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, ?, ?, ?)", hostId, bucketMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
+  }
+
+  private rebuildHour(hostId: string, hourMs: number): void {
+    const rows = this.ctx.storage.sql.exec<{ payload: string }>("SELECT payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ?", hostId, hourMs, hourMs + HOUR_MS).toArray();
+    const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
+    const payload = combineRollups(payloads, hourMs, HOUR_MS);
+    if (payload === null) {
+      this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1h' AND bucket_ms = ?", hostId, hourMs);
+      return;
+    }
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1h', ?, ?, ?, ?)", hostId, hourMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
+  }
+
+  private rebuildRollups(hostId: string, minutes: readonly number[]): void {
+    const unique = [...new Set(minutes)].sort((left, right) => left - right);
+    for (const minute of unique) this.rebuildMinute(hostId, minute);
+    for (const hour of [...new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))]) this.rebuildHour(hostId, hour);
+  }
+
+  async history(hostId: string, range: RangeKey, kind: HistoryKind): Promise<History | null> {
+    if (this.host(hostId) === undefined) return null;
+    const toMs = this.now();
+    const fromMs = toMs - RANGE_MS[range];
+    const rawRange = RANGE_MS[range] <= 48 * 60 * 60 * 1000;
+    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : range === "7d" ? "1m" : "1h";
+    let points: ReturnType<typeof rawPoints> | ReturnType<typeof rollupPoints>;
+    let bucketMs = 15_000;
+    if (rawRange) {
+      const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
+      const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
+      if (raw.length > 1) bucketMs = Math.max(1, Number(raw[1]!.sample.atMs) - Number(raw[0]!.sample.atMs));
+      points = rawPoints(raw, kind);
+    } else {
+      const rows = this.ctx.storage.sql.exec<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs).toArray();
+      if (rows.length > 1) bucketMs = Math.max(1, rows[1]!.bucket_ms - rows[0]!.bucket_ms);
+      points = rollupPoints(rows.map(row => JSON.parse(row.payload) as RollupPayload), kind);
+    }
+    if (kind === "summary") {
+      const sampled = downsample(points as Parameters<typeof downsample>[0]);
+      return { hostId, range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items };
+    }
+    const series = points as { id: string; name?: string; points: unknown[] }[];
+    const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
+    const stride = Math.max(1, Math.ceil(longest / 900));
+    return {
+      hostId, range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
+      series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
+    };
+  }
+
+  async alarm(): Promise<void> {
+    const now = this.now();
+    const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
+    const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - 7 * 24 * 60 * 60 * 1000).rowsWritten;
+    const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - 90 * 24 * 60 * 60 * 1000).rowsWritten;
+    const more = raw + minute + hour >= 3000;
+    await this.ctx.storage.setAlarm(now + (more ? 60_000 : 600_000));
+  }
+
   private authorize(hostId: string, hash: string): { host: HostRow } | { code: "unauthorized" | "forbidden"; status: number } {
     const host = this.host(hostId);
     if (host === undefined || host.revoked_at_ms !== null || !constantTimeEqual(host.token_hash, hash)) return { code: "unauthorized", status: 401 };
@@ -216,6 +304,7 @@ export class Installation extends DurableObject<Env> {
     if (limited) return failure("rate_limited", "host request rate exceeded", 429, { "Retry-After": "60" });
 
     const rejected: { seq: string; code: string }[] = [];
+    const affectedMinutes: number[] = [];
     let accepted = 0;
     let duplicates = 0;
     this.ctx.storage.transactionSync(() => {
@@ -250,17 +339,24 @@ export class Installation extends DurableObject<Env> {
           rejected.push({ seq: entry.seq, code: "invalid_sample" });
           continue;
         }
-        const previous = this.ctx.storage.sql.exec<SampleRow>("SELECT mono_ms, payload, seq FROM samples WHERE host_id = ? AND boot_id = ? AND mono_ms < ? ORDER BY mono_ms DESC LIMIT 1", parsed.hostId, parsed.bootId, entry.mono).toArray()[0];
-        const next = this.ctx.storage.sql.exec<SampleRow>("SELECT mono_ms, payload, seq FROM samples WHERE host_id = ? AND boot_id = ? AND mono_ms > ? ORDER BY mono_ms ASC LIMIT 1", parsed.hostId, parsed.bootId, entry.mono).toArray()[0];
+        const previous = this.ctx.storage.sql.exec<SampleRow>("SELECT mono_ms, at_ms, payload, seq FROM samples WHERE host_id = ? AND boot_id = ? AND mono_ms < ? ORDER BY mono_ms DESC LIMIT 1", parsed.hostId, parsed.bootId, entry.mono).toArray()[0];
+        const next = this.ctx.storage.sql.exec<SampleRow>("SELECT mono_ms, at_ms, payload, seq FROM samples WHERE host_id = ? AND boot_id = ? AND mono_ms > ? ORDER BY mono_ms ASC LIMIT 1", parsed.hostId, parsed.bootId, entry.mono).toArray()[0];
         const elapsed = previous === undefined ? 0 : entry.mono - previous.mono_ms;
-        this.ctx.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", parsed.hostId, parsed.bootId, entry.seq, entry.at, now, entry.mono, elapsed, canonicalJson(entry.sample));
-        if (next !== undefined) this.ctx.storage.sql.exec("UPDATE samples SET elapsed_ms = ? WHERE host_id = ? AND boot_id = ? AND seq = ?", next.mono_ms - entry.mono, parsed.hostId, parsed.bootId, next.seq);
+        const delta = computeDelta(previous === undefined ? undefined : JSON.parse(previous.payload) as Sample, entry.sample, elapsed);
+        this.ctx.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", parsed.hostId, parsed.bootId, entry.seq, entry.at, now, entry.mono, elapsed, JSON.stringify(delta), canonicalJson(entry.sample));
+        affectedMinutes.push(Math.floor(entry.at / MINUTE_MS) * MINUTE_MS);
+        if (next !== undefined) {
+          const nextDelta = computeDelta(entry.sample, JSON.parse(next.payload) as Sample, next.mono_ms - entry.mono);
+          this.ctx.storage.sql.exec("UPDATE samples SET elapsed_ms = ?, delta = ? WHERE host_id = ? AND boot_id = ? AND seq = ?", next.mono_ms - entry.mono, JSON.stringify(nextDelta), parsed.hostId, parsed.bootId, next.seq);
+          affectedMinutes.push(Math.floor(next.at_ms / MINUTE_MS) * MINUTE_MS);
+        }
         accepted += 1;
       }
       if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
     });
 
-    if (accepted + duplicates === 0) return json({ error: { code: rejected[0]?.code ?? "invalid_sample", message: "no samples were accepted" }, rejected }, 400);
+    if (accepted === 0 && duplicates === 0) return json({ error: { code: rejected[0]?.code ?? "invalid_sample", message: "no samples were accepted" }, rejected }, 400);
+    if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
     const alarm = await this.ctx.storage.getAlarm();
     if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
     return json({ v: 1, accepted, duplicates, rejected });
@@ -275,6 +371,15 @@ export class Installation extends DurableObject<Env> {
       if (latest !== null && request.method === "GET") {
         const sample = await this.latest(latest[1]!);
         return sample === null ? failure("not_found", "no samples for host", 404) : json(sample);
+      }
+      const history = /^\/hosts\/(h_[0-9a-f]{32})\/history$/u.exec(path);
+      if (history !== null && request.method === "GET") {
+        const url = new URL(request.url);
+        const range = url.searchParams.get("range") === null ? "1h" : rangeKey(url.searchParams.get("range"));
+        const kind = url.searchParams.get("kind") === null ? "summary" : kindValue(url.searchParams.get("kind"));
+        if (range === null || kind === null) return failure("invalid_request", "range or kind is not supported", 400);
+        const result = await this.history(history[1]!, range, kind);
+        return result === null ? failure("not_found", "host not found", 404) : json(result);
       }
       if (path === "/admin/hosts" && request.method === "POST") {
         const body = await request.json<{ name?: unknown }>();
