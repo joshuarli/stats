@@ -1,3 +1,4 @@
+import "./style.css";
 import { age, bytes, count, microseconds, percent, rate, timestamp, uptime } from "./format";
 import { capacity, chart, sparkline, unavailable } from "./charts";
 import { getBlock, getDisks, getFilesystems, getHosts, getLatest, getNets, getSummary, type BlockPoint, type DiskPoint, type FilesystemPoint, type Host, type NetPoint, type Psi, type Series, type SummaryPoint } from "./api";
@@ -238,7 +239,7 @@ async function hostView(hostId: string): Promise<void> {
   ]);
   if (mine !== generation) return;
   const page = node("main");
-  const status = statusFor(host, latest?.receivedAtMs ?? host.lastReceivedAtMs);
+  const status = statusFor(host, latest?.receivedAtMs ?? host?.lastReceivedAtMs ?? null);
   page.appendChild(pageHeader(host?.name ?? hostId, `${status.label} · last sample ${age(latest?.receivedAtMs ?? host?.lastReceivedAtMs)}`, true));
   const statusLine = node("div", "toolbar");
   statusLine.appendChild(chip(status.label, status.className));

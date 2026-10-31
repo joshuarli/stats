@@ -211,19 +211,19 @@ Configuration values: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`,
 
 ## Dashboard
 
-The dashboard is one HTML entrypoint and one ES module bundle built by esbuild.
-It has a fleet table and a per-host view with 1 h, 6 h, 24 h, 7 d, and 90 d
-ranges. The host view includes a block-latency chart for p95, p99, and maximum
-when the optional probe is configured. Charts are native SVG with keyboard
-focus and text readouts. Missing data renders as `unavailable` or a gap; it is
-never zero. Access handles login; the browser never sees a host token or an
-operator secret.
+The dashboard is one HTML entrypoint and one ES module bundle built by Vite's
+client environment. It has a fleet table and a per-host view with 1 h, 6 h, 24
+h, 7 d, and 90 d ranges. The host view includes a block-latency chart for p95,
+p99, and maximum when the optional probe is configured. Charts are native SVG
+with keyboard focus and text readouts. Missing data renders as `unavailable` or
+a gap; it is never zero. Access handles login; the browser never sees a host
+token or an operator secret.
 
 Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
 `pnpm --filter @niceforge/telemetry test:ui` with request interception from
 deterministic fixtures. No fixture endpoint or auth bypass exists in the built
-assets. Recorded 2026-10-31: 13,165 bytes JavaScript (4,689 gzip), 4,103 bytes
-CSS (1,416 gzip), 553 bytes HTML (371 gzip); Chromium local load about 58 ms on
+assets. Recorded 2026-10-31: 14,431 bytes JavaScript (5,020 gzip), 3,600 bytes
+CSS (1,370 gzip), 610 bytes HTML (390 gzip); Chromium local load about 36 ms on
 the development host. These are local measurements, not production claims.
 
 ## Local checks
@@ -303,12 +303,19 @@ Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
 
    Without these path applications, Access challenges `/health` and ingest
    before the Worker sees them.
-3. Deploy with the custom domain: `wrangler deploy --domain
-   stats.17166969.xyz`. The configuration disables `workers_dev` and preview
-   URLs and has no fallback route, so a deploy without the domain is
-   unreachable.
-4. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` as Worker secrets. `ENVIRONMENT`
-   is the production var in `wrangler.jsonc`.
+3. Build and deploy with cf:
+   ```sh
+   NICEFORGE_TELEMETRY_DOMAIN=stats.17166969.xyz \
+     pnpm --filter @niceforge/telemetry deploy
+   ```
+   `cloudflare.config.ts` declares the Worker, the SQLite Durable Object export,
+   the `ASSETS` binding, the custom domain, and the disabled `workers_dev` and
+   preview URLs. `cf build` validates the same output without uploading.
+   `wrangler.test.jsonc` is test-only configuration for
+   `@cloudflare/vitest-plugin`; it is not a deploy configuration.
+4. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` as Worker secrets, for example
+   with `cf deploy --secrets-file`. `ENVIRONMENT` is the production text
+   binding in `cloudflare.config.ts`.
 5. Authenticate a human through Access (`cf access login
    https://stats.17166969.xyz`), then provision one host with `POST
    /api/v1/admin/hosts`. Record the token once in an owner-only file.
