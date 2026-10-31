@@ -230,7 +230,7 @@ export class Installation extends DurableObject<Env> {
     const rawRange = RANGE_MS[range] <= 48 * 60 * 60 * 1000;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : range === "7d" ? "1m" : "1h";
     let points: ReturnType<typeof rawPoints> | ReturnType<typeof rollupPoints>;
-    let bucketMs = 15_000;
+    let bucketMs = rawRange ? 15_000 : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     if (rawRange) {
       const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
       const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));

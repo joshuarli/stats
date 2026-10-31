@@ -66,14 +66,17 @@ describe("history", () => {
     }
 
     const week = await history(host.hostId, "7d", "summary");
-    const weekBody = await week.json() as { resolution: string; points: { coverageMs: number; partial: boolean }[] };
+    const weekBody = await week.json() as { resolution: string; stepMs: number; points: { coverageMs: number; partial: boolean }[] };
     expect(weekBody.resolution).toBe("1m");
+    expect(weekBody.stepMs).toBe(60_000);
     expect(weekBody.points.length).toBe(1);
     expect(weekBody.points[0]!.coverageMs).toBe(15_000);
     expect(weekBody.points[0]!.partial).toBe(true);
 
     const quarter = await history(host.hostId, "90d", "summary");
-    expect((await quarter.json() as { resolution: string }).resolution).toBe("1h");
+    const quarterBody = await quarter.json() as { resolution: string; stepMs: number };
+    expect(quarterBody.resolution).toBe("1h");
+    expect(quarterBody.stepMs).toBe(3_600_000);
     expect((await history(host.hostId, "2h", "summary")).status).toBe(400);
     expect((await history(host.hostId, "1h", "memory")).status).toBe(400);
     const sampled = downsample(Array.from({ length: 1200 }, (_, index) => index)).items;
