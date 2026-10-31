@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+args = []
+for arg in sys.argv[1:]:
+    if arg in ("--target=aarch64-unknown-linux-musl", "--target=aarch64-linux-musl", "-target=aarch64-unknown-linux-musl"):
+        continue
+    if "fix-cortex-a53-843419" in arg:
+        continue
+    args.append(arg)
+os.execvp("zig", ["zig", "cc", "-target", "aarch64-linux-musl", *args])

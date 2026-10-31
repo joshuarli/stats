@@ -1,0 +1,13 @@
+{
+  "name": "niceforge-telemetry",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "INSTALLATION", "class_name": "Installation" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Installation"] }],
+  "assets": { "directory": "./dist/client", "run_worker_first": true },
+  "workers_dev": false,
+  "preview_urls": false
+}

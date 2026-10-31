@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "file": "batch-full.json",
+      "expect": "accept"
+    },
+    {
+      "file": "batch-minimal.json",
+      "expect": "accept"
+    },
+    {
+      "file": "u64-boundaries.json",
+      "expect": "accept"
+    },
+    {
+      "file": "clock-jump.json",
+      "expect": "accept"
+    },
+    {
+      "file": "counter-reset.json",
+      "expect": "accept"
+    },
+    {
+      "file": "device-churn.json",
+      "expect": "accept"
+    },
+    {
+      "file": "out-of-order-late.json",
+      "expect": "accept"
+    },
+    {
+      "file": "reboot-before.json",
+      "expect": "accept"
+    },
+    {
+      "file": "reboot-after.json",
+      "expect": "accept"
+    },
+    {
+      "file": "duplicate-batch.json",
+      "expect": "accept",
+      "replay": "duplicate"
+    },
+    {
+      "file": "invalid-version.json",
+      "expect": "reject",
+      "code": "unknown_version"
+    },
+    {
+      "file": "invalid-unknown-field.json",
+      "expect": "reject",
+      "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-host.json",
+      "expect": "reject",
+      "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-boot.json",
+      "expect": "reject",
+      "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-empty-samples.json",
+      "expect": "reject",
+      "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-too-many-samples.json",
+      "expect": "reject",
+      "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-counter.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-unavailable.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-empty-sample.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-sequence.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-oversized.json",
+      "expect": "reject",
+      "code": "too_large"
+    },
+    {
+      "file": "invalid-missing-mono.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    }
+  ]
+}

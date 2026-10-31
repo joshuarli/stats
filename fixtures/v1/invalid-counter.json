@@ -1,0 +1,119 @@
+{
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "samples": [
+    {
+      "atMs": "1793510400000",
+      "cpu": {
+        "idle": "90000000",
+        "iowait": "100000",
+        "steal": "0",
+        "system": "2000000",
+        "total": "93100000",
+        "user": "12x"
+      },
+      "cpuCount": 8,
+      "disks": [
+        {
+          "id": "8:0",
+          "ioMs": "100000",
+          "name": "sda",
+          "readSectors": "8000000",
+          "reads": "1000000",
+          "writeSectors": "4000000",
+          "writes": "500000"
+        },
+        {
+          "id": "259:0",
+          "ioMs": "50000",
+          "name": "nvme0n1",
+          "readSectors": "4000000",
+          "reads": "500000",
+          "writeSectors": "2000000",
+          "writes": "250000"
+        }
+      ],
+      "filesystems": [
+        {
+          "available": "53687091200",
+          "id": "/",
+          "total": "107374182400",
+          "type": "ext4"
+        },
+        {
+          "available": "26843545600",
+          "id": "/var",
+          "total": "53687091200",
+          "type": "xfs"
+        }
+      ],
+      "load": {
+        "fifteen": "0.310",
+        "five": "0.200",
+        "one": "0.120"
+      },
+      "mem": {
+        "available": "4294967296",
+        "swapFree": "2147483648",
+        "swapTotal": "2147483648",
+        "total": "8589934592"
+      },
+      "monoMs": "900000000",
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "900000000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "900000",
+          "txBytes": "720000000",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "450000"
+        },
+        {
+          "id": "tailscale0",
+          "rxBytes": "225000000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "225000",
+          "txBytes": "180000000",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "112500"
+        }
+      ],
+      "psi": {
+        "cpu": {
+          "some10": "1.25",
+          "some300": "0.40",
+          "some60": "0.80",
+          "total": "123456"
+        },
+        "io": {
+          "full10": "1.00",
+          "full300": "0.20",
+          "full60": "0.50",
+          "fullTotal": "1234",
+          "some10": "2.50",
+          "some300": "0.60",
+          "some60": "1.20",
+          "total": "34567"
+        },
+        "memory": {
+          "full10": "0.00",
+          "full300": "0.00",
+          "full60": "0.00",
+          "fullTotal": "0",
+          "some10": "0.10",
+          "some300": "0.02",
+          "some60": "0.05",
+          "total": "2345"
+        }
+      },
+      "seq": "1000000",
+      "uptimeMs": "900000000"
+    }
+  ],
+  "v": 1
+}
