@@ -259,12 +259,14 @@ with Node Exporter only on the same host and interval. Performance is
 unverified until those numbers exist; the campaign's targets are aspirations,
 not claims.
 
-## Optional block latency probe
+## Optional block latency
 
-`telemetry/bpf/biolatency.bt` is a standalone bpftrace probe for block-layer
-request latency. It requires BTF, tracefs, bpftrace, and root or `CAP_BPF`. It
-is not loaded by the agent and does not change protocol v1, Worker storage, or
-the dashboard. See `telemetry/bpf/README.md` for usage and scope.
+`telemetry/bpf/` provides a bpftrace collector and a human-readable probe for
+block-layer request latency. The collector writes a 15-second snapshot; when
+`blockLatencyFile` is configured, the agent attaches the optional `block` group
+and the Worker stores, rolls up, and serves it for the dashboard. The baseline
+agent never loads BPF and runs without the collector. See
+`telemetry/bpf/README.md` for requirements and usage.
 
 ## Install, start, stop, and remove
 
