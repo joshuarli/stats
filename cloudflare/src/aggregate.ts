@@ -1,8 +1,8 @@
-import type { Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
+import type { Block, Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
 import type { Delta } from "./delta";
 
 export type RangeKey = "1h" | "6h" | "24h" | "7d" | "90d";
-export type HistoryKind = "summary" | "disks" | "nets" | "filesystems";
+export type HistoryKind = "summary" | "disks" | "nets" | "filesystems" | "block";
 
 export const RANGE_MS: Record<RangeKey, number> = {
   "1h": 60 * 60 * 1000,
@@ -70,6 +70,23 @@ export interface FilesystemPoint {
   readonly total: number;
   readonly available: number;
 }
+export interface BlockPoint {
+  readonly atMs: number;
+  readonly count: number;
+  readonly totalUs: number;
+  readonly minUs: number;
+  readonly maxUs: number;
+  readonly p50Us: number;
+  readonly p95Us: number;
+  readonly p99Us: number;
+}
+export interface BlockRollup {
+  readonly buckets: readonly string[];
+  readonly count: string;
+  readonly totalUs: string;
+  readonly minUs: string;
+  readonly maxUs: string;
+}
 export interface Series<P> {
   readonly id: string;
   readonly name?: string;
@@ -96,7 +113,11 @@ export interface RollupPayload {
   readonly disks: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly nets: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly filesystems: Readonly<Record<string, FileSums>>;
+  readonly block?: BlockRollup;
 }
+
+const BLOCK_BUCKETS = 16;
+const BLOCK_BOUNDS_US = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000] as const;
 
 export interface RawRow {
   readonly sample: Sample;
@@ -108,7 +129,7 @@ export function rangeKey(value: string | null): RangeKey | null {
 }
 
 export function kindValue(value: string | null): HistoryKind | null {
-  return value === "summary" || value === "disks" || value === "nets" || value === "filesystems" ? value : null;
+  return value === "summary" || value === "disks" || value === "nets" || value === "filesystems" || value === "block" ? value : null;
 }
 
 function gaugeAdd(gauges: Record<string, Gauge>, key: string, value: number): void {
@@ -152,6 +173,40 @@ function sumDevices(target: Record<string, Record<string, string>>, source: Reco
   }
 }
 
+function addBlock(target: BlockRollup | undefined, source: Block | BlockRollup): BlockRollup {
+  const buckets = Array.from({ length: BLOCK_BUCKETS }, (_, index) => (BigInt(target?.buckets[index] ?? "0") + BigInt(source.buckets[index] ?? "0")).toString());
+  const count = BigInt(target?.count ?? "0") + BigInt(source.count);
+  const totalUs = BigInt(target?.totalUs ?? "0") + BigInt(source.totalUs);
+  const minUs = target === undefined || BigInt(source.minUs) < BigInt(target.minUs) ? source.minUs : target.minUs;
+  const maxUs = target === undefined || BigInt(source.maxUs) > BigInt(target.maxUs) ? source.maxUs : target.maxUs;
+  return { buckets, count: count.toString(), totalUs: totalUs.toString(), minUs, maxUs };
+}
+
+function blockPercentile(buckets: readonly string[], count: bigint, maxUs: string, percent: bigint): number {
+  const target = (count * percent + 99n) / 100n;
+  let cumulative = 0n;
+  for (let index = 0; index < BLOCK_BUCKETS; index += 1) {
+    cumulative += BigInt(buckets[index] ?? "0");
+    if (cumulative >= target) return index === 15 ? Number(maxUs) : Math.min(BLOCK_BOUNDS_US[index]!, Number(maxUs));
+  }
+  return Number(maxUs);
+}
+
+export function blockPoint(atMs: number, block: Block | BlockRollup): BlockPoint | null {
+  const count = BigInt(block.count);
+  if (count === 0n) return null;
+  return {
+    atMs,
+    count: Number(count),
+    totalUs: Number(block.totalUs),
+    minUs: Number(block.minUs),
+    maxUs: Number(block.maxUs),
+    p50Us: blockPercentile(block.buckets, count, block.maxUs, 50n),
+    p95Us: blockPercentile(block.buckets, count, block.maxUs, 95n),
+    p99Us: blockPercentile(block.buckets, count, block.maxUs, 99n)
+  };
+}
+
 export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs: number): RollupPayload | null {
   if (rows.length === 0) return null;
   const coverageMs = rows.reduce((total, row) => total + row.delta.intervalMs, 0);
@@ -161,6 +216,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   const disks: Record<string, Record<string, string>> = {};
   const nets: Record<string, Record<string, string>> = {};
   const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  let block: BlockRollup | undefined;
   for (const { sample, delta } of rows) {
     if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
     if (sample.load !== undefined) {
@@ -198,6 +254,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
         available: { sum: target.available.sum + Number(filesystem.available), count: target.available.count + 1 }
       };
     }
+    if (sample.block !== undefined && BigInt(sample.block.count) > 0n) block = addBlock(block, sample.block);
   }
   return {
     v: 1,
@@ -210,7 +267,8 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     psi,
     disks,
     nets,
-    filesystems
+    filesystems,
+    ...(block === undefined ? {} : { block })
   };
 }
 
@@ -222,6 +280,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
   const disks: Record<string, Record<string, string>> = {};
   const nets: Record<string, Record<string, string>> = {};
   const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  let block: BlockRollup | undefined;
   let coverageMs = 0;
   let samples = 0;
   for (const payload of payloads) {
@@ -249,6 +308,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
         available: { sum: target.available.sum + value.available.sum, count: target.available.count + value.available.count }
       };
     }
+    if (payload.block !== undefined) block = addBlock(block, payload.block);
   }
   return {
     v: 1,
@@ -261,7 +321,8 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     psi,
     disks,
     nets,
-    filesystems
+    filesystems,
+    ...(block === undefined ? {} : { block })
   };
 }
 
@@ -335,8 +396,12 @@ function filesystemPoints(row: RawRow): Array<{ id: string; point: FilesystemPoi
   return (row.sample.filesystems ?? []).map((filesystem: FileSystem) => ({ id: filesystem.id, point: { atMs, total: Number(filesystem.total), available: Number(filesystem.available) } }));
 }
 
-export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] {
+export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[] {
   if (kind === "summary") return rows.map(summaryFromRaw);
+  if (kind === "block") {
+    const points = rows.flatMap(row => row.sample.block === undefined ? [] : (blockPoint(Number(row.sample.atMs), row.sample.block) ?? []));
+    return [{ id: "block", points }];
+  }
   const grouped = new Map<string, { name?: string; points: unknown[] }>();
   for (const row of rows) {
     const values = kind === "disks" ? diskPoints(row) : kind === "nets" ? netPoints(row) : filesystemPoints(row);
@@ -354,8 +419,12 @@ function rate(value: string | undefined, coverage: number, multiplier = 1): numb
   return value === undefined || coverage <= 0 ? 0 : (Number(value) * multiplier * 1000) / coverage;
 }
 
-export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] {
+export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[] {
   if (kind === "summary") return payloads.map(summaryFromRollup);
+  if (kind === "block") {
+    const points = payloads.flatMap(payload => payload.block === undefined ? [] : (blockPoint(payload.bucketMs, payload.block) ?? []));
+    return [{ id: "block", points }];
+  }
   if (kind === "filesystems") {
     const grouped = new Map<string, FilesystemPoint[]>();
     for (const payload of payloads) {

@@ -117,6 +117,18 @@ pub struct FileSystem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Block {
+    pub buckets: Vec<String>,
+    pub count: String,
+    #[serde(rename = "totalUs")]
+    pub total_us: String,
+    #[serde(rename = "minUs")]
+    pub min_us: String,
+    #[serde(rename = "maxUs")]
+    pub max_us: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Sample {
     pub seq: String,
     #[serde(rename = "atMs")]
@@ -143,6 +155,8 @@ pub struct Sample {
     pub psi: Option<Psi>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filesystems: Option<Vec<FileSystem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block: Option<Block>,
 }
 
 pub fn sequence_for(mono_ms: u64) -> u64 {
@@ -165,6 +179,7 @@ impl Sample {
             nets: None,
             psi: None,
             filesystems: None,
+            block: None,
         }
     }
 
@@ -177,6 +192,7 @@ impl Sample {
             || self.nets.is_some()
             || self.psi.is_some()
             || self.filesystems.is_some()
+            || self.block.is_some()
     }
 
     pub fn mark_unavailable(&mut self, group: Unavailable) {

@@ -1,6 +1,6 @@
-import { age, bytes, count, percent, rate, timestamp, uptime } from "./format";
+import { age, bytes, count, microseconds, percent, rate, timestamp, uptime } from "./format";
 import { capacity, chart, sparkline, unavailable } from "./charts";
-import { getDisks, getFilesystems, getHosts, getLatest, getNets, getSummary, type DiskPoint, type FilesystemPoint, type Host, type NetPoint, type Psi, type Series, type SummaryPoint } from "./api";
+import { getBlock, getDisks, getFilesystems, getHosts, getLatest, getNets, getSummary, type BlockPoint, type DiskPoint, type FilesystemPoint, type Host, type NetPoint, type Psi, type Series, type SummaryPoint } from "./api";
 
 const ranges = ["1h", "6h", "24h", "7d", "90d"] as const;
 type Range = typeof ranges[number];
@@ -205,6 +205,19 @@ function filesystemTable(series: Series<FilesystemPoint>[] | undefined): HTMLEle
   return card("Filesystems", table(["Mount", "Capacity"], rows));
 }
 
+function blockChart(series: Series<BlockPoint>[] | undefined): HTMLElement {
+  const points = series?.flatMap(entry => entry.points) ?? [];
+  if (points.length === 0) return card("Block latency", unavailable("unavailable"));
+  const last = points.at(-1);
+  const latency = chart({ title: "Block latency", series: [
+    { label: "p95", color: 0, points: points.map(point => ({ atMs: point.atMs, value: point.p95Us })) },
+    { label: "p99", color: 1, points: points.map(point => ({ atMs: point.atMs, value: point.p99Us })) },
+    { label: "max", color: 2, points: points.map(point => ({ atMs: point.atMs, value: point.maxUs })) }
+  ], format: microseconds, min: 0 });
+  if (last !== undefined) latency.appendChild(node("p", "muted", `${count(last.count)} completions · p50 ${microseconds(last.p50Us)}`));
+  return latency;
+}
+
 async function hostView(hostId: string): Promise<void> {
   const mine = begin();
   let hosts: Host[];
@@ -215,12 +228,13 @@ async function hostView(hostId: string): Promise<void> {
     return;
   }
   const host = hosts.find(candidate => candidate.hostId === hostId);
-  const [latest, summary, disks, nets, filesystems] = await Promise.all([
+  const [latest, summary, disks, nets, filesystems, block] = await Promise.all([
     getLatest(hostId).catch(() => null),
     getSummary(hostId, selectedRange).catch(() => null),
     getDisks(hostId, selectedRange).catch(() => null),
     getNets(hostId, selectedRange).catch(() => null),
-    getFilesystems(hostId, selectedRange).catch(() => null)
+    getFilesystems(hostId, selectedRange).catch(() => null),
+    getBlock(hostId, selectedRange).catch(() => null)
   ]);
   if (mine !== generation) return;
   const page = node("main");
@@ -277,6 +291,7 @@ async function hostView(hostId: string): Promise<void> {
     page.appendChild(diskTable(disks?.series));
     page.appendChild(netTable(nets?.series));
     page.appendChild(filesystemTable(filesystems?.series));
+    page.appendChild(blockChart(block?.series));
   }
   app.appendChild(page);
 }

@@ -66,6 +66,16 @@ export interface FilesystemPoint {
   readonly total: number;
   readonly available: number;
 }
+export interface BlockPoint {
+  readonly atMs: number;
+  readonly count: number;
+  readonly totalUs: number;
+  readonly minUs: number;
+  readonly maxUs: number;
+  readonly p50Us: number;
+  readonly p95Us: number;
+  readonly p99Us: number;
+}
 export interface Series<P> {
   readonly id: string;
   readonly name?: string;
@@ -95,6 +105,7 @@ export interface Sample {
   readonly nets?: readonly Record<string, string>[];
   readonly filesystems?: readonly { readonly id: string; readonly type: string; readonly total: string; readonly available: string }[];
   readonly psi?: Record<string, Record<string, string>>;
+  readonly block?: { readonly buckets: readonly string[]; readonly count: string; readonly totalUs: string; readonly minUs: string; readonly maxUs: string };
 }
 export interface Latest {
   readonly hostId: string;
@@ -124,3 +135,4 @@ export const getSummary = (hostId: string, range: string) => getJson<History<Sum
 export const getDisks = (hostId: string, range: string) => getJson<History<DiskPoint>>(`/api/v1/hosts/${encodeURIComponent(hostId)}/history?range=${range}&kind=disks`);
 export const getNets = (hostId: string, range: string) => getJson<History<NetPoint>>(`/api/v1/hosts/${encodeURIComponent(hostId)}/history?range=${range}&kind=nets`);
 export const getFilesystems = (hostId: string, range: string) => getJson<History<FilesystemPoint>>(`/api/v1/hosts/${encodeURIComponent(hostId)}/history?range=${range}&kind=filesystems`);
+export const getBlock = (hostId: string, range: string) => getJson<History<BlockPoint>>(`/api/v1/hosts/${encodeURIComponent(hostId)}/history?range=${range}&kind=block`);

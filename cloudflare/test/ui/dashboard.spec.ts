@@ -33,6 +33,10 @@ function filesystems(range: string, empty = false) {
   return { hostId, range, kind: "filesystems", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "/", points: [{ atMs: now - 15_000, total: 100_000_000_000, available: 40_000_000_000 }, { atMs: now, total: 100_000_000_000, available: 39_000_000_000 }] }] };
 }
 
+function block(range: string, empty = false) {
+  return { hostId, range, kind: "block", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "block", points: [{ atMs: now - 15_000, count: 110, totalUs: 600_000, minUs: 1_500, maxUs: 45_000, p50Us: 5_000, p95Us: 25_000, p99Us: 45_000 }, { atMs: now, count: 90, totalUs: 500_000, minUs: 1_200, maxUs: 40_000, p50Us: 4_000, p95Us: 20_000, p99Us: 40_000 }] }] };
+}
+
 async function mock(page: Page, options: { online?: boolean; empty?: boolean; latest?: boolean } = {}): Promise<string[]> {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
@@ -51,6 +55,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; la
     if (kind === "disks") return route.fulfill({ json: disks(range, empty) });
     if (kind === "nets") return route.fulfill({ json: nets(range, empty) });
     if (kind === "filesystems") return route.fulfill({ json: filesystems(range, empty) });
+    if (kind === "block") return route.fulfill({ json: block(range, empty) });
     return route.fulfill({ json: summary(range, empty) });
   });
   return requests;
@@ -85,6 +90,8 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("table").filter({ hasText: "sda" })).toContainText("sda");
   await expect(page.locator("table").filter({ hasText: "eth0" })).toContainText("eth0");
+  await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Block latency;/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
 });
 

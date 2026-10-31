@@ -25,7 +25,7 @@ impl Failure {
     }
 }
 
-const SAMPLE_KEYS: [&str; 13] = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems"];
+const SAMPLE_KEYS: [&str; 14] = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"];
 const UNAVAILABLE: [&str; 8] = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"];
 const FS_TYPES: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
 
@@ -102,6 +102,30 @@ fn valid_boot(text: &str) -> bool {
         })
 }
 
+fn validate_block(value: &Value) -> bool {
+    if !object(value, &["buckets", "count", "totalUs", "minUs", "maxUs"]) {
+        return false;
+    }
+    let Some(buckets) = value["buckets"].as_array() else { return false };
+    if buckets.len() != 16 {
+        return false;
+    }
+    let Some(counts) = buckets.iter().map(u64_value).collect::<Option<Vec<u64>>>() else { return false };
+    let Some(count) = u64_value(&value["count"]) else { return false };
+    let Some(total) = u64_value(&value["totalUs"]) else { return false };
+    let Some(min) = u64_value(&value["minUs"]) else { return false };
+    let Some(max) = u64_value(&value["maxUs"]) else { return false };
+    let sum: u128 = counts.iter().map(|value| *value as u128).sum();
+    if sum != count as u128 {
+        return false;
+    }
+    if count == 0 {
+        total == 0 && min == 0 && max == 0
+    } else {
+        min <= max && max <= total
+    }
+}
+
 fn validate_group(sample: &Value, key: &str) -> bool {
     let value = &sample[key];
     match key {
@@ -157,6 +181,7 @@ fn validate_group(sample: &Value, key: &str) -> bool {
                     })
             })
         }
+        "block" => validate_block(value),
         _ => false,
     }
 }
@@ -182,7 +207,7 @@ fn validate_sample(value: &Value) -> bool {
             }
         }
     }
-    let metrics: Vec<&str> = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems"]
+    let metrics: Vec<&str> = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block"]
         .into_iter()
         .filter(|key| map.contains_key(*key))
         .collect();

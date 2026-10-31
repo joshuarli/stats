@@ -78,6 +78,11 @@
       "code": "invalid_sample"
     },
     {
+      "file": "invalid-block.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
       "file": "invalid-unavailable.json",
       "expect": "reject",
       "code": "invalid_sample"

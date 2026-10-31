@@ -1,9 +1,10 @@
 # Optional eBPF block latency
 
 `biolatency.bt` is a standalone bpftrace probe for block-layer request latency.
-It is optional and independent: the baseline agent, protocol v1, the Worker, and
-the dashboard do not load or depend on it. Results are printed as a
-microsecond histogram by bpftrace and are not uploaded anywhere.
+`biolatency-collector.bt` and `collector.sh` write 15-second snapshots for the
+agent's optional `blockLatencyFile`. The baseline agent never loads BPF and
+works without this directory; the Worker and dashboard accept the optional
+`block` group only when an agent attaches a fresh snapshot.
 
 Requirements:
 
@@ -29,9 +30,27 @@ queueing and device service time. It is not application latency, and requests
 that were already in flight when the probe started or still in flight when it
 exited are not counted.
 
-Integration into the agent would need a new optional protocol group, Worker
-storage, and dashboard rendering; that is a separate protocol change and is not
-part of this probe.
+## Collector
+
+Run the collector as root so bpftrace can attach the tracepoints:
+
+```sh
+sudo telemetry/bpf/collector.sh /run/niceforge-telemetry/block-latency.json \
+  telemetry/bpf/biolatency-collector.bt
+```
+
+`collector.sh` replaces the snapshot atomically every 15 seconds. Set the
+agent's optional `blockLatencyFile` to the same path. The agent accepts the
+snapshot only when it is a regular, non-group/world-writable file modified
+within 30 seconds; otherwise the sample omits `block`. A systemd unit is in
+`contrib/systemd/niceforge-block-latency.service`; install the collector and
+scripts under `/usr/local/lib/niceforge-telemetry/` and the unit under
+`/etc/systemd/system/`.
+
+The snapshot is JSON with `v`, `buckets` (16 decimal strings), `count`,
+`totalUs`, `minUs`, and `maxUs`; the agent revalidates it before attaching it
+to a sample. The histogram is stored and rolled up by the Worker, and the host
+view renders p95, p99, and maximum latency.
 
 Recorded 2026-10-31 on `oracle-free` (Ubuntu 24.04.4 LTS, kernel
 6.17.0-1007-oracle, x86_64, BTF present, bpftrace 0.20.2) with 1000 synchronous

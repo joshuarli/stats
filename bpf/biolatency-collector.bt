@@ -1,0 +1,45 @@
+// Optional 15-second block-latency snapshot collector. It writes one JSON line
+// per interval; collector.sh replaces the snapshot atomically.
+// The baseline agent reads that file only when blockLatencyFile is configured.
+
+tracepoint:block:block_rq_issue
+{
+  @start[args->dev, args->sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete
+/@start[args->dev, args->sector] != 0/
+{
+  $latency_us = (nsecs - @start[args->dev, args->sector]) / 1000;
+  @count = @count + 1;
+  @total_us = @total_us + $latency_us;
+  if (@min_us == 0 || $latency_us < @min_us) { @min_us = $latency_us; }
+  if ($latency_us > @max_us) { @max_us = $latency_us; }
+  if ($latency_us <= 100) { @buckets[0] = @buckets[0] + 1; }
+  else if ($latency_us <= 250) { @buckets[1] = @buckets[1] + 1; }
+  else if ($latency_us <= 500) { @buckets[2] = @buckets[2] + 1; }
+  else if ($latency_us <= 1000) { @buckets[3] = @buckets[3] + 1; }
+  else if ($latency_us <= 2500) { @buckets[4] = @buckets[4] + 1; }
+  else if ($latency_us <= 5000) { @buckets[5] = @buckets[5] + 1; }
+  else if ($latency_us <= 10000) { @buckets[6] = @buckets[6] + 1; }
+  else if ($latency_us <= 25000) { @buckets[7] = @buckets[7] + 1; }
+  else if ($latency_us <= 50000) { @buckets[8] = @buckets[8] + 1; }
+  else if ($latency_us <= 100000) { @buckets[9] = @buckets[9] + 1; }
+  else if ($latency_us <= 250000) { @buckets[10] = @buckets[10] + 1; }
+  else if ($latency_us <= 500000) { @buckets[11] = @buckets[11] + 1; }
+  else if ($latency_us <= 1000000) { @buckets[12] = @buckets[12] + 1; }
+  else if ($latency_us <= 2500000) { @buckets[13] = @buckets[13] + 1; }
+  else if ($latency_us <= 5000000) { @buckets[14] = @buckets[14] + 1; }
+  else { @buckets[15] = @buckets[15] + 1; }
+  delete(@start[args->dev, args->sector]);
+}
+
+interval:s:15
+{
+  printf("{\"v\":1,\"buckets\":[\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\",\"%llu\"],\"count\":\"%llu\",\"totalUs\":\"%llu\",\"minUs\":\"%llu\",\"maxUs\":\"%llu\"}\n", @buckets[0], @buckets[1], @buckets[2], @buckets[3], @buckets[4], @buckets[5], @buckets[6], @buckets[7], @buckets[8], @buckets[9], @buckets[10], @buckets[11], @buckets[12], @buckets[13], @buckets[14], @buckets[15], @count, @total_us, @min_us, @max_us);
+  clear(@buckets);
+  clear(@count);
+  clear(@total_us);
+  clear(@min_us);
+  clear(@max_us);
+}

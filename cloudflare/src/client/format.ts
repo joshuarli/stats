@@ -21,6 +21,13 @@ export function rate(value: number | undefined): string {
   return `${bytes(value)}/s`;
 }
 
+export function microseconds(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "unavailable";
+  if (value >= 1_000_000) return `${number.format(value / 1_000_000)} s`;
+  if (value >= 1_000) return `${number.format(value / 1_000)} ms`;
+  return `${number.format(value)} µs`;
+}
+
 export function count(value: number | undefined): string {
   return value === undefined || !Number.isFinite(value) ? "unavailable" : number.format(value);
 }

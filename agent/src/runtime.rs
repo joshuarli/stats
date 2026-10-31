@@ -1,4 +1,5 @@
 use crate::backoff::Backoff;
+use crate::block;
 use crate::config::AgentConfig;
 use crate::model::Sample;
 use crate::queue::Queue;
@@ -170,6 +171,16 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
     Ok(())
 }
 
+fn sample_with_block(config: &AgentConfig) -> Option<Sample> {
+    let mut sample = sample_once()?;
+    if let Some(path) = &config.block_latency_file {
+        if let Some(value) = block::read(path) {
+            sample.block = Some(value);
+        }
+    }
+    Some(sample)
+}
+
 pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeError> {
     let boot_id = crate::boot_identity().ok_or(RuntimeError::BootIdentity)?;
     let sender: Arc<dyn BatchSender> = Arc::new(HttpTransport::new(&config.endpoint, &config.host_id, &token, Duration::from_millis(config.request_timeout_ms))?);
@@ -187,14 +198,14 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
 
     let mut report = RunReport::default();
     let interval = Duration::from_millis(config.sample_interval_ms);
-    if let Some(sample) = sample_once() {
+    if let Some(sample) = sample_with_block(config) {
         queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
         report.sampled += 1;
     } else {
         report.sample_failures += 1;
     }
     while sleep_interruptible(interval, stop) {
-        if let Some(sample) = sample_once() {
+        if let Some(sample) = sample_with_block(config) {
             queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
             report.sampled += 1;
         } else {

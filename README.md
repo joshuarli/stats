@@ -55,10 +55,19 @@ them silently. JSON numbers are used only for `v` and `cpuCount`.
 | `nets` | no | 0–16 objects: `id` (interface name), `rxBytes`, `rxPackets`, `rxDrops`, `rxErrors`, `txBytes`, `txPackets`, `txDrops`, `txErrors` |
 | `psi` | no | optional `cpu`, `memory`, `io`; each has `some10`, `some60`, `some300` (fixed 2-decimal percent) and `total` (microseconds); `memory` and `io` may also have `full10`, `full60`, `full300`, `fullTotal` |
 | `filesystems` | no | 0–16 objects: `id` (mount path), `type` (allow-list enum), `total`, `available` |
+| `block` | no | `buckets` (exactly 16 u64 strings), `count`, `totalUs`, `minUs`, `maxUs` |
 
 A listed `unavailable` group must not also be present. A sample with no metric
 group is invalid. Unknown fields at any level are invalid. Device ids and
 interface names must be unique within their array.
+
+`block` is an optional interval histogram of block-layer request latency in
+microseconds. Bucket upper bounds are `100`, `250`, `500`, `1000`, `2500`,
+`5000`, `10000`, `25000`, `50000`, `100000`, `250000`, `500000`, `1000000`,
+`2500000`, `5000000`, and overflow. `count` is the sum of the 16 buckets;
+`totalUs`, `minUs`, and `maxUs` are the sum, minimum, and maximum observed
+latency. A zero count requires all four totals to be zero. The group is absent
+when the optional probe is not configured; it is never synthesized.
 
 CPU constants: `user` is user+nice, `system` is system+irq+softirq; `total` is
 their sum with `idle`, `iowait`, and `steal`. Disk sectors are always 512-byte
@@ -114,7 +123,9 @@ One Durable Object per installation stores:
 - hourly aggregates for 90 days.
 
 Aggregates store counter delta sums plus covered interval, and gauge min/avg/max.
-They never average counters. A late sample recomputes its minute bucket, the
+They never average counters. Block histograms sum bucket counts and totals and
+keep the observed minimum and maximum; percentiles are derived from bucket
+upper bounds and are not exact. A late sample recomputes its minute bucket, the
 following minute, and both affected hours. A bucket with less than 80% of its
 span covered by usable intervals is marked partial. Retention runs on a Durable
 Object alarm in bounded batches; it never repairs or invents data.
@@ -136,9 +147,17 @@ A token is never accepted in argv or written to logs.
   "sampleIntervalMs": 15000,
   "uploadIntervalMs": 30000,
   "maxQueueSamples": 16,
-  "requestTimeoutMs": 10000
+  "requestTimeoutMs": 10000,
+  "blockLatencyFile": "/run/niceforge-telemetry/block-latency.json"
 }
 ```
+
+`blockLatencyFile` is optional. When set, the agent attaches the latest
+`block` group from that file if it is a regular file, is not group/world
+writable, and was modified within the last 30 seconds. The file is written
+atomically by `telemetry/bpf/collector.sh`; a missing or stale file simply
+leaves `block` absent. The baseline agent never loads BPF and works without
+this field.
 
 `niceforge-telemetry --config /etc/niceforge-telemetry/agent.json` runs in the
 foreground. `--once` prints one sample as JSON and exits without reading a
@@ -169,7 +188,7 @@ Local tests run entirely in the Workers runtime. Production routes:
 - `GET /health` — public, no host data.
 - `GET /api/v1/hosts` — Access-protected host list.
 - `GET /api/v1/hosts/:hostId/latest` — Access-protected latest sample.
-- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems`
+- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`
   — Access-protected bounded history.
 - `POST /api/v1/admin/hosts`, `GET /api/v1/admin/hosts`,
   `POST /api/v1/admin/hosts/:hostId/rotate`,
@@ -194,9 +213,11 @@ Configuration values: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`,
 
 The dashboard is one HTML entrypoint and one ES module bundle built by esbuild.
 It has a fleet table and a per-host view with 1 h, 6 h, 24 h, 7 d, and 90 d
-ranges. Charts are native SVG with keyboard focus and text readouts. Missing
-data renders as `unavailable` or a gap; it is never zero. Access handles login;
-the browser never sees a host token or an operator secret.
+ranges. The host view includes a block-latency chart for p95, p99, and maximum
+when the optional probe is configured. Charts are native SVG with keyboard
+focus and text readouts. Missing data renders as `unavailable` or a gap; it is
+never zero. Access handles login; the browser never sees a host token or an
+operator secret.
 
 Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
 `pnpm --filter @niceforge/telemetry test:ui` with request interception from

@@ -74,6 +74,14 @@ export interface FileSystem {
   readonly available: string;
 }
 
+export interface Block {
+  readonly buckets: readonly string[];
+  readonly count: string;
+  readonly totalUs: string;
+  readonly minUs: string;
+  readonly maxUs: string;
+}
+
 export interface Sample {
   readonly seq: string;
   readonly atMs: string;
@@ -88,6 +96,7 @@ export interface Sample {
   readonly nets?: readonly Net[];
   readonly psi?: Psi;
   readonly filesystems?: readonly FileSystem[];
+  readonly block?: Block;
 }
 
 export type SampleResult =
@@ -98,8 +107,9 @@ export type BatchResult =
   | { readonly ok: true; readonly hostId: string; readonly bootId: string; readonly samples: readonly SampleResult[] }
   | { readonly ok: false; readonly code: RejectCode; readonly message: string };
 
-const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems"] as const;
+const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"] as const;
 const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"] as const;
+const BLOCK_BUCKETS = 16;
 const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"] as const;
 const HOST = /^h_[0-9a-f]{32}$/u;
 const BOOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -150,6 +160,24 @@ function arrayUnique(value: unknown, key: string, limit: number): readonly Recor
   return value as Record<string, unknown>[];
 }
 
+function parseBlock(value: unknown): Block | null {
+  if (!exact(value, ["buckets", "count", "totalUs", "minUs", "maxUs"])) return null;
+  const buckets = value.buckets;
+  if (!Array.isArray(buckets) || buckets.length !== BLOCK_BUCKETS || !buckets.every(bucket => decimal(bucket))) return null;
+  if (!decimal(value.count) || !decimal(value.totalUs) || !decimal(value.minUs) || !decimal(value.maxUs)) return null;
+  const count = BigInt(value.count);
+  const total = BigInt(value.totalUs);
+  const min = BigInt(value.minUs);
+  const max = BigInt(value.maxUs);
+  if (buckets.reduce((sum, bucket) => sum + BigInt(bucket as string), 0n) !== count) return null;
+  if (count === 0n) {
+    if (total !== 0n || min !== 0n || max !== 0n) return null;
+  } else if (min > max || max > total) {
+    return null;
+  }
+  return value as unknown as Block;
+}
+
 function parsePsiGroup(value: unknown): PsiGroup | null {
   if (!subset(value, ["some10", "some60", "some300", "total", "full10", "full60", "full300", "fullTotal"])) return null;
   if (!["some10", "some60", "some300", "total"].every(key => key in value)) return null;
@@ -175,7 +203,7 @@ export function parseSample(value: unknown): SampleResult {
       seen.add(group);
     }
   }
-  const metrics = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems"].filter(key => value[key] !== undefined);
+  const metrics = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block"].filter(key => value[key] !== undefined);
   if (metrics.length === 0) return fail("sample has no metric group");
   if (value.unavailable !== undefined) {
     for (const group of value.unavailable as string[]) {
@@ -206,6 +234,7 @@ export function parseSample(value: unknown): SampleResult {
     const filesystems = arrayUnique(value.filesystems, "id", MAX_DEVICES);
     if (filesystems === null || !filesystems.every(filesystem => exact(filesystem, ["id", "type", "total", "available"]) && typeof filesystem.id === "string" && filesystem.id.startsWith("/") && filesystem.id.length <= 255 && !filesystem.id.includes("\0") && typeof filesystem.type === "string" && (FS_TYPES as readonly string[]).includes(filesystem.type) && decimal(filesystem.total) && decimal(filesystem.available))) return fail("filesystems");
   }
+  if (value.block !== undefined && parseBlock(value.block) === null) return fail("block");
   return { ok: true, sample: value as unknown as Sample };
 }
 

@@ -77,6 +77,20 @@ describe("history", () => {
     const quarterBody = await quarter.json() as { resolution: string; stepMs: number };
     expect(quarterBody.resolution).toBe("1h");
     expect(quarterBody.stepMs).toBe(3_600_000);
+
+    const block = await history(host.hostId, "1h", "block");
+    const blockBody = await block.json() as { resolution: string; series: { points: { count: number; p50Us: number; p95Us: number; p99Us: number; maxUs: number }[] }[] };
+    expect(blockBody.resolution).toBe("raw");
+    expect(blockBody.series[0]!.points[0]!.count).toBe(110);
+    expect(blockBody.series[0]!.points[0]!.p50Us).toBeGreaterThan(0);
+    expect(blockBody.series[0]!.points[0]!.p95Us).toBeGreaterThanOrEqual(blockBody.series[0]!.points[0]!.p50Us);
+    expect(blockBody.series[0]!.points[0]!.p99Us).toBeGreaterThanOrEqual(blockBody.series[0]!.points[0]!.p95Us);
+    expect(blockBody.series[0]!.points[0]!.maxUs).toBe(45_000);
+
+    const blockWeek = await history(host.hostId, "7d", "block");
+    const blockWeekBody = await blockWeek.json() as { resolution: string; series: { points: { count: number }[] }[] };
+    expect(blockWeekBody.resolution).toBe("1m");
+    expect(blockWeekBody.series[0]!.points[0]!.count).toBe(110);
     expect((await history(host.hostId, "2h", "summary")).status).toBe(400);
     expect((await history(host.hostId, "1h", "memory")).status).toBe(400);
     const sampled = downsample(Array.from({ length: 1200 }, (_, index) => index)).items;
