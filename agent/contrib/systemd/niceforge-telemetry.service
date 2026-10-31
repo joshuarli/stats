@@ -1,0 +1,19 @@
+[Unit]
+Description=Niceforge telemetry agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/niceforge-telemetry --config /etc/niceforge-telemetry/agent.json
+Restart=always
+RestartSec=5s
+User=niceforge-telemetry
+Group=niceforge-telemetry
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
