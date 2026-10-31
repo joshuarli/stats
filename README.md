@@ -223,14 +223,36 @@ BPF support are recorded as Needs environment in the campaign record.
 ## Release and benchmark
 
 `telemetry/agent/scripts/build-static.sh` builds both musl targets with the
-committed Zig wrappers, strips them, writes SHA-256 receipts under
+committed Zig wrappers, strips them, writes versioned
+`niceforge-telemetry-<version>-<target>` artifacts and SHA-256 receipts under
 `telemetry/agent/dist/`, and rejects an ELF with `PT_INTERP` or `NEEDED`.
+Recorded 2026-10-31: 1,943,832 bytes x86_64 and 1,733,792 bytes aarch64
+stripped binaries; repeated builds produced identical SHA-256 digests, and the
+ELF receipts show no interpreter and no dynamic dependencies.
 `telemetry/bench/bench.sh` records a named host, kernel, CPU, interval, and
 method, then reports CPU time per sample, steady RSS, cycles, instructions,
 syscalls, context switches, collection latency, and bytes sent. It compares
 with Node Exporter only on the same host and interval. Performance is
 unverified until those numbers exist; the campaign's targets are aspirations,
 not claims.
+
+## Install, start, stop, and remove
+
+Installation is a single binary and owner-only files:
+
+```sh
+install -m 0755 niceforge-telemetry /usr/local/bin/niceforge-telemetry
+install -d -m 0700 /etc/niceforge-telemetry
+install -m 0600 agent.json /etc/niceforge-telemetry/agent.json
+install -m 0600 token /etc/niceforge-telemetry/token
+telemetry/agent/contrib/supervise.sh /etc/niceforge-telemetry/agent.json
+```
+
+On Alpine, install `contrib/openrc/niceforge-telemetry` and run
+`rc-service niceforge-telemetry start`. Stop with SIGTERM; the supervisor and
+OpenRC script stop the child and do not delete configuration. Remove the
+binary, configuration, and token only after revoking the host credential.
+Cloudflare teardown is separate and owner-run.
 
 ## Deployment outline
 

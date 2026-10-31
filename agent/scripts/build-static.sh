@@ -17,8 +17,10 @@ command -v zig >/dev/null || {
   exit 1
 }
 
+version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$agent/Cargo.toml" | head -n 1)
+test -n "$version"
 mkdir -p "$dist"
-rm -f "$dist/SHA256SUMS" "$dist/niceforge-telemetry-"*
+rm -f "$dist"/*
 
 hash_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -43,14 +45,14 @@ for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
     cargo build --release --target "$target"
 
   binary="$agent/target/$target/release/niceforge-telemetry"
-  destination="$dist/niceforge-telemetry-$target"
+  destination="$dist/niceforge-telemetry-$version-$target"
   cp "$binary" "$destination"
-  "$readobj" --elf-output-style=GNU --program-headers --dynamic-table "$destination" > "$dist/niceforge-telemetry-$target.elf.txt"
-  if grep -Eq 'INTERP|NEEDED' "$dist/niceforge-telemetry-$target.elf.txt"; then
+  "$readobj" --elf-output-style=GNU --program-headers --dynamic-table "$destination" > "$destination.elf.txt"
+  if grep -Eq 'INTERP|NEEDED' "$destination.elf.txt"; then
     echo "$target has a dynamic interpreter or dependency" >&2
     exit 1
   fi
-  printf '%s  %s\n' "$(hash_file "$destination")" "niceforge-telemetry-$target" >> "$dist/SHA256SUMS"
+  printf '%s  %s\n' "$(hash_file "$destination")" "$(basename "$destination")" >> "$dist/SHA256SUMS"
 done
 
 cat "$dist/SHA256SUMS"
