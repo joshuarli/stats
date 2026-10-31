@@ -239,9 +239,29 @@ make telemetry-release           # release binaries, receipts, benchmark self-te
 make telemetry-check             # all local telemetry checks
 ```
 
-Runtime proofs on Ubuntu and Alpine x86_64, Cloudflare Access, the optional BPF
-probe, and the A9 benchmark are recorded in the campaign, benchmark, and BPF
-records. aarch64 runtime and Workers Paid limits remain Needs environment.
+Runtime proofs on Ubuntu and Alpine x86_64, a container-scoped aarch64 runtime
+on Debian 13 and Alpine edge, Cloudflare Access, the optional BPF probe, and the
+A9 benchmark are recorded in the campaign, benchmark, and BPF records. A
+bare-host aarch64 kernel/init/reboot proof and Workers Paid limits remain Needs
+environment.
+
+### Container-scoped aarch64 runtime
+
+Recorded 2026-10-31 on an Apple Silicon host with Docker 29.8.2 and OrbStack
+(native `linux/arm64`, kernel `7.2.12-orbstack`). The static aarch64 binary ran
+in `debian:13-slim` and `alpine:edge`: `--version`, `--once`, `--bench`, and a
+direct agent run against a local HTTPS ingest signed by a proof CA. Both
+containers also validated `https://stats.17166969.xyz/health` with their system
+trust store. Debian ran `contrib/supervise.sh`; Alpine ran the OpenRC service.
+Samples included CPU, load, memory, uptime, disks, networks, and filesystems;
+PSI was `unavailable` because the OrbStack kernel has no `/proc/pressure`.
+
+This is a container-scoped proof, not a bare-host proof. It does not cover
+Debian or Alpine kernel behavior, systemd boot, reboot persistence, or
+host-level block/eBPF telemetry. OpenRC was started with `rc-service -D` because
+container networking cannot satisfy its `need net` dependency. Live Cloudflare
+ingest was not repeated; the agent used a local HTTPS ingest, and the Worker
+path was live-proven in T9.
 
 ## Release and benchmark
 
@@ -334,13 +354,16 @@ returning 401. The host half ran on Ubuntu 24.04.4 LTS and Alpine edge, both
 x86_64, under systemd and OpenRC; both uploaded live samples, sequence
 continued across restarts, a stopped host became offline after 45 s, and
 Alpine reported PSI as unavailable. The account stayed on its free plan;
-Workers Paid limits, spend alarms, overage behavior, and aarch64 runtime remain
-unverified.
+Workers Paid limits, spend alarms, overage behavior, and the bare-host aarch64
+kernel/init/reboot proof remain unverified. The container-scoped aarch64
+runtime passed 2026-10-31.
 
 ## Needs environment
 
-- aarch64 Debian or Alpine hosts for kernel interfaces, trust stores, init
-  scripts, and runtime proofs. The x86_64 Ubuntu and Alpine proofs passed.
+- aarch64 bare-host kernel/init/reboot proof. Container-scoped Debian 13 and
+  Alpine edge aarch64 runtime passed 2026-10-31; the container proof does not
+  cover Debian/Alpine kernel behavior, systemd boot, reboot persistence, or
+  host-level block/eBPF telemetry.
 - Workers Paid limits, spend alarms, and overage behavior. The recorded T9
   cloud half uses the free plan; fleet-scale billing is unverified.
 - A live Niceforge runner host for the opt-in deep-link proof.
