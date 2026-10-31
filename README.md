@@ -218,8 +218,9 @@ make telemetry-release           # release binaries, receipts, benchmark self-te
 make telemetry-check             # all local telemetry checks
 ```
 
-Runtime proofs on real Debian/Alpine hosts, Cloudflare billing and Access, and
-BPF support are recorded as Needs environment in the campaign record.
+Runtime proofs on Ubuntu and Alpine x86_64, Cloudflare Access, the optional BPF
+probe, and the A9 benchmark are recorded in the campaign, benchmark, and BPF
+records. aarch64 runtime and Workers Paid limits remain Needs environment.
 
 ## Release and benchmark
 
@@ -236,6 +237,13 @@ syscalls, context switches, collection latency, and bytes sent. It compares
 with Node Exporter only on the same host and interval. Performance is
 unverified until those numbers exist; the campaign's targets are aspirations,
 not claims.
+
+## Optional block latency probe
+
+`telemetry/bpf/biolatency.bt` is a standalone bpftrace probe for block-layer
+request latency. It requires BTF, tracefs, bpftrace, and root or `CAP_BPF`. It
+is not loaded by the agent and does not change protocol v1, Worker storage, or
+the dashboard. See `telemetry/bpf/README.md` for usage and scope.
 
 ## Install, start, stop, and remove
 
@@ -301,10 +309,8 @@ unverified.
 
 ## Needs environment
 
-- Real Debian and Alpine hosts, x86_64 and aarch64, for kernel interfaces,
-  trust stores, init scripts, and runtime proofs.
-- Named Linux hardware with `/usr/bin/time` and `perf` for benchmark results.
+- aarch64 Debian or Alpine hosts for kernel interfaces, trust stores, init
+  scripts, and runtime proofs. The x86_64 Ubuntu and Alpine proofs passed.
 - Workers Paid limits, spend alarms, and overage behavior. The recorded T9
   cloud half uses the free plan; fleet-scale billing is unverified.
 - A live Niceforge runner host for the opt-in deep-link proof.
-- A capable Linux kernel with BTF and privileges for optional eBPF.
