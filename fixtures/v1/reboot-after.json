@@ -76,11 +76,11 @@
           "rxBytes": "225012500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225012.5",
+          "rxPackets": "225012",
           "txBytes": "180010000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112506.25"
+          "txPackets": "112506"
         }
       ],
       "psi": {

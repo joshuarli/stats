@@ -128,12 +128,12 @@
       "disks": [
         {
           "id": "8:16",
-          "ioMs": "7.7",
+          "ioMs": "7",
           "name": "sdb",
           "readSectors": "616",
           "reads": "77",
           "writeSectors": "308",
-          "writes": "38.5"
+          "writes": "38"
         }
       ],
       "filesystems": [

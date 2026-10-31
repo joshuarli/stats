@@ -188,11 +188,11 @@
           "rxBytes": "225012500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225012.5",
+          "rxPackets": "225012",
           "txBytes": "180010000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112506.25"
+          "txPackets": "112506"
         }
       ],
       "psi": {
@@ -304,7 +304,7 @@
           "txBytes": "180020000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112512.5"
+          "txPackets": "112512"
         }
       ],
       "psi": {
@@ -412,11 +412,11 @@
           "rxBytes": "225037500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225037.5",
+          "rxPackets": "225037",
           "txBytes": "180030000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112518.75"
+          "txPackets": "112518"
         }
       ],
       "psi": {
@@ -636,11 +636,11 @@
           "rxBytes": "225062500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225062.5",
+          "rxPackets": "225062",
           "txBytes": "180050000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112531.25"
+          "txPackets": "112531"
         }
       ],
       "psi": {
@@ -752,7 +752,7 @@
           "txBytes": "180060000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112537.5"
+          "txPackets": "112537"
         }
       ],
       "psi": {
@@ -860,11 +860,11 @@
           "rxBytes": "225087500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225087.5",
+          "rxPackets": "225087",
           "txBytes": "180070000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112543.75"
+          "txPackets": "112543"
         }
       ],
       "psi": {
@@ -1084,11 +1084,11 @@
           "rxBytes": "225112500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225112.5",
+          "rxPackets": "225112",
           "txBytes": "180090000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112556.25"
+          "txPackets": "112556"
         }
       ],
       "psi": {
@@ -1200,7 +1200,7 @@
           "txBytes": "180100000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112562.5"
+          "txPackets": "112562"
         }
       ],
       "psi": {
@@ -1308,11 +1308,11 @@
           "rxBytes": "225137500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225137.5",
+          "rxPackets": "225137",
           "txBytes": "180110000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112568.75"
+          "txPackets": "112568"
         }
       ],
       "psi": {
@@ -1532,11 +1532,11 @@
           "rxBytes": "225162500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225162.5",
+          "rxPackets": "225162",
           "txBytes": "180130000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112581.25"
+          "txPackets": "112581"
         }
       ],
       "psi": {
@@ -1648,7 +1648,7 @@
           "txBytes": "180140000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112587.5"
+          "txPackets": "112587"
         }
       ],
       "psi": {
@@ -1756,11 +1756,11 @@
           "rxBytes": "225187500",
           "rxDrops": "0",
           "rxErrors": "0",
-          "rxPackets": "225187.5",
+          "rxPackets": "225187",
           "txBytes": "180150000",
           "txDrops": "1",
           "txErrors": "0",
-          "txPackets": "112593.75"
+          "txPackets": "112593"
         }
       ],
       "psi": {
