@@ -157,8 +157,9 @@ Credentials are 32 random bytes encoded as `nft_` plus base64url. Rotate or
 revoke them in the operator API. The server stores only a SHA-256 verifier.
 
 `contrib/supervise.sh` is an init-independent loop for hosts without a service
-manager. `contrib/openrc/niceforge-telemetry` is optional on Alpine. No systemd
-unit is required on Debian; use the supervisor or the host's init.
+manager. `contrib/openrc/niceforge-telemetry` is available on Alpine, and
+`contrib/systemd/niceforge-telemetry.service` is available on systemd hosts.
+No service manager is required; the supervisor or the host's init works.
 
 ## Cloudflare Worker
 
@@ -238,26 +239,29 @@ not claims.
 
 ## Install, start, stop, and remove
 
-Installation is a single binary and owner-only files:
+Installation is a single binary, owner-only files, and an optional service:
 
 ```sh
+useradd --system --no-create-home --shell /usr/sbin/nologin niceforge-telemetry
 install -m 0755 niceforge-telemetry /usr/local/bin/niceforge-telemetry
-install -d -m 0700 /etc/niceforge-telemetry
-install -m 0600 agent.json /etc/niceforge-telemetry/agent.json
-install -m 0600 token /etc/niceforge-telemetry/token
-telemetry/agent/contrib/supervise.sh /etc/niceforge-telemetry/agent.json
+install -d -m 0700 -o niceforge-telemetry -g niceforge-telemetry /etc/niceforge-telemetry
+install -m 0600 -o niceforge-telemetry -g niceforge-telemetry agent.json /etc/niceforge-telemetry/agent.json
+install -m 0600 -o niceforge-telemetry -g niceforge-telemetry token /etc/niceforge-telemetry/token
 ```
 
-On Alpine, install `contrib/openrc/niceforge-telemetry` and run
-`rc-service niceforge-telemetry start`. Stop with SIGTERM; the supervisor and
-OpenRC script stop the child and do not delete configuration. Remove the
-binary, configuration, and token only after revoking the host credential.
-Cloudflare teardown is separate and owner-run.
+On systemd hosts, install `contrib/systemd/niceforge-telemetry.service` to
+`/etc/systemd/system/`, then `systemctl daemon-reload` and `systemctl enable
+--now niceforge-telemetry`. Without a service manager, run
+`contrib/supervise.sh /etc/niceforge-telemetry/agent.json`. On Alpine, install
+`contrib/openrc/niceforge-telemetry` and run `rc-service niceforge-telemetry
+start`. Stop with SIGTERM; the supervisor and service scripts stop the child and
+do not delete configuration. Remove the binary, configuration, and token only
+after revoking the host credential. Cloudflare teardown is separate and
+owner-run.
 
 ## Deployment outline
 
-Recorded 2026-10-31 as the T9 cloud-half proof at
-`https://stats.17166969.xyz`.
+Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
 
 1. Build the assets: `pnpm --filter @niceforge/telemetry build`.
 2. Create an Access application for the dashboard hostname with an owner allow
@@ -288,8 +292,12 @@ Recorded 2026-10-31: live ingest accepted two samples, an exact replay returned
 two duplicates, latest and 1 h history returned, the dashboard returned 200
 with the CSP and frame protections, a rotated credential rejected the old token
 and accepted the new one, and revocation returned 204 with later ingest
-returning 401. The account stayed on its free plan; Workers Paid limits, spend
-alarms, overage behavior, and Debian/Alpine runtime proofs remain unverified.
+returning 401. The host half ran on Ubuntu 24.04.4 LTS and Alpine edge, both
+x86_64, under systemd and OpenRC; both uploaded live samples, sequence
+continued across restarts, a stopped host became offline after 45 s, and
+Alpine reported PSI as unavailable. The account stayed on its free plan;
+Workers Paid limits, spend alarms, overage behavior, and aarch64 runtime remain
+unverified.
 
 ## Needs environment
 
