@@ -1,0 +1,71 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --text: #1c232b;
+  --muted: #637080;
+  --line: #d8dee6;
+  --accent: #2f6f9f;
+  --ok: #226b47;
+  --warn: #8a5a12;
+  --bad: #9a2f35;
+  --s0: #2f6f9f;
+  --s1: #8b5f9e;
+  --s2: #b26a2f;
+  --s3: #3c8060;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151a20; --panel: #1d242c; --text: #e7edf4; --muted: #9aa8b8; --line: #33404d; --accent: #78b4e0; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--panel); }
+.top strong { font-size: 1.05rem; }
+.top span { color: var(--muted); }
+main { max-width: 1240px; margin: 0 auto; padding: 1.25rem; }
+.page-head { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+.page-head h1 { margin: 0; font-size: clamp(1.35rem, 2.5vw, 1.9rem); }
+.muted { color: var(--muted); }
+.back { text-decoration: none; padding-top: .35rem; white-space: nowrap; }
+.toolbar, .ranges { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: .75rem 0 1rem; }
+.btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: .4rem; padding: .4rem .7rem; font: inherit; cursor: pointer; }
+.btn:hover, .btn:focus-visible { border-color: var(--accent); outline: 2px solid transparent; }
+.btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: .6rem; padding: 1rem; margin: 1rem 0; overflow: hidden; }
+.card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 680px; }
+th, td { text-align: left; padding: .5rem .55rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.chip { display: inline-block; border-radius: 999px; padding: .1rem .5rem; font-size: .8rem; font-weight: 600; }
+.chip.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.chip.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, transparent); }
+.notice { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: .4rem; padding: .8rem 1rem; }
+.unavailable { color: var(--muted); font-style: italic; }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.axis { fill: var(--muted); font-size: 11px; }
+.line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.series-0 { stroke: var(--s0); }
+.series-1 { stroke: var(--s1); }
+.series-2 { stroke: var(--s2); }
+.series-3 { stroke: var(--s3); }
+.swatch { display: inline-block; width: .7rem; height: .7rem; border-radius: 999px; margin-right: .35rem; }
+.swatch.series-0 { background: var(--s0); }
+.swatch.series-1 { background: var(--s1); }
+.swatch.series-2 { background: var(--s2); }
+.swatch.series-3 { background: var(--s3); }
+.legend { display: flex; flex-wrap: wrap; gap: .8rem; list-style: none; margin: .5rem 0 0; padding: 0; color: var(--muted); font-size: .85rem; }
+.readout { display: block; min-height: 1.4em; margin-top: .35rem; color: var(--muted); font-size: .85rem; }
+.spark { width: 9rem; height: 2.25rem; }
+.capacity { display: flex; align-items: center; gap: .5rem; min-width: 12rem; }
+.capacity progress { flex: 1; height: .7rem; }
+@media (max-width: 640px) {
+  main { padding: .8rem; }
+  .top { padding: .8rem; }
+  .card { padding: .75rem; }
+  table { min-width: 560px; }
+}

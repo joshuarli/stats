@@ -200,7 +200,9 @@ the browser never sees a host token or an operator secret.
 Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
 `pnpm --filter @niceforge/telemetry test:ui` with request interception from
 deterministic fixtures. No fixture endpoint or auth bypass exists in the built
-assets.
+assets. Recorded 2026-10-31: 13,187 bytes JavaScript (4,677 gzip), 4,103 bytes
+CSS (1,416 gzip), 553 bytes HTML (371 gzip); Chromium local load about 58 ms on
+the development host. These are local measurements, not production claims.
 
 ## Local checks
 
