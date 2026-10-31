@@ -256,25 +256,47 @@ Cloudflare teardown is separate and owner-run.
 
 ## Deployment outline
 
-The owner runs these steps; the implementation never does.
+Recorded 2026-10-31 as the T9 cloud-half proof at
+`https://stats.17166969.xyz`.
 
-1. Create an Access application for the dashboard and custom domain; record the
-   team domain and audience.
-2. Set `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`, and `ENVIRONMENT=production` as
-   Worker secrets/vars. Keep `workers_dev` and preview URLs disabled.
-3. Apply the Durable Object migration and deploy with pinned Wrangler.
-4. Provision one host with the admin API; record the token once in an
-   owner-only file; install the agent and supervisor.
-5. Verify live samples, restart persistence, revocation, stale state, rollups,
-   and the dashboard; set spend alarms.
-6. Tear down only the resources this deployment created.
+1. Build the assets: `pnpm --filter @niceforge/telemetry build`.
+2. Create an Access application for the dashboard hostname with an owner allow
+   policy; record the team domain and audience. Access fronts the whole
+   hostname, so also create path-scoped Bypass applications for the public
+   health check and host ingest:
+   - `stats.17166969.xyz/health` with Bypass/Everyone.
+   - `stats.17166969.xyz/ingest/*` with Bypass/Everyone. The Worker still
+     requires a host bearer token on ingest.
+
+   Without these path applications, Access challenges `/health` and ingest
+   before the Worker sees them.
+3. Deploy with the custom domain: `wrangler deploy --domain
+   stats.17166969.xyz`. The configuration disables `workers_dev` and preview
+   URLs and has no fallback route, so a deploy without the domain is
+   unreachable.
+4. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` as Worker secrets. `ENVIRONMENT`
+   is the production var in `wrangler.jsonc`.
+5. Authenticate a human through Access (`cf access login
+   https://stats.17166969.xyz`), then provision one host with `POST
+   /api/v1/admin/hosts`. Record the token once in an owner-only file.
+6. Verify live ingest, replay dedupe, latest/history, the dashboard, rotation,
+   and revocation, then revoke the disposable host. Set spend alarms before
+   fleet use.
+7. Tear down only the resources this deployment created.
+
+Recorded 2026-10-31: live ingest accepted two samples, an exact replay returned
+two duplicates, latest and 1 h history returned, the dashboard returned 200
+with the CSP and frame protections, a rotated credential rejected the old token
+and accepted the new one, and revocation returned 204 with later ingest
+returning 401. The account stayed on its free plan; Workers Paid limits, spend
+alarms, overage behavior, and Debian/Alpine runtime proofs remain unverified.
 
 ## Needs environment
 
 - Real Debian and Alpine hosts, x86_64 and aarch64, for kernel interfaces,
   trust stores, init scripts, and runtime proofs.
 - Named Linux hardware with `/usr/bin/time` and `perf` for benchmark results.
-- A Cloudflare account, Access application, custom domain, and paid-plan
-  limits for production proof and billing.
+- Workers Paid limits, spend alarms, and overage behavior. The recorded T9
+  cloud half uses the free plan; fleet-scale billing is unverified.
 - A live Niceforge runner host for the opt-in deep-link proof.
 - A capable Linux kernel with BTF and privileges for optional eBPF.
