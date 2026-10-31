@@ -23,7 +23,7 @@ if [ -z "$output" ]; then
   output="bench-$(date -u +%Y%m%dT%H%M%SZ).json"
 fi
 
-echo "host=$(uname -n) kernel=$(uname -r) machine=$(uname -m) cpu=$(awk -F: '/model name/ {gsub(/^ +/, \"\", $2); print $2; exit}' /proc/cpuinfo)"
+echo "host=$(uname -n) kernel=$(uname -r) machine=$(uname -m) cpu=$(awk -F: '/model name/ {gsub(/^ +/, "", $2); print $2; exit}' /proc/cpuinfo)"
 echo "method: process CPU from getrusage, max RSS from /usr/bin/time -v, collection latency from the agent; interval ${interval} ms"
 if command -v /usr/bin/time >/dev/null 2>&1; then
   /usr/bin/time -v "$binary" --bench "$iterations" "$interval" > "$output" 2> "${output}.time"
