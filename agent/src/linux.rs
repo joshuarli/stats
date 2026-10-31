@@ -1,4 +1,4 @@
-use crate::model::{Disk, FileSystem, Load, Mem, Net, Psi, Sample, Unavailable};
+use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, Unavailable};
 use crate::parse::{
     file_systems, fixed3, parse_cpu, parse_diskstats, parse_meminfo, parse_mounts, parse_psi, statfs_facts,
 };
@@ -207,7 +207,7 @@ pub fn sample() -> Option<Sample> {
     let mono_ms = monotonic_ms()?;
     let at_ms = wall_ms()?;
     let _boot = boot_id()?;
-    let seq = mono_ms / 1000;
+    let seq = sequence_for(mono_ms);
     let mut sample = Sample::empty(seq, at_ms, mono_ms);
     let mut buffer = Vec::with_capacity(MEMINFO_LIMIT);
 

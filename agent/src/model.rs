@@ -145,6 +145,10 @@ pub struct Sample {
     pub filesystems: Option<Vec<FileSystem>>,
 }
 
+pub fn sequence_for(mono_ms: u64) -> u64 {
+    mono_ms / 1000
+}
+
 impl Sample {
     pub fn empty(seq: u64, at_ms: u64, mono_ms: u64) -> Self {
         Self {

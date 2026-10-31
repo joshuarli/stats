@@ -1,0 +1,339 @@
+use crate::model::Sample;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::sync::Arc;
+use std::time::Duration;
+use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
+
+const MAX_BODY: usize = 65_536;
+const MAX_RESPONSE: u64 = 16_384;
+
+#[derive(Serialize)]
+pub struct Batch<'a> {
+    pub v: u8,
+    #[serde(rename = "hostId")]
+    pub host_id: &'a str,
+    #[serde(rename = "bootId")]
+    pub boot_id: &'a str,
+    pub samples: &'a [Sample],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendOutcome {
+    pub accepted: u64,
+    pub duplicates: u64,
+    pub rejected: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportError {
+    Retryable(String),
+    RateLimited(Option<Duration>),
+    Permanent(String),
+}
+
+impl fmt::Display for TransportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Retryable(message) => write!(formatter, "retryable: {message}"),
+            Self::RateLimited(Some(delay)) => write!(formatter, "rate limited for {}s", delay.as_secs()),
+            Self::RateLimited(None) => formatter.write_str("rate limited"),
+            Self::Permanent(message) => write!(formatter, "permanent: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for TransportError {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IngestResponse {
+    v: u8,
+    accepted: u64,
+    duplicates: u64,
+    #[serde(default)]
+    rejected: Vec<serde_json::Value>,
+}
+
+pub fn encode(host_id: &str, boot_id: &str, samples: &[Sample]) -> Result<Vec<u8>, TransportError> {
+    if samples.is_empty() {
+        return Err(TransportError::Permanent("empty batch".to_owned()));
+    }
+    if samples.len() > 16 {
+        return Err(TransportError::Permanent("batch exceeds 16 samples".to_owned()));
+    }
+    let body = serde_json::to_vec(&Batch { v: 1, host_id, boot_id, samples }).map_err(|error| TransportError::Permanent(format!("encode: {error}")))?;
+    if body.len() > MAX_BODY {
+        return Err(TransportError::Permanent(format!("batch is {} bytes, over the {} byte cap", body.len(), MAX_BODY)));
+    }
+    Ok(body)
+}
+
+fn tls_config() -> Result<TlsConfig, TransportError> {
+    let native = rustls_native_certs::load_native_certs();
+    if native.certs.is_empty() {
+        return Err(TransportError::Permanent("no system trust roots are available".to_owned()));
+    }
+    let certs: Vec<Certificate<'static>> = native.certs.iter().map(|cert| Certificate::from_der(cert.as_ref()).to_owned()).collect();
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    Ok(TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .unversioned_rustls_crypto_provider(provider)
+        .root_certs(RootCerts::from(certs))
+        .build())
+}
+
+fn parse_response(body: &[u8]) -> Result<SendOutcome, TransportError> {
+    let response: IngestResponse = serde_json::from_slice(body).map_err(|error| TransportError::Retryable(format!("invalid ingest response: {error}")))?;
+    if response.v != 1 {
+        return Err(TransportError::Retryable("unknown ingest response version".to_owned()));
+    }
+    Ok(SendOutcome {
+        accepted: response.accepted,
+        duplicates: response.duplicates,
+        rejected: response.rejected.len() as u64,
+    })
+}
+
+fn classify(error: ureq::Error) -> TransportError {
+    match error {
+        ureq::Error::StatusCode(status) => classify_status(status, None),
+        ureq::Error::Timeout(_) => TransportError::Retryable("request timed out".to_owned()),
+        ureq::Error::Io(error) => TransportError::Retryable(format!("network: {error}")),
+        ureq::Error::HostNotFound => TransportError::Retryable("host not found".to_owned()),
+        ureq::Error::ConnectionFailed => TransportError::Retryable("connection failed".to_owned()),
+        ureq::Error::Protocol(error) => TransportError::Retryable(format!("protocol: {error}")),
+        ureq::Error::Tls(message) => TransportError::Permanent(format!("TLS: {message}")),
+        ureq::Error::Rustls(error) => TransportError::Permanent(format!("TLS: {error}")),
+        ureq::Error::BadUri(message) => TransportError::Permanent(format!("bad URL: {message}")),
+        ureq::Error::Http(error) => TransportError::Permanent(format!("HTTP: {error}")),
+        ureq::Error::BodyExceedsLimit(_) => TransportError::Permanent("request body exceeded its limit".to_owned()),
+        other => TransportError::Permanent(format!("request failed: {other}")),
+    }
+}
+
+fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError {
+    match status {
+        429 => TransportError::RateLimited(retry_after),
+        500..=599 => TransportError::Retryable(format!("server returned {status}")),
+        _ => TransportError::Permanent(format!("server returned {status}")),
+    }
+}
+
+pub struct HttpTransport {
+    agent: ureq::Agent,
+    url: String,
+    token: String,
+    host_id: String,
+}
+
+impl HttpTransport {
+    pub fn new(endpoint: &str, host_id: &str, token: &str, timeout: Duration) -> Result<Self, TransportError> {
+        let tls = tls_config()?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .max_redirects(0)
+            .timeout_global(Some(timeout))
+            .user_agent(concat!("niceforge-telemetry/", env!("CARGO_PKG_VERSION")))
+            .tls_config(tls)
+            .build()
+            .into();
+        Ok(Self {
+            agent,
+            url: format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/')),
+            token: token.to_owned(),
+            host_id: host_id.to_owned(),
+        })
+    }
+
+    pub fn host_id(&self) -> &str {
+        &self.host_id
+    }
+
+    pub fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        let body = encode(&self.host_id, boot_id, samples)?;
+        let mut response = match self
+            .agent
+            .post(&self.url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
+            .send(body.as_slice())
+        {
+            Ok(response) => response,
+            Err(error) => return Err(classify(error)),
+        };
+        let status = response.status().as_u16();
+        if !(200..=299).contains(&status) {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+                .map(Duration::from_secs);
+            return Err(classify_status(status, retry_after));
+        }
+        let body = response.body_mut().with_config().limit(MAX_RESPONSE).read_to_vec().map_err(|error| TransportError::Retryable(format!("response body: {error}")))?;
+        parse_response(&body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+
+    struct Receiver {
+        endpoint: String,
+        request: mpsc::Receiver<Vec<u8>>,
+    }
+
+    fn receiver(response: &'static [u8]) -> Receiver {
+        receiver_delayed(response, Duration::ZERO)
+    }
+
+    fn receiver_delayed(response: &'static [u8], delay: Duration) -> Receiver {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sender, request) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            if !delay.is_zero() {
+                thread::sleep(delay);
+            }
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut data = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut buffer).unwrap_or(0);
+                if read == 0 {
+                    break;
+                }
+                data.extend_from_slice(&buffer[..read]);
+                if let Some(index) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&data[..index + 4]).to_ascii_lowercase();
+                    let length = headers.lines().find_map(|line| line.strip_prefix("content-length:")).and_then(|value| value.trim().parse::<usize>().ok()).unwrap_or(0);
+                    while data.len() < index + 4 + length {
+                        let read = stream.read(&mut buffer).unwrap_or(0);
+                        if read == 0 {
+                            break;
+                        }
+                        data.extend_from_slice(&buffer[..read]);
+                    }
+                    break;
+                }
+            }
+            sender.send(data).unwrap();
+            let _ = stream.write_all(response);
+        });
+        Receiver { endpoint: format!("http://{address}"), request }
+    }
+
+    fn config() -> (String, String, String) {
+        ("h_0123456789abcdef0123456789abcdef".to_owned(), "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq".to_owned(), "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f".to_owned())
+    }
+
+    fn response(accepted: u64, duplicates: u64, rejected: &str) -> &'static [u8] {
+        let body = format!(r#"{{"v":1,"accepted":{accepted},"duplicates":{duplicates},"rejected":{rejected}}}"#);
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        Box::leak(response.into_bytes().into_boxed_slice())
+    }
+
+    fn sample() -> Sample {
+        Sample {
+            cpu: Some(crate::model::Cpu {
+                user: "1".into(),
+                system: "2".into(),
+                idle: "3".into(),
+                iowait: "4".into(),
+                steal: "5".into(),
+                total: "15".into(),
+            }),
+            ..Sample::empty(1, 2, 3)
+        }
+    }
+
+    #[test]
+    fn sends_the_batch_and_parses_partial_acceptance() {
+        let response = response(1, 0, r#"[{"seq":"2","code":"invalid_sample"}]"#);
+        let receiver = receiver(response);
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        let outcome = transport.send(&boot, &[sample()]).unwrap();
+        assert_eq!(outcome, SendOutcome { accepted: 1, duplicates: 0, rejected: 1 });
+        let request = receiver.request.recv_timeout(Duration::from_secs(2)).unwrap();
+        let text = String::from_utf8_lossy(&request);
+        assert!(text.starts_with("POST /ingest/v1/batches HTTP/1.1"));
+        assert!(text.to_ascii_lowercase().contains(&format!("authorization: bearer {token}").to_ascii_lowercase()));
+        let payload: serde_json::Value = serde_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
+        assert_eq!(payload["bootId"], boot);
+        assert_eq!(payload["hostId"], host);
+        assert_eq!(payload["samples"][0]["seq"], "1");
+    }
+
+    #[test]
+    fn reports_retryable_and_permanent_statuses() {
+        let retryable = receiver(b"HTTP/1.1 500 Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&retryable.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        assert!(matches!(transport.send(&boot, &[sample()]), Err(TransportError::Retryable(_))));
+        let permanent = receiver(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let transport = HttpTransport::new(&permanent.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        assert!(matches!(transport.send(&boot, &[sample()]), Err(TransportError::Permanent(_))));
+    }
+
+    #[test]
+    fn reports_request_timeouts_as_retryable() {
+        let delayed = receiver_delayed(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", Duration::from_millis(300));
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&delayed.endpoint, &host, &token, Duration::from_millis(50)).unwrap();
+        assert!(matches!(transport.send(&boot, &[sample()]), Err(TransportError::Retryable(_))));
+    }
+
+    #[test]
+    fn duplicate_delivery_is_reported_not_retried() {
+        let response = response(0, 2, "[]");
+        let receiver = receiver(response);
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        assert_eq!(transport.send(&boot, &[sample()]).unwrap(), SendOutcome { accepted: 0, duplicates: 2, rejected: 0 });
+    }
+
+    #[test]
+    fn honors_retry_after() {
+        let receiver = receiver(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        assert_eq!(transport.send(&boot, &[sample()]), Err(TransportError::RateLimited(Some(Duration::from_secs(2)))));
+    }
+
+    #[test]
+    fn reports_network_and_tls_failures_without_secrets() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&format!("http://{address}"), &host, &token, Duration::from_millis(200)).unwrap();
+        let error = transport.send(&boot, &[sample()]).unwrap_err().to_string();
+        assert!(!error.contains(&token));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 16];
+            let _ = stream.read(&mut buffer);
+        });
+        let transport = HttpTransport::new(&format!("https://{address}"), &host, &token, Duration::from_millis(200)).unwrap();
+        assert!(transport.send(&boot, &[sample()]).is_err());
+    }
+
+    #[test]
+    fn rejects_empty_and_oversized_batches() {
+        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &[]), Err(TransportError::Permanent(_))));
+        let huge = vec![sample(); 64];
+        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &huge), Err(TransportError::Permanent(_))));
+    }
+}
