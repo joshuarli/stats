@@ -44,8 +44,10 @@ fn decimal(value: &Value) -> bool {
     u64_value(value).is_some()
 }
 
+const MAX_SAFE: u64 = 9_007_199_254_740_991;
+
 fn timestamp(value: &Value) -> bool {
-    u64_value(value).is_some_and(|value| value <= i64::MAX as u64)
+    u64_value(value).is_some_and(|value| value <= MAX_SAFE)
 }
 
 fn fixed(value: &Value, fraction: usize) -> bool {
@@ -164,7 +166,7 @@ fn validate_sample(value: &Value) -> bool {
     if !keys(value, &SAMPLE_KEYS) || !map.contains_key("seq") || !map.contains_key("atMs") || !map.contains_key("monoMs") {
         return false;
     }
-    if !timestamp(&value["atMs"]) || !decimal(&value["seq"]) || !decimal(&value["monoMs"]) {
+    if !timestamp(&value["atMs"]) || !timestamp(&value["seq"]) || !timestamp(&value["monoMs"]) {
         return false;
     }
     let mut unavailable = HashSet::new();

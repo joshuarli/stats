@@ -34,17 +34,17 @@ and a body of at most 65,536 bytes. A batch contains 1–16 samples.
 ```
 
 `hostId` must match the credential's host. `bootId` is the kernel boot UUID from
-`/proc/sys/kernel/random/boot_id`. All counters, byte counts, durations,
-sequences, and timestamps are decimal strings; JSON numbers are used only for
-`v` and `cpuCount`.
+`/proc/sys/kernel/random/boot_id`. Counters are decimal u64 strings; timing and
+sequence fields are decimal strings at most 2^53-1 so neither edge can round
+them silently. JSON numbers are used only for `v` and `cpuCount`.
 
 ### Sample
 
 | Field | Required | Shape |
 | --- | --- | --- |
-| `seq` | yes | u64 string; `floor(monoMs / 1000)` |
-| `atMs` | yes | epoch milliseconds, at most 2^63-1 |
-| `monoMs` | yes | monotonic milliseconds since boot, u64 |
+| `seq` | yes | decimal string, at most 2^53-1; `floor(monoMs / 1000)` |
+| `atMs` | yes | epoch milliseconds, at most 2^53-1 |
+| `monoMs` | yes | monotonic milliseconds since boot, at most 2^53-1 |
 | `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`; at most 8, unique |
 | `cpu` | no | `user`, `system`, `idle`, `iowait`, `steal`, `total`, each a u64 string |
 | `load` | no | `one`, `five`, `fifteen`, each a fixed 3-decimal string |
