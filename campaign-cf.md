@@ -3,10 +3,10 @@
 ## Status
 
 - **Goal:** `stats` monitors a Cloudflare project as a first-class target beside hosts. One configured project, `stuff`, shows its Worker (invocations, status mix, CPU), its three R2 buckets (operations by outcome, storage, objects), endpoint availability, and the collector's own health, with the same status strip, limits, incidents, and two-column layout as the host page. Data comes from the Analytics SQL binding on a five-minute cron. No agent, no token, no change in `../stuff`.
-- **State:** not started. Baseline `d1b369c`. Every fact marked proven below was run on 2026-11-01 against the live account with read-only `cf sql query`.
-- **Accepted:** none. **Red:** none. **Parked:** none.
-- **Next:** A1.
-- **Resume:** `Execute campaign-cf.md from item A1. Read the item, own only its files, and finish on its acceptance command.`
+- **State:** A1 and A2 accepted. Baseline `d1b369c`. Every fact marked proven below was run on 2026-11-01 against the live account with read-only `cf sql query`.
+- **Accepted:** A1, A2. **Red:** none. **Parked:** none.
+- **Next:** A3.
+- **Resume:** `Execute campaign-cf.md from item A3. Read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 
@@ -111,6 +111,7 @@ Run after the owner deploys (`make deploy`).
 - **N3 · Probes live.** Every probe `up` is 1 in `kind=probes`. A persistent 522 or similar means same-account fetches to custom domains are blocked; the owner decides whether to move probes elsewhere.
 - **N4 · Ingestion lag.** Measure how late `logs.workersLogs` rows arrive (newest event timestamp against now over several days of traffic) and set `SETTLE_MS` if 45 minutes is wrong.
 - **N5 · Source retention.** Record how far back each dataset actually serves once the account has history; the project page's 90-day view fills from collection regardless.
+- **N7 · Binding and Log Explorer.** The binding docs say Log Explorer-backed datasets are not supported through the Workers binding, and `logs.workersLogs` is Log Explorer-backed. The CLI returns the same `{data, rows, statistics}` shape, so `check-analytics-sql.mjs` passes, but only a deployed run settles it. After N1, confirm `kind=worker` history has rows; if the collector fails on the Worker query, the Worker metrics need another source (a new S1 and an owner decision).
 - **N6 · Golden snapshots for the project page.** After a day of collection, capture the real API responses and add replay goldens (a follow-up, not part of this campaign).
 
 ## Execution boundary and non-goals
