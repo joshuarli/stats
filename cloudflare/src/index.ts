@@ -58,7 +58,7 @@ export default {
       const access = await verifyAccess(request, env);
       if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);
       const suffix = path.slice("/api/v1".length);
-      if (!/^\/(hosts|admin\/hosts)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
+      if (!/^\/(hosts|admin\/hosts|projects)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
       return secure(await stub.fetch(internal(request, suffix)));
     }
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "invalid_request", "method not allowed");

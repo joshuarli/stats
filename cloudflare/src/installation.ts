@@ -2,9 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, compact, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
+import { combineRollups, compact, downsample, historyQuery, kindValue, rangeKey, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
+import { parseProjects, type ProjectConfig } from "./projects/config";
+import { projectKind, readCollectorHistory, readMetricHistory, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 
 export const ONLINE_WINDOW_MS = 45_000;
@@ -353,6 +355,35 @@ export class Installation extends DurableObject<Env> {
     return byKind;
   }
 
+  private projectRegistry(): ProjectConfig[] | Response {
+    try {
+      return parseProjects(this.env.PROJECTS);
+    } catch {
+      console.error(JSON.stringify({ event: "projects_config_invalid" }));
+      return json({ error: { code: "unavailable", message: "project configuration is invalid" } }, 503);
+    }
+  }
+
+  private projectList(): Response {
+    const projects = this.projectRegistry();
+    if (projects instanceof Response) return projects;
+    const collector = summarizeCollector(this.ctx.storage.sql, this.now());
+    return json(projects.map(project => ({ ...project, collector })));
+  }
+
+  private projectHistory(projectId: string, params: URLSearchParams): Response {
+    const projects = this.projectRegistry();
+    if (projects instanceof Response) return projects;
+    const project = projects.find(candidate => candidate.id === projectId);
+    if (project === undefined) return failure("not_found", "project not found", 404);
+    const range = params.get("range");
+    const key = range === null ? null : rangeKey(range);
+    const kind = projectKind(params.get("kind"));
+    if (key === null || kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
+    const sql = this.ctx.storage.sql;
+    return json(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now()));
+  }
+
   private async ensureAlarm(now: number): Promise<void> {
     const alarm = await this.ctx.storage.getAlarm();
     if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
@@ -518,6 +549,9 @@ export class Installation extends DurableObject<Env> {
         const result = await this.history(history[1]!, query, kind);
         return result === null ? failure("not_found", "host not found", 404) : json(result);
       }
+      if (path === "/projects" && request.method === "GET") return this.projectList();
+      const projectHistory = /^\/projects\/([a-z][a-z0-9-]{0,31})\/history$/u.exec(path);
+      if (projectHistory !== null && request.method === "GET") return this.projectHistory(projectHistory[1]!, new URL(request.url).searchParams);
       if (path === "/admin/hosts" && request.method === "POST") {
         let body: unknown;
         try {
