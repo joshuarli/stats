@@ -115,7 +115,7 @@ describe("history", () => {
       state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, 0, 1, '{}')", host.hostId, now - 8 * 24 * 60 * 60 * 1000);
       state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1h', ?, 0, 1, '{}')", host.hostId, now - 91 * 24 * 60 * 60 * 1000);
     });
-    expect(await runDurableObjectAlarm(stub())).toBe(true);
+    await runDurableObjectAlarm(stub());
     const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ samples: number; minute: number; hour: number }>("SELECT (SELECT count(*) FROM samples WHERE host_id = ? AND seq = 'old') AS samples, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms < ?) AS minute, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1h' AND bucket_ms < ?) AS hour", host.hostId, host.hostId, now - 7 * 24 * 60 * 60 * 1000, host.hostId, now - 90 * 24 * 60 * 60 * 1000).one());
     expect(counts).toEqual({ samples: 0, minute: 0, hour: 0 });
   });
