@@ -1,4 +1,5 @@
 import type { SummaryPoint } from "./api";
+import type { ChartPoint } from "./chart-data";
 import type { SparkPoint } from "./components/Sparkline";
 import { isFiniteNumber, percentUsed } from "./format";
 
@@ -46,4 +47,16 @@ export function sumLatest<T>(series: readonly { readonly points: readonly T[] }[
     present += 1;
   }
   return present === 0 ? undefined : total;
+}
+
+export function sumSeries<T extends { readonly atMs: number }>(series: readonly { readonly points: readonly T[] }[], pick: (point: T) => number | undefined): ChartPoint[] {
+  const totals = new Map<number, number | undefined>();
+  for (const entry of series) {
+    for (const point of entry.points) {
+      const value = pick(point);
+      const known = totals.get(point.atMs);
+      totals.set(point.atMs, isFiniteNumber(value) ? (known ?? 0) + value : known);
+    }
+  }
+  return [...totals].sort((left, right) => left[0] - right[0]).map(([atMs, value]) => ({ atMs, value }));
 }

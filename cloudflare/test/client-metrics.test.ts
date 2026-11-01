@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SummaryPoint } from "../src/client/api";
-import { cpuUsed, latestPoint, memoryUsed, psiCpu, sparkPoints, sumLatest } from "../src/client/metrics";
+import { cpuUsed, latestPoint, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../src/client/metrics";
 
 function point(overrides: Partial<SummaryPoint> = {}): SummaryPoint {
   return { atMs: 1_000, coverageMs: 15_000, partial: false, ...overrides };
@@ -33,5 +33,16 @@ describe("client metrics", () => {
   it("selects the final ordered sample", () => {
     expect(latestPoint([])).toBeUndefined();
     expect(latestPoint([point({ atMs: 2_000 }), point({ atMs: 3_000 })])?.atMs).toBe(3_000);
+  });
+
+  it("sums interfaces per sample time and leaves times with no value as gaps", () => {
+    const totals = sumSeries<{ readonly atMs: number; readonly rx: number | undefined }>(
+      [
+        { points: [{ atMs: 1_000, rx: 4 }, { atMs: 2_000, rx: undefined }] },
+        { points: [{ atMs: 1_000, rx: 6 }, { atMs: 3_000, rx: 5 }] }
+      ],
+      value => value.rx
+    );
+    expect(totals).toEqual([{ atMs: 1_000, value: 10 }, { atMs: 2_000, value: undefined }, { atMs: 3_000, value: 5 }]);
   });
 });
