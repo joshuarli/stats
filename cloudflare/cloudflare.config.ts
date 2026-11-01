@@ -19,6 +19,13 @@ const PROJECTS: readonly ProjectConfig[] = [
     ]
   },
   {
+    id: "usr-memories",
+    name: "usr-memories",
+    worker: "usr-memories",
+    buckets: ["usr-memories"],
+    probes: []
+  },
+  {
     id: "stats",
     name: "stats",
     worker: WORKER_NAME,
