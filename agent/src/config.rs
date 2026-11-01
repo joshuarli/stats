@@ -128,8 +128,8 @@ pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
     if !(1..=256).contains(&config.max_queue_samples) {
         return Err(ConfigError::new("maxQueueSamples must be between 1 and 256"));
     }
-    if !(100..=120_000).contains(&config.request_timeout_ms) {
-        return Err(ConfigError::new("requestTimeoutMs must be between 100 and 120000"));
+    if !(100..=30_000).contains(&config.request_timeout_ms) {
+        return Err(ConfigError::new("requestTimeoutMs must be between 100 and 30000"));
     }
     if config.token_file.as_os_str().is_empty() {
         return Err(ConfigError::new("tokenFile must not be empty"));
@@ -279,6 +279,17 @@ mod tests {
         let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":10000,\"blockLatencyFile\":\"\"");
         write(&path, &text, 0o600);
         assert!(load(&path).unwrap_err().to_string().contains("blockLatencyFile"));
+    }
+
+    #[test]
+    fn rejects_a_request_timeout_past_the_stop_budget() {
+        let root = scratch();
+        let token = root.join("token");
+        write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
+        let path = root.join("agent.json");
+        let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":30001");
+        write(&path, &text, 0o600);
+        assert!(load(&path).unwrap_err().to_string().contains("30000"));
     }
 
     #[test]

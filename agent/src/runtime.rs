@@ -38,11 +38,18 @@ impl From<TransportError> for RuntimeError {
 
 pub trait BatchSender: Send + Sync {
     fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError>;
+    fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        self.send(boot_id, samples)
+    }
 }
 
 impl BatchSender for HttpTransport {
     fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         HttpTransport::send(self, boot_id, samples)
+    }
+
+    fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        HttpTransport::send_final(self, boot_id, samples)
     }
 }
 
@@ -65,6 +72,10 @@ pub struct FlushOutcome {
 }
 
 pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff) -> FlushOutcome {
+    flush_batch(queue, sender, boot_id, backoff, false)
+}
+
+fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff, final_flush: bool) -> FlushOutcome {
     let (batch, pending) = {
         let mut queue = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let limit = if queue.len() > 2 { 16 } else { 2 };
@@ -74,7 +85,8 @@ pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: 
     if batch.is_empty() {
         return FlushOutcome::default();
     }
-    match sender.send(boot_id, &batch) {
+    let result = if final_flush { sender.send_final(boot_id, &batch) } else { sender.send(boot_id, &batch) };
+    match result {
         Ok(outcome) => {
             if pending == 0 {
                 backoff.reset();
@@ -145,7 +157,7 @@ fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: 
         if queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_empty() {
             break;
         }
-        let outcome = flush_once(&queue, sender.as_ref(), &boot_id, &mut backoff);
+        let outcome = flush_batch(&queue, sender.as_ref(), &boot_id, &mut backoff, true);
         if let Some(sent) = outcome.sent {
             report.accepted += sent.accepted;
             report.duplicates += sent.duplicates;

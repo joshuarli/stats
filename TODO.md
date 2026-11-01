@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-14 · P3 · Agent stop time can exceed the init's stop timeout
-
-- **Area:** Concurrency
-- **Where:** `agent/src/runtime.rs:143-157`, `agent/src/config.rs:131`, `agent/contrib/systemd/stats.service`, `agent/contrib/supervise.sh:6-27`
-- **Problem:** The 5 s final-flush deadline is checked only after a send returns, so the real bound is the in-flight upload plus one final upload, each up to `requestTimeoutMs`. The allowed maximum of 120000 gives about 240 s, which is past systemd's default 90 s stop timeout and ends in SIGKILL. `supervise.sh` never resets its backoff after a healthy run and defers TERM until a foreground `sleep` of up to 60 s finishes.
-- **Recommendation:** Give the final upload its own short request timeout and cap `requestTimeoutMs` at 30 s. In `supervise.sh`, reset the delay after a run longer than 60 s and sleep in the background with `wait`.
-- **Fix with:** lifecycle-concurrency
-- **Effort:** S
-
 ### STA-15 · P3 · A block-latency snapshot can be attached to two samples or skipped
 
 - **Area:** Data

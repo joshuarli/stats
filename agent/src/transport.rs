@@ -7,6 +7,7 @@ use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
 const MAX_BODY: usize = 65_536;
 const MAX_RESPONSE: u64 = 16_384;
+const FINAL_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Serialize)]
 pub struct Batch<'a> {
@@ -122,24 +123,29 @@ fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError
 
 pub struct HttpTransport {
     agent: ureq::Agent,
+    final_agent: ureq::Agent,
     url: String,
     token: String,
     host_id: String,
 }
 
+fn build_agent(timeout: Duration) -> Result<ureq::Agent, TransportError> {
+    let tls = tls_config()?;
+    Ok(ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .timeout_global(Some(timeout))
+        .user_agent(concat!("stats/", env!("CARGO_PKG_VERSION")))
+        .tls_config(tls)
+        .build()
+        .into())
+}
+
 impl HttpTransport {
     pub fn new(endpoint: &str, host_id: &str, token: &str, timeout: Duration) -> Result<Self, TransportError> {
-        let tls = tls_config()?;
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_redirects(0)
-            .timeout_global(Some(timeout))
-            .user_agent(concat!("stats/", env!("CARGO_PKG_VERSION")))
-            .tls_config(tls)
-            .build()
-            .into();
         Ok(Self {
-            agent,
+            agent: build_agent(timeout)?,
+            final_agent: build_agent(timeout.min(FINAL_TIMEOUT))?,
             url: format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/')),
             token: token.to_owned(),
             host_id: host_id.to_owned(),
@@ -150,10 +156,9 @@ impl HttpTransport {
         &self.host_id
     }
 
-    pub fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+    fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         let body = encode(&self.host_id, boot_id, samples)?;
-        let mut response = match self
-            .agent
+        let mut response = match agent
             .post(&self.url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Content-Type", "application/json")
@@ -174,6 +179,14 @@ impl HttpTransport {
         }
         let body = response.body_mut().with_config().limit(MAX_RESPONSE).read_to_vec().map_err(|error| TransportError::Retryable(format!("response body: {error}")))?;
         parse_response(&body)
+    }
+
+    pub fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        self.send_with(&self.agent, boot_id, samples)
+    }
+
+    pub fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        self.send_with(&self.final_agent, boot_id, samples)
     }
 }
 

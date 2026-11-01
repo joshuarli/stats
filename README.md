@@ -91,7 +91,8 @@ an upload.
   restart the agent with the new token right after rotating.
 - SIGTERM and SIGINT stop sampling, let any in-flight upload finish, then
   keep uploading until the queue is empty, an upload fails, or 5 seconds have
-  passed. Each request is bounded by `requestTimeoutMs`.
+  passed. Each queued request is bounded by `requestTimeoutMs` (max 30 s); the
+  final flush uses a 2 s timeout.
 
 The agent prints accepted, duplicate, rejected, dropped, and failed-upload
 counts once, on exit. It logs nothing while it runs.
