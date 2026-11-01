@@ -10,7 +10,8 @@ esbuild comes from `@cloudflare/vitest-plugin@1.4.11`, which hard-depends on
 `esbuild@0.28.2` and `wrangler@4.156.0`. Vite 8 lists esbuild only as an
 optional peer; it disappears once nothing else installs it.
 
-The plugin's only direct esbuild use is `src/pool/guess-exports.ts`:
+The plugin's only direct esbuild use is its upstream `guess-exports` build
+step:
 
 ```ts
 await build({ entryPoints: [entryFile], bundle: false, metafile: true, ... })

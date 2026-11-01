@@ -112,7 +112,9 @@ pressure, disk and network throughput, filesystems, devices, and block latency
 (p50, p95, p99), which stays empty unless the collector is configured.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
-chart to that window (30 s minimum). Keys: `z` zooms out, `[` and `]` pan,
+chart to that window. The smallest zoom is two samples of the tier the window
+reads: 30 s raw, 2 min for one-minute rollups, and 2 h for hourly rollups.
+Keys: `z` zooms out, `[` and `]` pan,
 `Escape` resets the zoom, `l` toggles live refresh (every 15 s, paused while
 zoomed or when the tab is hidden), `/` focuses the host search.
 

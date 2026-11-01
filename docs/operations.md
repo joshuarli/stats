@@ -76,9 +76,11 @@ lower the rate or move to Workers Paid when the allowance is close.
    health and ingest before the Worker sees them; the Worker still requires a
    host bearer token on ingest. A zone rate-limit rule blocks `/ingest/*`
    above 20 requests per 10 seconds per IP per colo for 10 seconds, the
-   free-plan limits and the equivalent of 120 requests per minute, so
-   requests with a token-shaped header that is not a real host token cannot
-   queue on the Durable Object.
+   free-plan limits and the equivalent of 120 requests per minute, so one
+   source cannot flood the single object. A token-shaped header that is not a
+   real host token still reaches the object, which parses the body and then
+   rejects the credential; the zone rule bounds how many such requests it
+   handles.
 2. Deploy with `make worker-deploy SECRETS_FILE=...`, setting
    `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`. Without the team domain every
    Access-protected route returns 503; without the audience, 401.

@@ -46,9 +46,10 @@ process restart within a boot continues the sequence without a state file.
 
 `cloudflare/src/index.ts` is the whole routing table. `/health` is public.
 `/ingest/v1/batches` is forwarded to the Durable Object, which authenticates
-the host bearer token. Every other path, including static assets, first passes
+the host bearer token. Every other path that serves assets or data first passes
 `verifyAccess` in `access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
+Methods other than GET and HEAD on non-API paths are rejected before routing.
 
 Routes under `/api/v1/` (handled in `installation.ts`):
 

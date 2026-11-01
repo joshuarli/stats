@@ -23,11 +23,11 @@ go under `.work/tmp`.
 ## Invariants
 
 - The wire format is protocol v1 in `docs/protocol.md`; `fixtures/v1/manifest.json` is the accept/reject oracle both the agent and the Worker tests run.
-- Unknown fields are rejected everywhere on the wire; u64 counters and timing values are decimal strings.
+- Unknown fields are rejected in every ingest request; the agent accepts additive fields in the ingest response. u64 counters and timing values are decimal strings.
 - Missing data is absent or `unavailable`, never zero; counter regressions are gaps, never negative rates.
 - Rates come from `monoMs` deltas within one boot, never from wall-clock deltas.
-- Tokens never appear in argv, logs, responses, or built assets; the server stores only a SHA-256 verifier.
-- Every non-ingest, non-health path, including static assets, passes Access JWT verification in the Worker.
+- Tokens never appear in argv, logs, telemetry responses, or built assets; the provisioning response returns a new token once, and the server stores only a SHA-256 verifier.
+- Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
 - The baseline agent never loads BPF, needs no root, service manager, or runtime, and links no dynamic libraries.
 
 ## Docs

@@ -60,7 +60,9 @@ unprivileged process). `psi` averages are percentages; `total` is microseconds.
 
 ## Validation and response
 
-The server checks, in order: method (405), content type (415), body size
+The Worker rejects a POST without a token-shaped bearer credential or with an
+oversized declared body before the Durable Object sees it. Inside the object
+the checks run in order: method (405), content type (415), body size
 (`too_large`, 413), JSON (`invalid_json`), batch keys (`invalid_batch`), version
 (`unknown_version`), host and boot identity and sample count (`invalid_batch`),
 credential (`unauthorized`, 401), rate limit (`rate_limited`, 429 with
@@ -95,6 +97,7 @@ credentials, token hashes, or request bodies.
 - Disk and network rates are deltas divided by the monotonic interval. Disk
   bytes use 512-byte sectors. `ioMs / interval` is busy time and may exceed
   100% when the device has concurrent I/O.
-- A device or interface id that disappears and returns starts a new series.
-  Its name is display text, not identity.
+- A device or interface id that disappears and returns resumes the same series
+  with a gap: the first sample after it returns has no rate because no counter
+  interval exists. Its name is display text, not identity.
 
