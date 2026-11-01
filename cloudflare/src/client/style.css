@@ -372,6 +372,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .status-cell { display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 14px 16px 0; background: var(--surface); min-width: 0; cursor: pointer; }
 .status-cell:hover { background: var(--hover); }
 .status-cell .tile-spark { display: block; }
+.status-strip-six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
 .stack > .widget, .stack > .chart-grid { margin-bottom: 0; }
 .panel-label { font-size: 11.5px; color: var(--muted); margin: 10px 0 0 2px; }

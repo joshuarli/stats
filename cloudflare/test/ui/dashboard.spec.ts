@@ -46,13 +46,54 @@ function projects(collector: keyof typeof projectCollector) {
   }];
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector } = {}): Promise<string[]> {
+const PROJECT_STEP = 300_000;
+const PROJECT_POINTS = 12;
+
+function projectHistory(kind: string, range: string, spike: boolean) {
+  const fromMs = now - PROJECT_POINTS * PROJECT_STEP;
+  const base = { projectId: "stuff", range, fromMs, toMs: now, stepMs: PROJECT_STEP };
+  if (kind === "collector") {
+    return { ...base, kind, runs: Array.from({ length: PROJECT_POINTS }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })) };
+  }
+  const column = (value: (index: number) => number | null) => Array.from({ length: PROJECT_POINTS }, (_, index) => value(index));
+  const hot = (index: number) => spike && index >= PROJECT_POINTS - 4;
+  if (kind === "worker") {
+    return {
+      ...base, kind,
+      series: [
+        { metric: "worker.invocations", values: column(() => 1000) },
+        { metric: "worker.cpuMsSum", values: column(() => 3000) },
+        { metric: "worker.cpuMsMax", values: column(() => 12) },
+        { metric: "worker.status.2xx", values: column(index => (hot(index) ? 920 : 1000)) },
+        { metric: "worker.status.3xx", values: column(() => 0) },
+        { metric: "worker.status.4xx", values: column(() => 0) },
+        { metric: "worker.status.5xx", values: column(index => (hot(index) ? 80 : 0)) },
+        { metric: "worker.status.other", values: column(() => 0) }
+      ]
+    };
+  }
+  const buckets = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
+  return {
+    ...base, kind,
+    series: buckets.flatMap(bucket => [
+      { metric: `r2.${bucket}.ops.success`, values: column(() => 500) },
+      { metric: `r2.${bucket}.ops.userError`, values: column(() => 40) },
+      { metric: `r2.${bucket}.ops.other`, values: column(() => 0) },
+      { metric: `r2.${bucket}.storageBytes`, values: column(index => (index % 3 === 0 ? 300_000_000 : null)) },
+      { metric: `r2.${bucket}.objects`, values: column(index => (index % 3 === 0 ? 1200 : null)) }
+    ])
+  };
+}
+
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean } = {}): Promise<string[]> {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     requests.push(url.pathname + url.search);
     const range = url.searchParams.get("range") ?? "1h";
     const kind = url.searchParams.get("kind") ?? "summary";
+    const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
+    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true) });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh") });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
@@ -288,4 +329,57 @@ test("an unknown project id shows a not-found state", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/other");
   await expect(page.getByText("Project not found")).toBeVisible();
+});
+
+test("the project page shows its summary, incidents, and two independent columns", async ({ page }, testInfo) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  const strip = page.getByRole("region", { name: "Project summary" });
+  for (const label of ["Requests", "Worker 5xx", "CPU time", "R2 failures", "R2 storage", "Collector"]) {
+    await expect(strip.getByRole("button", { name: new RegExp(`^${label}: `, "u") })).toBeVisible();
+  }
+  await expect(strip.getByRole("button", { name: /^Requests: 1,000/u })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^CPU time: 3 ms/u })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^R2 storage: /u })).toContainText("858.3 MiB");
+  for (const title of ["Incidents", "Requests", "Response status", "CPU time", "R2 operations", "R2 storage", "Collector"]) {
+    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  }
+  await expect(page.getByRole("list", { name: "Incidents" })).toHaveCount(0);
+  await expect(page.getByText("Every monitored metric stayed inside its limits.")).toBeVisible();
+  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  await expect(page.locator(".widget:not(.column .widget)")).toHaveCount(0);
+  const left = page.getByRole("region", { name: "Left column" });
+  const right = page.getByRole("region", { name: "Right column" });
+  await expect(left.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(right.getByRole("heading", { name: "R2 operations" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
+});
+
+test("an elevated Worker 5xx share raises an incident that zooms", async ({ page }) => {
+  const requests = await mock(page, { spike: true });
+  await page.goto("/#/project/stuff");
+  const incidents = page.getByRole("list", { name: "Incidents" });
+  await expect(incidents).toContainText("Worker 5xx");
+  await expect(incidents).toContainText("Critical");
+  await expect(incidents).toContainText("ongoing");
+  await expect(page.getByRole("button", { name: /^Worker 5xx: .*Jump to chart/u })).toContainText("Critical");
+  await incidents.getByRole("button", { name: "Zoom" }).first().click();
+  await expect(page.getByRole("button", { name: "Zoom out" })).toBeVisible();
+  expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kind=worker"))).toBe(true);
+});
+
+test("a stale collector is flagged on the project page", async ({ page }) => {
+  await mock(page, { collector: "stale" });
+  await page.goto("/#/project/stuff");
+  await expect(page.getByText("The collector has not succeeded recently")).toBeVisible();
+  await expect(page.locator(".page-header")).toContainText("stale");
+});
+
+test("ranges reload project history", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "24h" }).click();
+  await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=r2"))).toBe(true);
 });

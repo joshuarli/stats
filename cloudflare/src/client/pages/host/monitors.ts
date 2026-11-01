@@ -36,7 +36,7 @@ export function worstOf(series: readonly (readonly ChartPoint[])[], stepMs: numb
   });
 }
 
-function lastValue(points: readonly ChartPoint[]): number | undefined {
+export function lastValue(points: readonly ChartPoint[]): number | undefined {
   for (let index = points.length - 1; index >= 0; index -= 1) {
     const value = points[index]!.value;
     if (value !== undefined && Number.isFinite(value)) return value;
@@ -44,7 +44,7 @@ function lastValue(points: readonly ChartPoint[]): number | undefined {
   return undefined;
 }
 
-function rangeText(points: readonly ChartPoint[], format: (value: number | undefined) => string): string {
+export function rangeText(points: readonly ChartPoint[], format: (value: number | undefined) => string): string {
   const values = points.flatMap(point => (point.value === undefined || !Number.isFinite(point.value) ? [] : [point.value]));
   if (values.length === 0) return "unavailable";
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
