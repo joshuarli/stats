@@ -1,5 +1,11 @@
 import { BUCKET_MS } from "./queries.ts";
 
+export const MAX_ROUTES_PER_PROJECT = 15;
+const ROUTE_KEY_MAX_LENGTH = 80;
+const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
+const API_VERSION_SEGMENT = /^v\d+$/;
+const MAX_PLAIN_SEGMENT_LENGTH = 24;
+
 type Aggregation = "sum" | "max" | "min";
 
 export interface MetricPoint {
@@ -21,9 +27,15 @@ const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
   "worker.status.4xx": "sum",
   "worker.status.5xx": "sum",
   "worker.status.other": "sum",
+  "do.invocations": "sum",
+  "do.errors": "sum",
+  "do.cpuMsSum": "sum",
+  "do.cpuMsMax": "max",
+  "do.wallMsSum": "sum",
 };
 
 const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
+  [/^route\..{1,80}\.(invocations|cpuMsSum)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
   [/^probe\.[a-z][a-z0-9-]{0,31}\.up$/, "min"],
@@ -84,6 +96,75 @@ export function parseWorkerRows(rows: readonly unknown[]): MetricPoint[] {
     points.add("worker.cpuMsSum", bucketMs, cpuSum);
     points.add("worker.cpuMsMax", bucketMs, cpuMax);
     points.add(`worker.status.${statusClass(count(record, "httpStatus"))}`, bucketMs, invocations);
+  }
+  return points.list();
+}
+
+export function routeKey(label: string): string {
+  const match = ROUTE_LABEL_PATTERN.exec(label);
+  const normalized =
+    match === null
+      ? label
+      : `${match[1]} ${(match[2] ?? "").split("?")[0]?.split("/").map(routeSegment).join("/")}`;
+  return normalized.replace(/[^\x20-\x7e]/g, "?").slice(0, ROUTE_KEY_MAX_LENGTH);
+}
+
+function routeSegment(segment: string): string {
+  const looksLikeId = /\d/.test(segment) && !API_VERSION_SEGMENT.test(segment);
+  return looksLikeId || segment.length > MAX_PLAIN_SEGMENT_LENGTH ? ":id" : segment;
+}
+
+interface RouteBucket {
+  invocations: number;
+  cpuSum: number;
+}
+
+interface RouteTotals extends RouteBucket {
+  readonly buckets: Map<number, RouteBucket>;
+}
+
+export function parseRouteRows(rows: readonly unknown[]): MetricPoint[] {
+  const perRoute = new Map<string, RouteTotals>();
+  for (const row of rows) {
+    const record = asRecord(row);
+    const bucketMs = workerBucketMs(text(record, "day"), count(record, "hour"), count(record, "slot"));
+    const label = record["invocationLabel"];
+    const key = routeKey(typeof label === "string" && label !== "" ? label : "unlabeled");
+    const invocations = count(record, "invocations");
+    const cpuSum = count(record, "cpu_sum");
+    const route = perRoute.get(key) ?? { invocations: 0, cpuSum: 0, buckets: new Map<number, RouteBucket>() };
+    route.invocations += invocations;
+    route.cpuSum += cpuSum;
+    const bucket = route.buckets.get(bucketMs) ?? { invocations: 0, cpuSum: 0 };
+    bucket.invocations += invocations;
+    bucket.cpuSum += cpuSum;
+    route.buckets.set(bucketMs, bucket);
+    perRoute.set(key, route);
+  }
+  const busiest = [...perRoute.entries()]
+    .sort(([leftKey, left], [rightKey, right]) => right.cpuSum - left.cpuSum || right.invocations - left.invocations || leftKey.localeCompare(rightKey))
+    .slice(0, MAX_ROUTES_PER_PROJECT);
+  const points = new PointSet();
+  for (const [key, route] of busiest) {
+    for (const [bucketMs, bucket] of route.buckets) {
+      points.add(`route.${key}.invocations`, bucketMs, bucket.invocations);
+      points.add(`route.${key}.cpuMsSum`, bucketMs, bucket.cpuSum);
+    }
+  }
+  return points.list();
+}
+
+export function parseDurableObjectRows(rows: readonly unknown[]): MetricPoint[] {
+  const points = new PointSet();
+  for (const row of rows) {
+    const record = asRecord(row);
+    const bucketMs = parseUtc(text(record, "bucket"), DATETIME_PATTERN, "bucket");
+    const invocations = count(record, "invocations");
+    points.add("do.invocations", bucketMs, invocations);
+    points.add("do.errors", bucketMs, text(record, "status") === "success" ? 0 : invocations);
+    points.add("do.cpuMsSum", bucketMs, count(record, "cpu_us") / 1000);
+    points.add("do.wallMsSum", bucketMs, count(record, "wall_us") / 1000);
+    points.add("do.cpuMsMax", bucketMs, count(record, "cpu_max_us") / 1000);
   }
   return points.list();
 }

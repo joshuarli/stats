@@ -30,7 +30,7 @@
   "preview_urls": false,
   "vars": {
     "ENVIRONMENT": "test",
-    "PROJECTS": "[{\"id\":\"stuff\",\"name\":\"stuff\",\"worker\":\"stuff\",\"buckets\":[\"stuff-mycrates\",\"stuff-mynpm\"],\"probes\":[{\"name\":\"npm\",\"url\":\"https://npm.example.com/\"}]}]",
+    "PROJECTS": "[{\"id\":\"stuff\",\"name\":\"stuff\",\"worker\":\"stuff\",\"buckets\":[\"stuff-mycrates\",\"stuff-mynpm\"],\"durableObjectNamespaces\":[],\"probes\":[{\"name\":\"npm\",\"url\":\"https://npm.example.com/\"}]}]",
     "TEST_NOW_MS": "1793510415000",
     "ACCESS_TEAM_DOMAIN": "test.cloudflareaccess.com",
     "ACCESS_AUD": "test-aud",

@@ -7,10 +7,12 @@ export interface BoundQuery {
 
 export const BUCKET_MS = 5 * 60_000;
 export const MAX_BUCKETS_PER_PROJECT = 8;
+export const MAX_NAMESPACES_PER_PROJECT = 8;
 
 const ROW_LIMIT = 2000;
 
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
+export const NAMESPACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 const WORKER_EVENT_LOG_TYPE = "cf-worker-event";
 
@@ -28,6 +30,50 @@ export function workerQuery(script: string, startMs: number): BoundQuery {
       `LIMIT ${ROW_LIMIT}`,
     ].join(" "),
     params: { script, start: isoStart(startMs) },
+  };
+}
+
+export function routeQuery(script: string, startMs: number): BoundQuery {
+  return {
+    query: [
+      "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
+      "floor(toMinute(timestamp) / 5) AS slot, invocationLabel,",
+      "SUM(sampleInterval) AS invocations,",
+      "SUM(cpuTimeMs * sampleInterval) AS cpu_sum",
+      "FROM logs.workersLogs",
+      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
+      "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), invocationLabel",
+      `ORDER BY cpu_sum DESC LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { script, start: isoStart(startMs) },
+  };
+}
+
+export function durableObjectQuery(namespaces: readonly string[], startMs: number): BoundQuery {
+  if (namespaces.length === 0 || namespaces.length > MAX_NAMESPACES_PER_PROJECT) {
+    throw new RangeError(`namespace list must hold 1 to ${MAX_NAMESPACES_PER_PROJECT} ids`);
+  }
+  const params: Record<string, string> = {};
+  const placeholders = namespaces.map((id, index) => {
+    if (!NAMESPACE_ID_PATTERN.test(id)) {
+      throw new RangeError("namespace id is not a valid Durable Object namespace id");
+    }
+    params[`namespace${index}`] = id;
+    return `$namespace${index}`;
+  });
+  return {
+    query: [
+      "SELECT toStartOfFiveMinutes(timestamp) AS bucket, status,",
+      "SUM(sampleInterval) AS invocations,",
+      "SUM(cpuTimeUs * sampleInterval) AS cpu_us,",
+      "SUM(wallTimeUs * sampleInterval) AS wall_us,",
+      "APPROX_MAX(cpuTimeUs) AS cpu_max_us",
+      "FROM events.durableObjectsInvocations",
+      `WHERE namespaceId IN (${placeholders.join(", ")}) AND timestamp >= $start`,
+      "GROUP BY toStartOfFiveMinutes(timestamp), status",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...params, start: isoStart(startMs) },
   };
 }
 

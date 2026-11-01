@@ -78,7 +78,7 @@ project list by editing `PROJECTS` there and redeploying.
 Check a deployment from your machine:
 
 - `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket of the last 24 hours with `cf sql query` and fails above 5% total error; it needs `cf access login`.
-- `node cloudflare/scripts/check-analytics-sql.mjs` runs the three queries
+- `node cloudflare/scripts/check-analytics-sql.mjs` runs the five queries
   read-only against the live account through `cf sql query` and fails on a
   non-200 response or a row the parser rejects.
 - After the first cron run, `GET /api/v1/projects` shows `collector.lastSuccessAtMs`
@@ -90,7 +90,7 @@ has not run the collector yet):
 
 | Measure | Result | Target |
 | --- | --- | --- |
-| Binding queries per project per run | 3 | at most 6 |
+| Binding queries per project per run | 5 at most (Worker, routes, Durable Objects, R2 operations, R2 storage) | at most 6 |
 | Rows written per run, steady state | 49 average, 74 at most | 60 |
 | Rows written, first run or recovery after an outage | 258 to 414, once | no target |
 | Rows written, identical second run | 0 | 0 |

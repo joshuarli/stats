@@ -9,14 +9,16 @@ import workerBody from "./fixtures/analytics/worker.json";
 
 const NOW = Date.UTC(2026, 10, 1, 16, 35);
 const PROJECTS = JSON.stringify([
-  { id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], probes: [] },
+  { id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], durableObjectNamespaces: [], probes: [] },
 ]);
 
-type Rows = { worker: unknown[]; operations: unknown[]; storage: unknown[] };
+type Rows = { worker: unknown[]; routes: unknown[]; durableObjects: unknown[]; operations: unknown[]; storage: unknown[] };
 
 function fixtureRows(): Rows {
   return {
     worker: structuredClone(workerBody.data),
+    routes: [],
+    durableObjects: [],
     operations: structuredClone(r2OperationsBody.data),
     storage: structuredClone(r2StorageBody.data),
   };
@@ -33,6 +35,8 @@ function fakeAnalytics(rows: Rows, options: { failOn?: "operations" } = {}): Ana
         return { data: rows.operations, statistics: { rows_read: 100 } };
       }
       if (request.query.includes("r2CombinedStorage")) return { data: rows.storage, statistics: { rows_read: 10 } };
+      if (request.query.includes("invocationLabel")) return { data: rows.routes, statistics: { rows_read: 1000 } };
+      if (request.query.includes("durableObjectsInvocations")) return { data: rows.durableObjects, statistics: { rows_read: 100 } };
       return { data: rows.worker, statistics: { rows_read: 1000 } };
     },
   };
@@ -74,7 +78,7 @@ describe("collector", () => {
     expect(second.metricRowsWritten).toBe(0);
     await inside(store, (sql) => {
       expect(sql.exec("SELECT ok FROM collector_runs ORDER BY id").toArray()).toEqual([{ ok: 1 }, { ok: 1 }]);
-      expect(sql.exec("SELECT rows_read FROM collector_runs").toArray()).toEqual([{ rows_read: 1110 }, { rows_read: 1110 }]);
+      expect(sql.exec("SELECT rows_read FROM collector_runs").toArray()).toEqual([{ rows_read: 2110 }, { rows_read: 2110 }]);
     });
   });
 
@@ -98,24 +102,24 @@ describe("collector", () => {
   it("asks at most six bound queries per project over the trailing window", async () => {
     const analytics = fakeAnalytics(fixtureRows());
     const result = await collect(stub(), analytics);
-    expect(result.queries).toBe(3);
-    expect(analytics.calls).toHaveLength(3);
+    expect(result.queries).toBe(4);
+    expect(analytics.calls).toHaveLength(4);
     for (const call of analytics.calls) {
       expect(call.params["start"]).toBe(new Date(windowStartMs(NOW)).toISOString());
     }
     expect(windowStartMs(NOW)).toBe(Date.UTC(2026, 10, 1, 15, 5));
   });
 
-  it("asks only the Worker query for a project without buckets", async () => {
+  it("asks only the Worker and route queries for a project without buckets or namespaces", async () => {
     const analytics = fakeAnalytics(fixtureRows());
     const result = await runCollector({
       analytics,
       store: stub(),
-      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], probes: [] }]),
+      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], probes: [] }]),
       now: NOW,
       probeFetch: noProbes,
     });
-    expect(result.queries).toBe(1);
+    expect(result.queries).toBe(2);
     expect(analytics.calls.map((call) => call.query).join(" ")).not.toContain("r2Combined");
   });
 

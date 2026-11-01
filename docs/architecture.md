@@ -67,7 +67,7 @@ Routes under `/api/v1/` (handled in `installation.ts`):
 - `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
   `range` for an explicit window; the response then omits `range`.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|r2|probes|collector`
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|probes|collector`
   (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
@@ -145,8 +145,8 @@ Durable Object storage ceiling.
 ## Cloudflare projects
 
 A project is one entry in the `PROJECTS` text binding: an id, a display name,
-a Worker script, up to eight R2 bucket names, and up to eight HTTPS probe
-URLs. `cloudflare.config.ts` writes the list and validates it when the config
+a Worker script, up to eight R2 bucket names, up to eight Durable Object
+namespace ids, and up to eight HTTPS probe URLs. `cloudflare.config.ts` writes the list and validates it when the config
 is evaluated, so a bad entry fails `make worker-check`. `src/projects/config.ts`
 validates it again on every use and rejects unknown keys, duplicate ids,
 non-HTTPS probe URLs, and bucket names outside the R2 pattern; an invalid list
@@ -154,8 +154,10 @@ answers 503 with a fixed message. There is no create or update API.
 
 **Collection.** The `scheduled` handler runs every five minutes. For each
 project it reads the trailing 90 minutes through the `ANALYTICS_SQL` binding
-with three fixed queries (Worker events from `logs.workersLogs`, R2 operations,
-R2 storage) and sends one GET to each probe. The queries live in
+with fixed queries (Worker events and per-route Worker events from
+`logs.workersLogs`, Durable Object invocations when the project lists
+namespaces, R2 operations and storage when it lists buckets) and sends one GET
+to each probe. The queries live in
 `src/projects/queries.ts`, bind every value as a parameter, and take nothing
 from a request. Counts are `SUM(sampleInterval)`, because the datasets are
 sampled and `COUNT(*)` under-counts. Everything is parsed before anything is
@@ -180,7 +182,16 @@ expired project rows in batches of 1000.
 **Metrics.** Worker: `worker.invocations`, `worker.cpuMsSum`, `worker.cpuMsMax`
 (approximate), and `worker.status.<class>`. R2, per bucket:
 `ops.success|userError|other`, `storageBytes`, `objects`. Probes:
-`probe.<name>.up` and `.ms`, measured from Cloudflare's edge. Worker CPU is
+`probe.<name>.up` and `.ms`, measured from Cloudflare's edge. Routes:
+`route.<METHOD path>.invocations` and `.cpuMsSum` for the 15 routes with the
+most CPU in the collected window. Path segments with a digit or over 24
+characters become `:id`, query strings are dropped, and keys are limited to 80
+printable ASCII characters, so request paths cannot create unbounded series;
+routes outside the top 15 are dropped, not pooled. Durable Objects, summed over
+the project's namespaces: `do.invocations`, `do.errors` (status other than
+success), `do.cpuMsSum`, `do.cpuMsMax` (approximate), `do.wallMsSum`. The
+dataset reports no script name, so a namespace id is the only link to a
+project, and it has no storage-size source. Worker CPU is
 CPU time per invocation, not latency; the SQL source has no quantiles. R2
 `userError` (mostly 404s) is shown but never scored.
 

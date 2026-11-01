@@ -6,6 +6,7 @@ const valid = {
   name: "stuff",
   worker: "stuff",
   buckets: ["stuff-mycrates", "stuff-mynpm"],
+  durableObjectNamespaces: [],
   probes: [{ name: "npm", url: "https://npm.17166969.xyz/current/" }],
 };
 

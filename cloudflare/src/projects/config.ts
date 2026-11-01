@@ -1,4 +1,4 @@
-import { MAX_BUCKETS_PER_PROJECT } from "./queries.ts";
+import { MAX_BUCKETS_PER_PROJECT, MAX_NAMESPACES_PER_PROJECT, NAMESPACE_ID_PATTERN } from "./queries.ts";
 
 export const MAX_PROBES_PER_PROJECT = 8;
 
@@ -12,6 +12,7 @@ export interface ProjectConfig {
   readonly name: string;
   readonly worker: string;
   readonly buckets: readonly string[];
+  readonly durableObjectNamespaces: readonly string[];
   readonly probes: readonly ProbeConfig[];
 }
 
@@ -25,7 +26,7 @@ const WORKER_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const DISPLAY_NAME_MAX = 64;
 
-const PROJECT_KEYS = ["id", "name", "worker", "buckets", "probes"];
+const PROJECT_KEYS = ["id", "name", "worker", "buckets", "durableObjectNamespaces", "probes"];
 const PROBE_KEYS = ["name", "url"];
 
 export function parseProjects(text: string): ProjectConfig[] {
@@ -55,6 +56,10 @@ function parseProject(entry: unknown, path: string): ProjectConfig {
   if (buckets.length > MAX_BUCKETS_PER_PROJECT) {
     throw new ProjectConfigError(`${path}.buckets: expected at most ${MAX_BUCKETS_PER_PROJECT} names`);
   }
+  const namespaces = array(record["durableObjectNamespaces"], `${path}.durableObjectNamespaces`);
+  if (namespaces.length > MAX_NAMESPACES_PER_PROJECT) {
+    throw new ProjectConfigError(`${path}.durableObjectNamespaces: expected at most ${MAX_NAMESPACES_PER_PROJECT} ids`);
+  }
   const probes = array(record["probes"], `${path}.probes`);
   if (probes.length > MAX_PROBES_PER_PROJECT) {
     throw new ProjectConfigError(`${path}.probes: expected at most ${MAX_PROBES_PER_PROJECT}`);
@@ -67,6 +72,10 @@ function parseProject(entry: unknown, path: string): ProjectConfig {
     buckets: unique(
       buckets.map((bucket, index) => matching(bucket, BUCKET_NAME_PATTERN, `${path}.buckets[${index}]`)),
       `${path}.buckets`,
+    ),
+    durableObjectNamespaces: unique(
+      namespaces.map((id, index) => matching(id, NAMESPACE_ID_PATTERN, `${path}.durableObjectNamespaces[${index}]`)),
+      `${path}.durableObjectNamespaces`,
     ),
     probes: probes.map((probe, index) => {
       const parsed = parseProbe(probe, `${path}.probes[${index}]`);

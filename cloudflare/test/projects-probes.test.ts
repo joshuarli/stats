@@ -101,7 +101,7 @@ describe("probes in a collector run", () => {
     });
   });
 
-  const json = JSON.stringify([{ id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mynpm"], probes }]);
+  const json = JSON.stringify([{ id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mynpm"], durableObjectNamespaces: [], probes }]);
 
   function store() {
     return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));

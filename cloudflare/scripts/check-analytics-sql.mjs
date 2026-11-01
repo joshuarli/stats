@@ -1,19 +1,24 @@
 import { spawnSync } from "node:child_process";
 import {
+  parseDurableObjectRows,
   parseR2OperationRows,
   parseR2StorageRows,
+  parseRouteRows,
   parseWorkerRows,
 } from "../src/projects/parse.ts";
 import {
   BUCKET_MS,
+  durableObjectQuery,
   r2OperationsQuery,
   r2StorageQuery,
+  routeQuery,
   workerQuery,
 } from "../src/projects/queries.ts";
 
 const PROJECT = {
   worker: "stuff",
   buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
+  durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"],
 };
 const WINDOW_MS = 90 * 60_000;
 
@@ -59,6 +64,8 @@ const tag = accountTag();
 
 const checks = [
   ["worker", workerQuery(PROJECT.worker, startMs), parseWorkerRows],
+  ["routes", routeQuery(PROJECT.worker, startMs), parseRouteRows],
+  ["durable objects", durableObjectQuery(PROJECT.durableObjectNamespaces, startMs), parseDurableObjectRows],
   ["r2 operations", r2OperationsQuery(PROJECT.buckets, startMs), parseR2OperationRows],
   ["r2 storage", r2StorageQuery(PROJECT.buckets, startMs), parseR2StorageRows],
 ];

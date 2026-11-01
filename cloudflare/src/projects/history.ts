@@ -8,7 +8,7 @@ import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.
 export const SETTLE_MS = 45 * 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
 const MAX_HISTORY_POINTS = 900;
-const PROJECT_KINDS = ["worker", "r2", "probes", "collector"] as const;
+const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "probes", "collector"] as const;
 type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 const BUCKET_WIDTHS_MS = [BUCKET_MS, 15 * 60_000, HOUR_MS, 3 * HOUR_MS] as const;
@@ -22,6 +22,7 @@ const WORKER_METRICS = [
   "worker.status.5xx",
   "worker.status.other",
 ];
+const DURABLE_OBJECT_METRICS = ["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum"];
 const R2_SUFFIXES = ["ops.success", "ops.userError", "ops.other", "storageBytes", "objects"];
 
 interface CollectorSummary {
@@ -72,6 +73,10 @@ function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "col
   switch (kind) {
     case "worker":
       return WORKER_METRICS;
+    case "routes":
+      return [];
+    case "durable-objects":
+      return DURABLE_OBJECT_METRICS;
     case "r2":
       return project.buckets.flatMap((bucket) => R2_SUFFIXES.map((suffix) => `r2.${bucket}.${suffix}`));
     case "probes":
@@ -119,8 +124,8 @@ export function readMetricHistory(
   const floored = Math.floor((now - RANGE_MS[range]) / stepMs) * stepMs;
   const fromMs = floored < now - retentionMs ? floored + stepMs : floored;
   const count = Math.floor((now - fromMs) / stepMs) + 1;
-  const metrics = expectedMetrics(project, kind);
   const rows = readGrouped(sql, project.id, kind, stepMs, fromMs);
+  const metrics = kind === "routes" ? routeMetrics(rows) : expectedMetrics(project, kind);
   const fillable = fillableBuckets(sql, fromMs, now);
   const series = metrics.map((metric) => {
     const aggregation = aggregationOf(metric);
@@ -145,7 +150,25 @@ export function readMetricHistory(
 type Folded = { sum: number; max: number; min: number };
 type Grouped = ReadonlyMap<string, ReadonlyMap<number, Folded>>;
 
-const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = { worker: "worker.", r2: "r2.", probes: "probe." };
+const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = {
+  worker: "worker.",
+  routes: "route.",
+  "durable-objects": "do.",
+  r2: "r2.",
+  probes: "probe.",
+};
+
+function routeMetrics(rows: Grouped): string[] {
+  const cpuTotal = (route: string): number => {
+    let total = 0;
+    for (const folded of rows.get(`${route}.cpuMsSum`)?.values() ?? []) total += folded.sum;
+    return total;
+  };
+  const routes = new Set([...rows.keys()].map((metric) => metric.slice(0, metric.lastIndexOf("."))));
+  return [...routes]
+    .sort((left, right) => cpuTotal(right) - cpuTotal(left) || left.localeCompare(right))
+    .flatMap((route) => [`${route}.invocations`, `${route}.cpuMsSum`]);
+}
 
 function readGrouped(
   sql: SqlStorage,

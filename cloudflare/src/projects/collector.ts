@@ -1,12 +1,14 @@
 import { parseProjects, type ProjectConfig } from "./config.ts";
 import { runProbes, type ProbeFetch } from "./probes.ts";
 import {
+  parseDurableObjectRows,
   parseR2OperationRows,
   parseR2StorageRows,
+  parseRouteRows,
   parseWorkerRows,
   type MetricPoint,
 } from "./parse.ts";
-import { BUCKET_MS, r2OperationsQuery, r2StorageQuery, workerQuery, type BoundQuery } from "./queries.ts";
+import { BUCKET_MS, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
 import type { CollectorRun, ProjectPoints } from "./store.ts";
 
 const COLLECTION_WINDOW_MS = 90 * 60_000;
@@ -88,14 +90,19 @@ async function collectProject(
   now: number,
 ): Promise<ProjectPoints> {
   const hasBuckets = project.buckets.length > 0;
-  const [worker, operations, storage, probes] = await Promise.all([
+  const hasNamespaces = project.durableObjectNamespaces.length > 0;
+  const [worker, routes, durableObjects, operations, storage, probes] = await Promise.all([
     run(workerQuery(project.worker, startMs)),
+    run(routeQuery(project.worker, startMs)),
+    hasNamespaces ? run(durableObjectQuery(project.durableObjectNamespaces, startMs)) : [],
     hasBuckets ? run(r2OperationsQuery(project.buckets, startMs)) : [],
     hasBuckets ? run(r2StorageQuery(project.buckets, startMs)) : [],
     runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
   const points: MetricPoint[] = [
     ...parseWorkerRows(worker),
+    ...parseRouteRows(routes),
+    ...parseDurableObjectRows(durableObjects),
     ...parseR2OperationRows(operations),
     ...parseR2StorageRows(storage),
     ...probes,
