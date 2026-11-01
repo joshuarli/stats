@@ -132,10 +132,19 @@ fn read_disks(buffer: &mut Vec<u8>) -> Option<Vec<Disk>> {
     parse_diskstats(buffer, &whole)
 }
 
+fn physical_interface(name: &str) -> bool {
+    Path::new("/sys/class/net").join(name).join("device").exists()
+}
+
+fn sort_interface_names(names: &mut [String], physical: impl Fn(&str) -> bool) {
+    names.sort_by(|left, right| physical(right).cmp(&physical(left)).then_with(|| left.cmp(right)));
+}
+
 fn read_nets() -> Option<Vec<Net>> {
-    let names = read_names("/sys/class/net").ok()?;
+    let mut names: Vec<String> = read_names("/sys/class/net").ok()?.into_iter().filter(|name| valid_ifname(name)).collect();
+    sort_interface_names(&mut names, physical_interface);
     let mut nets = Vec::new();
-    for name in names.into_iter().filter(|name| valid_ifname(name)) {
+    for name in names {
         let counter = |field: &str| read_counter(&format!("/sys/class/net/{name}/statistics/{field}"));
         let Some(rx_bytes) = counter("rx_bytes") else { continue };
         let Some(rx_packets) = counter("rx_packets") else { continue };
@@ -262,4 +271,16 @@ pub fn sample() -> Option<Sample> {
 #[cfg(target_os = "linux")]
 pub fn boot_identity() -> Option<String> {
     boot_id()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sort_interface_names;
+
+    #[test]
+    fn physical_interfaces_come_before_virtual_ones_in_name_order() {
+        let mut names = ["veth9", "eth1", "br0", "eth0"].map(str::to_owned).to_vec();
+        sort_interface_names(&mut names, |name| name.starts_with("eth"));
+        assert_eq!(names, ["eth0", "eth1", "br0", "veth9"]);
+    }
 }

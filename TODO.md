@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-16 · P3 · Network interfaces past 16 are picked in directory order
-
-- **Area:** Data
-- **Where:** `agent/src/linux.rs:29-37`, `agent/src/linux.rs:135-164`
-- **Problem:** `read_names` returns `read_dir` order, and the collector keeps the first 16 valid interfaces. On container hosts with many veth or bridge interfaces, the reported set can shift between samples, and each shift restarts series. Disks and mounts are sorted before truncation; interfaces are not. `unproven` on a live host.
-- **Recommendation:** Sort the names, with physical interfaces first, before taking 16.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-17 · P3 · Unauthenticated ingest is parsed inside the single Durable Object
 
 - **Area:** Security
