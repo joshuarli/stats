@@ -342,7 +342,8 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use crate::test_support::scratch;
+    use std::sync::{Barrier, Mutex};
 
     struct FakeSender {
         results: Mutex<Vec<Result<SendOutcome, TransportError>>>,
@@ -386,15 +387,6 @@ mod tests {
             value.push(Sample::empty(index as u64, index as u64, index as u64));
         }
         Arc::new(Mutex::new(value))
-    }
-
-    fn scratch() -> PathBuf {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/runtime-tests");
-        std::fs::create_dir_all(&root).unwrap();
-        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let path = root.join(format!("{}-{nanos}", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
-        path
     }
 
     fn write_token(path: &Path, token: &str) {
@@ -477,7 +469,7 @@ mod tests {
 
     #[test]
     fn reloads_a_changed_token_file() {
-        let root = scratch();
+        let root = scratch("runtime");
         let token_file = root.join("token");
         let token = "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq";
         write_token(&token_file, token);
@@ -500,29 +492,27 @@ mod tests {
 
     #[test]
     fn stop_flag_is_visible_to_sleepers() {
-        let stop_ref: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
-        let setter = stop_ref;
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(10));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let pair = Arc::new(Barrier::new(2));
+        let setter = stop;
+        let arrival = Arc::clone(&pair);
+        let handle = thread::spawn(move || {
+            arrival.wait();
             setter.store(true, Ordering::SeqCst);
         });
-        assert!(!sleep_interruptible(Duration::from_secs(5), stop_ref));
+        pair.wait();
+        let started = Instant::now();
+        assert!(!sleep_interruptible(Duration::from_secs(10), stop));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        handle.join().unwrap();
     }
 
     #[test]
     fn stop_flushes_pending_samples_before_exiting() {
         let queue = queue(2);
         let sender = Arc::new(FakeSender::new(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]));
-        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
-        let setter = stop;
-        let handle = {
-            let queue = Arc::clone(&queue);
-            let sender: Arc<dyn BatchSender> = sender.clone();
-            thread::spawn(move || upload_loop(queue, sender, "boot".to_owned(), Duration::from_secs(3_600), PathBuf::from("/nonexistent"), stop))
-        };
-        thread::sleep(Duration::from_millis(20));
-        setter.store(true, Ordering::SeqCst);
-        let report = handle.join().unwrap();
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(true)));
+        let report = upload_loop(Arc::clone(&queue), sender.clone(), "boot".to_owned(), Duration::from_secs(3_600), PathBuf::from("/nonexistent"), stop);
         assert_eq!(report.accepted, 2);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
         assert!(queue.lock().unwrap().is_empty());

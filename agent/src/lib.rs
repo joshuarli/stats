@@ -12,6 +12,9 @@ use model::{Sample, SystemInfo};
 #[cfg(target_os = "linux")]
 mod linux;
 
+#[cfg(test)]
+mod test_support;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -191,21 +191,9 @@ pub fn load_token(config: &AgentConfig) -> Result<String, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::scratch;
     use std::fs;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-
-    fn scratch() -> PathBuf {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/config-tests");
-        fs::create_dir_all(&root).unwrap();
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = root.join(format!("{}-{nanos}-{id}", std::process::id()));
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
+    use std::time::Duration;
 
     fn write(path: &Path, text: &str, mode: u32) {
         fs::write(path, text).unwrap();
@@ -222,7 +210,7 @@ mod tests {
 
     #[test]
     fn loads_owner_only_config_and_defaults() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -235,7 +223,7 @@ mod tests {
 
     #[test]
     fn defaults_apply_when_optional_fields_are_absent() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -248,7 +236,7 @@ mod tests {
 
     #[test]
     fn rejects_group_readable_files_and_symlinks() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o644);
         let path = root.join("agent.json");
@@ -267,7 +255,7 @@ mod tests {
 
     #[test]
     fn rejects_a_fifo_without_blocking() {
-        let root = scratch();
+        let root = scratch("config");
         let fifo = root.join("token-fifo");
         let c_path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
@@ -282,7 +270,7 @@ mod tests {
 
     #[test]
     fn rejects_remote_plain_http_and_bad_identity() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -298,7 +286,7 @@ mod tests {
 
     #[test]
     fn loopback_http_is_allowed_for_local_tests() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -309,7 +297,7 @@ mod tests {
 
     #[test]
     fn resolves_the_optional_block_latency_file() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -326,7 +314,7 @@ mod tests {
 
     #[test]
     fn virtual_collection_is_off_unless_the_host_config_enables_it() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -343,7 +331,7 @@ mod tests {
 
     #[test]
     fn rejects_intervals_below_the_serving_contract() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
 
@@ -360,7 +348,7 @@ mod tests {
 
     #[test]
     fn rejects_a_request_timeout_past_the_stop_budget() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
         let path = root.join("agent.json");
@@ -371,7 +359,7 @@ mod tests {
 
     #[test]
     fn rejects_bad_token_and_unknown_fields() {
-        let root = scratch();
+        let root = scratch("config");
         let token = root.join("token");
         write(&token, "nft_short", 0o600);
         let path = root.join("agent.json");

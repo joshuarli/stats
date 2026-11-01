@@ -110,22 +110,9 @@ impl SnapshotReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::scratch;
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-
-    fn scratch() -> PathBuf {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/block-tests");
-        fs::create_dir_all(&root).unwrap();
-        let nanos = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = root.join(format!("{}-{nanos}-{id}", std::process::id()));
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
 
     fn value(buckets: Vec<&str>, count: &str, total: &str, min: &str, max: &str) -> serde_json::Value {
         json!({ "v": 1, "buckets": buckets, "count": count, "totalUs": total, "minUs": min, "maxUs": max })
@@ -175,7 +162,7 @@ mod tests {
 
     #[test]
     fn attaches_each_snapshot_once() {
-        let root = scratch();
+        let root = scratch("block");
         let path = root.join("snapshot.json");
         write_snapshot(&path);
         fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(1)).unwrap();
@@ -188,7 +175,7 @@ mod tests {
 
     #[test]
     fn rejects_a_stale_snapshot() {
-        let root = scratch();
+        let root = scratch("block");
         let path = root.join("snapshot.json");
         write_snapshot(&path);
         fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(31)).unwrap();
@@ -197,7 +184,7 @@ mod tests {
 
     #[test]
     fn rejects_a_group_or_world_writable_snapshot() {
-        let root = scratch();
+        let root = scratch("block");
         let path = root.join("snapshot.json");
         write_snapshot(&path);
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
