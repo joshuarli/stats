@@ -163,8 +163,16 @@ namespaces, D1 queries and per-statement rows when it lists databases, R2
 operations and storage when it lists buckets) and sends one GET
 to each probe. The queries live in
 `src/projects/queries.ts`, bind every value as a parameter, and take nothing
-from a request. Counts are `SUM(sampleInterval)`, because the datasets are
-sampled and `COUNT(*)` under-counts. Everything is parsed before anything is
+from a request. R2, D1, and Durable Object counts are `SUM(sampleInterval)`
+because those datasets are sampled. Worker events are `COUNT(*)` and
+`SUM(cpuTimeMs)`: `logs.workersLogs` keeps every invocation event but stamps
+each with `sampleInterval` equal to the inverse of `headSamplingRate`, so
+weighting overcounts by that factor. Measured 2026-11-01: 40 requests to
+`stats` (rate 0.1) left 40 rows weighted 10, and 200 requests to `stuff`
+(rate 0.25) left 244 rows weighted 4. History stored before the change is
+inflated by that factor and ages out of the 90 minute rewrite window; Worker
+counts for a project that owns a Durable Object also include the object's own
+fetch events. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with a fixed detail,
 writes one `collector_failed` log line, and rethrows so the cron shows it.
 

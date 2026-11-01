@@ -13,6 +13,7 @@ import {
   MAX_BUCKETS_PER_PROJECT,
   r2OperationsQuery,
   r2StorageQuery,
+  routeQuery,
   workerQuery,
 } from "../src/projects/queries";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
@@ -37,7 +38,7 @@ function total(points: readonly { metric: string; value: number }[], metric: str
 describe("analytics query text", () => {
   it.each(Object.entries(built))("%s binds every value and respects the SQL dialect", (_name, bound) => {
     const sql = bound.query;
-    expect(sql).not.toMatch(/COUNT\s*\(/i);
+    if (sql !== built.worker.query) expect(sql).not.toMatch(/COUNT\s*\(/i);
     expect(sql).not.toMatch(/\bMIN\s*\(/i);
     expect(sql).not.toMatch(/toStartOfInterval|quantile/i);
     if (sql !== built.r2Storage.query) {
@@ -68,9 +69,14 @@ describe("analytics query text", () => {
     expect(() => d1Query(["x' OR 1=1 --"], START_MS)).toThrow(RangeError);
   });
 
+  it("counts Worker log events unweighted because the dataset keeps every one, and weights the other datasets", () => {
+    expect(built.worker.query).toMatch(/COUNT\(\*\) AS invocations/u);
+    expect(built.worker.query).toMatch(/SUM\(cpuTimeMs\) AS cpu_sum/u);
+    expect(built.worker.query).not.toContain("sampleInterval");
+    expect(routeQuery("stuff", START_MS).query).not.toContain("sampleInterval");
+  });
+
   it("weights event counts by sampleInterval and groups each dataset on its own time column", () => {
-    expect(built.worker.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS invocations/u);
-    expect(built.worker.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS cpu_sum/u);
     expect(built.worker.query).toContain("APPROX_MAX(cpuTimeMs)");
     expect(built.r2Operations.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS operations/u);
     expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/u);

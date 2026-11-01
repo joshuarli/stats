@@ -35,7 +35,7 @@ Metrics:
 Reading them:
 
 - Average CPU per invocation is `worker.cpuMsSum / worker.invocations` per index. It is CPU time, not latency, and `cpuMsMax` is approximate. There are no quantiles.
-- Counts come from sampled analytics (`SUM(sampleInterval)`), so they move in coarse steps. Do not trust a bucket with under 100 invocations.
+- Worker counts are exact counts of logged invocation events; R2, D1, and Durable Object counts come from sampled analytics (`SUM(sampleInterval)`) and move in coarse steps. Do not trust a bucket with under 100 events.
 - For the `stats` project, invocations include its Durable Object calls, so one ingest counts twice: once in the front Worker and once in the Durable Object.
 - `userError` on R2 is mostly expected 404 traffic.
 - `kind=collector` returns `runs: [{atMs, ok, detail, rowsRead, durationMs}]` instead of `series`.

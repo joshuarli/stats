@@ -23,8 +23,14 @@ stored or wire format needs a yes first.
 
 Rules for reading the numbers:
 
-- Every count is `sampleInterval`-weighted. Totals move by about one sample
-  (100 events) per bucket, so ignore changes smaller than that.
+- R2, D1, and Durable Object counts are `sampleInterval`-weighted, so they move
+  by about one sample (100 events) per bucket; ignore smaller changes. Worker
+  counts are exact: `logs.workersLogs` keeps every invocation event but stamps
+  it with the inverse of `headSamplingRate`, so weighting overcounted `stats`
+  by 10 and `stuff` by 4 until the collector stopped weighting them (see
+  `docs/architecture.md`). Every Worker figure quoted before that fix was
+  inflated by that factor. The D1 and R2 weights have not been checked the
+  same way.
 - Estimated cost is list price before included allowances. It ranks components;
   it is not the bill.
 - `usr-memories` is excluded from baselines until its backfill ends. Its D1 and
@@ -41,12 +47,20 @@ Done:
 - The `example/bench` loop that made up about 86% of `stuff` requests has
   stopped. The old `stats-worker` script no longer exists.
 
-Last-hour readings on 2026-11-01, outside the backfill:
+Unweighted last-hour readings on 2026-11-01, outside the backfill:
 
-- `stuff`: about 50k requests, 0.4 ms CPU average, before the bench loop
-  stopped.
-- `stats`: about 6.9k requests, of which about 1.2k were dashboard history
-  reads and 0.7k ingests.
+- `stuff`: about 1.6k Worker events after the bench loop stopped. Before it
+  stopped the loop was most of the traffic, so its cost was a quarter of what
+  the weighted figure suggested.
+- `stats`: about 370 Worker events, which include the Durable Object's own
+  fetch for each ingest. The Durable Object saw about 117 ingests (one host,
+  every 30 s) and a few dashboard reads. Ingest costs 15 to 25 ms of Durable
+  Object CPU and about 60 ms wall; a trivial warm read costs about 5 ms CPU.
+  Rows touched per ingest are small (about 10 read, 20 written), and
+  `canonicalJson`, `parseBatch`, and JSON parsing cost under 0.3 ms combined in
+  workerd, so the ingest CPU is storage and platform cost, not code.
+- Durable Object CPU is not a billed dimension (requests, duration, and rows
+  are), so lane B items are latency and headroom work, not cost work.
 
 ## Lanes
 
@@ -57,19 +71,21 @@ lane is by evidence, not effort.
 
 - Durable Object storage size has no source (STA-34), and the estimate omits
   Durable Object duration, which is billed.
-- R2 operations are not split into Class A and Class B, which are priced about
-  12 times apart. Check whether `events.r2CombinedOperations` exposes an action
-  type before adding a column.
-- A cost estimate for R2 once the split exists.
+- R2 operations cannot be split into Class A and Class B, which are priced about
+  12 times apart: `events.r2CombinedOperations` has no action-type column
+  (checked 2026-11-01). Approximate from the route mix (reads and heads are
+  Class B, puts are Class A) if R2 becomes the leading cost.
 
 ### B. `stats`
 
-- Dashboard polling: an open tab produced about 1.2k history reads in an hour,
-  each 35 to 55 ms of Durable Object CPU on a cache miss (STA-32). Candidates:
-  poll slower while the tab is hidden, and read 1m rollups for windows that do
-  not need 15 s steps.
-- Ingest CPU tail of 35 to 47 ms against a 1 ms JavaScript cost (STA-33).
-  Count rows read and written per statement before moving any work.
+- Dashboard polling: an open tab reads history on every refresh, each 35 to
+  55 ms of Durable Object CPU on a cache miss (STA-32). Candidates: poll slower
+  while the tab is hidden, and read 1m rollups for windows that do not need
+  15 s steps. Volume is low (tens an hour), so the gain is latency.
+- Ingest CPU of 15 to 25 ms per call is not in the JavaScript (STA-33,
+  measured). The remaining suspect is the SQLite commit path; test changes that
+  reduce write transactions per ingest against the live Durable Object CPU
+  histogram before keeping them.
 - Collector store write of about 26 ms per run (STA-31).
 - Collector reads about 8M analytics rows per run, plus about 2.2M for D1.
   Confirm whether the binding bills for it before widening any window.

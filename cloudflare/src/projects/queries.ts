@@ -24,8 +24,8 @@ export function workerQuery(script: string, startMs: number): BoundQuery {
     query: [
       "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
       "floor(toMinute(timestamp) / 5) AS slot, httpStatus,",
-      "SUM(sampleInterval) AS invocations,",
-      "SUM(cpuTimeMs * sampleInterval) AS cpu_sum,",
+      "COUNT(*) AS invocations,",
+      "SUM(cpuTimeMs) AS cpu_sum,",
       "APPROX_MAX(cpuTimeMs) AS cpu_max",
       "FROM logs.workersLogs",
       `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
@@ -41,8 +41,8 @@ export function routeQuery(script: string, startMs: number): BoundQuery {
     query: [
       "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
       "floor(toMinute(timestamp) / 5) AS slot, invocationLabel,",
-      "SUM(sampleInterval) AS invocations,",
-      "SUM(cpuTimeMs * sampleInterval) AS cpu_sum",
+      "COUNT(*) AS invocations,",
+      "SUM(cpuTimeMs) AS cpu_sum",
       "FROM logs.workersLogs",
       `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
       "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), invocationLabel",
