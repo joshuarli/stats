@@ -2,8 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const fixtureDir = join(root, "telemetry", "fixtures", "v1");
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const fixtureDir = join(root, "fixtures", "v1");
 const hostPattern = /^h_[0-9a-f]{32}$/u;
 const bootPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const decimal = /^(0|[1-9][0-9]{0,19})$/u;

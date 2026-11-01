@@ -6,17 +6,22 @@ The agent runs on ordinary Debian and Alpine hosts without Niceforge, systemd,
 root, containers, or a language runtime. Niceforge may link a registered runner
 to a telemetry host; execution never depends on telemetry.
 
+This project is maintained in its own repository, extracted from Niceforge on
+2026-10-31. The runner association remains a Niceforge contract and workbench
+feature.
+
 Layout:
 
 | Path | Purpose |
 | --- | --- |
-| `telemetry/agent/` | Rust collector and transport |
-| `telemetry/fixtures/v1/` | Canonical wire fixtures and accept/reject oracle |
-| `telemetry/cloudflare/` | Worker, Durable Object, dashboard, tests |
-| `telemetry/bench/` | Benchmark harness and recorded method |
-| `telemetry/tools/` | Zig cross-linker wrappers for static musl builds |
+| `agent/` | Rust collector and transport |
+| `fixtures/v1/` | Canonical wire fixtures and accept/reject oracle |
+| `cloudflare/` | Worker, Durable Object, dashboard, tests |
+| `bench/` | Benchmark harness and recorded method |
+| `bpf/` | Optional block-latency probe and collector |
+| `tools/` | Zig cross-linker wrappers for static musl builds |
 
-The campaign record is [`docs/CAMPAIGN-HOST-TELEMETRY.md`](../docs/CAMPAIGN-HOST-TELEMETRY.md).
+The campaign record is [`docs/CAMPAIGN-HOST-TELEMETRY.md`](docs/CAMPAIGN-HOST-TELEMETRY.md).
 
 ## Wire protocol v1
 
@@ -155,7 +160,7 @@ A token is never accepted in argv or written to logs.
 `blockLatencyFile` is optional. When set, the agent attaches the latest
 `block` group from that file if it is a regular file, is not group/world
 writable, and was modified within the last 30 seconds. The file is written
-atomically by `telemetry/bpf/collector.sh`; a missing or stale file simply
+atomically by `bpf/collector.sh`; a missing or stale file simply
 leaves `block` absent. The baseline agent never loads BPF and works without
 this field.
 
@@ -229,14 +234,13 @@ the development host. These are local measurements, not production claims.
 ## Local checks
 
 ```sh
-make telemetry-fixtures          # manifest, fixture shapes, cost arithmetic
-make telemetry-agent-test        # collector and transport unit tests
-make telemetry-agent-build       # static x86_64 and aarch64 binaries + ELF checks
-make telemetry-cloudflare-test   # Workers runtime integration
-make telemetry-dashboard-test    # bundle + Playwright
-make telemetry-association-test  # Niceforge schema migration and workbench
-make telemetry-release           # release binaries, receipts, benchmark self-test
-make telemetry-check             # all local telemetry checks
+make fixtures          # manifest, fixture shapes, cost arithmetic
+make agent-test        # collector and transport unit tests
+make agent-build       # static x86_64 and aarch64 binaries + ELF checks
+make cloudflare-test   # Workers runtime integration
+make dashboard-test    # bundle + Playwright
+make release           # release binaries, receipts, benchmark self-test
+make check             # all local telemetry checks
 ```
 
 Runtime proofs on Ubuntu and Alpine x86_64, a container-scoped aarch64 runtime
@@ -265,14 +269,14 @@ path was live-proven in T9.
 
 ## Release and benchmark
 
-`telemetry/agent/scripts/build-static.sh` builds both musl targets with the
-committed Zig wrappers, strips them, writes versioned
+`agent/scripts/build-static.sh` builds both musl targets with the committed Zig
+wrappers, strips them, writes versioned
 `niceforge-telemetry-<version>-<target>` artifacts and SHA-256 receipts under
-`telemetry/agent/dist/`, and rejects an ELF with `PT_INTERP` or `NEEDED`.
+`agent/dist/`, and rejects an ELF with `PT_INTERP` or `NEEDED`.
 Recorded 2026-10-31: 1,943,832 bytes x86_64 and 1,733,792 bytes aarch64
 stripped binaries; repeated builds produced identical SHA-256 digests, and the
 ELF receipts show no interpreter and no dynamic dependencies.
-`telemetry/bench/bench.sh` records a named host, kernel, CPU, interval, and
+`bench/bench.sh` records a named host, kernel, CPU, interval, and
 method, then reports CPU time per sample, steady RSS, cycles, instructions,
 syscalls, context switches, collection latency, and bytes sent. It compares
 with Node Exporter only on the same host and interval. Performance is
@@ -281,12 +285,12 @@ not claims.
 
 ## Optional block latency
 
-`telemetry/bpf/` provides a bpftrace collector and a human-readable probe for
+`bpf/` provides a bpftrace collector and a human-readable probe for
 block-layer request latency. The collector writes a 15-second snapshot; when
 `blockLatencyFile` is configured, the agent attaches the optional `block` group
 and the Worker stores, rolls up, and serves it for the dashboard. The baseline
 agent never loads BPF and runs without the collector. See
-`telemetry/bpf/README.md` for requirements and usage.
+`bpf/README.md` for requirements and usage.
 
 ## Install, start, stop, and remove
 

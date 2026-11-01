@@ -15,7 +15,7 @@ Requirements:
 Run the probe in one terminal:
 
 ```sh
-sudo bpftrace telemetry/bpf/biolatency.bt
+sudo bpftrace bpf/biolatency.bt
 ```
 
 Generate bounded block I/O in another terminal:
@@ -35,8 +35,8 @@ exited are not counted.
 Run the collector as root so bpftrace can attach the tracepoints:
 
 ```sh
-sudo telemetry/bpf/collector.sh /run/niceforge-telemetry/block-latency.json \
-  telemetry/bpf/biolatency-collector.bt
+sudo bpf/collector.sh /run/niceforge-telemetry/block-latency.json \
+  bpf/biolatency-collector.bt
 ```
 
 `collector.sh` replaces the snapshot atomically every 15 seconds. Set the

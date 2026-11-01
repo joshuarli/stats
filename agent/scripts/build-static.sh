@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-repo=$(CDPATH= cd -- "$(dirname "$0")/../../.." && pwd)
-agent="$repo/telemetry/agent"
-tools="$repo/telemetry/tools"
+repo=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+agent="$repo/agent"
+tools="$repo/tools"
 dist="$agent/dist"
 host=$(rustc -vV | sed -n 's/^host: //p')
 readobj="$(rustc --print sysroot)/lib/rustlib/$host/bin/llvm-readobj"
