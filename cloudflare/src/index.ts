@@ -2,6 +2,7 @@ import { verifyAccess } from "./access";
 import { bearerToken } from "./auth";
 import { Installation } from "./installation";
 import { MAX_BODY_BYTES } from "./limits";
+import { runCollector } from "./projects/collector";
 
 export { Installation };
 
@@ -64,5 +65,14 @@ export default {
     const access = await verifyAccess(request, env);
     if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);
     return secure(await env.ASSETS.fetch(request));
+  },
+
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    await runCollector({
+      analytics: env.ANALYTICS_SQL,
+      store: env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")),
+      projectsJson: env.PROJECTS,
+      now: controller.scheduledTime
+    });
   }
 } satisfies ExportedHandler<Env>;
