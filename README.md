@@ -117,7 +117,7 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status filters (online, stale, no samples, revoked), sortable
-columns, and fleet charts. The host page shows CPU (including steal), load, available memory, swap used,
+columns, and fleet charts. The host page shows CPU (including steal), load, available memory, swap used, swap activity,
 memory pressure (10 s, 60 s, 300 s), PSI some and full stalls, disk throughput,
 operations, and busy time, network throughput, packets, drops, and errors,
 filesystem usage over time, filesystems, devices, and block latency with

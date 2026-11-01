@@ -32,7 +32,7 @@ them silently. JSON numbers are used only for `v` and `cpuCount`.
 | `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`; at most 8, unique |
 | `cpu` | no | `user`, `system`, `idle`, `iowait`, `steal`, `total`, each a u64 string |
 | `load` | no | `one`, `five`, `fifteen`, each a fixed 3-decimal string |
-| `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string |
+| `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string; optionally `swapIn` and `swapOut` together, cumulative bytes paged in from and out to swap since boot (`pswpin` and `pswpout` from `/proc/vmstat` times the page size), each a u64 string |
 | `uptimeMs` | no | u64 string |
 | `cpuCount` | no | integer 1–4096 |
 | `disks` | no | 0–16 objects: `id` (`major:minor`, Linux `dev_t` bounds: major at most 4095, minor at most 1048575), `name` (1–32 chars), `reads`, `readSectors`, `writes`, `writeSectors`, `ioMs` |
@@ -94,6 +94,10 @@ credentials, token hashes, or request bodies.
   `monoMs` and non-decreasing counters. Counter regression is a gap,
   never a negative rate. No offline period is interpolated.
 - CPU percentages are counter deltas divided by the delta of `total`.
+- Swap activity rates are `swapIn` and `swapOut` deltas divided by the
+  monotonic interval. A sample without the pair, or a regressed counter, has no
+  swap rate for that interval; the pair is absent when `/proc/vmstat` cannot be
+  read, never zero.
 - Disk and network rates are deltas divided by the monotonic interval. Disk
   bytes use 512-byte sectors. `ioMs / interval` is busy time and may exceed
   100% when the device has concurrent I/O.

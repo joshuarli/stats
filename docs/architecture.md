@@ -23,7 +23,8 @@ rejections the server reports.
 Sampling sources and filters:
 
 - CPU from the `/proc/stat` aggregate; no per-core series.
-- Memory from `/proc/meminfo` `MemAvailable`; load, uptime, and CPU count from
+- Memory from `/proc/meminfo` `MemAvailable`; swap activity from the
+  `pswpin` and `pswpout` counters in `/proc/vmstat`, converted to bytes; load, uptime, and CPU count from
   `sysinfo(2)`.
 - Disks from `/proc/diskstats`, whole devices listed in `/sys/block`,
   excluding `loop*`, `ram*`, `zram*`, and `fd*`.
@@ -105,7 +106,7 @@ One Durable Object per installation holds three tables, created with
 Rollups store counter delta sums with the interval each device covered and
 gauge sums with counts; they never average counters. A device rate divides by
 its own covered interval, so a missing sample is a gap rather than a lower
-rate. Block histograms sum bucket counts and totals and keep the observed
+rate; swap in and out sums carry their own covered interval the same way. Block histograms sum bucket counts and totals and keep the observed
 minimum and maximum; percentiles come from bucket upper bounds and are not
 exact. A late sample rebuilds its minute, the minute
 of the following sample, and every hour those minutes fall in. A bucket with

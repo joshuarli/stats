@@ -27,6 +27,8 @@ export interface Mem {
   readonly available: string;
   readonly swapTotal: string;
   readonly swapFree: string;
+  readonly swapIn?: string;
+  readonly swapOut?: string;
 }
 
 export interface Disk {
@@ -185,6 +187,13 @@ function parseBlock(value: unknown): Block | null {
   return value as unknown as Block;
 }
 
+function parseMem(value: unknown): boolean {
+  if (!subset(value, ["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut"])) return false;
+  if (!["total", "available", "swapTotal", "swapFree"].every(key => decimal(value[key]))) return false;
+  const activity = ["swapIn", "swapOut"].filter(key => key in value);
+  return activity.length === 0 || (activity.length === 2 && activity.every(key => decimal(value[key])));
+}
+
 function parsePsiGroup(value: unknown): PsiGroup | null {
   if (!subset(value, ["some10", "some60", "some300", "total", "full10", "full60", "full300", "fullTotal"])) return null;
   if (!["some10", "some60", "some300", "total"].every(key => key in value)) return null;
@@ -221,7 +230,7 @@ export function parseSample(value: unknown): SampleResult {
   if (value.cpu !== undefined && !u64Fields(value.cpu, ["user", "system", "idle", "iowait", "steal", "total"])) return fail("cpu counters");
   const load = value.load;
   if (load !== undefined && (!exact(load, ["one", "five", "fifteen"]) || !["one", "five", "fifteen"].every(key => fixed(load[key], 3)))) return fail("load");
-  if (value.mem !== undefined && !u64Fields(value.mem, ["total", "available", "swapTotal", "swapFree"])) return fail("mem");
+  if (value.mem !== undefined && !parseMem(value.mem)) return fail("mem");
   if (value.uptimeMs !== undefined && !decimal(value.uptimeMs)) return fail("uptimeMs");
   const cpuCount = value.cpuCount;
   if (cpuCount !== undefined && (typeof cpuCount !== "number" || !Number.isInteger(cpuCount) || cpuCount < 1 || cpuCount > 4096)) return fail("cpuCount");

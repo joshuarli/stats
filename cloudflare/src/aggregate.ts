@@ -1,5 +1,5 @@
 import type { Block, Cpu, Disk, FileSystem, Net, PsiGroup, Sample } from "./protocol";
-import type { Delta } from "./delta";
+import type { Delta, SwapDelta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
 import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
 
@@ -21,6 +21,8 @@ export interface MemValues {
   readonly total: number;
   readonly available: number;
   readonly swapUsed: number;
+  readonly swapInBytesPerSec?: number;
+  readonly swapOutBytesPerSec?: number;
 }
 export interface PsiGroupAverages {
   readonly some10: number;
@@ -95,6 +97,9 @@ interface Gauge {
   readonly sum: number;
   readonly count: number;
 }
+export interface SwapRollup extends SwapDelta {
+  readonly coveredMs: number;
+}
 interface FileSums {
   readonly total: Gauge;
   readonly available: Gauge;
@@ -106,6 +111,7 @@ export interface RollupPayload {
   readonly coverageMs: number;
   readonly partial: boolean;
   readonly cpu?: Cpu;
+  readonly swap?: SwapRollup;
   readonly gauges: Readonly<Record<string, Gauge>>;
   readonly psi: Readonly<Record<string, Readonly<Record<string, Gauge>>>>;
   readonly disks: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -186,6 +192,19 @@ function sumCpu(cpu: Cpu, add: Cpu): Cpu {
   };
 }
 
+function sumSwap(target: SwapRollup | undefined, add: SwapDelta, coveredMs: number): SwapRollup {
+  return {
+    swapIn: (BigInt(target?.swapIn ?? "0") + BigInt(add.swapIn)).toString(),
+    swapOut: (BigInt(target?.swapOut ?? "0") + BigInt(add.swapOut)).toString(),
+    coveredMs: (target?.coveredMs ?? 0) + coveredMs
+  };
+}
+
+function swapRates(swap: SwapDelta | undefined, coveredMs: number): { swapInBytesPerSec?: number; swapOutBytesPerSec?: number } {
+  if (swap === undefined || coveredMs <= 0) return {};
+  return { swapInBytesPerSec: (Number(swap.swapIn) * 1000) / coveredMs, swapOutBytesPerSec: (Number(swap.swapOut) * 1000) / coveredMs };
+}
+
 function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
   for (const [id, values] of Object.entries(source)) {
     const current = target[id] ?? {};
@@ -233,6 +252,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   if (rows.length === 0) return null;
   const coverageMs = rows.reduce((total, row) => total + row.delta.intervalMs, 0);
   let cpu: Cpu | undefined;
+  let swap: SwapRollup | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -241,6 +261,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   let block: BlockRollup | undefined;
   for (const { sample, delta } of rows) {
     if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
+    if (delta.swap !== undefined) swap = sumSwap(swap, delta.swap, delta.intervalMs);
     if (sample.load !== undefined) {
       gaugeAdd(gauges, "load.one", Number(sample.load.one));
       gaugeAdd(gauges, "load.five", Number(sample.load.five));
@@ -292,6 +313,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     coverageMs,
     partial: coverageMs < spanMs * 0.8,
     ...(cpu === undefined ? {} : { cpu }),
+    ...(swap === undefined ? {} : { swap }),
     gauges,
     psi,
     disks,
@@ -304,6 +326,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
 export function combineRollups(payloads: readonly RollupPayload[], bucketMs: number, spanMs: number): RollupPayload | null {
   if (payloads.length === 0) return null;
   let cpu: Cpu | undefined;
+  let swap: SwapRollup | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -316,6 +339,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     coverageMs += payload.coverageMs;
     samples += payload.samples;
     if (payload.cpu !== undefined) cpu = cpu === undefined ? { ...payload.cpu } : sumCpu(cpu, payload.cpu);
+    if (payload.swap !== undefined) swap = sumSwap(swap, payload.swap, payload.swap.coveredMs);
     for (const [key, value] of Object.entries(payload.gauges)) {
       const target = gauges[key] ?? { sum: 0, count: 0 };
       gauges[key] = { sum: target.sum + value.sum, count: target.count + value.count };
@@ -346,6 +370,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     coverageMs,
     partial: coverageMs < spanMs * 0.8,
     ...(cpu === undefined ? {} : { cpu }),
+    ...(swap === undefined ? {} : { swap }),
     gauges,
     psi,
     disks,
@@ -365,7 +390,8 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
   const mem = gaugeAverage(payload.gauges, "mem.total") === undefined ? undefined : {
     total: gaugeAverage(payload.gauges, "mem.total")!,
     available: gaugeAverage(payload.gauges, "mem.available")!,
-    swapUsed: gaugeAverage(payload.gauges, "mem.swapUsed")!
+    swapUsed: gaugeAverage(payload.gauges, "mem.swapUsed")!,
+    ...swapRates(payload.swap, payload.swap?.coveredMs ?? 0)
   };
   const psi = Object.keys(payload.psi).length === 0 ? undefined : Object.fromEntries(Object.entries(payload.psi).map(([name, group]) => [name, {
     some10: gaugeAverage(group, "some10")!,
@@ -380,7 +406,7 @@ function summaryFromRaw(row: RawRow): SummaryPoint {
   const atMs = Number(row.sample.atMs);
   const cpu = row.delta.cpu === undefined ? undefined : cpuPercent(row.delta.cpu);
   const load = row.sample.load === undefined ? undefined : { one: Number(row.sample.load.one), five: Number(row.sample.load.five), fifteen: Number(row.sample.load.fifteen) };
-  const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree) };
+  const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs) };
   const psi = psiAverages(row.sample);
   return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }) };
 }

@@ -288,6 +288,17 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
         <Widget title="Swap used" subtitle="swap in use" expandable>
           <TimeChart label="Swap used" legend area series={[series("swap used", 3, point => point.mem?.swapUsed)]} format={bytes} min={0} stepMs={props.stepMs} />
         </Widget>
+        <Widget title="Swap activity" subtitle="bytes paged to and from swap per second" expandable>
+          <TimeChart
+            label="Swap activity"
+            legend
+            area
+            series={[series("swap in", 0, point => point.mem?.swapInBytesPerSec), series("swap out", 2, point => point.mem?.swapOutBytesPerSec)]}
+            format={rate}
+            min={0}
+            stepMs={props.stepMs}
+          />
+        </Widget>
         <Widget title="Memory pressure" subtitle="PSI some: share of time tasks stalled on memory" expandable>
           <TimeChart
             label="Memory pressure"

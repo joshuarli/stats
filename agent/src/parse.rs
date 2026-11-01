@@ -1,4 +1,4 @@
-use crate::model::{Cpu, Disk, FileSystem, Mem, Psi, PsiGroup};
+use crate::model::{Cpu, Disk, FileSystem, Mem, Psi, PsiGroup, SwapActivity};
 use std::collections::{BTreeMap, HashSet};
 
 fn parse_u64(text: &str) -> Option<u64> {
@@ -76,6 +76,25 @@ pub fn parse_meminfo(bytes: &[u8]) -> Option<Mem> {
         available: kib("MemAvailable")?.to_string(),
         swap_total: kib("SwapTotal")?.to_string(),
         swap_free: kib("SwapFree")?.to_string(),
+        swap_activity: None,
+    })
+}
+
+pub fn parse_vmstat_swap(bytes: &[u8], page_size: u64) -> Option<SwapActivity> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut swapped_in = None;
+    let mut swapped_out = None;
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(' ') else { continue };
+        match key {
+            "pswpin" => swapped_in = parse_u64(value),
+            "pswpout" => swapped_out = parse_u64(value),
+            _ => {}
+        }
+    }
+    Some(SwapActivity {
+        swap_in: swapped_in?.checked_mul(page_size)?.to_string(),
+        swap_out: swapped_out?.checked_mul(page_size)?.to_string(),
     })
 }
 
@@ -337,6 +356,15 @@ mod tests {
     fn rejects_partial_pressure() {
         assert!(parse_pressure(b"some avg10=1.25 avg60=0.80 total=12345\n").is_none());
         assert!(parse_pressure(b"other avg10=1.25 avg60=0.80 avg300=0.40 total=1\n").is_none());
+    }
+
+    #[test]
+    fn swap_activity_is_pages_times_page_size_and_needs_both_counters() {
+        let activity = parse_vmstat_swap(b"nr_free_pages 5\npswpin 10\npswpout 3\npgfault 9\n", 4096).unwrap();
+        assert_eq!((activity.swap_in.as_str(), activity.swap_out.as_str()), ("40960", "12288"));
+        assert!(parse_vmstat_swap(b"pswpin 10\n", 4096).is_none());
+        assert!(parse_vmstat_swap(b"pswpin 10\npswpout x\n", 4096).is_none());
+        assert!(parse_vmstat_swap(b"pswpin 18446744073709551615\npswpout 1\n", 4096).is_none());
     }
 
     #[test]

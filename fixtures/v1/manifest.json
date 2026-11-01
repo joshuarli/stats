@@ -115,6 +115,11 @@
       "file": "invalid-missing-mono.json",
       "expect": "reject",
       "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-swap-unpaired.json",
+      "expect": "reject",
+      "code": "invalid_sample"
     }
   ]
 }

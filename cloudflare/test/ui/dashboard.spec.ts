@@ -15,8 +15,8 @@ function summary(range: string, empty = false) {
       partial: false,
       cpu: { user: 8 + index, system: 3, idle: 80, iowait: 1, steal: 0 },
       load: { one: 0.4 + index / 100, five: 0.5, fifteen: 0.6 },
-      mem: { total: 8_589_934_592, available: 4_294_967_296 - index * 1_000_000, swapUsed: 0 },
-      psi: { cpu: { some10: 1.2, some60: 0.8, some300: 0.4 }, memory: { some10: 0.1, some60: 0.05, some300: 0.02 }, io: { some10: 0.3, some60: 0.2, some300: 0.1 } }
+      mem: { total: 8_589_934_592, available: 4_294_967_296 - index * 1_000_000, swapUsed: 0, swapInBytesPerSec: 4096 * index, swapOutBytesPerSec: 8192 },
+      psi: { cpu: { some10: 1.2, some60: 0.8, some300: 0.4 }, memory: { some10: 0.1, some60: 0.05, some300: 0.02, full10: 0.05, full60: 0.03, full300: 0.01 }, io: { some10: 0.3, some60: 0.2, some300: 0.1 } }
     }))
   };
 }
@@ -92,7 +92,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
   await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
-  for (const title of ["Disk operations", "Disk busy", "Network packets", "Network drops and errors", "Filesystem usage", "Memory pressure", "Swap used"]) {
+  for (const title of ["Disk operations", "Disk busy", "Network packets", "Network drops and errors", "Filesystem usage", "Memory pressure", "Swap used", "Swap activity", "Full stalls"]) {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
   }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();

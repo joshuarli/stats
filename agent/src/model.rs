@@ -38,6 +38,16 @@ pub struct Mem {
     pub swap_total: String,
     #[serde(rename = "swapFree")]
     pub swap_free: String,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub swap_activity: Option<SwapActivity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SwapActivity {
+    #[serde(rename = "swapIn")]
+    pub swap_in: String,
+    #[serde(rename = "swapOut")]
+    pub swap_out: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

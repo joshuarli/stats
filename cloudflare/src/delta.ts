@@ -1,8 +1,14 @@
 import type { Cpu, Disk, Net, Sample } from "./protocol";
 
+export interface SwapDelta {
+  readonly swapIn: string;
+  readonly swapOut: string;
+}
+
 export interface Delta {
   readonly intervalMs: number;
   readonly cpu?: Cpu;
+  readonly swap?: SwapDelta;
   readonly disks: Record<string, Disk>;
   readonly nets: Record<string, Net>;
 }
@@ -25,6 +31,15 @@ function cpuDelta(previous: Cpu, current: Cpu): Cpu | null {
   return { user: user!, system: system!, idle: idle!, iowait: iowait!, steal: steal!, total: total! };
 }
 
+function swapDelta(previous: Sample, current: Sample): SwapDelta | null {
+  const before = previous.mem;
+  const after = current.mem;
+  if (before?.swapIn === undefined || before.swapOut === undefined || after?.swapIn === undefined || after.swapOut === undefined) return null;
+  const swapIn = difference(after.swapIn, before.swapIn);
+  const swapOut = difference(after.swapOut, before.swapOut);
+  return swapIn === null || swapOut === null ? null : { swapIn, swapOut };
+}
+
 export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
 export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
 
@@ -43,6 +58,7 @@ function counterDelta(previous: object, current: object, fields: readonly string
 export function computeDelta(previous: Sample | undefined, current: Sample, elapsedMs: number): Delta {
   if (previous === undefined || elapsedMs <= 0) return EMPTY;
   const cpu = previous.cpu !== undefined && current.cpu !== undefined ? cpuDelta(previous.cpu, current.cpu) : null;
+  const swap = swapDelta(previous, current);
   const disks: Record<string, Disk> = {};
   if (previous.disks !== undefined && current.disks !== undefined) {
     const before = new Map(previous.disks.map(disk => [disk.id, disk]));
@@ -65,7 +81,7 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
       nets[net.id] = { id: net.id, rxBytes: values.rxBytes!, rxPackets: values.rxPackets!, rxDrops: values.rxDrops!, rxErrors: values.rxErrors!, txBytes: values.txBytes!, txPackets: values.txPackets!, txDrops: values.txDrops!, txErrors: values.txErrors! };
     }
   }
-  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), disks, nets };
+  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), disks, nets };
 }
 
 export function parseDelta(text: string): Delta {
@@ -74,6 +90,7 @@ export function parseDelta(text: string): Delta {
     return {
       intervalMs: typeof value.intervalMs === "number" && Number.isFinite(value.intervalMs) && value.intervalMs > 0 ? value.intervalMs : 0,
       ...(value.cpu === undefined ? {} : { cpu: value.cpu }),
+      ...(value.swap === undefined ? {} : { swap: value.swap }),
       disks: value.disks ?? {},
       nets: value.nets ?? {}
     };

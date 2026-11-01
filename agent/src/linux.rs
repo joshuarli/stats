@@ -1,7 +1,7 @@
 use crate::CollectionScope;
-use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, Unavailable};
+use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, SwapActivity, Unavailable};
 use crate::parse::{
-    file_systems, fixed3, parse_cpu, parse_diskstats, parse_meminfo, parse_mounts, parse_psi, statfs_facts,
+    file_systems, fixed3, parse_cpu, parse_diskstats, parse_meminfo, parse_mounts, parse_psi, parse_vmstat_swap, statfs_facts,
 };
 use std::collections::HashSet;
 use std::ffi::CString;
@@ -15,6 +15,7 @@ const MEMINFO_LIMIT: usize = 65_536;
 const DISKSTATS_LIMIT: usize = 262_144;
 const PRESSURE_LIMIT: usize = 16_384;
 const MOUNTS_LIMIT: usize = 65_536;
+const VMSTAT_LIMIT: usize = 65_536;
 const COUNTER_LIMIT: usize = 64;
 
 fn read_bounded(path: &Path, buffer: &mut Vec<u8>, limit: usize) -> std::io::Result<()> {
@@ -212,9 +213,17 @@ fn read_psi() -> Option<Psi> {
     parse_psi(if cpu_ok { &cpu } else { b"" }, if memory_ok { &memory } else { b"" }, if io_ok { &io } else { b"" })
 }
 
+fn read_swap_activity(buffer: &mut Vec<u8>) -> Option<SwapActivity> {
+    let page_size = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok().filter(|size| *size > 0)?;
+    read_bounded(Path::new("/proc/vmstat"), buffer, VMSTAT_LIMIT).ok()?;
+    parse_vmstat_swap(buffer, page_size)
+}
+
 fn read_mem(buffer: &mut Vec<u8>) -> Option<Mem> {
     read_bounded(Path::new("/proc/meminfo"), buffer, MEMINFO_LIMIT).ok()?;
-    parse_meminfo(buffer)
+    let mut mem = parse_meminfo(buffer)?;
+    mem.swap_activity = read_swap_activity(buffer);
+    Some(mem)
 }
 
 pub fn sample(scope: CollectionScope) -> Option<Sample> {

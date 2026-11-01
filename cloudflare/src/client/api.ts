@@ -27,6 +27,8 @@ export interface Mem {
   readonly total: number;
   readonly available: number;
   readonly swapUsed: number;
+  readonly swapInBytesPerSec?: number;
+  readonly swapOutBytesPerSec?: number;
 }
 
 export interface PsiGroup {
@@ -210,7 +212,12 @@ function decodeLoad(value: unknown): Load {
 
 function decodeMem(value: unknown): Mem {
   const entry = record(value);
-  return { total: number(entry.total), available: number(entry.available), swapUsed: number(entry.swapUsed) };
+  return {
+    total: number(entry.total),
+    available: number(entry.available),
+    swapUsed: number(entry.swapUsed),
+    ...(entry.swapInBytesPerSec === undefined ? {} : { swapInBytesPerSec: number(entry.swapInBytesPerSec), swapOutBytesPerSec: number(entry.swapOutBytesPerSec) })
+  };
 }
 
 function decodePsiGroup(value: unknown): PsiGroup {

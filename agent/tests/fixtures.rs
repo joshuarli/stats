@@ -135,7 +135,14 @@ fn validate_group(sample: &Value, key: &str) -> bool {
     match key {
         "cpu" => u64_map(value, &["user", "system", "idle", "iowait", "steal", "total"]),
         "load" => object(value, &["one", "five", "fifteen"]) && ["one", "five", "fifteen"].iter().all(|field| fixed(&value[*field], 3)),
-        "mem" => u64_map(value, &["total", "available", "swapTotal", "swapFree"]),
+        "mem" => {
+            let required = ["total", "available", "swapTotal", "swapFree"];
+            let activity = ["swapIn", "swapOut"];
+            let present = activity.iter().filter(|key| value.get(**key).is_some()).count();
+            keys(value, &["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut"])
+                && required.iter().all(|key| decimal(&value[*key]))
+                && (present == 0 || (present == 2 && activity.iter().all(|key| decimal(&value[*key]))))
+        }
         "uptimeMs" => decimal(value),
         "cpuCount" => value.as_u64().is_some_and(|count| (1..=4096).contains(&count)),
         "disks" => {
