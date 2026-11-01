@@ -46,6 +46,7 @@ export interface SummaryPoint {
   readonly mem?: MemValues;
   readonly psi?: PsiAverages;
   readonly cpuCount?: number;
+  readonly uptimeMs?: number;
 }
 export interface DiskPoint {
   readonly atMs: number;
@@ -401,7 +402,8 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
     ...(gaugeAverage(group, "full10") === undefined ? {} : { full10: gaugeAverage(group, "full10")!, full60: gaugeAverage(group, "full60")!, full300: gaugeAverage(group, "full300")! })
   }])) as PsiAverages;
   const cpuCount = gaugeAverage(payload.gauges, "cpuCount");
-  return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(cpuCount === undefined ? {} : { cpuCount: Math.round(cpuCount) }) };
+  const uptimeMs = gaugeAverage(payload.gauges, "uptimeMs");
+  return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(cpuCount === undefined ? {} : { cpuCount: Math.round(cpuCount) }), ...(uptimeMs === undefined ? {} : { uptimeMs }) };
 }
 
 function summaryFromRaw(row: RawRow): SummaryPoint {
@@ -410,7 +412,7 @@ function summaryFromRaw(row: RawRow): SummaryPoint {
   const load = row.sample.load === undefined ? undefined : { one: Number(row.sample.load.one), five: Number(row.sample.load.five), fifteen: Number(row.sample.load.fifteen) };
   const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs) };
   const psi = psiAverages(row.sample);
-  return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }) };
+  return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }), ...(row.sample.uptimeMs === undefined ? {} : { uptimeMs: Number(row.sample.uptimeMs) }) };
 }
 
 function diskPoints(row: RawRow): Array<{ id: string; name: string; point: DiskPoint }> {

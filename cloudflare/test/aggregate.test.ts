@@ -111,3 +111,19 @@ describe("compact", () => {
     expect(compact({ rate: 4.733333333333333, bytes: 1_793_513_270_426, label: "eth0", nested: [{ busy: 0.0004 }, { busy: 99.9996 }], none: null })).toEqual({ rate: 4.733, bytes: 1_793_513_270_426, label: "eth0", nested: [{ busy: 0 }, { busy: 100 }], none: null });
   });
 });
+
+describe("uptime on summary points", () => {
+  it("keeps the kernel uptime so a reset can be read as a reboot", () => {
+    const sample = (uptimeMs: string, monoMs: string): Sample => ({ seq: "1", atMs: "0", monoMs, uptimeMs, cpuCount: 4 });
+    const rows: RawRow[] = [{ sample: sample("5000", "0"), delta: { intervalMs: 0, disks: {}, nets: {} } }, { sample: sample("20000", "15000"), delta: { intervalMs: 15_000, disks: {}, nets: {} } }];
+    const raw = rawPoints(rows, "summary") as SummaryPoint[];
+    expect(raw.map(point => point.uptimeMs)).toEqual([5000, 20_000]);
+    const rolled = rollupPoints([rollupFromRaw(rows, 0, 60_000)!], "summary") as SummaryPoint[];
+    expect(rolled[0]!.uptimeMs).toBe(12_500);
+  });
+
+  it("leaves it out when the agent could not read it", () => {
+    const row: RawRow = { sample: { seq: "1", atMs: "0", monoMs: "0", cpuCount: 4 }, delta: { intervalMs: 0, disks: {}, nets: {} } };
+    expect((rawPoints([row], "summary") as SummaryPoint[])[0]!.uptimeMs).toBeUndefined();
+  });
+});

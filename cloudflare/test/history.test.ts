@@ -260,6 +260,17 @@ describe("history reads", () => {
     expect(afterIngest).toBe(1);
     expect(after).toBeGreaterThan(before);
   });
+
+  it("keeps a few windows so a second query does not evict the first", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const reads = await countWindowReads(async () => {
+      for (const search of [`range=1h&kind=summary`, `from=${now - 7_200_000}&to=${now - 3_600_000}&kind=summary`, `range=1h&kind=nets`, `from=${now - 7_200_000}&to=${now - 3_600_000}&kind=nets`]) {
+        expect((await historySearch(host.hostId, search)).status, search).toBe(200);
+      }
+    });
+    expect(reads).toBe(2);
+  });
 });
 
 describe("system details", () => {

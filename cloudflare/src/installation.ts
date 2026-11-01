@@ -180,9 +180,14 @@ function validName(name: string): boolean {
   return true;
 }
 
+const HISTORY_WINDOWS_KEPT = 4;
+
 export class Installation extends DurableObject<Env> {
-  private dataVersion = 0;
-  private historyCache: { readonly key: string; readonly byKind: ReadonlyMap<HistoryKind, History> } | undefined;
+  private readonly historyCache = new Map<string, ReadonlyMap<HistoryKind, History>>();
+
+  private invalidateHistory(): void {
+    this.historyCache.clear();
+  }
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -236,7 +241,7 @@ export class Installation extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM host_system WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM hosts WHERE host_id = ?", hostId);
-      this.dataVersion += 1;
+      this.invalidateHistory();
     });
     return true;
   }
@@ -305,9 +310,14 @@ export class Installation extends DurableObject<Env> {
     const range = "range" in query ? { range: query.range } : {};
     const rawRange = fromMs >= now - RAW_RETENTION_MS;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - MINUTE_RETENTION_MS ? "1m" : "1h";
-    const key = `${this.dataVersion}|${hostId}|${resolution}|${fromMs}|${toMs}`;
-    if (this.historyCache?.key !== key) this.historyCache = { key, byKind: this.buildHistory(hostId, fromMs, toMs, range, resolution) };
-    return this.historyCache.byKind.get(kind) ?? null;
+    const key = `${hostId}|${resolution}|${fromMs}|${toMs}`;
+    let byKind = this.historyCache.get(key);
+    if (byKind === undefined) {
+      byKind = this.buildHistory(hostId, fromMs, toMs, range, resolution);
+      this.historyCache.set(key, byKind);
+      if (this.historyCache.size > HISTORY_WINDOWS_KEPT) this.historyCache.delete(this.historyCache.keys().next().value!);
+    }
+    return byKind.get(kind) ?? null;
   }
 
   private buildHistory(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h"): ReadonlyMap<HistoryKind, History> {
@@ -347,7 +357,7 @@ export class Installation extends DurableObject<Env> {
       const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
       const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
       const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
-      if (raw + minute + hour > 0) this.dataVersion += 1;
+      if (raw + minute + hour > 0) this.invalidateHistory();
       await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
     } catch (error) {
       console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
@@ -452,7 +462,7 @@ export class Installation extends DurableObject<Env> {
       if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
       if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(parsed.system));
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
-      this.dataVersion += 1;
+      this.invalidateHistory();
     });
 
     if (accepted === 0 && duplicates === 0) {
