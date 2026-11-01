@@ -111,6 +111,7 @@ impl SnapshotReader {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
     fn scratch() -> PathBuf {
@@ -162,17 +163,42 @@ mod tests {
         assert!(parse(value(buckets("-1"), "1", "10", "1", "10")).is_none());
     }
 
+    fn write_snapshot(path: &Path) {
+        let snapshot = serde_json::to_vec(&value(buckets("1"), "1", "10", "1", "10")).unwrap();
+        fs::write(path, &snapshot).unwrap();
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
     #[test]
     fn attaches_each_snapshot_once() {
         let root = scratch();
         let path = root.join("snapshot.json");
-        let snapshot = serde_json::to_vec(&value(buckets("1"), "1", "10", "1", "10")).unwrap();
-        fs::write(&path, &snapshot).unwrap();
+        write_snapshot(&path);
         fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(1)).unwrap();
         let mut reader = SnapshotReader::default();
         assert!(reader.read(&path).is_some());
         assert!(reader.read(&path).is_none());
         fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(2)).unwrap();
         assert!(reader.read(&path).is_some());
+    }
+
+    #[test]
+    fn rejects_a_stale_snapshot() {
+        let root = scratch();
+        let path = root.join("snapshot.json");
+        write_snapshot(&path);
+        fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(31)).unwrap();
+        assert!(read_snapshot(&path).is_none());
+    }
+
+    #[test]
+    fn rejects_a_group_or_world_writable_snapshot() {
+        let root = scratch();
+        let path = root.join("snapshot.json");
+        write_snapshot(&path);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+        assert!(read_snapshot(&path).is_none());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(read_snapshot(&path).is_some());
     }
 }
