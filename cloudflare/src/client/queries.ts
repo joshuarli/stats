@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { getDisks, getHosts, getNets, getSummary, type DiskSeries, type Host, type NetSeries, type SummaryPoint } from "./api";
+import { getDisks, getHosts, getNets, getSummary, type DiskSeries, type HistoryQuery, type Host, type NetSeries, type SummaryPoint } from "./api";
 
 export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
@@ -28,12 +28,12 @@ async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: 
   return results;
 }
 
-export function loadFleetRows(hosts: readonly Host[], range: string): Promise<readonly FleetRow[]> {
+export function loadFleetRows(hosts: readonly Host[], query: HistoryQuery): Promise<readonly FleetRow[]> {
   return loadQuery(signal => mapLimit(hosts, 4, async host => {
     const [summary, disks, nets] = await Promise.all([
-      getSummary(host.hostId, range, signal),
-      getDisks(host.hostId, range, signal),
-      getNets(host.hostId, range, signal)
+      getSummary(host.hostId, query, signal),
+      getDisks(host.hostId, query, signal),
+      getNets(host.hostId, query, signal)
     ]);
     return {
       host,

@@ -1,5 +1,5 @@
 import { createContext, createSignal, useContext, type Accessor, type Setter } from "solid-js";
-import type { Host } from "./api";
+import type { HistoryQuery, Host } from "./api";
 import { panWindow, type TimeWindow } from "./chart-data";
 
 export const ranges = ["1h", "6h", "24h", "7d", "90d"] as const;
@@ -35,6 +35,7 @@ export interface ViewState {
 
 export interface TelemetryState extends ViewState {
   readonly range: Accessor<Range>;
+  readonly query: Accessor<HistoryQuery>;
   readonly setRange: Setter<Range>;
   readonly now: Accessor<number>;
   readonly hosts: Accessor<readonly Host[]>;

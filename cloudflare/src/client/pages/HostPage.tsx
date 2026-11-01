@@ -42,15 +42,15 @@ export function HostPage(): JSX.Element {
 
 function HostView(props: { readonly host: Host }): JSX.Element {
   const hostId = () => props.host.hostId;
-  const { range, now, refreshHosts, tick } = useTelemetry();
+  const { query, now, refreshHosts, tick } = useTelemetry();
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
 
   const latest = createMemo(() => loadQuery(signal => getLatest(hostId(), signal)));
-  const summary = createMemo(() => loadQuery(signal => getSummary(hostId(), range(), signal)));
-  const disks = createMemo(() => loadQuery(signal => getDisks(hostId(), range(), signal)));
-  const nets = createMemo(() => loadQuery(signal => getNets(hostId(), range(), signal)));
-  const filesystems = createMemo(() => loadQuery(signal => getFilesystems(hostId(), range(), signal)));
-  const block = createMemo(() => loadQuery(signal => getBlock(hostId(), range(), signal)));
+  const summary = createMemo(() => loadQuery(signal => getSummary(hostId(), query(), signal)));
+  const disks = createMemo(() => loadQuery(signal => getDisks(hostId(), query(), signal)));
+  const nets = createMemo(() => loadQuery(signal => getNets(hostId(), query(), signal)));
+  const filesystems = createMemo(() => loadQuery(signal => getFilesystems(hostId(), query(), signal)));
+  const block = createMemo(() => loadQuery(signal => getBlock(hostId(), query(), signal)));
 
   const status = createMemo(() => statusFor(props.host, props.host.lastReceivedAtMs));
 

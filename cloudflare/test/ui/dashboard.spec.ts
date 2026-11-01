@@ -126,7 +126,7 @@ test("search filters the fleet and status facets narrow it", async ({ page }) =>
 
 test("dragging a chart zooms the time window, and escape returns to live", async ({ page, isMobile }) => {
   test.skip(isMobile, "drag selection needs a pointer");
-  await mock(page);
+  const requests = await mock(page);
   await page.goto("/");
   await page.locator("table").getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
@@ -146,6 +146,7 @@ test("dragging a chart zooms the time window, and escape returns to live", async
   await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Back to live/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => requests.some(request => /[?&]from=\d+&to=\d+&kind=summary/u.test(request) && !request.includes("range="))).toBe(true);
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);

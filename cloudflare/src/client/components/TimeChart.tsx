@@ -36,7 +36,7 @@ export interface TimeChartProps {
 
 const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
-const MIN_ZOOM_MS = 5_000;
+const MIN_ZOOM_MS = 30_000;
 const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
 
 function withAlpha(color: string, alpha: number): string | undefined {

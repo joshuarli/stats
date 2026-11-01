@@ -42,7 +42,7 @@ function compareHosts(sort: Sort): (left: Host, right: Host) => number {
 }
 
 export function FleetPage(): JSX.Element {
-  const { range, hosts, now, refreshHosts, tick, view } = useTelemetry();
+  const { query, hosts, now, refreshHosts, tick, view } = useTelemetry();
   const [search, setSearch] = createSignal("");
   const [selected, setSelected] = createSignal<ReadonlySet<FacetLabel>>(new Set<FacetLabel>());
   const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
@@ -64,7 +64,7 @@ export function FleetPage(): JSX.Element {
   const pages = createMemo(() => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)));
   const currentPage = createMemo(() => Math.min(page(), pages()));
   const pageHosts = createMemo(() => filtered().slice((currentPage() - 1) * PAGE_SIZE, currentPage() * PAGE_SIZE));
-  const rows = createMemo(() => loadFleetRows(pageHosts(), range()));
+  const rows = createMemo(() => loadFleetRows(pageHosts(), query()));
 
   const doRefresh = async () => {
     setRefreshError(null);

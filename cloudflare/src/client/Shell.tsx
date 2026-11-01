@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, Errored, For, Loading, onSettled, refresh, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
+import type { HistoryQuery } from "./api";
 import { Icon } from "./components/Icon";
 import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
@@ -17,6 +18,10 @@ export function Shell(props: ParentProps): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   const hosts = createMemo(loadHosts);
   const views = createViewState(range, now);
+  const query = createMemo<HistoryQuery>(() => {
+    const window = views.view();
+    return window === null ? { range: range() } : window;
+  });
   const location = useLocation();
 
   onSettled(() => {
@@ -54,7 +59,7 @@ export function Shell(props: ParentProps): JSX.Element {
   };
 
   return (
-    <TelemetryContext value={{ range, setRange, now, hosts, refreshHosts, ...views }}>
+    <TelemetryContext value={{ range, query, setRange, now, hosts, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
           <a class="brand" href="#/" aria-label="Stats home">stats</a>

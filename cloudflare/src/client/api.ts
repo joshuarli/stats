@@ -110,9 +110,11 @@ export interface Latest {
   };
 }
 
+export type HistoryQuery = { readonly range: string } | { readonly fromMs: number; readonly toMs: number };
+
 interface HistoryBase {
   readonly hostId: string;
-  readonly range: string;
+  readonly range?: string;
   readonly fromMs: number;
   readonly toMs: number;
   readonly resolution: "raw" | "1m" | "1h";
@@ -321,7 +323,7 @@ function decodeHistoryBase(entry: JsonObject): HistoryBase {
   if (resolution !== "raw" && resolution !== "1m" && resolution !== "1h") throw new Error("expected a history resolution");
   return {
     hostId: string(entry.hostId),
-    range: string(entry.range),
+    ...(entry.range === undefined ? {} : { range: string(entry.range) }),
     fromMs: number(entry.fromMs),
     toMs: number(entry.toMs),
     resolution,
@@ -432,22 +434,27 @@ export async function getLatest(hostId: string, signal: AbortSignal): Promise<La
   }
 }
 
-export function getSummary(hostId: string, range: string, signal: AbortSignal): Promise<SummaryHistory> {
-  return getJson(`${hostPath(hostId, "/history")}?range=${encodeURIComponent(range)}&kind=summary`, decodeSummaryHistory, signal);
+function historyUrl(hostId: string, query: HistoryQuery, kind: string): string {
+  const window = "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
+  return `${hostPath(hostId, "/history")}?${window}&kind=${kind}`;
 }
 
-export function getDisks(hostId: string, range: string, signal: AbortSignal): Promise<DiskHistory> {
-  return getJson(`${hostPath(hostId, "/history")}?range=${encodeURIComponent(range)}&kind=disks`, decodeDiskHistory, signal);
+export function getSummary(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<SummaryHistory> {
+  return getJson(historyUrl(hostId, query, "summary"), decodeSummaryHistory, signal);
 }
 
-export function getNets(hostId: string, range: string, signal: AbortSignal): Promise<NetHistory> {
-  return getJson(`${hostPath(hostId, "/history")}?range=${encodeURIComponent(range)}&kind=nets`, decodeNetHistory, signal);
+export function getDisks(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<DiskHistory> {
+  return getJson(historyUrl(hostId, query, "disks"), decodeDiskHistory, signal);
 }
 
-export function getFilesystems(hostId: string, range: string, signal: AbortSignal): Promise<FilesystemHistory> {
-  return getJson(`${hostPath(hostId, "/history")}?range=${encodeURIComponent(range)}&kind=filesystems`, decodeFilesystemHistory, signal);
+export function getNets(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<NetHistory> {
+  return getJson(historyUrl(hostId, query, "nets"), decodeNetHistory, signal);
 }
 
-export function getBlock(hostId: string, range: string, signal: AbortSignal): Promise<BlockHistory> {
-  return getJson(`${hostPath(hostId, "/history")}?range=${encodeURIComponent(range)}&kind=block`, decodeBlockHistory, signal);
+export function getFilesystems(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FilesystemHistory> {
+  return getJson(historyUrl(hostId, query, "filesystems"), decodeFilesystemHistory, signal);
+}
+
+export function getBlock(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<BlockHistory> {
+  return getJson(historyUrl(hostId, query, "block"), decodeBlockHistory, signal);
 }
