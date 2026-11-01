@@ -13,7 +13,7 @@ function summary(range: string, empty = false) {
       atMs: now - (length - index) * step,
       coverageMs: step,
       partial: false,
-      cpu: { user: 8 + index, system: 3, idle: 80, iowait: 1, steal: 0 },
+      cpu: { user: index >= 8 ? 93 : 8 + index, system: 3, idle: 80, iowait: 1, steal: 0 },
       load: { one: 0.4 + index / 100, five: 0.5, fifteen: 0.6 },
       mem: { total: 8_589_934_592, available: 4_294_967_296 - index * 1_000_000, swapUsed: 0, swapInBytesPerSec: 4096 * index, swapOutBytesPerSec: 8192 },
       psi: { cpu: { some10: 1.2, some60: 0.8, some300: 0.4 }, memory: { some10: 0.1, some60: 0.05, some300: 0.02, full10: 0.05, full60: 0.03, full300: 0.01 }, io: { some10: 0.3, some60: 0.2, some300: 0.1 } }
@@ -56,7 +56,13 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     if (kind === "nets") return route.fulfill({ json: nets(range, empty) });
     if (kind === "filesystems") return route.fulfill({ json: filesystems(range, empty) });
     if (kind === "block") return route.fulfill({ json: block(range, empty) });
-    return route.fulfill({ json: summary(range, empty) });
+    const body = summary(range, empty);
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (from !== null && to !== null) {
+      return route.fulfill({ json: { ...body, fromMs: Number(from), toMs: Number(to), points: body.points.slice(0, 4).map((point, index) => ({ ...point, atMs: Number(to) - (4 - index) * 15_000 })) } });
+    }
+    return route.fulfill({ json: body });
   });
   return requests;
 }
@@ -80,6 +86,11 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(system).toContainText("alpha-box");
   await expect(system).toContainText("8 GiB");
   await expect(page.getByLabel("Host metadata")).toHaveCount(0);
+  const incidents = page.getByRole("list", { name: "Incidents" });
+  await expect(incidents).toContainText("CPU");
+  await expect(incidents).toContainText("Critical");
+  await expect(incidents).toContainText("ongoing");
+  await expect(page.getByRole("button", { name: /^CPU: .*Jump to chart/ })).toContainText("Critical");
   const cpuChart = page.getByRole("img", { name: /CPU;/ });
   await expect(cpuChart).toBeVisible();
   await expect(cpuChart).toHaveAttribute("tabindex", "0");
@@ -100,12 +111,37 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
   await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
-  for (const title of ["Disk operations", "Disk busy", "Network packets", "Network drops and errors", "Filesystem usage", "Memory pressure", "Swap used", "Swap activity", "Full stalls"]) {
+  await expect(page.getByRole("table", { name: "Filesystem capacity" })).toContainText("not enough history");
+  for (const title of ["Incidents", "CPU", "Load", "Memory", "Disk", "Network", "Filesystems", "Full stalls"]) {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
   }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Block latency;/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
+});
+
+test("the CPU and load charts compare against the same window yesterday", async ({ page, isMobile }) => {
+  test.skip(isMobile, "the legend rows are checked on desktop");
+  const requests = await mock(page);
+  await page.goto("/");
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "CPU" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /yesterday/ })).toHaveCount(2);
+  const day = 24 * 60 * 60 * 1000;
+  await expect.poll(() => requests.some(request => {
+    const match = /[?&]from=(\d+)&to=(\d+)&kind=summary/u.exec(request);
+    return match !== null && Date.now() - Number(match[2]) > day - 60_000 && Date.now() - Number(match[2]) < day + 60_000;
+  })).toBe(true);
+});
+
+test("zooming to an incident narrows every chart to it", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("list", { name: "Incidents" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
+  await page.getByRole("list", { name: "Incidents" }).getByRole("button", { name: "Zoom" }).first().click();
+  await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
 });
 
 test("missing and stale data never become zero", async ({ page }) => {
@@ -165,6 +201,7 @@ test("dragging a chart zooms the time window, and escape returns to live", async
   await page.waitForLoadState("networkidle");
   const plot = page.locator(".chart-plot .u-over").first();
   await expect(plot).toBeVisible();
+  await plot.scrollIntoViewIfNeeded();
   const box = await plot.boundingBox();
   if (box === null) throw new Error("chart plot has no box");
   await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);

@@ -4,13 +4,13 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { alignSeries, windowIndexes, windowStats, type ChartPoint } from "../chart-data";
 import { axisTime, clock, percent } from "../format";
-import { describeState, findEpisodes, healthOf, HEALTH_GLYPH, HEALTH_LABEL, markersOf, RECOVERY_MS, worse, type Health, type Limits } from "../health";
+import { evaluate, healthOf, HEALTH_GLYPH, HEALTH_LABEL, markersOf, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
 import { HealthMark } from "./ui";
 
 export type { ChartPoint };
 
-export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
+export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "ghost" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
 
 export interface ChartSeries {
   readonly label: string;
@@ -19,6 +19,12 @@ export interface ChartSeries {
   readonly dashed?: boolean | undefined;
   readonly scored?: boolean | undefined;
   readonly graded?: boolean | undefined;
+  readonly mirror?: boolean | undefined;
+}
+
+export interface ChartEvent {
+  readonly atMs: number;
+  readonly label: string;
 }
 
 export interface TimeChartProps {
@@ -29,7 +35,11 @@ export interface TimeChartProps {
   readonly max?: number | undefined;
   readonly area?: boolean | undefined;
   readonly limits?: Limits | undefined;
-  readonly legend?: boolean | undefined;
+  readonly legend?: boolean | "inline" | undefined;
+  readonly compact?: boolean | undefined;
+  readonly timeAxis?: boolean | undefined;
+  readonly yAxisWidth?: number | undefined;
+  readonly events?: readonly ChartEvent[] | undefined;
   readonly highlight?: string | null | undefined;
   readonly stepMs?: number | undefined;
   readonly sortTooltip?: boolean | undefined;
@@ -61,19 +71,16 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
 
   const latest = createMemo(() => windowStats(aligned().columns[0] ?? [], 0, aligned().times.length - 1)?.last);
   const scoredColumns = createMemo(() => props.series.flatMap((entry, position) => (entry.scored === false ? [] : [aligned().columns[position] ?? []])));
-  const healths = createMemo((): (Health | null)[] => {
-    const limits = props.limits;
-    if (limits === undefined) return [];
-    return aligned().times.map((_, index) => scoredColumns().reduce<Health | null>((worst, column) => worse(worst, healthOf(column[index], limits)), null));
-  });
-  const episodes = createMemo(() => findEpisodes(healths(), aligned().times, RECOVERY_MS));
-  const state = createMemo(() => (props.limits === undefined ? undefined : describeState(aligned().times, healths(), episodes())));
+  const evaluation = createMemo(() => evaluate(aligned().times, scoredColumns(), props.limits));
+  const episodes = () => evaluation().episodes;
+  const state = () => evaluation().state;
   const healthAt = (value: number | null | undefined): Health | undefined => {
     const limits = props.limits;
     return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
   };
 
-  const data = (): uPlot.AlignedData => [aligned().times.map(time => time / 1000), ...aligned().columns.map(column => [...column])] as uPlot.AlignedData;
+  const mirrored = createMemo(() => props.series.some(entry => entry.mirror === true));
+  const data = (): uPlot.AlignedData => [aligned().times.map(time => time / 1000), ...aligned().columns.map((column, position) => (props.series[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]))] as uPlot.AlignedData;
 
   const applyView = () => {
     const times = aligned().times;
@@ -191,13 +198,65 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         context.stroke();
         context.globalAlpha = 1;
         const text = `${label} ${format(value)}`;
-        const baseline = y - 4 * dpr < top + 10 * dpr ? y + 11 * dpr : y - 4 * dpr;
+        const above = limits.direction === "above" ? label === "critical" : label === "elevated";
+        const preferred = above ? y - 4 * dpr : y + 11 * dpr;
+        const baseline = preferred < top + 10 * dpr ? y + 11 * dpr : preferred > top + height - 2 * dpr ? y - 4 * dpr : preferred;
         context.lineJoin = "round";
         context.lineWidth = 3 * dpr;
         context.strokeStyle = token("--surface");
         context.strokeText(text, left + width - 4 * dpr, baseline);
         context.fillStyle = token("--text-2");
         context.fillText(text, left + width - 4 * dpr, baseline);
+      }
+      context.restore();
+    };
+
+    const drawZero = (chart: uPlot) => {
+      if (!mirrored()) return;
+      const { left, top, width, height } = chart.bbox;
+      const y = Math.round(chart.valToPos(0, "y", true));
+      if (y < top || y > top + height) return;
+      const context = chart.ctx;
+      context.save();
+      context.strokeStyle = token("--mut");
+      context.globalAlpha = 0.55;
+      context.lineWidth = dpr;
+      context.beginPath();
+      context.moveTo(left, y);
+      context.lineTo(left + width, y);
+      context.stroke();
+      context.restore();
+    };
+
+    const drawEvents = (chart: uPlot) => {
+      const events = props.events;
+      if (events === undefined || events.length === 0) return;
+      const { left, top, width, height } = chart.bbox;
+      const context = chart.ctx;
+      context.save();
+      context.setLineDash([2 * dpr, 3 * dpr]);
+      context.lineWidth = dpr;
+      context.font = `${11 * dpr}px ${token("--font")}`;
+      context.textAlign = "left";
+      for (const event of events) {
+        const x = Math.round(chart.valToPos(event.atMs / 1000, "x", true));
+        if (x < left || x > left + width) continue;
+        context.strokeStyle = token("--mut");
+        context.globalAlpha = 0.7;
+        context.beginPath();
+        context.moveTo(x, top);
+        context.lineTo(x, top + height);
+        context.stroke();
+        context.globalAlpha = 1;
+        context.lineJoin = "round";
+        context.lineWidth = 3 * dpr;
+        context.strokeStyle = token("--surface");
+        context.setLineDash([]);
+        context.strokeText(event.label, x + 3 * dpr, top + 11 * dpr);
+        context.fillStyle = token("--text-2");
+        context.fillText(event.label, x + 3 * dpr, top + 11 * dpr);
+        context.setLineDash([2 * dpr, 3 * dpr]);
+        context.lineWidth = dpr;
       }
       context.restore();
     };
@@ -279,6 +338,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       },
       axes: [
         axis({
+          show: props.timeAxis !== false,
           size: 28,
           values: (chart, splits) => {
             const scale = chart.scales.x;
@@ -287,16 +347,18 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           }
         }),
         axis({
-          values: (_chart, splits) => splits.map(value => format(value)),
-          size: (_chart, values: string[] | null) => Math.ceil(Math.max(4, ...(values ?? []).map(value => value.length)) * 6.4 + 16)
+          ...(props.compact === true ? { space: 28 } : {}),
+          values: (_chart, splits) => splits.map(value => format(mirrored() ? Math.abs(value) : value)),
+          size: (_chart, values: string[] | null) => props.yAxisWidth ?? Math.ceil(Math.max(4, ...(values ?? []).map(value => value.length)) * 6.4 + 16)
         })
       ],
       series: [
         {},
         ...props.series.map((entry, position): uPlot.Series => {
           const color = colors[position] ?? "";
-          const start = props.area === true && position === 0 ? withAlpha(color, 0.2) : undefined;
-          const end = props.area === true && position === 0 ? withAlpha(color, 0) : undefined;
+          const filled = props.area === true && (position === 0 || entry.mirror === true);
+          const start = filled ? withAlpha(color, 0.2) : undefined;
+          const end = filled ? withAlpha(color, mirrored() ? 0.2 : 0) : undefined;
           return {
             label: entry.label,
             stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
@@ -341,7 +403,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           telemetry.zoomTo({ fromMs, toMs });
         }],
         drawClear: [drawBands],
-        draw: [drawLimits, drawMarkers]
+        draw: [drawZero, drawEvents, drawLimits, drawMarkers]
       }
     };
     plot = new uPlot(options, data(), element);
@@ -432,7 +494,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         )}
       </Show>
       <div
-        class="chart-plot"
+        class={props.compact === true ? "chart-plot compact" : "chart-plot"}
         ref={(element) => { host = element; }}
         role="img"
         tabindex="0"
@@ -443,6 +505,34 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       />
       <Show when={!hasData()}>
         <div class="chart-empty">No samples in this range.</div>
+      </Show>
+      <Show when={props.legend === "inline" && hasData()}>
+        <div class="chart-inline-legend">
+          <For each={props.series}>
+            {(entry, position) => {
+              const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
+              const shown = () => {
+                const index = cursor();
+                return index === null ? stats()?.last : aligned().columns[position()]?.[index] ?? undefined;
+              };
+              return (
+                <button
+                  class={hidden().has(entry.label) ? "inline-key off" : "inline-key"}
+                  type="button"
+                  aria-pressed={hidden().has(entry.label) ? "false" : "true"}
+                  onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
+                  onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
+                  onMouseLeave={() => focusSeries(null)}
+                >
+                  <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
+                  <span class="inline-label">{entry.label}</span>
+                  <b>{format(shown())}</b>
+                  {entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}
+                </button>
+              );
+            }}
+          </For>
+        </div>
       </Show>
       <Show when={props.legend === true && hasData()}>
         <table class="chart-legend">

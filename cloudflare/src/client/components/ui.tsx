@@ -22,6 +22,7 @@ export function Widget(props: ParentProps<{
   readonly class?: string | undefined;
   readonly bodyClass?: string | undefined;
   readonly expandable?: boolean | undefined;
+  readonly id?: string | undefined;
 }>): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
   createEffect(expanded, open => {
@@ -40,7 +41,7 @@ export function Widget(props: ParentProps<{
       <Show when={expanded()}>
         <button class="veil" type="button" aria-label="Close expanded chart" tabindex="-1" onClick={() => setExpanded(false)} />
       </Show>
-      <section class={classes()}>
+      <section class={classes()} id={props.id}>
         <header class="widget-head">
           <div class="widget-title">
             <h2>{props.title}</h2>

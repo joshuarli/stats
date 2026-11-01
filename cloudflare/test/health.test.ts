@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeState, duration, findEpisodes as find, healthOf, loadLimits, markersOf, memoryAvailableLimits, type Health } from "../src/client/health";
+import { describeState, duration, findEpisodes as find, healthOf, loadLimits, markersOf, memoryUsedLimits, type Health } from "../src/client/health";
 
 const minute = 60_000;
 const findEpisodes = (healths: readonly (Health | null)[], recoveryMs = minute) => find(healths, healths.map((_, index) => index * minute), recoveryMs);
@@ -12,10 +12,10 @@ describe("health", () => {
     expect(healthOf(90, above)).toBe("critical");
     expect(healthOf(null, above)).toBeNull();
     expect(healthOf(undefined, above)).toBeNull();
-    const memory = memoryAvailableLimits(1000)!;
-    expect(healthOf(400, memory)).toBe("ok");
-    expect(healthOf(150, memory)).toBe("elevated");
-    expect(healthOf(50, memory)).toBe("critical");
+    const memory = memoryUsedLimits(1000)!;
+    expect(healthOf(600, memory)).toBe("ok");
+    expect(healthOf(850, memory)).toBe("elevated");
+    expect(healthOf(950, memory)).toBe("critical");
     expect(loadLimits(8)).toEqual({ elevated: 8, critical: 16, direction: "above" });
     expect(loadLimits(undefined)).toBeUndefined();
   });

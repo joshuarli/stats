@@ -33,7 +33,9 @@ Sampling sources and filters:
   a sysfs `device` link (veth, bridges, tunnels). Sysfs exposes the same `rtnl_link_stats64` counters as rtnetlink
   without hand-built netlink packets or an async netlink crate.
 - PSI from `/proc/pressure/{cpu,memory,io}`, kept separate from iowait.
-- Filesystems from `/proc/self/mounts` plus `statfs(2)`, limited to the
+- Filesystems from `/proc/self/mounts` plus `statfs(2)`, one entry per block
+  device (the shortest mount path wins, so bind mounts and btrfs subvolumes are
+  not repeated), limited to the
   allow-list in `agent/src/parse.rs`, at most 16. `tmpfs` and `overlay` mounts
   are skipped unless `includeVirtualFilesystems` is set.
 
@@ -123,10 +125,12 @@ than the preset range it came from. Results are downsampled to at most 900
 points and carry a `stepMs`, with fractions rounded to three decimals.
 
 A preset range ends at the current 15-second raw step, and the Durable Object
-keeps the last window it built for every history kind. The dashboard asks for
-all five kinds on each refresh, so one read and parse of the window serves all
-of them. Ingest, a purge, and an alarm that deleted rows discard it; an alarm
-that deleted nothing keeps it.
+keeps the last four windows it built, each for every history kind. The
+dashboard asks for all five kinds on each refresh, and for a second window for
+the yesterday comparison, so one read and parse of a window serves all of its
+kinds. Ingest, a purge, and an alarm that deleted rows discard them; an alarm
+that deleted nothing keeps them. Summary points carry `cpuCount` and
+`uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the

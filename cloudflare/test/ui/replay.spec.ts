@@ -8,9 +8,13 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     const kind = url.searchParams.get("kind") ?? "summary";
-    const range = url.searchParams.get("range") ?? "1h";
+    const range = url.searchParams.get("range");
+    if (range === null && url.pathname.endsWith("/history")) {
+      const empty = kind === "summary" ? { points: [] } : { series: [] };
+      return route.fulfill({ json: { hostId: threadripper.hostId, kind, fromMs: Number(url.searchParams.get("from")), toMs: Number(url.searchParams.get("to")), resolution: "raw", stepMs: 15_000, ...empty } });
+    }
     if (url.pathname.endsWith("/system") && !hasSystem) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no system details for host" } } });
-    const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range}.json`;
+    const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range ?? "1h"}.json`;
     return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
   });
   await page.addInitScript(() => {
@@ -30,12 +34,18 @@ for (const range of ["1h", "24h", "7d"]) {
     await expect(page.getByRole("heading", { name: "threadripper" })).toBeVisible();
     await page.getByRole("button", { name: range, exact: true }).click();
     await expect(page.getByRole("button", { name: range, exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("heading", { name: "Filesystem usage" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Filesystems" })).toBeVisible();
     await page.waitForLoadState("networkidle");
     if (!threadripper.system) await expect(page.getByText("This host has not reported system details.")).toBeVisible();
-    const regions = [...(threadripper.system ? [["System", "system"] as const] : []), ["Host summary", "tiles"] as const, ["Host charts", "charts"] as const, ["Host activity", "activity"] as const];
-    for (const [label, file] of regions) {
-      await expect(page.getByRole("region", { name: label })).toHaveScreenshot(`threadripper-${range}-${file}.png`);
+    const regions = [
+      ...(threadripper.system ? [["system", page.getByRole("region", { name: "System" })] as const] : []),
+      ["tiles", page.getByRole("region", { name: "Host summary" })] as const,
+      ["incidents", page.locator("#incidents")] as const,
+      ["charts", page.getByRole("region", { name: "Host charts" })] as const,
+      ["activity", page.getByRole("region", { name: "Host activity" })] as const
+    ];
+    for (const [file, region] of regions) {
+      await expect(region).toHaveScreenshot(`threadripper-${range}-${file}.png`);
     }
   });
 }

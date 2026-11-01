@@ -46,8 +46,8 @@ export function loadLimits(cpuCount: number | undefined): Limits | undefined {
   return cpuCount === undefined || cpuCount < 1 ? undefined : { elevated: cpuCount, critical: cpuCount * 2, direction: "above" };
 }
 
-export function memoryAvailableLimits(totalBytes: number | undefined): Limits | undefined {
-  return totalBytes === undefined || totalBytes <= 0 ? undefined : { elevated: totalBytes * 0.15, critical: totalBytes * 0.05, direction: "below" };
+export function memoryUsedLimits(totalBytes: number | undefined): Limits | undefined {
+  return totalBytes === undefined || totalBytes <= 0 ? undefined : { elevated: totalBytes * 0.85, critical: totalBytes * 0.95, direction: "above" };
 }
 
 export function healthOf(value: number | null | undefined, limits: Limits): Health | null {
@@ -126,4 +126,17 @@ export function describeState(times: readonly number[], healths: readonly (Healt
     return { health, text: `OK · recovered ${clock(at(last.endIndex!))} after ${duration(at(last.endIndex!) - at(last.startIndex))} ${last.peak}` };
   }
   return { health, text: "OK" };
+}
+
+export interface Evaluation {
+  readonly healths: readonly (Health | null)[];
+  readonly episodes: readonly Episode[];
+  readonly state: HealthState | undefined;
+}
+
+export function evaluate(times: readonly number[], columns: readonly (readonly (number | null)[])[], limits: Limits | undefined): Evaluation {
+  if (limits === undefined) return { healths: [], episodes: [], state: undefined };
+  const healths = times.map((_, index) => columns.reduce<Health | null>((worst, column) => worse(worst, healthOf(column[index], limits)), null));
+  const episodes = findEpisodes(healths, times, RECOVERY_MS);
+  return { healths, episodes, state: describeState(times, healths, episodes) };
 }

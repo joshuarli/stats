@@ -117,14 +117,32 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status filters (online, stale, no samples, revoked), sortable
-columns, and fleet charts. The host page opens with the host's CPU model and topology, memory, OS, kernel, and
-agent version, which the agent reports with its first upload after an update and
-then hourly. Below that it shows CPU (including steal), load, available memory, swap used, swap activity,
-memory pressure (10 s, 60 s, 300 s), PSI some and full stalls, disk throughput,
-operations, and busy time, network throughput, packets, drops, and errors,
-filesystem usage over time, filesystems, devices, and block latency with
-completions (p50, p95, p99, min, max), which stays empty unless the collector
-is configured. Full stalls appear only when the kernel reports them.
+columns, and fleet charts.
+
+The host page opens with the host's CPU model and topology, memory, OS,
+kernel, and agent version, which the agent reports with its first upload after
+an update and then hourly. Below that:
+
+- A status strip with one cell per resource (CPU, memory, load, pressure, swap
+  paging, disk busy, filesystem, network faults): the current value, its state,
+  how long it has been in that state, and a trend. A cell jumps to its chart.
+- An incident list of every elevated or critical period in the window, newest
+  first, each with a Zoom button that narrows every chart to it.
+- CPU (with steal) and load, both with a dashed line for the same window
+  yesterday on the 1 h, 6 h, and 24 h ranges, then PSI pressure.
+- Memory: RAM and swap in use against total, swap paging, and memory pressure
+  on one shared time axis.
+- Disk and network: throughput and operations or packets with reads and
+  receive above the line and writes and transmit below it, busy time or drops
+  and errors, and a device or interface table.
+- Filesystems: usage over time and one table with capacity, state, and a 7 day
+  linear forecast of when each mount fills.
+- Block latency and completions, which stay empty unless the collector is
+  configured.
+
+Dotted vertical lines mark reboots, read from a fall in uptime. Mounts of the
+same block device (bind mounts, btrfs subvolumes) are listed once. Pressure
+sections appear only when the kernel reports PSI.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
 chart to that window. The smallest zoom is two samples of the tier the window
