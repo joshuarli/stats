@@ -26,7 +26,9 @@ for (const range of ["1h", "24h", "7d"]) {
     await expect(page.getByRole("button", { name: range, exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("heading", { name: "Filesystem usage" })).toBeVisible();
     await page.waitForLoadState("networkidle");
-    for (const [label, file] of [["System", "system"], ["Host summary", "tiles"], ["Host charts", "charts"], ["Host activity", "activity"]] as const) {
+    if (!threadripper.system) await expect(page.getByText("This host has not reported system details.")).toBeVisible();
+    const regions = [...(threadripper.system ? [["System", "system"] as const] : []), ["Host summary", "tiles"] as const, ["Host charts", "charts"] as const, ["Host activity", "activity"] as const];
+    for (const [label, file] of regions) {
       await expect(page.getByRole("region", { name: label })).toHaveScreenshot(`threadripper-${range}-${file}.png`);
     }
   });
