@@ -8,11 +8,14 @@ export interface BoundQuery {
 export const BUCKET_MS = 5 * 60_000;
 export const MAX_BUCKETS_PER_PROJECT = 8;
 export const MAX_NAMESPACES_PER_PROJECT = 8;
+export const MAX_D1_DATABASES_PER_PROJECT = 8;
+export const D1_STATEMENT_PREFIX_LENGTH = 160;
 
 const ROW_LIMIT = 2000;
 
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 export const NAMESPACE_ID_PATTERN = /^[0-9a-f]{32}$/;
+export const D1_DATABASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const WORKER_EVENT_LOG_TYPE = "cf-worker-event";
 
@@ -105,6 +108,55 @@ export function r2StorageQuery(buckets: readonly string[], startMs: number): Bou
     ].join(" "),
     params: { ...names.params, start: isoStart(startMs) },
   };
+}
+
+export function d1Query(databases: readonly string[], startMs: number): BoundQuery {
+  const ids = d1Params(databases);
+  return {
+    query: [
+      "SELECT toStartOfFiveMinutes(timestamp) AS bucket,",
+      "SUM(sampleInterval) AS queries,",
+      "SUM(rowsRead * sampleInterval) AS rows_read,",
+      "SUM(rowsWritten * sampleInterval) AS rows_written",
+      "FROM events.d1Queries",
+      `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
+      "GROUP BY toStartOfFiveMinutes(timestamp)",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...ids.params, start: isoStart(startMs) },
+  };
+}
+
+export function d1StatementQuery(databases: readonly string[], startMs: number): BoundQuery {
+  const ids = d1Params(databases);
+  return {
+    query: [
+      `SELECT toStartOfFiveMinutes(timestamp) AS bucket, substring(query, 1, ${D1_STATEMENT_PREFIX_LENGTH}) AS statement,`,
+      "SUM(sampleInterval) AS queries,",
+      "SUM(rowsRead * sampleInterval) AS rows_read,",
+      "SUM(rowsWritten * sampleInterval) AS rows_written",
+      "FROM events.d1Queries",
+      `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
+      `GROUP BY toStartOfFiveMinutes(timestamp), substring(query, 1, ${D1_STATEMENT_PREFIX_LENGTH})`,
+      `ORDER BY rows_written DESC LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...ids.params, start: isoStart(startMs) },
+  };
+}
+
+function d1Params(databases: readonly string[]): { placeholders: string; params: Record<string, string> } {
+  if (databases.length === 0 || databases.length > MAX_D1_DATABASES_PER_PROJECT) {
+    throw new RangeError(`database list must hold 1 to ${MAX_D1_DATABASES_PER_PROJECT} ids`);
+  }
+  const params: Record<string, string> = {};
+  const placeholders = databases.map((id, index) => {
+    if (!D1_DATABASE_ID_PATTERN.test(id)) {
+      throw new RangeError("database id is not a valid D1 database id");
+    }
+    params[`database${index}`] = id;
+    return `$database${index}`;
+  });
+  return { placeholders: placeholders.join(", "), params };
 }
 
 function bucketParams(buckets: readonly string[]): {

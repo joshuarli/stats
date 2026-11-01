@@ -47,7 +47,7 @@ const NAMESPACES = ["b25c2595ba784bb1bd51a87a3e87c62b"];
 
 function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[], durableObjectNamespaces: readonly string[]) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, probes: withProbes ? probeTargets : [],
+    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, d1Databases: [], probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }

@@ -1,10 +1,13 @@
-import { BUCKET_MS } from "./queries.ts";
+import { BUCKET_MS, D1_STATEMENT_PREFIX_LENGTH } from "./queries.ts";
 
 export const MAX_ROUTES_PER_PROJECT = 15;
 const ROUTE_KEY_MAX_LENGTH = 80;
 const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
 const ALARM_LABEL_PATTERN = /^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2}/;
 const API_VERSION_SEGMENT = /^v\d+$/;
+export const MAX_D1_STATEMENTS_PER_PROJECT = 10;
+export const D1_ROWS_READ_PER_ROW_WRITTEN_PRICE = 1000;
+const D1_STATEMENT_KEY_MAX_LENGTH = 60;
 const MAX_PLAIN_SEGMENT_LENGTH = 24;
 const MAX_DISTINCT_CHILDREN = 10;
 
@@ -34,10 +37,14 @@ const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
   "do.cpuMsSum": "sum",
   "do.cpuMsMax": "max",
   "do.wallMsSum": "sum",
+  "d1.queries": "sum",
+  "d1.rowsRead": "sum",
+  "d1.rowsWritten": "sum",
 };
 
 const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
   [/^route\..{1,80}\.(invocations|cpuMsSum)$/, "sum"],
+  [/^d1q\..{1,60}\.(queries|rowsRead|rowsWritten)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
   [/^probe\.[a-z][a-z0-9-]{0,31}\.up$/, "min"],
@@ -203,6 +210,61 @@ export function parseDurableObjectRows(rows: readonly unknown[]): MetricPoint[] 
     points.add("do.cpuMsSum", bucketMs, count(record, "cpu_us") / 1000);
     points.add("do.wallMsSum", bucketMs, count(record, "wall_us") / 1000);
     points.add("do.cpuMsMax", bucketMs, count(record, "cpu_max_us") / 1000);
+  }
+  return points.list();
+}
+
+export function parseD1Rows(rows: readonly unknown[]): MetricPoint[] {
+  const points = new PointSet();
+  for (const row of rows) {
+    const record = asRecord(row);
+    const bucketMs = parseUtc(text(record, "bucket"), DATETIME_PATTERN, "bucket");
+    points.add("d1.queries", bucketMs, count(record, "queries"));
+    points.add("d1.rowsRead", bucketMs, count(record, "rows_read"));
+    points.add("d1.rowsWritten", bucketMs, count(record, "rows_written"));
+  }
+  return points.list();
+}
+
+export function d1StatementKey(statement: string): string {
+  const collapsed = statement.replace(/\s+/g, " ").trim().replace(/[^\x20-\x7e]/g, "?");
+  return collapsed.slice(0, Math.min(D1_STATEMENT_KEY_MAX_LENGTH, D1_STATEMENT_PREFIX_LENGTH));
+}
+
+interface StatementBucket {
+  queries: number;
+  rowsRead: number;
+  rowsWritten: number;
+}
+
+export function parseD1StatementRows(rows: readonly unknown[]): MetricPoint[] {
+  const perStatement = new Map<string, { total: number; buckets: Map<number, StatementBucket> }>();
+  for (const row of rows) {
+    const record = asRecord(row);
+    const bucketMs = parseUtc(text(record, "bucket"), DATETIME_PATTERN, "bucket");
+    const key = d1StatementKey(text(record, "statement"));
+    const queries = count(record, "queries");
+    const rowsRead = count(record, "rows_read");
+    const rowsWritten = count(record, "rows_written");
+    const statement = perStatement.get(key) ?? { total: 0, buckets: new Map<number, StatementBucket>() };
+    statement.total += rowsWritten + rowsRead / D1_ROWS_READ_PER_ROW_WRITTEN_PRICE;
+    const bucket = statement.buckets.get(bucketMs) ?? { queries: 0, rowsRead: 0, rowsWritten: 0 };
+    bucket.queries += queries;
+    bucket.rowsRead += rowsRead;
+    bucket.rowsWritten += rowsWritten;
+    statement.buckets.set(bucketMs, bucket);
+    perStatement.set(key, statement);
+  }
+  const costliest = [...perStatement.entries()]
+    .sort(([leftKey, left], [rightKey, right]) => right.total - left.total || leftKey.localeCompare(rightKey))
+    .slice(0, MAX_D1_STATEMENTS_PER_PROJECT);
+  const points = new PointSet();
+  for (const [key, statement] of costliest) {
+    for (const [bucketMs, bucket] of statement.buckets) {
+      points.add(`d1q.${key}.queries`, bucketMs, bucket.queries);
+      points.add(`d1q.${key}.rowsRead`, bucketMs, bucket.rowsRead);
+      points.add(`d1q.${key}.rowsWritten`, bucketMs, bucket.rowsWritten);
+    }
   }
   return points.list();
 }

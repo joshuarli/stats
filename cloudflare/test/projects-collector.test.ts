@@ -1,6 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
+import { readMetricHistory } from "../src/projects/history";
 import type { ProbeFetch } from "../src/projects/probes";
 import type { BoundQuery } from "../src/projects/queries";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
@@ -9,7 +10,7 @@ import workerBody from "./fixtures/analytics/worker.json";
 
 const NOW = Date.UTC(2026, 10, 1, 16, 35);
 const PROJECTS = JSON.stringify([
-  { id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], durableObjectNamespaces: [], probes: [] },
+  { id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], durableObjectNamespaces: [], d1Databases: [], probes: [] },
 ]);
 
 type Rows = { worker: unknown[]; routes: unknown[]; durableObjects: unknown[]; operations: unknown[]; storage: unknown[] };
@@ -115,12 +116,48 @@ describe("collector", () => {
     const result = await runCollector({
       analytics,
       store: stub(),
-      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], probes: [] }]),
+      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] }]),
       now: NOW,
       probeFetch: noProbes,
     });
     expect(result.queries).toBe(2);
     expect(analytics.calls.map((call) => call.query).join(" ")).not.toContain("r2Combined");
+  });
+
+  it("collects D1 totals and ranks statements by billed cost, folding whitespace and keeping ten", async () => {
+    const bucket = "2026-11-01 16:05:00";
+    const statement = (text: string, queries: number, rows_read: number, rows_written: number) => ({ bucket, statement: text, queries, rows_read, rows_written });
+    const d1Statements = [
+      statement("SELECT *\n  FROM big_read", 10, 2_000_000, 0),
+      statement("UPDATE hot   SET a = ?", 10, 10, 2_000),
+      statement("UPDATE hot SET a = ?", 5, 5, 1_000),
+      ...Array.from({ length: 12 }, (_, i) => statement(`INSERT INTO t${i} VALUES (?)`, 1, 0, 1 + i)),
+    ];
+    const analytics: AnalyticsQuery = {
+      async query(request) {
+        if (request.query.includes("d1Queries")) {
+          const data = request.query.includes("AS statement") ? d1Statements : [{ bucket, queries: 40, rows_read: 2_000_015, rows_written: 3_078 }];
+          return { data, statistics: { rows_read: 10 } };
+        }
+        return { data: [], statistics: { rows_read: 1 } };
+      },
+    };
+    const store = stub();
+    const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
+    const result = await runCollector({ analytics, store, projectsJson, now: NOW, probeFetch: noProbes });
+    expect(result.queries).toBe(4);
+    await inside(store, (sql) => {
+      const project = { id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+      const totals = readMetricHistory(sql, project, "1h", "d1", NOW).series;
+      const written = totals.find((series) => series.metric === "d1.rowsWritten")?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+      expect(written).toBe(3_078);
+      const ranked = readMetricHistory(sql, project, "1h", "d1-statements", NOW).series.filter((series) => series.metric.endsWith(".rowsWritten")).map((series) => series.metric);
+      expect(ranked).toHaveLength(10);
+      expect(ranked[0]).toBe("d1q.UPDATE hot SET a = ?.rowsWritten");
+      expect(ranked[1]).toBe("d1q.SELECT * FROM big_read.rowsWritten");
+      const hot = readMetricHistory(sql, project, "1h", "d1-statements", NOW).series.find((series) => series.metric === "d1q.UPDATE hot SET a = ?.rowsWritten");
+      expect(hot?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0)).toBe(3_000);
+    });
   });
 
   it("records a failed run, writes no metrics, logs one fixed line, and rethrows", async () => {

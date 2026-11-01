@@ -8,6 +8,8 @@ import {
   workerBucketMs,
 } from "../src/projects/parse";
 import {
+  d1Query,
+  d1StatementQuery,
   MAX_BUCKETS_PER_PROJECT,
   r2OperationsQuery,
   r2StorageQuery,
@@ -19,11 +21,13 @@ import workerBody from "./fixtures/analytics/worker.json";
 
 const START_MS = Date.UTC(2026, 10, 1, 15, 0);
 const BUCKETS = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
+const DATABASE = "9870c4da-3758-4f0c-ab6d-2372eb34009b";
 
 const built = {
   worker: workerQuery("stuff", START_MS),
   r2Operations: r2OperationsQuery(BUCKETS, START_MS),
   r2Storage: r2StorageQuery(BUCKETS, START_MS),
+  d1: d1Query([DATABASE], START_MS),
 };
 
 function total(points: readonly { metric: string; value: number }[], metric: string): number {
@@ -49,6 +53,19 @@ describe("analytics query text", () => {
         expect(sql).not.toContain(value);
       }
     }
+  });
+
+  it("weights D1 rows by sampleInterval, binds the database id, and orders statements by rows written", () => {
+    const statements = d1StatementQuery([DATABASE], START_MS);
+    for (const bound of [built.d1, statements]) {
+      expect(bound.query).toMatch(/SUM\(rowsRead \* sampleInterval\) AS rows_read/u);
+      expect(bound.query).toMatch(/SUM\(rowsWritten \* sampleInterval\) AS rows_written/u);
+      expect(bound.query).not.toContain(DATABASE);
+      expect(bound.params["database0"]).toBe(DATABASE);
+    }
+    expect(statements.query).toMatch(/ORDER BY rows_written DESC LIMIT \d+$/u);
+    expect(() => d1Query([], START_MS)).toThrow(RangeError);
+    expect(() => d1Query(["x' OR 1=1 --"], START_MS)).toThrow(RangeError);
   });
 
   it("weights event counts by sampleInterval and groups each dataset on its own time column", () => {

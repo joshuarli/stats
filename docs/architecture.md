@@ -70,7 +70,7 @@ Routes under `/api/v1/` (handled in `installation.ts`):
 - `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
   `range` for an explicit window; the response then omits `range`.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|probes|collector`
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`
   (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
@@ -149,7 +149,7 @@ Durable Object storage ceiling.
 
 A project is one entry in the `PROJECTS` text binding: an id, a display name,
 a Worker script, up to eight R2 bucket names, up to eight Durable Object
-namespace ids, and up to eight HTTPS probe URLs. `cloudflare.config.ts` writes the list and validates it when the config
+namespace ids, up to eight D1 database ids, and up to eight HTTPS probe URLs. `cloudflare.config.ts` writes the list and validates it when the config
 is evaluated, so a bad entry fails `make worker-check`. `src/projects/config.ts`
 validates it again on every use and rejects unknown keys, duplicate ids,
 non-HTTPS probe URLs, and bucket names outside the R2 pattern; an invalid list
@@ -159,7 +159,8 @@ answers 503 with a fixed message. There is no create or update API.
 project it reads the trailing 90 minutes through the `ANALYTICS_SQL` binding
 with fixed queries (Worker events and per-route Worker events from
 `logs.workersLogs`, Durable Object invocations when the project lists
-namespaces, R2 operations and storage when it lists buckets) and sends one GET
+namespaces, D1 queries and per-statement rows when it lists databases, R2
+operations and storage when it lists buckets) and sends one GET
 to each probe. The queries live in
 `src/projects/queries.ts`, bind every value as a parameter, and take nothing
 from a request. Counts are `SUM(sampleInterval)`, because the datasets are
@@ -198,6 +199,16 @@ dataset reports no script name, so a namespace id is the only link to a
 project, and it has no storage-size source. Worker CPU is
 CPU time per invocation, not latency; the SQL source has no quantiles. R2
 `userError` (mostly 404s) is shown but never scored.
+
+D1, summed over the project's databases from `events.d1Queries`: `d1.queries`,
+`d1.rowsRead`, `d1.rowsWritten`, all sample-weighted. `d1q.<statement>.queries|rowsRead|rowsWritten`
+cover the 10 statements with the highest billed cost in the collected window,
+where a row written counts as 1000 rows read (the price ratio). The statement
+is the first 160 characters of the query text with whitespace collapsed, cut to
+60 printable ASCII characters; statements are written by the application and
+use bound parameters, so request data does not create series. The dataset
+reports every statement the database ran, so a backfill or a migration shows
+up here as its own statements.
 
 **Missing versus zero.** A five-minute bucket is settled once its end is 45
 minutes old, because analytics rows arrive late. The history API reports `0`

@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
+  parseD1Rows,
+  parseD1StatementRows,
   parseDurableObjectRows,
   parseR2OperationRows,
   parseR2StorageRows,
@@ -8,6 +10,8 @@ import {
 } from "../src/projects/parse.ts";
 import {
   BUCKET_MS,
+  d1Query,
+  d1StatementQuery,
   durableObjectQuery,
   r2OperationsQuery,
   r2StorageQuery,
@@ -19,6 +23,7 @@ const PROJECT = {
   worker: "stuff",
   buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
   durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"],
+  d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"],
 };
 const WINDOW_MS = 90 * 60_000;
 
@@ -68,6 +73,8 @@ const checks = [
   ["durable objects", durableObjectQuery(PROJECT.durableObjectNamespaces, startMs), parseDurableObjectRows],
   ["r2 operations", r2OperationsQuery(PROJECT.buckets, startMs), parseR2OperationRows],
   ["r2 storage", r2StorageQuery(PROJECT.buckets, startMs), parseR2StorageRows],
+  ["d1 totals", d1Query(PROJECT.d1Databases, startMs), parseD1Rows],
+  ["d1 statements", d1StatementQuery(PROJECT.d1Databases, startMs), parseD1StatementRows],
 ];
 
 let failed = false;

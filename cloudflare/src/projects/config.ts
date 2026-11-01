@@ -1,4 +1,10 @@
-import { MAX_BUCKETS_PER_PROJECT, MAX_NAMESPACES_PER_PROJECT, NAMESPACE_ID_PATTERN } from "./queries.ts";
+import {
+  D1_DATABASE_ID_PATTERN,
+  MAX_BUCKETS_PER_PROJECT,
+  MAX_D1_DATABASES_PER_PROJECT,
+  MAX_NAMESPACES_PER_PROJECT,
+  NAMESPACE_ID_PATTERN,
+} from "./queries.ts";
 
 export const MAX_PROBES_PER_PROJECT = 8;
 
@@ -13,6 +19,7 @@ export interface ProjectConfig {
   readonly worker: string;
   readonly buckets: readonly string[];
   readonly durableObjectNamespaces: readonly string[];
+  readonly d1Databases: readonly string[];
   readonly probes: readonly ProbeConfig[];
 }
 
@@ -26,7 +33,7 @@ const WORKER_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const DISPLAY_NAME_MAX = 64;
 
-const PROJECT_KEYS = ["id", "name", "worker", "buckets", "durableObjectNamespaces", "probes"];
+const PROJECT_KEYS = ["id", "name", "worker", "buckets", "durableObjectNamespaces", "d1Databases", "probes"];
 const PROBE_KEYS = ["name", "url"];
 
 export function parseProjects(text: string): ProjectConfig[] {
@@ -60,6 +67,10 @@ function parseProject(entry: unknown, path: string): ProjectConfig {
   if (namespaces.length > MAX_NAMESPACES_PER_PROJECT) {
     throw new ProjectConfigError(`${path}.durableObjectNamespaces: expected at most ${MAX_NAMESPACES_PER_PROJECT} ids`);
   }
+  const databases = array(record["d1Databases"], `${path}.d1Databases`);
+  if (databases.length > MAX_D1_DATABASES_PER_PROJECT) {
+    throw new ProjectConfigError(`${path}.d1Databases: expected at most ${MAX_D1_DATABASES_PER_PROJECT} ids`);
+  }
   const probes = array(record["probes"], `${path}.probes`);
   if (probes.length > MAX_PROBES_PER_PROJECT) {
     throw new ProjectConfigError(`${path}.probes: expected at most ${MAX_PROBES_PER_PROJECT}`);
@@ -76,6 +87,10 @@ function parseProject(entry: unknown, path: string): ProjectConfig {
     durableObjectNamespaces: unique(
       namespaces.map((id, index) => matching(id, NAMESPACE_ID_PATTERN, `${path}.durableObjectNamespaces[${index}]`)),
       `${path}.durableObjectNamespaces`,
+    ),
+    d1Databases: unique(
+      databases.map((id, index) => matching(id, D1_DATABASE_ID_PATTERN, `${path}.d1Databases[${index}]`)),
+      `${path}.d1Databases`,
     ),
     probes: probes.map((probe, index) => {
       const parsed = parseProbe(probe, `${path}.probes[${index}]`);

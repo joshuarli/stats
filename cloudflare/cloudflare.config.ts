@@ -12,6 +12,7 @@ const PROJECTS: readonly ProjectConfig[] = [
     worker: "stuff",
     buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
     durableObjectNamespaces: [],
+    d1Databases: [],
     probes: [
       { name: "crates", url: "https://crates.17166969.xyz/current/registry/config.json" },
       { name: "npm", url: "https://npm.17166969.xyz/current/" },
@@ -25,6 +26,7 @@ const PROJECTS: readonly ProjectConfig[] = [
     worker: "usr-memories",
     buckets: ["usr-memories"],
     durableObjectNamespaces: [],
+    d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"],
     probes: []
   },
   {
@@ -33,6 +35,7 @@ const PROJECTS: readonly ProjectConfig[] = [
     worker: WORKER_NAME,
     buckets: [],
     durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"],
+    d1Databases: [],
     probes: domain === undefined ? [] : [{ name: "health", url: `https://${domain}/health` }]
   }
 ];

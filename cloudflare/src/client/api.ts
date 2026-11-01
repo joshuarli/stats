@@ -182,11 +182,12 @@ export interface Project {
   readonly worker: string;
   readonly buckets: readonly string[];
   readonly durableObjectNamespaces: readonly string[];
+  readonly d1Databases: readonly string[];
   readonly probes: readonly ProbeTarget[];
   readonly collector: CollectorState;
 }
 
-export type ProjectMetricKind = "worker" | "routes" | "durable-objects" | "r2" | "probes";
+export type ProjectMetricKind = "worker" | "routes" | "durable-objects" | "r2" | "d1" | "d1-statements" | "probes";
 
 export interface ProjectSeries {
   readonly metric: string;
@@ -397,6 +398,7 @@ function decodeProject(value: unknown): Project {
     worker: string(entry.worker),
     buckets: array(entry.buckets, string),
     durableObjectNamespaces: array(entry.durableObjectNamespaces, string),
+    d1Databases: array(entry.d1Databases, string),
     probes: array(entry.probes, probe => {
       const target = record(probe);
       return { name: string(target.name), url: string(target.url) };

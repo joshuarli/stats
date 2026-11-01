@@ -6,7 +6,7 @@ const valid = {
   name: "stuff",
   worker: "stuff",
   buckets: ["stuff-mycrates", "stuff-mynpm"],
-  durableObjectNamespaces: [],
+  durableObjectNamespaces: [], d1Databases: [],
   probes: [{ name: "npm", url: "https://npm.17166969.xyz/current/" }],
 };
 
@@ -63,6 +63,15 @@ describe("project registry", () => {
     expect(parse({ ...valid, buckets: [] })[0]?.buckets).toEqual([]);
     expect(rejection({ ...valid, buckets: Array.from({ length: 9 }, (_, i) => `bucket-${i}`) })).toContain("projects[0].buckets: expected at most 8");
     expect(rejection({ ...valid, buckets: ["stuff-mynpm", "stuff-mynpm"] })).toContain("projects[0].buckets: duplicate");
+  });
+
+  it("accepts distinct D1 database ids up to eight and rejects anything else", () => {
+    const id = (n: number) => `9870c4da-3758-4f0c-ab6d-2372eb3400${String(n).padStart(2, "0")}`;
+    expect(parse({ ...valid, d1Databases: [id(9)] })[0]?.d1Databases).toEqual([id(9)]);
+    expect(rejection({ ...valid, d1Databases: Array.from({ length: 9 }, (_, i) => id(i)) })).toContain("projects[0].d1Databases: expected at most 8");
+    expect(rejection({ ...valid, d1Databases: [id(1), id(1)] })).toContain("projects[0].d1Databases: duplicate");
+    expect(rejection({ ...valid, d1Databases: ["usr-memories"] })).toContain("projects[0].d1Databases[0]");
+    expect(rejection(Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "d1Databases")))).toContain("projects[0].d1Databases: missing");
   });
 
   it("accepts only https probe URLs without credentials or fragments", () => {

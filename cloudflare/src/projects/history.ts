@@ -1,13 +1,13 @@
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGE_MS, type RangeKey } from "../limits.ts";
 import { windowStartMs } from "./collector.ts";
 import type { ProjectConfig } from "./config.ts";
-import { aggregationOf } from "./parse.ts";
+import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.ts";
 
 const STALE_AFTER_MS = 15 * 60_000;
 const MAX_HISTORY_POINTS = 900;
-const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "probes", "collector"] as const;
+const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "d1", "d1-statements", "probes", "collector"] as const;
 type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 const BUCKET_WIDTHS_MS = [BUCKET_MS, 15 * 60_000, HOUR_MS, 3 * HOUR_MS] as const;
@@ -22,6 +22,7 @@ const WORKER_METRICS = [
   "worker.status.other",
 ];
 const DURABLE_OBJECT_METRICS = ["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum"];
+const D1_METRICS = ["d1.queries", "d1.rowsRead", "d1.rowsWritten"];
 const R2_SUFFIXES = ["ops.success", "ops.userError", "ops.other", "storageBytes", "objects"];
 
 interface CollectorSummary {
@@ -78,6 +79,10 @@ function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "col
       return DURABLE_OBJECT_METRICS;
     case "r2":
       return project.buckets.flatMap((bucket) => R2_SUFFIXES.map((suffix) => `r2.${bucket}.${suffix}`));
+    case "d1":
+      return D1_METRICS;
+    case "d1-statements":
+      return [];
     case "probes":
       return project.probes.flatMap((probe) => [`probe.${probe.name}.up`, `probe.${probe.name}.ms`]);
   }
@@ -124,7 +129,7 @@ export function readMetricHistory(
   const fromMs = floored < now - retentionMs ? floored + stepMs : floored;
   const count = Math.floor((now - fromMs) / stepMs) + 1;
   const rows = readGrouped(sql, project.id, kind, stepMs, fromMs);
-  const metrics = kind === "routes" ? routeMetrics(rows) : expectedMetrics(project, kind);
+  const metrics = kind === "routes" ? routeMetrics(rows) : kind === "d1-statements" ? statementMetrics(rows) : expectedMetrics(project, kind);
   const fillable = fillableBuckets(sql, fromMs, now);
   const series = metrics.map((metric) => {
     const aggregation = aggregationOf(metric);
@@ -154,6 +159,8 @@ const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = {
   routes: "route.",
   "durable-objects": "do.",
   r2: "r2.",
+  d1: "d1.",
+  "d1-statements": "d1q.",
   probes: "probe.",
 };
 
@@ -167,6 +174,19 @@ function routeMetrics(rows: Grouped): string[] {
   return [...routes]
     .sort((left, right) => cpuTotal(right) - cpuTotal(left) || left.localeCompare(right))
     .flatMap((route) => [`${route}.invocations`, `${route}.cpuMsSum`]);
+}
+
+function statementMetrics(rows: Grouped): string[] {
+  const total = (statement: string, suffix: string): number => {
+    let sum = 0;
+    for (const folded of rows.get(`${statement}.${suffix}`)?.values() ?? []) sum += folded.sum;
+    return sum;
+  };
+  const cost = (statement: string): number => total(statement, "rowsWritten") + total(statement, "rowsRead") / D1_ROWS_READ_PER_ROW_WRITTEN_PRICE;
+  const statements = new Set([...rows.keys()].map((metric) => metric.slice(0, metric.lastIndexOf("."))));
+  return [...statements]
+    .sort((left, right) => cost(right) - cost(left) || left.localeCompare(right))
+    .flatMap((statement) => [`${statement}.queries`, `${statement}.rowsRead`, `${statement}.rowsWritten`]);
 }
 
 function readGrouped(
