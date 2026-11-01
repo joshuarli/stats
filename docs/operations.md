@@ -37,6 +37,11 @@ then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
 
+A host deploy installs through `stats.new` and `mv`, keeps the previous binary
+as `/usr/local/bin/stats.prev`, and after restart polls `/api/v1/hosts` for a
+new `lastReceivedAtMs` on that host. The poll uses `cf access token`, so run
+`cf access login https://<host>` once before deploying a host directly.
+
 ## Rollback
 
 A host deploy copies the current binary to `/usr/local/bin/stats.prev` before

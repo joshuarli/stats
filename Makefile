@@ -4,6 +4,7 @@ STATS_DOMAIN ?= stats.17166969.xyz
 STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
 export STATS_DOMAIN
+export STATS_URL
 
 .PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-oracle deploy-threadripper smoke-deployed release check
 work-ready:

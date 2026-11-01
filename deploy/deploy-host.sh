@@ -65,12 +65,61 @@ case "$init" in
 esac
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/stats-host.XXXXXX")
-trap 'rm -rf "$work"' 0 1 2 15
+remote_tmp=
+cleanup() {
+  if [ -n "$remote_tmp" ]; then
+    remote "rm -f '$remote_tmp'" >/dev/null 2>&1 || true
+  fi
+}
+trap 'cleanup; rm -rf "$work"' 0 1 2 15
+
+base=${STATS_URL:-https://stats.17166969.xyz}
+access_token=
+host_id=
+baseline=
+
+api() {
+  if [ -z "$access_token" ]; then
+    access_token=$(cf access token "$base") || return 1
+  fi
+  curl -fsS -H "Cf-Access-Jwt-Assertion: $access_token" "$@"
+}
+
+api_receipt() {
+  # shellcheck disable=SC2016
+  api "$base/api/v1/hosts" | jaq --arg id "$host_id" -er '[.hosts[] | select(.hostId == $id)][0].lastReceivedAtMs // 0'
+}
+
+prepare_receipt() {
+  host_id=$(remote "$elevate cat /etc/stats/agent.json" | jaq -er '.hostId') || {
+    echo "$label: cannot read the agent hostId" >&2
+    exit 1
+  }
+  baseline=$(api_receipt) || {
+    echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
+    exit 1
+  }
+}
+
+wait_for_upload() {
+  deadline=$(( $(date +%s) + 90 ))
+  while :; do
+    current=$(api_receipt) || current=
+    if [ -n "$current" ] && [ "$current" -gt "$baseline" ]; then
+      return 0
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "$label: no fresh receipt for $host_id within 90s" >&2
+      return 1
+    fi
+    sleep 5
+  done
+}
 
 ssh_opts=${SSH_OPTS:--o BatchMode=yes -o ConnectTimeout=10}
 # shellcheck disable=SC2086,SC2029
 remote() {
-  ssh $ssh_opts "$ssh_target" "$@"
+  ssh $ssh_opts -- "$ssh_target" "$@"
 }
 
 hash_file() {
@@ -119,8 +168,10 @@ if [ "$mode" = "--rollback" ]; then
     echo "$label: /usr/local/bin/stats.prev is missing; nothing to roll back to" >&2
     exit 1
   fi
+  prepare_receipt
   echo "$label: restoring the previous agent"
-  remote "$elevate install -m 0755 -o root -g root /usr/local/bin/stats.prev /usr/local/bin/stats"
+  remote "$elevate install -m 0755 -o root -g root /usr/local/bin/stats.prev /usr/local/bin/stats.new"
+  remote "$elevate mv -f /usr/local/bin/stats.new /usr/local/bin/stats"
   case "$init" in
     systemd) remote "$elevate systemctl restart stats" ;;
     openrc) remote "$elevate /sbin/rc-service stats restart >/dev/null" ;;
@@ -129,6 +180,7 @@ if [ "$mode" = "--rollback" ]; then
     echo "$label: service did not become active after rollback" >&2
     exit 1
   fi
+  wait_for_upload || exit 1
   echo "$label: rolled back"
   exit 0
 fi
@@ -138,13 +190,17 @@ if [ "$binary_changed" -eq 0 ] && [ "$unit_changed" -eq 0 ] && [ "$active" -eq 1
   exit 0
 fi
 
+prepare_receipt
+
 if [ "$binary_changed" -eq 1 ]; then
   echo "$label: installing agent $version"
   remote_tmp=$(remote 'mktemp /tmp/stats.XXXXXX')
   remote "cat > '$remote_tmp'" < "$artifact"
   remote "if [ -f /usr/local/bin/stats ]; then $elevate install -m 0755 -o root -g root /usr/local/bin/stats /usr/local/bin/stats.prev; fi"
-  remote "$elevate install -m 0755 -o root -g root '$remote_tmp' /usr/local/bin/stats"
+  remote "$elevate install -m 0755 -o root -g root '$remote_tmp' /usr/local/bin/stats.new"
+  remote "$elevate mv -f /usr/local/bin/stats.new /usr/local/bin/stats"
   remote "rm -f '$remote_tmp'"
+  remote_tmp=
 fi
 
 if [ "$unit_changed" -eq 1 ]; then
@@ -183,5 +239,6 @@ if ! is_active; then
   echo "$label: service did not become active" >&2
   exit 1
 fi
+wait_for_upload || exit 1
 
 echo "$label: deployed"

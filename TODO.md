@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-10 · P3 · Host deploy installs non-atomically and reports success before the agent uploads
-
-- **Area:** Operability
-- **Where:** `deploy/deploy-host.sh:119-121`, `deploy/deploy-host.sh:157`, `deploy/deploy-host.sh:66-68`
-- **Problem:** The binary is installed straight to `/usr/local/bin/stats`, and the remote `mktemp /tmp/stats.XXXXXX` file is left behind if a later step fails. The only post-check is `is_active` immediately after the restart. With `Restart=always`, an agent that crashes on startup can still read as active. Nothing checks that the host's `lastReceivedAtMs` advances. `ssh` takes the target without `--`.
-- **Recommendation:** Install to `stats.new` and `mv` it into place, trap-remove the remote temp file, and after the restart poll until `/api/v1/hosts` shows a fresh receipt for the host.
-- **Fix with:** lifecycle-concurrency
-- **Effort:** M
-
 ### STA-11 · P3 · Deploy paths skip gates or bypass them
 
 - **Area:** Build
