@@ -19,6 +19,9 @@ importers:
       solid-js:
         specifier: 2.0.0-rc.20
         version: 2.0.0-rc.20
+      uplot:
+        specifier: 1.6.32
+        version: 1.6.32
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.v.8
@@ -1362,6 +1365,9 @@ packages:
     peerDependencies:
       browserslist: '>= 4.21.0'
 
+  uplot@1.6.32:
+    resolution: {integrity: sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==}
+
   vite@8.3.5:
     resolution: {integrity: sha512-z1YpjieJ9g0ebTmQpLBv/oq9E3F9EIlOe+7LahW8SrE3LTiG3udBRUXQOlYXP9b+IC2q2phHeVxj9xGlw34OEQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -2565,6 +2571,8 @@ snapshots:
       browserslist: 4.29.5
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uplot@1.6.32: {}
 
   vite@8.3.5(esbuild@0.28.2):
     dependencies:
