@@ -5,6 +5,7 @@ import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, compact, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
+import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
@@ -110,11 +111,12 @@ interface Migration {
 const MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] },
   { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] },
-  { version: 3, statements: [HOST_SYSTEM] }
+  { version: 3, statements: [HOST_SYSTEM] },
+  { version: 4, statements: PROJECT_STATEMENTS }
 ];
 
-export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number }): number {
-  return Math.max(deleted.raw, deleted.minute, deleted.hour) >= 1000 ? 60_000 : 600_000;
+export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
+  return Math.max(deleted.raw, deleted.minute, deleted.hour, deleted.project ?? 0) >= 1000 ? 60_000 : 600_000;
 }
 
 export function migrate(storage: DurableObjectStorage): void {
@@ -351,14 +353,33 @@ export class Installation extends DurableObject<Env> {
     return byKind;
   }
 
+  private async ensureAlarm(now: number): Promise<void> {
+    const alarm = await this.ctx.storage.getAlarm();
+    if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
+  }
+
+  async recordCollectorRun(run: CollectorRun): Promise<{ metricRowsWritten: number }> {
+    let metricRowsWritten = 0;
+    this.ctx.storage.transactionSync(() => {
+      if (run.ok) {
+        for (const entry of run.collected) metricRowsWritten += upsertPoints(this.ctx.storage.sql, entry.project, entry.points);
+      }
+      recordRun(this.ctx.storage.sql, run);
+    });
+    await this.ensureAlarm(this.now());
+    return { metricRowsWritten };
+  }
+
   override async alarm(): Promise<void> {
     try {
       const now = this.now();
       const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
       const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
       const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
+      const projectRows = purgeExpired(this.ctx.storage.sql, now);
+      const project = Math.max(projectRows.samples, projectRows.hours);
       if (raw + minute + hour > 0) this.invalidateHistory();
-      await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
+      await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour, project }));
     } catch (error) {
       console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
       throw error;
@@ -469,8 +490,7 @@ export class Installation extends DurableObject<Env> {
       const code = rejected[0]?.code ?? "invalid_sample";
       return this.reject(code, "no samples were accepted", 400, parsed.hostId, {}, { rejected });
     }
-    const alarm = await this.ctx.storage.getAlarm();
-    if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
+    await this.ensureAlarm(now);
     return json({ v: 1, accepted, duplicates, rejected });
   }
 
