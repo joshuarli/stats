@@ -1,4 +1,4 @@
-import { For, type ParentProps } from "solid-js";
+import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
@@ -20,44 +20,58 @@ export function Widget(props: ParentProps<{
   readonly meta?: JSX.Element | undefined;
   readonly class?: string | undefined;
   readonly bodyClass?: string | undefined;
+  readonly expandable?: boolean | undefined;
 }>): JSX.Element {
+  const [expanded, setExpanded] = createSignal(false);
+  createEffect(expanded, open => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setExpanded(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  });
+  const classes = () => ["widget", props.class, expanded() ? "expanded" : undefined].filter(Boolean).join(" ");
   return (
-    <section class={props.class === undefined ? "widget" : `widget ${props.class}`}>
-      <header class="widget-head">
-        <div class="widget-title">
-          <h2>{props.title}</h2>
-          {props.subtitle === undefined ? null : <p>{props.subtitle}</p>}
-        </div>
-        {props.meta === undefined ? null : <div class="widget-meta">{props.meta}</div>}
-      </header>
-      <div class={props.bodyClass === undefined ? "widget-body" : `widget-body ${props.bodyClass}`}>{props.children}</div>
-    </section>
+    <>
+      <Show when={expanded()}>
+        <button class="veil" type="button" aria-label="Close expanded chart" tabindex="-1" onClick={() => setExpanded(false)} />
+      </Show>
+      <section class={classes()}>
+        <header class="widget-head">
+          <div class="widget-title">
+            <h2>{props.title}</h2>
+            {props.subtitle === undefined ? null : <p>{props.subtitle}</p>}
+          </div>
+          <div class="widget-meta">
+            {props.meta}
+            <Show when={props.expandable === true}>
+              <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} onClick={() => setExpanded(value => !value)}>
+                <Icon name="expand" size={12} />
+              </button>
+            </Show>
+          </div>
+        </header>
+        <div class={props.bodyClass === undefined ? "widget-body" : `widget-body ${props.bodyClass}`}>{props.children}</div>
+      </section>
+    </>
   );
 }
 
-export function MetricTile(props: {
+export function Tile(props: {
   readonly label: string;
   readonly value: string;
   readonly detail?: string | undefined;
-  readonly tone?: Tone | undefined;
-  readonly icon: IconName;
   readonly spark?: JSX.Element | undefined;
-  readonly meter?: number | undefined;
 }): JSX.Element {
   return (
-    <article class={`metric metric-${props.tone ?? "neutral"}`}>
-      <div class="metric-head">
-        <span class="metric-icon"><Icon name={props.icon} size={15} /></span>
-        <span class="metric-label">{props.label}</span>
-      </div>
-      <div class="metric-value">{props.value}</div>
-      {props.detail === undefined ? null : <div class="metric-detail">{props.detail}</div>}
-      {props.meter === undefined ? null : (
-        <div class="meter" aria-hidden="true">
-          <span style={`width:${Math.min(100, Math.max(0, props.meter)).toFixed(1)}%`} />
-        </div>
-      )}
-      {props.spark === undefined ? null : <div class="metric-spark">{props.spark}</div>}
+    <article class="tile">
+      <div class="tile-label">{props.label}</div>
+      <div class="tile-value">{props.value}</div>
+      {props.detail === undefined ? null : <div class="tile-detail">{props.detail}</div>}
+      {props.spark === undefined ? null : <div class="tile-spark">{props.spark}</div>}
     </article>
   );
 }
@@ -148,17 +162,12 @@ export function Pagination(props: {
   );
 }
 
-export function KeyValue(props: { readonly items: readonly { readonly label: string; readonly value: string }[] }): JSX.Element {
+export function Meter(props: { readonly value: number | undefined; readonly warn: number; readonly bad: number }): JSX.Element {
+  const clamped = () => props.value === undefined || !Number.isFinite(props.value) ? 0 : Math.min(100, Math.max(0, props.value));
+  const tone = () => props.value === undefined ? "tone-neutral" : props.value >= props.bad ? "tone-bad" : props.value >= props.warn ? "tone-warn" : "tone-neutral";
   return (
-    <dl class="key-values">
-      <For each={props.items}>
-        {(item) => (
-          <div>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
-          </div>
-        )}
-      </For>
-    </dl>
+    <div class="meter" aria-hidden="true">
+      <span class={tone()} style={`width:${clamped().toFixed(1)}%`} />
+    </div>
   );
 }

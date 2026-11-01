@@ -14,6 +14,7 @@ export function loadHosts(): Promise<readonly Host[]> {
 export interface FleetRow {
   readonly host: Host;
   readonly summary: readonly SummaryPoint[];
+  readonly stepMs: number;
   readonly disks: readonly DiskSeries[];
   readonly nets: readonly NetSeries[];
 }
@@ -37,6 +38,7 @@ export function loadFleetRows(hosts: readonly Host[], range: string): Promise<re
     return {
       host,
       summary: summary.points ?? [],
+      stepMs: summary.stepMs,
       disks: disks.series ?? [],
       nets: nets.series ?? []
     };

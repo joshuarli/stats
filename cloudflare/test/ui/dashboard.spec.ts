@@ -77,6 +77,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(cpuChart).toHaveAttribute("tabindex", "0");
   await cpuChart.focus();
   await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".chart-tip").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "true");
   const load = await page.evaluate(() => Math.round(performance.getEntriesByType("navigation")[0]?.duration ?? 0));
   console.log(`dashboard load ${load} ms`);
@@ -104,7 +105,7 @@ test("missing and stale data never become zero", async ({ page }) => {
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
 });
 
-test("search filters the fleet and the theme control switches schemes", async ({ page }, testInfo) => {
+test("search filters the fleet and status facets narrow it", async ({ page }) => {
   await mock(page);
   await page.goto("/");
   const table = page.locator("table");
@@ -117,12 +118,51 @@ test("search filters the fleet and the theme control switches schemes", async ({
   await search.fill("alpha");
   await expect(table).toContainText("alpha");
 
-  await page.getByRole("button", { name: "Switch to dark theme" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.waitForTimeout(200);
-  await page.screenshot({ path: testInfo.outputPath("fleet-dark.png"), fullPage: true });
-  await page.getByRole("button", { name: "Switch to light theme" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.getByLabel("revoked").check();
+  await expect(page.getByText("No hosts match this view.")).toBeVisible();
+  await page.getByLabel("revoked").uncheck();
+  await expect(table).toContainText("alpha");
+});
+
+test("dragging a chart zooms the time window, and escape returns to live", async ({ page, isMobile }) => {
+  test.skip(isMobile, "drag selection needs a pointer");
+  await mock(page);
+  await page.goto("/");
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const plot = page.locator(".chart-plot .u-over").first();
+  await expect(plot).toBeVisible();
+  const box = await plot.boundingBox();
+  if (box === null) throw new Error("chart plot has no box");
+  await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
+
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.getByLabel("Visible time window")).toContainText(/\d+s$/);
+  await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Back to live/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("legend rows isolate and restore series", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  const cpuLegend = page.locator(".chart", { has: page.getByRole("img", { name: /CPU;/ }) }).locator(".chart-legend");
+  await expect(cpuLegend).toContainText("iowait");
+  await cpuLegend.getByRole("button", { name: "Show only user" }).click();
+  await expect(cpuLegend.getByRole("button", { name: "Show only user" })).toHaveAttribute("aria-pressed", "true");
+  await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "false");
+  await cpuLegend.getByRole("button", { name: "Show only user" }).click();
+  await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("mobile layout has no horizontal page overflow", async ({ page }, testInfo) => {

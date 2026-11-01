@@ -2,130 +2,102 @@ import { createEffect, createMemo, createSignal, Errored, For, Loading, onSettle
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import { Icon } from "./components/Icon";
-import { Skeleton } from "./components/ui";
-import { clock } from "./format";
+import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
-import { statusFor } from "./status";
-import { TelemetryContext, type Range, type Theme, useTelemetry } from "./state";
+import { createViewState, LIVE_INTERVAL_MS, TelemetryContext, useTelemetry, type Range } from "./state";
 
-function initialTheme(): Theme {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
+
+function isTyping(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName));
 }
 
 export function Shell(props: ParentProps): JSX.Element {
   const [range, setRange] = createSignal<Range>("1h");
   const [now, setNow] = createSignal(Date.now());
-  const [theme, setTheme] = createSignal<Theme>(initialTheme());
   const hosts = createMemo(loadHosts);
+  const views = createViewState(range, now);
+  const location = useLocation();
 
   onSettled(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
-    return () => window.clearInterval(timer);
+    const clock = window.setInterval(() => setNow(Date.now()), 10_000);
+    const live = window.setInterval(() => {
+      if (!document.hidden && views.live() && views.view() === null) views.requestRefresh();
+    }, LIVE_INTERVAL_MS);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (event.key === "z") views.zoomOut();
+      else if (event.key === "l") views.toggleLive();
+      else if (event.key === "[") views.pan(-1);
+      else if (event.key === "]") views.pan(1);
+      else if (event.key === "Escape") views.resetZoom();
+      else if (event.key === "/") {
+        const search = document.querySelector<HTMLInputElement>("input[type=search]");
+        if (search === null) return;
+        event.preventDefault();
+        search.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearInterval(clock);
+      window.clearInterval(live);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   });
 
-  createEffect(() => theme(), value => {
-    document.documentElement.dataset.theme = value;
-  });
+  createEffect(() => range(), views.resetZoom, { defer: true });
+  createEffect(() => location.pathname, views.resetZoom, { defer: true });
 
-  const toggleTheme = () => setTheme(value => (value === "dark" ? "light" : "dark"));
   const refreshHosts = async () => {
     await refresh(hosts);
   };
 
   return (
-    <TelemetryContext value={{ range, setRange, now, hosts, refreshHosts, theme, toggleTheme }}>
-      <div class="app-shell">
-        <Sidebar />
-        <div class="app-main">
-          <Topbar />
-          <main class="content">{props.children}</main>
+    <TelemetryContext value={{ range, setRange, now, hosts, refreshHosts, ...views }}>
+      <header class="topbar">
+        <div class="topbar-start">
+          <a class="brand" href="#/" aria-label="Stats home">stats</a>
+          <Breadcrumb />
         </div>
-      </div>
+        <TimeBar />
+      </header>
+      <main class="content">{props.children}</main>
     </TelemetryContext>
   );
 }
 
-function Sidebar(): JSX.Element {
-  const { hosts } = useTelemetry();
+function Breadcrumb(): JSX.Element {
   const location = useLocation();
+  const current = () => HOST_PATH.exec(location.pathname)?.[1];
   return (
-    <aside class="sidebar">
-      <a class="brand" href="#/" aria-label="Stats home">
-        <span class="brand-mark"><Icon name="activity" size={18} /></span>
-        <span class="brand-copy">
-          <strong>Stats</strong>
-          <small>Telemetry</small>
-        </span>
-      </a>
-      <nav class="side-nav" aria-label="Main">
-        <div class="nav-group">
-          <p class="nav-label">Dashboards</p>
-          <a class={location.pathname === "/" ? "nav-item active" : "nav-item"} href="#/">
-            <Icon name="overview" size={15} />
-            <span>Fleet overview</span>
-          </a>
-        </div>
-        <div class="nav-group hosts-group">
-          <p class="nav-label">Hosts</p>
-          <Errored fallback={<p class="nav-error">Host directory unavailable.</p>}>
-            <Loading fallback={<Skeleton rows={4} />}>
-              <ul class="host-list">
-                <For each={hosts()}>
-                  {(host) => {
-                    const status = () => statusFor(host, host.lastReceivedAtMs);
-                    return (
-                      <li>
-                        <a
-                          class={location.pathname === `/host/${host.hostId}` ? "host-link active" : "host-link"}
-                          href={`#/host/${host.hostId}`}
-                          title={host.hostId}
-                        >
-                          <span class={`status-dot tone-${status().tone}`} aria-hidden="true" />
-                          <span class="host-link-name">{host.name}</span>
-                          <span class="host-link-status">{status().label}</span>
-                        </a>
-                      </li>
-                    );
-                  }}
-                </For>
-              </ul>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      {current() === undefined ? <span>Hosts</span> : (
+        <>
+          <a href="#/">Hosts</a>
+          <Icon name="chevronRight" size={12} />
+          <Errored fallback={null}>
+            <Loading fallback={null}>
+              <HostSwitcher current={current() ?? ""} />
             </Loading>
           </Errored>
-        </div>
-      </nav>
-      <div class="sidebar-foot">
-        <Icon name="lock" size={13} />
-        <span>Cloudflare Access</span>
-      </div>
-    </aside>
+        </>
+      )}
+    </nav>
   );
 }
 
-function Topbar(): JSX.Element {
-  const { now, theme, toggleTheme } = useTelemetry();
-  const location = useLocation();
-  const isHost = () => location.pathname.startsWith("/host/");
+function HostSwitcher(props: { readonly current: string }): JSX.Element {
+  const { hosts } = useTelemetry();
   return (
-    <header class="topbar">
-      <nav class="breadcrumb" aria-label="Breadcrumb">
-        <span>Observability</span>
-        <Icon name="chevronRight" size={12} />
-        <a href="#/">Hosts</a>
-        <Icon name="chevronRight" size={12} />
-        <strong>{isHost() ? "Host detail" : "Fleet overview"}</strong>
-      </nav>
-      <div class="topbar-actions">
-        <span class="live-clock"><span class="pulse" aria-hidden="true" />{clock(now())}</span>
-        <button
-          class="btn btn-ghost btn-icon"
-          type="button"
-          aria-label={theme() === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          title={theme() === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          onClick={toggleTheme}
-        >
-          <Icon name={theme() === "dark" ? "sun" : "moon"} size={16} />
-        </button>
-      </div>
-    </header>
+    <select
+      class="host-switcher"
+      aria-label="Switch host"
+      onChange={(event) => { window.location.hash = `#/host/${event.currentTarget.value}`; }}
+    >
+      <For each={hosts()}>
+        {(host) => <option value={host.hostId} selected={host.hostId === props.current}>{host.name}</option>}
+      </For>
+    </select>
   );
 }

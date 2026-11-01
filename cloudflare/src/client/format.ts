@@ -65,6 +65,17 @@ export function timestamp(ms: number | undefined): string {
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+export function dateTime(ms: number | undefined): string {
+  if (!isFiniteNumber(ms)) return unavailableText;
+  return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+}
+
+export function axisTime(ms: number, spanMs: number): string {
+  const date = new Date(ms);
+  const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", ...(spanMs <= 900_000 ? { second: "2-digit" as const } : {}), hourCycle: "h23" });
+  return spanMs <= 129_600_000 ? time : `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time}`;
+}
+
 export function clock(ms: number | undefined): string {
   if (!isFiniteNumber(ms)) return unavailableText;
   return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });

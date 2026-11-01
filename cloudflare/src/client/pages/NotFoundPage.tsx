@@ -5,12 +5,12 @@ import { EmptyState } from "../components/ui";
 export function NotFoundPage(): JSX.Element {
   return (
     <>
-      <PageHeader eyebrow="Navigation" title="Page not found" subtitle="The requested dashboard route does not exist." />
+      <PageHeader title="Page not found"><span class="page-sub">The requested dashboard route does not exist.</span></PageHeader>
       <EmptyState
         icon="search"
         title="Nothing lives at this address."
         detail="Use the fleet overview to choose a host or refresh the dashboard."
-        action={<a class="btn btn-primary" href="#/">Back to fleet</a>}
+        action={<a class="btn" href="#/">Back to fleet</a>}
       />
     </>
   );

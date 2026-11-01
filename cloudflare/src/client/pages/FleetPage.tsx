@@ -1,41 +1,64 @@
-import { createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { pointsIn } from "../chart-data";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
-import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest } from "../metrics";
+import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
 import { loadFleetRows, type FleetRow } from "../queries";
-import { statusFor } from "../status";
-import { rangeLabels, useTelemetry } from "../state";
-import { PageHeader, RangePicker, RefreshButton } from "../components/PageHeader";
+import { statusFor, type HostStatus } from "../status";
+import { useTelemetry } from "../state";
+import type { Host } from "../api";
+import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
-import { Badge, EmptyState, ErrorState, MetricTile, Notice, Pagination, Skeleton, Widget } from "../components/ui";
+import { TimeChart } from "../components/TimeChart";
+import { Badge, EmptyState, ErrorState, Meter, Notice, Pagination, Skeleton, Widget } from "../components/ui";
 
 const PAGE_SIZE = 10;
-const filters = [
-  { value: "all", label: "All hosts" },
-  { value: "online", label: "Online" },
-  { value: "stale", label: "Stale" },
-  { value: "revoked", label: "Revoked" }
-] as const;
-type Filter = (typeof filters)[number]["value"];
+const PALETTE_SIZE = 8;
+const facetLabels = ["online", "stale", "no samples", "revoked"] as const;
+type FacetLabel = (typeof facetLabels)[number];
+const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
+type SortKey = "name" | "status" | "seen";
+interface Sort { readonly key: SortKey; readonly direction: 1 | -1 }
+
+function isFacetLabel(label: string): label is FacetLabel {
+  return (facetLabels as readonly string[]).includes(label);
+}
+
+function hostStatus(host: Host): HostStatus {
+  return statusFor(host, host.lastReceivedAtMs);
+}
+
+function compareHosts(sort: Sort): (left: Host, right: Host) => number {
+  return (left, right) => {
+    const byName = left.name.localeCompare(right.name);
+    const result = sort.key === "name"
+      ? byName
+      : sort.key === "status"
+        ? statusRank[hostStatus(left).label] - statusRank[hostStatus(right).label] || byName
+        : (right.lastReceivedAtMs ?? 0) - (left.lastReceivedAtMs ?? 0);
+    return result * sort.direction;
+  };
+}
 
 export function FleetPage(): JSX.Element {
-  const { range, hosts, now, refreshHosts } = useTelemetry();
+  const { range, hosts, now, refreshHosts, tick, view } = useTelemetry();
   const [search, setSearch] = createSignal("");
-  const [filter, setFilter] = createSignal<Filter>("all");
+  const [selected, setSelected] = createSignal<ReadonlySet<FacetLabel>>(new Set<FacetLabel>());
+  const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
   const [page, setPage] = createSignal(1);
-  const [refreshing, setRefreshing] = createSignal(false);
+  const [hover, setHover] = createSignal<string | null>(null);
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
 
   const filtered = createMemo(() => {
     const text = search().trim().toLowerCase();
-    const selected = filter();
-    return hosts().filter(host => {
-      const status = statusFor(host, host.lastReceivedAtMs).label;
-      const matchesFilter = selected === "all" || status === selected;
-      const matchesSearch = text.length === 0 || host.name.toLowerCase().includes(text) || host.hostId.includes(text);
-      return matchesFilter && matchesSearch;
+    const chosen = selected();
+    const matching = hosts().filter(host => {
+      const label = hostStatus(host).label;
+      const matchesStatus = chosen.size === 0 || (isFacetLabel(label) && chosen.has(label));
+      return matchesStatus && (text.length === 0 || host.name.toLowerCase().includes(text) || host.hostId.includes(text));
     });
+    return matching.sort(compareHosts(sort()));
   });
 
   const pages = createMemo(() => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)));
@@ -44,122 +67,173 @@ export function FleetPage(): JSX.Element {
   const rows = createMemo(() => loadFleetRows(pageHosts(), range()));
 
   const doRefresh = async () => {
-    setRefreshing(true);
     setRefreshError(null);
     try {
       await Promise.all([refreshHosts(), refresh(rows)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
-    } finally {
-      setRefreshing(false);
     }
   };
+  createEffect(() => tick(), () => { void doRefresh(); }, { defer: true });
 
   const counts = createMemo(() => {
     const all = hosts();
-    return {
-      all: all.length,
-      online: all.filter(host => statusFor(host, host.lastReceivedAtMs).label === "online").length,
-      stale: all.filter(host => statusFor(host, host.lastReceivedAtMs).label === "stale").length,
-      revoked: all.filter(host => host.revoked).length
-    };
+    const byLabel = (label: FacetLabel) => all.filter(host => hostStatus(host).label === label).length;
+    return { all: all.length, online: byLabel("online"), stale: byLabel("stale"), noSamples: byLabel("no samples"), revoked: byLabel("revoked") };
   });
+
+  const toggle = (label: FacetLabel) => {
+    setSelected(current => {
+      const next = new Set(current);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+    setPage(1);
+  };
+
+  const sortBy = (key: SortKey) => setSort(current => ({ key, direction: current.key === key ? (current.direction === 1 ? -1 : 1) : 1 }));
+  const colorOf = (host: Host) => Math.max(0, hosts().findIndex(candidate => candidate.hostId === host.hostId)) % PALETTE_SIZE;
 
   return (
     <>
-      <PageHeader
-        eyebrow="Host telemetry"
-        title="Fleet overview"
-        subtitle="Host health, resource pressure, and throughput from accepted samples."
-        actions={
-          <>
-            <RangePicker />
-            <RefreshButton pending={refreshing()} onClick={() => void doRefresh()} />
-          </>
-        }
-      />
+      <PageHeader title="Hosts" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line">
+        <span class="page-sub">
+          {counts().all} provisioned · {counts().online} reporting · {counts().stale + counts().noSamples} stale · {counts().revoked} revoked
+        </span>
+      </PageHeader>
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
-      <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
-        <Loading fallback={<FleetSkeleton />}>
-          <FleetDashboard
-            rows={rows()}
-            range={rangeLabels[range()]}
-            allCounts={counts()}
-            total={filtered().length}
-            search={latest(search)}
-            setSearch={setSearch}
-            filter={latest(filter)}
-            setFilter={setFilter}
-            page={Math.min(latest(page), pages())}
-            pages={pages()}
-            setPage={setPage}
-            now={now()}
-            pending={isPending(rows)}
-          />
-        </Loading>
-      </Errored>
+      <div class="fleet-layout">
+        <Facets counts={counts()} selected={selected()} toggle={toggle} clear={() => { setSelected(new Set<FacetLabel>()); setPage(1); }} />
+        <div class="fleet-main">
+          <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
+            <Loading fallback={<FleetSkeleton />}>
+              <FleetDashboard
+                rows={rows()}
+                colorOf={colorOf}
+                total={filtered().length}
+                allTotal={counts().all}
+                search={latest(search)}
+                setSearch={value => { setSearch(value); setPage(1); }}
+                clearFilters={() => { setSearch(""); setSelected(new Set<FacetLabel>()); setPage(1); }}
+                sort={sort()}
+                sortBy={sortBy}
+                page={Math.min(latest(page), pages())}
+                pages={pages()}
+                setPage={setPage}
+                now={now()}
+                pending={isPending(rows)}
+                hover={hover()}
+                setHover={setHover}
+                windowed={view() !== null}
+              />
+            </Loading>
+          </Errored>
+        </div>
+      </div>
     </>
+  );
+}
+
+function Facets(props: {
+  readonly counts: { readonly online: number; readonly stale: number; readonly noSamples: number; readonly revoked: number };
+  readonly selected: ReadonlySet<FacetLabel>;
+  readonly toggle: (label: FacetLabel) => void;
+  readonly clear: () => void;
+}): JSX.Element {
+  const entries = () => [
+    { label: "online" as const, count: props.counts.online, tone: "ok" },
+    { label: "stale" as const, count: props.counts.stale, tone: "warn" },
+    { label: "no samples" as const, count: props.counts.noSamples, tone: "neutral" },
+    { label: "revoked" as const, count: props.counts.revoked, tone: "bad" }
+  ].filter(entry => entry.count > 0 || entry.label === "online" || entry.label === "revoked" || props.selected.has(entry.label));
+  return (
+    <aside class="facets" aria-label="Filters">
+      <h2>Status</h2>
+      <For each={entries()}>
+        {(entry) => (
+          <label class="facet">
+            <input type="checkbox" checked={props.selected.has(entry.label)} onChange={() => props.toggle(entry.label)} />
+            <span class="facet-box" aria-hidden="true" />
+            <span class={`status-dot tone-${entry.tone}`} aria-hidden="true" />
+            <span class="facet-name">{entry.label}</span>
+            <span class="facet-count">{entry.count}</span>
+          </label>
+        )}
+      </For>
+      <Show when={props.selected.size > 0}>
+        <button class="link-button" type="button" onClick={props.clear}>Clear filters</button>
+      </Show>
+    </aside>
   );
 }
 
 function FleetDashboard(props: {
   readonly rows: readonly FleetRow[];
-  readonly range: string;
-  readonly allCounts: { readonly all: number; readonly online: number; readonly stale: number; readonly revoked: number };
+  readonly colorOf: (host: Host) => number;
   readonly total: number;
+  readonly allTotal: number;
   readonly search: string;
   readonly setSearch: (value: string) => void;
-  readonly filter: Filter;
-  readonly setFilter: (value: Filter) => void;
+  readonly clearFilters: () => void;
+  readonly sort: Sort;
+  readonly sortBy: (key: SortKey) => void;
   readonly page: number;
   readonly pages: number;
   readonly setPage: (value: number) => void;
   readonly now: number;
   readonly pending: boolean;
+  readonly hover: string | null;
+  readonly setHover: (value: string | null) => void;
+  readonly windowed: boolean;
 }): JSX.Element {
   const from = () => props.total === 0 ? 0 : (props.page - 1) * PAGE_SIZE + 1;
   const to = () => Math.min(props.total, props.page * PAGE_SIZE);
+  const reporting = createMemo(() => props.rows.filter(row => hostStatus(row.host).label === "online"));
+  const stepMs = createMemo(() => Math.max(0, ...reporting().map(row => row.stepMs)) || undefined);
+  const header = (key: SortKey, label: string) => (
+    <th scope="col" aria-sort={props.sort.key === key ? (props.sort.direction === 1 ? "ascending" : "descending") : "none"}>
+      <button class="sort-button" type="button" onClick={() => props.sortBy(key)}>
+        {label}
+        <Show when={props.sort.key === key}>
+          <Icon name={props.sort.direction === 1 ? "sortUp" : "sortDown"} size={10} />
+        </Show>
+      </button>
+    </th>
+  );
   return (
     <>
-      <section class="metric-grid" aria-label="Fleet status">
-        <MetricTile
-          icon="host"
-          label="Hosts provisioned"
-          value={count(props.allCounts.all)}
-          detail={props.total === props.allCounts.all ? "all hosts" : `${props.total} matching filters`}
-          tone="neutral"
-        />
-        <MetricTile
-          icon="check"
-          label="Online"
-          value={count(props.allCounts.online)}
-          detail={props.allCounts.all === 0 ? "no hosts" : percent((props.allCounts.online / props.allCounts.all) * 100)}
-          tone="ok"
-          meter={props.allCounts.all === 0 ? 0 : (props.allCounts.online / props.allCounts.all) * 100}
-        />
-        <MetricTile
-          icon="clock"
-          label="Stale"
-          value={count(props.allCounts.stale)}
-          detail="no sample in 45s"
-          tone="warn"
-          meter={props.allCounts.all === 0 ? 0 : (props.allCounts.stale / props.allCounts.all) * 100}
-        />
-        <MetricTile
-          icon="alert"
-          label="Revoked"
-          value={count(props.allCounts.revoked)}
-          detail="credentials retired"
-          tone="bad"
-          meter={props.allCounts.all === 0 ? 0 : (props.allCounts.revoked / props.allCounts.all) * 100}
-        />
+      <section class="chart-grid" aria-label="Fleet charts">
+        <Widget title="CPU utilization" subtitle="by host" expandable>
+          <TimeChart
+            label="CPU utilization"
+            series={reporting().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: row.summary.map(point => ({ atMs: point.atMs, value: cpuUsed(point) })) }))}
+            stepMs={stepMs()}
+            format={percent}
+            min={0}
+            max={100}
+            threshold={{ value: 90, label: "alert 90%" }}
+            highlight={props.hover}
+            sortTooltip
+          />
+        </Widget>
+        <Widget title="Network receive" subtitle="by host" expandable>
+          <TimeChart
+            label="Network receive"
+            series={reporting().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: sumSeries(row.nets, point => point.rxBytesPerSec) }))}
+            stepMs={stepMs()}
+            format={rate}
+            min={0}
+            highlight={props.hover}
+            sortTooltip
+          />
+        </Widget>
       </section>
 
       <Widget
         title="Hosts"
-        subtitle={`${props.range} · missing values stay unavailable`}
         class={props.pending ? "widget-pending" : undefined}
         meta={<span class="widget-count">{count(props.total)} {props.total === 1 ? "host" : "hosts"}</span>}
         bodyClass="flush"
@@ -167,37 +241,21 @@ function FleetDashboard(props: {
         <div class="table-toolbar">
           <label class="search">
             <span class="sr-only">Search hosts</span>
-            <span class="search-icon"><Icon name="search" size={14} /></span>
-            <input
-              type="search"
-              placeholder="Search host name or id"
-              value={props.search}
-              onInput={event => { props.setSearch(event.currentTarget.value); props.setPage(1); }}
-            />
+            <span class="search-icon"><Icon name="search" size={13} /></span>
+            <input type="search" placeholder="Filter hosts" value={props.search} onInput={event => props.setSearch(event.currentTarget.value)} />
           </label>
-          <div class="filter-chips" role="group" aria-label="Host status">
-            <For each={filters}>
-              {(entry) => (
-                <button
-                  class={props.filter === entry.value ? "filter-chip active" : "filter-chip"}
-                  type="button"
-                  aria-pressed={props.filter === entry.value ? "true" : "false"}
-                  onClick={() => { props.setFilter(entry.value); props.setPage(1); }}
-                >
-                  {entry.label}
-                </button>
-              )}
-            </For>
-          </div>
+          <Show when={props.windowed}>
+            <span class="table-note">Values at the end of the zoomed window</span>
+          </Show>
         </div>
         <Show
           when={props.rows.length > 0}
           fallback={
             <EmptyState
-              title={props.allCounts.all === 0 ? "No telemetry hosts are provisioned." : "No hosts match this view."}
-              detail={props.allCounts.all === 0 ? "Provision a host through the admin API to start collecting counters." : "Clear the search or choose another status filter."}
+              title={props.allTotal === 0 ? "No telemetry hosts are provisioned." : "No hosts match this view."}
+              detail={props.allTotal === 0 ? "Provision a host through the admin API to start collecting counters." : "Clear the search or choose another status filter."}
               icon="host"
-              action={props.allCounts.all === 0 ? undefined : <button class="btn btn-secondary" type="button" onClick={() => { props.setSearch(""); props.setFilter("all"); props.setPage(1); }}>Clear filters</button>}
+              action={props.allTotal === 0 ? undefined : <button class="btn" type="button" onClick={props.clearFilters}>Clear filters</button>}
             />
           }
         >
@@ -205,19 +263,19 @@ function FleetDashboard(props: {
             <table class="data-table" aria-label="Fleet hosts">
               <thead>
                 <tr>
-                  <th scope="col">Host</th>
-                  <th scope="col">Status</th>
+                  {header("name", "Host")}
+                  {header("status", "Status")}
                   <th scope="col">CPU</th>
                   <th scope="col">Memory</th>
                   <th scope="col" class="numeric">Load 1m</th>
-                  <th scope="col">Disk throughput</th>
-                  <th scope="col">Network</th>
+                  <th scope="col">Disk read / write</th>
+                  <th scope="col">Network in / out</th>
                   <th scope="col" class="numeric">PSI some10</th>
                 </tr>
               </thead>
               <tbody>
                 <For each={props.rows}>
-                  {(row) => <FleetTableRow row={row} now={props.now} />}
+                  {(row) => <FleetTableRow row={row} now={props.now} color={props.colorOf(row.host)} setHover={props.setHover} />}
                 </For>
               </tbody>
             </table>
@@ -229,9 +287,11 @@ function FleetDashboard(props: {
   );
 }
 
-function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }): JSX.Element {
-  const last = createMemo(() => latestPoint(props.row.summary));
-  const status = createMemo(() => statusFor(props.row.host, props.row.host.lastReceivedAtMs));
+function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; readonly color: number; readonly setHover: (value: string | null) => void }): JSX.Element {
+  const { view } = useTelemetry();
+  const windowed = createMemo(() => pointsIn(props.row.summary, view()));
+  const last = createMemo(() => latestPoint(windowed()));
+  const status = createMemo(() => hostStatus(props.row.host));
   const cpu = createMemo(() => cpuUsed(last()));
   const memory = createMemo(() => memoryUsed(last()));
   const free = createMemo(() => memoryFree(last()));
@@ -240,79 +300,63 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
   const diskWrite = createMemo(() => sumLatest(props.row.disks, point => point.writeBytesPerSec));
   const netIn = createMemo(() => sumLatest(props.row.nets, point => point.rxBytesPerSec));
   const netOut = createMemo(() => sumLatest(props.row.nets, point => point.txBytesPerSec));
-  const trend = createMemo(() => sparkPoints(props.row.summary, cpuUsed));
+  const trend = createMemo(() => sparkPoints(windowed(), cpuUsed));
+  const reporting = () => status().label === "online";
+  const clearHover = () => props.setHover(null);
+  const hoverRow = () => props.setHover(reporting() ? props.row.host.name : null);
   return (
     <tr>
-      <td class="host-cell">
-        <a class="host-name" href={`#/host/${props.row.host.hostId}`}>{props.row.host.name}</a>
-        <span class="host-id">{props.row.host.hostId}</span>
+      <td>
+        <div class="host-cell">
+          <span class={reporting() ? `host-swatch series-${props.color}` : `status-dot tone-${status().tone}`} aria-hidden="true" />
+          <div>
+            <a class="host-name" href={`#/host/${props.row.host.hostId}`} onMouseEnter={hoverRow} onFocus={hoverRow} onMouseLeave={clearHover} onBlur={clearHover}>{props.row.host.name}</a>
+            <span class="host-id" title={props.row.host.hostId}>{props.row.host.hostId}</span>
+          </div>
+        </div>
       </td>
       <td>
         <div class="status-cell">
           <Badge tone={status().tone} dot>{status().label}</Badge>
-          <span class="cell-note">{status().label === "online" ? "reporting" : `last seen ${age(props.row.host.lastReceivedAtMs, props.now)}`}</span>
+          <Show when={!reporting()}>
+            <span class="cell-note">{age(props.row.host.lastReceivedAtMs, props.now)}</span>
+          </Show>
         </div>
       </td>
       <td>
         <div class="cpu-cell">
-          <div class="cpu-cell-value">
-            <span class="metric-value-small">{percent(cpu())}</span>
-            <Sparkline points={trend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
-          </div>
-          <div class="meter meter-small" aria-hidden="true"><span class={cpuTone(cpu())} style={`width:${clamp(cpu())}%`} /></div>
+          <span class="metric-value-small">{percent(cpu())}</span>
+          <Meter value={cpu()} warn={75} bad={90} />
+          <Sparkline points={trend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
         </div>
       </td>
       <td>
         <div class="cell-stack">
-          <span class="metric-value-small">{percent(memory())}</span>
+          <div class="cpu-cell">
+            <span class="metric-value-small">{percent(memory())}</span>
+            <Meter value={memory()} warn={80} bad={92} />
+          </div>
           <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>
       </td>
-      <td class="numeric">
-        <span class="metric-value-small">{count(loadOne(last()))}</span>
-        <span class="cell-note">1 min</span>
-      </td>
-      <td>
-        <div class="cell-stack">
-          <span class="cell-strong">{rate(diskRead())} down</span>
-          <span class="cell-note">{rate(diskWrite())} write</span>
-        </div>
-      </td>
-      <td>
-        <div class="cell-stack">
-          <span class="cell-strong">{rate(netIn())} in</span>
-          <span class="cell-note">{rate(netOut())} out</span>
-        </div>
-      </td>
-      <td class="numeric">
-        <span class="metric-value-small">{percent(psiCpu(last()))}</span>
-        <span class="cell-note">10s window</span>
-      </td>
+      <td class="numeric"><span class="metric-value-small">{count(loadOne(last()))}</span></td>
+      <td><span class="cell-strong">{rate(diskRead())}</span><span class="cell-note"> / {rate(diskWrite())}</span></td>
+      <td><span class="cell-strong">{rate(netIn())}</span><span class="cell-note"> / {rate(netOut())}</span></td>
+      <td class="numeric"><span class="metric-value-small">{percent(psiCpu(last()))}</span></td>
     </tr>
   );
-}
-
-function cpuTone(value: number | undefined): string {
-  if (value === undefined) return "tone-neutral";
-  return value >= 90 ? "tone-bad" : value >= 75 ? "tone-warn" : "tone-ok";
-}
-
-function clamp(value: number | undefined): string {
-  return value === undefined || !Number.isFinite(value) ? "0" : Math.min(100, Math.max(0, value)).toFixed(1);
 }
 
 function FleetSkeleton(): JSX.Element {
   return (
     <>
-      <section class="metric-grid" aria-hidden="true">
-        <For each={[0, 1, 2, 3]}>
-          {() => <div class="metric skeleton-metric"><Skeleton rows={2} /></div>}
-        </For>
+      <section class="chart-grid" aria-hidden="true">
+        <Widget title="CPU utilization"><Skeleton rows={2} chart /></Widget>
+        <Widget title="Network receive"><Skeleton rows={2} chart /></Widget>
       </section>
-      <Widget title="Hosts" subtitle="Loading accepted samples">
+      <Widget title="Hosts">
         <Skeleton rows={7} />
       </Widget>
     </>
   );
 }
-
