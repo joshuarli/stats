@@ -280,7 +280,7 @@ fn fixture_manifest_matches_the_validator() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_real_linux_sample_matches_the_wire_contract() {
-    let sample = stats::sample_once().expect("a Linux host should produce a sample");
+    let sample = stats::sample_once(stats::CollectionScope::default()).expect("a Linux host should produce a sample");
     let value = serde_json::to_value(&sample).unwrap();
     assert!(validate_sample(&value), "{value}");
 }

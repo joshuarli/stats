@@ -28,11 +28,13 @@ Sampling sources and filters:
 - Disks from `/proc/diskstats`, whole devices listed in `/sys/block`,
   excluding `loop*`, `ram*`, `zram*`, and `fd*`.
 - Network from `/sys/class/net/<if>/statistics` 64-bit counters, excluding
-  `lo`. Sysfs exposes the same `rtnl_link_stats64` counters as rtnetlink
+  `lo` and, unless `includeVirtualInterfaces` is set, every interface without
+  a sysfs `device` link (veth, bridges, tunnels). Sysfs exposes the same `rtnl_link_stats64` counters as rtnetlink
   without hand-built netlink packets or an async netlink crate.
 - PSI from `/proc/pressure/{cpu,memory,io}`, kept separate from iowait.
 - Filesystems from `/proc/self/mounts` plus `statfs(2)`, limited to the
-  allow-list in `agent/src/parse.rs`, at most 16.
+  allow-list in `agent/src/parse.rs`, at most 16. `tmpfs` and `overlay` mounts
+  are skipped unless `includeVirtualFilesystems` is set.
 
 Procfs files are reopened each sample into bounded buffers. The baseline agent
 has no per-process polling, async runtime, BPF, web server, or dynamic

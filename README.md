@@ -66,6 +66,13 @@ and timeout values shown are the defaults. Unknown keys are rejected, and
 15-second step, and `uploadIntervalMs` must be at least 10000 to stay under
 the server's six ingest requests per host per minute.
 
+`includeVirtualInterfaces` and `includeVirtualFilesystems` are optional and
+default to `false`. By default the agent reports only physical network
+interfaces (those with a sysfs `device` link, so no `veth*`, bridges, or
+tunnels) and skips `tmpfs` and `overlay` mounts, which container hosts have
+dozens of. Set either to `true` to report them again; each list is still
+capped at 16.
+
 `blockLatencyFile` is optional. When set, each sample attaches the `block`
 group from that file if it is a regular file, not group- or world-writable,
 and modified within the last 30 seconds; otherwise `block` is absent. See

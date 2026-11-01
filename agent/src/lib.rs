@@ -14,13 +14,19 @@ mod linux;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CollectionScope {
+    pub virtual_interfaces: bool,
+    pub virtual_filesystems: bool,
+}
+
 #[cfg(target_os = "linux")]
-pub fn sample_once() -> Option<Sample> {
-    linux::sample()
+pub fn sample_once(scope: CollectionScope) -> Option<Sample> {
+    linux::sample(scope)
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn sample_once() -> Option<Sample> {
+pub fn sample_once(_scope: CollectionScope) -> Option<Sample> {
     None
 }
 

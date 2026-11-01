@@ -1,3 +1,4 @@
+use crate::CollectionScope;
 use serde::Deserialize;
 use std::fmt;
 use std::fs;
@@ -28,6 +29,19 @@ pub struct AgentConfig {
     pub request_timeout_ms: u64,
     #[serde(rename = "blockLatencyFile", default)]
     pub block_latency_file: Option<PathBuf>,
+    #[serde(rename = "includeVirtualInterfaces", default)]
+    pub include_virtual_interfaces: bool,
+    #[serde(rename = "includeVirtualFilesystems", default)]
+    pub include_virtual_filesystems: bool,
+}
+
+impl AgentConfig {
+    pub fn scope(&self) -> CollectionScope {
+        CollectionScope {
+            virtual_interfaces: self.include_virtual_interfaces,
+            virtual_filesystems: self.include_virtual_filesystems,
+        }
+    }
 }
 
 fn default_sample_ms() -> u64 {
@@ -308,6 +322,23 @@ mod tests {
         let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":10000,\"blockLatencyFile\":\"\"");
         write(&path, &text, 0o600);
         assert!(load(&path).unwrap_err().to_string().contains("blockLatencyFile"));
+    }
+
+    #[test]
+    fn virtual_collection_is_off_unless_the_host_config_enables_it() {
+        let root = scratch();
+        let token = root.join("token");
+        write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
+        let path = root.join("agent.json");
+        write(&path, &valid_config(&token), 0o600);
+        assert_eq!(load(&path).unwrap().scope(), CollectionScope::default());
+        assert!(!CollectionScope::default().virtual_interfaces && !CollectionScope::default().virtual_filesystems);
+
+        let path = root.join("agent-virtual.json");
+        let text = valid_config(&token).replace('}', r#","includeVirtualInterfaces":true,"includeVirtualFilesystems":true}"#);
+        write(&path, &text, 0o600);
+        let scope = load(&path).unwrap().scope();
+        assert!(scope.virtual_interfaces && scope.virtual_filesystems);
     }
 
     #[test]

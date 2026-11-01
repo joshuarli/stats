@@ -1,6 +1,6 @@
 use stats::config::{load, load_token};
 use stats::runtime::{install_signal_handlers, run};
-use stats::{sample_once, VERSION};
+use stats::{sample_once, CollectionScope, VERSION};
 use serde::Serialize;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -36,7 +36,7 @@ fn bench(iterations: u32, interval_ms: u64) -> i32 {
     let mut samples = 0_u64;
     for index in 0..iterations {
         let begin = Instant::now();
-        if sample_once().is_none() {
+        if sample_once(CollectionScope::default()).is_none() {
             eprintln!("no usable host sample on this platform");
             return 1;
         }
@@ -73,7 +73,7 @@ fn bench(iterations: u32, interval_ms: u64) -> i32 {
 }
 
 fn once() -> i32 {
-    match sample_once() {
+    match sample_once(CollectionScope::default()) {
         Some(sample) => match serde_json::to_string_pretty(&sample) {
             Ok(text) => {
                 println!("{text}");

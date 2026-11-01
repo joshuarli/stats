@@ -279,7 +279,7 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
 }
 
 fn sample_with_block(config: &AgentConfig, snapshots: &mut block::SnapshotReader) -> Option<Sample> {
-    let mut sample = sample_once()?;
+    let mut sample = sample_once(config.scope())?;
     if let Some(path) = &config.block_latency_file {
         if let Some(value) = snapshots.read(path) {
             sample.block = Some(value);

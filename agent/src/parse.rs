@@ -200,7 +200,9 @@ fn unescape_mount(value: &str) -> String {
 
 pub const FILESYSTEM_TYPES: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
 
-pub fn parse_mounts(bytes: &[u8]) -> Vec<(String, String)> {
+const VIRTUAL_FILESYSTEM_TYPES: [&str; 2] = ["tmpfs", "overlay"];
+
+pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)> {
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text,
         Err(_) => return Vec::new(),
@@ -212,7 +214,7 @@ pub fn parse_mounts(bytes: &[u8]) -> Vec<(String, String)> {
             continue;
         }
         let fs_type = fields[2];
-        if !FILESYSTEM_TYPES.contains(&fs_type) {
+        if !FILESYSTEM_TYPES.contains(&fs_type) || (!include_virtual && VIRTUAL_FILESYSTEM_TYPES.contains(&fs_type)) {
             continue;
         }
         let mount = unescape_mount(fields[1]);
@@ -339,8 +341,22 @@ mod tests {
 
     #[test]
     fn parses_mounts_with_escapes_and_allow_list() {
-        let mounts = parse_mounts(b"/dev/sda1 / ext4 rw 0 0\nproc /proc proc rw 0 0\n/dev/sdb1 /mnt/my\\040disk xfs rw 0 0\n/dev/sda1 / ext4 rw 0 0\n");
+        let mounts = parse_mounts(b"/dev/sda1 / ext4 rw 0 0\nproc /proc proc rw 0 0\n/dev/sdb1 /mnt/my\\040disk xfs rw 0 0\n/dev/sda1 / ext4 rw 0 0\n", false);
         assert_eq!(mounts, vec![("/".to_owned(), "ext4".to_owned()), ("/mnt/my disk".to_owned(), "xfs".to_owned())]);
+    }
+
+    #[test]
+    fn virtual_filesystems_are_opt_in_and_never_crowd_out_real_ones() {
+        let mut table = String::from("/dev/sda1 / ext4 rw 0 0\n");
+        for index in 0..20 {
+            table.push_str(&format!("overlay /a/overlay{index} overlay rw 0 0\n"));
+        }
+        table.push_str("tmpfs /dev/shm tmpfs rw 0 0\n/dev/sdb1 /zdata xfs rw 0 0\n");
+        let default = parse_mounts(table.as_bytes(), false);
+        assert_eq!(default, vec![("/".to_owned(), "ext4".to_owned()), ("/zdata".to_owned(), "xfs".to_owned())]);
+        let everything = parse_mounts(table.as_bytes(), true);
+        assert_eq!(everything.len(), 16);
+        assert!(everything.iter().any(|(_, kind)| kind == "overlay"));
     }
 
     #[test]
@@ -362,7 +378,7 @@ mod tests {
             let _ = parse_meminfo(input);
             let _ = parse_diskstats(input, &HashSet::new());
             let _ = parse_pressure(input);
-            let _ = parse_mounts(input);
+            let _ = parse_mounts(input, false);
         }
     }
 

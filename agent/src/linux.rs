@@ -1,3 +1,4 @@
+use crate::CollectionScope;
 use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, Unavailable};
 use crate::parse::{
     file_systems, fixed3, parse_cpu, parse_diskstats, parse_meminfo, parse_mounts, parse_psi, statfs_facts,
@@ -140,8 +141,12 @@ fn sort_interface_names(names: &mut [String], physical: impl Fn(&str) -> bool) {
     names.sort_by(|left, right| physical(right).cmp(&physical(left)).then_with(|| left.cmp(right)));
 }
 
-fn read_nets() -> Option<Vec<Net>> {
-    let mut names: Vec<String> = read_names("/sys/class/net").ok()?.into_iter().filter(|name| valid_ifname(name)).collect();
+fn read_nets(include_virtual: bool) -> Option<Vec<Net>> {
+    let mut names: Vec<String> = read_names("/sys/class/net")
+        .ok()?
+        .into_iter()
+        .filter(|name| valid_ifname(name) && (include_virtual || physical_interface(name)))
+        .collect();
     sort_interface_names(&mut names, physical_interface);
     let mut nets = Vec::new();
     for name in names {
@@ -184,9 +189,9 @@ fn statfs(mount: &str) -> Option<(String, String)> {
     statfs_facts(total, block_size, available)
 }
 
-fn read_filesystems(buffer: &mut Vec<u8>) -> Option<Vec<FileSystem>> {
+fn read_filesystems(buffer: &mut Vec<u8>, include_virtual: bool) -> Option<Vec<FileSystem>> {
     read_bounded(Path::new("/proc/self/mounts"), buffer, MOUNTS_LIMIT).ok()?;
-    let mounts = parse_mounts(buffer);
+    let mounts = parse_mounts(buffer, include_virtual);
     if mounts.is_empty() {
         return Some(Vec::new());
     }
@@ -212,7 +217,7 @@ fn read_mem(buffer: &mut Vec<u8>) -> Option<Mem> {
     parse_meminfo(buffer)
 }
 
-pub fn sample() -> Option<Sample> {
+pub fn sample(scope: CollectionScope) -> Option<Sample> {
     let mono_ms = monotonic_ms()?;
     let at_ms = wall_ms()?;
     let _boot = boot_id()?;
@@ -247,7 +252,7 @@ pub fn sample() -> Option<Sample> {
         None => sample.mark_unavailable(Unavailable::Disks),
     }
 
-    match read_nets() {
+    match read_nets(scope.virtual_interfaces) {
         Some(nets) => sample.nets = Some(nets),
         None => sample.mark_unavailable(Unavailable::Nets),
     }
@@ -257,7 +262,7 @@ pub fn sample() -> Option<Sample> {
         None => sample.mark_unavailable(Unavailable::Psi),
     }
 
-    match read_filesystems(&mut buffer) {
+    match read_filesystems(&mut buffer, scope.virtual_filesystems) {
         Some(filesystems) => sample.filesystems = Some(filesystems),
         None => sample.mark_unavailable(Unavailable::Filesystems),
     }
