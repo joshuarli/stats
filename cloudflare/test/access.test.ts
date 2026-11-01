@@ -99,6 +99,19 @@ describe("Access authorization", () => {
     expect(await response.text()).toContain("/api/v1/projects/:id/history");
   });
 
+  it("serves the two linked docs behind Access and no other doc", async () => {
+    const headers = { "Cf-Access-Jwt-Assertion": await accessToken() };
+    for (const path of ["/docs/protocol.md", "/docs/architecture.md"]) {
+      expect((await SELF.fetch(`https://example.com${path}`)).status, path).toBe(401);
+      const response = await SELF.fetch(`https://example.com${path}`, { headers });
+      expect(response.status, path).toBe(200);
+      expect(await response.text(), path).toMatch(/^# /u);
+    }
+    for (const path of ["/docs/operations.md", "/docs/dependencies.md", "/docs/"]) {
+      expect((await SELF.fetch(`https://example.com${path}`, { headers })).status, path).toBe(404);
+    }
+  });
+
   it("rejects malformed admin calls without the raw exception", async () => {
     const token = await accessToken();
     const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };

@@ -54,4 +54,7 @@ Data rules: u64 counters and timings arrive as decimal strings. A missing value 
 
 ## More
 
-Protocol and validation: docs/protocol.md. Architecture and storage: docs/architecture.md.
+- [Wire protocol](/docs/protocol.md): validation and rate semantics.
+- [Architecture](/docs/architecture.md): components, routes, auth, storage, and rollups.
+
+Both are Markdown, served behind the same Access token.

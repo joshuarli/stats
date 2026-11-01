@@ -58,7 +58,10 @@ the host bearer token. Every other path that serves assets or data first passes
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
-tells an agent how to authenticate and read the JSON API.
+tells an agent how to authenticate and read the JSON API. A Vite plugin in
+`cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`
+into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
+files `llms.txt` links to; no other doc is served.
 
 Routes under `/api/v1/` (handled in `installation.ts`):
 
