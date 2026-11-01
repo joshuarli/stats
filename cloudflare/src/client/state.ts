@@ -1,7 +1,7 @@
 import { createContext, createSignal, useContext, type Accessor, type Setter } from "solid-js";
 import type { HistoryQuery, Host } from "./api";
 import { panWindow, type TimeWindow } from "./chart-data";
-import { RANGES, RANGE_MS, type RangeKey } from "../limits";
+import { HOUR_MS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGES, RANGE_MS, type RangeKey } from "../limits";
 
 export const ranges = RANGES;
 export type Range = RangeKey;
@@ -20,13 +20,18 @@ export interface ViewState {
   readonly canZoomOut: Accessor<boolean>;
   readonly live: Accessor<boolean>;
   readonly tick: Accessor<number>;
-  readonly zoomTo: (window: TimeWindow) => void;
+  readonly zoomTo: (window: TimeWindow) => boolean;
   readonly zoomOut: () => void;
   readonly resetZoom: () => void;
   readonly pan: (direction: -1 | 1) => void;
   readonly toggleLive: () => void;
   readonly requestRefresh: () => void;
 }
+
+type ViewMode =
+  | { readonly kind: "live" }
+  | { readonly kind: "paused" }
+  | { readonly kind: "zoomed"; readonly window: TimeWindow };
 
 export interface TelemetryState extends ViewState {
   readonly range: Accessor<Range>;
@@ -37,16 +42,27 @@ export interface TelemetryState extends ViewState {
   readonly refreshHosts: () => Promise<void>;
 }
 
+export function minimumZoomMs(fromMs: number, now: number): number {
+  const ageMs = now - fromMs;
+  if (ageMs < RAW_RETENTION_MS) return 2 * RAW_STEP_MS;
+  if (ageMs < MINUTE_RETENTION_MS) return 2 * MINUTE_MS;
+  return 2 * HOUR_MS;
+}
+
 export function createViewState(range: Accessor<Range>, now: Accessor<number>): ViewState {
-  const [view, setView] = createSignal<TimeWindow | null>(null);
-  const [trail, setTrail] = createSignal<readonly (TimeWindow | null)[]>([]);
-  const [live, setLive] = createSignal(true);
+  const [mode, setMode] = createSignal<ViewMode>({ kind: "live" });
+  const [trail, setTrail] = createSignal<readonly ViewMode[]>([]);
   const [tick, setTick] = createSignal(0);
 
+  const view = () => {
+    const current = mode();
+    return current.kind === "zoomed" ? current.window : null;
+  };
+  const live = () => mode().kind === "live";
+
   const resetZoom = () => {
-    setView(null);
+    setMode({ kind: "live" });
     setTrail([]);
-    setLive(true);
   };
 
   return {
@@ -55,25 +71,31 @@ export function createViewState(range: Accessor<Range>, now: Accessor<number>): 
     live,
     tick,
     zoomTo: window => {
-      setTrail(entries => [...entries, view()]);
-      setView(window);
-      setLive(false);
+      if (window.toMs - window.fromMs < minimumZoomMs(window.fromMs, now())) return false;
+      setTrail(entries => [...entries, mode()]);
+      setMode({ kind: "zoomed", window });
+      return true;
     },
     zoomOut: () => {
       const entries = trail();
-      if (entries.length === 0) return;
-      setView(entries.at(-1) ?? null);
+      const previous = entries.at(-1);
+      if (previous === undefined) return;
+      setMode(previous);
       setTrail(entries.slice(0, -1));
     },
     resetZoom,
     pan: direction => {
       const current = view();
       if (current === null) return;
-      setView(panWindow(current, direction, { fromMs: now() - rangeMs[range()], toMs: now() }));
+      setMode({ kind: "zoomed", window: panWindow(current, direction, { fromMs: now() - rangeMs[range()], toMs: now() }) });
     },
     toggleLive: () => {
-      if (view() !== null) resetZoom();
-      else setLive(value => !value);
+      if (mode().kind === "zoomed") {
+        setMode({ kind: "live" });
+        setTrail([]);
+      } else {
+        setMode(current => current.kind === "live" ? { kind: "paused" } : { kind: "live" });
+      }
     },
     requestRefresh: () => setTick(value => value + 1)
   };

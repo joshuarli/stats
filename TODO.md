@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-19 · P3 · Zoom floor assumes the raw tier, and view state admits a frozen non-live page
-
-- **Area:** Types
-- **Where:** `cloudflare/src/client/components/TimeChart.tsx:38-39`, `cloudflare/src/client/components/TimeChart.tsx:222-226`, `cloudflare/src/client/state.ts:46-85`
-- **Problem:** `MIN_ZOOM_MS` (30 s) assumes two 15 s raw samples. A short zoom on a window older than 48 h lands on 1 m or 1 h buckets and shows "No samples in this range" even though data exists. A selection under the floor is ignored without feedback. `view`, `trail`, and `live` are separate signals, and after zooming out to the preset range `live` stays off, so the page stops refreshing until the user presses `l`.
-- **Recommendation:** Derive the minimum span from the tier the zoom would read (at least two steps). Model view state as one union (`live`, `paused`, or `zoomed` with its stack), and enforce the floor in `zoomTo`.
-- **Fix with:** make-invalid-states-unrepresentable
-- **Effort:** S
-
 ### STA-20 · P4 · Rollup rebuild runs outside the sample transaction
 
 - **Area:** Concurrency

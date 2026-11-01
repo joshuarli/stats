@@ -36,7 +36,6 @@ export interface TimeChartProps {
 
 const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
-const MIN_ZOOM_MS = 30_000;
 const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
 
 function withAlpha(color: string, alpha: number): string | undefined {
@@ -223,7 +222,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           const fromMs = chart.posToVal(left, "x") * 1000;
           const toMs = chart.posToVal(left + width, "x") * 1000;
           chart.setSelect(CLEARED_SELECT, false);
-          if (toMs - fromMs >= MIN_ZOOM_MS) telemetry.zoomTo({ fromMs, toMs });
+          telemetry.zoomTo({ fromMs, toMs });
         }],
         draw: [drawThreshold]
       }
