@@ -1,8 +1,21 @@
-import { bindings, defineConfig, exports } from "cf/config";
+import { bindings, defineConfig, exports, triggers } from "cf/config";
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
+import { parseProjects, type ProjectConfig } from "./src/projects/config.ts";
 
 const domain = process.env.STATS_DOMAIN;
 const WORKER_NAME = "stats-worker";
+
+const PROJECTS: readonly ProjectConfig[] = [
+  {
+    id: "stuff",
+    name: "stuff",
+    worker: "stuff",
+    buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
+    probes: []
+  }
+];
+const PROJECTS_JSON = JSON.stringify(PROJECTS);
+parseProjects(PROJECTS_JSON);
 
 export default defineConfig({
   worker: {
@@ -16,8 +29,11 @@ export default defineConfig({
     env: {
       ENVIRONMENT: bindings.text("production"),
       INSTALLATION: bindings.durableObject({ worker: WORKER_NAME, exportName: "Installation" }),
-      ASSETS: bindings.assets()
+      ASSETS: bindings.assets(),
+      ANALYTICS_SQL: bindings.analytics(),
+      PROJECTS: bindings.text(PROJECTS_JSON)
     },
+    triggers: [triggers.scheduled({ schedule: "*/5 * * * *" })],
     assets: { runWorkerFirst: true },
     workersDev: false,
     previewUrls: false,
