@@ -1,6 +1,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { Installation } from "../src/installation";
+import { retentionDelayMs } from "../src/installation";
 import { privateJwk } from "./access-key";
 import { downsample, historyQuery } from "../src/aggregate";
 
@@ -176,6 +177,26 @@ describe("history", () => {
     expect(raw.stepMs).toBe(15_000);
     const rolled = await (await history(host.hostId, "7d", "summary")).json() as { stepMs: number };
     expect(rolled.stepMs).toBe(60_000);
+  });
+
+  it("schedules another pass after a full retention batch", async () => {
+    const retention = env.INSTALLATION.get(env.INSTALLATION.idFromName("retention"));
+    await runInDurableObject(retention, async (_instance: Installation, state: DurableObjectState) => {
+      for (let index = 0; index < 1001; index += 1) {
+        state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES ('h_0123456789abcdef0123456789abcdef', '3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f', ?, ?, ?, 1, 0, '{}', '{}')", `old-${index}`, now - 49 * 60 * 60 * 1000, now - 49 * 60 * 60 * 1000);
+      }
+      await state.storage.setAlarm(Date.now() + 1_000);
+    });
+    expect(await runDurableObjectAlarm(retention)).toBe(true);
+    const remaining = await runInDurableObject(retention, async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ count: number }>("SELECT count(*) AS count FROM samples WHERE seq LIKE 'old-%'").one().count);
+    expect(remaining).toBe(1);
+  });
+
+  it("reschedules within a minute after any tier deletes a full batch", async () => {
+    expect(retentionDelayMs({ raw: 1000, minute: 0, hour: 0 })).toBe(60_000);
+    expect(retentionDelayMs({ raw: 0, minute: 1000, hour: 0 })).toBe(60_000);
+    expect(retentionDelayMs({ raw: 0, minute: 0, hour: 1000 })).toBe(60_000);
+    expect(retentionDelayMs({ raw: 999, minute: 999, hour: 0 })).toBe(600_000);
   });
 
   it("expires raw and rolled rows on the alarm", async () => {

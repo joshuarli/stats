@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-4 · P2 · Retention alarm falls behind past about 25 hosts and scans without an index
-
-- **Area:** Data
-- **Where:** `cloudflare/src/installation.ts:276-283`, `cloudflare/src/installation.ts:67-90`
-- **Problem:** Each alarm deletes at most 1000 rows per tier and reschedules after 60 s only when `raw + minute + hour >= 3000`, which requires all three tiers to be full in the same run. A probe confirmed `rowsWritten` is 1000 for a full raw batch. With only raw behind, the next alarm is 10 minutes out, so the drain rate is about 144k rows per day. A host writes 5760 raw samples per day (`make fixtures` cost table), so past about 25 hosts raw storage grows without bound toward the Durable Object ceiling. `EXPLAIN QUERY PLAN` shows `SCAN samples` for `received_at_ms < ?`, and the rollup delete scans the `(host_id, …)` index. The alarm test deletes one row per tier and asserts nothing about rescheduling.
-- **Recommendation:** Reschedule in 60 s whenever any tier deleted a full batch. Index the retention predicates (`samples(received_at_ms)`, `rollups(resolution, bucket_ms)`; this needs STA-6 for existing objects). Add an alarm test with more than 1000 expired rows in one tier.
-- **Fix with:** durable-state
-- **Effort:** S
-
 ### STA-7 · P3 · Admin caller errors return 500 with the raw exception text
 
 - **Area:** Errors

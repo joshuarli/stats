@@ -89,6 +89,8 @@ const ROLLUPS = `CREATE TABLE IF NOT EXISTS rollups (
   PRIMARY KEY (host_id, resolution, bucket_ms)
 ) STRICT`;
 const ROLLUP_TIME = "CREATE INDEX IF NOT EXISTS rollups_by_time ON rollups (host_id, resolution, bucket_ms)";
+const SAMPLE_EXPIRY = "CREATE INDEX IF NOT EXISTS samples_by_received ON samples (received_at_ms)";
+const ROLLUP_EXPIRY = "CREATE INDEX IF NOT EXISTS rollups_by_expiry ON rollups (resolution, bucket_ms)";
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
 
 interface Migration {
@@ -97,22 +99,29 @@ interface Migration {
 }
 
 const MIGRATIONS: readonly Migration[] = [
-  { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] }
+  { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] },
+  { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] }
 ];
+
+export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number }): number {
+  return Math.max(deleted.raw, deleted.minute, deleted.hour) >= 1000 ? 60_000 : 600_000;
+}
 
 export function migrate(storage: DurableObjectStorage): void {
   const sql = storage.sql;
   sql.exec(SCHEMA_VERSION);
   const row = sql.exec<{ version: number }>("SELECT version FROM schema_version LIMIT 1").toArray()[0];
   let current = row?.version ?? 0;
+  let hasRow = row !== undefined;
   for (const migration of MIGRATIONS) {
     if (migration.version <= current) continue;
     storage.transactionSync(() => {
       for (const statement of migration.statements) sql.exec(statement);
-      if (row === undefined) sql.exec("INSERT INTO schema_version (version) VALUES (?)", migration.version);
-      else sql.exec("UPDATE schema_version SET version = ?", migration.version);
+      if (hasRow) sql.exec("UPDATE schema_version SET version = ?", migration.version);
+      else sql.exec("INSERT INTO schema_version (version) VALUES (?)", migration.version);
     });
     current = migration.version;
+    hasRow = true;
   }
 }
 
@@ -303,8 +312,7 @@ export class Installation extends DurableObject<Env> {
     const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
     const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - 7 * 24 * 60 * 60 * 1000).rowsWritten;
     const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - 90 * 24 * 60 * 60 * 1000).rowsWritten;
-    const more = raw + minute + hour >= 3000;
-    await this.ctx.storage.setAlarm(now + (more ? 60_000 : 600_000));
+    await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
   }
 
   private authorize(hostId: string, hash: string): { host: HostRow } | { code: "unauthorized" | "forbidden"; status: number } {
