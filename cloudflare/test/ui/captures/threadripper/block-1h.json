@@ -1,1 +1,1 @@
-{"hostId":"h_8a9d12e9086db242dfe6235faa0730b2","range":"1h","kind":"block","fromMs":1793543664930,"toMs":1793547264930,"resolution":"raw","stepMs":15000,"series":[{"id":"block","points":[]}]}
+{"hostId":"h_8a9d12e9086db242dfe6235faa0730b2","range":"1h","kind":"block","fromMs":1793544870000,"toMs":1793548470000,"resolution":"raw","stepMs":15000,"series":[{"id":"block","points":[]}]}

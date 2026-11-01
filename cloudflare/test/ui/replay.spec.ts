@@ -13,7 +13,13 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
     const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range}.json`;
     return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
   });
-  await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; }" });
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; }";
+      document.head.appendChild(style);
+    });
+  });
 }
 
 for (const range of ["1h", "24h", "7d"]) {
