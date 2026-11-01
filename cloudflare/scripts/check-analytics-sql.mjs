@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import {
   parseD1Rows,
   parseD1StatementRows,
+  parseD1StorageRows,
   parseDurableObjectRows,
   parseR2OperationRows,
   parseR2StorageRows,
@@ -12,6 +13,7 @@ import {
   BUCKET_MS,
   d1Query,
   d1StatementQuery,
+  d1StorageQuery,
   durableObjectQuery,
   r2OperationsQuery,
   r2StorageQuery,
@@ -75,6 +77,7 @@ const checks = [
   ["r2 storage", r2StorageQuery(PROJECT.buckets, startMs), parseR2StorageRows],
   ["d1 totals", d1Query(PROJECT.d1Databases, startMs), parseD1Rows],
   ["d1 statements", d1StatementQuery(PROJECT.d1Databases, startMs), parseD1StatementRows],
+  ["d1 storage", d1StorageQuery(PROJECT.d1Databases, startMs), parseD1StorageRows],
 ];
 
 let failed = false;

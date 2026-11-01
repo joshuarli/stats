@@ -135,6 +135,9 @@ describe("collector", () => {
     ];
     const analytics: AnalyticsQuery = {
       async query(request) {
+        if (request.query.includes("d1Storage")) {
+          return { data: [{ databaseId: "9870c4da-3758-4f0c-ab6d-2372eb34009b", bucket, size_bytes: 245_923_840 }], statistics: { rows_read: 5 } };
+        }
         if (request.query.includes("d1Queries")) {
           const data = request.query.includes("AS statement") ? d1Statements : [{ bucket, queries: 40, rows_read: 2_000_015, rows_written: 3_078 }];
           return { data, statistics: { rows_read: 10 } };
@@ -145,9 +148,12 @@ describe("collector", () => {
     const store = stub();
     const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
     const result = await runCollector({ analytics, store, projectsJson, now: NOW, probeFetch: noProbes });
-    expect(result.queries).toBe(4);
+    expect(result.queries).toBe(5);
     await inside(store, (sql) => {
       const project = { id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+      const withDatabase = { ...project, d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"] };
+      const sizes = readMetricHistory(sql, withDatabase, "1h", "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
+      expect(Math.max(...(sizes?.values ?? []).map((value) => value ?? 0))).toBe(245_923_840);
       const totals = readMetricHistory(sql, project, "1h", "d1", NOW).series;
       const written = totals.find((series) => series.metric === "d1.rowsWritten")?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
       expect(written).toBe(3_078);

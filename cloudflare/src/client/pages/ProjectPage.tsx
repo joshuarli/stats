@@ -81,6 +81,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     probes: probes(),
     probeNames: props.project.probes.map(probe => probe.name),
     buckets: props.project.buckets,
+    databases: props.project.d1Databases,
     silence: silenceMinutes(collector(), now(), props.project.collector.lastSuccessAtMs)
   }));
   const status = createMemo(() => collectorStatus(props.project.collector, now()));

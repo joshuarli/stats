@@ -1,9 +1,10 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
-import { count, dollars } from "../../format";
+import { bytes, count, dollars } from "../../format";
 import { Widget } from "../../components/ui";
-import { PanelLabel, PanelChart } from "../host/shared";
+import { PanelLabel, PanelChart, seriesColor } from "../host/shared";
+import { holdLast } from "./math";
 import { metricPoints, provisionalFromMs, statementRows, type ProjectData } from "./series";
 
 export function D1Widget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
@@ -14,6 +15,15 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
       <Show when={totals()}>
         {(history) => (
           <>
+            <PanelLabel>Database size, as each database last reported it. D1 caps a database at 10 GB</PanelLabel>
+            <PanelChart
+              label="D1 database size"
+              timeAxis={false}
+              series={props.data.databases.map((id, index) => ({ label: id.slice(0, 8), color: seriesColor(index), scored: false, points: holdLast(metricPoints(history(), `d1.${id}.storageBytes`)) }))}
+              format={bytes}
+              min={0}
+              stepMs={history().stepMs}
+            />
             <PanelLabel>Rows written per bucket. Each costs about 1000 times a row read</PanelLabel>
             <PanelChart
               label="D1 rows written"

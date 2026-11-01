@@ -46,6 +46,7 @@ export interface ProjectData {
   readonly probes: ProjectMetricHistory | undefined;
   readonly probeNames: readonly string[];
   readonly buckets: readonly string[];
+  readonly databases: readonly string[];
   readonly silence: readonly ChartPoint[];
 }
 

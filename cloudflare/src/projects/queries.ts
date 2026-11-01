@@ -127,6 +127,20 @@ export function d1Query(databases: readonly string[], startMs: number): BoundQue
   };
 }
 
+export function d1StorageQuery(databases: readonly string[], startMs: number): BoundQuery {
+  const ids = d1Params(databases);
+  return {
+    query: [
+      "SELECT databaseId, toStartOfTenMinutes(timestamp) AS bucket, MAX(databaseSizeBytes) AS size_bytes",
+      "FROM states.d1Storage",
+      `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
+      "GROUP BY databaseId, toStartOfTenMinutes(timestamp)",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...ids.params, start: isoStart(startMs) },
+  };
+}
+
 export function d1StatementQuery(databases: readonly string[], startMs: number): BoundQuery {
   const ids = d1Params(databases);
   return {

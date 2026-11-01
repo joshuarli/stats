@@ -44,6 +44,7 @@ const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
 
 const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
   [/^route\..{1,80}\.(invocations|cpuMsSum)$/, "sum"],
+  [/^d1\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.storageBytes$/, "max"],
   [/^d1q\..{1,60}\.(queries|rowsRead|rowsWritten)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
@@ -222,6 +223,16 @@ export function parseD1Rows(rows: readonly unknown[]): MetricPoint[] {
     points.add("d1.queries", bucketMs, count(record, "queries"));
     points.add("d1.rowsRead", bucketMs, count(record, "rows_read"));
     points.add("d1.rowsWritten", bucketMs, count(record, "rows_written"));
+  }
+  return points.list();
+}
+
+export function parseD1StorageRows(rows: readonly unknown[]): MetricPoint[] {
+  const points = new PointSet();
+  for (const row of rows) {
+    const record = asRecord(row);
+    const bucketMs = parseUtc(text(record, "bucket"), DATETIME_PATTERN, "bucket");
+    points.add(`d1.${text(record, "databaseId")}.storageBytes`, bucketMs, count(record, "size_bytes"));
   }
   return points.list();
 }

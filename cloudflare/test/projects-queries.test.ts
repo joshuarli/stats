@@ -10,6 +10,7 @@ import {
 import {
   d1Query,
   d1StatementQuery,
+  d1StorageQuery,
   MAX_BUCKETS_PER_PROJECT,
   r2OperationsQuery,
   r2StorageQuery,
@@ -29,6 +30,7 @@ const built = {
   r2Operations: r2OperationsQuery(BUCKETS, START_MS),
   r2Storage: r2StorageQuery(BUCKETS, START_MS),
   d1: d1Query([DATABASE], START_MS),
+  d1Storage: d1StorageQuery([DATABASE], START_MS),
 };
 
 function total(points: readonly { metric: string; value: number }[], metric: string): number {
@@ -41,7 +43,7 @@ describe("analytics query text", () => {
     if (![built.worker.query, built.r2Operations.query, built.d1.query].includes(sql)) expect(sql).not.toMatch(/COUNT\s*\(/i);
     expect(sql).not.toMatch(/\bMIN\s*\(/i);
     expect(sql).not.toMatch(/toStartOfInterval|quantile/i);
-    if (sql !== built.r2Storage.query) {
+    if (sql !== built.r2Storage.query && sql !== built.d1Storage.query) {
       expect(sql.replaceAll("APPROX_MAX(", "")).not.toMatch(/\bMAX\s*\(/i);
     }
     expect(sql).not.toMatch(/ORDER BY/i);
@@ -83,6 +85,8 @@ describe("analytics query text", () => {
     expect(built.r2Operations.query).toMatch(/COUNT\(\*\) AS operations/u);
     expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/u);
     expect(built.r2Operations.query).toContain("toStartOfFiveMinutes(timestamp)");
+    expect(built.d1Storage.query).toContain("MAX(databaseSizeBytes)");
+    expect(built.d1Storage.query).toContain("toStartOfTenMinutes(timestamp)");
     expect(built.r2Storage.query).toContain("usageReportTimestamp >= $start");
     expect(built.r2Storage.query).toContain("toStartOfTenMinutes(usageReportTimestamp)");
     expect(built.r2Storage.query).toContain("MAX(payloadSizeBytes)");

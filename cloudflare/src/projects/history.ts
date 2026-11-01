@@ -80,7 +80,7 @@ function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "col
     case "r2":
       return project.buckets.flatMap((bucket) => R2_SUFFIXES.map((suffix) => `r2.${bucket}.${suffix}`));
     case "d1":
-      return D1_METRICS;
+      return [...D1_METRICS, ...project.d1Databases.map((id) => `d1.${id}.storageBytes`)];
     case "d1-statements":
       return [];
     case "probes":

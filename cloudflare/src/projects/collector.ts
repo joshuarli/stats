@@ -3,6 +3,7 @@ import { runProbes, type ProbeFetch } from "./probes.ts";
 import {
   parseD1Rows,
   parseD1StatementRows,
+  parseD1StorageRows,
   parseDurableObjectRows,
   parseR2OperationRows,
   parseR2StorageRows,
@@ -10,7 +11,7 @@ import {
   parseWorkerRows,
   type MetricPoint,
 } from "./parse.ts";
-import { BUCKET_MS, d1Query, d1StatementQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
+import { BUCKET_MS, d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
 import type { CollectorRun, ProjectPoints } from "./store.ts";
 
 const COLLECTION_WINDOW_MS = 90 * 60_000;
@@ -94,7 +95,7 @@ async function collectProject(
   const hasBuckets = project.buckets.length > 0;
   const hasNamespaces = project.durableObjectNamespaces.length > 0;
   const hasDatabases = project.d1Databases.length > 0;
-  const [worker, routes, durableObjects, operations, storage, d1, d1Statements, probes] = await Promise.all([
+  const [worker, routes, durableObjects, operations, storage, d1, d1Statements, d1Storage, probes] = await Promise.all([
     run(workerQuery(project.worker, startMs)),
     run(routeQuery(project.worker, startMs)),
     hasNamespaces ? run(durableObjectQuery(project.durableObjectNamespaces, startMs)) : [],
@@ -102,6 +103,7 @@ async function collectProject(
     hasBuckets ? run(r2StorageQuery(project.buckets, startMs)) : [],
     hasDatabases ? run(d1Query(project.d1Databases, startMs)) : [],
     hasDatabases ? run(d1StatementQuery(project.d1Databases, startMs)) : [],
+    hasDatabases ? run(d1StorageQuery(project.d1Databases, startMs)) : [],
     runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
   const points: MetricPoint[] = [
@@ -112,6 +114,7 @@ async function collectProject(
     ...parseR2StorageRows(storage),
     ...parseD1Rows(d1),
     ...parseD1StatementRows(d1Statements),
+    ...parseD1StorageRows(d1Storage),
     ...probes,
   ];
   return { project: project.id, points };

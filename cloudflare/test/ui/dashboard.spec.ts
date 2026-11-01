@@ -110,7 +110,8 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       series: [
         { metric: "d1.queries", values: column(() => 300) },
         { metric: "d1.rowsRead", values: column(() => 50_000_000) },
-        { metric: "d1.rowsWritten", values: column(() => 100_000) }
+        { metric: "d1.rowsWritten", values: column(() => 100_000) },
+        { metric: `d1.${DATABASES[0]}.storageBytes`, values: column(index => (index % 3 === 0 ? 245_923_840 : null)) }
       ]
     };
   }
@@ -536,6 +537,7 @@ test("D1 ranks statements by list cost and the cost estimate adds D1 to the Work
   await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("$1.20");
   await expect(cost.getByRole("row", { name: /D1 rows read/u })).toContainText("$0.60");
   await expect(cost.getByRole("row", { name: /^Total/u })).toContainText("$1.80");
+  await expect(page.locator("#d1").getByRole("img", { name: /D1 database size;/u })).toBeVisible();
   expect(requests.some(request => request.includes("kind=d1-statements"))).toBe(true);
 });
 

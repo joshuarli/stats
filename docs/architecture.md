@@ -213,7 +213,8 @@ CPU time per invocation, not latency; the SQL source has no quantiles. R2
 `userError` (mostly 404s) is shown but never scored.
 
 D1, summed over the project's databases from `events.d1Queries`: `d1.queries`,
-`d1.rowsRead`, `d1.rowsWritten`. `d1q.<statement>.queries|rowsRead|rowsWritten`
+`d1.rowsRead`, `d1.rowsWritten`, plus `d1.<databaseId>.storageBytes` per database from
+`states.d1Storage`, the largest size reported in each bucket. `d1q.<statement>.queries|rowsRead|rowsWritten`
 cover the 10 statements with the highest billed cost in the collected window,
 where a row written counts as 1000 rows read (the price ratio). The statement
 is the first 160 characters of the query text with whitespace collapsed, cut to
