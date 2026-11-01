@@ -23,7 +23,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         min={0}
         stepMs={props.data.r2.stepMs}
       />
-      <PanelLabel>Share of operations that failed outside the caller's control</PanelLabel>
+      <PanelLabel>Share of operations that failed outside the caller's control. Buckets under 100 operations are not scored</PanelLabel>
       <PanelChart
         label="R2 failure share"
         area

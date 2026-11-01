@@ -25,10 +25,11 @@ export function holdLast(points: readonly ChartPoint[]): ChartPoint[] {
   });
 }
 
-export function ratio(part: readonly ChartPoint[], whole: readonly ChartPoint[], scale: number): ChartPoint[] {
+export function ratio(part: readonly ChartPoint[], whole: readonly ChartPoint[], scale: number, minimumWhole = 0): ChartPoint[] {
   return whole.map((point, index) => {
     const numerator = part[index]?.value;
     const denominator = point.value;
-    return { atMs: point.atMs, value: numerator === undefined || denominator === undefined || denominator <= 0 ? undefined : (numerator / denominator) * scale };
+    const scored = numerator !== undefined && denominator !== undefined && denominator > 0 && denominator >= minimumWhole;
+    return { atMs: point.atMs, value: scored ? (numerator / denominator) * scale : undefined };
   });
 }

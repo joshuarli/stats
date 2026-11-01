@@ -19,4 +19,11 @@ describe("project series", () => {
     const part = [1, 0, 5, undefined].map((value, index) => ({ atMs: index, value }));
     expect(ratio(part, whole, 100).map((point) => point.value)).toEqual([10, undefined, undefined, undefined]);
   });
+
+  it("does not score a share from a bucket with fewer events than the minimum", () => {
+    const whole = [99, 100, 1000].map((value, index) => ({ atMs: index, value }));
+    const part = [50, 50, 50].map((value, index) => ({ atMs: index, value }));
+    expect(ratio(part, whole, 100, 100).map((point) => point.value)).toEqual([undefined, 50, 5]);
+    expect(ratio(part, whole, 100).map((point) => point.value)[0]).toBeCloseTo(50.5, 1);
+  });
 });

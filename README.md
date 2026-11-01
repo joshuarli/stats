@@ -124,8 +124,9 @@ its collector state. A project page (`#/project/<id>`) shows a Worker's
 requests, status mix, and CPU time, its R2 buckets' operations by outcome,
 storage, and objects, endpoint availability probed from Cloudflare's edge, and
 the collector's own health, with the same status strip, limits, incidents, and
-two columns as a host. Worker CPU is CPU time per invocation, not latency, and
-R2 user errors such as 404s are shown but not scored. Projects are configured
+two columns as a host. Worker CPU is CPU time per invocation, not latency,
+R2 user errors such as 404s are shown but not scored, and a share or average
+is not scored from a five-minute bucket with fewer than 100 events. Projects are configured
 in `cloudflare/cloudflare.config.ts`; see
 [`docs/architecture.md`](docs/architecture.md#cloudflare-projects).
 

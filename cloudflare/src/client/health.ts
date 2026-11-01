@@ -24,6 +24,7 @@ export interface HealthState {
 }
 
 const MIB = 1024 * 1024;
+export const MIN_SCORED_EVENTS = 100;
 export const RECOVERY_MS = 5 * 60_000;
 const RANK: Readonly<Record<Health, number>> = { ok: 0, elevated: 1, critical: 2 };
 

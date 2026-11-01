@@ -1,7 +1,7 @@
 import type { ProjectMetricHistory, ProjectCollectorHistory } from "../../api";
 import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
 import { bytes, count, milliseconds, minutes, percent } from "../../format";
-import { LIMITS, type Limits } from "../../health";
+import { LIMITS, MIN_SCORED_EVENTS, type Limits } from "../../health";
 import { monitorOne } from "../../incidents";
 import { addAll, holdLast, ratio } from "./math";
 import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
@@ -50,16 +50,16 @@ function bucketGauge(data: ProjectData, suffix: "storageBytes" | "objects"): Cha
 }
 
 export function serverErrorShare(data: ProjectData): ChartPoint[] {
-  return ratio(metricPoints(data.worker, "worker.status.5xx"), metricPoints(data.worker, "worker.invocations"), 100);
+  return ratio(metricPoints(data.worker, "worker.status.5xx"), metricPoints(data.worker, "worker.invocations"), 100, MIN_SCORED_EVENTS);
 }
 
 export function cpuAverage(data: ProjectData): ChartPoint[] {
-  return ratio(metricPoints(data.worker, "worker.cpuMsSum"), metricPoints(data.worker, "worker.invocations"), 1);
+  return ratio(metricPoints(data.worker, "worker.cpuMsSum"), metricPoints(data.worker, "worker.invocations"), 1, MIN_SCORED_EVENTS);
 }
 
 export function otherShare(data: ProjectData): ChartPoint[] {
   const total = addAll(R2_OUTCOMES.map(outcome => bucketOutcome(data, outcome)));
-  return ratio(bucketOutcome(data, "other"), total, 100);
+  return ratio(bucketOutcome(data, "other"), total, 100, MIN_SCORED_EVENTS);
 }
 
 export function probeUp(data: ProjectData): ChartPoint[][] {

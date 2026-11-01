@@ -40,7 +40,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         min={0}
         stepMs={props.data.worker.stepMs}
       />
-      <PanelLabel>5xx share of invocations</PanelLabel>
+      <PanelLabel>5xx share of invocations. Buckets under 100 invocations are not scored</PanelLabel>
       <PanelChart
         label="Worker 5xx share"
         area
@@ -57,7 +57,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
 export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
     <Widget id="cpu" title="CPU time" subtitle="Time the Worker spent computing per invocation, not request latency" expandable>
-      <PanelLabel>Average CPU time per invocation</PanelLabel>
+      <PanelLabel>Average CPU time per invocation. Buckets under 100 invocations are not scored</PanelLabel>
       <PanelChart
         label="Worker average CPU time"
         area
