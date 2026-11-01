@@ -6,7 +6,7 @@ SECRETS_FILE ?=
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-oracle deploy-threadripper smoke-deployed release check
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -73,8 +73,6 @@ deploy-host-%: agent-test agent-build
 
 rollback-host-%:
 	deploy/deploy-host.sh '$*' --rollback
-
-deploy-oracle: deploy-host-oracle
 
 deploy-threadripper: deploy-host-threadripper
 

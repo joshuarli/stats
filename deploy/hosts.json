@@ -1,12 +1,5 @@
 {
   "hosts": {
-    "oracle": {
-      "name": "oracle-free",
-      "ssh": "ubuntu@oracle",
-      "target": "x86_64-unknown-linux-musl",
-      "init": "systemd",
-      "elevate": "sudo"
-    },
     "threadripper": {
       "name": "threadripper",
       "ssh": "josh@threadripper",
