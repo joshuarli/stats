@@ -5,6 +5,7 @@ const ROUTE_KEY_MAX_LENGTH = 80;
 const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
 const API_VERSION_SEGMENT = /^v\d+$/;
 const MAX_PLAIN_SEGMENT_LENGTH = 24;
+const MAX_DISTINCT_CHILDREN = 10;
 
 type Aggregation = "sum" | "max" | "min";
 
@@ -109,6 +110,37 @@ export function routeKey(label: string): string {
   return normalized.replace(/[^\x20-\x7e]/g, "?").slice(0, ROUTE_KEY_MAX_LENGTH);
 }
 
+export function foldWideRoutes(keys: readonly string[]): Map<string, string> {
+  const folded = new Map<string, string>();
+  const paths = [];
+  for (const key of keys) {
+    const match = ROUTE_LABEL_PATTERN.exec(key);
+    if (match === null) {
+      folded.set(key, key);
+    } else {
+      paths.push({ key, method: match[1] ?? "", segments: (match[2] ?? "").split("/").slice(1), kept: [] as string[] });
+    }
+  }
+  const depth = Math.max(0, ...paths.map((path) => path.segments.length));
+  for (let level = 0; level < depth; level += 1) {
+    const children = new Map<string, Set<string>>();
+    for (const path of paths) {
+      const segment = path.segments[level];
+      if (segment === undefined) continue;
+      const parent = `${path.method} /${path.kept.join("/")}`;
+      children.set(parent, (children.get(parent) ?? new Set<string>()).add(segment));
+    }
+    for (const path of paths) {
+      const segment = path.segments[level];
+      if (segment === undefined) continue;
+      const wide = (children.get(`${path.method} /${path.kept.join("/")}`)?.size ?? 0) > MAX_DISTINCT_CHILDREN;
+      path.kept.push(wide ? ":*" : segment);
+    }
+  }
+  for (const path of paths) folded.set(path.key, `${path.method} /${path.kept.join("/")}`);
+  return folded;
+}
+
 function routeSegment(segment: string): string {
   const looksLikeId = /\d/.test(segment) && !API_VERSION_SEGMENT.test(segment);
   return looksLikeId || segment.length > MAX_PLAIN_SEGMENT_LENGTH ? ":id" : segment;
@@ -125,11 +157,15 @@ interface RouteTotals extends RouteBucket {
 
 export function parseRouteRows(rows: readonly unknown[]): MetricPoint[] {
   const perRoute = new Map<string, RouteTotals>();
-  for (const row of rows) {
-    const record = asRecord(row);
-    const bucketMs = workerBucketMs(text(record, "day"), count(record, "hour"), count(record, "slot"));
+  const records = rows.map(asRecord);
+  const labels = records.map((record) => {
     const label = record["invocationLabel"];
-    const key = routeKey(typeof label === "string" && label !== "" ? label : "unlabeled");
+    return routeKey(typeof label === "string" && label !== "" ? label : "unlabeled");
+  });
+  const folded = foldWideRoutes([...new Set(labels)]);
+  for (const [index, record] of records.entries()) {
+    const bucketMs = workerBucketMs(text(record, "day"), count(record, "hour"), count(record, "slot"));
+    const key = folded.get(labels[index] ?? "") ?? "unlabeled";
     const invocations = count(record, "invocations");
     const cpuSum = count(record, "cpu_sum");
     const route = perRoute.get(key) ?? { invocations: 0, cpuSum: 0, buckets: new Map<number, RouteBucket>() };

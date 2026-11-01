@@ -185,7 +185,8 @@ expired project rows in batches of 1000.
 `probe.<name>.up` and `.ms`, measured from Cloudflare's edge. Routes:
 `route.<METHOD path>.invocations` and `.cpuMsSum` for the 15 routes with the
 most CPU in the collected window. Path segments with a digit or over 24
-characters become `:id`, query strings are dropped, and keys are limited to 80
+characters become `:id`, a path level with more than 10 distinct children in
+the window becomes `:*` (package names, content hashes), query strings are dropped, and keys are limited to 80
 printable ASCII characters, so request paths cannot create unbounded series;
 routes outside the top 15 are dropped, not pooled. Durable Objects, summed over
 the project's namespaces: `do.invocations`, `do.errors` (status other than

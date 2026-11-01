@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/projects/parse";
+import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/projects/parse";
 import { durableObjectQuery, routeQuery } from "../src/projects/queries";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
@@ -48,12 +48,12 @@ describe("route rows", () => {
     const rows = [
       routeRow("GET /api/v1/hosts/h_1/history", 4, 2),
       routeRow("GET /api/v1/hosts/h_2/history", 6, 3),
-      ...Array.from({ length: MAX_ROUTES_PER_PROJECT }, (_, index) => routeRow(`GET /route-${String.fromCharCode(97 + index)}`, 100 + index)),
+      ...Array.from({ length: MAX_ROUTES_PER_PROJECT }, (_, index) => routeRow(`Entry${String.fromCharCode(97 + index)}.rpc`, 100 + index)),
     ];
     const metrics = new Set(parseRouteRows(rows).map((point) => point.metric));
     expect(metrics.size).toBe(MAX_ROUTES_PER_PROJECT * 2);
     expect(metrics.has("route.GET /api/v1/hosts/:id/history.cpuMsSum")).toBe(false);
-    expect(metrics.has("route.GET /route-a.cpuMsSum")).toBe(true);
+    expect(metrics.has("route.Entrya.rpc.cpuMsSum")).toBe(true);
 
     const merged = parseRouteRows(rows.slice(0, 2)).filter((point) => point.metric.startsWith("route.GET /api/v1/hosts/:id/history."));
     expect(Object.fromEntries(merged.map((point) => [point.metric.split(".").pop(), point.value]))).toEqual({ invocations: 5, cpuMsSum: 10 });
@@ -125,5 +125,23 @@ describe("route and Durable Object history", () => {
     expect(durableObjects.series.map((entry) => entry.metric)).toEqual(["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum"]);
     expect(durableObjects.series[0]?.values.filter((value) => value === 7)).toHaveLength(1);
     expect(durableObjects.series[3]?.values.every((value) => value === null)).toBe(true);
+  });
+});
+
+describe("wide route folding", () => {
+  it("folds a path position with many distinct children and keeps narrow ones", () => {
+    const crates = Array.from({ length: 12 }, (_, index) => `GET /current/crates-io/${String.fromCharCode(97 + index)}x/pkg`);
+    const folded = foldWideRoutes([...crates, "GET /current/simple/", "GET /api/v1/projects", "GET /api/v1/hosts", "*/5 * * * *"]);
+    expect(new Set(crates.map((key) => folded.get(key)))).toEqual(new Set(["GET /current/crates-io/:*/pkg"]));
+    expect(folded.get("GET /current/simple/")).toBe("GET /current/simple/");
+    expect(folded.get("GET /api/v1/projects")).toBe("GET /api/v1/projects");
+    expect(folded.get("*/5 * * * *")).toBe("*/5 * * * *");
+  });
+
+  it("sums folded routes into one series per bucket", () => {
+    const rows = Array.from({ length: 12 }, (_, index) => routeRow(`GET /pkg/${String.fromCharCode(97 + index)}x`, 10, 2));
+    const metrics = parseRouteRows(rows);
+    expect(metrics.map((point) => point.metric).sort()).toEqual(["route.GET /pkg/:*.cpuMsSum", "route.GET /pkg/:*.invocations"]);
+    expect(metrics.find((point) => point.metric.endsWith(".cpuMsSum"))?.value).toBe(120);
   });
 });

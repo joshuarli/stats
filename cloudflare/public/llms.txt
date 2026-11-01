@@ -27,7 +27,7 @@ Every `values` array is aligned to `fromMs + i * stepMs` (epoch ms). `null` mean
 Metrics:
 
 - worker: `worker.invocations`, `worker.cpuMsSum`, `worker.cpuMsMax`, `worker.status.2xx|3xx|4xx|5xx|other`
-- routes: `route.<METHOD path>.invocations` and `route.<METHOD path>.cpuMsSum` for the 15 routes with the most CPU. Ids in paths show as `:id`. Series come back busiest first, and the set can change from run to run. Divide the two for per-route average CPU. For `stats` this separates the front Worker (`POST /ingest/v1/batches`) from the Durable Object (`POST /ingest`, `Installation.jsrpc`, `*/5 * * * *`).
+- routes: `route.<METHOD path>.invocations` and `route.<METHOD path>.cpuMsSum` for the 15 routes with the most CPU. Ids in paths show as `:id`, and a path level with many distinct values (package names, hashes) shows as `:*`. Series come back busiest first, and the set can change from run to run. Divide the two for per-route average CPU. For `stats` this separates the front Worker (`POST /ingest/v1/batches`) from the Durable Object (`POST /ingest`, `Installation.jsrpc`, `*/5 * * * *`).
 - durable-objects (projects that list namespaces; `stats` does): `do.invocations`, `do.errors`, `do.cpuMsSum`, `do.cpuMsMax`, `do.wallMsSum`, all in milliseconds. Prefer these over the Worker series for Durable Object CPU; they have microsecond precision.
 - r2, per bucket: `r2.<bucket>.ops.success|userError|other`, `r2.<bucket>.storageBytes`, `r2.<bucket>.objects`
 - probes: `probe.<name>.up` (1 or 0), `probe.<name>.ms`
