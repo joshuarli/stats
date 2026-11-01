@@ -90,8 +90,11 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await page.getByRole("button", { name: "24h" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("table").filter({ hasText: "sda" })).toContainText("sda");
-  await expect(page.locator("table").filter({ hasText: "eth0" })).toContainText("eth0");
+  await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
+  await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
+  for (const title of ["Disk operations", "Disk busy", "Network packets", "Network drops and errors", "Filesystem usage", "Memory pressure", "Swap used"]) {
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Block latency;/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });

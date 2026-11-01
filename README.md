@@ -117,9 +117,12 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status filters (online, stale, no samples, revoked), sortable
-columns, and fleet charts. The host page shows CPU, load, available memory,
-swap used, memory pressure (10 s, 60 s, 300 s), disk and network throughput, filesystems, devices, and block latency
-(p50, p95, p99), which stays empty unless the collector is configured.
+columns, and fleet charts. The host page shows CPU (including steal), load, available memory, swap used,
+memory pressure (10 s, 60 s, 300 s), PSI some and full stalls, disk throughput,
+operations, and busy time, network throughput, packets, drops, and errors,
+filesystem usage over time, filesystems, devices, and block latency with
+completions (p50, p95, p99, min, max), which stays empty unless the collector
+is configured. Full stalls appear only when the kernel reports them.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
 chart to that window. The smallest zoom is two samples of the tier the window

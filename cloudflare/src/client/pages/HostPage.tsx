@@ -1,9 +1,9 @@
 import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
-import { getBlock, getDisks, getFilesystems, getLatest, getNets, getSummary, type BlockSeries, type DiskSeries, type FilesystemSeries, type Host, type NetSeries, type Psi, type SummaryPoint } from "../api";
+import { getBlock, getDisks, getFilesystems, getLatest, getNets, getSummary, type BlockSeries, type DiskSeries, type FilesystemSeries, type Host, type NetSeries, type Psi, type Series, type SummaryPoint } from "../api";
 import { pointsIn, windowStats, type ChartPoint } from "../chart-data";
-import { age, bytes, count, errorMessage, microseconds, percent, rate, uptime } from "../format";
+import { age, bytes, count, errorMessage, isFiniteNumber, microseconds, percent, percentUsed, rate, uptime } from "../format";
 import { cpuUsed, loadOne, memoryFree, memoryUsed, psiCpu, sparkPoints, sumSeries } from "../metrics";
 import { loadQuery } from "../queries";
 import { statusFor } from "../status";
@@ -121,9 +121,66 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             />
           </Loading>
         </Errored>
+        <Errored fallback={(error) => <Widget title="Disk operations"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Disk operations"><Skeleton rows={4} chart /></Widget>}>
+            <ThroughputWidget
+              title="Disk operations"
+              subtitle="all block devices, completed per second"
+              series={disks().series ?? []}
+              read={{ label: "reads", pick: point => point.readsPerSec }}
+              write={{ label: "writes", pick: point => point.writesPerSec }}
+              format={perSecond}
+              stepMs={disks().stepMs}
+              empty="No disk series in this range."
+            />
+          </Loading>
+        </Errored>
+        <Errored fallback={(error) => <Widget title="Disk busy"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Disk busy"><Skeleton rows={4} chart /></Widget>}>
+            <PerSeriesWidget title="Disk busy" subtitle="time with I/O in flight; above 100% means concurrent I/O" series={disks().series ?? []} pick={point => point.busyPct} format={percent} stepMs={disks().stepMs} empty="No disk series in this range." />
+          </Loading>
+        </Errored>
+        <Errored fallback={(error) => <Widget title="Network packets"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Network packets"><Skeleton rows={4} chart /></Widget>}>
+            <ThroughputWidget
+              title="Network packets"
+              subtitle="all interfaces"
+              series={nets().series ?? []}
+              read={{ label: "receive", pick: point => point.rxPacketsPerSec }}
+              write={{ label: "transmit", pick: point => point.txPacketsPerSec }}
+              format={perSecond}
+              stepMs={nets().stepMs}
+              empty="No network series in this range."
+            />
+          </Loading>
+        </Errored>
+        <Errored fallback={(error) => <Widget title="Network drops and errors"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Network drops and errors"><Skeleton rows={4} chart /></Widget>}>
+            <ThroughputWidget
+              title="Network drops and errors"
+              subtitle="all interfaces, receive plus transmit"
+              series={nets().series ?? []}
+              read={{ label: "drops", pick: point => point.rxDropsPerSec + point.txDropsPerSec }}
+              write={{ label: "errors", pick: point => point.rxErrorsPerSec + point.txErrorsPerSec }}
+              format={perSecond}
+              stepMs={nets().stepMs}
+              empty="No network series in this range."
+            />
+          </Loading>
+        </Errored>
         <Errored fallback={(error) => <Widget title="Block latency"><ErrorState error={error()} compact /></Widget>}>
           <Loading fallback={<Widget title="Block latency"><Skeleton rows={3} chart /></Widget>}>
             <BlockWidget series={block().series ?? []} stepMs={block().stepMs} />
+          </Loading>
+        </Errored>
+        <Errored fallback={(error) => <Widget title="Block completions"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Block completions"><Skeleton rows={3} chart /></Widget>}>
+            <PerSeriesWidget title="Block completions" subtitle="requests completed per sample window" series={block().series ?? []} pick={point => point.count} format={count} stepMs={block().stepMs} empty="No block latency samples in this range." />
+          </Loading>
+        </Errored>
+        <Errored fallback={(error) => <Widget title="Filesystem usage"><ErrorState error={error()} compact /></Widget>}>
+          <Loading fallback={<Widget title="Filesystem usage"><Skeleton rows={3} chart /></Widget>}>
+            <PerSeriesWidget title="Filesystem usage" subtitle="used share per mount" series={filesystems().series ?? []} pick={point => percentUsed(point.total, point.available)} format={percent} max={100} stepMs={filesystems().stepMs} empty="No filesystem series in this range." />
           </Loading>
         </Errored>
         <Errored fallback={(error) => <Widget title="Filesystems"><ErrorState error={error()} compact /></Widget>}>
@@ -206,7 +263,7 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             label="CPU"
             legend
             area
-            series={[series("total", 0, cpuUsed), series("user", 1, point => point.cpu?.user), series("system", 2, point => point.cpu?.system), series("iowait", 3, point => point.cpu?.iowait)]}
+            series={[series("total", 0, cpuUsed), series("user", 1, point => point.cpu?.user), series("system", 2, point => point.cpu?.system), series("iowait", 3, point => point.cpu?.iowait), series("steal", 4, point => point.cpu?.steal)]}
             format={percent}
             min={0}
             max={100}
@@ -261,6 +318,23 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             stepMs={props.stepMs}
           />
         </Widget>
+        <Show when={props.points.some(point => [point.psi?.cpu, point.psi?.memory, point.psi?.io].some(group => group?.full10 !== undefined))}>
+          <Widget title="Full stalls" subtitle="PSI full, 10s average: all non-idle tasks stalled" expandable>
+            <TimeChart
+              label="Full stalls"
+              legend
+              area
+              series={[
+                { label: "cpu", color: 0, points: psiSeries(props.points, value => value.cpu?.full10) },
+                { label: "memory", color: 1, points: psiSeries(props.points, value => value.memory?.full10) },
+                { label: "i/o", color: 2, points: psiSeries(props.points, value => value.io?.full10) }
+              ]}
+              format={percent}
+              min={0}
+              stepMs={props.stepMs}
+            />
+          </Widget>
+        </Show>
       </section>
     </Show>
   );
@@ -272,6 +346,7 @@ function ThroughputWidget<T extends { readonly atMs: number }>(props: {
   readonly series: readonly { readonly points: readonly T[] }[];
   readonly read: { readonly label: string; readonly pick: (point: T) => number | undefined };
   readonly write: { readonly label: string; readonly pick: (point: T) => number | undefined };
+  readonly format?: (value: number | undefined) => string;
   readonly stepMs: number;
   readonly empty: string;
 }): JSX.Element {
@@ -286,8 +361,39 @@ function ThroughputWidget<T extends { readonly atMs: number }>(props: {
             { label: props.read.label, color: 0, points: sumSeries(props.series, props.read.pick) },
             { label: props.write.label, color: 2, points: sumSeries(props.series, props.write.pick) }
           ]}
-          format={rate}
+          format={props.format ?? rate}
           min={0}
+          stepMs={props.stepMs}
+        />
+      )}
+    </Widget>
+  );
+}
+
+function perSecond(value: number | undefined): string {
+  return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
+}
+
+function PerSeriesWidget<T extends { readonly atMs: number }>(props: {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly series: readonly Series<T>[];
+  readonly pick: (point: T) => number | undefined;
+  readonly format: (value: number | undefined) => string;
+  readonly max?: number;
+  readonly stepMs: number;
+  readonly empty: string;
+}): JSX.Element {
+  return (
+    <Widget title={props.title} subtitle={props.subtitle} expandable>
+      {props.series.length === 0 ? <EmptyState title={props.empty} icon="disk" /> : (
+        <TimeChart
+          label={props.title}
+          legend
+          series={props.series.map((entry, index) => ({ label: entry.name ?? entry.id, color: index % 8, points: entry.points.map(point => ({ atMs: point.atMs, value: props.pick(point) })) }))}
+          format={props.format}
+          min={0}
+          max={props.max}
           stepMs={props.stepMs}
         />
       )}
@@ -412,6 +518,8 @@ function BlockWidget(props: { readonly series: readonly BlockSeries[]; readonly 
           label="Block latency"
           legend
           series={[
+            { label: "min", color: 4, points: points().map(point => ({ atMs: point.atMs, value: point.minUs })), dashed: true },
+            { label: "p50", color: 3, points: points().map(point => ({ atMs: point.atMs, value: point.p50Us })) },
             { label: "p95", color: 0, points: points().map(point => ({ atMs: point.atMs, value: point.p95Us })) },
             { label: "p99", color: 1, points: points().map(point => ({ atMs: point.atMs, value: point.p99Us })) },
             { label: "max", color: 2, points: points().map(point => ({ atMs: point.atMs, value: point.maxUs })), dashed: true }

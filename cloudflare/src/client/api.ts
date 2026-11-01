@@ -33,6 +33,9 @@ export interface PsiGroup {
   readonly some10: number;
   readonly some60: number;
   readonly some300: number;
+  readonly full10?: number;
+  readonly full60?: number;
+  readonly full300?: number;
 }
 
 export interface Psi {
@@ -212,7 +215,12 @@ function decodeMem(value: unknown): Mem {
 
 function decodePsiGroup(value: unknown): PsiGroup {
   const entry = record(value);
-  return { some10: number(entry.some10), some60: number(entry.some60), some300: number(entry.some300) };
+  return {
+    some10: number(entry.some10),
+    some60: number(entry.some60),
+    some300: number(entry.some300),
+    ...(entry.full10 === undefined ? {} : { full10: number(entry.full10), full60: number(entry.full60), full300: number(entry.full300) })
+  };
 }
 
 function decodePsi(value: unknown): Psi {

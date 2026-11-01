@@ -1,4 +1,4 @@
-import type { Block, Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
+import type { Block, Cpu, Disk, FileSystem, Net, PsiGroup, Sample } from "./protocol";
 import type { Delta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
 import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
@@ -22,10 +22,18 @@ export interface MemValues {
   readonly available: number;
   readonly swapUsed: number;
 }
+export interface PsiGroupAverages {
+  readonly some10: number;
+  readonly some60: number;
+  readonly some300: number;
+  readonly full10?: number;
+  readonly full60?: number;
+  readonly full300?: number;
+}
 export interface PsiAverages {
-  readonly cpu?: { readonly some10: number; readonly some60: number; readonly some300: number };
-  readonly memory?: { readonly some10: number; readonly some60: number; readonly some300: number };
-  readonly io?: { readonly some10: number; readonly some60: number; readonly some300: number };
+  readonly cpu?: PsiGroupAverages;
+  readonly memory?: PsiGroupAverages;
+  readonly io?: PsiGroupAverages;
 }
 export interface SummaryPoint {
   readonly atMs: number;
@@ -112,6 +120,7 @@ export interface RawRow {
 }
 
 const DEVICE_COVERAGE = "coveredMs";
+const PSI_FIELDS = ["some10", "some60", "some300", "full10", "full60", "full300"] as const;
 
 export function rangeKey(value: string | null): RangeKey | null {
   return value !== null && (RANGES as readonly string[]).includes(value) ? value as RangeKey : null;
@@ -147,7 +156,12 @@ function gaugeAverage(gauges: Readonly<Record<string, Gauge>>, key: string): num
 
 function psiAverages(sample: Sample): PsiAverages | undefined {
   if (sample.psi === undefined) return undefined;
-  const group = (value: { some10: string; some60: string; some300: string }): { some10: number; some60: number; some300: number } => ({ some10: Number(value.some10), some60: Number(value.some60), some300: Number(value.some300) });
+  const group = (value: PsiGroup): PsiGroupAverages => ({
+    some10: Number(value.some10),
+    some60: Number(value.some60),
+    some300: Number(value.some300),
+    ...(value.full10 === undefined || value.full60 === undefined || value.full300 === undefined ? {} : { full10: Number(value.full10), full60: Number(value.full60), full300: Number(value.full300) })
+  });
   return {
     ...(sample.psi.cpu === undefined ? {} : { cpu: group(sample.psi.cpu) }),
     ...(sample.psi.memory === undefined ? {} : { memory: group(sample.psi.memory) }),
@@ -243,7 +257,10 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
       for (const [name, group] of [["cpu", sample.psi.cpu], ["memory", sample.psi.memory], ["io", sample.psi.io]] as const) {
         if (group === undefined) continue;
         const target = psi[name] ?? {};
-        for (const field of ["some10", "some60", "some300"] as const) gaugeAdd(target, field, Number(group[field]));
+        for (const field of PSI_FIELDS) {
+          const value = group[field];
+          if (value !== undefined) gaugeAdd(target, field, Number(value));
+        }
         psi[name] = target;
       }
     }
@@ -353,7 +370,8 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
   const psi = Object.keys(payload.psi).length === 0 ? undefined : Object.fromEntries(Object.entries(payload.psi).map(([name, group]) => [name, {
     some10: gaugeAverage(group, "some10")!,
     some60: gaugeAverage(group, "some60")!,
-    some300: gaugeAverage(group, "some300")!
+    some300: gaugeAverage(group, "some300")!,
+    ...(gaugeAverage(group, "full10") === undefined ? {} : { full10: gaugeAverage(group, "full10")!, full60: gaugeAverage(group, "full60")!, full300: gaugeAverage(group, "full300")! })
   }])) as PsiAverages;
   return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }) };
 }
