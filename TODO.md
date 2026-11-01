@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-23 · P4 · Dead code in the agent and dashboard
-
-- **Area:** Dead code
-- **Where:** `agent/src/queue.rs:54`, `agent/src/transport.rs:149`, `cloudflare/src/client/format.ts:63`, `cloudflare/src/client/format.ts:84`, `cloudflare/src/client/style.css:71-72`
-- **Problem:** `Queue::clear`, `HttpTransport::host_id`, `timestamp`, `shortTime`, and the `.spin` animation have no callers (`rg` finds only their definitions).
-- **Recommendation:** Delete them.
-- **Fix with:** delete
-- **Effort:** S
-
 ### STA-24 · P4 · Dashboard decode failures discard which field broke
 
 - **Area:** Errors

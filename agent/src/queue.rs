@@ -50,12 +50,6 @@ impl Queue {
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
-
-    pub fn clear(&mut self) -> u64 {
-        let dropped = self.dropped + self.samples.len() as u64;
-        self.samples.clear();
-        dropped
-    }
 }
 
 #[cfg(test)]

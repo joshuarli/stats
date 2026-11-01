@@ -68,8 +68,6 @@ kbd {
 }
 
 .icon { flex: none; display: block; }
-.spin { animation: spin 900ms linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { opacity: .35; } }
 
 .boot { min-height: 60vh; display: grid; place-items: center; color: var(--muted); font-size: 14px; }

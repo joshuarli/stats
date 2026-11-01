@@ -151,10 +151,6 @@ impl HttpTransport {
         })
     }
 
-    pub fn host_id(&self) -> &str {
-        &self.host_id
-    }
-
     fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         let body = encode(&self.host_id, boot_id, samples)?;
         let mut response = match agent

@@ -60,11 +60,6 @@ export function age(receivedAtMs: number | null | undefined, now = Date.now()): 
   return `${Math.floor(seconds / 86_400)}d ago`;
 }
 
-export function timestamp(ms: number | undefined): string {
-  if (!isFiniteNumber(ms)) return unavailableText;
-  return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
 export function dateTime(ms: number | undefined): string {
   if (!isFiniteNumber(ms)) return unavailableText;
   return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -79,11 +74,6 @@ export function axisTime(ms: number, spanMs: number): string {
 export function clock(ms: number | undefined): string {
   if (!isFiniteNumber(ms)) return unavailableText;
   return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-export function shortTime(ms: number | undefined): string {
-  if (!isFiniteNumber(ms)) return unavailableText;
-  return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 export function errorMessage(error: unknown): string {
