@@ -17,6 +17,13 @@ const PROJECTS: readonly ProjectConfig[] = [
       { name: "pypi", url: "https://pypi.17166969.xyz/current/simple/" },
       { name: "site", url: "https://stuff.17166969.xyz/" }
     ]
+  },
+  {
+    id: "stats",
+    name: "stats",
+    worker: WORKER_NAME,
+    buckets: [],
+    probes: domain === undefined ? [] : [{ name: "health", url: `https://${domain}/health` }]
   }
 ];
 const PROJECTS_JSON = JSON.stringify(PROJECTS);
