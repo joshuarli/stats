@@ -57,16 +57,9 @@ export type CollectorRun = {
 export function upsertPoints(sql: SqlStorage, project: string, points: readonly MetricPoint[]): number {
   let written = 0;
   const changedHours = new Map<string, { metric: string; hourMs: number }>();
+  const stored = storedValues(sql, project, points);
   for (const point of points) {
-    const existing = sql
-      .exec<{ value: number }>(
-        "SELECT value FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms = ?",
-        project,
-        point.metric,
-        point.bucketMs,
-      )
-      .toArray()[0];
-    if (existing !== undefined && existing.value === point.value) {
+    if (stored.get(`${point.metric}\n${point.bucketMs}`) === point.value) {
       continue;
     }
     written += sql.exec(
@@ -83,6 +76,26 @@ export function upsertPoints(sql: SqlStorage, project: string, points: readonly 
     written += rebuildHour(sql, project, metric, hourMs);
   }
   return written;
+}
+
+function storedValues(sql: SqlStorage, project: string, points: readonly MetricPoint[]): Map<string, number> {
+  const stored = new Map<string, number>();
+  if (points.length === 0) {
+    return stored;
+  }
+  let earliestMs = Number.POSITIVE_INFINITY;
+  for (const point of points) {
+    earliestMs = Math.min(earliestMs, point.bucketMs);
+  }
+  const rows = sql.exec<{ metric: string; bucket_ms: number; value: number }>(
+    "SELECT metric, bucket_ms, value FROM project_samples INDEXED BY project_samples_by_bucket WHERE project = ? AND bucket_ms >= ?",
+    project,
+    earliestMs,
+  );
+  for (const row of rows) {
+    stored.set(`${row.metric}\n${row.bucket_ms}`, row.value);
+  }
+  return stored;
 }
 
 function rebuildHour(sql: SqlStorage, project: string, metric: string, hourMs: number): number {
