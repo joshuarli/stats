@@ -92,6 +92,13 @@ describe("Access authorization", () => {
     expect(await response.text()).toContain("<title>Stats</title>");
   });
 
+  it("serves llms.txt only behind Access", async () => {
+    expect((await SELF.fetch("https://example.com/llms.txt")).status).toBe(401);
+    const response = await SELF.fetch("https://example.com/llms.txt", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("/api/v1/projects/:id/history");
+  });
+
   it("rejects malformed admin calls without the raw exception", async () => {
     const token = await accessToken();
     const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };

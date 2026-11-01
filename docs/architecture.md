@@ -57,6 +57,8 @@ the host bearer token. Every other path that serves assets or data first passes
 `verifyAccess` in `access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
+`cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
+tells an agent how to authenticate and read the JSON API.
 
 Routes under `/api/v1/` (handled in `installation.ts`):
 
