@@ -83,12 +83,13 @@ new sample on a full queue displaces the oldest. Each upload sends up to two
 samples, or up to 16 when a backlog has built up. Collection never waits for
 an upload.
 
-- 5xx, timeouts, and network errors keep the batch and retry with
-  exponential backoff and jitter (1 s base, 60 s cap). 429 honors
-  `Retry-After`. A batch put back on a full queue displaces the newest samples.
-- Any other 4xx, a TLS failure, or an unclassified transport error drops the
-  batch. That includes 401 after a credential is rotated or revoked, so
-  restart the agent with the new token right after rotating.
+- 5xx, timeouts, TLS failures, network errors, and statuses other than the
+  permanent ones below keep the batch and retry with exponential backoff and
+  jitter (1 s base, 60 s cap). 429 honors `Retry-After`. A batch put back on a
+  full queue displaces the newest samples.
+- 400, 401, 403, 404, 413, 422, a bad URL, or an oversized encoded batch
+  drops the batch. That includes 401 after a credential is rotated or
+  revoked, so restart the agent with the new token right after rotating.
 - SIGTERM and SIGINT stop sampling, let any in-flight upload finish, then
   keep uploading until the queue is empty, an upload fails, or 5 seconds have
   passed. Each queued request is bounded by `requestTimeoutMs` (max 30 s); the

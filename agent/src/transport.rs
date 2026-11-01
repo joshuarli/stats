@@ -103,20 +103,20 @@ fn classify(error: ureq::Error) -> TransportError {
         ureq::Error::HostNotFound => TransportError::Retryable("host not found".to_owned()),
         ureq::Error::ConnectionFailed => TransportError::Retryable("connection failed".to_owned()),
         ureq::Error::Protocol(error) => TransportError::Retryable(format!("protocol: {error}")),
-        ureq::Error::Tls(message) => TransportError::Permanent(format!("TLS: {message}")),
-        ureq::Error::Rustls(error) => TransportError::Permanent(format!("TLS: {error}")),
+        ureq::Error::Tls(message) => TransportError::Retryable(format!("TLS: {message}")),
+        ureq::Error::Rustls(error) => TransportError::Retryable(format!("TLS: {error}")),
         ureq::Error::BadUri(message) => TransportError::Permanent(format!("bad URL: {message}")),
-        ureq::Error::Http(error) => TransportError::Permanent(format!("HTTP: {error}")),
+        ureq::Error::Http(error) => TransportError::Retryable(format!("HTTP: {error}")),
         ureq::Error::BodyExceedsLimit(_) => TransportError::Permanent("request body exceeded its limit".to_owned()),
-        other => TransportError::Permanent(format!("request failed: {other}")),
+        other => TransportError::Retryable(format!("request failed: {other}")),
     }
 }
 
 fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError {
     match status {
+        400 | 401 | 403 | 404 | 413 | 422 => TransportError::Permanent(format!("server returned {status}")),
         429 => TransportError::RateLimited(retry_after),
-        500..=599 => TransportError::Retryable(format!("server returned {status}")),
-        _ => TransportError::Permanent(format!("server returned {status}")),
+        _ => TransportError::Retryable(format!("server returned {status}")),
     }
 }
 
@@ -339,6 +339,26 @@ mod tests {
         });
         let transport = HttpTransport::new(&format!("https://{address}"), &host, &token, Duration::from_millis(200)).unwrap();
         assert!(transport.send(&boot, &[sample()]).is_err());
+    }
+
+    #[test]
+    fn classifies_only_caller_errors_as_permanent() {
+        for status in [400, 401, 403, 404, 413, 422] {
+            assert!(matches!(classify_status(status, None), TransportError::Permanent(_)), "{status}");
+        }
+        for status in [408, 425, 409, 410, 418, 500, 502, 503, 504] {
+            assert!(matches!(classify_status(status, None), TransportError::Retryable(_)), "{status}");
+        }
+        assert!(matches!(classify_status(429, Some(Duration::from_secs(2))), TransportError::RateLimited(Some(delay)) if delay == Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn classifies_tls_and_unclassified_errors_as_retryable() {
+        assert!(matches!(classify(ureq::Error::Tls("certificate is not yet valid")), TransportError::Retryable(_)));
+        assert!(matches!(classify(ureq::Error::Rustls(rustls::Error::General("certificate is not yet valid".to_owned()))), TransportError::Retryable(_)));
+        assert!(matches!(classify(ureq::Error::RedirectFailed), TransportError::Retryable(_)));
+        assert!(matches!(classify(ureq::Error::BadUri("missing scheme".to_owned())), TransportError::Permanent(_)));
+        assert!(matches!(classify(ureq::Error::BodyExceedsLimit(1)), TransportError::Permanent(_)));
     }
 
     #[test]

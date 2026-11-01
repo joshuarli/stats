@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 25
 
-### STA-2 · P2 · Transient TLS and unclassified transport errors drop batches as permanent
-
-- **Area:** Errors
-- **Where:** `agent/src/transport.rs:98-119`, `agent/src/runtime.rs:92`
-- **Problem:** `classify` maps `Error::Tls`, `Error::Rustls`, `Error::Http`, and the catch-all to `Permanent`. `classify_status` treats every status other than 429 and 5xx as permanent, including 408 and 425. `flush_once` drops a permanent batch with no requeue. On a host whose clock is still unsynced at boot, a certificate that is "not yet valid" is transient but discards each upload until NTP corrects the clock. The test at `transport.rs:313-331` asserts only `is_err()`. The classification and the drop are proven by code; that a not-yet-valid certificate surfaces as `Rustls` is `unproven`.
-- **Recommendation:** Make only 400, 401, 403, 404, 413, and 422 and `BadUri` permanent, and treat everything else as retryable with backoff. Add one classification test per variant. The 401 and 403 handling depends on STA-3.
-- **Fix with:** error-model
-- **Effort:** S
-
 ### STA-3 · P2 · Upload failures and data loss are invisible while the system runs
 
 - **Area:** Operability
