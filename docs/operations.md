@@ -67,6 +67,40 @@ The free plan includes 200,000 log events per day with three-day retention.
 Set a spend alarm before raising `headSamplingRate` or the fleet size, and
 lower the rate or move to Workers Paid when the allowance is close.
 
+## Project collection
+
+The cron (`*/5 * * * *`) and the `ANALYTICS_SQL` and `PROJECTS` bindings are
+declared in `cloudflare.config.ts`. The binding reads the whole account's
+analytics, which is a wider permission than the host ingest path needs; only the
+fixed queries in `cloudflare/src/projects/queries.ts` ever run. Change the
+project list by editing `PROJECTS` there and redeploying.
+
+Check a deployment from your machine:
+
+- `node cloudflare/scripts/check-analytics-sql.mjs` runs the three queries
+  read-only against the live account through `cf sql query` and fails on a
+  non-200 response or a row the parser rejects.
+- After the first cron run, `GET /api/v1/projects` shows `collector.lastSuccessAtMs`
+  and `stale: false`. If there is no run, apply schedules with
+  `cf workers triggers deploy`.
+
+Budgets, measured on the test object with fixture-shaped data (the live account
+has not run the collector yet):
+
+| Measure | Result | Target |
+| --- | --- | --- |
+| Binding queries per project per run | 3 | at most 6 |
+| Rows written per run, steady state | 49 average, 74 at most | 60 |
+| Rows written, first run or recovery after an outage | 258 to 414, once | no target |
+| Rows written, identical second run | 0 | 0 |
+| Projected daily writes at the average | about 14,000 | under 15,000 |
+| Rows read per query, live | Worker 4.0 M, R2 operations 2.5 M, R2 storage 1.6 M | recorded |
+
+The two expiry indexes double the cost of each new bucket; dropping them would
+cut a first run to about 130 rows but would make retention scan whole tables.
+The free-plan allowance is 100,000 rows written a day, shared with host ingest.
+The live wall time of a run is not yet measured.
+
 ## First deployment
 
 1. Create an Access application for the dashboard hostname with an owner allow
@@ -118,6 +152,11 @@ Recorded 2026-10-31:
 
 Not yet verified:
 
+- Project collection on the live account: the cron and binding, whether the
+  binding accepts the Log Explorer-backed `logs.workersLogs` dataset (its docs
+  list Log Explorer datasets as unsupported, though `cf sql query` returns the
+  same shape), parity of invocation counts with `cf sql query`, probes from the
+  edge, and the arrival delay behind the 45 minute settle time.
 - aarch64 on a bare host: kernel, init, and reboot persistence.
 - Workers Paid limits, spend alarms, and overage behavior at fleet scale.
 - The Niceforge runner deep link on a live runner host.

@@ -3,8 +3,9 @@
 A static-musl Rust agent samples each Linux host and posts batches over HTTPS
 to a Cloudflare Worker. The Worker forwards ingest and API calls to one
 SQLite-backed Durable Object, which stores raw samples and rollups and answers
-history queries. A Solid dashboard, served through the same Worker, reads that
-API behind Cloudflare Access. The wire contract between agent and Worker is in
+history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
+configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
+served through the same Worker, reads that API behind Cloudflare Access. The wire contract between agent and Worker is in
 [`protocol.md`](protocol.md).
 
 ## Agent
@@ -64,6 +65,8 @@ Routes under `/api/v1/` (handled in `installation.ts`):
 - `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
   `range` for an explicit window; the response then omits `range`.
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|r2|probes|collector`
+  (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 
@@ -93,12 +96,13 @@ write a fixed JSON line to Workers Logs (`event`, `hostId` when known, and
 `code`). `cloudflare.config.ts` enables Workers Logs at 10% head sampling.
 
 Configuration: `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are Worker secrets;
-`ENVIRONMENT`, `INSTALLATION`, and `ASSETS` are bindings declared in
-`cloudflare.config.ts`. The Durable Object id is the fixed name `installation`.
+`ENVIRONMENT`, `INSTALLATION`, `ASSETS`, `ANALYTICS_SQL`, and `PROJECTS` are
+bindings declared in `cloudflare.config.ts`, which also declares the cron. The Durable Object id is the fixed name `installation`.
 
 ## Storage and rollups
 
-One Durable Object per installation holds three tables, created with
+One Durable Object per installation holds the host tables below and the project
+tables in [Cloudflare projects](#cloudflare-projects), created with
 `CREATE TABLE IF NOT EXISTS` in `installation.ts`:
 
 - `hosts`: credentials, revocation, last receipt, and the rate-limit window.
@@ -136,13 +140,74 @@ One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the
 Durable Object storage ceiling.
 
+## Cloudflare projects
+
+A project is one entry in the `PROJECTS` text binding: an id, a display name,
+a Worker script, one to eight R2 bucket names, and up to eight HTTPS probe
+URLs. `cloudflare.config.ts` writes the list and validates it when the config
+is evaluated, so a bad entry fails `make worker-check`. `src/projects/config.ts`
+validates it again on every use and rejects unknown keys, duplicate ids,
+non-HTTPS probe URLs, and bucket names outside the R2 pattern; an invalid list
+answers 503 with a fixed message. There is no create or update API.
+
+**Collection.** The `scheduled` handler runs every five minutes. For each
+project it reads the trailing 90 minutes through the `ANALYTICS_SQL` binding
+with three fixed queries (Worker events from `logs.workersLogs`, R2 operations,
+R2 storage) and sends one GET to each probe. The queries live in
+`src/projects/queries.ts`, bind every value as a parameter, and take nothing
+from a request. Counts are `SUM(sampleInterval)`, because the datasets are
+sampled and `COUNT(*)` under-counts. Everything is parsed before anything is
+stored, so a failed run stores no metrics: it records a run with a fixed detail,
+writes one `collector_failed` log line, and rethrows so the cron shows it.
+
+**Storage** (schema version 4):
+
+- `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
+  7 days.
+- `project_hours(project, metric, hour_ms, value)`: hourly buckets for 90 days,
+  rebuilt for each hour a changed value falls in; sums add and maxima take the
+  maximum.
+- `collector_runs`: the last 500 runs, with when each finished, whether it
+  succeeded, rows read, and duration.
+
+An upsert reads before it writes, so a run that returns the same values writes
+no rows and late data replaces an earlier value. The existing alarm deletes
+expired project rows in batches of 1000.
+
+**Metrics.** Worker: `worker.invocations`, `worker.cpuMsSum`, `worker.cpuMsMax`
+(approximate), and `worker.status.<class>`. R2, per bucket:
+`ops.success|userError|other`, `storageBytes`, `objects`. Probes:
+`probe.<name>.up` and `.ms`, measured from Cloudflare's edge. Worker CPU is
+CPU time per invocation, not latency; the SQL source has no quantiles. R2
+`userError` (mostly 404s) is shown but never scored.
+
+**Missing versus zero.** A five-minute bucket is settled once its end is 45
+minutes old, because analytics rows arrive late. The history API reports `0`
+for a settled counter bucket that has no row only when a successful collector
+run, finished after the bucket settled, covered it. Otherwise the point is
+`null`. Gauges (storage, maximum CPU, probes) are never zero-filled, and the
+unsettled newest bucket is never filled. Only the last 500 runs are kept, so
+buckets older than about two days are not filled.
+
+**History response.** The bucket width is the smallest of 5 minutes, 15
+minutes, 1 hour, and 3 hours that gives at most 900 points. Widths under an
+hour read `project_samples`; the rest read `project_hours`. A metric response
+is `{projectId, range, kind, fromMs, toMs, stepMs, series: [{metric, values}]}`
+with every series aligned to `fromMs + i * stepMs`; `kind=collector` returns
+`runs`. `GET /projects` returns each project with `collector.lastRunAtMs`,
+`lastSuccessAtMs`, `lastError`, and `stale` (no success in 15 minutes).
+
+**Access.** `ANALYTICS_SQL` can read all of the account's analytics. Only the
+fixed queries run, and no request data reaches SQL.
+
 ## Dashboard
 
 `cloudflare/src/client/` is a Solid application built by Vite's client
 environment and charted with uPlot. `api.ts` decodes every response once at the
 boundary; request failures stay in the typed `ApiFailure` channel. `state.ts`
 owns the range, zoom stack, and live-refresh state; `chart-data.ts` aligns
-series onto a shared time grid. The browser never sees a host token or an
+series onto a shared time grid. Routes are the fleet page, `#/host/:hostId`,
+and `#/project/:projectId`; the fleet page lists projects under the hosts. The browser never sees a host token or an
 operator secret.
 
 ## Non-goals

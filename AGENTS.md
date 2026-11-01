@@ -28,6 +28,7 @@ go under `.work/tmp`.
 - Rates come from `monoMs` deltas within one boot, never from wall-clock deltas.
 - Tokens never appear in argv, logs, telemetry responses, or built assets; the provisioning response returns a new token once, and the server stores only a SHA-256 verifier.
 - Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
+- Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
 - The baseline agent never loads BPF, needs no root, service manager, or runtime, and links no dynamic libraries.
 
 ## Docs

@@ -119,6 +119,16 @@ Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status filters (online, stale, no samples, revoked), sortable
 columns, and fleet charts.
 
+Below the hosts, a Projects table lists each configured Cloudflare project with
+its collector state. A project page (`#/project/<id>`) shows a Worker's
+requests, status mix, and CPU time, its R2 buckets' operations by outcome,
+storage, and objects, endpoint availability probed from Cloudflare's edge, and
+the collector's own health, with the same status strip, limits, incidents, and
+two columns as a host. Worker CPU is CPU time per invocation, not latency, and
+R2 user errors such as 404s are shown but not scored. Projects are configured
+in `cloudflare/cloudflare.config.ts`; see
+[`docs/architecture.md`](docs/architecture.md#cloudflare-projects).
+
 The host page opens with the host's CPU model and topology, memory, OS,
 kernel, and agent version, which the agent reports with its first upload after
 an update and then hourly. Below that:
