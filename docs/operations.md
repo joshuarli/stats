@@ -152,11 +152,23 @@ Recorded 2026-10-31:
 
 Not yet verified:
 
-- Project collection on the live account: the cron and binding, whether the
-  binding accepts the Log Explorer-backed `logs.workersLogs` dataset (its docs
-  list Log Explorer datasets as unsupported, though `cf sql query` returns the
-  same shape), parity of invocation counts with `cf sql query`, probes from the
-  edge, and the arrival delay behind the 45 minute settle time.
+- Project collection results on the live account. The Worker was deployed on
+  2026-11-01 (version `8390a8f6`) and the cron reached the Durable Object at
+  17:20:58 and 17:26:00 UTC, about five minutes apart, with the first run
+  appearing roughly eight minutes after the deploy while the schedule
+  propagated. Whether those runs succeeded, whether the binding accepts the
+  Log Explorer-backed `logs.workersLogs` dataset (its docs list such datasets as
+  unsupported, though `cf sql query` returns the same shape), and parity of
+  invocation counts with `cf sql query` need `GET /api/v1/projects`, which
+  needs an interactive `cf access login`. Probes from the edge are also
+  unverified.
+- Source retention seen on 2026-11-01: `logs.workersLogs` served from 04:58
+  UTC that day, `events.r2CombinedOperations` served the full 7 days queried,
+  and `states.r2CombinedStorage` could not be probed (state datasets allow only
+  `MAX`).
+- Ingestion lag seen on 2026-11-01: the newest Worker event was 6.7 minutes old
+  during steady traffic and 22 minutes old in a quiet period, so the 45 minute
+  settle time has margin; keep it until several days of samples exist.
 - aarch64 on a bare host: kernel, init, and reboot persistence.
 - Workers Paid limits, spend alarms, and overage behavior at fleet scale.
 - The Niceforge runner deep link on a live runner host.
