@@ -1,6 +1,3 @@
-// Optional block-layer latency probe. Run with bpftrace and root/CAP_BPF.
-// It is not loaded by the baseline agent and does not feed the telemetry wire format.
-
 BEGIN
 {
   printf("probing block latency for 10s; generate bounded I/O now\n");
