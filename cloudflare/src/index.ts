@@ -1,5 +1,7 @@
 import { verifyAccess } from "./access";
+import { bearerToken } from "./auth";
 import { Installation } from "./installation";
+import { MAX_BODY_BYTES } from "./limits";
 
 export { Installation };
 
@@ -31,8 +33,16 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
+    if (path === "/ingest/v1/batches") {
+      if (request.method === "POST") {
+        if (bearerToken(request.headers.get("authorization")) === null) return error(401, "unauthorized", "a host bearer token is required");
+        const declared = request.headers.get("content-length");
+        if (declared !== null && Number(declared) > MAX_BODY_BYTES) return error(413, "too_large", "batch exceeds the body cap");
+      }
+      const stub = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
+      return secure(await stub.fetch(internal(request, "/ingest")));
+    }
     const stub = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
-    if (path === "/ingest/v1/batches") return secure(await stub.fetch(internal(request, "/ingest")));
     if (path.startsWith("/api/v1/")) {
       const access = await verifyAccess(request, env);
       if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);

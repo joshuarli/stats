@@ -143,6 +143,13 @@ describe("ingest", () => {
     expect((await ingest(host.token, body)).status).toBe(401);
   });
 
+  it("rejects a missing or malformed bearer token before parsing the body", async () => {
+    const missing = await SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: "notjson" });
+    expect(missing.status).toBe(401);
+    const malformed = await SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { Authorization: "Basic abc", "Content-Type": "application/json" }, body: "notjson" });
+    expect(malformed.status).toBe(401);
+  });
+
   it("purges a host with its samples and rollups", async () => {
     const host = await createHost();
     const body = rewrite("batch-full.json", host.hostId);

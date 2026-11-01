@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-17 · P3 · Unauthenticated ingest is parsed inside the single Durable Object
-
-- **Area:** Security
-- **Where:** `cloudflare/src/index.ts:34-35`, `cloudflare/src/installation.ts:291-303`
-- **Problem:** Access bypasses `/ingest/*`, and the Worker forwards every POST, with or without a token, to the one global object. The object reads up to 64 KiB and parses the JSON before it checks the bearer token. Junk POSTs queue on the single-threaded object that also serves the dashboard. The per-host rate limit applies only after authentication. Not load-tested.
-- **Recommendation:** In the Worker, reject a missing or malformed bearer token and an oversized `content-length` before touching the stub, and add a Cloudflare rate-limit rule on `/ingest/*`.
-- **Fix with:** security
-- **Effort:** S
-
 ### STA-18 · P3 · Fleet charts omit hosts that are not online now, even in past windows
 
 - **Area:** Data
