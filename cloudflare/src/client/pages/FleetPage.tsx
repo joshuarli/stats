@@ -12,18 +12,18 @@ import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
 import { TimeChart } from "../components/TimeChart";
-import { Badge, EmptyState, ErrorState, Meter, Notice, Pagination, Skeleton, Widget } from "../components/ui";
+import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, StateCell, Widget } from "../components/ui";
 
 const PAGE_SIZE = 10;
 const PALETTE_SIZE = 8;
-const facetLabels = ["online", "stale", "no samples", "revoked"] as const;
-type FacetLabel = (typeof facetLabels)[number];
+const statusLabels = ["online", "stale", "no samples", "revoked"] as const;
+type StatusLabel = (typeof statusLabels)[number];
 const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
 type SortKey = "name" | "status" | "seen";
 interface Sort { readonly key: SortKey; readonly direction: 1 | -1 }
 
-function isFacetLabel(label: string): label is FacetLabel {
-  return (facetLabels as readonly string[]).includes(label);
+function isStatusLabel(label: string): label is StatusLabel {
+  return (statusLabels as readonly string[]).includes(label);
 }
 
 function hostStatus(host: Host): HostStatus {
@@ -45,7 +45,7 @@ function compareHosts(sort: Sort): (left: Host, right: Host) => number {
 export function FleetPage(): JSX.Element {
   const { query, hosts, now, refreshHosts, tick, view } = useTelemetry();
   const [search, setSearch] = createSignal("");
-  const [selected, setSelected] = createSignal<ReadonlySet<FacetLabel>>(new Set<FacetLabel>());
+  const [selected, setSelected] = createSignal<ReadonlySet<StatusLabel>>(new Set<StatusLabel>());
   const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
   const [page, setPage] = createSignal(1);
   const [hover, setHover] = createSignal<string | null>(null);
@@ -56,7 +56,7 @@ export function FleetPage(): JSX.Element {
     const chosen = selected();
     const matching = hosts().filter(host => {
       const label = hostStatus(host).label;
-      const matchesStatus = chosen.size === 0 || (isFacetLabel(label) && chosen.has(label));
+      const matchesStatus = chosen.size === 0 || (isStatusLabel(label) && chosen.has(label));
       return matchesStatus && (text.length === 0 || host.name.toLowerCase().includes(text) || host.hostId.includes(text));
     });
     return matching.sort(compareHosts(sort()));
@@ -79,11 +79,11 @@ export function FleetPage(): JSX.Element {
 
   const counts = createMemo(() => {
     const all = hosts();
-    const byLabel = (label: FacetLabel) => all.filter(host => hostStatus(host).label === label).length;
+    const byLabel = (label: StatusLabel) => all.filter(host => hostStatus(host).label === label).length;
     return { all: all.length, online: byLabel("online"), stale: byLabel("stale"), noSamples: byLabel("no samples"), revoked: byLabel("revoked") };
   });
 
-  const toggle = (label: FacetLabel) => {
+  const toggle = (label: StatusLabel) => {
     setSelected(current => {
       const next = new Set(current);
       if (next.has(label)) next.delete(label);
@@ -98,47 +98,41 @@ export function FleetPage(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Hosts" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line">
-        <span class="page-sub">
-          {counts().all} provisioned · {counts().online} reporting · {counts().stale + counts().noSamples} stale · {counts().revoked} revoked
-        </span>
-      </PageHeader>
+      <PageHeader title="Hosts" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line" />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
-      <div class="fleet-layout">
-        <Facets counts={counts()} selected={selected()} toggle={toggle} clear={() => { setSelected(new Set<FacetLabel>()); setPage(1); }} />
-        <div class="fleet-main">
-          <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
-            <Loading fallback={<FleetSkeleton />}>
-              <FleetDashboard
-                rows={rows()}
-                colorOf={colorOf}
-                total={filtered().length}
-                allTotal={counts().all}
-                search={latest(search)}
-                setSearch={value => { setSearch(value); setPage(1); }}
-                clearFilters={() => { setSearch(""); setSelected(new Set<FacetLabel>()); setPage(1); }}
-                sort={sort()}
-                sortBy={sortBy}
-                page={Math.min(latest(page), pages())}
-                pages={pages()}
-                setPage={setPage}
-                now={now()}
-                pending={isPending(rows)}
-                hover={hover()}
-                setHover={setHover}
-                windowed={view() !== null}
-              />
-            </Loading>
-          </Errored>
-          <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} compact />}>
-            <Loading fallback={<Widget title="Projects"><Skeleton rows={2} /></Widget>}>
-              <ProjectsSection />
-            </Loading>
-          </Errored>
-        </div>
-      </div>
+      <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
+        <Loading fallback={<FleetSkeleton />}>
+          <FleetDashboard
+            rows={rows()}
+            colorOf={colorOf}
+            total={filtered().length}
+            allTotal={counts().all}
+            counts={counts()}
+            selected={selected()}
+            toggle={toggle}
+            search={latest(search)}
+            setSearch={value => { setSearch(value); setPage(1); }}
+            clearFilters={() => { setSearch(""); setSelected(new Set<StatusLabel>()); setPage(1); }}
+            sort={sort()}
+            sortBy={sortBy}
+            page={Math.min(latest(page), pages())}
+            pages={pages()}
+            setPage={setPage}
+            now={now()}
+            pending={isPending(rows)}
+            hover={hover()}
+            setHover={setHover}
+            windowed={view() !== null}
+          />
+        </Loading>
+      </Errored>
+      <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} compact />}>
+        <Loading fallback={<Widget title="Projects"><Skeleton rows={2} /></Widget>}>
+          <ProjectsSection />
+        </Loading>
+      </Errored>
     </>
   );
 }
@@ -181,31 +175,24 @@ function ProjectRow(props: { readonly project: Project; readonly now: number }):
   return (
     <tr>
       <td>
-        <div class="host-cell">
-          <span class={`status-dot tone-${HEALTH_TONE[status().health]}`} aria-hidden="true" />
-          <div>
-            <a class="host-name" href={`#/project/${props.project.id}`}>{props.project.name}</a>
-            <span class="host-id">{props.project.id}</span>
-          </div>
-        </div>
+        <EntityCell
+          marker={<span class={`status-dot tone-${HEALTH_TONE[status().health]}`} aria-hidden="true" />}
+          name={props.project.name}
+          href={`#/project/${props.project.id}`}
+          id={props.project.id}
+        />
       </td>
       <td><span class="cell-strong">{props.project.worker}</span></td>
       <td class="numeric"><span class="metric-value-small">{count(props.project.buckets.length)}</span></td>
-      <td>
-        <div class="status-cell">
-          <Badge tone={HEALTH_TONE[status().health]} dot>{status().label}</Badge>
-          <span class="cell-note">{age(props.project.collector.lastSuccessAtMs, props.now)}</span>
-        </div>
-      </td>
+      <td><StateCell tone={HEALTH_TONE[status().health]} label={status().label} note={age(props.project.collector.lastSuccessAtMs, props.now)} /></td>
     </tr>
   );
 }
 
-function Facets(props: {
+function StatusChips(props: {
   readonly counts: { readonly online: number; readonly stale: number; readonly noSamples: number; readonly revoked: number };
-  readonly selected: ReadonlySet<FacetLabel>;
-  readonly toggle: (label: FacetLabel) => void;
-  readonly clear: () => void;
+  readonly selected: ReadonlySet<StatusLabel>;
+  readonly toggle: (label: StatusLabel) => void;
 }): JSX.Element {
   const entries = () => [
     { label: "online" as const, count: props.counts.online, tone: "ok" },
@@ -214,23 +201,17 @@ function Facets(props: {
     { label: "revoked" as const, count: props.counts.revoked, tone: "bad" }
   ].filter(entry => entry.count > 0 || entry.label === "online" || entry.label === "revoked" || props.selected.has(entry.label));
   return (
-    <aside class="facets" aria-label="Filters">
-      <h2>Status</h2>
+    <div class="chips" role="group" aria-label="Filter by status">
       <For each={entries()}>
         {(entry) => (
-          <label class="facet">
-            <input type="checkbox" checked={props.selected.has(entry.label)} onChange={() => props.toggle(entry.label)} />
-            <span class="facet-box" aria-hidden="true" />
+          <button class="chip" type="button" aria-pressed={props.selected.has(entry.label) ? "true" : "false"} onClick={() => props.toggle(entry.label)}>
             <span class={`status-dot tone-${entry.tone}`} aria-hidden="true" />
-            <span class="facet-name">{entry.label}</span>
-            <span class="facet-count">{entry.count}</span>
-          </label>
+            {entry.label}
+            <span class="chip-count">{entry.count}</span>
+          </button>
         )}
       </For>
-      <Show when={props.selected.size > 0}>
-        <button class="link-button" type="button" onClick={props.clear}>Clear filters</button>
-      </Show>
-    </aside>
+    </div>
   );
 }
 
@@ -239,6 +220,9 @@ function FleetDashboard(props: {
   readonly colorOf: (host: Host) => number;
   readonly total: number;
   readonly allTotal: number;
+  readonly counts: { readonly online: number; readonly stale: number; readonly noSamples: number; readonly revoked: number };
+  readonly selected: ReadonlySet<StatusLabel>;
+  readonly toggle: (label: StatusLabel) => void;
   readonly search: string;
   readonly setSearch: (value: string) => void;
   readonly clearFilters: () => void;
@@ -303,6 +287,7 @@ function FleetDashboard(props: {
         bodyClass="flush"
       >
         <div class="table-toolbar">
+          <StatusChips counts={props.counts} selected={props.selected} toggle={props.toggle} />
           <label class="search">
             <span class="sr-only">Search hosts</span>
             <span class="search-icon"><Icon name="search" size={13} /></span>
@@ -366,27 +351,18 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
   const netOut = createMemo(() => sumLatest(props.row.nets, point => point.txBytesPerSec));
   const trend = createMemo(() => sparkPoints(windowed(), cpuUsed));
   const reporting = () => status().label === "online";
-  const clearHover = () => props.setHover(null);
-  const hoverRow = () => props.setHover(props.row.host.name);
   return (
     <tr>
       <td>
-        <div class="host-cell">
-          <span class={reporting() ? `host-swatch series-${props.color}` : `status-dot tone-${status().tone}`} aria-hidden="true" />
-          <div>
-            <a class="host-name" href={`#/host/${props.row.host.hostId}`} onMouseEnter={hoverRow} onFocus={hoverRow} onMouseLeave={clearHover} onBlur={clearHover}>{props.row.host.name}</a>
-            <span class="host-id" title={props.row.host.hostId}>{props.row.host.hostId}</span>
-          </div>
-        </div>
+        <EntityCell
+          marker={<span class={reporting() ? `host-swatch series-${props.color}` : `status-dot tone-${status().tone}`} aria-hidden="true" />}
+          name={props.row.host.name}
+          href={`#/host/${props.row.host.hostId}`}
+          id={props.row.host.hostId}
+          onHover={hovered => props.setHover(hovered ? props.row.host.name : null)}
+        />
       </td>
-      <td>
-        <div class="status-cell">
-          <Badge tone={status().tone} dot>{status().label}</Badge>
-          <Show when={!reporting()}>
-            <span class="cell-note">{age(props.row.host.lastReceivedAtMs, props.now)}</span>
-          </Show>
-        </div>
-      </td>
+      <td><StateCell tone={status().tone} label={status().label} note={reporting() ? undefined : age(props.row.host.lastReceivedAtMs, props.now)} /></td>
       <td>
         <div class="cpu-cell">
           <span class="metric-value-small">{percent(cpu())}</span>

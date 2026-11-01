@@ -1,10 +1,10 @@
 import type { JSX } from "@solidjs/web";
-import { count, percent } from "../../format";
+import { count, milliseconds, percent } from "../../format";
 import { LIMITS } from "../../health";
 import { TimeChart } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
 import { AXIS_WIDTH, PanelLabel } from "../host/shared";
-import { cpuAverage, metricPoints, milliseconds, serverErrorShare, STATUS_CLASSES, type ProjectData } from "./series";
+import { cpuAverage, metricPoints, serverErrorShare, STATUS_CLASSES, type ProjectData } from "./series";
 
 const STATUS_COLORS = { "2xx": "blue", "3xx": "aqua", "4xx": "violet", "5xx": "critical", other: "serious" } as const;
 

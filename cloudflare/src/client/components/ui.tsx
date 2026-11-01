@@ -15,6 +15,36 @@ export function Badge(props: { readonly tone: Tone; readonly children: JSX.Eleme
   );
 }
 
+export function EntityCell(props: {
+  readonly marker: JSX.Element;
+  readonly name: string;
+  readonly href: string;
+  readonly id: string;
+  readonly onHover?: ((hovered: boolean) => void) | undefined;
+}): JSX.Element {
+  const hover = (hovered: boolean) => () => props.onHover?.(hovered);
+  return (
+    <div class="entity-cell">
+      {props.marker}
+      <div>
+        <a class="entity-name" href={props.href} onMouseEnter={hover(true)} onFocus={hover(true)} onMouseLeave={hover(false)} onBlur={hover(false)}>{props.name}</a>
+        <span class="entity-id" title={props.id}>{props.id}</span>
+      </div>
+    </div>
+  );
+}
+
+export function StateCell(props: { readonly tone: Tone; readonly label: string; readonly note?: string | undefined }): JSX.Element {
+  return (
+    <div class="state-cell">
+      <Badge tone={props.tone} dot>{props.label}</Badge>
+      <Show when={props.note !== undefined}>
+        <span class="cell-note">{props.note}</span>
+      </Show>
+    </div>
+  );
+}
+
 export function Widget(props: ParentProps<{
   readonly title: string;
   readonly subtitle?: string | undefined;

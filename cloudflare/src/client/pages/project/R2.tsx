@@ -1,7 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { bytes, count, percent } from "../../format";
 import { LIMITS } from "../../health";
-import { SERIES_COLORS, AXIS_WIDTH, PanelLabel } from "../host/shared";
+import { AXIS_WIDTH, PanelLabel, seriesColor } from "../host/shared";
 import { TimeChart } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
 import { bucketOutcome, metricPoints, otherShare, r2Metric, type ProjectData } from "./series";
@@ -52,7 +52,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
         legend="inline"
         timeAxis={false}
         yAxisWidth={AXIS_WIDTH}
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral", scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "storageBytes")) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "storageBytes")) }))}
         format={bytes}
         min={0}
         stepMs={props.data.r2.stepMs}
@@ -63,7 +63,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
         compact
         legend="inline"
         yAxisWidth={AXIS_WIDTH}
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral", scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "objects")) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "objects")) }))}
         format={count}
         min={0}
         stepMs={props.data.r2.stepMs}

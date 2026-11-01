@@ -238,7 +238,7 @@ test("fleet charts keep a stale host that has points", async ({ page }) => {
   await expect(page.locator(".chart-empty")).toHaveCount(0);
 });
 
-test("search filters the fleet and status facets narrow it", async ({ page }) => {
+test("search filters the fleet and the status chips narrow it", async ({ page }) => {
   await mock(page);
   await page.goto("/");
   const table = page.getByRole("table", { name: "Fleet hosts" });
@@ -251,10 +251,17 @@ test("search filters the fleet and status facets narrow it", async ({ page }) =>
   await search.fill("alpha");
   await expect(table).toContainText("alpha");
 
-  await page.getByLabel("revoked").check();
+  const filters = page.getByRole("group", { name: "Filter by status" });
+  const revoked = filters.getByRole("button", { name: /^revoked/u });
+  await expect(filters.getByRole("button", { name: /^online/u })).toContainText("1");
+  await revoked.click();
+  await expect(revoked).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("No hosts match this view.")).toBeVisible();
-  await page.getByLabel("revoked").uncheck();
+  await revoked.click();
+  await expect(revoked).toHaveAttribute("aria-pressed", "false");
   await expect(table).toContainText("alpha");
+  await expect(page.getByText("provisioned")).toHaveCount(0);
+  await expect(page.getByRole("complementary")).toHaveCount(0);
 });
 
 test("dragging a chart zooms the time window, and escape returns to live", async ({ page, isMobile }) => {
@@ -437,3 +444,17 @@ test("project charts follow a refresh, not just the first load", async ({ page }
   await expect(page.getByRole("button", { name: /^Worker 5xx: 8%/u })).toBeVisible();
 });
 
+test("a status pill keeps its place and background when hovered", async ({ page }) => {
+  await mock(page, { online: false });
+  await page.goto("/");
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  const cell = table.locator(".state-cell").first();
+  const before = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
+  await cell.locator(".badge").hover({ force: true });
+  const after = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
+  expect(after).toEqual(before);
+  expect(before[1]).toBe("0px");
+  const pill = await cell.locator(".badge").boundingBox();
+  const name = await table.getByRole("link", { name: "alpha" }).boundingBox();
+  expect(Math.abs((pill!.y + pill!.height / 2) - (name!.y + name!.height / 2))).toBeLessThan(14);
+});

@@ -42,6 +42,14 @@ export function count(value: number | undefined): string {
   return isFiniteNumber(value) ? number.format(value) : unavailableText;
 }
 
+export function milliseconds(value: number | undefined): string {
+  return isFiniteNumber(value) ? `${count(value)} ms` : count(value);
+}
+
+export function minutes(value: number | undefined): string {
+  return isFiniteNumber(value) ? `${count(value)} min` : count(value);
+}
+
 export function age(receivedAtMs: number | null | undefined, now = Date.now()): string {
   if (!isFiniteNumber(receivedAtMs)) return "never";
   const seconds = Math.max(0, Math.round((now - receivedAtMs) / 1000));

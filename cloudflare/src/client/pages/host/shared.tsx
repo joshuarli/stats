@@ -8,6 +8,10 @@ import type { ChartEvent, VizColor } from "../../components/TimeChart";
 export const AXIS_WIDTH = 76;
 export const SERIES_COLORS = ["blue", "aqua", "violet", "magenta"] as const satisfies readonly VizColor[];
 
+export function seriesColor(index: number): VizColor {
+  return SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral";
+}
+
 export function perSecond(value: number | undefined): string {
   return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
 }

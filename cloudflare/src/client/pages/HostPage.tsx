@@ -189,7 +189,7 @@ function SummarySkeleton(): JSX.Element {
   return (
     <>
       <section class="status-strip" aria-hidden="true">
-        <For each={[0, 1, 2, 3, 4, 5]}>{() => <div class="status-cell"><Skeleton rows={2} /></div>}</For>
+        <For each={[0, 1, 2, 3, 4, 5]}>{() => <div class="strip-cell"><Skeleton rows={2} /></div>}</For>
       </section>
       <section class="chart-grid" aria-hidden="true">
         <Widget title="CPU"><Skeleton rows={2} chart /></Widget>

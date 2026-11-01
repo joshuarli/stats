@@ -23,7 +23,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
           const health = () => cell.monitored.state?.health;
           const sinceBad = () => health() !== undefined && cell.monitored.state?.text !== "OK";
           return (
-            <button class="status-cell" type="button" onClick={() => scrollTo(cell.anchor)} aria-label={`${cell.label}: ${cell.format(cell.value)}. Jump to chart.`}>
+            <button class="strip-cell" type="button" onClick={() => scrollTo(cell.anchor)} aria-label={`${cell.label}: ${cell.format(cell.value)}. Jump to chart.`}>
               <span class="tile-label"><span>{cell.label}</span><HealthMark health={health()} /></span>
               <span class="tile-value">{cell.format(cell.value)}</span>
               <span class="tile-detail">{sinceBad() ? cell.monitored.state?.text : cell.detail}</span>

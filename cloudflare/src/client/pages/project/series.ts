@@ -1,6 +1,6 @@
 import type { ProjectMetricHistory, ProjectCollectorHistory } from "../../api";
 import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
-import { bytes, count, isFiniteNumber, percent } from "../../format";
+import { bytes, count, milliseconds, minutes, percent } from "../../format";
 import { LIMITS, type Limits } from "../../health";
 import { monitorOne } from "../../incidents";
 import { addAll, holdLast, ratio } from "./math";
@@ -9,14 +9,6 @@ import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
 const R2_OUTCOMES = ["success", "userError", "other"] as const;
-
-export function milliseconds(value: number | undefined): string {
-  return isFiniteNumber(value) ? `${count(value)} ms` : count(value);
-}
-
-export function minutes(value: number | undefined): string {
-  return isFiniteNumber(value) ? `${count(value)} min` : count(value);
-}
 
 export function metricPoints(history: ProjectMetricHistory, metric: string): ChartPoint[] {
   const found = history.series.find(entry => entry.metric === metric);

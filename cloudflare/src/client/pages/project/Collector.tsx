@@ -1,12 +1,12 @@
 import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { CollectorState } from "../../api";
-import { age, count, dateTime } from "../../format";
+import { age, count, dateTime, minutes } from "../../format";
 import { LIMITS } from "../../health";
 import { TimeChart } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
 import { AXIS_WIDTH } from "../host/shared";
-import { minutes, type ProjectData } from "./series";
+import type { ProjectData } from "./series";
 
 export function CollectorWidget(props: { readonly data: ProjectData; readonly collector: CollectorState; readonly now: number; readonly rowsRead: number | undefined }): JSX.Element {
   return (

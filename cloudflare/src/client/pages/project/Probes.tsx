@@ -1,13 +1,13 @@
 import type { JSX } from "@solidjs/web";
+import { milliseconds } from "../../format";
 import { LIMITS } from "../../health";
 import { TimeChart } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
-import { AXIS_WIDTH, PanelLabel, SERIES_COLORS } from "../host/shared";
-import { endpointText, metricPoints, milliseconds, type ProjectData } from "./series";
+import { AXIS_WIDTH, PanelLabel, seriesColor } from "../host/shared";
+import { endpointText, metricPoints, type ProjectData } from "./series";
 
 export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element {
   const history = () => props.data.probes;
-  const colorAt = (index: number) => SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral";
   return (
     <Widget id="endpoints" title="Endpoints" subtitle="Probed from Cloudflare's edge once per collection, not measured from users" expandable>
       {history() === undefined ? null : (
@@ -19,7 +19,7 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
             legend="inline"
             timeAxis={false}
             yAxisWidth={AXIS_WIDTH}
-            series={props.data.probeNames.map((name, index) => ({ label: name, color: colorAt(index), points: metricPoints(history()!, `probe.${name}.up`) }))}
+            series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), points: metricPoints(history()!, `probe.${name}.up`) }))}
             format={endpointText}
             limits={LIMITS.probeUp}
             min={0}
@@ -32,7 +32,7 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
             compact
             legend="inline"
             yAxisWidth={AXIS_WIDTH}
-            series={props.data.probeNames.map((name, index) => ({ label: name, color: colorAt(index), scored: false, points: metricPoints(history()!, `probe.${name}.ms`) }))}
+            series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), scored: false, points: metricPoints(history()!, `probe.${name}.ms`) }))}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
