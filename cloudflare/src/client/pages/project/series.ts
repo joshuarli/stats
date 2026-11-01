@@ -8,6 +8,7 @@ import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
+const ROUTE_PREFIX = "route.";
 const R2_OUTCOMES = ["success", "userError", "other"] as const;
 
 export function metricPoints(history: ProjectMetricHistory, metric: string): ChartPoint[] {
@@ -30,6 +31,8 @@ export function silenceMinutes(history: ProjectCollectorHistory, nowMs: number, 
 
 export interface ProjectData {
   readonly worker: ProjectMetricHistory;
+  readonly routes: ProjectMetricHistory;
+  readonly durableObjects: ProjectMetricHistory | undefined;
   readonly r2: ProjectMetricHistory;
   readonly probes: ProjectMetricHistory | undefined;
   readonly probeNames: readonly string[];
@@ -55,6 +58,41 @@ export function serverErrorShare(data: ProjectData): ChartPoint[] {
 
 export function cpuAverage(data: ProjectData): ChartPoint[] {
   return ratio(metricPoints(data.worker, "worker.cpuMsSum"), metricPoints(data.worker, "worker.invocations"), 1, MIN_SCORED_EVENTS);
+}
+
+export interface RouteRow {
+  readonly route: string;
+  readonly invocations: number;
+  readonly cpuMs: number;
+  readonly cpuShare: number;
+  readonly averageMs: number | undefined;
+}
+
+function seriesTotal(history: ProjectMetricHistory, metric: string, view: TimeWindow | null): number {
+  let total = 0;
+  for (const point of pointsIn(metricPoints(history, metric), view)) total += point.value ?? 0;
+  return total;
+}
+
+export function routeRows(history: ProjectMetricHistory, view: TimeWindow | null): RouteRow[] {
+  const routes = new Set(history.series.map(entry => entry.metric.slice(ROUTE_PREFIX.length, entry.metric.lastIndexOf("."))));
+  const totals = [...routes].map(route => ({
+    route,
+    invocations: seriesTotal(history, `${ROUTE_PREFIX}${route}.invocations`, view),
+    cpuMs: seriesTotal(history, `${ROUTE_PREFIX}${route}.cpuMsSum`, view)
+  }));
+  const allCpu = totals.reduce((sum, entry) => sum + entry.cpuMs, 0);
+  return totals
+    .map(entry => ({ ...entry, cpuShare: allCpu > 0 ? (entry.cpuMs / allCpu) * 100 : 0, averageMs: entry.invocations > 0 ? entry.cpuMs / entry.invocations : undefined }))
+    .sort((left, right) => right.cpuMs - left.cpuMs || left.route.localeCompare(right.route));
+}
+
+export function durableObjectCpuAverage(history: ProjectMetricHistory): ChartPoint[] {
+  return ratio(metricPoints(history, "do.cpuMsSum"), metricPoints(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
+}
+
+export function durableObjectWallAverage(history: ProjectMetricHistory): ChartPoint[] {
+  return ratio(metricPoints(history, "do.wallMsSum"), metricPoints(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
 }
 
 export function otherShare(data: ProjectData): ChartPoint[] {

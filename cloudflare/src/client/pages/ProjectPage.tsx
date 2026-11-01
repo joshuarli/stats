@@ -12,6 +12,7 @@ import { IncidentTimeline, StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
+import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
 import { buildProjectCells, hasAnyValue, metricPoints, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 
@@ -48,6 +49,9 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const id = () => props.project.id;
   const worker = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "worker", signal)));
   const hasBuckets = () => props.project.buckets.length > 0;
+  const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
+  const routes = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "routes", signal)));
+  const durableObjects = createMemo(() => (hasNamespaces() ? loadQuery(signal => getProjectMetrics(id(), range(), "durable-objects", signal)) : Promise.resolve(undefined)));
   const r2 = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "r2", signal)));
   const collector = createMemo(() => loadQuery(signal => getProjectCollector(id(), range(), signal)));
   const probes = createMemo(() => (props.project.probes.length === 0 ? Promise.resolve(undefined) : loadQuery(signal => getProjectMetrics(id(), range(), "probes", signal))));
@@ -55,7 +59,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const doRefresh = async () => {
     setRefreshError(null);
     try {
-      await Promise.all([refresh(worker), refresh(r2), refresh(collector), refresh(probes)]);
+      await Promise.all([refresh(worker), refresh(routes), refresh(durableObjects), refresh(r2), refresh(collector), refresh(probes)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
@@ -64,6 +68,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
 
   const data = createMemo((): ProjectData => ({
     worker: worker(),
+    routes: routes(),
+    durableObjects: durableObjects(),
     r2: r2(),
     probes: probes(),
     probeNames: props.project.probes.map(probe => probe.name),
@@ -80,7 +86,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-        hint={`Worker script, ${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
+        hint={`Worker script, ${hasNamespaces() ? "Durable Objects, " : ""}${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
       />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
@@ -110,12 +116,16 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                 <RequestsWidget data={data()} />
                 <StatusWidget data={data()} />
                 <CpuTimeWidget data={data()} />
+                <RoutesWidget data={data()} view={view()} />
                 <Show when={props.project.probes.length > 0}>
                   <ProbesWidget data={data()} />
                 </Show>
               </div>
               <div class="column" role="region" aria-label="Right column">
                 <IncidentTimeline cells={cells()} />
+                <Show when={hasNamespaces()}>
+                  <DurableObjectsWidget data={data()} />
+                </Show>
                 <Show when={hasBuckets()}>
                   <OperationsWidget data={data()} />
                   <StorageWidget data={data()} />

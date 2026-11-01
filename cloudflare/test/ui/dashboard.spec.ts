@@ -43,9 +43,11 @@ const probeTargets = [{ name: "crates", url: "https://crates.example.com/" }, { 
 
 const PROJECT_BUCKETS = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
 
-function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[]) {
+const NAMESPACES = ["b25c2595ba784bb1bd51a87a3e87c62b"];
+
+function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[], durableObjectNamespaces: readonly string[]) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets, probes: withProbes ? probeTargets : [],
+    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }
@@ -77,6 +79,29 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       ]
     };
   }
+  if (kind === "routes") {
+    return {
+      ...base, kind,
+      series: [
+        { metric: "route.POST /ingest.invocations", values: column(() => 70 * scale) },
+        { metric: "route.POST /ingest.cpuMsSum", values: column(() => 1260 * scale) },
+        { metric: "route.GET /api/v1/projects.invocations", values: column(() => 90 * scale) },
+        { metric: "route.GET /api/v1/projects.cpuMsSum", values: column(() => 150 * scale) }
+      ]
+    };
+  }
+  if (kind === "durable-objects") {
+    return {
+      ...base, kind,
+      series: [
+        { metric: "do.invocations", values: column(() => 400 * scale) },
+        { metric: "do.errors", values: column(() => 0) },
+        { metric: "do.cpuMsSum", values: column(() => 4000 * scale) },
+        { metric: "do.cpuMsMax", values: column(() => 38) },
+        { metric: "do.wallMsSum", values: column(() => 12_000 * scale) }
+      ]
+    };
+  }
   if (kind === "probes") {
     return {
       ...base, kind,
@@ -98,8 +123,9 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
+  const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
@@ -108,7 +134,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const kind = url.searchParams.get("kind") ?? "summary";
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
     if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true, buckets) });
-    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets) });
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
@@ -411,6 +437,28 @@ test("configured probes surface endpoint health and a down endpoint raises an in
   await expect(incidents).toContainText("Endpoints");
   await expect(incidents).toContainText("Critical");
   await expect(strip.getByRole("button", { name: /^Endpoints: down/u })).toContainText("Critical");
+});
+
+test("CPU by route ranks routes, and Durable Object charts appear only for projects with namespaces", async ({ page }) => {
+  const requests = await mock(page, { durableObjects: true });
+  await page.goto("/#/project/stuff");
+  const routes = page.locator("#routes");
+  await expect(routes.getByRole("heading", { name: "CPU by route" })).toBeVisible();
+  const rows = routes.getByRole("table", { name: "CPU time by route" }).locator("tbody tr");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("POST /ingest");
+  await expect(rows.first()).toContainText("89.4%");
+  await expect(rows.first()).toContainText("18 ms");
+  await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object average CPU time;/u })).toBeVisible();
+  expect(requests.some(request => request.includes("kind=durable-objects"))).toBe(true);
+});
+
+test("a project without namespaces has no Durable Object widget and makes no request for one", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.locator("#routes")).toBeVisible();
+  await expect(page.locator("#durable-objects")).toHaveCount(0);
+  expect(requests.some(request => request.includes("kind=durable-objects"))).toBe(false);
 });
 
 test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {
