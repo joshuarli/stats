@@ -1,0 +1,145 @@
+{
+  "data": [
+    {
+      "cpu_max": 1,
+      "cpu_sum": 16,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 200,
+      "invocations": 16,
+      "slot": 11
+    },
+    {
+      "cpu_max": 1,
+      "cpu_sum": 16,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 404,
+      "invocations": 16,
+      "slot": 10
+    },
+    {
+      "cpu_max": 1,
+      "cpu_sum": 32,
+      "day": "2026-11-01",
+      "hour": 16,
+      "httpStatus": 200,
+      "invocations": 96,
+      "slot": 0
+    },
+    {
+      "cpu_max": 1,
+      "cpu_sum": 64,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 200,
+      "invocations": 976,
+      "slot": 8
+    },
+    {
+      "cpu_max": 10,
+      "cpu_sum": 480,
+      "day": "2026-11-01",
+      "hour": 16,
+      "httpStatus": 304,
+      "invocations": 80,
+      "slot": 0
+    },
+    {
+      "cpu_max": 14,
+      "cpu_sum": 1056,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 304,
+      "invocations": 800,
+      "slot": 10
+    },
+    {
+      "cpu_max": 14,
+      "cpu_sum": 432,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 304,
+      "invocations": 80,
+      "slot": 11
+    },
+    {
+      "cpu_max": 16,
+      "cpu_sum": 3808,
+      "day": "2026-11-01",
+      "hour": 16,
+      "httpStatus": 304,
+      "invocations": 4512,
+      "slot": 1
+    },
+    {
+      "cpu_max": 2,
+      "cpu_sum": 384,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 304,
+      "invocations": 256,
+      "slot": 8
+    },
+    {
+      "cpu_max": 20,
+      "cpu_sum": 1024,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 200,
+      "invocations": 688,
+      "slot": 10
+    },
+    {
+      "cpu_max": 28,
+      "cpu_sum": 5520,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 200,
+      "invocations": 4464,
+      "slot": 7
+    },
+    {
+      "cpu_max": 3,
+      "cpu_sum": 96,
+      "day": "2026-11-01",
+      "hour": 16,
+      "httpStatus": 404,
+      "invocations": 32,
+      "slot": 0
+    },
+    {
+      "cpu_max": 35,
+      "cpu_sum": 3072,
+      "day": "2026-11-01",
+      "hour": 16,
+      "httpStatus": 200,
+      "invocations": 8912,
+      "slot": 1
+    },
+    {
+      "cpu_max": 8,
+      "cpu_sum": 128,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 404,
+      "invocations": 32,
+      "slot": 11
+    },
+    {
+      "cpu_max": 9,
+      "cpu_sum": 896,
+      "day": "2026-11-01",
+      "hour": 15,
+      "httpStatus": 304,
+      "invocations": 384,
+      "slot": 7
+    }
+  ],
+  "rows": 15,
+  "statistics": {
+    "elapsed_ms": 79,
+    "rows_read": 4115489,
+    "bytes_read": 41676111
+  }
+}

@@ -1,0 +1,87 @@
+export type SqlValue = string | number | boolean | null;
+
+export interface BoundQuery {
+  readonly query: string;
+  readonly params: Readonly<Record<string, SqlValue>>;
+}
+
+export const BUCKET_MS = 5 * 60_000;
+export const MAX_BUCKETS_PER_PROJECT = 8;
+
+const ROW_LIMIT = 2000;
+
+const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+const WORKER_EVENT_LOG_TYPE = "cf-worker-event";
+
+export function workerQuery(script: string, startMs: number): BoundQuery {
+  return {
+    query: [
+      "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
+      "floor(toMinute(timestamp) / 5) AS slot, httpStatus,",
+      "SUM(sampleInterval) AS invocations,",
+      "SUM(cpuTimeMs * sampleInterval) AS cpu_sum,",
+      "APPROX_MAX(cpuTimeMs) AS cpu_max",
+      "FROM logs.workersLogs",
+      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
+      "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), httpStatus",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { script, start: isoStart(startMs) },
+  };
+}
+
+export function r2OperationsQuery(buckets: readonly string[], startMs: number): BoundQuery {
+  const names = bucketParams(buckets);
+  return {
+    query: [
+      "SELECT bucketName, toStartOfFiveMinutes(timestamp) AS bucket, actionStatus,",
+      "SUM(sampleInterval) AS operations",
+      "FROM events.r2CombinedOperations",
+      `WHERE bucketName IN (${names.placeholders}) AND timestamp >= $start`,
+      "GROUP BY bucketName, toStartOfFiveMinutes(timestamp), actionStatus",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...names.params, start: isoStart(startMs) },
+  };
+}
+
+export function r2StorageQuery(buckets: readonly string[], startMs: number): BoundQuery {
+  const names = bucketParams(buckets);
+  return {
+    query: [
+      "SELECT bucketName, toStartOfTenMinutes(usageReportTimestamp) AS bucket,",
+      "MAX(payloadSizeBytes) AS storage_bytes, MAX(objectCount) AS objects",
+      "FROM states.r2CombinedStorage",
+      `WHERE bucketName IN (${names.placeholders}) AND usageReportTimestamp >= $start`,
+      "GROUP BY bucketName, toStartOfTenMinutes(usageReportTimestamp)",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...names.params, start: isoStart(startMs) },
+  };
+}
+
+function bucketParams(buckets: readonly string[]): {
+  placeholders: string;
+  params: Record<string, string>;
+} {
+  if (buckets.length === 0 || buckets.length > MAX_BUCKETS_PER_PROJECT) {
+    throw new RangeError(`bucket list must hold 1 to ${MAX_BUCKETS_PER_PROJECT} names`);
+  }
+  const params: Record<string, string> = {};
+  const placeholders = buckets.map((name, index) => {
+    if (!BUCKET_NAME_PATTERN.test(name)) {
+      throw new RangeError("bucket name is not a valid R2 bucket name");
+    }
+    params[`bucket${index}`] = name;
+    return `$bucket${index}`;
+  });
+  return { placeholders: placeholders.join(", "), params };
+}
+
+function isoStart(startMs: number): string {
+  if (!Number.isSafeInteger(startMs) || startMs < 0) {
+    throw new RangeError("start must be a non-negative integer of epoch milliseconds");
+  }
+  return new Date(startMs).toISOString();
+}

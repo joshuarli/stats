@@ -1,0 +1,214 @@
+{
+  "data": [
+    {
+      "actionStatus": "internalError",
+      "bucket": "2026-11-01 16:00:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:10:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:15:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:20:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 2
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:20:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 4
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:20:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 2
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:25:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:30:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:30:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 2
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:35:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 1873
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:35:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 1346
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:40:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 158
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:45:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 5
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:45:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:50:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 476
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:55:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 41
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:55:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 2
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 15:55:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 2
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:00:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 872
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:00:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:05:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 2503
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:05:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 6
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:05:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 7
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:10:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:15:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:20:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 1
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:30:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 4
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:30:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 5
+    },
+    {
+      "actionStatus": "success",
+      "bucket": "2026-11-01 16:30:00",
+      "bucketName": "stuff-mypypi",
+      "operations": 4
+    },
+    {
+      "actionStatus": "userError",
+      "bucket": "2026-11-01 15:35:00",
+      "bucketName": "stuff-mynpm",
+      "operations": 638
+    },
+    {
+      "actionStatus": "userError",
+      "bucket": "2026-11-01 15:50:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 2
+    },
+    {
+      "actionStatus": "userError",
+      "bucket": "2026-11-01 15:55:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 2
+    },
+    {
+      "actionStatus": "userError",
+      "bucket": "2026-11-01 16:00:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 8
+    },
+    {
+      "actionStatus": "userError",
+      "bucket": "2026-11-01 16:05:00",
+      "bucketName": "stuff-mycrates",
+      "operations": 2
+    }
+  ],
+  "rows": 34,
+  "statistics": {
+    "elapsed_ms": 159,
+    "rows_read": 2589582,
+    "bytes_read": 148366851
+  }
+}
