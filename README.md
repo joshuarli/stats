@@ -118,7 +118,7 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status filters (online, stale, no samples, revoked), sortable
 columns, and fleet charts. The host page shows CPU, load, available memory,
-pressure, disk and network throughput, filesystems, devices, and block latency
+swap used, memory pressure (10 s, 60 s, 300 s), disk and network throughput, filesystems, devices, and block latency
 (p50, p95, p99), which stays empty unless the collector is configured.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every

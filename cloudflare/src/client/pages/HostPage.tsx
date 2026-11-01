@@ -228,6 +228,24 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
         <Widget title="Available memory" subtitle="to unprivileged processes" expandable>
           <TimeChart label="Available memory" legend area series={[series("available", 1, point => point.mem?.available)]} format={bytes} min={0} stepMs={props.stepMs} />
         </Widget>
+        <Widget title="Swap used" subtitle="swap in use" expandable>
+          <TimeChart label="Swap used" legend area series={[series("swap used", 3, point => point.mem?.swapUsed)]} format={bytes} min={0} stepMs={props.stepMs} />
+        </Widget>
+        <Widget title="Memory pressure" subtitle="PSI some: share of time tasks stalled on memory" expandable>
+          <TimeChart
+            label="Memory pressure"
+            legend
+            area
+            series={[
+              { label: "10s", color: 1, points: psiSeries(props.points, value => value.memory?.some10) },
+              { label: "60s", color: 2, points: psiSeries(props.points, value => value.memory?.some60) },
+              { label: "300s", color: 3, points: psiSeries(props.points, value => value.memory?.some300) }
+            ]}
+            format={percent}
+            min={0}
+            stepMs={props.stepMs}
+          />
+        </Widget>
         <Widget title="Pressure" subtitle="PSI, 10s average" expandable>
           <TimeChart
             label="Pressure"
