@@ -1,8 +1,8 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Installation } from "../src/installation";
-import { HOUR_MS, RANGES } from "../src/limits";
-import { bucketWidthMs, SETTLE_MS } from "../src/projects/history";
+import { HOUR_MS, PROJECT_SETTLE_MS, RANGES } from "../src/limits";
+import { bucketWidthMs } from "../src/projects/history";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
 
@@ -195,7 +195,7 @@ describe("project history", () => {
   });
 
   it("fills at exactly the settle time and not a millisecond before", async () => {
-    const settledAt = OLD_BUCKET + BUCKET + SETTLE_MS;
+    const settledAt = OLD_BUCKET + BUCKET + PROJECT_SETTLE_MS;
     await record(metricRun(settledAt - 1, []));
     const early = await history("6h", "worker");
     expect(seriesOf(early, "worker.status.5xx")[indexOf(early, OLD_BUCKET)]).toBeNull();
@@ -218,7 +218,7 @@ describe("project history", () => {
     await record(metricRun(NOW - BUCKET, []), metricRun(OLD_BUCKET + HOUR_MS, []));
     const worker = await history("6h", "worker");
     expect(seriesOf(worker, "worker.invocations")[indexOf(worker, NEWEST_BUCKET)]).toBeNull();
-    expect(SETTLE_MS).toBe(45 * 60_000);
+    expect(PROJECT_SETTLE_MS).toBe(45 * 60_000);
     expect(seriesOf(worker, "worker.cpuMsMax")[indexOf(worker, OLD_BUCKET)]).toBeNull();
     const r2 = await history("6h", "r2");
     expect(seriesOf(r2, "r2.stuff-mynpm.storageBytes")[indexOf(r2, OLD_BUCKET)]).toBeNull();

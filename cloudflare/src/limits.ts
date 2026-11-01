@@ -7,6 +7,8 @@ export const RAW_RETENTION_MS = 2 * DAY_MS;
 export const MINUTE_RETENTION_MS = 7 * DAY_MS;
 export const HOUR_RETENTION_MS = 90 * DAY_MS;
 
+export const PROJECT_SETTLE_MS = 45 * MINUTE_MS;
+
 export const MAX_POINTS = 900;
 export const MAX_BODY_BYTES = 65_536;
 export const BLOCK_BUCKETS = 16;

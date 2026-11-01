@@ -1,11 +1,10 @@
-import { HOUR_MS, RANGE_MS, type RangeKey } from "../limits.ts";
+import { HOUR_MS, PROJECT_SETTLE_MS, RANGE_MS, type RangeKey } from "../limits.ts";
 import { windowStartMs } from "./collector.ts";
 import type { ProjectConfig } from "./config.ts";
 import { aggregationOf } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.ts";
 
-export const SETTLE_MS = 45 * 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
 const MAX_HISTORY_POINTS = 900;
 const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "probes", "collector"] as const;
@@ -205,7 +204,7 @@ function fillableBuckets(sql: SqlStorage, fromMs: number, now: number): (startMs
     .toArray()
     .map((row) => row.at_ms);
   const bucketFillable = (bucketStartMs: number): boolean => {
-    const settledAtMs = bucketStartMs + BUCKET_MS + SETTLE_MS;
+    const settledAtMs = bucketStartMs + BUCKET_MS + PROJECT_SETTLE_MS;
     if (now < settledAtMs) {
       return false;
     }
