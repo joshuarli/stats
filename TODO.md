@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 31
 
-### STA-26 · P2 · Rolled disk and network rates are understated after a device misses an interval
-
-- **Area:** Data
-- **Where:** `cloudflare/src/aggregate.ts:218`, `cloudflare/src/aggregate.ts:248-259`, `cloudflare/src/aggregate.ts:456-460`, `cloudflare/src/aggregate.ts:473-480`
-- **Problem:** `rollupFromRaw` adds every row's `intervalMs` to the bucket's `coverageMs`, and `rollupPoints` divides each device's delta sum by that same bucket coverage. If a device is absent in one row, or its counters regress so `computeDelta` omits it, the interval still counts in the denominator, so the rolled rate is too low. A probe with two 15-second rows and a disk delta in only the first returned 17,066 B/s instead of 34,133. The raw tier omits the point, which is a gap; the rolled tier shows a wrong value. The protocol says counter regressions are gaps, never negative rates.
-- **Recommendation:** Store a per-device covered interval in each rollup entry (for example `coveredMs`), sum it through `sumDevices` and `combineRollups`, and use it as the rate denominator, falling back to `payload.coverageMs` for rows written before the field exists. Add a pure aggregate test for a missing device delta and update the rollup description in `docs/architecture.md`.
-- **Fix with:** durable-state
-- **Effort:** S
-
 ### STA-27 · P3 · A valid Linux disk id with a 7-digit minor is rejected
 
 - **Area:** Data

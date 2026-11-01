@@ -99,10 +99,12 @@ One Durable Object per installation holds three tables, created with
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 90 days.
 
-Rollups store counter delta sums with the covered interval and gauge sums with
-counts; they never average counters. Block histograms sum bucket counts and
-totals and keep the observed minimum and maximum; percentiles come from bucket
-upper bounds and are not exact. A late sample rebuilds its minute, the minute
+Rollups store counter delta sums with the interval each device covered and
+gauge sums with counts; they never average counters. A device rate divides by
+its own covered interval, so a missing sample is a gap rather than a lower
+rate. Block histograms sum bucket counts and totals and keep the observed
+minimum and maximum; percentiles come from bucket upper bounds and are not
+exact. A late sample rebuilds its minute, the minute
 of the following sample, and every hour those minutes fall in. A bucket with
 less than 80% of its span covered by usable intervals is marked partial.
 

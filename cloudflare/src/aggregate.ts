@@ -111,6 +111,8 @@ export interface RawRow {
   readonly delta: Delta;
 }
 
+const DEVICE_COVERAGE = "coveredMs";
+
 export function rangeKey(value: string | null): RangeKey | null {
   return value !== null && (RANGES as readonly string[]).includes(value) ? value as RangeKey : null;
 }
@@ -248,11 +250,13 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     for (const [id, disk] of Object.entries(delta.disks)) {
       const target = disks[id] ?? {};
       for (const field of DISK_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(disk[field])).toString();
+      target[DEVICE_COVERAGE] = (BigInt(target[DEVICE_COVERAGE] ?? "0") + BigInt(delta.intervalMs)).toString();
       disks[id] = target;
     }
     for (const [id, net] of Object.entries(delta.nets)) {
       const target = nets[id] ?? {};
       for (const field of NET_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(net[field])).toString();
+      target[DEVICE_COVERAGE] = (BigInt(target[DEVICE_COVERAGE] ?? "0") + BigInt(delta.intervalMs)).toString();
       nets[id] = target;
     }
     for (const filesystem of sample.filesystems ?? []) {
@@ -451,13 +455,14 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
     for (const payload of payloads) {
       for (const [id, values] of Object.entries(payload.disks)) {
         const points = grouped.get(id) ?? [];
+        const coverage = Number(values[DEVICE_COVERAGE] ?? payload.coverageMs);
         points.push({
           atMs: payload.bucketMs,
-          readBytesPerSec: rate(values.readSectors, payload.coverageMs, 512),
-          writeBytesPerSec: rate(values.writeSectors, payload.coverageMs, 512),
-          readsPerSec: rate(values.reads, payload.coverageMs),
-          writesPerSec: rate(values.writes, payload.coverageMs),
-          busyPct: rate(values.ioMs, payload.coverageMs) / 1000 * 100
+          readBytesPerSec: rate(values.readSectors, coverage, 512),
+          writeBytesPerSec: rate(values.writeSectors, coverage, 512),
+          readsPerSec: rate(values.reads, coverage),
+          writesPerSec: rate(values.writes, coverage),
+          busyPct: rate(values.ioMs, coverage) / 1000 * 100
         });
         grouped.set(id, points);
       }
@@ -468,16 +473,17 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
   for (const payload of payloads) {
     for (const [id, values] of Object.entries(payload.nets)) {
       const points = grouped.get(id) ?? [];
+      const coverage = Number(values[DEVICE_COVERAGE] ?? payload.coverageMs);
       points.push({
         atMs: payload.bucketMs,
-        rxBytesPerSec: rate(values.rxBytes, payload.coverageMs),
-        txBytesPerSec: rate(values.txBytes, payload.coverageMs),
-        rxPacketsPerSec: rate(values.rxPackets, payload.coverageMs),
-        txPacketsPerSec: rate(values.txPackets, payload.coverageMs),
-        rxDropsPerSec: rate(values.rxDrops, payload.coverageMs),
-        txDropsPerSec: rate(values.txDrops, payload.coverageMs),
-        rxErrorsPerSec: rate(values.rxErrors, payload.coverageMs),
-        txErrorsPerSec: rate(values.txErrors, payload.coverageMs)
+        rxBytesPerSec: rate(values.rxBytes, coverage),
+        txBytesPerSec: rate(values.txBytes, coverage),
+        rxPacketsPerSec: rate(values.rxPackets, coverage),
+        txPacketsPerSec: rate(values.txPackets, coverage),
+        rxDropsPerSec: rate(values.rxDrops, coverage),
+        txDropsPerSec: rate(values.txDrops, coverage),
+        rxErrorsPerSec: rate(values.rxErrors, coverage),
+        txErrorsPerSec: rate(values.txErrors, coverage)
       });
       grouped.set(id, points);
     }
