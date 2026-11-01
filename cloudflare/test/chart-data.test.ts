@@ -20,6 +20,27 @@ describe("chart data", () => {
     expect(aligned.columns).toEqual([[1, 2, null], [5, null, 7]]);
   });
 
+  it("fills a gap at the start of a window with null slots", () => {
+    const aligned = alignSeries([
+      [{ atMs: 0, value: 1 }, { atMs: 60_000, value: 2 }, { atMs: 75_000, value: 3 }, { atMs: 90_000, value: 4 }]
+    ], 15_000);
+    expect(aligned.times).toEqual([0, 15_000, 30_000, 45_000, 60_000, 75_000, 90_000]);
+    expect(aligned.columns).toEqual([[1, null, null, null, 2, 3, 4]]);
+  });
+
+  it("fills an outage in the middle of a window instead of bridging it", () => {
+    const resume = 15_000 + 196 * 15_000;
+    const aligned = alignSeries([
+      [{ atMs: 0, value: 1 }, { atMs: 15_000, value: 2 }, { atMs: resume, value: 3 }, { atMs: resume + 15_000, value: 4 }]
+    ], 15_000);
+    expect(aligned.times).toHaveLength(199);
+    expect(aligned.times[0]).toBe(0);
+    expect(aligned.times.at(-1)).toBe(resume + 15_000);
+    expect(aligned.columns[0]!.slice(0, 2)).toEqual([1, 2]);
+    expect(aligned.columns[0]!.slice(2, -2).every(value => value === null)).toBe(true);
+    expect(aligned.columns[0]!.slice(-2)).toEqual([3, 4]);
+  });
+
   it("computes window statistics over present values only", () => {
     const values = [4, null, 8, 2, null];
     expect(windowStats(values, 0, 4)).toEqual({ min: 2, avg: 14 / 3, max: 8, last: 2 });

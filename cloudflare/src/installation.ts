@@ -5,6 +5,7 @@ import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, downsample, historyQuery, HOUR_MS, kindValue, MINUTE_MS, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type HistoryQuery, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
 
 export const ONLINE_WINDOW_MS = 45_000;
+export const RAW_STEP_MS = 15_000;
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
 export const WINDOW_MS = 60_000;
 export const MAX_REQUESTS_PER_WINDOW = 6;
@@ -249,15 +250,13 @@ export class Installation extends DurableObject<Env> {
     const rawRange = fromMs >= now - RAW_RETENTION_MS;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - 7 * 24 * 60 * 60 * 1000 ? "1m" : "1h";
     let points: HistoryPoints;
-    let bucketMs = rawRange ? 15_000 : resolution === "1m" ? MINUTE_MS : HOUR_MS;
+    const bucketMs = rawRange ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     if (rawRange) {
       const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
       const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
-      if (raw.length > 1) bucketMs = Math.max(1, Number(raw[1]!.sample.atMs) - Number(raw[0]!.sample.atMs));
       points = rawPoints(raw, kind);
     } else {
       const rows = this.ctx.storage.sql.exec<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs).toArray();
-      if (rows.length > 1) bucketMs = Math.max(1, rows[1]!.bucket_ms - rows[0]!.bucket_ms);
       points = rollupPoints(rows.map(row => JSON.parse(row.payload) as RollupPayload), kind);
     }
     if (kind === "summary") {

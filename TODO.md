@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 25
 
-### STA-1 · P1 · History step is measured from the first two points, so charts drop data and bridge outages
-
-- **Area:** Data
-- **Where:** `cloudflare/src/installation.ts:256`, `cloudflare/src/installation.ts:260`, `cloudflare/src/client/chart-data.ts:23-35`, `cloudflare/src/client/pages/FleetPage.tsx:195`, `cloudflare/src/client/components/TimeChart.tsx:189`
-- **Problem:** `history()` sets `stepMs` from the spacing of the first two raw samples or rollup rows. `alignSeries` snaps every point to `round(atMs / stepMs) * stepMs` and keeps the last value per slot. In a window that opens with a gap, such as a host restart, an outage, or a zoom that starts in one, the step becomes the gap. A probe gave 240 points 15 s apart after a 1 h gap and got 3 aligned times back, so 237 points were silently lost. A server probe with `1m` rows at offsets 0 and 10 to 14 min returned `stepMs` 600000. The fleet page takes the maximum step across hosts, so one bad host flattens every host's line. Separately, `alignSeries` only emits timestamps that exist. An outage mid-window produces no `null` slot (probe: 7 points around a 196-step outage, 0 nulls), and uPlot (`spanGaps: false`) draws a straight line across it. The host page, meanwhile, tells the user "Gaps are not interpolated". Proven by probes against `alignSeries` and `Installation.history`.
-- **Recommendation:** Return the tier's nominal step (15 s raw, `MINUTE_MS`, `HOUR_MS`) times the downsample stride. In `alignSeries`, fill the step grid and leave `null` where no point landed. Add a chart-data test for an outage at the start and in the middle, and a history test for `stepMs` after a gap.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-2 · P2 · Transient TLS and unclassified transport errors drop batches as permanent
 
 - **Area:** Errors

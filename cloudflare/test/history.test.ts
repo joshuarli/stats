@@ -161,6 +161,23 @@ describe("history", () => {
     expect(body.points[0]!.coverageMs).toBe(15_000);
   });
 
+  it("keeps the tier step when the first samples are far apart", async () => {
+    const host = await createHost();
+    await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => {
+      const payload = (seq: string, atMs: number) => JSON.stringify({ seq, atMs: String(atMs), monoMs: String(atMs) });
+      for (const [seq, atMs] of [["1", now - 600_000], ["2", now - 300_000], ["3", now - 285_000]] as const) {
+        state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES (?, '3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f', ?, ?, ?, 1, 0, '{}', ?)", host.hostId, seq, atMs, atMs, payload(seq, atMs));
+      }
+      for (const [seq, bucketMs] of [["1", now - 2 * 86_400_000], ["2", now - 2 * 86_400_000 + 600_000]] as const) {
+        state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, 15_000, 1, ?)", host.hostId, bucketMs, JSON.stringify({ v: 1, bucketMs, samples: 1, coverageMs: 15_000, partial: true, gauges: {}, psi: {}, disks: {}, nets: {}, filesystems: {} }));
+      }
+    });
+    const raw = await (await history(host.hostId, "1h", "summary")).json() as { stepMs: number };
+    expect(raw.stepMs).toBe(15_000);
+    const rolled = await (await history(host.hostId, "7d", "summary")).json() as { stepMs: number };
+    expect(rolled.stepMs).toBe(60_000);
+  });
+
   it("expires raw and rolled rows on the alarm", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);

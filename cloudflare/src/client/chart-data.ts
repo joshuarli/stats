@@ -21,7 +21,8 @@ export interface WindowStats {
 }
 
 export function alignSeries(series: readonly (readonly ChartPoint[])[], stepMs?: number): AlignedSeries {
-  const snap = (atMs: number) => (stepMs === undefined ? atMs : Math.round(atMs / stepMs) * stepMs);
+  const step = stepMs !== undefined && stepMs > 0 ? stepMs : undefined;
+  const snap = (atMs: number) => (step === undefined ? atMs : Math.round(atMs / step) * step);
   const lookups = series.map(points => {
     const byTime = new Map<number, number | null>();
     for (const point of points) {
@@ -30,7 +31,20 @@ export function alignSeries(series: readonly (readonly ChartPoint[])[], stepMs?:
     }
     return byTime;
   });
-  const times = [...new Set(lookups.flatMap(byTime => [...byTime.keys()]))].sort((left, right) => left - right);
+  if (step === undefined) {
+    const times = [...new Set(lookups.flatMap(byTime => [...byTime.keys()]))].sort((left, right) => left - right);
+    return { times, columns: lookups.map(byTime => times.map(time => byTime.get(time) ?? null)) };
+  }
+  let first = Number.POSITIVE_INFINITY;
+  let last = Number.NEGATIVE_INFINITY;
+  for (const byTime of lookups) {
+    for (const time of byTime.keys()) {
+      first = Math.min(first, time);
+      last = Math.max(last, time);
+    }
+  }
+  if (!Number.isFinite(first)) return { times: [], columns: lookups.map(() => []) };
+  const times = Array.from({ length: Math.floor((last - first) / step) + 1 }, (_, index) => first + index * step);
   return { times, columns: lookups.map(byTime => times.map(time => byTime.get(time) ?? null)) };
 }
 
