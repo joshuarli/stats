@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-20 · P4 · Rollup rebuild runs outside the sample transaction
-
-- **Area:** Concurrency
-- **Where:** `cloudflare/src/installation.ts:329-381`
-- **Problem:** `rebuildRollups` runs after the sample `transactionSync` commits. If it throws, the samples are stored, the client gets 500, and its retry sees only duplicates, so the affected minutes are never rebuilt. Not triggered.
-- **Recommendation:** Move the rebuild into the same `transactionSync`.
-- **Fix with:** durable-state
-- **Effort:** S
-
 ### STA-21 · P4 · Config, token, and block file checks are by path, and the owner is not checked
 
 - **Area:** Security

@@ -409,10 +409,10 @@ export class Installation extends DurableObject<Env> {
         accepted += 1;
       }
       if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
+      if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
     });
 
     if (accepted === 0 && duplicates === 0) return json({ error: { code: rejected[0]?.code ?? "invalid_sample", message: "no samples were accepted" }, rejected }, 400);
-    if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
     const alarm = await this.ctx.storage.getAlarm();
     if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
     return json({ v: 1, accepted, duplicates, rejected });

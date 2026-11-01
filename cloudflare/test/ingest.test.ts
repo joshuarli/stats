@@ -150,6 +150,20 @@ describe("ingest", () => {
     expect(malformed.status).toBe(401);
   });
 
+  it("rolls back samples when the rollup rebuild fails", async () => {
+    const object = env.INSTALLATION.get(env.INSTALLATION.idFromName("rollup-transaction"));
+    await runInDurableObject(object, async (instance: Installation, state: DurableObjectState) => {
+      const host = await instance.createHost("rollback");
+      if (!host.ok) throw new Error(host.message);
+      const body = JSON.stringify({ ...JSON.parse(files["batch-full.json"]!), hostId: host.value.hostId });
+      (instance as unknown as { rebuildRollups: () => void }).rebuildRollups = () => { throw new Error("rollup failed"); };
+      const response = await instance.fetch(new Request("https://installation/ingest", { method: "POST", headers: { Authorization: `Bearer ${host.value.token}`, "Content-Type": "application/json" }, body }));
+      expect(response.status).toBe(500);
+      const count = state.storage.sql.exec<{ count: number }>("SELECT count(*) AS count FROM samples").one().count;
+      expect(count).toBe(0);
+    });
+  });
+
   it("purges a host with its samples and rollups", async () => {
     const host = await createHost();
     const body = rewrite("batch-full.json", host.hostId);
