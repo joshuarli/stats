@@ -153,8 +153,8 @@ type JsonObject = { readonly [key: string]: unknown };
 export class ApiFailure extends Error {
   readonly status: number;
 
-  constructor(status: number, message: string) {
-    super(message);
+  constructor(status: number, message: string, cause?: unknown) {
+    super(message, { cause });
     this.name = "ApiFailure";
     this.status = status;
   }
@@ -416,13 +416,14 @@ async function getJson<T>(path: string, decode: (value: unknown) => T, signal: A
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
-    throw new ApiFailure(0, "The response was not valid JSON.");
+  } catch (error) {
+    throw new ApiFailure(0, "The response was not valid JSON.", error);
   }
   try {
     return decode(body);
-  } catch {
-    throw new ApiFailure(0, "The response did not match the telemetry contract.");
+  } catch (error) {
+    console.error("telemetry response decode failed", error);
+    throw new ApiFailure(0, "The response did not match the telemetry contract.", error);
   }
 }
 
