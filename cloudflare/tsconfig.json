@@ -5,7 +5,14 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUncheckedSideEffectImports": true,
+    "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web",
     "types": [
       "@cloudflare/workers-types",
       "@cloudflare/vitest-plugin/types",
@@ -15,6 +22,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx",
     "test/**/*.ts",
     "worker-configuration.d.ts",
     "cloudflare.config.ts",

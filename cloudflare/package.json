@@ -10,6 +10,7 @@
     "test": "node scripts/check-config.mjs && vite build && vitest run",
     "test:ui": "playwright test",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
     "build": "vite build",
     "deploy": "cf deploy"
   },
@@ -18,9 +19,18 @@
     "@cloudflare/vitest-plugin": "1.4.11",
     "@cloudflare/workers-types": "5.20261031.1",
     "@playwright/test": "1.64.1",
+    "@solidjs/vite-plugin": "3.0.0-next.54",
     "cf": "1.0.0-beta.26",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@solidjs/router": "2.0.0-next.43",
+    "@solidjs/web": "2.0.0-rc.20",
+    "effect": "4.1.1",
+    "solid-js": "2.0.0-rc.20"
   }
 }

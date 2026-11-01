@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := check
 
-.PHONY: work-ready node-ready fixtures agent-test agent-build cloudflare-test dashboard-test release check
+.PHONY: work-ready node-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint release check
 
 work-ready:
 	@set -eu; \
@@ -25,13 +25,17 @@ agent-build: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' agent/scripts/build-static.sh
 
 cloudflare-test: work-ready
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry typecheck
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry test
 
 dashboard-test: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry build
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry test:ui
 
+lint: node-ready
+	pnpm --filter @niceforge/telemetry lint
+
 release: agent-build
 	TMPDIR='$(CURDIR)/.work/tmp' bench/bench.sh --selftest
 
-check: fixtures agent-test release cloudflare-test dashboard-test
+check: fixtures agent-test release cloudflare-test dashboard-test lint

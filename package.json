@@ -8,6 +8,7 @@
   },
   "scripts": {
     "typecheck": "pnpm --filter @niceforge/telemetry typecheck",
+    "lint": "pnpm --filter @niceforge/telemetry lint",
     "test": "pnpm run test:fixtures && pnpm run test:agent && pnpm --filter @niceforge/telemetry test",
     "test:fixtures": "node scripts/check-fixtures.mjs",
     "test:agent": "cargo test --manifest-path agent/Cargo.toml --all-targets",

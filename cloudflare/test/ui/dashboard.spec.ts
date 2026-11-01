@@ -49,7 +49,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; la
     }
     if (url.pathname.endsWith("/latest")) {
       if (options.latest === false) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no samples" } } });
-      return route.fulfill({ json: { hostId, receivedAtMs: options.online === false ? now - 120_000 : now - 5_000, sample: { seq: "900015", atMs: String(now - 5_000), monoMs: "900015000", uptimeMs: "900000000", cpuCount: 8, cpu: { user: "1", system: "1", idle: "1", iowait: "0", steal: "0", total: "4" } } } });
+      return route.fulfill({ json: { hostId, receivedAtMs: options.online === false ? now - 120_000 : now - 5_000, sample: { seq: "900015", atMs: String(now - 5_000), monoMs: "900015000", uptimeMs: "900000000", cpuCount: 8, cpu: { user: "1", system: "1", idle: "1", iowait: "0", steal: "0", total: "4" }, load: { one: "0.500", five: "0.400", fifteen: "0.300" }, mem: { total: "8589934592", available: "4294967296", swapTotal: "0", swapFree: "0" }, psi: { cpu: { some10: "1.20", some60: "0.80", some300: "0.40", total: "1" } }, disks: [{ id: "8:0", name: "sda", reads: "1", readSectors: "1", writes: "1", writeSectors: "1", ioMs: "1" }], nets: [{ id: "eth0", rxBytes: "1", rxPackets: "1", rxDrops: "0", rxErrors: "0", txBytes: "1", txPackets: "1", txDrops: "0", txErrors: "0" }], filesystems: [{ id: "/", type: "ext4", total: "100000000000", available: "40000000000" }], block: { buckets: Array.from({ length: 16 }, () => "0"), count: "0", totalUs: "0", minUs: "0", maxUs: "0" } } } });
     }
     const empty = options.empty === true;
     if (kind === "disks") return route.fulfill({ json: disks(range, empty) });
@@ -64,12 +64,13 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; la
 test("fleet and host views render charts, ranges, and keyboard controls", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "alpha" })).toBeVisible();
-  await expect(page.locator("table")).toContainText("online");
-  await expect(page.locator("svg").first()).toBeVisible();
+  const fleetTable = page.locator("table");
+  await expect(fleetTable.getByRole("link", { name: "alpha" })).toBeVisible();
+  await expect(fleetTable).toContainText("online");
+  await expect(page.getByRole("img", { name: "alpha CPU trend" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("fleet.png"), fullPage: true });
 
-  await page.getByRole("link", { name: "alpha" }).click();
+  await fleetTable.getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
   const cpuChart = page.getByRole("img", { name: /CPU;/ });
   await expect(cpuChart).toBeVisible();
@@ -99,18 +100,38 @@ test("missing and stale data never become zero", async ({ page }) => {
   await mock(page, { online: false, empty: true, latest: false });
   await page.goto("/");
   await expect(page.locator("table")).toContainText("stale");
-  await page.getByRole("link", { name: "alpha" }).click();
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
-  await expect(page.getByText(/No samples were accepted/u)).toBeVisible();
+});
+
+test("search filters the fleet and the theme control switches schemes", async ({ page }, testInfo) => {
+  await mock(page);
+  await page.goto("/");
+  const table = page.locator("table");
+  await expect(table).toContainText("alpha");
+
+  const search = page.getByRole("searchbox", { name: "Search hosts" });
+  await search.fill("no-such-host");
+  await expect(page.getByText("No hosts match this view.")).toBeVisible();
+  await expect(table).toHaveCount(0);
+  await search.fill("alpha");
+  await expect(table).toContainText("alpha");
+
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: testInfo.outputPath("fleet-dark.png"), fullPage: true });
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
 test("mobile layout has no horizontal page overflow", async ({ page }, testInfo) => {
   await mock(page);
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "alpha" })).toBeVisible();
+  await expect(page.locator("table").getByRole("link", { name: "alpha" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   expect(overflow).toBe(true);
-  await page.getByRole("link", { name: "alpha" }).click();
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true });
 });

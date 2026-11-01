@@ -216,20 +216,21 @@ Configuration values: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`,
 
 ## Dashboard
 
-The dashboard is one HTML entrypoint and one ES module bundle built by Vite's
-client environment. It has a fleet table and a per-host view with 1 h, 6 h, 24
-h, 7 d, and 90 d ranges. The host view includes a block-latency chart for p95,
-p99, and maximum when the optional probe is configured. Charts are native SVG
-with keyboard focus and text readouts. Missing data renders as `unavailable` or
-a gap; it is never zero. Access handles login; the browser never sees a host
-token or an operator secret.
+The dashboard is a client-rendered Solid application built by Vite's client
+environment. The fleet table and per-host view share a 1 h, 6 h, 24 h, 7 d, and
+90 d range control. The host view includes CPU, load, available memory, pressure,
+disk, network, filesystem, and block-latency widgets; the block chart appears
+only when the optional probe reports completions. Charts are native SVG with
+keyboard focus, pointer/keyboard readouts, and explicit gaps. Missing data
+renders as `—`, `unavailable`, or a gap; it is never zero. API responses are
+decoded once with Effect Schema, and request failures stay in a typed
+`ApiFailure` channel. Access handles login; the browser never sees a host token
+or an operator secret.
 
 Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
 `pnpm --filter @niceforge/telemetry test:ui` with request interception from
 deterministic fixtures. No fixture endpoint or auth bypass exists in the built
-assets. Recorded 2026-10-31: 14,431 bytes JavaScript (5,020 gzip), 3,600 bytes
-CSS (1,370 gzip), 610 bytes HTML (390 gzip); Chromium local load about 36 ms on
-the development host. These are local measurements, not production claims.
+assets.
 
 ## Local checks
 
@@ -237,8 +238,9 @@ the development host. These are local measurements, not production claims.
 make fixtures          # manifest, fixture shapes, cost arithmetic
 make agent-test        # collector and transport unit tests
 make agent-build       # static x86_64 and aarch64 binaries + ELF checks
-make cloudflare-test   # Workers runtime integration
+make cloudflare-test   # typecheck + Workers runtime integration
 make dashboard-test    # bundle + Playwright
+make lint              # TypeScript-aware Oxlint
 make release           # release binaries, receipts, benchmark self-test
 make check             # all local telemetry checks
 ```
