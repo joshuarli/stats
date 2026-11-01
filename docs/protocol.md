@@ -35,7 +35,7 @@ them silently. JSON numbers are used only for `v` and `cpuCount`.
 | `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string |
 | `uptimeMs` | no | u64 string |
 | `cpuCount` | no | integer 1–4096 |
-| `disks` | no | 0–16 objects: `id` (`major:minor`), `name` (1–32 chars), `reads`, `readSectors`, `writes`, `writeSectors`, `ioMs` |
+| `disks` | no | 0–16 objects: `id` (`major:minor`, Linux `dev_t` bounds: major at most 4095, minor at most 1048575), `name` (1–32 chars), `reads`, `readSectors`, `writes`, `writeSectors`, `ioMs` |
 | `nets` | no | 0–16 objects: `id` (interface name), `rxBytes`, `rxPackets`, `rxDrops`, `rxErrors`, `txBytes`, `txPackets`, `txDrops`, `txErrors` |
 | `psi` | no | optional `cpu`, `memory`, `io`; each has `some10`, `some60`, `some300` (fixed 2-decimal percent) and `total` (microseconds); each may also have all four of `full10`, `full60`, `full300`, `fullTotal` |
 | `filesystems` | no | 0–16 objects: `id` (mount path), `type` (allow-list enum), `total`, `available` |

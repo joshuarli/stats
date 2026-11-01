@@ -77,9 +77,13 @@ fn id(value: &Value, valid: impl Fn(&str) -> bool) -> bool {
     value.as_str().is_some_and(valid)
 }
 
+fn bounded_decimal(text: &str, digits: usize, max: u32) -> bool {
+    !text.is_empty() && text.len() <= digits && text.bytes().all(|byte| byte.is_ascii_digit()) && text.parse::<u32>().is_ok_and(|value| value <= max)
+}
+
 fn valid_disk_id(text: &str) -> bool {
     let Some((major, minor)) = text.split_once(':') else { return false };
-    !major.is_empty() && !minor.is_empty() && major.bytes().all(|byte| byte.is_ascii_digit()) && minor.bytes().all(|byte| byte.is_ascii_digit())
+    bounded_decimal(major, 4, 4_095) && bounded_decimal(minor, 7, 1_048_575)
 }
 
 fn valid_name(text: &str) -> bool {

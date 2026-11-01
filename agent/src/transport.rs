@@ -167,6 +167,10 @@ impl HttpTransport {
         true
     }
 
+    pub fn fits(&self, boot_id: &str, samples: &[Sample]) -> bool {
+        encode(&self.host_id, boot_id, samples).is_ok()
+    }
+
     fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         let body = encode(&self.host_id, boot_id, samples)?;
         let mut response = match agent
@@ -404,10 +408,49 @@ mod tests {
         assert_eq!(transport.send(&boot, &[sample()]).unwrap(), SendOutcome { accepted: 1, duplicates: 0, rejected: 0 });
     }
 
+    fn large_sample() -> Sample {
+        let disk = |index: usize| crate::model::Disk {
+            id: format!("8:{index}"),
+            name: format!("sd{index}"),
+            reads: "1".into(),
+            read_sectors: "1".into(),
+            writes: "1".into(),
+            write_sectors: "1".into(),
+            io_ms: "1".into(),
+        };
+        let net = |index: usize| crate::model::Net {
+            id: format!("eth{index}"),
+            rx_bytes: "1".into(),
+            rx_packets: "1".into(),
+            rx_drops: "1".into(),
+            rx_errors: "1".into(),
+            tx_bytes: "1".into(),
+            tx_packets: "1".into(),
+            tx_drops: "1".into(),
+            tx_errors: "1".into(),
+        };
+        let filesystem = |index: usize| crate::model::FileSystem { id: format!("/mnt/volume-{index}"), fs_type: "ext4".into(), total: "1".into(), available: "1".into() };
+        Sample {
+            disks: Some((0..16).map(disk).collect()),
+            nets: Some((0..16).map(net).collect()),
+            filesystems: Some((0..16).map(filesystem).collect()),
+            ..sample()
+        }
+    }
+
     #[test]
     fn rejects_empty_and_oversized_batches() {
         assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &[]), Err(TransportError::Permanent(_))));
         let huge = vec![sample(); 64];
         assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &huge), Err(TransportError::Permanent(_))));
+    }
+
+    #[test]
+    fn a_batch_over_the_body_cap_does_not_fit() {
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new("https://telemetry.example.com", &host, &token, Duration::from_secs(2)).unwrap();
+        let samples = vec![large_sample(); 16];
+        assert!(!transport.fits(&boot, &samples));
+        assert!(transport.fits(&boot, &samples[..1]));
     }
 }

@@ -87,10 +87,13 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
         if fields.len() < 14 {
             continue;
         }
-        let major = fields[0];
-        let minor = fields[1];
+        let Some(major) = parse_u64(fields[0]) else { continue };
+        let Some(minor) = parse_u64(fields[1]) else { continue };
+        if major > 4_095 || minor > 1_048_575 {
+            continue;
+        }
         let name = fields[2];
-        if !whole.contains(name) || !major.bytes().all(|byte| byte.is_ascii_digit()) || !minor.bytes().all(|byte| byte.is_ascii_digit()) {
+        if !whole.contains(name) {
             continue;
         }
         let Some(reads) = parse_u64(fields[3]) else { continue };
@@ -308,6 +311,15 @@ mod tests {
         let whole = HashSet::from(["sda".to_owned()]);
         let disks = parse_diskstats(b"8 0 sda 1 2 3\n8 0 sda 1 2 x 1 1 1 1 1 1 1 1\n", &whole).unwrap();
         assert!(disks.is_empty());
+    }
+
+    #[test]
+    fn skips_device_ids_outside_the_linux_dev_t_bounds() {
+        let whole = HashSet::from(["sda".to_owned(), "sdb".to_owned(), "sdc".to_owned()]);
+        let text = b"4096 0 sda 1 0 1 0 1 0 1 0 0 0 0 0\n8 1048576 sdb 1 0 1 0 1 0 1 0 0 0 0 0\n8 1048575 sdc 1 0 1 0 1 0 1 0 0 0 0 0\n";
+        let disks = parse_diskstats(text, &whole).unwrap();
+        assert_eq!(disks.len(), 1);
+        assert_eq!(disks[0].id, "8:1048575");
     }
 
     #[test]

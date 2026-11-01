@@ -60,9 +60,11 @@ never accepted in argv or written to logs.
 ```
 
 Only `endpoint`, `hostId`, and `tokenFile` are required; the interval, queue,
-and timeout values shown are the defaults. Unknown keys are rejected, and `agent/src/config.rs` holds the
-accepted range of each value. The server allows six ingest requests per host
-per minute, so keep `uploadIntervalMs` at 10000 or more.
+and timeout values shown are the defaults. Unknown keys are rejected, and
+`agent/src/config.rs` holds the accepted range of each value.
+`sampleIntervalMs` must be at least 15000 because raw history uses a
+15-second step, and `uploadIntervalMs` must be at least 10000 to stay under
+the server's six ingest requests per host per minute.
 
 `blockLatencyFile` is optional. When set, each sample attaches the `block`
 group from that file if it is a regular file, not group- or world-writable,
@@ -87,8 +89,9 @@ an upload.
   permanent ones below keep the batch and retry with exponential backoff and
   jitter (1 s base, 60 s cap). 429 honors `Retry-After`. A batch put back on a
   full queue displaces the newest samples.
-- 400, 404, 413, 422, a bad URL, or an oversized encoded batch drops the
-  batch.
+- 400, 404, 413, 422, or a bad URL drops the batch. A queued batch is trimmed
+  to the 65,536-byte encoded body cap before it is sent; a single sample
+  larger than the cap is dropped.
 - 401 and 403 keep the batch, retry at the 60 s cap, and reread the token file
   before each retry. Rotating a host token is a file replace; the agent picks
   up the new token without a restart. A revoked host keeps retrying and
