@@ -303,9 +303,15 @@ pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)
         if !mount.starts_with('/') || mount.len() > 255 || mount.contains('\0') {
             continue;
         }
-        mounts.insert(mount.clone(), fs_type.to_owned());
+        mounts.insert(mount, (fs_type.to_owned(), fields[0].to_owned()));
     }
-    mounts.into_iter().take(16).collect()
+    let mut block_devices = HashSet::new();
+    mounts
+        .into_iter()
+        .filter(|(_, (_, device))| !device.starts_with('/') || block_devices.insert(device.clone()))
+        .map(|(mount, (fs_type, _))| (mount, fs_type))
+        .take(16)
+        .collect()
 }
 
 pub fn statfs_facts(total_blocks: u64, block_size: u64, available_blocks: u64) -> Option<(String, String)> {
@@ -457,6 +463,13 @@ mod tests {
     fn parses_mounts_with_escapes_and_allow_list() {
         let mounts = parse_mounts(b"/dev/sda1 / ext4 rw 0 0\nproc /proc proc rw 0 0\n/dev/sdb1 /mnt/my\\040disk xfs rw 0 0\n/dev/sda1 / ext4 rw 0 0\n", false);
         assert_eq!(mounts, vec![("/".to_owned(), "ext4".to_owned()), ("/mnt/my disk".to_owned(), "xfs".to_owned())]);
+    }
+
+    #[test]
+    fn mounts_of_one_block_device_are_reported_once_under_the_shortest_path() {
+        let table = b"/dev/nvme0n1p2 /var/lib/docker ext4 rw 0 0\n/dev/nvme0n1p2 / ext4 rw 0 0\n/dev/nvme0n1p1 /boot/efi vfat rw 0 0\ntank/data /srv zfs rw 0 0\ntank/logs /var/log zfs rw 0 0\n";
+        let mounts = parse_mounts(table, false);
+        assert_eq!(mounts.iter().map(|(mount, _)| mount.as_str()).collect::<Vec<_>>(), ["/", "/boot/efi", "/srv", "/var/log"]);
     }
 
     #[test]
