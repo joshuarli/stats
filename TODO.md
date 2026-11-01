@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-22 · P4 · An additive field in the ingest response makes the agent retry accepted batches
-
-- **Area:** Types
-- **Where:** `agent/src/transport.rs:48-50`, `agent/src/transport.rs:86-87`
-- **Problem:** `IngestResponse` uses `deny_unknown_fields`, and a parse failure on 2xx is `Retryable`. Adding any field to the server response would requeue every accepted batch as a duplicate. Not live today: the server returns exactly `{v, accepted, duplicates, rejected}`.
-- **Recommendation:** Drop `deny_unknown_fields` on the response type and treat a 2xx with `v: 1` as success.
-- **Fix with:** error-model
-- **Effort:** S
-
 ### STA-23 · P4 · Dead code in the agent and dashboard
 
 - **Area:** Dead code

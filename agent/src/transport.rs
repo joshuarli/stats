@@ -47,7 +47,6 @@ impl fmt::Display for TransportError {
 impl std::error::Error for TransportError {}
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct IngestResponse {
     v: u8,
     accepted: u64,
@@ -249,7 +248,10 @@ mod tests {
     }
 
     fn response(accepted: u64, duplicates: u64, rejected: &str) -> &'static [u8] {
-        let body = format!(r#"{{"v":1,"accepted":{accepted},"duplicates":{duplicates},"rejected":{rejected}}}"#);
+        body_response(&format!(r#"{{"v":1,"accepted":{accepted},"duplicates":{duplicates},"rejected":{rejected}}}"#))
+    }
+
+    fn body_response(body: &str) -> &'static [u8] {
         let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
         Box::leak(response.into_bytes().into_boxed_slice())
     }
@@ -341,6 +343,15 @@ mod tests {
         });
         let transport = HttpTransport::new(&format!("https://{address}"), &host, &token, Duration::from_millis(200)).unwrap();
         assert!(transport.send(&boot, &[sample()]).is_err());
+    }
+
+    #[test]
+    fn accepts_an_additive_response_field() {
+        let response = body_response(r#"{"v":1,"accepted":1,"duplicates":0,"rejected":[],"future":true}"#);
+        let receiver = receiver(response);
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        assert_eq!(transport.send(&boot, &[sample()]).unwrap(), SendOutcome { accepted: 1, duplicates: 0, rejected: 0 });
     }
 
     #[test]
