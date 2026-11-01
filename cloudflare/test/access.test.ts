@@ -49,6 +49,25 @@ describe("Access authorization", () => {
     expect(await response.text()).toContain("<title>Stats</title>");
   });
 
+  it("rejects malformed admin calls without the raw exception", async () => {
+    const token = await accessToken();
+    const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };
+    const invalidName = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: JSON.stringify({ name: "\u0000" }) });
+    expect(invalidName.status).toBe(400);
+    expect((await invalidName.json() as { error: { code: string } }).error.code).toBe("invalid_request");
+
+    const invalidJson = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: "notjson" });
+    expect(invalidJson.status).toBe(400);
+    expect((await invalidJson.json() as { error: { code: string } }).error.code).toBe("invalid_request");
+
+    const nullBody = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: "null" });
+    expect(nullBody.status).toBe(400);
+
+    const missing = await SELF.fetch("https://example.com/api/v1/admin/hosts/h_00000000000000000000000000000000/rotate", { method: "POST", headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect(missing.status).toBe(404);
+    expect((await missing.json() as { error: { code: string } }).error.code).toBe("not_found");
+  });
+
   it("provisions, rotates, and revokes a host", async () => {
     const token = await accessToken();
     const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };

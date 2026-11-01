@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-7 · P3 · Admin caller errors return 500 with the raw exception text
-
-- **Area:** Errors
-- **Where:** `cloudflare/src/installation.ts:155-175`, `cloudflare/src/installation.ts:403-417`
-- **Problem:** A probe showed that an invalid host name, a non-JSON body, and rotating an unknown host each return 500 `internal`, with messages such as `Unexpected token 'o', "notjson" is not valid JSON`. The catch-all echoes `error.message` for any exception, so internal SQLite messages reach the client too. Tooling cannot tell a typo from a server fault.
-- **Recommendation:** Return typed results from `createHost` and `rotateHost` (400 `invalid_request`, 404 `not_found`), map JSON parse failure to 400, and send fixed text on 500, logging the cause per STA-3.
-- **Fix with:** error-model
-- **Effort:** S
-
 ### STA-8 · P3 · Limits, retention, ranges, and enums are repeated across server, client, agent, and fixture check
 
 - **Area:** Architecture

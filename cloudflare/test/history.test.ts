@@ -30,7 +30,9 @@ function stub() {
 }
 
 async function createHost(): Promise<{ hostId: string; token: string }> {
-  return runInDurableObject(stub(), async (instance: Installation) => instance.createHost("history"));
+  const result = await runInDurableObject(stub(), async (instance: Installation) => instance.createHost("history"));
+  if (!result.ok) throw new Error(result.message);
+  return result.value;
 }
 
 async function ingest(token: string, name: string, hostId: string): Promise<Response> {

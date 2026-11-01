@@ -16,7 +16,9 @@ function stub() {
 }
 
 async function createHost(name = "test"): Promise<{ hostId: string; token: string }> {
-  return runInDurableObject(stub(), async (instance: Installation) => instance.createHost(name));
+  const result = await runInDurableObject(stub(), async (instance: Installation) => instance.createHost(name));
+  if (!result.ok) throw new Error(result.message);
+  return result.value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

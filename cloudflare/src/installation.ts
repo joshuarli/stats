@@ -43,6 +43,10 @@ export interface LatestSample {
   readonly sample: Sample;
 }
 
+export type AdminResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly status: 400 | 404; readonly code: "invalid_request" | "not_found"; readonly message: string };
+
 export interface History {
   readonly hostId: string;
   readonly range?: RangeKey;
@@ -190,23 +194,23 @@ export class Installation extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<HostRow>("SELECT * FROM hosts WHERE host_id = ?", hostId).toArray()[0];
   }
 
-  async createHost(name: string): Promise<{ hostId: string; name: string; token: string }> {
+  async createHost(name: string): Promise<AdminResult<{ hostId: string; name: string; token: string }>> {
     const trimmed = name.trim();
-    if (!validName(trimmed)) throw new Error("host name must be 1-64 printable characters");
+    if (!validName(trimmed)) return { ok: false, status: 400, code: "invalid_request", message: "host name must be 1-64 printable characters" };
     const hostId = generateHostId();
     const token = generateToken();
     const hash = await tokenHash(token);
     this.ctx.storage.sql.exec("INSERT INTO hosts (host_id, name, token_hash, created_at_ms) VALUES (?, ?, ?, ?)", hostId, trimmed, hash, this.now());
-    return { hostId, name: trimmed, token };
+    return { ok: true, value: { hostId, name: trimmed, token } };
   }
 
-  async rotateHost(hostId: string): Promise<{ hostId: string; token: string }> {
+  async rotateHost(hostId: string): Promise<AdminResult<{ hostId: string; token: string }>> {
     const host = this.host(hostId);
-    if (host === undefined) throw new Error("host not found");
+    if (host === undefined) return { ok: false, status: 404, code: "not_found", message: "host not found" };
     const token = generateToken();
     const hash = await tokenHash(token);
     this.ctx.storage.sql.exec("UPDATE hosts SET token_hash = ?, revoked_at_ms = NULL WHERE host_id = ?", hash, hostId);
-    return { hostId, token };
+    return { ok: true, value: { hostId, token } };
   }
 
   async revokeHost(hostId: string): Promise<boolean> {
@@ -434,20 +438,30 @@ export class Installation extends DurableObject<Env> {
         return result === null ? failure("not_found", "host not found", 404) : json(result);
       }
       if (path === "/admin/hosts" && request.method === "POST") {
-        const body = await request.json<{ name?: unknown }>();
-        if (typeof body.name !== "string") return failure("invalid_request", "name is required", 400);
-        return json(await this.createHost(body.name), 201);
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return failure("invalid_request", "body must be valid JSON", 400);
+        }
+        if (typeof body !== "object" || body === null || !("name" in body) || typeof body.name !== "string") return failure("invalid_request", "name is required", 400);
+        const result = await this.createHost(body.name);
+        return result.ok ? json(result.value, 201) : failure(result.code, result.message, result.status);
       }
       if (path === "/admin/hosts" && request.method === "GET") return json({ hosts: await this.listHosts() });
       const rotate = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/rotate$/u.exec(path);
-      if (rotate !== null && request.method === "POST") return json(await this.rotateHost(rotate[1]!));
+      if (rotate !== null && request.method === "POST") {
+        const result = await this.rotateHost(rotate[1]!);
+        return result.ok ? json(result.value) : failure(result.code, result.message, result.status);
+      }
       const revoke = /^\/admin\/hosts\/(h_[0-9a-f]{32})$/u.exec(path);
       if (revoke !== null && request.method === "DELETE") return (await this.revokeHost(revoke[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
       if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       return failure("not_found", "unknown object route", 404);
     } catch (error) {
-      return failure("internal", error instanceof Error ? error.message : "internal error", 500);
+      console.error(JSON.stringify({ event: "installation_request_failed", path, code: "internal", message: error instanceof Error ? error.message : String(error) }));
+      return failure("internal", "internal error", 500);
     }
   }
 }
