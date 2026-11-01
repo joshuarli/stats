@@ -124,11 +124,10 @@ Niceforge runner host.
    the oldest on saturation with a loss counter.
 9. Storage: one Durable Object per installation, SQLite tables for hosts, raw
    samples keyed by `(hostId, bootId, seq)` for exactly-once storage, and
-   rollups keyed by `(hostId, resolution, bucketStartMs)`. Retain raw 48 h and
-   one-minute aggregates 7 d; the original 90 d hourly tier was removed on
-   2026-11-01 to cap retention at a 7 d sliding window. Late arrival recomputes
-   the affected minute and the following minute; delta sums and coverage are
-   stored, never counter averages. A bucket with less
+   rollups keyed by `(hostId, resolution, bucketStartMs)`. Retain raw 48 h,
+   one-minute aggregates 7 d, and hourly aggregates 90 d. Late arrival recomputes
+   the affected minute and the following minute, and the affected hour; delta
+   sums and coverage are stored, never counter averages. A bucket with less
    than 80% interval coverage is marked partial. Cleanup runs on a Durable
    Object alarm in bounded batches. Reversal: measured per-object contention or
    the 10 GB ceiling.
@@ -144,7 +143,7 @@ Niceforge runner host.
     still keeps both boundaries.
 11. HTTP surface is closed and bounded: ingest batch (64 KiB, 16 samples, six
     requests per host per minute), host list (500), latest sample, bounded
-    history (`1h`, `6h`, `24h`, `7d`; `summary`, `disks`, `nets`,
+    history (`1h`, `6h`, `24h`, `7d`, `90d`; `summary`, `disks`, `nets`,
     `filesystems`; at most 900 returned points), health, and Access-protected
     host provisioning/rotation/revocation/hard delete. No arbitrary SQL, PromQL,
     labels, or unbounded ranges.

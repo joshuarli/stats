@@ -54,10 +54,9 @@ describe("history", () => {
     expect(body.points[1]!.coverageMs).toBe(15_000);
     expect(body.points[1]!.cpu?.user).toBeGreaterThan(0);
 
-    for (const range of ["1h", "6h", "24h", "7d"]) {
+    for (const range of ["1h", "6h", "24h", "7d", "90d"]) {
       expect((await history(host.hostId, range, "summary")).status, range).toBe(200);
     }
-    expect((await history(host.hostId, "90d", "summary")).status).toBe(400);
     for (const kind of ["disks", "nets", "filesystems"]) {
       const response = await history(host.hostId, "1h", kind);
       expect(response.status, kind).toBe(200);
@@ -73,6 +72,11 @@ describe("history", () => {
     expect(weekBody.points.length).toBe(1);
     expect(weekBody.points[0]!.coverageMs).toBe(15_000);
     expect(weekBody.points[0]!.partial).toBe(true);
+
+    const quarter = await history(host.hostId, "90d", "summary");
+    const quarterBody = await quarter.json() as { resolution: string; stepMs: number };
+    expect(quarterBody.resolution).toBe("1h");
+    expect(quarterBody.stepMs).toBe(3_600_000);
 
     const block = await history(host.hostId, "1h", "block");
     const blockBody = await block.json() as { resolution: string; series: { points: { count: number; p50Us: number; p95Us: number; p99Us: number; maxUs: number }[] }[] };
@@ -109,9 +113,10 @@ describe("history", () => {
     await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => {
       state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES (?, ?, 'old', ?, ?, 1, 0, '{}', '{}')", host.hostId, "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", now - 49 * 60 * 60 * 1000, now - 49 * 60 * 60 * 1000);
       state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, 0, 1, '{}')", host.hostId, now - 8 * 24 * 60 * 60 * 1000);
+      state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1h', ?, 0, 1, '{}')", host.hostId, now - 91 * 24 * 60 * 60 * 1000);
     });
     await runDurableObjectAlarm(stub());
-    const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ samples: number; minute: number }>("SELECT (SELECT count(*) FROM samples WHERE host_id = ? AND seq = 'old') AS samples, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms < ?) AS minute", host.hostId, host.hostId, now - 7 * 24 * 60 * 60 * 1000).one());
-    expect(counts).toEqual({ samples: 0, minute: 0 });
+    const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ samples: number; minute: number; hour: number }>("SELECT (SELECT count(*) FROM samples WHERE host_id = ? AND seq = 'old') AS samples, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms < ?) AS minute, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1h' AND bucket_ms < ?) AS hour", host.hostId, host.hostId, now - 7 * 24 * 60 * 60 * 1000, host.hostId, now - 90 * 24 * 60 * 60 * 1000).one());
+    expect(counts).toEqual({ samples: 0, minute: 0, hour: 0 });
   });
 });

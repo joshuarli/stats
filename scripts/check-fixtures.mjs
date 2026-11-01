@@ -61,25 +61,27 @@ const samplesPerDay = 86_400 / sampleIntervalSeconds;
 const requestsPerDay = samplesPerDay / samplesPerRequest;
 const rawHours = 48;
 const minuteDays = 7;
+const hourDays = 90;
 const rawRows = samplesPerDay * (rawHours / 24);
 const minuteRows = (86_400 / 60) * minuteDays;
+const hourRows = 24 * hourDays;
 const rollupFactor = 0.5;
 const rawBytes = rawRows * sampleBytes;
-const rollupBytes = minuteRows * sampleBytes * rollupFactor;
+const rollupBytes = (minuteRows + hourRows) * sampleBytes * rollupFactor;
 
 console.log(`fixtures: ${manifest.fixtures.length} checked`);
 console.log(`wire sample: ${sampleBytes} bytes (batch-full is ${wireBytes} bytes for ${samplesPerRequest})`);
 console.log("");
-console.log("hosts | ingress/day | requests/day | raw GB (48h) | rollup GB (7d) | rows");
+console.log("hosts | ingress/day | requests/day | raw GB (48h) | rollup GB (7d+90d) | rows");
 for (const hosts of [1, 10, 100]) {
   const ingress = (samplesPerDay * sampleBytes * hosts) / 1_000_000;
   const requests = requestsPerDay * hosts;
   const raw = (rawBytes * hosts) / 1_000_000_000;
   const rollups = (rollupBytes * hosts) / 1_000_000_000;
-  const rows = (rawRows + minuteRows) * hosts;
-  console.log(`${String(hosts).padStart(5)} | ${ingress.toFixed(1).padStart(11)} MB | ${String(requests).padStart(12)} | ${raw.toFixed(2).padStart(12)} | ${rollups.toFixed(2).padStart(14)} | ${rows}`);
+  const rows = (rawRows + minuteRows + hourRows) * hosts;
+  console.log(`${String(hosts).padStart(5)} | ${ingress.toFixed(1).padStart(11)} MB | ${String(requests).padStart(12)} | ${raw.toFixed(2).padStart(12)} | ${rollups.toFixed(2).padStart(18)} | ${rows}`);
 }
 console.log("");
-console.log(`per host: ${samplesPerDay} samples/day, ${requestsPerDay} ingest requests/day, ${rawRows} raw rows, ${minuteRows} minute rows`);
-console.log(`storage assumption: ${rawHours}h raw, ${minuteDays}d one-minute; rollup payload = ${rollupFactor} × sample bytes`);
+console.log(`per host/day: ${samplesPerDay} samples, ${requestsPerDay} ingest requests, ${rawRows} raw rows, ${minuteRows} minute rows, ${hourRows} hourly rows`);
+console.log(`storage assumption: ${rawHours}h raw, ${minuteDays}d one-minute, ${hourDays}d hourly; rollup payload = ${rollupFactor} × sample bytes`);
 console.log("account limits, Access, billing, and Durable Object ceiling are verified only in a real deployment; see Needs environment.");

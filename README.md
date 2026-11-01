@@ -125,19 +125,21 @@ temporarily unavailable.
 One Durable Object per installation stores:
 
 - raw samples for 48 hours, unique on `(hostId, bootId, seq)`;
-- one-minute aggregates for 7 days.
+- one-minute aggregates for 7 days;
+- hourly aggregates for 90 days.
 
 Aggregates store counter delta sums plus covered interval, and gauge min/avg/max.
 They never average counters. Block histograms sum bucket counts and totals and
 keep the observed minimum and maximum; percentiles are derived from bucket
-upper bounds and are not exact. A late sample recomputes its minute bucket and
-the following minute. A bucket with less than 80% of its span covered by usable
-intervals is marked partial. Retention runs on a Durable Object alarm in bounded
-batches; it never repairs or invents data.
+upper bounds and are not exact. A late sample recomputes its minute bucket, the
+following minute, and both affected hours. A bucket with less than 80% of its
+span covered by usable intervals is marked partial. Retention runs on a Durable
+Object alarm in bounded batches; it never repairs or invents data.
 
-Queries choose raw for ranges up to 48 hours and one-minute rollups beyond. Both
-tiers are sliding windows, and the longest range is 7 days. Results are
-downsampled to at most 900 points with an explicit step, and gaps remain gaps.
+Queries choose raw for ranges up to 48 hours, one-minute rollups up to 7 days,
+and hourly beyond. Each tier is a sliding window, and the longest range is 90
+days. Results are downsampled to at most 900 points with an explicit step, and
+gaps remain gaps.
 
 ## Agent
 
@@ -193,7 +195,7 @@ Local tests run entirely in the Workers runtime. Production routes:
 - `GET /health` — public, no host data.
 - `GET /api/v1/hosts` — Access-protected host list.
 - `GET /api/v1/hosts/:hostId/latest` — Access-protected latest sample.
-- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d&kind=summary|disks|nets|filesystems|block`
+- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`
   — Access-protected bounded history.
 - `POST /api/v1/admin/hosts`, `GET /api/v1/admin/hosts`,
   `POST /api/v1/admin/hosts/:hostId/rotate`,
@@ -222,8 +224,8 @@ Configuration values: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`,
 ## Dashboard
 
 The dashboard is a client-rendered Solid application built by Vite's client
-environment. The fleet table and per-host view share a 1 h, 6 h, 24 h, and 7 d
-range control. The host view includes CPU, load, available memory, pressure,
+environment. The fleet table and per-host view share a 1 h, 6 h, 24 h, 7 d, and
+90 d range control. The host view includes CPU, load, available memory, pressure,
 disk, network, filesystem, and block-latency widgets; the block chart appears
 only when the optional probe reports completions. Charts are native SVG with
 keyboard focus, pointer/keyboard readouts, and explicit gaps. Missing data

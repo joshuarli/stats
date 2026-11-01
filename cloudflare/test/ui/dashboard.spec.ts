@@ -5,10 +5,10 @@ const now = Date.now();
 
 function summary(range: string, empty = false) {
   const length = empty ? 0 : 12;
-  const step = range === "7d" ? 60_000 : 15_000;
+  const step = range === "90d" ? 3_600_000 : range === "7d" ? 60_000 : 15_000;
   return {
     hostId, range, kind: "summary", fromMs: now - step * length, toMs: now,
-    resolution: range === "7d" ? "1m" : "raw", stepMs: step,
+    resolution: range === "90d" ? "1h" : range === "7d" ? "1m" : "raw", stepMs: step,
     points: Array.from({ length }, (_, index) => ({
       atMs: now - (length - index) * step,
       coverageMs: step,
@@ -81,7 +81,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   const load = await page.evaluate(() => Math.round(performance.getEntriesByType("navigation")[0]?.duration ?? 0));
   console.log(`dashboard load ${load} ms`);
 
-  for (const range of ["6h", "24h", "7d"]) {
+  for (const range of ["6h", "24h", "7d", "90d"]) {
     await page.getByRole("button", { name: range }).click();
     await expect(page.getByRole("button", { name: range })).toHaveAttribute("aria-pressed", "true");
     expect(requests.some(request => request.includes(`range=${range}`))).toBe(true);
