@@ -29,15 +29,6 @@ Next: 25
 - **Fix with:** durable-state
 - **Effort:** S
 
-### STA-5 · P2 · Host summary "no samples" state never re-evaluates
-
-- **Area:** Concurrency
-- **Where:** `cloudflare/src/client/pages/HostPage.tsx:184-190`, `cloudflare/src/client/pages/HostPage.tsx:93`
-- **Problem:** `SummarySection` checks `props.points.length === 0` in the component body. A Solid component body runs once, so the check is not reactive. `HostView` stays mounted across range changes, live refresh, and host switches. A host that had no samples in 1 h keeps showing "No samples were accepted in this range" after the user picks 7 d, or after data arrives, and the CPU, load, and memory tiles and charts are never built. The Playwright missing-data test loads only an empty host. Proven by code walk; not rendered.
-- **Recommendation:** Replace the early return with `<Show when={props.points.length > 0} fallback={…}>`, and add a UI test that goes from empty to populated.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-6 · P3 · Durable Object SQLite has no schema version or migration path
 
 - **Area:** Data

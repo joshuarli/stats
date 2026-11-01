@@ -181,16 +181,16 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
   const last = createMemo(() => windowed().at(-1));
   const free = createMemo(() => memoryFree(last()));
   const total = createMemo(() => last()?.mem?.total);
-  if (props.points.length === 0) {
-    return (
-      <Widget title="Samples" subtitle="No accepted observations for this range">
-        <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
-      </Widget>
-    );
-  }
   const series = (label: string, color: number, pick: (point: SummaryPoint) => number | undefined, dashed?: boolean) => ({ label, color, points: summarySeries(props.points, pick), dashed });
   return (
-    <>
+    <Show
+      when={props.points.length > 0}
+      fallback={
+        <Widget title="Samples" subtitle="No accepted observations for this range">
+          <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
+        </Widget>
+      }
+    >
       <section class="tiles" aria-label="Host summary">
         <Tile label="CPU" value={percent(cpu()?.last)} detail={range(cpu(), percent)} spark={<Sparkline points={sparkPoints(windowed(), cpuUsed)} label="CPU trend" color={0} />} />
         <Tile label="Memory used" value={percent(memory()?.last)} detail={free() === undefined || total() === undefined ? range(memory(), percent) : `${bytes(free())} free of ${bytes(total())}`} spark={<Sparkline points={sparkPoints(windowed(), memoryUsed)} label="Memory used trend" color={1} />} />
@@ -244,7 +244,7 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
           />
         </Widget>
       </section>
-    </>
+    </Show>
   );
 }
 

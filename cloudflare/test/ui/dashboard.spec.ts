@@ -105,6 +105,18 @@ test("missing and stale data never become zero", async ({ page }) => {
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
 });
 
+test("host summary rebuilds after an empty range becomes populated", async ({ page }) => {
+  const options = { empty: true, latest: false };
+  await mock(page, options);
+  await page.goto("/");
+  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
+  options.empty = false;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByRole("img", { name: /CPU;/ })).toBeVisible();
+  await expect(page.getByText("No samples were accepted in this range.")).toHaveCount(0);
+});
+
 test("search filters the fleet and status facets narrow it", async ({ page }) => {
   await mock(page);
   await page.goto("/");
