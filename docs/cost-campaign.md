@@ -112,19 +112,29 @@ lane is by evidence, not effort.
 - Verify the response cache is absorbing repeat reads: compare `crates` blob
   requests with `stuff-mycrates` operations.
 
-### D. `usr-memories` (blocked on the backfill ending)
+### D. `usr-memories`
 
-Two patterns were visible during the backfill and may be defects at any volume
-rather than backfill artifacts:
+Re-baselined on 2026-11-01 after the backfill, using the 30 minutes from 22:00
+(unweighted):
 
-- `UPDATE remote_object SET last_referenced_at` writes a row for every
-  referenced object on each sync, even when nothing changed.
-- `INSERT INTO snapshot_object` writes one row per object per snapshot.
+- 14.7k Worker events, 95% of them `GET /api/v1/sync/objects/<id>` (one R2 read
+  each, about 2 ms CPU): another machine pulling objects one at a time. That is
+  a finite restore, not a steady load.
+- D1 writes come in bursts: `POST /sync/snapshots` ran four times at about 19:30
+  and four times at 22:00, each writing one `snapshot_object` row and one
+  `remote_object` update per referenced object (about 32k each). That is roughly
+  220k rows per burst, which is on the order of $8 a month at list price over
+  the included amount, and about $3 a month if the `last_referenced_at` update
+  skipped unchanged rows.
 
-Decide on steady-state numbers: once the backfill ends, read one hour of D1
-statements and per-route CPU, then fix whichever statements still lead. Any
-change to the `remote_object` or `snapshot_object` tables is a stored-format
-change and needs a yes first.
+Decision: do not change the snapshot write path for that saving. It touches GC
+marking in a backup system and the larger part, the per-snapshot object list,
+is a stored-format change. Revisit if snapshots become more frequent or the
+object count grows by an order of magnitude.
+
+The risk that is not priced in is size: the database grew about 39 MB an hour in
+steady state regardless of rows written, which would reach D1's 10 GB cap in
+about ten days if it continued (STA-41). The D1 widget now charts it.
 
 ### E. Dependencies and size
 

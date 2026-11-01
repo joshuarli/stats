@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 41
+Next: 42
+
+### STA-41 · P2 · Watch the usr-memories D1 size against the 10 GB cap
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/projects/collector.ts`, `~/usr/agent-memory/cloudflare/src/db.ts`
+- **Problem:** On 2026-11-01 after the backfill the database grew about 39 MB an hour (168, 208, and 246 MB at 20:00, 21:00, and 22:00 UTC) regardless of whether the hour wrote 226k or 819k rows, so rows written do not explain it. At that rate D1's 10 GB cap is about ten days away, and a database at the cap rejects writes. Unproven: whether the growth continues once the object pull and the snapshot bursts settle, and what the extra bytes are (snapshot rows, indexes, or free pages).
+- **Recommendation:** Read the D1 size chart for a day. If growth continues, find which tables grow by running `SELECT name, SUM(pgsize) FROM dbstat GROUP BY name` through `cf d1` and compare with the per-snapshot `snapshot_object` rows, then decide between pruning old snapshots sooner and storing the object list once per change. Either is a stored-format or retention change and needs a yes first.
+- **Fix with:** make-it-fast
+- **Effort:** M
 
 ### STA-31 · P3 · Collector store write still costs about 26 ms of Durable Object CPU per run
 
