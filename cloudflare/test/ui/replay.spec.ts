@@ -1,10 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
+import stuff from "./captures/stuff/capture.json" with { type: "json" };
 import threadripper from "./captures/threadripper/capture.json" with { type: "json" };
 
 const captureFile = (name: string, file: string): string => new URL(`./captures/${name}/${file}`, import.meta.url).pathname;
 
-async function replay(page: Page, name: string, capturedAtMs: number, hasSystem: boolean): Promise<void> {
+async function freeze(page: Page, capturedAtMs: number): Promise<void> {
   await page.clock.setFixedTime(capturedAtMs);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; }";
+      document.head.appendChild(style);
+    });
+  });
+}
+
+async function replay(page: Page, name: string, capturedAtMs: number, hasSystem: boolean): Promise<void> {
+  await freeze(page, capturedAtMs);
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
@@ -18,12 +30,15 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
     const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range ?? "1h"}.json`;
     return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
   });
-  await page.addInitScript(() => {
-    document.addEventListener("DOMContentLoaded", () => {
-      const style = document.createElement("style");
-      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; }";
-      document.head.appendChild(style);
-    });
+}
+
+async function replayProject(page: Page, name: string, capturedAtMs: number): Promise<void> {
+  await freeze(page, capturedAtMs);
+  await page.route("**/api/v1/**", async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
+    const file = url.pathname === "/api/v1/projects" ? "projects.json" : `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`;
+    return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
   });
 }
 
@@ -51,3 +66,23 @@ for (const range of ["1h", "24h", "7d"]) {
     }
   });
 }
+
+test("stuff project page, 1h", async ({ page }) => {
+  await replayProject(page, "stuff", stuff.capturedAtMs);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await page.mouse.move(0, 0);
+  const regions = [
+    ["tiles", page.getByRole("region", { name: "Project summary" })] as const,
+    ["incidents", page.locator("#incidents")] as const,
+    ["left", page.getByRole("region", { name: "Left column" })] as const,
+    ["right", page.getByRole("region", { name: "Right column" })] as const
+  ];
+  for (const [file, region] of regions) {
+    await expect(region).toHaveScreenshot(`stuff-1h-${file}.png`);
+  }
+});
+

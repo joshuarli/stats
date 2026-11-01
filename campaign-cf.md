@@ -114,7 +114,7 @@ Run after the owner deploys (`make deploy`).
 - **N5 · Source retention.** Record how far back each dataset actually serves once the account has history; the project page's 90-day view fills from collection regardless.
 - **N7 · Binding and Log Explorer.** The binding docs say Log Explorer-backed datasets are not supported through the Workers binding, and `logs.workersLogs` is Log Explorer-backed. The CLI returns the same `{data, rows, statistics}` shape, so `check-analytics-sql.mjs` passes, but only a deployed run settles it. After N1, confirm `kind=worker` history has rows; if the collector fails on the Worker query, the Worker metrics need another source (a new S1 and an owner decision).
 - **N2 re-run.** `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket from the last 24 hours with `cf sql query` and exits 1 above 5% total error. On 2026-11-01 it found 14 of 15 buckets exact and -3.5% total (the one miss left the window stale).
-- **N6 · Golden snapshots for the project page.** After a day of collection, capture the real API responses and add replay goldens (a follow-up, not part of this campaign).
+- **N6 · Golden snapshots for the project page.** Done for 1 h on 2026-11-01 (`scripts/capture-project.sh stuff`, replay goldens `stuff-1h-*`). Add 6 h after six hours of collection and the longer ranges once the data exists, by running the script with those ranges.
 
 ## Execution boundary and non-goals
 

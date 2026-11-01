@@ -4,6 +4,7 @@ import { LIMITS } from "../../health";
 import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 
 import { Widget } from "../../components/ui";
+import { holdLast } from "./math";
 import { bucketOutcome, metricPoints, otherShare, r2Metric, type ProjectData } from "./series";
 
 export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Element {
@@ -43,7 +44,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
       <PanelChart
         label="R2 stored bytes"
         timeAxis={false}
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "storageBytes")) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: holdLast(metricPoints(props.data.r2, r2Metric(bucket, "storageBytes"))) }))}
         format={bytes}
         min={0}
         stepMs={props.data.r2.stepMs}
@@ -51,7 +52,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
       <PanelLabel>Objects</PanelLabel>
       <PanelChart
         label="R2 objects"
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: metricPoints(props.data.r2, r2Metric(bucket, "objects")) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: holdLast(metricPoints(props.data.r2, r2Metric(bucket, "objects"))) }))}
         format={count}
         min={0}
         stepMs={props.data.r2.stepMs}
