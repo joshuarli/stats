@@ -5,10 +5,10 @@ import { aggregationOf } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 
 export const SETTLE_MS = 45 * 60_000;
-export const STALE_AFTER_MS = 15 * 60_000;
-export const MAX_HISTORY_POINTS = 900;
-export const PROJECT_KINDS = ["worker", "r2", "probes", "collector"] as const;
-export type ProjectKind = (typeof PROJECT_KINDS)[number];
+const STALE_AFTER_MS = 15 * 60_000;
+const MAX_HISTORY_POINTS = 900;
+const PROJECT_KINDS = ["worker", "r2", "probes", "collector"] as const;
+type ProjectKind = (typeof PROJECT_KINDS)[number];
 
 const BUCKET_WIDTHS_MS = [BUCKET_MS, 15 * 60_000, HOUR_MS, 3 * HOUR_MS] as const;
 const WORKER_METRICS = [
@@ -23,23 +23,14 @@ const WORKER_METRICS = [
 ];
 const R2_SUFFIXES = ["ops.success", "ops.userError", "ops.other", "storageBytes", "objects"];
 
-export interface CollectorSummary {
+interface CollectorSummary {
   readonly lastRunAtMs: number | null;
   readonly lastSuccessAtMs: number | null;
   readonly lastError: string | null;
   readonly stale: boolean;
 }
 
-export interface ProjectSummary {
-  readonly id: string;
-  readonly name: string;
-  readonly worker: string;
-  readonly buckets: readonly string[];
-  readonly probes: readonly { readonly name: string; readonly url: string }[];
-  readonly collector: CollectorSummary;
-}
-
-export interface MetricHistory {
+interface MetricHistory {
   readonly projectId: string;
   readonly range: RangeKey;
   readonly kind: Exclude<ProjectKind, "collector">;
@@ -49,7 +40,7 @@ export interface MetricHistory {
   readonly series: readonly { readonly metric: string; readonly values: readonly (number | null)[] }[];
 }
 
-export interface CollectorHistory {
+interface CollectorHistory {
   readonly projectId: string;
   readonly range: RangeKey;
   readonly kind: "collector";
@@ -76,7 +67,7 @@ export function projectKind(value: string | null): ProjectKind | null {
   return value !== null && (PROJECT_KINDS as readonly string[]).includes(value) ? (value as ProjectKind) : null;
 }
 
-export function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "collector">): string[] {
+function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "collector">): string[] {
   switch (kind) {
     case "worker":
       return WORKER_METRICS;

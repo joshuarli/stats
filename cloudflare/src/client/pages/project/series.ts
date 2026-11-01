@@ -7,7 +7,7 @@ import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
-export const R2_OUTCOMES = ["success", "userError", "other"] as const;
+const R2_OUTCOMES = ["success", "userError", "other"] as const;
 
 export function milliseconds(value: number | undefined): string {
   return isFiniteNumber(value) ? `${count(value)} ms` : count(value);
@@ -23,7 +23,7 @@ export function metricPoints(history: ProjectMetricHistory, metric: string): Cha
   return found.values.map((value, index) => ({ atMs: history.fromMs + index * history.stepMs, value: value ?? undefined }));
 }
 
-export function addAll(parts: readonly (readonly ChartPoint[])[]): ChartPoint[] {
+function addAll(parts: readonly (readonly ChartPoint[])[]): ChartPoint[] {
   const first = parts[0];
   if (first === undefined) return [];
   return first.map((point, index) => {
@@ -37,7 +37,7 @@ export function addAll(parts: readonly (readonly ChartPoint[])[]): ChartPoint[] 
   });
 }
 
-export function holdLast(points: readonly ChartPoint[]): ChartPoint[] {
+function holdLast(points: readonly ChartPoint[]): ChartPoint[] {
   let held: number | undefined;
   return points.map(point => {
     held = point.value ?? held;
@@ -82,7 +82,7 @@ export function bucketOutcome(data: ProjectData, outcome: (typeof R2_OUTCOMES)[n
   return addAll(data.buckets.map(bucket => metricPoints(data.r2, r2Metric(bucket, `ops.${outcome}`))));
 }
 
-export function bucketGauge(data: ProjectData, suffix: "storageBytes" | "objects"): ChartPoint[] {
+function bucketGauge(data: ProjectData, suffix: "storageBytes" | "objects"): ChartPoint[] {
   return addAll(data.buckets.map(bucket => holdLast(metricPoints(data.r2, r2Metric(bucket, suffix)))));
 }
 

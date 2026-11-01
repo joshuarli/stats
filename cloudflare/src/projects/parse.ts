@@ -1,6 +1,6 @@
 import { BUCKET_MS } from "./queries.ts";
 
-export type Aggregation = "sum" | "max";
+type Aggregation = "sum" | "max";
 
 export interface MetricPoint {
   readonly metric: string;
@@ -8,9 +8,9 @@ export interface MetricPoint {
   readonly value: number;
 }
 
-export type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
+type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 
-export type R2Outcome = "success" | "userError" | "other";
+type R2Outcome = "success" | "userError" | "other";
 
 const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
   "worker.invocations": "sum",
@@ -50,7 +50,7 @@ export function statusClass(httpStatus: number): StatusClass {
   return "other";
 }
 
-export function r2Outcome(actionStatus: string): R2Outcome {
+function r2Outcome(actionStatus: string): R2Outcome {
   if (actionStatus === "success") return "success";
   if (actionStatus === "userError") return "userError";
   return "other";

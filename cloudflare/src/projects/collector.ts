@@ -9,7 +9,7 @@ import {
 import { BUCKET_MS, r2OperationsQuery, r2StorageQuery, workerQuery, type BoundQuery } from "./queries.ts";
 import type { CollectorRun, ProjectPoints } from "./store.ts";
 
-export const COLLECTION_WINDOW_MS = 90 * 60_000;
+const COLLECTION_WINDOW_MS = 90 * 60_000;
 
 export interface AnalyticsQuery {
   query(request: BoundQuery): Promise<{
@@ -18,11 +18,11 @@ export interface AnalyticsQuery {
   }>;
 }
 
-export interface CollectorStore {
+interface CollectorStore {
   recordCollectorRun(run: CollectorRun): Promise<{ metricRowsWritten: number }>;
 }
 
-export interface CollectorInput {
+interface CollectorInput {
   readonly analytics: AnalyticsQuery;
   readonly store: CollectorStore;
   readonly projectsJson: string;
@@ -30,7 +30,7 @@ export interface CollectorInput {
   readonly probeFetch: ProbeFetch;
 }
 
-export interface CollectorResult {
+interface CollectorResult {
   readonly queries: number;
   readonly metricRowsWritten: number;
 }

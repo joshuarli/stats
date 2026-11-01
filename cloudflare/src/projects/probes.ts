@@ -2,14 +2,14 @@ import type { ProbeConfig } from "./config.ts";
 import type { MetricPoint } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 
-export const PROBE_TIMEOUT_MS = 10_000;
+const PROBE_TIMEOUT_MS = 10_000;
 
 export type ProbeFetch = (url: string, init: { readonly method: "GET"; readonly redirect: "manual"; readonly signal: AbortSignal }) => Promise<{
   readonly status: number;
   readonly body: { cancel(): Promise<void> } | null;
 }>;
 
-export interface ProbeInput {
+interface ProbeInput {
   readonly fetch: ProbeFetch;
   readonly probes: readonly ProbeConfig[];
   readonly now: number;

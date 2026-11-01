@@ -1,4 +1,4 @@
-export type SqlValue = string | number | boolean | null;
+type SqlValue = string | number | boolean | null;
 
 export interface BoundQuery {
   readonly query: string;
