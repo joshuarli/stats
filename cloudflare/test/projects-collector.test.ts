@@ -1,6 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
+import type { ProbeFetch } from "../src/projects/probes";
 import type { BoundQuery } from "../src/projects/queries";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
 import r2StorageBody from "./fixtures/analytics/r2-storage.json";
@@ -41,8 +42,12 @@ function stub() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
 }
 
+const noProbes: ProbeFetch = async () => {
+  throw new Error("this registry configures no probes");
+};
+
 function collect(store: ReturnType<typeof stub>, analytics: AnalyticsQuery, now = NOW) {
-  return runCollector({ analytics, store, projectsJson: PROJECTS, now });
+  return runCollector({ analytics, store, projectsJson: PROJECTS, now, probeFetch: noProbes });
 }
 
 function inside<T>(store: ReturnType<typeof stub>, body: (sql: SqlStorage) => T): Promise<T> {
@@ -131,7 +136,7 @@ describe("collector", () => {
     const rows = fixtureRows();
     rows.worker.push({ day: "2026-11-01" });
     await expect(collect(store, fakeAnalytics(rows))).rejects.toThrow(TypeError);
-    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: "{", now: NOW })).rejects.toThrow("not valid JSON");
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: "{", now: NOW, probeFetch: noProbes })).rejects.toThrow("not valid JSON");
     await inside(store, (sql) => {
       expect(sql.exec("SELECT count(*) AS total FROM project_samples").one().total).toBe(0);
       expect(sql.exec("SELECT count(*) AS total FROM collector_runs WHERE ok = 0").one().total).toBe(2);

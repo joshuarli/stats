@@ -39,9 +39,11 @@ function block(range: string, empty = false) {
 
 const projectCollector = { fresh: { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false }, stale: { lastRunAtMs: now - 20 * 60_000, lastSuccessAtMs: now - 20 * 60_000, lastError: null, stale: true } } as const;
 
-function projects(collector: keyof typeof projectCollector) {
+const probeTargets = [{ name: "crates", url: "https://crates.example.com/" }, { name: "npm", url: "https://npm.example.com/" }];
+
+function projects(collector: keyof typeof projectCollector, withProbes: boolean) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], probes: [],
+    id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }
@@ -49,7 +51,7 @@ function projects(collector: keyof typeof projectCollector) {
 const PROJECT_STEP = 300_000;
 const PROJECT_POINTS = 12;
 
-function projectHistory(kind: string, range: string, spike: boolean) {
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean) {
   const fromMs = now - PROJECT_POINTS * PROJECT_STEP;
   const base = { projectId: "stuff", range, fromMs, toMs: now, stepMs: PROJECT_STEP };
   if (kind === "collector") {
@@ -72,6 +74,15 @@ function projectHistory(kind: string, range: string, spike: boolean) {
       ]
     };
   }
+  if (kind === "probes") {
+    return {
+      ...base, kind,
+      series: probeTargets.flatMap(target => [
+        { metric: `probe.${target.name}.up`, values: column(index => (probeDown && target.name === "npm" && index >= PROJECT_POINTS - 3 ? 0 : 1)) },
+        { metric: `probe.${target.name}.ms`, values: column(() => 85) }
+      ])
+    };
+  }
   const buckets = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
   return {
     ...base, kind,
@@ -85,7 +96,7 @@ function projectHistory(kind: string, range: string, spike: boolean) {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean } = {}): Promise<string[]> {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
@@ -93,8 +104,8 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const range = url.searchParams.get("range") ?? "1h";
     const kind = url.searchParams.get("kind") ?? "summary";
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
-    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true) });
-    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh") });
+    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true) });
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
@@ -382,4 +393,35 @@ test("ranges reload project history", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "24h" }).click();
   await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=r2"))).toBe(true);
+});
+
+test("configured probes add an endpoints monitor and chart that say where they measure from", async ({ page }) => {
+  const requests = await mock(page, { probes: true });
+  await page.goto("/#/project/stuff");
+  const strip = page.getByRole("region", { name: "Project summary" });
+  await expect(strip.getByRole("button", { name: /^Endpoints: all up/u })).toBeVisible();
+  const widget = page.locator("#endpoints");
+  await expect(widget.getByRole("heading", { name: "Endpoints" })).toBeVisible();
+  await expect(widget).toContainText("from Cloudflare's edge");
+  await expect(page.getByRole("img", { name: /Endpoint availability;/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Endpoint response time;/u })).toBeVisible();
+  await expect(page.locator(".widget:not(.column .widget)")).toHaveCount(0);
+  expect(requests.some(request => request.includes("kind=probes"))).toBe(true);
+});
+
+test("a down endpoint is a critical incident and projects without probes show none", async ({ page }) => {
+  await mock(page, { probes: true, probeDown: true });
+  await page.goto("/#/project/stuff");
+  const incidents = page.getByRole("list", { name: "Incidents" });
+  await expect(incidents).toContainText("Endpoints");
+  await expect(incidents).toContainText("Critical");
+  await expect(page.getByRole("button", { name: /^Endpoints: down/u })).toContainText("Critical");
+});
+
+test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(page.locator("#endpoints")).toHaveCount(0);
+  expect(requests.some(request => request.includes("kind=probes"))).toBe(false);
 });

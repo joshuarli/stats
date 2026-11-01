@@ -11,7 +11,12 @@ const PROJECTS: readonly ProjectConfig[] = [
     name: "stuff",
     worker: "stuff",
     buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
-    probes: []
+    probes: [
+      { name: "crates", url: "https://crates.17166969.xyz/current/registry/config.json" },
+      { name: "npm", url: "https://npm.17166969.xyz/current/" },
+      { name: "pypi", url: "https://pypi.17166969.xyz/current/simple/" },
+      { name: "site", url: "https://stuff.17166969.xyz/" }
+    ]
   }
 ];
 const PROJECTS_JSON = JSON.stringify(PROJECTS);

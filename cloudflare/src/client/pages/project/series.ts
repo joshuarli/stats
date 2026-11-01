@@ -68,6 +68,8 @@ export function silenceMinutes(history: ProjectCollectorHistory, nowMs: number, 
 export interface ProjectData {
   readonly worker: ProjectMetricHistory;
   readonly r2: ProjectMetricHistory;
+  readonly probes: ProjectMetricHistory | undefined;
+  readonly probeNames: readonly string[];
   readonly buckets: readonly string[];
   readonly silence: readonly ChartPoint[];
 }
@@ -97,12 +99,31 @@ export function otherShare(data: ProjectData): ChartPoint[] {
   return ratio(bucketOutcome(data, "other"), total, 100);
 }
 
+export function probeUp(data: ProjectData): ChartPoint[][] {
+  const history = data.probes;
+  return history === undefined ? [] : data.probeNames.map(name => metricPoints(history, `probe.${name}.up`));
+}
+
+export function endpointText(value: number | undefined): string {
+  return value === undefined ? count(value) : value >= 1 ? "all up" : "down";
+}
+
+function weakest(series: readonly (readonly ChartPoint[])[]): ChartPoint[] {
+  const first = series[0];
+  if (first === undefined) return [];
+  return first.map((point, index) => {
+    const values = series.flatMap(column => (column[index]?.value === undefined ? [] : [column[index]!.value!]));
+    return { atMs: point.atMs, value: values.length === 0 ? undefined : Math.min(...values) };
+  });
+}
+
 export function hasAnyValue(...series: readonly (readonly ChartPoint[])[]): boolean {
   return series.some(points => points.some(point => point.value !== undefined));
 }
 
 interface Spec {
   readonly id: string;
+  readonly parts?: readonly (readonly ChartPoint[])[];
   readonly label: string;
   readonly anchor: string;
   readonly limits: Limits | undefined;
@@ -120,9 +141,14 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
     { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes },
     { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: minutes }
   ];
+  const ups = probeUp(data);
+  if (ups.length > 0) {
+    specs.splice(5, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText });
+  }
   return specs.map(spec => {
     const windowed = spec.id === "collector" ? spec.points : pointsIn(spec.points, view);
-    const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: [windowed], stepMs: spec.id === "collector" ? undefined : stepMs });
+    const parts = spec.parts === undefined ? [windowed] : spec.parts.map(part => pointsIn(part, view));
+    const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
     return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark: windowed, format: spec.format, value: lastValue(windowed), detail: rangeText(windowed, spec.format) };
   });
 }

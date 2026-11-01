@@ -1,4 +1,5 @@
 import { parseProjects, type ProjectConfig } from "./config.ts";
+import { runProbes, type ProbeFetch } from "./probes.ts";
 import {
   parseR2OperationRows,
   parseR2StorageRows,
@@ -26,6 +27,7 @@ export interface CollectorInput {
   readonly store: CollectorStore;
   readonly projectsJson: string;
   readonly now: number;
+  readonly probeFetch: ProbeFetch;
 }
 
 export interface CollectorResult {
@@ -52,7 +54,7 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
       rowsRead += result.statistics.rows_read;
       return result.data;
     };
-    collected = await Promise.all(projects.map((project) => collectProject(project, startMs, run)));
+    collected = await Promise.all(projects.map((project) => collectProject(project, startMs, run, input.probeFetch, input.now)));
   } catch (error) {
     console.error(JSON.stringify({ event: "collector_failed" }));
     await input.store.recordCollectorRun({
@@ -79,16 +81,20 @@ async function collectProject(
   project: ProjectConfig,
   startMs: number,
   run: (bound: BoundQuery) => Promise<readonly unknown[]>,
+  probeFetch: ProbeFetch,
+  now: number,
 ): Promise<ProjectPoints> {
-  const [worker, operations, storage] = await Promise.all([
+  const [worker, operations, storage, probes] = await Promise.all([
     run(workerQuery(project.worker, startMs)),
     run(r2OperationsQuery(project.buckets, startMs)),
     run(r2StorageQuery(project.buckets, startMs)),
+    runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
   const points: MetricPoint[] = [
     ...parseWorkerRows(worker),
     ...parseR2OperationRows(operations),
     ...parseR2StorageRows(storage),
+    ...probes,
   ];
   return { project: project.id, points };
 }

@@ -10,6 +10,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { IncidentTimeline, StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
+import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { buildProjectCells, hasAnyValue, metricPoints, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
@@ -48,11 +49,12 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const worker = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "worker", signal)));
   const r2 = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "r2", signal)));
   const collector = createMemo(() => loadQuery(signal => getProjectCollector(id(), range(), signal)));
+  const probes = createMemo(() => (props.project.probes.length === 0 ? Promise.resolve(undefined) : loadQuery(signal => getProjectMetrics(id(), range(), "probes", signal))));
 
   const doRefresh = async () => {
     setRefreshError(null);
     try {
-      await Promise.all([refresh(worker), refresh(r2), refresh(collector)]);
+      await Promise.all([refresh(worker), refresh(r2), refresh(collector), refresh(probes)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
@@ -62,6 +64,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const data = createMemo((): ProjectData => ({
     worker: worker(),
     r2: r2(),
+    probes: probes(),
+    probeNames: props.project.probes.map(probe => probe.name),
     buckets: props.project.buckets,
     silence: silenceMinutes(collector(), now(), props.project.collector.lastSuccessAtMs)
   }));
@@ -99,12 +103,15 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} label="Project summary" six />
+            <StatusStrip cells={cells()} label="Project summary" six={cells().length === 6} />
             <section class="columns" aria-label="Charts">
               <div class="column" role="region" aria-label="Left column">
                 <RequestsWidget data={data()} />
                 <StatusWidget data={data()} />
                 <CpuTimeWidget data={data()} />
+                <Show when={props.project.probes.length > 0}>
+                  <ProbesWidget data={data()} />
+                </Show>
               </div>
               <div class="column" role="region" aria-label="Right column">
                 <IncidentTimeline cells={cells()} />

@@ -72,7 +72,8 @@ export default {
       analytics: env.ANALYTICS_SQL,
       store: env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")),
       projectsJson: env.PROJECTS,
-      now: controller.scheduledTime
+      now: controller.scheduledTime,
+      probeFetch: (url, init) => fetch(url, init)
     });
   }
 } satisfies ExportedHandler<Env>;
