@@ -52,7 +52,7 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
         stepMs={props.stepMs}
       />
       <Show when={reportsPressure()}>
-        <PanelLabel>Memory pressure (PSI some)</PanelLabel>
+        <PanelLabel>Memory pressure: share of time tasks stall (some) or all stall (full), 10 s average</PanelLabel>
         <TimeChart
           label="Memory pressure"
           compact
@@ -60,8 +60,8 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
           legend="inline"
           yAxisWidth={AXIS_WIDTH}
           series={[
-            { label: "10s", color: "ramp-5", points: summarySeries(props.points, point => point.psi?.memory?.some10) },
-            { label: "5m", color: "ramp-1", scored: false, points: summarySeries(props.points, point => point.psi?.memory?.some300) }
+            { label: "some", color: "ramp-3", points: summarySeries(props.points, point => point.psi?.memory?.some10) },
+            { label: "full", color: "ramp-5", scored: false, points: summarySeries(props.points, point => point.psi?.memory?.full10) }
           ]}
           format={percent}
           limits={LIMITS.pressureSome}

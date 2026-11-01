@@ -10,7 +10,7 @@ import { useTelemetry } from "../state";
 import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";
-import { ComputeWidgets } from "./host/Compute";
+import { CpuWidget, LoadWidget, PressureNotice } from "./host/Compute";
 import { DiskWidget } from "./host/Disk";
 import { FilesystemsWidget } from "./host/Filesystems";
 import { MemoryWidget } from "./host/Memory";
@@ -96,6 +96,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
 
   const status = createMemo(() => statusFor(props.host, props.host.lastReceivedAtMs));
   const events = createMemo(() => rebootEvents(summary().points ?? []));
+  const reportsBlock = createMemo(() => (block().series ?? []).some(entry => entry.points.length > 0));
 
   const doRefresh = async () => {
     setRefreshError(null);
@@ -126,32 +127,47 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         hint="Drag a chart to zoom · double-click to reset · click a legend row to isolate"
       >
       </PageHeader>
-      <Errored fallback={(error) => <ErrorState error={error()} compact />}>
-        <Loading fallback={<Widget title="System"><Skeleton rows={2} /></Widget>}>
-          <SystemPanel system={system()} memoryBytes={summary().points?.at(-1)?.mem?.total} />
-        </Loading>
-      </Errored>
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
 
       <Errored fallback={(error) => <ErrorState error={error()} compact />}>
         <Loading fallback={<SummarySkeleton />}>
-          <Show when={(summary().points ?? []).length > 0}>
+          <Show
+            when={(summary().points ?? []).length > 0}
+            fallback={
+              <>
+                <SystemPanel system={system()} memoryBytes={undefined} />
+                <Widget title="Samples" subtitle="No accepted observations for this range">
+                  <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
+                </Widget>
+              </>
+            }
+          >
             <StatusStrip cells={cells()} />
-            <IncidentTimeline cells={cells()} />
-          </Show>
-          <ComputeWidgets points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-          <section class="stack" aria-label="Host activity">
-            <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
-            <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} events={events()} />
-            <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
-            <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} longSeries={week()} events={events()} />
-            <section class="chart-grid" aria-label="Block latency">
-              <BlockWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
-              <BlockCompletionsWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+            <Show when={(summary().points ?? []).some(point => point.partial)}>
+              <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
+            </Show>
+            <PressureNotice points={summary().points ?? []} />
+            <section class="columns" aria-label="Charts">
+              <div class="column" role="region" aria-label="Left column">
+                <SystemPanel system={system()} memoryBytes={summary().points?.at(-1)?.mem?.total} />
+                <CpuWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+                <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
+                <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
+                <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
+                  <BlockWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+                  <BlockCompletionsWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+                </Show>
+              </div>
+              <div class="column" role="region" aria-label="Right column">
+                <IncidentTimeline cells={cells()} />
+                <LoadWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+                <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} summary={summary().points ?? []} summaryStepMs={summary().stepMs} events={events()} />
+                <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} longSeries={week()} events={events()} />
+              </div>
             </section>
-          </section>
+          </Show>
         </Loading>
       </Errored>
     </>

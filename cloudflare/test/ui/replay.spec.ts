@@ -36,13 +36,14 @@ for (const range of ["1h", "24h", "7d"]) {
     await expect(page.getByRole("button", { name: range, exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("heading", { name: "Filesystems" })).toBeVisible();
     await page.waitForLoadState("networkidle");
+    await page.mouse.move(0, 0);
     if (!threadripper.system) await expect(page.getByText("This host has not reported system details.")).toBeVisible();
     const regions = [
       ...(threadripper.system ? [["system", page.getByRole("region", { name: "System" })] as const] : []),
       ["tiles", page.getByRole("region", { name: "Host summary" })] as const,
       ["incidents", page.locator("#incidents")] as const,
-      ["charts", page.getByRole("region", { name: "Host charts" })] as const,
-      ["activity", page.getByRole("region", { name: "Host activity" })] as const
+      ["left", page.getByRole("region", { name: "Left column" })] as const,
+      ["right", page.getByRole("region", { name: "Right column" })] as const
     ];
     for (const [file, region] of regions) {
       await expect(region).toHaveScreenshot(`threadripper-${range}-${file}.png`);

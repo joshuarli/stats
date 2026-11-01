@@ -128,21 +128,21 @@ an update and then hourly. Below that:
   how long it has been in that state, and a trend. A cell jumps to its chart.
 - An incident list of every elevated or critical period in the window, newest
   first, each with a Zoom button that narrows every chart to it.
-- CPU (with steal) and load, both with a dashed line for the same window
-  yesterday on the 1 h, 6 h, and 24 h ranges, then PSI pressure.
+- Everything below sits in two columns; no graph spans the page.
+- CPU (with steal and a CPU pressure panel) and load, both with a dashed line
+  for the same window yesterday on the 1 h, 6 h, and 24 h ranges.
 - Memory: RAM and swap in use against total, swap paging, and memory pressure
-  on one shared time axis.
+  (some and full) on one shared time axis.
 - Disk and network: throughput and operations or packets with reads and
-  receive above the line and writes and transmit below it, busy time or drops
-  and errors, and a device or interface table.
+  receive above the line and writes and transmit below it, busy time (and I/O
+  pressure) or drops and errors, and a device or interface table.
 - Filesystems: usage over time and one table with capacity, state, and a 7 day
   linear forecast of when each mount fills.
-- Block latency and completions, which stay empty unless the collector is
-  configured.
+- Block latency and completions, shown only when the collector is configured.
 
 Dotted vertical lines mark reboots, read from a fall in uptime. Mounts of the
 same block device (bind mounts, btrfs subvolumes) are listed once. Pressure
-sections appear only when the kernel reports PSI.
+panels appear only when the kernel reports PSI; otherwise one notice says so.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
 chart to that window. The smallest zoom is two samples of the tier the window

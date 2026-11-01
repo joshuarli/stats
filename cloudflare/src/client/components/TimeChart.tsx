@@ -316,7 +316,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       height: element.clientHeight,
       legend: { show: false },
       focus: { alpha: 0.16 },
-      padding: [8, 8, 0, 0],
+      padding: [8, 8, props.timeAxis === false ? 8 : 0, 0],
       select: { show: true, ...CLEARED_SELECT },
       cursor: {
         y: false,
@@ -330,6 +330,10 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         y: {
           range: (_chart, low, high) => {
             if (low === null || high === null) return [props.min ?? 0, props.max ?? 1];
+            if (mirrored()) {
+              const reach = Math.max(Math.abs(low), Math.abs(high), 1) * 1.08;
+              return [-reach, reach];
+            }
             const top = props.limits === undefined || props.limits.direction === "below" || props.max !== undefined ? high : Math.max(high, props.limits.elevated * 1.3);
             const pad = (top - low || 1) * 0.08;
             return [props.min ?? low - pad, props.max ?? top + pad];

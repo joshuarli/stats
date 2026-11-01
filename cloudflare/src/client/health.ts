@@ -34,7 +34,6 @@ export const LIMITS = {
   cpuPercent: { elevated: 70, critical: 90, direction: "above" },
   memoryUsedPercent: { elevated: 85, critical: 95, direction: "above" },
   pressureSome: { elevated: 10, critical: 25, direction: "above" },
-  pressureFull: { elevated: 2, critical: 10, direction: "above" },
   diskBusyPercent: { elevated: 70, critical: 95, direction: "above" },
   filesystemUsedPercent: { elevated: 80, critical: 90, direction: "above" },
   swapBytesPerSec: { elevated: MIB, critical: 16 * MIB, direction: "above" },

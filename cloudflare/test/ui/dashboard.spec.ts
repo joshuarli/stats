@@ -112,7 +112,10 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
   await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
   await expect(page.getByRole("table", { name: "Filesystem capacity" })).toContainText("not enough history");
-  for (const title of ["Incidents", "CPU", "Load", "Memory", "Disk", "Network", "Filesystems", "Full stalls"]) {
+  for (const panel of ["CPU pressure:", "Memory pressure:", "I/O pressure:"]) await expect(page.getByText(panel)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pressure" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Full stalls" })).toHaveCount(0);
+  for (const title of ["Incidents", "CPU", "Load", "Memory", "Disk", "Network", "Filesystems"]) {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
   }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();

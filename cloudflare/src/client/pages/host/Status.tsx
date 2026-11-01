@@ -52,10 +52,12 @@ export function IncidentTimeline(props: { readonly cells: readonly MonitorCell[]
                   <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[incident.peak]}</span>
                   <span class="health-word">{HEALTH_LABEL[incident.peak]}</span>
                 </span>
-                <span class="incident-what">{incident.label}</span>
-                <span class="incident-when">
-                  {dateTime(incident.startMs)}
-                  {incident.endMs === null ? " · ongoing" : ` · ${duration(incident.endMs - incident.startMs)} · ended ${clock(incident.endMs)}`}
+                <span class="incident-body">
+                  <span class="incident-what">{incident.label}</span>
+                  <span class="incident-when">
+                    {dateTime(incident.startMs)}
+                    {incident.endMs === null ? " · ongoing" : ` · ${duration(incident.endMs - incident.startMs)} · ended ${clock(incident.endMs)}`}
+                  </span>
                 </span>
                 <button
                   class="btn btn-secondary btn-small"

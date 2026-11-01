@@ -46,7 +46,7 @@ export function FilesystemsWidget(props: {
           />
           <div class="table-scroll flush-table">
             <table class="data-table compact" aria-label="Filesystem capacity">
-              <thead><tr><th scope="col" /><th scope="col">Mount</th><th scope="col">Capacity</th><th scope="col">Trend (7 d)</th></tr></thead>
+              <thead><tr><th scope="col" /><th scope="col">Mount and 7 day forecast</th><th scope="col">Capacity</th></tr></thead>
               <tbody>
                 <For each={rows()}>
                   {(entry) => {
@@ -55,7 +55,17 @@ export function FilesystemsWidget(props: {
                     return (
                       <tr>
                         <td><span class={`legend-swatch viz-${colors().get(entry.id) ?? "neutral"}${colors().has(entry.id) ? "" : " unplotted"}`} aria-hidden="true" /></td>
-                        <td><span class="device-name">{entry.id}</span></td>
+                        <td>
+                          <span class="device-name">{entry.id}</span>
+                          <Show when={forecast()} fallback={<span class="cell-note">forecast loading</span>}>
+                            {(found) => (
+                              <span class="cell-note forecast">
+                                <span>{forecastText(found(), bytes)}</span>
+                                <HealthMark health={forecastHealth(found())} />
+                              </span>
+                            )}
+                          </Show>
+                        </td>
                         <td>
                           <Show when={point()} fallback={<span class="cell-note">unavailable</span>}>
                             {(current) => (
@@ -63,16 +73,6 @@ export function FilesystemsWidget(props: {
                                 <CapacityBar total={current().total} available={current().available} />
                                 <HealthMark health={healthOf(usedShare(current()), LIMITS.filesystemUsedPercent) ?? undefined} />
                               </div>
-                            )}
-                          </Show>
-                        </td>
-                        <td>
-                          <Show when={forecast()} fallback={<span class="cell-note">loading</span>}>
-                            {(found) => (
-                              <span class="forecast">
-                                <span>{forecastText(found(), bytes)}</span>
-                                <HealthMark health={forecastHealth(found())} />
-                              </span>
                             )}
                           </Show>
                         </td>

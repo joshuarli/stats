@@ -13,7 +13,7 @@ export function CapacityBar(props: { readonly total: number; readonly available:
       </div>
       <div class="capacity-label">
         <strong>{percent(ratio())}</strong>
-        <span>{bytes(props.available)} free of {bytes(props.total)}</span>
+        <span title={`${bytes(props.available)} free of ${bytes(props.total)}`}>{bytes(props.available)} free</span>
       </div>
     </div>
   );

@@ -75,7 +75,7 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
     {
       id: "pressure",
       label: "Pressure",
-      anchor: "pressure",
+      anchor: points.some(point => point.psi !== undefined) ? "memory" : "pressure",
       limits: LIMITS.pressureSome,
       series: [summarySeries(points, point => point.psi?.cpu?.some10), summarySeries(points, point => point.psi?.memory?.some10), summarySeries(points, point => point.psi?.io?.some10)],
       stepMs: data.stepMs,
