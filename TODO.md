@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-13 · P3 · Agent upload loop, shutdown, and real sample shape are untested
-
-- **Area:** Tests
-- **Where:** `agent/src/runtime.rs:110-223`, `agent/src/linux.rs`, `agent/tests/fixtures.rs:253-324`
-- **Problem:** Only `flush_once` and `sleep_interruptible` have tests. Nothing covers `upload_loop`, a stop followed by a final flush, or status classification. `linux.rs` compiles only on Linux, so the macOS run of `make agent-test` exercises none of the collectors. No test runs a real `sample()` through the fixture validator, and `serializer_uses_the_wire_names` checks only a few keys.
-- **Recommendation:** Add a fake-sender `upload_loop` test for stop and final flush, and a Linux-only test that validates `sample()` output against the fixture validator.
-- **Fix with:** test-audit
-- **Effort:** M
-
 ### STA-14 · P3 · Agent stop time can exceed the init's stop timeout
 
 - **Area:** Concurrency

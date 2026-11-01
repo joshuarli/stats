@@ -273,9 +273,16 @@ fn fixture_manifest_matches_the_validator() {
     assert_eq!(checked, manifest["fixtures"].as_array().unwrap().len());
 }
 
+#[cfg(target_os = "linux")]
 #[test]
-fn every_fixture_file_is_manifested() {
-    let directory = fixture_dir();
+fn a_real_linux_sample_matches_the_wire_contract() {
+    let sample = stats::sample_once().expect("a Linux host should produce a sample");
+    let value = serde_json::to_value(&sample).unwrap();
+    assert!(validate_sample(&value), "{value}");
+}
+
+#[test]
+fn every_fixture_file_is_manifested() {    let directory = fixture_dir();
     let manifest: Value = serde_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap()).unwrap();
     let listed: HashSet<String> = manifest["fixtures"].as_array().unwrap().iter().map(|entry| entry["file"].as_str().unwrap().to_owned()).collect();
     for entry in fs::read_dir(directory).unwrap() {

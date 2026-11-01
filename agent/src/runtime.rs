@@ -310,4 +310,23 @@ mod tests {
         });
         assert!(!sleep_interruptible(Duration::from_secs(5), stop_ref));
     }
+
+    #[test]
+    fn stop_flushes_pending_samples_before_exiting() {
+        let queue = queue(2);
+        let sender = Arc::new(FakeSender::new(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]));
+        let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
+        let setter = stop;
+        let handle = {
+            let queue = Arc::clone(&queue);
+            let sender: Arc<dyn BatchSender> = sender.clone();
+            thread::spawn(move || upload_loop(queue, sender, "boot".to_owned(), Duration::from_secs(3_600), stop))
+        };
+        thread::sleep(Duration::from_millis(20));
+        setter.store(true, Ordering::SeqCst);
+        let report = handle.join().unwrap();
+        assert_eq!(report.accepted, 2);
+        assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
+        assert!(queue.lock().unwrap().is_empty());
+    }
 }
