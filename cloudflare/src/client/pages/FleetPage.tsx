@@ -191,8 +191,8 @@ function FleetDashboard(props: {
 }): JSX.Element {
   const from = () => props.total === 0 ? 0 : (props.page - 1) * PAGE_SIZE + 1;
   const to = () => Math.min(props.total, props.page * PAGE_SIZE);
-  const reporting = createMemo(() => props.rows.filter(row => hostStatus(row.host).label === "online"));
-  const stepMs = createMemo(() => Math.max(0, ...reporting().map(row => row.stepMs)) || undefined);
+  const chartRows = createMemo(() => props.rows.filter(row => row.summary.length > 0));
+  const stepMs = createMemo(() => Math.max(0, ...chartRows().map(row => row.stepMs)) || undefined);
   const header = (key: SortKey, label: string) => (
     <th scope="col" aria-sort={props.sort.key === key ? (props.sort.direction === 1 ? "ascending" : "descending") : "none"}>
       <button class="sort-button" type="button" onClick={() => props.sortBy(key)}>
@@ -209,7 +209,7 @@ function FleetDashboard(props: {
         <Widget title="CPU utilization" subtitle="by host" expandable>
           <TimeChart
             label="CPU utilization"
-            series={reporting().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: row.summary.map(point => ({ atMs: point.atMs, value: cpuUsed(point) })) }))}
+            series={chartRows().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: row.summary.map(point => ({ atMs: point.atMs, value: cpuUsed(point) })) }))}
             stepMs={stepMs()}
             format={percent}
             min={0}
@@ -222,7 +222,7 @@ function FleetDashboard(props: {
         <Widget title="Network receive" subtitle="by host" expandable>
           <TimeChart
             label="Network receive"
-            series={reporting().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: sumSeries(row.nets, point => point.rxBytesPerSec) }))}
+            series={chartRows().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: sumSeries(row.nets, point => point.rxBytesPerSec) }))}
             stepMs={stepMs()}
             format={rate}
             min={0}
@@ -303,7 +303,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
   const trend = createMemo(() => sparkPoints(windowed(), cpuUsed));
   const reporting = () => status().label === "online";
   const clearHover = () => props.setHover(null);
-  const hoverRow = () => props.setHover(reporting() ? props.row.host.name : null);
+  const hoverRow = () => props.setHover(props.row.host.name);
   return (
     <tr>
       <td>

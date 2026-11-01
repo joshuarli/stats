@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-18 · P3 · Fleet charts omit hosts that are not online now, even in past windows
-
-- **Area:** Data
-- **Where:** `cloudflare/src/client/pages/FleetPage.tsx:194-195`
-- **Problem:** `reporting()` keeps only rows whose current status is online. A host that went stale a minute ago vanishes from the fleet charts. Zooming into an outage window shows nothing for the host that failed, while the table still shows its last point.
-- **Recommendation:** Chart every row that has points in the window, and use current status only for styling.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-19 · P3 · Zoom floor assumes the raw tier, and view state admits a frozen non-live page
 
 - **Area:** Types
