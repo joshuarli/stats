@@ -164,10 +164,11 @@ mod tests {
         let path = root.join("snapshot.json");
         let snapshot = serde_json::to_vec(&value(buckets("1"), "1", "10", "1", "10")).unwrap();
         fs::write(&path, &snapshot).unwrap();
+        fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(1)).unwrap();
         let mut reader = SnapshotReader::default();
         assert!(reader.read(&path).is_some());
         assert!(reader.read(&path).is_none());
-        fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(1)).unwrap();
+        fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(2)).unwrap();
         assert!(reader.read(&path).is_some());
     }
 }
