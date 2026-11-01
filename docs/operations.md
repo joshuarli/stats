@@ -10,7 +10,7 @@ an `.elf.txt` program-header dump per binary. Older artifacts are left in
 place. It fails if an ELF has `PT_INTERP` or `NEEDED`. The aarch64 wrapper
 drops rustc's `--fix-cortex-a53-843419` argument, which Zig does not accept.
 
-Recorded 2026-10-31: 1,943,832 bytes x86_64 and 1,733,792 bytes aarch64,
+Recorded 2026-11-01: 1,982,288 bytes x86_64 and 1,758,784 bytes aarch64,
 stripped; two builds produced identical SHA-256 digests.
 
 ## Deployment
