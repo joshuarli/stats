@@ -10,7 +10,7 @@ an `.elf.txt` program-header dump per binary. Older artifacts are left in
 place. It fails if an ELF has `PT_INTERP` or `NEEDED`. The aarch64 wrapper
 drops rustc's `--fix-cortex-a53-843419` argument, which Zig does not accept.
 
-Recorded 2026-11-01: 1,982,288 bytes x86_64 and 1,758,784 bytes aarch64,
+Recorded 2026-11-01: 1,985,120 bytes x86_64 and 1,761,032 bytes aarch64,
 stripped; two builds produced identical SHA-256 digests.
 
 ## Deployment
@@ -57,6 +57,15 @@ cf workers deployments list --worker stats-worker
 cf workers deployments create --worker stats-worker \
   --versions '[{"version_id":"<version-id>","percentage":100}]'
 ```
+
+## Observability
+
+`cloudflare.config.ts` enables Workers Logs at 10% head sampling. The Worker
+writes a fixed JSON line for ingest rejections other than duplicates, alarm
+failures, and the 500 catch-all, with `event`, `hostId` when known, and `code`.
+The free plan includes 200,000 log events per day with three-day retention.
+Set a spend alarm before raising `headSamplingRate` or the fleet size, and
+lower the rate or move to Workers Paid when the allowance is close.
 
 ## First deployment
 

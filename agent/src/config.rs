@@ -89,7 +89,7 @@ fn valid_endpoint(value: &str) -> bool {
 fn owner_file(path: &Path, limit: usize) -> Result<Vec<u8>, ConfigError> {
     use std::io::Read;
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-    let mut file = match fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path) {
+    let file = match fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path) {
         Ok(file) => file,
         Err(error) if error.raw_os_error() == Some(libc::ELOOP) => {
             return Err(ConfigError::new(format!("{}: symbolic links are not accepted", path.display())));
@@ -160,14 +160,18 @@ pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
     Ok(config)
 }
 
-pub fn load_token(config: &AgentConfig) -> Result<String, ConfigError> {
-    let bytes = owner_file(&config.token_file, TOKEN_LIMIT)?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| ConfigError::new(format!("{}: not UTF-8", config.token_file.display())))?;
+pub fn load_token_file(path: &Path) -> Result<String, ConfigError> {
+    let bytes = owner_file(path, TOKEN_LIMIT)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| ConfigError::new(format!("{}: not UTF-8", path.display())))?;
     let token = text.trim();
     if !valid_token(token) {
-        return Err(ConfigError::new(format!("{}: token must be nft_ followed by 43 base64url characters", config.token_file.display())));
+        return Err(ConfigError::new(format!("{}: token must be nft_ followed by 43 base64url characters", path.display())));
     }
     Ok(token.to_owned())
+}
+
+pub fn load_token(config: &AgentConfig) -> Result<String, ConfigError> {
+    load_token_file(&config.token_file)
 }
 
 #[cfg(test)]

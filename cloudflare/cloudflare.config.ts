@@ -21,6 +21,11 @@ export default defineConfig({
     assets: { runWorkerFirst: true },
     workersDev: false,
     previewUrls: false,
+    observability: {
+      enabled: true,
+      headSamplingRate: 0.1,
+      logs: { enabled: true, invocationLogs: true }
+    },
     ...(domain === undefined ? {} : { domains: [domain] })
   }
 });

@@ -1,7 +1,11 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Installation } from "../src/installation";
 import { parseBatch } from "../src/protocol";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const files: Record<string, string> = JSON.parse(env.FIXTURES ?? "{}");
 const manifest = JSON.parse(files["manifest.json"] ?? "{}") as { fixtures: { file: string; expect: "accept" | "reject"; code?: string }[] };
@@ -186,6 +190,31 @@ describe("ingest", () => {
     const limited = await ingest(host.token, body);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBe("60");
+  });
+
+  it("logs an ingest rejection with a fixed shape", async () => {
+    const host = await createHost();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const body = { v: 1, hostId: host.hostId, bootId: "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", samples: [sample(1, 1000, now + 600_000)] };
+    const response = await ingest(host.token, body);
+    expect(response.status).toBe(400);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "ingest_rejected", hostId: host.hostId, code: "invalid_sample" }));
+  });
+
+  it("logs the Worker gate and the 500 catch-all without exception text", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const gated = await SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: "notjson" });
+    expect(gated.status).toBe(401);
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "ingest_rejected", code: "unauthorized" }));
+
+    const object = env.INSTALLATION.get(env.INSTALLATION.idFromName("log-500"));
+    await runInDurableObject(object, async (instance: Installation) => {
+      (instance as unknown as { createHost: () => never }).createHost = () => { throw new Error("secret detail"); };
+      const response = await instance.fetch(new Request("https://installation/admin/hosts", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"name":"x"}' }));
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: { code: "internal", message: "internal error" } });
+      expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "request_failed", code: "internal" }));
+    });
   });
 
   it("rejects future and too-old observations", async () => {

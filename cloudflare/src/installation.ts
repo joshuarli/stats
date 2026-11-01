@@ -312,11 +312,16 @@ export class Installation extends DurableObject<Env> {
   }
 
   override async alarm(): Promise<void> {
-    const now = this.now();
-    const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
-    const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
-    const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
-    await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
+    try {
+      const now = this.now();
+      const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
+      const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
+      const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
+      await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
+      throw error;
+    }
   }
 
   private authorize(hostId: string, hash: string): { host: HostRow } | { code: "unauthorized" | "forbidden"; status: number } {
@@ -325,19 +330,24 @@ export class Installation extends DurableObject<Env> {
     return { host };
   }
 
+  private reject(code: ErrorCode, message: string, status: number, hostId?: string, headers: Record<string, string> = {}, extra: Record<string, unknown> = {}): Response {
+    console.error(JSON.stringify({ event: "ingest_rejected", ...(hostId === undefined ? {} : { hostId }), code }));
+    return json({ error: { code, message }, ...extra }, status, headers);
+  }
+
   async ingest(request: Request): Promise<Response> {
-    if (request.method !== "POST") return failure("invalid_request", "POST required", 405);
+    if (request.method !== "POST") return this.reject("invalid_request", "POST required", 405);
     const contentType = request.headers.get("content-type") ?? "";
-    if (!contentType.toLowerCase().startsWith("application/json")) return failure("invalid_request", "application/json required", 415);
+    if (!contentType.toLowerCase().startsWith("application/json")) return this.reject("invalid_request", "application/json required", 415);
     const text = await readLimitedText(request, MAX_BODY_BYTES);
-    if (text === null) return failure("too_large", "batch exceeds the body cap", 413);
+    if (text === null) return this.reject("too_large", "batch exceeds the body cap", 413);
     const parsed = parseBatch(text);
-    if (!parsed.ok) return failure(parsed.code, parsed.message, parsed.code === "too_large" ? 413 : 400);
+    if (!parsed.ok) return this.reject(parsed.code, parsed.message, parsed.code === "too_large" ? 413 : 400);
     const token = bearerToken(request.headers.get("authorization"));
-    if (token === null) return failure("unauthorized", "a host bearer token is required", 401);
+    if (token === null) return this.reject("unauthorized", "a host bearer token is required", 401);
     const hash = await tokenHash(token);
     const authorized = this.authorize(parsed.hostId, hash);
-    if ("code" in authorized) return failure(authorized.code, "host credential rejected", authorized.status);
+    if ("code" in authorized) return this.reject(authorized.code, "host credential rejected", authorized.status, parsed.hostId);
 
     const now = this.now();
     const window = Math.floor(now / WINDOW_MS) * WINDOW_MS;
@@ -356,10 +366,10 @@ export class Installation extends DurableObject<Env> {
       const count = current.window_start_ms === window ? current.window_count + 1 : 1;
       this.ctx.storage.sql.exec("UPDATE hosts SET window_start_ms = ?, window_count = ? WHERE host_id = ?", window, count, parsed.hostId);
     });
-    if (rejectedCredential) return failure("unauthorized", "host credential rejected", 401);
-    if (limited) return failure("rate_limited", "host request rate exceeded", 429, { "Retry-After": "60" });
+    if (rejectedCredential) return this.reject("unauthorized", "host credential rejected", 401, parsed.hostId);
+    if (limited) return this.reject("rate_limited", "host request rate exceeded", 429, parsed.hostId, { "Retry-After": "60" });
 
-    const rejected: { seq: string; code: string }[] = [];
+    const rejected: { seq: string; code: ErrorCode }[] = [];
     const affectedMinutes: number[] = [];
     let accepted = 0;
     let duplicates = 0;
@@ -412,7 +422,10 @@ export class Installation extends DurableObject<Env> {
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
     });
 
-    if (accepted === 0 && duplicates === 0) return json({ error: { code: rejected[0]?.code ?? "invalid_sample", message: "no samples were accepted" }, rejected }, 400);
+    if (accepted === 0 && duplicates === 0) {
+      const code = rejected[0]?.code ?? "invalid_sample";
+      return this.reject(code, "no samples were accepted", 400, parsed.hostId, {}, { rejected });
+    }
     const alarm = await this.ctx.storage.getAlarm();
     if (alarm === null) await this.ctx.storage.setAlarm(now + 10 * 60 * 1000);
     return json({ v: 1, accepted, duplicates, rejected });
@@ -459,8 +472,8 @@ export class Installation extends DurableObject<Env> {
       const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
       if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       return failure("not_found", "unknown object route", 404);
-    } catch (error) {
-      console.error(JSON.stringify({ event: "installation_request_failed", path, code: "internal", message: error instanceof Error ? error.message : String(error) }));
+    } catch {
+      console.error(JSON.stringify({ event: "request_failed", code: "internal" }));
       return failure("internal", "internal error", 500);
     }
   }

@@ -66,7 +66,7 @@ fn snapshot_block(snapshot: Snapshot) -> Option<Block> {
 
 fn read_snapshot(path: &Path) -> Option<(Block, SystemTime)> {
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-    let mut file = fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path).ok()?;
+    let file = fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path).ok()?;
     let metadata = file.metadata().ok()?;
     if !metadata.is_file() || metadata.len() > SNAPSHOT_LIMIT as u64 {
         return None;

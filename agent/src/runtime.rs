@@ -1,17 +1,20 @@
 use crate::backoff::Backoff;
 use crate::block;
-use crate::config::AgentConfig;
+use crate::config::{load_token_file, AgentConfig, ConfigError};
 use crate::model::Sample;
 use crate::queue::Queue;
 use crate::sample_once;
 use crate::transport::{HttpTransport, SendOutcome, TransportError};
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 pub static STOP: AtomicBool = AtomicBool::new(false);
+const CREDENTIAL_RETRY: Duration = Duration::from_secs(60);
+const FAILURE_LOG_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeError {
@@ -41,6 +44,9 @@ pub trait BatchSender: Send + Sync {
     fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         self.send(boot_id, samples)
     }
+    fn replace_token(&self, _token: String) -> bool {
+        false
+    }
 }
 
 impl BatchSender for HttpTransport {
@@ -51,6 +57,10 @@ impl BatchSender for HttpTransport {
     fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         HttpTransport::send_final(self, boot_id, samples)
     }
+
+    fn replace_token(&self, token: String) -> bool {
+        HttpTransport::replace_token(self, token)
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -59,8 +69,8 @@ pub struct RunReport {
     pub sample_failures: u64,
     pub accepted: u64,
     pub duplicates: u64,
-    pub rejected: u64,
-    pub dropped: u64,
+    pub rejected_by_server: u64,
+    pub dropped_local: u64,
     pub upload_failures: u64,
 }
 
@@ -69,6 +79,41 @@ pub struct FlushOutcome {
     pub sent: Option<SendOutcome>,
     pub retry: Option<Duration>,
     pub dropped: u64,
+    pub failure: Option<TransportError>,
+}
+
+#[derive(Default)]
+struct FailureLog {
+    last: Option<(String, Instant)>,
+    suppressed: u64,
+}
+
+impl FailureLog {
+    fn record(&mut self, error: &TransportError, now: Instant) -> Option<String> {
+        let line = format!("stats: upload failed: {error}");
+        match self.last.as_mut() {
+            Some((previous, since)) if *previous == line => {
+                self.suppressed += 1;
+                if now.saturating_duration_since(*since) < FAILURE_LOG_INTERVAL {
+                    return None;
+                }
+                let repeated = self.suppressed;
+                *since = now;
+                self.suppressed = 0;
+                Some(format!("{line} (repeated {repeated} times)"))
+            }
+            _ => {
+                self.last = Some((line.clone(), now));
+                self.suppressed = 0;
+                Some(line)
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        self.last = None;
+        self.suppressed = 0;
+    }
 }
 
 pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff) -> FlushOutcome {
@@ -91,18 +136,28 @@ fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &st
             if pending == 0 {
                 backoff.reset();
             }
-            FlushOutcome { sent: Some(outcome), retry: None, dropped: 0 }
+            FlushOutcome { sent: Some(outcome), retry: None, dropped: 0, failure: None }
         }
-        Err(TransportError::RateLimited(retry_after)) => {
-            queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(batch);
-            FlushOutcome { sent: None, retry: Some(backoff.delay(retry_after)), dropped: 0 }
+        Err(error) => {
+            let retry = match &error {
+                TransportError::RateLimited(retry_after) => Some(backoff.delay(*retry_after)),
+                TransportError::Retryable(_) => Some(backoff.delay(None)),
+                TransportError::Credential(_) => Some(backoff.delay(Some(CREDENTIAL_RETRY))),
+                TransportError::Permanent(_) => None,
+            };
+            let dropped = if retry.is_none() { batch.len() as u64 } else { 0 };
+            if retry.is_some() {
+                queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(batch);
+            }
+            FlushOutcome { sent: None, retry, dropped, failure: Some(error) }
         }
-        Err(TransportError::Retryable(_)) => {
-            queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(batch);
-            FlushOutcome { sent: None, retry: Some(backoff.delay(None)), dropped: 0 }
-        }
-        Err(TransportError::Permanent(_)) => FlushOutcome { sent: None, retry: None, dropped: batch.len() as u64 },
     }
+}
+
+fn reload_token(sender: &dyn BatchSender, token_file: &Path) -> Result<(), ConfigError> {
+    let token = load_token_file(token_file)?;
+    sender.replace_token(token);
+    Ok(())
 }
 
 fn sleep_interruptible(duration: Duration, stop: &AtomicBool) -> bool {
@@ -119,25 +174,38 @@ fn sleep_interruptible(duration: Duration, stop: &AtomicBool) -> bool {
     }
 }
 
-fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: String, interval: Duration, stop: &'static AtomicBool) -> RunReport {
+fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: String, interval: Duration, token_file: PathBuf, stop: &'static AtomicBool) -> RunReport {
     let mut report = RunReport::default();
+    let mut failure_log = FailureLog::default();
     let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), std::process::id() as u64 ^ 0x9e37_79b9);
     'upload: while sleep_interruptible(interval, stop) {
         let mut outcome = flush_once(&queue, sender.as_ref(), &boot_id, &mut backoff);
         loop {
+            if let Some(error) = &outcome.failure {
+                if let Some(line) = failure_log.record(error, Instant::now()) {
+                    eprintln!("{line}");
+                }
+            }
             if let Some(sent) = outcome.sent {
                 report.accepted += sent.accepted;
                 report.duplicates += sent.duplicates;
-                report.rejected += sent.rejected;
+                report.rejected_by_server += sent.rejected;
                 backoff.reset();
+                failure_log.reset();
             }
             if outcome.dropped > 0 {
-                report.rejected += outcome.dropped;
+                report.dropped_local += outcome.dropped;
             }
             if let Some(delay) = outcome.retry {
                 report.upload_failures += 1;
+                let credential = matches!(outcome.failure.as_ref(), Some(TransportError::Credential(_)));
                 if !sleep_interruptible(delay, stop) {
                     break 'upload;
+                }
+                if credential {
+                    if let Err(error) = reload_token(sender.as_ref(), &token_file) {
+                        eprintln!("stats: token reload failed: {error}");
+                    }
                 }
                 outcome = flush_once(&queue, sender.as_ref(), &boot_id, &mut backoff);
                 continue;
@@ -158,15 +226,28 @@ fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: 
             break;
         }
         let outcome = flush_batch(&queue, sender.as_ref(), &boot_id, &mut backoff, true);
+        if let Some(error) = &outcome.failure {
+            if let Some(line) = failure_log.record(error, Instant::now()) {
+                eprintln!("{line}");
+            }
+        }
         if let Some(sent) = outcome.sent {
             report.accepted += sent.accepted;
             report.duplicates += sent.duplicates;
-            report.rejected += sent.rejected;
+            report.rejected_by_server += sent.rejected;
+            failure_log.reset();
+        }
+        if outcome.dropped > 0 {
+            report.dropped_local += outcome.dropped;
+        }
+        if outcome.retry.is_some() {
+            report.upload_failures += 1;
         }
         if outcome.retry.is_some() || Instant::now() >= deadline {
             break;
         }
     }
+    report.dropped_local += queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).len() as u64;
     report
 }
 
@@ -205,7 +286,8 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
         let sender = Arc::clone(&sender);
         let boot_id = boot_id.clone();
         let interval = Duration::from_millis(config.upload_interval_ms);
-        thread::spawn(move || upload_loop(queue, sender, boot_id, interval, stop))
+        let token_file = config.token_file.clone();
+        thread::spawn(move || upload_loop(queue, sender, boot_id, interval, token_file, stop))
     };
 
     let mut report = RunReport::default();
@@ -229,8 +311,8 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
     let uploaded = uploader.join().unwrap_or_default();
     report.accepted = uploaded.accepted;
     report.duplicates = uploaded.duplicates;
-    report.rejected = uploaded.rejected;
-    report.dropped = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).dropped();
+    report.rejected_by_server = uploaded.rejected_by_server;
+    report.dropped_local = uploaded.dropped_local + queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).dropped();
     report.upload_failures = uploaded.upload_failures;
     Ok(report)
 }
@@ -243,11 +325,12 @@ mod tests {
     struct FakeSender {
         results: Mutex<Vec<Result<SendOutcome, TransportError>>>,
         batches: Mutex<Vec<usize>>,
+        tokens: Mutex<Vec<String>>,
     }
 
     impl FakeSender {
         fn new(results: Vec<Result<SendOutcome, TransportError>>) -> Self {
-            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()) }
+            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()), tokens: Mutex::new(Vec::new()) }
         }
     }
 
@@ -255,6 +338,11 @@ mod tests {
         fn send(&self, _boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
             self.batches.lock().unwrap().push(samples.len());
             self.results.lock().unwrap().remove(0)
+        }
+
+        fn replace_token(&self, token: String) -> bool {
+            self.tokens.lock().unwrap().push(token);
+            true
         }
     }
 
@@ -264,6 +352,21 @@ mod tests {
             value.push(Sample::empty(index as u64, index as u64, index as u64));
         }
         Arc::new(Mutex::new(value))
+    }
+
+    fn scratch() -> PathBuf {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/runtime-tests");
+        std::fs::create_dir_all(&root).unwrap();
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = root.join(format!("{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn write_token(path: &Path, token: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(path, token).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
 
     #[test]
@@ -314,6 +417,41 @@ mod tests {
     }
 
     #[test]
+    fn credential_failures_keep_the_batch_for_a_minute() {
+        let queue = queue(2);
+        let sender = FakeSender::new(vec![Err(TransportError::Credential("server returned 401".into()))]);
+        let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
+        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        assert_eq!(outcome.retry, Some(Duration::from_secs(60)));
+        assert_eq!(outcome.dropped, 0);
+        assert!(matches!(outcome.failure, Some(TransportError::Credential(_))));
+        assert_eq!(queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn reloads_a_changed_token_file() {
+        let root = scratch();
+        let token_file = root.join("token");
+        let token = "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq";
+        write_token(&token_file, token);
+        let sender = FakeSender::new(vec![]);
+        reload_token(&sender, &token_file).unwrap();
+        assert_eq!(sender.tokens.lock().unwrap().as_slice(), [token]);
+    }
+
+    #[test]
+    fn logs_a_failure_once_and_then_counts_repeats_per_minute() {
+        let mut log = FailureLog::default();
+        let error = TransportError::Retryable("offline".into());
+        let start = Instant::now();
+        assert_eq!(log.record(&error, start), Some("stats: upload failed: retryable: offline".to_owned()));
+        assert_eq!(log.record(&error, start + Duration::from_secs(1)), None);
+        assert_eq!(log.record(&error, start + Duration::from_secs(61)), Some("stats: upload failed: retryable: offline (repeated 2 times)".to_owned()));
+        log.reset();
+        assert!(log.record(&error, start + Duration::from_secs(62)).is_some());
+    }
+
+    #[test]
     fn stop_flag_is_visible_to_sleepers() {
         let stop_ref: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(false)));
         let setter = stop_ref;
@@ -333,7 +471,7 @@ mod tests {
         let handle = {
             let queue = Arc::clone(&queue);
             let sender: Arc<dyn BatchSender> = sender.clone();
-            thread::spawn(move || upload_loop(queue, sender, "boot".to_owned(), Duration::from_secs(3_600), stop))
+            thread::spawn(move || upload_loop(queue, sender, "boot".to_owned(), Duration::from_secs(3_600), PathBuf::from("/nonexistent"), stop))
         };
         thread::sleep(Duration::from_millis(20));
         setter.store(true, Ordering::SeqCst);

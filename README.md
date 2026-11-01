@@ -87,16 +87,21 @@ an upload.
   permanent ones below keep the batch and retry with exponential backoff and
   jitter (1 s base, 60 s cap). 429 honors `Retry-After`. A batch put back on a
   full queue displaces the newest samples.
-- 400, 401, 403, 404, 413, 422, a bad URL, or an oversized encoded batch
-  drops the batch. That includes 401 after a credential is rotated or
-  revoked, so restart the agent with the new token right after rotating.
+- 400, 404, 413, 422, a bad URL, or an oversized encoded batch drops the
+  batch.
+- 401 and 403 keep the batch, retry at the 60 s cap, and reread the token file
+  before each retry. Rotating a host token is a file replace; the agent picks
+  up the new token without a restart. A revoked host keeps retrying and
+  logging until the token file changes or the agent stops.
 - SIGTERM and SIGINT stop sampling, let any in-flight upload finish, then
   keep uploading until the queue is empty, an upload fails, or 5 seconds have
   passed. Each queued request is bounded by `requestTimeoutMs` (max 30 s); the
   final flush uses a 2 s timeout.
 
-The agent prints accepted, duplicate, rejected, dropped, and failed-upload
-counts once, on exit. It logs nothing while it runs.
+The agent logs each failed upload to stderr with the error class and message,
+without the token or body. A repeated failure logs once immediately and then
+only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
+`rejected_by_server`, `dropped_local`, and `upload_failures` counts.
 
 ## Dashboard
 

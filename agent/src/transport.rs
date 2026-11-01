@@ -1,7 +1,7 @@
 use crate::model::Sample;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
@@ -30,6 +30,7 @@ pub struct SendOutcome {
 pub enum TransportError {
     Retryable(String),
     RateLimited(Option<Duration>),
+    Credential(String),
     Permanent(String),
 }
 
@@ -39,6 +40,7 @@ impl fmt::Display for TransportError {
             Self::Retryable(message) => write!(formatter, "retryable: {message}"),
             Self::RateLimited(Some(delay)) => write!(formatter, "rate limited for {}s", delay.as_secs()),
             Self::RateLimited(None) => formatter.write_str("rate limited"),
+            Self::Credential(message) => write!(formatter, "credential rejected: {message}"),
             Self::Permanent(message) => write!(formatter, "permanent: {message}"),
         }
     }
@@ -114,7 +116,8 @@ fn classify(error: ureq::Error) -> TransportError {
 
 fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError {
     match status {
-        400 | 401 | 403 | 404 | 413 | 422 => TransportError::Permanent(format!("server returned {status}")),
+        400 | 404 | 413 | 422 => TransportError::Permanent(format!("server returned {status}")),
+        401 | 403 => TransportError::Credential(format!("server returned {status}")),
         429 => TransportError::RateLimited(retry_after),
         _ => TransportError::Retryable(format!("server returned {status}")),
     }
@@ -124,7 +127,7 @@ pub struct HttpTransport {
     agent: ureq::Agent,
     final_agent: ureq::Agent,
     url: String,
-    token: String,
+    token: Mutex<String>,
     host_id: String,
 }
 
@@ -146,16 +149,29 @@ impl HttpTransport {
             agent: build_agent(timeout)?,
             final_agent: build_agent(timeout.min(FINAL_TIMEOUT))?,
             url: format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/')),
-            token: token.to_owned(),
+            token: Mutex::new(token.to_owned()),
             host_id: host_id.to_owned(),
         })
+    }
+
+    fn token(&self) -> String {
+        self.token.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+    }
+
+    pub fn replace_token(&self, token: String) -> bool {
+        let mut current = self.token.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if *current == token {
+            return false;
+        }
+        *current = token;
+        true
     }
 
     fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         let body = encode(&self.host_id, boot_id, samples)?;
         let mut response = match agent
             .post(&self.url)
-            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Authorization", format!("Bearer {}", self.token()))
             .header("Content-Type", "application/json")
             .send(body.as_slice())
         {
@@ -285,6 +301,21 @@ mod tests {
     }
 
     #[test]
+    fn uses_a_replaced_token() {
+        let response = response(1, 0, "[]");
+        let receiver = receiver(response);
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
+        let replacement = format!("nft_{}", "Z".repeat(43));
+        assert!(transport.replace_token(replacement.clone()));
+        assert!(!transport.replace_token(replacement.clone()));
+        assert_eq!(transport.send(&boot, &[sample()]).unwrap(), SendOutcome { accepted: 1, duplicates: 0, rejected: 0 });
+        let request = receiver.request.recv_timeout(Duration::from_secs(2)).unwrap();
+        let text = String::from_utf8_lossy(&request).to_ascii_lowercase();
+        assert!(text.contains(&format!("authorization: bearer {}", replacement).to_ascii_lowercase()));
+    }
+
+    #[test]
     fn reports_retryable_and_permanent_statuses() {
         let retryable = receiver(b"HTTP/1.1 500 Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         let (host, token, boot) = config();
@@ -343,8 +374,11 @@ mod tests {
 
     #[test]
     fn classifies_only_caller_errors_as_permanent() {
-        for status in [400, 401, 403, 404, 413, 422] {
+        for status in [400, 404, 413, 422] {
             assert!(matches!(classify_status(status, None), TransportError::Permanent(_)), "{status}");
+        }
+        for status in [401, 403] {
+            assert!(matches!(classify_status(status, None), TransportError::Credential(_)), "{status}");
         }
         for status in [408, 425, 409, 410, 418, 500, 502, 503, 504] {
             assert!(matches!(classify_status(status, None), TransportError::Retryable(_)), "{status}");

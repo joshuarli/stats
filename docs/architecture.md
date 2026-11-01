@@ -14,6 +14,12 @@ the config and token, `linux.rs` samples, `runtime.rs` runs the sampling and
 upload threads, `queue.rs` holds unsent samples, and `transport.rs` posts with
 ureq and rustls against the system trust roots.
 
+A failed upload is logged to stderr with its class and message, rate-limited to
+one line a minute while it repeats. A 401 or 403 keeps the batch, backs off at
+the 60 s cap, and rereads the token file before each retry; a token rotation
+needs only a file replace. Agent-side drops are counted separately from
+rejections the server reports.
+
 Sampling sources and filters:
 
 - CPU from the `/proc/stat` aggregate; no per-core series.
@@ -73,6 +79,10 @@ transaction.
 Responses carry a self-only CSP, `frame-ancestors 'none'`, `nosniff`, and
 `no-referrer` (`SECURITY` in `index.ts`). `workers_dev` and preview URLs are
 disabled in `cloudflare.config.ts`, so no alternate hostname exists.
+
+Ingest rejections other than duplicates, alarm failures, and the 500 catch-all
+write a fixed JSON line to Workers Logs (`event`, `hostId` when known, and
+`code`). `cloudflare.config.ts` enables Workers Logs at 10% head sampling.
 
 Configuration: `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are Worker secrets;
 `ENVIRONMENT`, `INSTALLATION`, and `ASSETS` are bindings declared in

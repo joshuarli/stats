@@ -24,6 +24,10 @@ function error(status: number, code: string, message: string): Response {
   return secure(Response.json({ error: { code, message } }, { status }));
 }
 
+function logIngestRejection(code: string): void {
+  console.error(JSON.stringify({ event: "ingest_rejected", code }));
+}
+
 function internal(request: Request, path: string): Request {
   const url = new URL(request.url);
   return new Request(`https://installation${path}${url.search}`, request);
@@ -35,9 +39,15 @@ export default {
     if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
     if (path === "/ingest/v1/batches") {
       if (request.method === "POST") {
-        if (bearerToken(request.headers.get("authorization")) === null) return error(401, "unauthorized", "a host bearer token is required");
+        if (bearerToken(request.headers.get("authorization")) === null) {
+          logIngestRejection("unauthorized");
+          return error(401, "unauthorized", "a host bearer token is required");
+        }
         const declared = request.headers.get("content-length");
-        if (declared !== null && Number(declared) > MAX_BODY_BYTES) return error(413, "too_large", "batch exceeds the body cap");
+        if (declared !== null && Number(declared) > MAX_BODY_BYTES) {
+          logIngestRejection("too_large");
+          return error(413, "too_large", "batch exceeds the body cap");
+        }
       }
       const stub = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
       return secure(await stub.fetch(internal(request, "/ingest")));

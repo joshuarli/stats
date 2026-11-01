@@ -132,8 +132,8 @@ fn main() {
             match run(&config, token) {
                 Ok(report) => {
                     eprintln!(
-                        "telemetry stopped: sampled={} sample_failures={} accepted={} duplicates={} rejected={} dropped={} upload_failures={}",
-                        report.sampled, report.sample_failures, report.accepted, report.duplicates, report.rejected, report.dropped, report.upload_failures
+                        "telemetry stopped: sampled={} sample_failures={} accepted={} duplicates={} rejected_by_server={} dropped_local={} upload_failures={}",
+                        report.sampled, report.sample_failures, report.accepted, report.duplicates, report.rejected_by_server, report.dropped_local, report.upload_failures
                     );
                     0
                 }

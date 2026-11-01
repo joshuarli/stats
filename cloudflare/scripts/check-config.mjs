@@ -8,7 +8,9 @@ const checks = [
   ["run_worker_first", /runWorkerFirst:\s*true/u],
   ["assets binding", /ASSETS:\s*bindings\.assets\(\)/u],
   ["production environment", /ENVIRONMENT:\s*bindings\.text\("production"\)/u],
-  ["sqlite export", /Installation:\s*exports\.durableObject\(\{\s*storage:\s*"sqlite"\s*\}\)/u]
+  ["sqlite export", /Installation:\s*exports\.durableObject\(\{\s*storage:\s*"sqlite"\s*\}\)/u],
+  ["workers logs", /observability:\s*\{[\s\S]*?enabled:\s*true/u],
+  ["log sampling", /headSamplingRate:\s*0\.1/u]
 ];
 const failures = checks.filter(([, pattern]) => !pattern.test(text)).map(([name]) => name);
 if (failures.length > 0) {
