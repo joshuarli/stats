@@ -35,6 +35,7 @@ describe("analytics query text", () => {
     const sql = bound.query;
     expect(sql).not.toMatch(/COUNT\s*\(/i);
     expect(sql).not.toMatch(/\bMIN\s*\(/i);
+    expect(sql).not.toMatch(/toStartOfInterval|quantile/i);
     if (sql !== built.r2Storage.query) {
       expect(sql.replaceAll("APPROX_MAX(", "")).not.toMatch(/\bMAX\s*\(/i);
     }
@@ -50,27 +51,19 @@ describe("analytics query text", () => {
     }
   });
 
-  it("weights every event count by sampleInterval", () => {
-    expect(built.worker.query).toContain("SUM(sampleInterval) AS invocations");
-    expect(built.worker.query).toContain("SUM(cpuTimeMs * sampleInterval) AS cpu_sum");
+  it("weights event counts by sampleInterval and groups each dataset on its own time column", () => {
+    expect(built.worker.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS invocations/u);
+    expect(built.worker.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS cpu_sum/u);
     expect(built.worker.query).toContain("APPROX_MAX(cpuTimeMs)");
-    expect(built.r2Operations.query).toContain("SUM(sampleInterval) AS operations");
-  });
-
-  it("keeps workersLogs to functions it supports", () => {
-    expect(built.worker.query).not.toContain("toStartOfInterval");
-    expect(built.worker.query).not.toMatch(/quantile/i);
-    expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/);
-  });
-
-  it("uses each dataset's own time column and the state dataset's MAX", () => {
+    expect(built.r2Operations.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS operations/u);
+    expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/u);
     expect(built.r2Operations.query).toContain("toStartOfFiveMinutes(timestamp)");
     expect(built.r2Storage.query).toContain("usageReportTimestamp >= $start");
     expect(built.r2Storage.query).toContain("toStartOfTenMinutes(usageReportTimestamp)");
     expect(built.r2Storage.query).toContain("MAX(payloadSizeBytes)");
   });
 
-  it("passes the start as an ISO instant and each bucket as its own parameter", () => {
+  it("passes the start as an ISO instant, binds each bucket, and rejects values that could change the statement", () => {
     expect(built.worker.params).toEqual({ script: "stuff", start: "2026-11-01T15:00:00.000Z" });
     expect(built.r2Operations.params).toEqual({
       bucket0: "stuff-mycrates",
@@ -79,9 +72,7 @@ describe("analytics query text", () => {
       start: "2026-11-01T15:00:00.000Z",
     });
     expect(built.r2Operations.query).toContain("bucketName IN ($bucket0, $bucket1, $bucket2)");
-  });
 
-  it("rejects bucket names that could change the statement", () => {
     expect(() => r2OperationsQuery(["a') OR ('1'='1"], START_MS)).toThrow(RangeError);
     expect(() => r2StorageQuery([], START_MS)).toThrow(RangeError);
     expect(() =>

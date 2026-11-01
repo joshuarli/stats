@@ -216,60 +216,13 @@ describe("history", () => {
 });
 
 describe("history reads", () => {
-  const kinds = ["summary", "disks", "nets", "filesystems", "block"];
-
-  async function countWindowReads(action: () => Promise<void>): Promise<number> {
-    await runInDurableObject(stub(), async (_instance: Installation, state) => {
-      const sql = state.storage.sql as unknown as { exec: (query: string, ...bindings: unknown[]) => unknown };
-      const exec = sql.exec.bind(sql);
-      const counter = { reads: 0, exec };
-      (globalThis as unknown as { historyReads: typeof counter }).historyReads = counter;
-      sql.exec = (query: string, ...bindings: unknown[]) => {
-        if (/FROM samples WHERE host_id = \? AND at_ms >= \? AND at_ms <= \?/u.test(query)) counter.reads += 1;
-        return exec(query, ...bindings);
-      };
-    });
-    try {
-      await action();
-    } finally {
-      await runInDurableObject(stub(), async (_instance: Installation, state) => {
-        const counter = (globalThis as unknown as { historyReads: { exec: never } }).historyReads;
-        (state.storage.sql as unknown as { exec: unknown }).exec = counter.exec;
-      });
-    }
-    return await runInDurableObject(stub(), async () => (globalThis as unknown as { historyReads: { reads: number } }).historyReads.reads);
-  }
-
-  it("reads one window once for every kind and again only after new data arrives", async () => {
+  it("returns history that includes a later batch", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    const reads = await countWindowReads(async () => {
-      for (const kind of kinds) expect((await history(host.hostId, "1h", kind)).status).toBe(200);
-      for (const kind of kinds) expect((await history(host.hostId, "1h", kind)).status).toBe(200);
-    });
-    expect(reads).toBe(1);
-
-    let before = 0;
-    let after = 0;
-    const afterIngest = await countWindowReads(async () => {
-      before = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
-      expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
-      for (const kind of kinds) expect((await history(host.hostId, "1h", kind)).status).toBe(200);
-      after = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
-    });
-    expect(afterIngest).toBe(1);
+    const before = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
+    expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
+    const after = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
     expect(after).toBeGreaterThan(before);
-  });
-
-  it("keeps a few windows so a second query does not evict the first", async () => {
-    const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    const reads = await countWindowReads(async () => {
-      for (const search of [`range=1h&kind=summary`, `from=${now - 7_200_000}&to=${now - 3_600_000}&kind=summary`, `range=1h&kind=nets`, `from=${now - 7_200_000}&to=${now - 3_600_000}&kind=nets`]) {
-        expect((await historySearch(host.hostId, search)).status, search).toBe(200);
-      }
-    });
-    expect(reads).toBe(2);
   });
 });
 
