@@ -425,3 +425,15 @@ test("a project without probes has no endpoints widget and makes no probe reques
   await expect(page.locator("#endpoints")).toHaveCount(0);
   expect(requests.some(request => request.includes("kind=probes"))).toBe(false);
 });
+
+test("project charts follow a refresh, not just the first load", async ({ page }) => {
+  const options = { spike: false };
+  await mock(page, options);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("img", { name: "Worker 5xx share; latest 0%" })).toBeVisible();
+  options.spike = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByRole("img", { name: "Worker 5xx share; latest 8%" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Worker 5xx: 8%/u })).toBeVisible();
+});
+

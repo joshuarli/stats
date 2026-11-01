@@ -132,6 +132,29 @@ describe("project history", () => {
     expect(seriesOf(body, "worker.cpuMsMax")[indexOf(body, start)]).toBe(9);
   });
 
+  it("keeps a probe outage visible in coarse buckets", async () => {
+    const start = Math.floor((NOW - 2 * 24 * HOUR_MS) / (15 * 60_000)) * 15 * 60_000;
+    await record(metricRun(NOW - BUCKET, [
+      { metric: "probe.npm.up", bucketMs: start, value: 1 },
+      { metric: "probe.npm.up", bucketMs: start + BUCKET, value: 0 },
+      { metric: "probe.npm.up", bucketMs: start + 2 * BUCKET, value: 1 },
+    ]));
+    const body = await history("7d", "probes");
+    expect(seriesOf(body, "probe.npm.up")[indexOf(body, start)]).toBe(0);
+  });
+
+  it("starts the 7 day and 90 day views at the first bucket that retention left whole", async () => {
+    for (const [range, stepMs, retentionMs] of [["7d", 15 * 60_000, 7 * 24 * HOUR_MS], ["90d", 3 * HOUR_MS, 90 * 24 * HOUR_MS]] as const) {
+      const body = await history(range, "worker");
+      expect(body.stepMs).toBe(stepMs);
+      expect(body.fromMs % stepMs).toBe(0);
+      expect(body.fromMs).toBeGreaterThanOrEqual(NOW - retentionMs);
+      expect(body.fromMs - stepMs).toBeLessThan(NOW - retentionMs);
+    }
+    const hour = await history("1h", "worker");
+    expect(hour.fromMs).toBeLessThanOrEqual(NOW - HOUR_MS);
+  });
+
   it("serves 90 days from hourly rows in three hour buckets", async () => {
     const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / (3 * HOUR_MS)) * 3 * HOUR_MS;
     await record(metricRun(NOW - BUCKET, [
@@ -169,6 +192,26 @@ describe("project history", () => {
     await record(metricRun(OLD_BUCKET + 2 * HOUR_MS, []));
     const tooLate = await history("6h", "worker");
     expect(seriesOf(tooLate, "worker.status.5xx")[indexOf(tooLate, OLD_BUCKET)]).toBeNull();
+  });
+
+  it("fills at exactly the settle time and not a millisecond before", async () => {
+    const settledAt = OLD_BUCKET + BUCKET + SETTLE_MS;
+    await record(metricRun(settledAt - 1, []));
+    const early = await history("6h", "worker");
+    expect(seriesOf(early, "worker.status.5xx")[indexOf(early, OLD_BUCKET)]).toBeNull();
+    await record(metricRun(settledAt, []));
+    const exact = await history("6h", "worker");
+    expect(seriesOf(exact, "worker.status.5xx")[indexOf(exact, OLD_BUCKET)]).toBe(0);
+  });
+
+  it("fills while a run's 90 minute window still reaches the bucket and stops once it does not", async () => {
+    await record(metricRun(OLD_BUCKET + 90 * 60_000, []));
+    const inside = await history("6h", "worker");
+    expect(seriesOf(inside, "worker.status.5xx")[indexOf(inside, OLD_BUCKET)]).toBe(0);
+    await runInDurableObject(installation(), async (_instance, state) => state.storage.sql.exec("DELETE FROM collector_runs"));
+    await record(metricRun(OLD_BUCKET + 95 * 60_000, []));
+    const outside = await history("6h", "worker");
+    expect(seriesOf(outside, "worker.status.5xx")[indexOf(outside, OLD_BUCKET)]).toBeNull();
   });
 
   it("never fills the unsettled newest bucket, gauges, or buckets before the first covering run", async () => {

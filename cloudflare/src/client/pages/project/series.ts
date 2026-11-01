@@ -3,6 +3,7 @@ import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
 import { bytes, count, isFiniteNumber, percent } from "../../format";
 import { LIMITS, type Limits } from "../../health";
 import { monitorOne } from "../../incidents";
+import { addAll, holdLast, ratio } from "./math";
 import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
@@ -21,36 +22,6 @@ export function metricPoints(history: ProjectMetricHistory, metric: string): Cha
   const found = history.series.find(entry => entry.metric === metric);
   if (found === undefined) return [];
   return found.values.map((value, index) => ({ atMs: history.fromMs + index * history.stepMs, value: value ?? undefined }));
-}
-
-function addAll(parts: readonly (readonly ChartPoint[])[]): ChartPoint[] {
-  const first = parts[0];
-  if (first === undefined) return [];
-  return first.map((point, index) => {
-    let total = 0;
-    for (const part of parts) {
-      const value = part[index]?.value;
-      if (value === undefined) return { atMs: point.atMs, value: undefined };
-      total += value;
-    }
-    return { atMs: point.atMs, value: total };
-  });
-}
-
-function holdLast(points: readonly ChartPoint[]): ChartPoint[] {
-  let held: number | undefined;
-  return points.map(point => {
-    held = point.value ?? held;
-    return { atMs: point.atMs, value: held };
-  });
-}
-
-export function ratio(part: readonly ChartPoint[], whole: readonly ChartPoint[], scale: number): ChartPoint[] {
-  return whole.map((point, index) => {
-    const numerator = part[index]?.value;
-    const denominator = point.value;
-    return { atMs: point.atMs, value: numerator === undefined || denominator === undefined || denominator <= 0 ? undefined : (numerator / denominator) * scale };
-  });
 }
 
 export function silenceMinutes(history: ProjectCollectorHistory, nowMs: number, lastSuccessAtMs: number | null): ChartPoint[] {

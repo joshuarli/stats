@@ -1,6 +1,6 @@
 import { BUCKET_MS } from "./queries.ts";
 
-type Aggregation = "sum" | "max";
+type Aggregation = "sum" | "max" | "min";
 
 export interface MetricPoint {
   readonly metric: string;
@@ -26,7 +26,8 @@ const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
 const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
-  [/^probe\.[a-z][a-z0-9-]{0,31}\.(up|ms)$/, "max"],
+  [/^probe\.[a-z][a-z0-9-]{0,31}\.up$/, "min"],
+  [/^probe\.[a-z][a-z0-9-]{0,31}\.ms$/, "max"],
 ];
 
 export function aggregationOf(metric: string): Aggregation {
@@ -110,6 +111,11 @@ export function parseR2StorageRows(rows: readonly unknown[]): MetricPoint[] {
   return points.list();
 }
 
+function combine(aggregation: Aggregation, left: number, right: number): number {
+  if (aggregation === "sum") return left + right;
+  return aggregation === "max" ? Math.max(left, right) : Math.min(left, right);
+}
+
 class PointSet {
   private readonly values = new Map<string, MetricPoint>();
 
@@ -117,12 +123,7 @@ class PointSet {
     const aggregation = aggregationOf(metric);
     const key = `${metric}\n${bucketMs}`;
     const existing = this.values.get(key);
-    const merged =
-      existing === undefined
-        ? value
-        : aggregation === "sum"
-          ? existing.value + value
-          : Math.max(existing.value, value);
+    const merged = existing === undefined ? value : combine(aggregation, existing.value, value);
     this.values.set(key, { metric, bucketMs, value: merged });
   }
 

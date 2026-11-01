@@ -3,6 +3,7 @@ import { windowStartMs } from "./collector.ts";
 import type { ProjectConfig } from "./config.ts";
 import { aggregationOf } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
+import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.ts";
 
 export const SETTLE_MS = 45 * 60_000;
 const STALE_AFTER_MS = 15 * 60_000;
@@ -114,7 +115,9 @@ export function readMetricHistory(
   now: number,
 ): MetricHistory {
   const stepMs = bucketWidthMs(RANGE_MS[range]);
-  const fromMs = Math.floor((now - RANGE_MS[range]) / stepMs) * stepMs;
+  const retentionMs = stepMs < HOUR_MS ? PROJECT_SAMPLE_RETENTION_MS : PROJECT_HOUR_RETENTION_MS;
+  const floored = Math.floor((now - RANGE_MS[range]) / stepMs) * stepMs;
+  const fromMs = floored < now - retentionMs ? floored + stepMs : floored;
   const count = Math.floor((now - fromMs) / stepMs) + 1;
   const metrics = expectedMetrics(project, kind);
   const rows = readGrouped(sql, project.id, kind, stepMs, fromMs);
@@ -127,7 +130,7 @@ export function readMetricHistory(
       const atMs = fromMs + index * stepMs;
       const row = found?.get(atMs);
       if (row !== undefined) {
-        values.push(aggregation === "sum" ? row.sum : row.max);
+        values.push(row[aggregation]);
       } else if (aggregation === "sum" && fillable(atMs, atMs + stepMs)) {
         values.push(0);
       } else {
@@ -139,7 +142,8 @@ export function readMetricHistory(
   return { projectId: project.id, range, kind, fromMs, toMs: now, stepMs, series };
 }
 
-type Grouped = ReadonlyMap<string, ReadonlyMap<number, { sum: number; max: number }>>;
+type Folded = { sum: number; max: number; min: number };
+type Grouped = ReadonlyMap<string, ReadonlyMap<number, Folded>>;
 
 const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = { worker: "worker.", r2: "r2.", probes: "probe." };
 
@@ -152,8 +156,8 @@ function readGrouped(
 ): Grouped {
   const prefix = KIND_PREFIX[kind];
   const [table, column] = stepMs < HOUR_MS ? ["project_samples", "bucket_ms"] : ["project_hours", "hour_ms"];
-  const cursor = sql.exec<{ metric: string; at: number; sum_value: number; max_value: number }>(
-    `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value
+  const cursor = sql.exec<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
+    `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value
      FROM ${table} WHERE project = ? AND metric >= ? AND metric < ? AND ${column} >= ?
      GROUP BY metric, at`,
     stepMs,
@@ -163,10 +167,10 @@ function readGrouped(
     `${prefix}\uffff`,
     fromMs,
   );
-  const grouped = new Map<string, Map<number, { sum: number; max: number }>>();
+  const grouped = new Map<string, Map<number, Folded>>();
   for (const row of cursor) {
-    const byTime = grouped.get(row.metric) ?? new Map<number, { sum: number; max: number }>();
-    byTime.set(row.at, { sum: row.sum_value, max: row.max_value });
+    const byTime = grouped.get(row.metric) ?? new Map<number, Folded>();
+    byTime.set(row.at, { sum: row.sum_value, max: row.max_value, min: row.min_value });
     grouped.set(row.metric, byTime);
   }
   return grouped;

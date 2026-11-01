@@ -196,7 +196,8 @@ describe("metric aggregation", () => {
     expect(aggregationOf("worker.cpuMsMax")).toBe("max");
     expect(aggregationOf("r2.stuff-mynpm.ops.userError")).toBe("sum");
     expect(aggregationOf("r2.stuff-mynpm.storageBytes")).toBe("max");
-    expect(aggregationOf("probe.crates.up")).toBe("max");
+    expect(aggregationOf("probe.crates.up")).toBe("min");
+    expect(aggregationOf("probe.crates.ms")).toBe("max");
     expect(() => aggregationOf("worker.errors")).toThrow(RangeError);
     expect(() => aggregationOf("r2.stuff-mynpm.ops.other.extra")).toThrow(RangeError);
   });

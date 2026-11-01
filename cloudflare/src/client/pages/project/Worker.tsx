@@ -1,5 +1,4 @@
 import type { JSX } from "@solidjs/web";
-import type { ChartPoint } from "../../chart-data";
 import { count, percent } from "../../format";
 import { LIMITS } from "../../health";
 import { TimeChart } from "../../components/TimeChart";
@@ -28,7 +27,6 @@ export function RequestsWidget(props: { readonly data: ProjectData }): JSX.Eleme
 }
 
 export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element {
-  const share: ChartPoint[] = serverErrorShare(props.data);
   return (
     <Widget id="status" title="Response status" subtitle="Invocations by status class, and the 5xx share of all invocations" expandable>
       <PanelLabel>Invocations by status class</PanelLabel>
@@ -55,7 +53,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         area
         legend="inline"
         yAxisWidth={AXIS_WIDTH}
-        series={[{ label: "5xx share", color: "critical", graded: true, points: share }]}
+        series={[{ label: "5xx share", color: "critical", graded: true, points: serverErrorShare(props.data) }]}
         format={percent}
         limits={LIMITS.workerServerErrorPercent}
         min={0}

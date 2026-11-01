@@ -143,3 +143,36 @@ describe("collector", () => {
     });
   });
 });
+
+describe("collector failure reporting", () => {
+  type Store = Parameters<typeof runCollector>[0]["store"];
+  const noProbesFetch: ProbeFetch = async () => {
+    throw new Error("unused");
+  };
+
+  it("rethrows the analytics error even when the failed run cannot be recorded", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const store: Store = {
+      async recordCollectorRun() {
+        throw new Error("storage unavailable");
+      },
+    };
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows(), { failOn: "operations" }), store, projectsJson: PROJECTS, now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("analytics unavailable");
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "collector_run_unrecorded" }));
+  });
+
+  it("records a failed run and rethrows when committing the metrics fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const recorded: boolean[] = [];
+    const store: Store = {
+      async recordCollectorRun(run) {
+        recorded.push(run.ok);
+        if (run.ok) throw new Error("commit failed");
+        return { metricRowsWritten: 0 };
+      },
+    };
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: PROJECTS, now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("commit failed");
+    expect(recorded).toEqual([true, false]);
+  });
+});
+

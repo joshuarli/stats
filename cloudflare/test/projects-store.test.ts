@@ -84,6 +84,17 @@ describe("project storage", () => {
     });
   });
 
+  it("keeps an outage visible in the hour by taking the minimum of probe availability", async () => {
+    await inside((sql, state) => {
+      state.storage.transactionSync(() => {
+        upsertPoints(sql, "p", [point("probe.npm.up", HOUR, 1), point("probe.npm.up", HOUR + BUCKET, 0), point("probe.npm.up", HOUR + 2 * BUCKET, 1)]);
+        upsertPoints(sql, "p", [point("probe.npm.ms", HOUR, 80), point("probe.npm.ms", HOUR + BUCKET, 900)]);
+      });
+      expect(hourValue(sql, "probe.npm.up")).toBe(0);
+      expect(hourValue(sql, "probe.npm.ms")).toBe(900);
+    });
+  });
+
   it("lowers a maximum hour when the corrected bucket was the maximum", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {

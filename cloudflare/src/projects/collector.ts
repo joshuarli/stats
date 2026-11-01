@@ -44,7 +44,6 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
   const elapsed = () => Math.max(0, Date.now() - startedAt);
   let queries = 0;
   let rowsRead = 0;
-  let collected: ProjectPoints[];
   try {
     const projects = parseProjects(input.projectsJson);
     const startMs = windowStartMs(input.now);
@@ -54,27 +53,31 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
       rowsRead += result.statistics.rows_read;
       return result.data;
     };
-    collected = await Promise.all(projects.map((project) => collectProject(project, startMs, run, input.probeFetch, input.now)));
-  } catch (error) {
-    console.error(JSON.stringify({ event: "collector_failed" }));
-    await input.store.recordCollectorRun({
-      ok: false,
+    const collected = await Promise.all(projects.map((project) => collectProject(project, startMs, run, input.probeFetch, input.now)));
+    const { metricRowsWritten } = await input.store.recordCollectorRun({
+      ok: true,
       atMs: input.now + elapsed(),
-      detail: "collector_failed",
+      detail: "ok",
       rowsRead,
       durationMs: elapsed(),
+      collected,
     });
+    return { queries, metricRowsWritten };
+  } catch (error) {
+    console.error(JSON.stringify({ event: "collector_failed" }));
+    try {
+      await input.store.recordCollectorRun({
+        ok: false,
+        atMs: input.now + elapsed(),
+        detail: "collector_failed",
+        rowsRead,
+        durationMs: elapsed(),
+      });
+    } catch {
+      console.error(JSON.stringify({ event: "collector_run_unrecorded" }));
+    }
     throw error;
   }
-  const { metricRowsWritten } = await input.store.recordCollectorRun({
-    ok: true,
-    atMs: input.now + elapsed(),
-    detail: "ok",
-    rowsRead,
-    durationMs: elapsed(),
-    collected,
-  });
-  return { queries, metricRowsWritten };
 }
 
 async function collectProject(

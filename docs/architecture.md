@@ -165,8 +165,9 @@ writes one `collector_failed` log line, and rethrows so the cron shows it.
 - `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
   7 days.
 - `project_hours(project, metric, hour_ms, value)`: hourly buckets for 90 days,
-  rebuilt for each hour a changed value falls in; sums add and maxima take the
-  maximum.
+  rebuilt for each hour a changed value falls in; sums add, maxima take the
+  maximum, and probe availability takes the minimum so an outage stays visible
+  in wide buckets.
 - `collector_runs`: the last 500 runs, with when each finished, whether it
   succeeded, rows read, and duration.
 
@@ -190,7 +191,9 @@ unsettled newest bucket is never filled. Only the last 500 runs are kept, so
 buckets older than about two days are not filled.
 
 **History response.** The bucket width is the smallest of 5 minutes, 15
-minutes, 1 hour, and 3 hours that gives at most 900 points. Widths under an
+minutes, 1 hour, and 3 hours that gives at most 900 points, and the first
+bucket of a range that reaches the retention limit is the first one retention
+left whole. Widths under an
 hour read `project_samples`; the rest read `project_hours`. A metric response
 is `{projectId, range, kind, fromMs, toMs, stepMs, series: [{metric, values}]}`
 with every series aligned to `fromMs + i * stepMs`; `kind=collector` returns

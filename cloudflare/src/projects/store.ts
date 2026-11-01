@@ -86,7 +86,7 @@ export function upsertPoints(sql: SqlStorage, project: string, points: readonly 
 }
 
 function rebuildHour(sql: SqlStorage, project: string, metric: string, hourMs: number): number {
-  const fold = aggregationOf(metric) === "sum" ? "SUM" : "MAX";
+  const fold = { sum: "SUM", max: "MAX", min: "MIN" }[aggregationOf(metric)];
   const rebuilt = sql
     .exec<{ value: number }>(
       `SELECT ${fold}(value) AS value FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms >= ? AND bucket_ms < ?`,
