@@ -54,8 +54,11 @@ worker-deploy: auth-ready worker-bundle
 
 worker-test: cloudflare-test dashboard-test lint
 
-deploy: auth-ready worker-test agent-test
-	$(MAKE) worker-deploy
+deploy: auth-ready
+	$(MAKE) fixtures
+	$(MAKE) worker-test
+	$(MAKE) agent-test
+	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
 	$(MAKE) smoke-deployed
 	$(MAKE) deploy-hosts
 
@@ -79,6 +82,5 @@ smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
 release: agent-build
-	TMPDIR='$(CURDIR)/.work/tmp' bench/bench.sh --selftest
 
 check: fixtures agent-test release cloudflare-test dashboard-test lint

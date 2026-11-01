@@ -21,6 +21,6 @@ export default defineConfig({
     assets: { runWorkerFirst: true },
     workersDev: false,
     previewUrls: false,
-    domains: domain === undefined ? [] : [domain]
+    ...(domain === undefined ? {} : { domains: [domain] })
   }
 });

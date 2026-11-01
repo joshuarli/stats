@@ -11,8 +11,7 @@
     "test:ui": "playwright test",
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
-    "build": "vite build",
-    "deploy": "pnpm build && cf deploy --prebuilt"
+    "build": "vite build"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",

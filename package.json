@@ -13,7 +13,6 @@
     "test:fixtures": "node scripts/check-fixtures.mjs",
     "test:agent": "cargo test --manifest-path agent/Cargo.toml --all-targets",
     "test:ui": "pnpm --filter @stats/telemetry test:ui",
-    "build": "pnpm --filter @stats/telemetry build",
-    "deploy": "pnpm --filter @stats/telemetry deploy"
+    "build": "pnpm --filter @stats/telemetry build"
   }
 }

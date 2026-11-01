@@ -1,12 +1,6 @@
 #!/bin/sh
 set -eu
 
-if [ "${1:-}" = "--selftest" ]; then
-  echo "bench selftest: method=linux-process-counters samples=4 interval_ms=15000"
-  echo "bench selftest: reports collection latency, process CPU, max RSS; no performance claim is made"
-  exit 0
-fi
-
 binary=${1:?usage: bench.sh <binary> [iterations] [interval_ms] [output]}
 iterations=${2:-4}
 interval=${3:-15000}

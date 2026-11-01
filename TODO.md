@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-11 · P3 · Deploy paths skip gates or bypass them
-
-- **Area:** Build
-- **Where:** `Makefile:57-60`, `Makefile:78-79`, `package.json:17`, `cloudflare/package.json:15`, `cloudflare/cloudflare.config.ts:24`, `bench/bench.sh:4-8`
-- **Problem:** `make deploy` does not run `fixtures`, and it uploads a bundle that `worker-bundle` rebuilt after the tests, not the one Playwright tested. Its prerequisites are unordered, so `make -j` would race two `vite build` runs. The `deploy` scripts in both `package.json` files run `cf deploy --prebuilt` with no tests and without `--mode production`. Without `STATS_DOMAIN` they also set `domains: []`; whether that detaches the custom domain is `unproven`. `make release` counts `bench.sh --selftest`, which only echoes fixed text, as a passing check.
-- **Recommendation:** Delete both `deploy` scripts. Make `deploy` depend on `fixtures` and run tests and upload strictly in order on one bundle. Remove the selftest branch and its `release` step.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-12 · P3 · Access JWT signature rejection is untested
 
 - **Area:** Tests

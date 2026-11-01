@@ -31,8 +31,9 @@ make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
 ```
 
-`make deploy` runs `worker-test` and `agent-test`, deploys a fresh `vite build`
-with `cf deploy --prebuilt --mode production`, runs `deploy/deployed-smoke.sh`,
+`make deploy` runs `fixtures`, `worker-test`, and `agent-test` in order,
+deploys the bundle those tests built with
+`cf deploy --prebuilt --mode production`, runs `deploy/deployed-smoke.sh`,
 then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
