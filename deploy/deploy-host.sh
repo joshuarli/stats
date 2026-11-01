@@ -92,15 +92,15 @@ if ! cmp -s "$work/unit" "$unit_source"; then
   unit_changed=1
 fi
 
-if ! remote 'test -f /etc/niceforge-telemetry/agent.json'; then
+if ! remote "$elevate test -f /etc/niceforge-telemetry/agent.json"; then
   echo "$label: /etc/niceforge-telemetry/agent.json is missing; provision the agent first" >&2
   exit 1
 fi
 
 is_active() {
   case "$init" in
-    systemd) remote 'systemctl is-active --quiet niceforge-telemetry' ;;
-    openrc) remote 'rc-service niceforge-telemetry status >/dev/null 2>&1' ;;
+    systemd) remote "$elevate systemctl is-active --quiet niceforge-telemetry" ;;
+    openrc) remote "$elevate /sbin/rc-service niceforge-telemetry status >/dev/null 2>&1" ;;
   esac
 }
 
@@ -141,11 +141,11 @@ case "$init" in
     fi
     ;;
   openrc)
-    remote "$elevate rc-update add niceforge-telemetry default >/dev/null"
+    remote "$elevate /sbin/rc-update add niceforge-telemetry default >/dev/null"
     if [ "$binary_changed" -eq 1 ] || [ "$unit_changed" -eq 1 ]; then
-      remote "$elevate rc-service niceforge-telemetry restart >/dev/null"
+      remote "$elevate /sbin/rc-service niceforge-telemetry restart >/dev/null"
     elif [ "$active" -eq 0 ]; then
-      remote "$elevate rc-service niceforge-telemetry start >/dev/null"
+      remote "$elevate /sbin/rc-service niceforge-telemetry start >/dev/null"
     fi
     ;;
 esac
