@@ -5,7 +5,7 @@ import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 
 import { Widget } from "../../components/ui";
 import { holdLast } from "./math";
-import { bucketOutcome, metricPoints, otherShare, r2Metric, type ProjectData } from "./series";
+import { bucketOutcome, metricPoints, otherShare, provisionalFromMs, r2Metric, type ProjectData } from "./series";
 
 export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
@@ -22,6 +22,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         format={count}
         min={0}
         stepMs={props.data.r2.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.r2)}
       />
       <PanelLabel>Share of operations that failed outside the caller's control. Buckets under 100 operations are not scored</PanelLabel>
       <PanelChart
@@ -32,6 +33,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         limits={LIMITS.r2OtherPercent}
         min={0}
         stepMs={props.data.r2.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.r2)}
       />
     </Widget>
   );

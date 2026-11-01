@@ -45,6 +45,27 @@ export function StateCell(props: { readonly tone: Tone; readonly label: string; 
   );
 }
 
+const COLLAPSED_KEY = "stats.collapsed";
+
+function readCollapsed(): ReadonlySet<string> {
+  const raw = window.localStorage.getItem(COLLAPSED_KEY);
+  if (raw === null) return new Set<string>();
+  const parsed: unknown = JSON.parse(raw);
+  return new Set<string>(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []);
+}
+
+const [collapsedWidgets, setCollapsedWidgets] = createSignal<ReadonlySet<string>>(readCollapsed());
+
+function storeCollapsed(next: ReadonlySet<string>): void {
+  setCollapsedWidgets(next);
+  window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+}
+
+export function revealWidget(id: string): void {
+  if (!collapsedWidgets().has(id)) return;
+  storeCollapsed(new Set([...collapsedWidgets()].filter(entry => entry !== id)));
+}
+
 export function Widget(props: ParentProps<{
   readonly title: string;
   readonly subtitle?: string | undefined;
@@ -65,7 +86,13 @@ export function Widget(props: ParentProps<{
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   });
-  const classes = () => ["widget", props.class, expanded() ? "expanded" : undefined].filter(Boolean).join(" ");
+  const collapsed = () => props.id !== undefined && collapsedWidgets().has(props.id);
+  const toggleCollapsed = () => {
+    const id = props.id;
+    if (id === undefined) return;
+    storeCollapsed(collapsed() ? new Set([...collapsedWidgets()].filter(entry => entry !== id)) : new Set([...collapsedWidgets(), id]));
+  };
+  const classes = () => ["widget", props.class, expanded() ? "expanded" : undefined, collapsed() ? "collapsed" : undefined].filter(Boolean).join(" ");
   return (
     <>
       <Show when={expanded()}>
@@ -79,14 +106,21 @@ export function Widget(props: ParentProps<{
           </div>
           <div class="widget-meta">
             {props.meta}
-            <Show when={props.expandable === true}>
+            <Show when={props.id !== undefined}>
+              <button class="icon-button collapse" type="button" aria-label={`${collapsed() ? "Show" : "Hide"} ${props.title}`} aria-expanded={collapsed() ? "false" : "true"} onClick={toggleCollapsed}>
+                <Icon name={collapsed() ? "chevronRight" : "sortDown"} size={14} />
+              </button>
+            </Show>
+            <Show when={props.expandable === true && !collapsed()}>
               <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} onClick={() => setExpanded(value => !value)}>
                 <Icon name="expand" size={12} />
               </button>
             </Show>
           </div>
         </header>
-        <div class={props.bodyClass === undefined ? "widget-body" : `widget-body ${props.bodyClass}`}>{props.children}</div>
+        <Show when={!collapsed()}>
+          <div class={props.bodyClass === undefined ? "widget-body" : `widget-body ${props.bodyClass}`}>{props.children}</div>
+        </Show>
       </section>
     </>
   );

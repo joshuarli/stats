@@ -417,6 +417,38 @@ test("an elevated Worker 5xx share raises an incident that zooms", async ({ page
   expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kind=worker"))).toBe(true);
 });
 
+test("a tile past its limit is marked, and tiles with limits show headroom", async ({ page }) => {
+  await mock(page, { spike: true });
+  await page.goto("/#/project/stuff");
+  const strip = page.getByRole("region", { name: "Project summary" });
+  await expect(strip.getByRole("button", { name: /^Worker 5xx: 8%/u })).toHaveClass(/is-critical/u);
+  await expect(strip.getByRole("button", { name: /^Requests: /u })).not.toHaveClass(/is-/u);
+  await expect(strip.getByRole("button", { name: /^CPU time: /u }).locator(".gauge")).toHaveCount(1);
+  await expect(strip.getByRole("button", { name: /^Requests: /u }).locator(".gauge")).toHaveCount(0);
+});
+
+test("the newest project bucket is marked as still arriving", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  const strip = page.getByRole("region", { name: "Project summary" });
+  await expect(strip.getByRole("button", { name: /^Requests: / })).toContainText("newest still arriving");
+});
+
+test("widgets collapse, stay collapsed after a reload, and a tile reveals the widget it jumps to", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  const cpu = page.locator("#cpu");
+  await expect(cpu.getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
+  await cpu.getByRole("button", { name: "Hide CPU time" }).click();
+  await expect(cpu.getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
+  await expect(cpu.getByRole("button", { name: "Show CPU time" })).toHaveAttribute("aria-expanded", "false");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(page.locator("#cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
+  await page.getByRole("region", { name: "Project summary" }).getByRole("button", { name: /^CPU time: / }).click();
+  await expect(page.locator("#cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
+});
+
 test("configured probes surface endpoint health and a down endpoint raises an incident", async ({ page }) => {
   const options = { probes: true, probeDown: false };
   const requests = await mock(page, options);

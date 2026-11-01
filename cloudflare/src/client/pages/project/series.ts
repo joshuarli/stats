@@ -4,7 +4,8 @@ import { bytes, count, milliseconds, minutes, percent } from "../../format";
 import { LIMITS, MIN_SCORED_EVENTS, type Limits } from "../../health";
 import { monitorOne } from "../../incidents";
 import { addAll, holdLast, ratio } from "./math";
-import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
+import { PROJECT_SETTLE_MS } from "../../../limits";
+import { CELL_HUES, lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
@@ -15,6 +16,11 @@ export function metricPoints(history: ProjectMetricHistory, metric: string): Cha
   const found = history.series.find(entry => entry.metric === metric);
   if (found === undefined) return [];
   return found.values.map((value, index) => ({ atMs: history.fromMs + index * history.stepMs, value: value ?? undefined }));
+}
+
+export function provisionalFromMs(history: ProjectMetricHistory): number {
+  const cutoff = history.toMs - history.stepMs - PROJECT_SETTLE_MS;
+  return history.fromMs + (Math.floor((cutoff - history.fromMs) / history.stepMs) + 1) * history.stepMs;
 }
 
 export function silenceMinutes(history: ProjectCollectorHistory, nowMs: number, lastSuccessAtMs: number | null): ChartPoint[] {
@@ -105,6 +111,10 @@ export function probeUp(data: ProjectData): ChartPoint[][] {
   return history === undefined ? [] : data.probeNames.map(name => metricPoints(history, `probe.${name}.up`));
 }
 
+function collectedAgo(value: number | undefined): string {
+  return value === undefined ? count(value) : value < 1 ? "just now" : `${minutes(Math.round(value))} ago`;
+}
+
 export function endpointText(value: number | undefined): string {
   return value === undefined ? count(value) : value >= 1 ? "all up" : "down";
 }
@@ -130,12 +140,15 @@ interface Spec {
   readonly limits: Limits | undefined;
   readonly points: readonly ChartPoint[];
   readonly format: (value: number | undefined) => string;
+  readonly settledBeforeMs?: number;
+  readonly detail?: string;
 }
 
 export function buildProjectCells(data: ProjectData, view: TimeWindow | null): MonitorCell[] {
   const stepMs = data.worker.stepMs;
+  const workerSettled = provisionalFromMs(data.worker);
   const specs: Spec[] = [
-    { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricPoints(data.worker, "worker.invocations"), format: count },
+    { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricPoints(data.worker, "worker.invocations"), format: count, settledBeforeMs: workerSettled },
     { id: "server-errors", label: "Worker 5xx", anchor: "status", limits: LIMITS.workerServerErrorPercent, points: serverErrorShare(data), format: percent },
     { id: "cpu-time", label: "CPU time", anchor: "cpu", limits: LIMITS.workerCpuMs, points: cpuAverage(data), format: milliseconds },
     ...(data.buckets.length === 0
@@ -144,16 +157,18 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
           { id: "r2-other", label: "R2 failures", anchor: "r2-operations", limits: LIMITS.r2OtherPercent, points: otherShare(data), format: percent },
           { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes }
         ]),
-    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: minutes }
+    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: collectedAgo, detail: `longest gap ${minutes(Math.round(Math.max(0, ...data.silence.map(point => point.value ?? 0))))} · stale after ${LIMITS.collectorStaleMinutes.elevated} min` }
   ];
   const ups = probeUp(data);
   if (ups.length > 0) {
-    specs.splice(specs.length - 1, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText });
+    specs.splice(specs.length - 1, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText, detail: `${ups.length} probed from the edge` });
   }
   return specs.map(spec => {
     const windowed = spec.id === "collector" ? spec.points : pointsIn(spec.points, view);
     const parts = spec.parts === undefined ? [windowed] : spec.parts.map(part => pointsIn(part, view));
     const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark: windowed, format: spec.format, value: lastValue(windowed), detail: rangeText(windowed, spec.format) };
+    const spark = spec.settledBeforeMs === undefined ? windowed : windowed.filter(point => point.atMs < spec.settledBeforeMs!);
+    const arriving = spec.settledBeforeMs !== undefined && windowed.some(point => point.atMs >= spec.settledBeforeMs! && point.value !== undefined);
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format, spec.limits)} · newest still arriving` : rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
   });
 }

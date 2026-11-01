@@ -358,6 +358,18 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .status-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border-radius: 8px; box-shadow: 0 0 0 1px var(--line); overflow: hidden; margin-bottom: 12px; }
 .strip-cell { display: flex; flex-direction: column; align-items: stretch; gap: 8px; text-align: left; padding: 14px 16px 0; background: var(--surface); min-width: 0; cursor: pointer; }
 .strip-cell:hover { background: var(--hover); }
+.strip-cell.is-elevated { box-shadow: inset 0 2px 0 var(--serious); background: color-mix(in srgb, var(--serious) 6%, var(--surface)); }
+.strip-cell.is-critical { box-shadow: inset 0 2px 0 var(--critical); background: color-mix(in srgb, var(--critical) 7%, var(--surface)); }
+.strip-cell.is-elevated:hover, .strip-cell.is-critical:hover { background: var(--hover); }
+.gauge { position: relative; display: block; height: 6px; border-radius: 3px; background: var(--line-strong); margin: 2px 0 1px; }
+.gauge-zone { position: absolute; top: 0; bottom: 0; }
+.gauge-elevated { background: color-mix(in srgb, var(--serious) 32%, var(--surface)); }
+.gauge-critical { background: color-mix(in srgb, var(--critical) 42%, var(--surface)); border-radius: 0 3px 3px 0; }
+.gauge-mark { position: absolute; top: -3px; width: 3px; height: 12px; margin-left: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 1.5px var(--surface); }
+.gauge-mark.health-elevated { background: var(--serious); }
+.gauge-mark.health-critical { background: var(--critical); }
+.widget.collapsed { margin-bottom: 12px; }
+.widget.collapsed .widget-head { border-bottom: 0; }
 .strip-cell .tile-spark { display: block; }
 .status-strip-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .status-strip > .strip-cell:last-child:nth-child(4n + 3) { grid-column: span 2; }

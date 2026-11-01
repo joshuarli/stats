@@ -4,7 +4,7 @@ import type { TimeWindow } from "../../chart-data";
 import { count, milliseconds, percent } from "../../format";
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart } from "../host/shared";
-import { durableObjectCpuAverage, durableObjectWallAverage, metricPoints, routeRows, type ProjectData } from "./series";
+import { durableObjectCpuAverage, durableObjectWallAverage, metricPoints, provisionalFromMs, routeRows, type ProjectData } from "./series";
 
 export function RoutesWidget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
   const rows = () => routeRows(props.data.routes, props.view);
@@ -57,6 +57,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             format={count}
             min={0}
             stepMs={history()!.stepMs}
+            provisionalFromMs={provisionalFromMs(history()!)}
           />
           <PanelLabel>Average CPU time per invocation. Buckets under 100 invocations are not shown</PanelLabel>
           <PanelChart
@@ -67,6 +68,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
+            provisionalFromMs={provisionalFromMs(history()!)}
           />
           <PanelLabel>Approximate maximum CPU time in a bucket</PanelLabel>
           <PanelChart
@@ -76,6 +78,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
+            provisionalFromMs={provisionalFromMs(history()!)}
           />
           <PanelLabel>Average wall time per invocation, including time spent waiting</PanelLabel>
           <PanelChart
@@ -84,6 +87,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
+            provisionalFromMs={provisionalFromMs(history()!)}
           />
         </>
       )}

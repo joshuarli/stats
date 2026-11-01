@@ -230,6 +230,16 @@ series onto a shared time grid. Routes are the fleet page, `#/host/:hostId`,
 and `#/project/:projectId`; the fleet page lists projects under the hosts. The browser never sees a host token or an
 operator secret.
 
+Each summary tile shows its latest value, where that value sits between the
+metric's elevated and critical limits, and a zero-based trend in the hue of its
+resource group; a tile past a limit gets a status-coloured edge and tint. A
+chart's axis fits its data, and an elevated limit is drawn only once the data
+reaches half of it. On project pages the newest buckets, which the collector has
+not yet settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still
+arriving, and a count tile such as Requests reports the last settled bucket;
+ratio tiles use the newest bucket because both sides of the ratio are partial.
+Widgets collapse, and the choice persists in `localStorage`.
+
 ## Non-goals
 
 Per-process profiling, continuous event streaming, eBPF-only observability,

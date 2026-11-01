@@ -1,18 +1,19 @@
 import { createMemo, createUniqueId } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Health } from "../health";
+import type { VizColor } from "./TimeChart";
 
 export interface SparkPoint {
   readonly atMs: number;
   readonly value?: number | undefined;
 }
 
-export function Sparkline(props: { readonly points: readonly SparkPoint[]; readonly label: string; readonly color?: number | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
+export function Sparkline(props: { readonly points: readonly SparkPoint[]; readonly label: string; readonly color?: number | undefined; readonly hue?: VizColor | undefined; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
   const id = createUniqueId();
   const geometry = createMemo(() => {
     const points = props.points.filter((point): point is { readonly atMs: number; readonly value: number } => point.value !== undefined && Number.isFinite(point.value));
     if (points.length === 0) return null;
-    const low = Math.min(...points.map(point => point.value));
+    const low = props.zeroBased === true ? Math.min(0, ...points.map(point => point.value)) : Math.min(...points.map(point => point.value));
     const high = Math.max(...points.map(point => point.value));
     const span = high - low || 1;
     const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${((index / Math.max(1, points.length - 1)) * 160).toFixed(2)},${(36 - ((point.value - low) / span) * 30).toFixed(2)}`).join(" ");
@@ -23,7 +24,7 @@ export function Sparkline(props: { readonly points: readonly SparkPoint[]; reado
   });
   const color = props.color ?? 0;
   return (
-    <svg class={`sparkline series-${color}${props.health === undefined || props.health === "ok" ? "" : ` health-${props.health}`}${props.class === undefined ? "" : ` ${props.class}`}`} viewBox="0 0 160 40" role="img" aria-label={props.label} preserveAspectRatio="none">
+    <svg class={`sparkline ${props.hue === undefined ? `series-${color}` : `viz-${props.hue}`}${props.health === undefined || props.health === "ok" ? "" : ` health-${props.health}`}${props.class === undefined ? "" : ` ${props.class}`}`} viewBox="0 0 160 40" role="img" aria-label={props.label} preserveAspectRatio="none">
       <defs>
         <linearGradient id={`spark-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" class="spark-fill-start" />

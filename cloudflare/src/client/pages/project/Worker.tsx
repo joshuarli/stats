@@ -4,7 +4,7 @@ import { LIMITS } from "../../health";
 
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart } from "../host/shared";
-import { cpuAverage, metricPoints, serverErrorShare, STATUS_CLASSES, type ProjectData } from "./series";
+import { cpuAverage, metricPoints, provisionalFromMs, serverErrorShare, STATUS_CLASSES, type ProjectData } from "./series";
 
 const STATUS_COLORS = { "2xx": "blue", "3xx": "aqua", "4xx": "violet", "5xx": "critical", other: "serious" } as const;
 
@@ -18,6 +18,7 @@ export function RequestsWidget(props: { readonly data: ProjectData }): JSX.Eleme
         format={count}
         min={0}
         stepMs={props.data.worker.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
     </Widget>
   );
@@ -39,6 +40,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         format={count}
         min={0}
         stepMs={props.data.worker.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
       <PanelLabel>5xx share of invocations. Buckets under 100 invocations are not scored</PanelLabel>
       <PanelChart
@@ -49,6 +51,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         limits={LIMITS.workerServerErrorPercent}
         min={0}
         stepMs={props.data.worker.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
     </Widget>
   );
@@ -67,6 +70,7 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
         limits={LIMITS.workerCpuMs}
         min={0}
         stepMs={props.data.worker.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
       <PanelLabel>Approximate maximum CPU time in a bucket</PanelLabel>
       <PanelChart
@@ -75,6 +79,7 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
         format={milliseconds}
         min={0}
         stepMs={props.data.worker.stepMs}
+        provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
     </Widget>
   );

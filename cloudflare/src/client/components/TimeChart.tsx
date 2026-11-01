@@ -43,6 +43,7 @@ export interface TimeChartProps {
   readonly highlight?: string | null | undefined;
   readonly stepMs?: number | undefined;
   readonly sortTooltip?: boolean | undefined;
+  readonly provisionalFromMs?: number | undefined;
 }
 
 const SYNC_KEY = "stats";
@@ -53,6 +54,16 @@ const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
 const colorVariable = (color: number | VizColor): string => (typeof color === "number" ? `--s${color}` : `--viz-${color}`);
 const colorClass = (color: number | VizColor): string => (typeof color === "number" ? `series-${color}` : `viz-${color}`);
 const MAX_MARKERS = 6;
+const LIMIT_VISIBLE_SHARE = 0.5;
+const LIMIT_HEADROOM = 1.15;
+const LIMIT_LABEL_GAP_PX = 12;
+
+function niceCeiling(value: number): number {
+  if (!(value > 0)) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const scaled = value / magnitude;
+  return (scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10) * magnitude;
+}
 
 function withAlpha(color: string, alpha: number): string | undefined {
   return /^#[0-9a-f]{6}$/iu.test(color) ? `${color}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : undefined;
@@ -71,6 +82,17 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   let plot: uPlot | undefined;
 
   const latest = createMemo(() => windowStats(aligned().columns[0] ?? [], 0, aligned().times.length - 1)?.last);
+  const settledValue = (position: number): number | undefined => {
+    const column = aligned().columns[position] ?? [];
+    const from = props.provisionalFromMs;
+    if (from === undefined) return windowStats(column, span()[0], span()[1])?.last;
+    const times = aligned().times;
+    for (let index = Math.min(span()[1], times.length - 1); index >= span()[0]; index -= 1) {
+      const value = column[index];
+      if ((times[index] ?? 0) < from && value !== null && value !== undefined) return value;
+    }
+    return undefined;
+  };
   const scoredColumns = createMemo(() => props.series.flatMap((entry, position) => (entry.scored === false ? [] : [aligned().columns[position] ?? []])));
   const evaluation = createMemo(() => evaluate(aligned().times, scoredColumns(), props.limits));
   const episodes = () => evaluation().episodes;
@@ -122,7 +144,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       });
       if (props.sortTooltip === true) rows.sort((a, b) => b.value - a.value);
       const heading = document.createElement("b");
-      heading.textContent = clock(aligned().times[index]);
+      const at = aligned().times[index];
+      heading.textContent = props.provisionalFromMs !== undefined && at !== undefined && at >= props.provisionalFromMs ? `${clock(at)} · still arriving` : clock(at);
       tooltip.replaceChildren(heading, ...rows.map(({ entry, value, color }) => {
         const line = document.createElement("div");
         const swatch = document.createElement("i");
@@ -156,7 +179,38 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       return Math.min(top + height, Math.max(top, chart.valToPos(value, "y", true)));
     };
 
+    const drawProvisional = (chart: uPlot) => {
+      const from = props.provisionalFromMs;
+      if (from === undefined) return;
+      const { left, top, width, height } = chart.bbox;
+      const x = Math.max(left, Math.round(chart.valToPos(from / 1000, "x", true)));
+      if (x >= left + width) return;
+      const context = chart.ctx;
+      context.save();
+      context.globalAlpha = 0.035;
+      context.fillStyle = token("--text");
+      context.fillRect(x, top, left + width - x, height);
+      context.globalAlpha = 0.45;
+      context.strokeStyle = token("--mut");
+      context.lineWidth = dpr;
+      context.setLineDash([3 * dpr, 3 * dpr]);
+      context.beginPath();
+      context.moveTo(x, top);
+      context.lineTo(x, top + height);
+      context.stroke();
+      if (left + width - x > 78 * dpr) {
+        context.setLineDash([]);
+        context.globalAlpha = 1;
+        context.font = `${10 * dpr}px ${token("--font")}`;
+        context.textAlign = "left";
+        context.fillStyle = token("--mut");
+        context.fillText("still arriving", x + 5 * dpr, top + height - 6 * dpr);
+      }
+      context.restore();
+    };
+
     const drawBands = (chart: uPlot) => {
+      drawProvisional(chart);
       const limits = props.limits;
       if (limits === undefined) return;
       const { left, top, width, height } = chart.bbox;
@@ -188,7 +242,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       context.setLineDash([4 * dpr, 3 * dpr]);
       context.font = `${10 * dpr}px ${token("--font")}`;
       context.textAlign = "right";
-      for (const [value, color, label] of [[limits.elevated, "--serious", "elevated"], [limits.critical, "--critical", "critical"]] as const) {
+      const placed: number[] = [];
+      for (const [value, color, label] of [[limits.critical, "--critical", "critical"], [limits.elevated, "--serious", "elevated"]] as const) {
         const y = Math.round(chart.valToPos(value, "y", true));
         if (y < top || y > top + height) continue;
         context.strokeStyle = token(color);
@@ -202,6 +257,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         const above = limits.direction === "above" ? label === "critical" : label === "elevated";
         const preferred = above ? y - 4 * dpr : y + 11 * dpr;
         const baseline = preferred < top + 10 * dpr ? y + 11 * dpr : preferred > top + height - 2 * dpr ? y - 4 * dpr : preferred;
+        if (placed.some(other => Math.abs(other - baseline) < LIMIT_LABEL_GAP_PX * dpr)) continue;
+        placed.push(baseline);
         context.lineJoin = "round";
         context.lineWidth = 3 * dpr;
         context.strokeStyle = token("--surface");
@@ -332,10 +389,12 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           range: (_chart, low, high) => {
             if (low === null || high === null) return [props.min ?? 0, props.max ?? 1];
             if (mirrored()) {
-              const reach = Math.max(Math.abs(low), Math.abs(high), 1) * 1.08;
+              const reach = niceCeiling(Math.max(Math.abs(low), Math.abs(high)));
               return [-reach, reach];
             }
-            const top = props.limits === undefined || props.limits.direction === "below" || props.max !== undefined ? high : Math.max(high, props.limits.elevated * 1.3);
+            const limits = props.limits;
+            const approaching = limits !== undefined && limits.direction === "above" && props.max === undefined && high >= limits.elevated * LIMIT_VISIBLE_SHARE;
+            const top = approaching ? Math.max(high, limits.elevated * LIMIT_HEADROOM) : high;
             const pad = (top - low || 1) * 0.08;
             return [props.min ?? low - pad, props.max ?? top + pad];
           }
@@ -353,6 +412,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         }),
         axis({
           ...(props.compact === true ? { space: 28 } : {}),
+          ...(mirrored() ? { splits: (chart: uPlot) => { const reach = chart.scales.y?.max ?? 0; return [-reach / 2, 0, reach / 2]; } } : {}),
           values: (_chart, splits) => splits.map(value => format(mirrored() ? Math.abs(value) : value)),
           size: (_chart, values: string[] | null) => props.yAxisWidth ?? Math.ceil(Math.max(4, ...(values ?? []).map(value => value.length)) * 6.4 + 16)
         })
@@ -515,10 +575,9 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         <div class="chart-inline-legend">
           <For each={props.series}>
             {(entry, position) => {
-              const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
               const shown = () => {
                 const index = cursor();
-                return index === null ? stats()?.last : aligned().columns[position()]?.[index] ?? undefined;
+                return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
               };
               return (
                 <button
@@ -550,7 +609,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                 const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
                 const shown = () => {
                   const index = cursor();
-                  return index === null ? stats()?.last : aligned().columns[position()]?.[index] ?? undefined;
+                  return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
                 };
                 return (
                   <tr class={hidden().has(entry.label) ? "off" : undefined} onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)} onMouseLeave={() => focusSeries(null)}>

@@ -4,6 +4,7 @@ import { count, percent, percentUsed, rate } from "../../format";
 import { LIMITS, loadLimits, type Limits } from "../../health";
 import { monitorOne, type Monitored } from "../../incidents";
 import { cpuUsed, loadOne, memoryUsed, sumSeries } from "../../metrics";
+import type { VizColor } from "../../components/TimeChart";
 import { perSecond, summarySeries } from "./shared";
 
 export interface HostData {
@@ -26,7 +27,27 @@ export interface MonitorCell {
   readonly format: (value: number | undefined) => string;
   readonly value: number | undefined;
   readonly detail: string;
+  readonly limits: Limits | undefined;
+  readonly hue: VizColor;
 }
+
+export const CELL_HUES: Readonly<Record<string, VizColor>> = {
+  cpu: "blue",
+  load: "blue",
+  pressure: "blue",
+  memory: "aqua",
+  swap: "aqua",
+  disk: "violet",
+  filesystem: "violet",
+  network: "magenta",
+  requests: "blue",
+  "server-errors": "blue",
+  "cpu-time": "violet",
+  "r2-other": "aqua",
+  "r2-storage": "aqua",
+  endpoints: "magenta",
+  collector: "neutral"
+};
 
 export function worstOf(series: readonly (readonly ChartPoint[])[], stepMs: number): ChartPoint[] {
   const aligned = alignSeries(series, stepMs);
@@ -44,11 +65,12 @@ export function lastValue(points: readonly ChartPoint[]): number | undefined {
   return undefined;
 }
 
-export function rangeText(points: readonly ChartPoint[], format: (value: number | undefined) => string): string {
+export function rangeText(points: readonly ChartPoint[], format: (value: number | undefined) => string, limits?: Limits): string {
   const values = points.flatMap(point => (point.value === undefined || !Number.isFinite(point.value) ? [] : [point.value]));
   if (values.length === 0) return "unavailable";
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return `avg ${format(average)} · max ${format(Math.max(...values))}`;
+  const peak = format(Math.max(...values));
+  const ceiling = limits === undefined || limits.direction !== "above" ? "" : ` · elevated at ${format(limits.elevated)}`;
+  return Math.min(...values) === Math.max(...values) ? `steady${ceiling}` : `peak ${peak}${ceiling}`;
 }
 
 interface Spec {
@@ -113,6 +135,6 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
   return specs.map(spec => {
     const spark = spec.series.length === 1 ? spec.series[0]! : worstOf(spec.series, spec.stepMs);
     const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format) };
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
   });
 }

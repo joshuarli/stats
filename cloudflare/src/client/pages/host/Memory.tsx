@@ -13,7 +13,7 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
   const reportsPressure = createMemo(() => props.points.some(point => point.psi?.memory !== undefined));
   const used = (point: SummaryPoint) => (point.mem === undefined ? undefined : point.mem.total - point.mem.available);
   return (
-    <Widget id="memory" title="Memory" subtitle="RAM in use against total, swap, paging, and stalls" expandable>
+    <Widget id="memory" title="Memory" subtitle="RAM in use, swap, paging, and stalls. Limits appear when usage nears them" expandable>
       <PanelLabel>RAM and swap in use</PanelLabel>
       <PanelChart
         label="Memory in use"
@@ -26,7 +26,6 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
         format={bytes}
         limits={limits()}
         min={0}
-        max={total()}
         events={props.events}
         stepMs={props.stepMs}
       />
