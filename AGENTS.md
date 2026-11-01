@@ -42,4 +42,5 @@ go under `.work/tmp`.
 | Toolchain pins and dependency decisions | `docs/dependencies.md` |
 | Benchmark method and results | `bench/README.md` |
 | Optional block-latency probe | `bpf/README.md` |
+| Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Open work | `TODO.md` |
