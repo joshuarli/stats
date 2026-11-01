@@ -159,17 +159,20 @@ Not yet verified:
   each. The binding accepts `logs.workersLogs` despite its docs, and all four
   probes reported up from the edge (`site` was down in one of the first five
   runs, 200 on every check afterwards).
-- Parity with `cf sql query` does not meet the 5% gate. Across 14 five-minute
-  buckets, 11 matched exactly and three differed: 16:05 UTC stored 12,064
+- Parity with `cf sql query` did not meet the 5% gate at first. Across 14
+  five-minute buckets, 11 matched and three differed: 16:05 UTC stored 12,064
   against 13,424 (-10%), 17:05 stored 8,864 against 7,344 (+21%), and 17:15
-  stored 4,032 against 4,016 (+0.4%). Summed over 16:00 to 16:50 the stored
-  count was 9% below the CLI. The CLI repeats exactly, the stored values did
-  not change on later runs, and the 17:05 CPU sum matched the CLI while its
-  request count did not. The cause is not known; the open candidates are that
-  the binding reads a different view of the Log Explorer data than the CLI and
-  that rows are revised late. Until it is understood, treat a single Worker
-  bucket as accurate only to about 10%. Settling it needs the raw binding
-  response, or a GraphQL comparison, which means an owner decision.
+  stored 4,032 against 4,016. A temporary route that returned the raw binding
+  rows for the collector's exact query (since removed) matched the CLI row for
+  row at 17:48, and the store was shown to overwrite a higher value with a lower
+  one. The 17:05 and 17:15 buckets then converged to the CLI values on the 17:50
+  run, so the binding's view of a bucket can trail the CLI's by 10 minutes or
+  more, and a bucket keeps whatever the last run inside its 90 minute window
+  saw. The 16:05 bucket left that window still stale and stays 10% low. The
+  cause of the lag is unknown (a deploy at about 17:46 also fell between the
+  stale and the corrected runs, so a binding-side result cache is possible).
+  The open choices are a longer collection window, which reads more rows per
+  run, or accepting an error of about 10% on the largest buckets.
 - Source retention seen on 2026-11-01: `logs.workersLogs` served from 04:58
   UTC that day, `events.r2CombinedOperations` served the full 7 days queried,
   and `states.r2CombinedStorage` could not be probed (state datasets allow only
