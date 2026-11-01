@@ -99,7 +99,7 @@ has not run the collector yet):
 The two expiry indexes double the cost of each new bucket; dropping them would
 cut a first run to about 130 rows but would make retention scan whole tables.
 The free-plan allowance is 100,000 rows written a day, shared with host ingest.
-The live wall time of a run is not yet measured.
+Live runs took 0.5 to 2.1 s of wall time.
 
 ## First deployment
 
@@ -152,16 +152,24 @@ Recorded 2026-10-31:
 
 Not yet verified:
 
-- Project collection results on the live account. The Worker was deployed on
-  2026-11-01 (version `8390a8f6`) and the cron reached the Durable Object at
-  17:20:58 and 17:26:00 UTC, about five minutes apart, with the first run
-  appearing roughly eight minutes after the deploy while the schedule
-  propagated. Whether those runs succeeded, whether the binding accepts the
-  Log Explorer-backed `logs.workersLogs` dataset (its docs list such datasets as
-  unsupported, though `cf sql query` returns the same shape), and parity of
-  invocation counts with `cf sql query` need `GET /api/v1/projects`, which
-  needs an interactive `cf access login`. Probes from the edge are also
-  unverified.
+- Project collection on the live account, checked on 2026-11-01 after an
+  Access login. The Worker (version `8390a8f6`) was deployed; the cron reached
+  the Durable Object about eight minutes later and then every five minutes, and
+  every recorded run was `ok`. Runs took 0.5 to 2.1 s and read about 8 M rows
+  each. The binding accepts `logs.workersLogs` despite its docs, and all four
+  probes reported up from the edge (`site` was down in one of the first five
+  runs, 200 on every check afterwards).
+- Parity with `cf sql query` does not meet the 5% gate. Across 14 five-minute
+  buckets, 11 matched exactly and three differed: 16:05 UTC stored 12,064
+  against 13,424 (-10%), 17:05 stored 8,864 against 7,344 (+21%), and 17:15
+  stored 4,032 against 4,016 (+0.4%). Summed over 16:00 to 16:50 the stored
+  count was 9% below the CLI. The CLI repeats exactly, the stored values did
+  not change on later runs, and the 17:05 CPU sum matched the CLI while its
+  request count did not. The cause is not known; the open candidates are that
+  the binding reads a different view of the Log Explorer data than the CLI and
+  that rows are revised late. Until it is understood, treat a single Worker
+  bucket as accurate only to about 10%. Settling it needs the raw binding
+  response, or a GraphQL comparison, which means an owner decision.
 - Source retention seen on 2026-11-01: `logs.workersLogs` served from 04:58
   UTC that day, `events.r2CombinedOperations` served the full 7 days queried,
   and `states.r2CombinedStorage` could not be probed (state datasets allow only

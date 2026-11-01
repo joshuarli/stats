@@ -3,7 +3,7 @@
 ## Status
 
 - **Goal:** `stats` monitors a Cloudflare project as a first-class target beside hosts. One configured project, `stuff`, shows its Worker (invocations, status mix, CPU), its three R2 buckets (operations by outcome, storage, objects), endpoint availability, and the collector's own health, with the same status strip, limits, incidents, and two-column layout as the host page. Data comes from the Analytics SQL binding on a five-minute cron. No agent, no token, no change in `../stuff`.
-- **State:** A1 to D1 accepted; E1 review fixes applied; Worker deployed 2026-11-01 (`8390a8f6`) with the owner's go-ahead; N1 to N3 await an interactive `cf access login`. Baseline `d1b369c`. Every fact marked proven below was run on 2026-11-01 against the live account with read-only `cf sql query`.
+- **State:** A1 to D1 accepted; E1 review fixes applied; Worker deployed 2026-11-01 (`8390a8f6`) with the owner's go-ahead; N1, N3 and N7 verified live; N2 failed the 5% gate (see `docs/operations.md`). Baseline `d1b369c`. Every fact marked proven below was run on 2026-11-01 against the live account with read-only `cf sql query`.
 - **Accepted:** A1, A2, A3, A4, A5, B1, B2, C1, D1. **Red:** none. **Parked:** none.
 - **Next:** E1 final report.
 - **Resume:** `Execute campaign-cf.md from item E1. Read the item, own only its files, and finish on its acceptance command.`
