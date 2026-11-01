@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-21 · P4 · Config, token, and block file checks are by path, and the owner is not checked
-
-- **Area:** Security
-- **Where:** `agent/src/config.rs:89-109`, `agent/src/block.rs:66-87`
-- **Problem:** `owner_file` and `block::read` run `symlink_metadata` and then `fs::read(path)`. A swap between the two calls defeats the symlink, size, and mode checks, and a swap to a FIFO hangs startup or the sampler thread. The mode is checked, but not that the file belongs to the running user. Exploiting this needs write access to the parent directory.
-- **Recommendation:** Open with `O_NOFOLLOW | O_NONBLOCK`, `fstat` the descriptor, check uid and mode on it, and read at most limit + 1 bytes from it.
-- **Fix with:** os-boundaries
-- **Effort:** S
-
 ### STA-22 · P4 · An additive field in the ingest response makes the agent retry accepted batches
 
 - **Area:** Types

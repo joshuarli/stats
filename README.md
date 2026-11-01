@@ -43,8 +43,8 @@ configuration, and token.
 ## Configuration
 
 The config and the token file must be regular, owner-only files (no group or
-other permission bits, no symlinks). A token is never accepted in argv or
-written to logs.
+other permission bits, no symlinks) owned by the running user. A token is
+never accepted in argv or written to logs.
 
 ```json
 {

@@ -1,6 +1,7 @@
 use crate::model::Block;
 use serde::Deserialize;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -64,23 +65,26 @@ fn snapshot_block(snapshot: Snapshot) -> Option<Block> {
 }
 
 fn read_snapshot(path: &Path) -> Option<(Block, SystemTime)> {
-    let link = fs::symlink_metadata(path).ok()?;
-    if link.file_type().is_symlink() || !link.is_file() || link.len() > SNAPSHOT_LIMIT as u64 {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut file = fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > SNAPSHOT_LIMIT as u64 {
         return None;
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if link.permissions().mode() & 0o022 != 0 {
-            return None;
-        }
+    if metadata.permissions().mode() & 0o022 != 0 {
+        return None;
     }
-    let modified = link.modified().ok()?;
+    let uid = metadata.uid();
+    if uid != unsafe { libc::geteuid() } && uid != 0 {
+        return None;
+    }
+    let modified = metadata.modified().ok()?;
     let age = SystemTime::now().duration_since(modified).ok()?;
     if age > MAX_AGE {
         return None;
     }
-    let bytes = fs::read(path).ok()?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(SNAPSHOT_LIMIT as u64 + 1).read_to_end(&mut bytes).ok()?;
     if bytes.len() > SNAPSHOT_LIMIT {
         return None;
     }

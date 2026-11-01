@@ -41,11 +41,11 @@ sudo bpf/collector.sh /run/stats/block-latency.json \
 
 `collector.sh` replaces the snapshot atomically every 15 seconds. Set the
 agent's optional `blockLatencyFile` to the same path. The agent accepts the
-snapshot only when it is a regular, non-group/world-writable file modified
-within 30 seconds; otherwise the sample omits `block`. A systemd unit is in
-`contrib/systemd/stats-block-latency.service`; install the collector and
-scripts under `/usr/local/lib/stats/` and the unit under
-`/etc/systemd/system/`.
+snapshot only when it is a regular, non-group/world-writable file owned by the
+agent user or root and modified within 30 seconds; otherwise the sample omits
+`block`. A systemd unit is in `contrib/systemd/stats-block-latency.service`;
+install the collector and scripts under `/usr/local/lib/stats/` and the unit
+under `/etc/systemd/system/`.
 
 The snapshot is JSON with `v`, `buckets` (16 decimal strings), `count`,
 `totalUs`, `minUs`, and `maxUs`; the agent revalidates it before attaching it

@@ -87,25 +87,35 @@ fn valid_endpoint(value: &str) -> bool {
 }
 
 fn owner_file(path: &Path, limit: usize) -> Result<Vec<u8>, ConfigError> {
-    let link = fs::symlink_metadata(path).map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))?;
-    if link.file_type().is_symlink() {
-        return Err(ConfigError::new(format!("{}: symbolic links are not accepted", path.display())));
-    }
-    if !link.is_file() {
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut file = match fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(path) {
+        Ok(file) => file,
+        Err(error) if error.raw_os_error() == Some(libc::ELOOP) => {
+            return Err(ConfigError::new(format!("{}: symbolic links are not accepted", path.display())));
+        }
+        Err(error) => return Err(ConfigError::new(format!("{}: {error}", path.display()))),
+    };
+    let metadata = file.metadata().map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))?;
+    if !metadata.is_file() {
         return Err(ConfigError::new(format!("{}: not a regular file", path.display())));
     }
-    if link.len() > limit as u64 {
+    if metadata.len() > limit as u64 {
         return Err(ConfigError::new(format!("{}: exceeds {limit} bytes", path.display())));
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = link.permissions().mode() & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(ConfigError::new(format!("{}: mode {mode:o} is not owner-only", path.display())));
-        }
+    if metadata.uid() != unsafe { libc::geteuid() } {
+        return Err(ConfigError::new(format!("{}: not owned by the running user", path.display())));
     }
-    fs::read(path).map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))
+    let mode = metadata.permissions().mode() & 0o777;
+    if mode & 0o077 != 0 {
+        return Err(ConfigError::new(format!("{}: mode {mode:o} is not owner-only", path.display())));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(limit as u64 + 1).read_to_end(&mut bytes).map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))?;
+    if bytes.len() > limit {
+        return Err(ConfigError::new(format!("{}: exceeds {limit} bytes", path.display())));
+    }
+    Ok(bytes)
 }
 
 pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
@@ -165,7 +175,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -235,6 +245,21 @@ mod tests {
         write(&config_path, &valid_config(&link), 0o600);
         let config = load(&config_path).unwrap();
         assert!(load_token(&config).unwrap_err().to_string().contains("symbolic links"));
+    }
+
+    #[test]
+    fn rejects_a_fifo_without_blocking() {
+        let root = scratch();
+        let fifo = root.join("token-fifo");
+        let c_path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        let config_path = root.join("agent-fifo.json");
+        write(&config_path, &valid_config(&fifo), 0o600);
+        let config = load(&config_path).unwrap();
+        let started = std::time::Instant::now();
+        let error = load_token(&config).unwrap_err().to_string();
+        assert!(error.contains("not a regular file"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
