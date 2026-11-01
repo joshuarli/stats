@@ -3,7 +3,7 @@ import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 import { parseProjects, type ProjectConfig } from "./src/projects/config.ts";
 
 const domain = process.env.STATS_DOMAIN;
-const WORKER_NAME = "stats-worker";
+const WORKER_NAME = "stats";
 
 const PROJECTS: readonly ProjectConfig[] = [
   {

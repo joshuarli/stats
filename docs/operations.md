@@ -53,8 +53,8 @@ The Worker keeps every deployed version. List them and point the deployment at
 the version to restore:
 
 ```sh
-cf workers deployments list --worker stats-worker
-cf workers deployments create --worker stats-worker \
+cf workers deployments list --worker stats
+cf workers deployments create --worker stats \
   --versions '[{"version_id":"<version-id>","percentage":100}]'
 ```
 

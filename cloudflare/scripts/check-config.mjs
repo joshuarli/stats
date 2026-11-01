@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 const text = readFileSync(new URL("../cloudflare.config.ts", import.meta.url), "utf8");
 const checks = [
-  ["worker name", /const WORKER_NAME = "stats-worker"/u],
+  ["worker name", /const WORKER_NAME = "stats"/u],
   ["workers_dev", /workersDev:\s*false/u],
   ["preview_urls", /previewUrls:\s*false/u],
   ["run_worker_first", /runWorkerFirst:\s*true/u],
