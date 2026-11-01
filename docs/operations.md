@@ -2,12 +2,13 @@
 
 ## Release build
 
-`make agent-build` runs `agent/scripts/build-static.sh`. It builds both musl
-targets through the Zig wrappers in `tools/` (Zig and `python3` from `PATH`),
-copies `stats-<version>-<target>` into `agent/dist/`, and writes
-`SHA256SUMS` plus an `.elf.txt` program-header dump per binary. It fails if an
-ELF has `PT_INTERP` or `NEEDED`. The aarch64 wrapper drops rustc's
-`--fix-cortex-a53-843419` argument, which Zig does not accept.
+`make agent-build` runs `agent/scripts/build-static.sh`. It requires Zig
+0.17.0 and `python3` on `PATH`, builds both musl targets through the Zig
+wrappers in `tools/` with `cargo build --locked`, copies
+`stats-<version>-<target>` into `agent/dist/`, and rewrites `SHA256SUMS` plus
+an `.elf.txt` program-header dump per binary. Older artifacts are left in
+place. It fails if an ELF has `PT_INTERP` or `NEEDED`. The aarch64 wrapper
+drops rustc's `--fix-cortex-a53-843419` argument, which Zig does not accept.
 
 Recorded 2026-10-31: 1,943,832 bytes x86_64 and 1,733,792 bytes aarch64,
 stripped; two builds produced identical SHA-256 digests.
@@ -26,6 +27,7 @@ make worker-check          # build + deploy validation, no upload
 make deploy                # tests, Worker, live smoke, then every host
 make deploy-host-<key>     # one host from deploy/hosts.json, idempotent
 make deploy-hosts          # every host in the manifest
+make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
 ```
 
@@ -34,6 +36,21 @@ with `cf deploy --prebuilt --mode production`, runs `deploy/deployed-smoke.sh`,
 then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
+
+## Rollback
+
+A host deploy copies the current binary to `/usr/local/bin/stats.prev` before
+installing the new one. `make rollback-host-<key>` restores that copy and
+restarts the service; it fails if no previous binary exists.
+
+The Worker keeps every deployed version. List them and point the deployment at
+the version to restore:
+
+```sh
+cf workers deployments list --worker stats-worker
+cf workers deployments create --worker stats-worker \
+  --versions '[{"version_id":"<version-id>","percentage":100}]'
+```
 
 ## First deployment
 

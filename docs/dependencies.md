@@ -1,6 +1,6 @@
 # Dependencies and toolchain
 
-Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, and pnpm 11.0.2, both enforced by `make node-ready`. Zig comes from `PATH` and is not pinned. Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
+Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm 11.0.2 (both enforced by `make node-ready`), and Zig 0.17.0 plus `python3` (both checked by `agent/scripts/build-static.sh`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
 
 ## esbuild in `@stats/telemetry`
 

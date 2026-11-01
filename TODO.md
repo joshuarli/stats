@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-9 · P3 · Agent builds are not pinned and neither the agent nor the Worker can be rolled back
-
-- **Area:** Build
-- **Where:** `agent/scripts/build-static.sh:15-18`, `agent/scripts/build-static.sh:23`, `agent/scripts/build-static.sh:45`, `tools/zig-cc-x86_64-linux-musl`, `deploy/deploy-host.sh:119-121`
-- **Problem:** Zig comes from `PATH` with no version check, and the wrappers need an undeclared `python3`. `cargo build` runs without `--locked`. The version in `Cargo.toml` never changes, and `rm -f "$dist"/*` removes the previous artifacts. The recorded identical-digest result is not enforced. `deploy-host.sh` overwrites `/usr/local/bin/stats` and keeps no previous copy, so an agent rollback means rebuilding an old commit with whatever Zig is installed. No Worker rollback procedure exists.
-- **Recommendation:** Check the Zig version in `build-static.sh`, build with `--locked`, keep `/usr/local/bin/stats.prev` on deploy with a `make rollback-host-<key>`, and document the `cf` command that restores the previous Worker version.
-- **Fix with:** none
-- **Effort:** M
-
 ### STA-10 · P3 · Host deploy installs non-atomically and reports success before the agent uploads
 
 - **Area:** Operability

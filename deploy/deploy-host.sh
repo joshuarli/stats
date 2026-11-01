@@ -5,9 +5,14 @@ repo=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 manifest="$repo/deploy/hosts.json"
 name=${1:-}
 if [ -z "$name" ]; then
-  echo "usage: deploy/deploy-host.sh <host>" >&2
+  echo "usage: deploy/deploy-host.sh <host> [--rollback]" >&2
   exit 2
 fi
+mode=${2:-deploy}
+case "$mode" in
+  deploy|--rollback) ;;
+  *) echo "deploy: unsupported mode '$mode'" >&2; exit 2 ;;
+esac
 
 # shellcheck disable=SC2016
 if ! jaq -e --arg host "$name" '.hosts[$host] != null' "$manifest" >/dev/null; then
@@ -109,6 +114,25 @@ if is_active; then
   active=1
 fi
 
+if [ "$mode" = "--rollback" ]; then
+  if ! remote "$elevate test -x /usr/local/bin/stats.prev"; then
+    echo "$label: /usr/local/bin/stats.prev is missing; nothing to roll back to" >&2
+    exit 1
+  fi
+  echo "$label: restoring the previous agent"
+  remote "$elevate install -m 0755 -o root -g root /usr/local/bin/stats.prev /usr/local/bin/stats"
+  case "$init" in
+    systemd) remote "$elevate systemctl restart stats" ;;
+    openrc) remote "$elevate /sbin/rc-service stats restart >/dev/null" ;;
+  esac
+  if ! is_active; then
+    echo "$label: service did not become active after rollback" >&2
+    exit 1
+  fi
+  echo "$label: rolled back"
+  exit 0
+fi
+
 if [ "$binary_changed" -eq 0 ] && [ "$unit_changed" -eq 0 ] && [ "$active" -eq 1 ]; then
   echo "$label: unchanged"
   exit 0
@@ -118,6 +142,7 @@ if [ "$binary_changed" -eq 1 ]; then
   echo "$label: installing agent $version"
   remote_tmp=$(remote 'mktemp /tmp/stats.XXXXXX')
   remote "cat > '$remote_tmp'" < "$artifact"
+  remote "if [ -f /usr/local/bin/stats ]; then $elevate install -m 0755 -o root -g root /usr/local/bin/stats /usr/local/bin/stats.prev; fi"
   remote "$elevate install -m 0755 -o root -g root '$remote_tmp' /usr/local/bin/stats"
   remote "rm -f '$remote_tmp'"
 fi

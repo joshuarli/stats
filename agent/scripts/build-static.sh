@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+ZIG_VERSION=0.17.0
+
 repo=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 agent="$repo/agent"
 tools="$repo/tools"
@@ -13,14 +15,23 @@ test -x "$readobj" || {
   exit 1
 }
 command -v zig >/dev/null || {
-  echo "zig is required for static musl builds" >&2
+  echo "zig $ZIG_VERSION is required for static musl builds" >&2
+  exit 1
+}
+command -v python3 >/dev/null || {
+  echo "python3 is required for the Zig compiler wrappers" >&2
+  exit 1
+}
+found=$(zig version)
+test "$found" = "$ZIG_VERSION" || {
+  echo "zig $ZIG_VERSION is required, found $found" >&2
   exit 1
 }
 
 version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$agent/Cargo.toml" | head -n 1)
 test -n "$version"
 mkdir -p "$dist"
-rm -f "$dist"/*
+: > "$dist/SHA256SUMS"
 
 hash_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -42,7 +53,7 @@ for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
     "CC_$suffix=$cc" \
     "AR_$suffix=$ar" \
     "CARGO_TARGET_$(printf '%s' "$target" | tr 'a-z-' 'A-Z_')_LINKER=$cc" \
-    cargo build --release --target "$target"
+    cargo build --release --locked --target "$target"
 
   binary="$agent/target/$target/release/stats"
   destination="$dist/stats-$version-$target"
