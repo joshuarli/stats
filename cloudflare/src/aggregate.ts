@@ -1,20 +1,9 @@
 import type { Block, Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
 import type { Delta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
+import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
 
-export type RangeKey = "1h" | "6h" | "24h" | "7d" | "90d";
-export type HistoryKind = "summary" | "disks" | "nets" | "filesystems" | "block";
-
-export const RANGE_MS: Record<RangeKey, number> = {
-  "1h": 60 * 60 * 1000,
-  "6h": 6 * 60 * 60 * 1000,
-  "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "90d": 90 * 24 * 60 * 60 * 1000
-};
-export const MINUTE_MS = 60_000;
-export const HOUR_MS = 60 * MINUTE_MS;
-export const MAX_POINTS = 900;
+export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
 
 export interface CpuPercent {
   readonly user: number;
@@ -117,30 +106,14 @@ export interface RollupPayload {
   readonly block?: BlockRollup;
 }
 
-const BLOCK_BUCKETS = 16;
-const BLOCK_BOUNDS_US = [100, 250, 500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000] as const;
-
 export interface RawRow {
   readonly sample: Sample;
   readonly delta: Delta;
 }
 
 export function rangeKey(value: string | null): RangeKey | null {
-  switch (value) {
-    case null:
-      return null;
-    case "1h":
-    case "6h":
-    case "24h":
-    case "7d":
-    case "90d":
-      return value;
-    default:
-      return null;
-  }
+  return value !== null && (RANGES as readonly string[]).includes(value) ? value as RangeKey : null;
 }
-
-export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
 
 export function historyQuery(params: URLSearchParams): HistoryQuery | null {
   const range = params.get("range");
@@ -157,7 +130,7 @@ export function historyQuery(params: URLSearchParams): HistoryQuery | null {
 }
 
 export function kindValue(value: string | null): HistoryKind | null {
-  return value === "summary" || value === "disks" || value === "nets" || value === "filesystems" || value === "block" ? value : null;
+  return value !== null && (HISTORY_KINDS as readonly string[]).includes(value) ? value as HistoryKind : null;
 }
 
 function gaugeAdd(gauges: Record<string, Gauge>, key: string, value: number): void {

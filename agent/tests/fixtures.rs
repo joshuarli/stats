@@ -1,4 +1,5 @@
 use stats::model::{Cpu, Disk, FileSystem, Net, PsiGroup, Sample, Unavailable};
+use stats::parse::FILESYSTEM_TYPES;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -27,7 +28,6 @@ impl Failure {
 
 const SAMPLE_KEYS: [&str; 14] = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"];
 const UNAVAILABLE: [&str; 8] = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"];
-const FS_TYPES: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
 
 fn u64_value(value: &Value) -> Option<u64> {
     let text = value.as_str()?;
@@ -174,7 +174,7 @@ fn validate_group(sample: &Value, key: &str) -> bool {
                     && filesystems.iter().enumerate().all(|(index, filesystem)| {
                         object(filesystem, &["id", "type", "total", "available"])
                             && id(&filesystem["id"], |text| text.starts_with('/') && text.len() <= 255 && !text.contains('\0'))
-                            && filesystem["type"].as_str().is_some_and(|kind| FS_TYPES.contains(&kind))
+                            && filesystem["type"].as_str().is_some_and(|kind| FILESYSTEM_TYPES.contains(&kind))
                             && decimal(&filesystem["total"])
                             && decimal(&filesystem["available"])
                             && filesystems[..index].iter().all(|other| other["id"] != filesystem["id"])

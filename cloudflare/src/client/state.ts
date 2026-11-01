@@ -1,9 +1,10 @@
 import { createContext, createSignal, useContext, type Accessor, type Setter } from "solid-js";
 import type { HistoryQuery, Host } from "./api";
 import { panWindow, type TimeWindow } from "./chart-data";
+import { RANGES, RANGE_MS, type RangeKey } from "../limits";
 
-export const ranges = ["1h", "6h", "24h", "7d", "90d"] as const;
-export type Range = (typeof ranges)[number];
+export const ranges = RANGES;
+export type Range = RangeKey;
 export const rangeLabels: Record<Range, string> = {
   "1h": "Past 1 hour",
   "6h": "Past 6 hours",
@@ -11,13 +12,7 @@ export const rangeLabels: Record<Range, string> = {
   "7d": "Past 7 days",
   "90d": "Past 90 days"
 };
-export const rangeMs: Record<Range, number> = {
-  "1h": 3_600_000,
-  "6h": 21_600_000,
-  "24h": 86_400_000,
-  "7d": 604_800_000,
-  "90d": 7_776_000_000
-};
+export const rangeMs = RANGE_MS;
 export const LIVE_INTERVAL_MS = 15_000;
 
 export interface ViewState {

@@ -9,11 +9,44 @@ const bootPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const decimal = /^(0|[1-9][0-9]{0,19})$/u;
 const metricGroups = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"];
 const unavailableGroups = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"];
-const errorCodes = new Set(["too_large", "invalid_json", "unknown_version", "invalid_batch", "invalid_sample", "unauthorized", "forbidden", "rate_limited", "too_old", "conflict"]);
+
+function source(relative) {
+  return readFileSync(join(root, relative), "utf8");
+}
+
+function quotedList(text, pattern, label) {
+  const match = pattern.exec(text);
+  if (match === null) throw new Error(`${label}: declaration not found`);
+  return [...match[1].matchAll(/"([^"]+)"/gu)].map(entry => entry[1]);
+}
+
+function numberList(text, pattern, label) {
+  const match = pattern.exec(text);
+  if (match === null) throw new Error(`${label}: declaration not found`);
+  return match[1].split(",").map(value => Number(value.trim().replaceAll("_", "")));
+}
+
+const errorCodes = new Set(quotedList(source("cloudflare/src/codes.ts"), /export const ERROR_CODES = \[([\s\S]*?)\] as const;/u, "ERROR_CODES"));
+const serverFilesystems = quotedList(source("cloudflare/src/protocol.ts"), /const FS_TYPES = \[([^\]]+)\] as const;/u, "protocol FS_TYPES");
+const agentFilesystems = quotedList(source("agent/src/parse.rs"), /pub const FILESYSTEM_TYPES: \[&str; 12\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
+const serverBounds = numberList(source("cloudflare/src/limits.ts"), /export const BLOCK_BOUNDS_US = \[([^\]]+)\] as const;/u, "BLOCK_BOUNDS_US");
+const collectorBounds = [...source("bpf/biolatency-collector.bt").matchAll(/\$latency_us <= ([0-9_]+)/gu)].map(entry => Number(entry[1].replaceAll("_", "")));
+const blockBuckets = Number(/export const BLOCK_BUCKETS = ([0-9]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1]);
+const agentBuckets = Number(/pub const BUCKETS: usize = ([0-9]+);/u.exec(source("agent/src/block.rs"))?.[1]);
 const manifest = JSON.parse(readFileSync(join(fixtureDir, "manifest.json"), "utf8"));
 const failures = [];
 const fail = message => failures.push(message);
 const listed = new Set(manifest.fixtures.map(entry => entry.file));
+
+if (JSON.stringify(serverFilesystems) !== JSON.stringify(agentFilesystems)) {
+  fail(`filesystem allow-list differs: server ${serverFilesystems.join(",")}; agent ${agentFilesystems.join(",")}`);
+}
+if (JSON.stringify(serverBounds) !== JSON.stringify(collectorBounds)) {
+  fail(`block bucket bounds differ: server ${serverBounds.join(",")}; collector ${collectorBounds.join(",")}`);
+}
+if (blockBuckets !== serverBounds.length + 1 || blockBuckets !== agentBuckets) {
+  fail(`block bucket count differs: limits ${blockBuckets}; bounds ${serverBounds.length + 1}; agent ${agentBuckets}`);
+}
 
 for (const name of readdirSync(fixtureDir)) {
   if (name !== "manifest.json" && !listed.has(name)) fail(`${name}: not listed in manifest`);

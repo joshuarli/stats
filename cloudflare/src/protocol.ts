@@ -1,10 +1,13 @@
-export const MAX_BODY_BYTES = 65_536;
+import type { RejectCode } from "./codes";
+import { BLOCK_BUCKETS, MAX_BODY_BYTES } from "./limits";
+
+export type { RejectCode };
+export { MAX_BODY_BYTES };
 export const MAX_SAMPLES = 16;
 export const MAX_DEVICES = 16;
 export const MAX_SAFE_INTEGER = 9_007_199_254_740_991n;
 export const U64_MAX = 18_446_744_073_709_551_615n;
 
-export type RejectCode = "too_large" | "invalid_json" | "unknown_version" | "invalid_batch" | "invalid_sample";
 
 export interface Cpu {
   readonly user: string;
@@ -109,7 +112,6 @@ export type BatchResult =
 
 const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"] as const;
 const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"] as const;
-const BLOCK_BUCKETS = 16;
 const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"] as const;
 const HOST = /^h_[0-9a-f]{32}$/u;
 const BOOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;

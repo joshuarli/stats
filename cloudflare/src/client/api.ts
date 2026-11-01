@@ -1,3 +1,5 @@
+import { RANGES, type HistoryKind, type RangeKey } from "../limits";
+
 export interface Host {
   readonly hostId: string;
   readonly name: string;
@@ -110,11 +112,11 @@ export interface Latest {
   };
 }
 
-export type HistoryQuery = { readonly range: string } | { readonly fromMs: number; readonly toMs: number };
+export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
 
 interface HistoryBase {
   readonly hostId: string;
-  readonly range?: string;
+  readonly range?: RangeKey;
   readonly fromMs: number;
   readonly toMs: number;
   readonly resolution: "raw" | "1m" | "1h";
@@ -318,12 +320,18 @@ function decodeSeries<T>(value: unknown, decodePoint: (point: unknown) => T): Se
   };
 }
 
+function isRangeKey(value: unknown): value is RangeKey {
+  return typeof value === "string" && (RANGES as readonly string[]).includes(value);
+}
+
 function decodeHistoryBase(entry: JsonObject): HistoryBase {
   const resolution = entry.resolution;
   if (resolution !== "raw" && resolution !== "1m" && resolution !== "1h") throw new Error("expected a history resolution");
+  const range = entry.range;
+  if (range !== undefined && !isRangeKey(range)) throw new Error("expected a history range");
   return {
     hostId: string(entry.hostId),
-    ...(entry.range === undefined ? {} : { range: string(entry.range) }),
+    ...(range === undefined ? {} : { range }),
     fromMs: number(entry.fromMs),
     toMs: number(entry.toMs),
     resolution,
@@ -434,7 +442,7 @@ export async function getLatest(hostId: string, signal: AbortSignal): Promise<La
   }
 }
 
-function historyUrl(hostId: string, query: HistoryQuery, kind: string): string {
+function historyUrl(hostId: string, query: HistoryQuery, kind: HistoryKind): string {
   const window = "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
   return `${hostPath(hostId, "/history")}?${window}&kind=${kind}`;
 }

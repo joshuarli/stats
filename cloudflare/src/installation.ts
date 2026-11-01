@@ -2,11 +2,11 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, downsample, historyQuery, HOUR_MS, kindValue, MINUTE_MS, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type HistoryQuery, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
+import { combineRollups, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
+import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
+import type { ErrorCode } from "./codes";
 
 export const ONLINE_WINDOW_MS = 45_000;
-export const RAW_STEP_MS = 15_000;
-export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
 export const WINDOW_MS = 60_000;
 export const MAX_REQUESTS_PER_WINDOW = 6;
 
@@ -133,7 +133,7 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return Response.json(body, { status, headers });
 }
 
-function failure(code: string, message: string, status: number, headers: Record<string, string> = {}): Response {
+function failure(code: ErrorCode, message: string, status: number, headers: Record<string, string> = {}): Response {
   return json({ error: { code, message } }, status, headers);
 }
 
@@ -287,7 +287,7 @@ export class Installation extends DurableObject<Env> {
     const fromMs = "range" in query ? now - RANGE_MS[query.range] : query.fromMs;
     const range = "range" in query ? { range: query.range } : {};
     const rawRange = fromMs >= now - RAW_RETENTION_MS;
-    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - 7 * 24 * 60 * 60 * 1000 ? "1m" : "1h";
+    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - MINUTE_RETENTION_MS ? "1m" : "1h";
     let points: HistoryPoints;
     const bucketMs = rawRange ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     if (rawRange) {
@@ -304,7 +304,7 @@ export class Installation extends DurableObject<Env> {
     }
     const series = points as { id: string; name?: string; points: unknown[] }[];
     const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
-    const stride = Math.max(1, Math.ceil(longest / 900));
+    const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
     return {
       hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
       series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
@@ -314,8 +314,8 @@ export class Installation extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const now = this.now();
     const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
-    const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - 7 * 24 * 60 * 60 * 1000).rowsWritten;
-    const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - 90 * 24 * 60 * 60 * 1000).rowsWritten;
+    const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
+    const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
     await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
   }
 
@@ -329,7 +329,7 @@ export class Installation extends DurableObject<Env> {
     if (request.method !== "POST") return failure("invalid_request", "POST required", 405);
     const contentType = request.headers.get("content-type") ?? "";
     if (!contentType.toLowerCase().startsWith("application/json")) return failure("invalid_request", "application/json required", 415);
-    const text = await readLimitedText(request, 65_536);
+    const text = await readLimitedText(request, MAX_BODY_BYTES);
     if (text === null) return failure("too_large", "batch exceeds the body cap", 413);
     const parsed = parseBatch(text);
     if (!parsed.ok) return failure(parsed.code, parsed.message, parsed.code === "too_large" ? 413 : 400);

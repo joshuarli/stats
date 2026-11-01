@@ -195,8 +195,9 @@ fn unescape_mount(value: &str) -> String {
     output
 }
 
+pub const FILESYSTEM_TYPES: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
+
 pub fn parse_mounts(bytes: &[u8]) -> Vec<(String, String)> {
-    const ALLOWED: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text,
         Err(_) => return Vec::new(),
@@ -208,7 +209,7 @@ pub fn parse_mounts(bytes: &[u8]) -> Vec<(String, String)> {
             continue;
         }
         let fs_type = fields[2];
-        if !ALLOWED.contains(&fs_type) {
+        if !FILESYSTEM_TYPES.contains(&fs_type) {
             continue;
         }
         let mount = unescape_mount(fields[1]);

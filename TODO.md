@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-8 · P3 · Limits, retention, ranges, and enums are repeated across server, client, agent, and fixture check
-
-- **Area:** Architecture
-- **Where:** `cloudflare/src/installation.ts:250`, `cloudflare/src/installation.ts:252`, `cloudflare/src/installation.ts:269`, `cloudflare/src/installation.ts:279-280`, `cloudflare/src/installation.ts:295`, `cloudflare/src/aggregate.ts:8-17`, `cloudflare/src/aggregate.ts:121`, `cloudflare/src/protocol.ts:1`, `cloudflare/src/client/state.ts:5-20`, `agent/src/parse.rs:199`, `bpf/biolatency-collector.bt`, `scripts/check-fixtures.mjs:8-10`, `scripts/check-fixtures.mjs:36-37`, `scripts/check-fixtures.mjs:58-68`
-- **Problem:** The 7 d and 90 d retention literals appear separately in tier selection and in the alarm. `history()` uses a literal 900 next to `MAX_POINTS`. The ingest cap repeats `MAX_BODY_BYTES`. The client repeats the range list and milliseconds, and `HistoryQuery.range` and `kind` are untyped strings. The filesystem allow-list, block bucket bounds, and error codes each live in two or three places with no parity check. A retention change in one place silently breaks tier selection, cleanup, or the fixture cost table.
-- **Recommendation:** Export the retention, tier, range, and point constants from one server module that the client imports. Type the client query with `RangeKey` and `HistoryKind`. Add one test that checks the agent's filesystem list and the bucket bounds against the server's.
-- **Fix with:** single-source-of-truth
-- **Effort:** M
-
 ### STA-9 · P3 · Agent builds are not pinned and neither the agent nor the Worker can be rolled back
 
 - **Area:** Build
