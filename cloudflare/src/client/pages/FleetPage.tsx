@@ -1,9 +1,8 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { pointsIn } from "../chart-data";
 import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
-import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
+import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { collectorStatus, statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
@@ -11,11 +10,9 @@ import type { Host, Project } from "../api";
 import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
-import { TimeChart } from "../components/TimeChart";
 import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, StateCell, Widget } from "../components/ui";
 
 const PAGE_SIZE = 10;
-const PALETTE_SIZE = 8;
 const statusLabels = ["online", "stale", "no samples", "revoked"] as const;
 type StatusLabel = (typeof statusLabels)[number];
 const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
@@ -43,12 +40,11 @@ function compareHosts(sort: Sort): (left: Host, right: Host) => number {
 }
 
 export function FleetPage(): JSX.Element {
-  const { query, hosts, now, refreshHosts, tick, view } = useTelemetry();
+  const { query, hosts, now, refreshHosts, tick } = useTelemetry();
   const [search, setSearch] = createSignal("");
   const [selected, setSelected] = createSignal<ReadonlySet<StatusLabel>>(new Set<StatusLabel>());
   const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
   const [page, setPage] = createSignal(1);
-  const [hover, setHover] = createSignal<string | null>(null);
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
 
   const filtered = createMemo(() => {
@@ -94,11 +90,10 @@ export function FleetPage(): JSX.Element {
   };
 
   const sortBy = (key: SortKey) => setSort(current => ({ key, direction: current.key === key ? (current.direction === 1 ? -1 : 1) : 1 }));
-  const colorOf = (host: Host) => Math.max(0, hosts().findIndex(candidate => candidate.hostId === host.hostId)) % PALETTE_SIZE;
 
   return (
     <>
-      <PageHeader title="Fleet" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line" />
+      <PageHeader title="Fleet" hint="Select a host or project to inspect its telemetry" />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
@@ -106,7 +101,6 @@ export function FleetPage(): JSX.Element {
         <Loading fallback={<FleetSkeleton />}>
           <FleetDashboard
             rows={rows()}
-            colorOf={colorOf}
             total={filtered().length}
             allTotal={counts().all}
             counts={counts()}
@@ -122,9 +116,6 @@ export function FleetPage(): JSX.Element {
             setPage={setPage}
             now={now()}
             pending={isPending(rows)}
-            hover={hover()}
-            setHover={setHover}
-            windowed={view() !== null}
           />
         </Loading>
       </Errored>
@@ -216,7 +207,6 @@ function StatusChips(props: {
 
 function FleetDashboard(props: {
   readonly rows: readonly FleetRow[];
-  readonly colorOf: (host: Host) => number;
   readonly total: number;
   readonly allTotal: number;
   readonly counts: { readonly online: number; readonly stale: number; readonly noSamples: number; readonly revoked: number };
@@ -232,14 +222,9 @@ function FleetDashboard(props: {
   readonly setPage: (value: number) => void;
   readonly now: number;
   readonly pending: boolean;
-  readonly hover: string | null;
-  readonly setHover: (value: string | null) => void;
-  readonly windowed: boolean;
 }): JSX.Element {
   const from = () => props.total === 0 ? 0 : (props.page - 1) * PAGE_SIZE + 1;
   const to = () => Math.min(props.total, props.page * PAGE_SIZE);
-  const chartRows = createMemo(() => props.rows.filter(row => row.summary.length > 0));
-  const stepMs = createMemo(() => Math.max(0, ...chartRows().map(row => row.stepMs)) || undefined);
   const header = (key: SortKey, label: string) => (
     <th scope="col" aria-sort={props.sort.key === key ? (props.sort.direction === 1 ? "ascending" : "descending") : "none"}>
       <button class="sort-button" type="button" onClick={() => props.sortBy(key)}>
@@ -252,33 +237,6 @@ function FleetDashboard(props: {
   );
   return (
     <>
-      <section class="chart-grid" aria-label="Fleet charts">
-        <Widget title="CPU utilization" subtitle="by host" expandable>
-          <TimeChart
-            label="CPU utilization"
-            series={chartRows().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: row.summary.map(point => ({ atMs: point.atMs, value: cpuUsed(point) })) }))}
-            stepMs={stepMs()}
-            format={percent}
-            min={0}
-            max={100}
-            limits={LIMITS.cpuPercent}
-            highlight={props.hover}
-            sortTooltip
-          />
-        </Widget>
-        <Widget title="Network receive" subtitle="by host" expandable>
-          <TimeChart
-            label="Network receive"
-            series={chartRows().map(row => ({ label: row.host.name, color: props.colorOf(row.host), points: sumSeries(row.nets, point => point.rxBytesPerSec) }))}
-            stepMs={stepMs()}
-            format={rate}
-            min={0}
-            highlight={props.hover}
-            sortTooltip
-          />
-        </Widget>
-      </section>
-
       <Widget
         title="Hosts"
         class={props.pending ? "widget-pending" : undefined}
@@ -291,9 +249,6 @@ function FleetDashboard(props: {
             <span class="search-icon"><Icon name="search" size={13} /></span>
             <input type="search" placeholder="Filter hosts" value={props.search} onInput={event => props.setSearch(event.currentTarget.value)} />
           </label>
-          <Show when={props.windowed}>
-            <span class="table-note">Values at the end of the zoomed window</span>
-          </Show>
         </div>
         <Show
           when={props.rows.length > 0}
@@ -322,7 +277,7 @@ function FleetDashboard(props: {
               </thead>
               <tbody>
                 <For each={props.rows}>
-                  {(row) => <FleetTableRow row={row} now={props.now} color={props.colorOf(row.host)} setHover={props.setHover} />}
+                  {(row) => <FleetTableRow row={row} now={props.now} />}
                 </For>
               </tbody>
             </table>
@@ -334,10 +289,8 @@ function FleetDashboard(props: {
   );
 }
 
-function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; readonly color: number; readonly setHover: (value: string | null) => void }): JSX.Element {
-  const { view } = useTelemetry();
-  const windowed = createMemo(() => pointsIn(props.row.summary, view()));
-  const last = createMemo(() => latestPoint(windowed()));
+function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }): JSX.Element {
+  const last = createMemo(() => latestPoint(props.row.summary));
   const status = createMemo(() => hostStatus(props.row.host));
   const cpu = createMemo(() => cpuUsed(last()));
   const memory = createMemo(() => memoryUsed(last()));
@@ -347,17 +300,16 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
   const diskWrite = createMemo(() => sumLatest(props.row.disks, point => point.writeBytesPerSec));
   const netIn = createMemo(() => sumLatest(props.row.nets, point => point.rxBytesPerSec));
   const netOut = createMemo(() => sumLatest(props.row.nets, point => point.txBytesPerSec));
-  const trend = createMemo(() => sparkPoints(windowed(), cpuUsed));
+  const trend = createMemo(() => sparkPoints(props.row.summary, cpuUsed));
   const reporting = () => status().label === "online";
   return (
     <tr>
       <td>
         <EntityCell
-          marker={<span class={reporting() ? `host-swatch series-${props.color}` : `status-dot tone-${status().tone}`} aria-hidden="true" />}
+          marker={<span class={`status-dot tone-${status().tone}`} aria-hidden="true" />}
           name={props.row.host.name}
           href={`#/host/${props.row.host.hostId}`}
           id={props.row.host.hostId}
-          onHover={hovered => props.setHover(hovered ? props.row.host.name : null)}
         />
       </td>
       <td><StateCell tone={status().tone} label={status().label} note={reporting() ? undefined : age(props.row.host.lastReceivedAtMs, props.now)} /></td>
@@ -388,10 +340,6 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
 function FleetSkeleton(): JSX.Element {
   return (
     <>
-      <section class="chart-grid" aria-hidden="true">
-        <Widget title="CPU utilization"><Skeleton rows={2} chart /></Widget>
-        <Widget title="Network receive"><Skeleton rows={2} chart /></Widget>
-      </section>
       <Widget title="Hosts">
         <Skeleton rows={7} />
       </Widget>

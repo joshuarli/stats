@@ -230,14 +230,6 @@ test("host summary rebuilds after an empty range becomes populated", async ({ pa
   await expect(page.getByText("No samples were accepted in this range.")).toHaveCount(0);
 });
 
-test("fleet charts keep a stale host that has points", async ({ page }) => {
-  await mock(page, { online: false });
-  await page.goto("/");
-  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("stale");
-  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("alpha");
-  await expect(page.locator(".chart-empty")).toHaveCount(0);
-});
-
 test("search filters the fleet and the status chips narrow it", async ({ page }) => {
   await mock(page);
   await page.goto("/");

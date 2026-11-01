@@ -117,7 +117,7 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status chips (online, stale, no samples, revoked) above the table,
-sortable columns, and fleet charts.
+and sortable columns.
 
 Below the hosts, a Projects table lists each configured Cloudflare project with
 its collector state. A project page (`#/project/<id>`) shows a Worker's

@@ -295,7 +295,6 @@ kbd {
 .sort-button:hover { color: var(--text); }
 th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button { color: var(--text); }
 .entity-cell { display: flex; align-items: center; gap: 10px; }
-.host-swatch { width: 8px; height: 8px; border-radius: 2px; background: currentColor; flex: none; }
 .entity-name { font-weight: 500; display: block; line-height: 1.25; }
 .entity-name::after { content: ""; position: absolute; inset: 0; }
 .entity-id { display: block; max-width: 13ch; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font: 11px var(--mono); }
