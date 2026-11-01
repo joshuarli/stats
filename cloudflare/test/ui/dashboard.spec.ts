@@ -41,9 +41,11 @@ const projectCollector = { fresh: { lastRunAtMs: now - 60_000, lastSuccessAtMs: 
 
 const probeTargets = [{ name: "crates", url: "https://crates.example.com/" }, { name: "npm", url: "https://npm.example.com/" }];
 
-function projects(collector: keyof typeof projectCollector, withProbes: boolean) {
+const PROJECT_BUCKETS = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
+
+function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[]) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], probes: withProbes ? probeTargets : [],
+    id: "stuff", name: "stuff", worker: "stuff", buckets, probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }
@@ -51,7 +53,7 @@ function projects(collector: keyof typeof projectCollector, withProbes: boolean)
 const PROJECT_STEP = 300_000;
 const PROJECT_POINTS = 12;
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean) {
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[]) {
   const fromMs = now - PROJECT_POINTS * PROJECT_STEP;
   const base = { projectId: "stuff", range, fromMs, toMs: now, stepMs: PROJECT_STEP };
   const scale = range === "24h" ? 2 : 1;
@@ -84,7 +86,6 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       ])
     };
   }
-  const buckets = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
   return {
     ...base, kind,
     series: buckets.flatMap(bucket => [
@@ -97,7 +98,8 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean } = {}): Promise<string[]> {
+  const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
@@ -105,8 +107,8 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const range = url.searchParams.get("range") ?? "1h";
     const kind = url.searchParams.get("kind") ?? "summary";
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
-    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true) });
-    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true) });
+    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true, buckets) });
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
@@ -417,6 +419,17 @@ test("a project without probes has no endpoints widget and makes no probe reques
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(page.locator("#endpoints")).toHaveCount(0);
   expect(requests.some(request => request.includes("kind=probes"))).toBe(false);
+});
+
+test("a project without buckets shows no R2 widgets or cells", async ({ page }) => {
+  await mock(page, { bucketless: true, probes: true });
+  await page.goto("/#/project/stuff");
+  const strip = page.getByRole("region", { name: "Project summary" });
+  await expect(strip.getByRole("button", { name: /^Requests:/u })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^R2 /u })).toHaveCount(0);
+  await expect(page.locator("#r2-operations")).toHaveCount(0);
+  await expect(page.locator("#r2-storage")).toHaveCount(0);
+  await expect(strip.getByRole("button")).toHaveCount(5);
 });
 
 test("project charts follow a refresh, not just the first load", async ({ page }) => {

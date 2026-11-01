@@ -87,10 +87,11 @@ async function collectProject(
   probeFetch: ProbeFetch,
   now: number,
 ): Promise<ProjectPoints> {
+  const hasBuckets = project.buckets.length > 0;
   const [worker, operations, storage, probes] = await Promise.all([
     run(workerQuery(project.worker, startMs)),
-    run(r2OperationsQuery(project.buckets, startMs)),
-    run(r2StorageQuery(project.buckets, startMs)),
+    hasBuckets ? run(r2OperationsQuery(project.buckets, startMs)) : [],
+    hasBuckets ? run(r2StorageQuery(project.buckets, startMs)) : [],
     runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
   const points: MetricPoint[] = [

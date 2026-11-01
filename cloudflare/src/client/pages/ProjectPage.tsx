@@ -47,6 +47,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const id = () => props.project.id;
   const worker = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "worker", signal)));
+  const hasBuckets = () => props.project.buckets.length > 0;
   const r2 = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "r2", signal)));
   const collector = createMemo(() => loadQuery(signal => getProjectCollector(id(), range(), signal)));
   const probes = createMemo(() => (props.project.probes.length === 0 ? Promise.resolve(undefined) : loadQuery(signal => getProjectMetrics(id(), range(), "probes", signal))));
@@ -79,7 +80,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-        hint="Worker script, R2 buckets, and the collector that reads them · drag a chart to zoom"
+        hint={`Worker script, ${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
       />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
@@ -103,7 +104,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} label="Project summary" six={cells().length === 6} />
+            <StatusStrip cells={cells()} label="Project summary" threeColumns={cells().length === 5 || cells().length === 6} />
             <section class="columns" aria-label="Charts">
               <div class="column" role="region" aria-label="Left column">
                 <RequestsWidget data={data()} />
@@ -115,8 +116,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </div>
               <div class="column" role="region" aria-label="Right column">
                 <IncidentTimeline cells={cells()} />
-                <OperationsWidget data={data()} />
-                <StorageWidget data={data()} />
+                <Show when={hasBuckets()}>
+                  <OperationsWidget data={data()} />
+                  <StorageWidget data={data()} />
+                </Show>
                 <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
               </div>
             </section>

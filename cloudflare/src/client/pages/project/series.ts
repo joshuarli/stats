@@ -100,13 +100,17 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
     { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricPoints(data.worker, "worker.invocations"), format: count },
     { id: "server-errors", label: "Worker 5xx", anchor: "status", limits: LIMITS.workerServerErrorPercent, points: serverErrorShare(data), format: percent },
     { id: "cpu-time", label: "CPU time", anchor: "cpu", limits: LIMITS.workerCpuMs, points: cpuAverage(data), format: milliseconds },
-    { id: "r2-other", label: "R2 failures", anchor: "r2-operations", limits: LIMITS.r2OtherPercent, points: otherShare(data), format: percent },
-    { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes },
+    ...(data.buckets.length === 0
+      ? []
+      : [
+          { id: "r2-other", label: "R2 failures", anchor: "r2-operations", limits: LIMITS.r2OtherPercent, points: otherShare(data), format: percent },
+          { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes }
+        ]),
     { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: minutes }
   ];
   const ups = probeUp(data);
   if (ups.length > 0) {
-    specs.splice(5, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText });
+    specs.splice(specs.length - 1, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText });
   }
   return specs.map(spec => {
     const windowed = spec.id === "collector" ? spec.points : pointsIn(spec.points, view);

@@ -143,7 +143,7 @@ Durable Object storage ceiling.
 ## Cloudflare projects
 
 A project is one entry in the `PROJECTS` text binding: an id, a display name,
-a Worker script, one to eight R2 bucket names, and up to eight HTTPS probe
+a Worker script, up to eight R2 bucket names, and up to eight HTTPS probe
 URLs. `cloudflare.config.ts` writes the list and validates it when the config
 is evaluated, so a bad entry fails `make worker-check`. `src/projects/config.ts`
 validates it again on every use and rejects unknown keys, duplicate ids,

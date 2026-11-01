@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PROBES_PER_PROJECT, parseProjects, ProjectConfigError } from "../src/projects/config";
+import { MAX_PROBES_PER_PROJECT, parseProjects, ProjectConfigError, type ProjectConfig } from "../src/projects/config";
 
 const valid = {
   id: "stuff",
@@ -9,7 +9,7 @@ const valid = {
   probes: [{ name: "npm", url: "https://npm.17166969.xyz/current/" }],
 };
 
-function parse(project: unknown): unknown {
+function parse(project: unknown): ProjectConfig[] {
   return parseProjects(JSON.stringify([project]));
 }
 
@@ -58,9 +58,9 @@ describe("project registry", () => {
     expect(rejection({ ...valid, name: "" })).toContain("projects[0].name");
   });
 
-  it("requires one to eight distinct buckets", () => {
-    expect(rejection({ ...valid, buckets: [] })).toContain("projects[0].buckets: expected 1 to 8");
-    expect(rejection({ ...valid, buckets: Array.from({ length: 9 }, (_, i) => `bucket-${i}`) })).toContain("projects[0].buckets: expected 1 to 8");
+  it("accepts a project without buckets and rejects more than eight or duplicate buckets", () => {
+    expect(parse({ ...valid, buckets: [] })[0]?.buckets).toEqual([]);
+    expect(rejection({ ...valid, buckets: Array.from({ length: 9 }, (_, i) => `bucket-${i}`) })).toContain("projects[0].buckets: expected at most 8");
     expect(rejection({ ...valid, buckets: ["stuff-mynpm", "stuff-mynpm"] })).toContain("projects[0].buckets: duplicate");
   });
 

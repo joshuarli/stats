@@ -106,6 +106,19 @@ describe("collector", () => {
     expect(windowStartMs(NOW)).toBe(Date.UTC(2026, 10, 1, 15, 5));
   });
 
+  it("asks only the Worker query for a project without buckets", async () => {
+    const analytics = fakeAnalytics(fixtureRows());
+    const result = await runCollector({
+      analytics,
+      store: stub(),
+      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], probes: [] }]),
+      now: NOW,
+      probeFetch: noProbes,
+    });
+    expect(result.queries).toBe(1);
+    expect(analytics.calls.map((call) => call.query).join(" ")).not.toContain("r2Combined");
+  });
+
   it("records a failed run, writes no metrics, logs one fixed line, and rethrows", async () => {
     const store = stub();
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);

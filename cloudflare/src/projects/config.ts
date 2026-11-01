@@ -52,8 +52,8 @@ export function parseProjects(text: string): ProjectConfig[] {
 function parseProject(entry: unknown, path: string): ProjectConfig {
   const record = exactRecord(entry, PROJECT_KEYS, path);
   const buckets = array(record["buckets"], `${path}.buckets`);
-  if (buckets.length < 1 || buckets.length > MAX_BUCKETS_PER_PROJECT) {
-    throw new ProjectConfigError(`${path}.buckets: expected 1 to ${MAX_BUCKETS_PER_PROJECT} names`);
+  if (buckets.length > MAX_BUCKETS_PER_PROJECT) {
+    throw new ProjectConfigError(`${path}.buckets: expected at most ${MAX_BUCKETS_PER_PROJECT} names`);
   }
   const probes = array(record["probes"], `${path}.probes`);
   if (probes.length > MAX_PROBES_PER_PROJECT) {
