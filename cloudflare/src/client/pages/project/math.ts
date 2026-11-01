@@ -17,6 +17,10 @@ export function addAll(parts: readonly (readonly ChartPoint[])[]): ChartPoint[] 
 
 const HOLD_MAX_MS = 60 * MINUTE_MS;
 
+export function scaled(points: readonly ChartPoint[], factor: number): ChartPoint[] {
+  return points.map(point => ({ atMs: point.atMs, value: point.value === undefined ? undefined : point.value * factor }));
+}
+
 export function holdLast(points: readonly ChartPoint[]): ChartPoint[] {
   let held: { readonly atMs: number; readonly value: number } | undefined;
   return points.map(point => {

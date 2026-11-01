@@ -10,6 +10,8 @@ import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { IncidentTimeline, StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
+import { CostWidget } from "./project/Cost";
+import { D1Widget } from "./project/D1";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
@@ -50,16 +52,19 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const worker = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "worker", signal)));
   const hasBuckets = () => props.project.buckets.length > 0;
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
+  const hasDatabases = () => props.project.d1Databases.length > 0;
   const routes = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "routes", signal)));
   const durableObjects = createMemo(() => (hasNamespaces() ? loadQuery(signal => getProjectMetrics(id(), range(), "durable-objects", signal)) : Promise.resolve(undefined)));
   const r2 = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "r2", signal)));
+  const d1 = createMemo(() => (hasDatabases() ? loadQuery(signal => getProjectMetrics(id(), range(), "d1", signal)) : Promise.resolve(undefined)));
+  const d1Statements = createMemo(() => (hasDatabases() ? loadQuery(signal => getProjectMetrics(id(), range(), "d1-statements", signal)) : Promise.resolve(undefined)));
   const collector = createMemo(() => loadQuery(signal => getProjectCollector(id(), range(), signal)));
   const probes = createMemo(() => (props.project.probes.length === 0 ? Promise.resolve(undefined) : loadQuery(signal => getProjectMetrics(id(), range(), "probes", signal))));
 
   const doRefresh = async () => {
     setRefreshError(null);
     try {
-      await Promise.all([refresh(worker), refresh(routes), refresh(durableObjects), refresh(r2), refresh(collector), refresh(probes)]);
+      await Promise.all([refresh(worker), refresh(routes), refresh(durableObjects), refresh(r2), refresh(d1), refresh(d1Statements), refresh(collector), refresh(probes)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
@@ -71,6 +76,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     routes: routes(),
     durableObjects: durableObjects(),
     r2: r2(),
+    d1: d1(),
+    d1Statements: d1Statements(),
     probes: probes(),
     probeNames: props.project.probes.map(probe => probe.name),
     buckets: props.project.buckets,
@@ -86,7 +93,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-        hint={`Worker script, ${hasNamespaces() ? "Durable Objects, " : ""}${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
+        hint={`Worker script, ${hasNamespaces() ? "Durable Objects, " : ""}${hasDatabases() ? "D1, " : ""}${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
       />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
@@ -123,6 +130,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </div>
               <div class="column" role="region" aria-label="Right column">
                 <IncidentTimeline cells={cells()} />
+                <CostWidget data={data()} view={view()} />
+                <Show when={hasDatabases()}>
+                  <D1Widget data={data()} view={view()} />
+                </Show>
                 <Show when={hasNamespaces()}>
                   <DurableObjectsWidget data={data()} />
                 </Show>

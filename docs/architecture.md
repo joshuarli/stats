@@ -210,6 +210,13 @@ use bound parameters, so request data does not create series. The dataset
 reports every statement the database ran, so a backfill or a migration shows
 up here as its own statements.
 
+The project page's Estimated cost widget multiplies collected usage (Worker
+requests and CPU, Durable Object requests, D1 rows) by the Workers Paid list
+prices in `cloudflare/src/client/pricing.ts`. It is a list-price figure for the
+range shown, before the included monthly allowances, and leaves out R2, storage,
+and Durable Object duration, so it ranks where spend comes from and is not a
+bill.
+
 **Missing versus zero.** A five-minute bucket is settled once its end is 45
 minutes old, because analytics rows arrive late. The history API reports `0`
 for a settled counter bucket that has no row only when a successful collector

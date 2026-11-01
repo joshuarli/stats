@@ -45,9 +45,11 @@ const PROJECT_BUCKETS = ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"];
 
 const NAMESPACES = ["b25c2595ba784bb1bd51a87a3e87c62b"];
 
-function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[], durableObjectNamespaces: readonly string[]) {
+const DATABASES = ["9870c4da-3758-4f0c-ab6d-2372eb34009b"];
+
+function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[], durableObjectNamespaces: readonly string[], d1Databases: readonly string[]) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, d1Databases: [], probes: withProbes ? probeTargets : [],
+    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, d1Databases, probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }
@@ -102,6 +104,31 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       ]
     };
   }
+  if (kind === "d1") {
+    return {
+      ...base, kind,
+      series: [
+        { metric: "d1.queries", values: column(() => 300) },
+        { metric: "d1.rowsRead", values: column(() => 50_000_000) },
+        { metric: "d1.rowsWritten", values: column(() => 100_000) }
+      ]
+    };
+  }
+  if (kind === "d1-statements") {
+    const statement = (name: string, queries: number, rowsRead: number, rowsWritten: number) => [
+      { metric: `d1q.${name}.queries`, values: column(() => queries) },
+      { metric: `d1q.${name}.rowsRead`, values: column(() => rowsRead) },
+      { metric: `d1q.${name}.rowsWritten`, values: column(() => rowsWritten) }
+    ];
+    return {
+      ...base, kind,
+      series: [
+        ...statement("SELECT * FROM big_read", 100, 50_000_000, 0),
+        ...statement("INSERT INTO log VALUES (?)", 100, 0, 10_000),
+        ...statement("UPDATE hot SET a = ?", 100, 0, 90_000)
+      ]
+    };
+  }
   if (kind === "probes") {
     return {
       ...base, kind,
@@ -123,9 +150,10 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
+  const databases = options.d1 === true ? DATABASES : [];
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
@@ -134,7 +162,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const kind = url.searchParams.get("kind") ?? "summary";
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
     if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true, buckets) });
-    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces) });
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces, databases) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
@@ -491,6 +519,34 @@ test("a project without namespaces has no Durable Object widget and makes no req
   await expect(page.locator("#routes")).toBeVisible();
   await expect(page.locator("#durable-objects")).toHaveCount(0);
   expect(requests.some(request => request.includes("kind=durable-objects"))).toBe(false);
+});
+
+test("D1 ranks statements by list cost and the cost estimate adds D1 to the Worker's usage", async ({ page }) => {
+  const requests = await mock(page, { d1: true });
+  await page.goto("/#/project/stuff");
+  const rows = page.locator("#d1").getByRole("table", { name: "D1 cost by statement" }).locator("tbody tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("UPDATE hot SET a = ?");
+  await expect(rows.nth(0)).toContainText("$1.08");
+  await expect(rows.nth(1)).toContainText("SELECT * FROM big_read");
+  await expect(rows.nth(1)).toContainText("$0.60");
+  await expect(rows.nth(2)).toContainText("INSERT INTO log VALUES (?)");
+  await expect(rows.nth(2)).toContainText("$0.12");
+  const cost = page.locator("#cost").getByRole("table", { name: "Estimated cost by component" });
+  await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("$1.20");
+  await expect(cost.getByRole("row", { name: /D1 rows read/u })).toContainText("$0.60");
+  await expect(cost.getByRole("row", { name: /^Total/u })).toContainText("$1.80");
+  expect(requests.some(request => request.includes("kind=d1-statements"))).toBe(true);
+});
+
+test("a project without databases has no D1 widget, no D1 request, and a cost estimate without D1 rows", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  const cost = page.locator("#cost").getByRole("table", { name: "Estimated cost by component" });
+  await expect(cost.getByRole("row", { name: /Worker requests/u })).toBeVisible();
+  await expect(cost.getByRole("row", { name: /D1/u })).toHaveCount(0);
+  await expect(page.locator("#d1")).toHaveCount(0);
+  expect(requests.some(request => request.includes("kind=d1"))).toBe(false);
 });
 
 test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {

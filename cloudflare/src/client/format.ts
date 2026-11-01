@@ -42,6 +42,12 @@ export function count(value: number | undefined): string {
   return isFiniteNumber(value) ? number.format(value) : unavailableText;
 }
 
+export function dollars(value: number | undefined): string {
+  if (!isFiniteNumber(value)) return unavailableText;
+  if (value >= 0.01 || value === 0) return `$${value.toFixed(2)}`;
+  return value < 0.0001 ? "<$0.0001" : `$${value.toPrecision(2)}`;
+}
+
 export function milliseconds(value: number | undefined): string {
   return isFiniteNumber(value) ? `${count(value)} ms` : count(value);
 }

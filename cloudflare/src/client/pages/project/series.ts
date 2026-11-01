@@ -3,7 +3,8 @@ import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
 import { bytes, count, milliseconds, minutes, percent } from "../../format";
 import { LIMITS, MIN_SCORED_EVENTS, type Limits } from "../../health";
 import { monitorOne } from "../../incidents";
-import { addAll, holdLast, ratio } from "./math";
+import { addAll, holdLast, ratio, scaled } from "./math";
+import { LIST_PRICE_PER_MILLION } from "../../pricing";
 import { PROJECT_SETTLE_MS } from "../../../limits";
 import { CELL_HUES, lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
@@ -40,6 +41,8 @@ export interface ProjectData {
   readonly routes: ProjectMetricHistory;
   readonly durableObjects: ProjectMetricHistory | undefined;
   readonly r2: ProjectMetricHistory;
+  readonly d1: ProjectMetricHistory | undefined;
+  readonly d1Statements: ProjectMetricHistory | undefined;
   readonly probes: ProjectMetricHistory | undefined;
   readonly probeNames: readonly string[];
   readonly buckets: readonly string[];
@@ -75,9 +78,7 @@ export interface RouteRow {
 }
 
 function seriesTotal(history: ProjectMetricHistory, metric: string, view: TimeWindow | null): number {
-  let total = 0;
-  for (const point of pointsIn(metricPoints(history, metric), view)) total += point.value ?? 0;
-  return total;
+  return totalIn(metricPoints(history, metric), view);
 }
 
 export function routeRows(history: ProjectMetricHistory, view: TimeWindow | null): RouteRow[] {
@@ -91,6 +92,63 @@ export function routeRows(history: ProjectMetricHistory, view: TimeWindow | null
   return totals
     .map(entry => ({ ...entry, cpuShare: allCpu > 0 ? (entry.cpuMs / allCpu) * 100 : 0, averageMs: entry.invocations > 0 ? entry.cpuMs / entry.invocations : undefined }))
     .sort((left, right) => right.cpuMs - left.cpuMs || left.route.localeCompare(right.route));
+}
+
+export interface StatementRow {
+  readonly statement: string;
+  readonly queries: number;
+  readonly rowsRead: number;
+  readonly rowsWritten: number;
+  readonly cost: number;
+}
+
+export function statementRows(history: ProjectMetricHistory, view: TimeWindow | null): StatementRow[] {
+  const statements = new Set(history.series.map(entry => entry.metric.slice("d1q.".length, entry.metric.lastIndexOf("."))));
+  return [...statements]
+    .map(statement => {
+      const rowsRead = seriesTotal(history, `d1q.${statement}.rowsRead`, view);
+      const rowsWritten = seriesTotal(history, `d1q.${statement}.rowsWritten`, view);
+      return {
+        statement,
+        queries: seriesTotal(history, `d1q.${statement}.queries`, view),
+        rowsRead,
+        rowsWritten,
+        cost: (rowsWritten * LIST_PRICE_PER_MILLION.d1RowsWritten + rowsRead * LIST_PRICE_PER_MILLION.d1RowsRead) / 1_000_000
+      };
+    })
+    .sort((left, right) => right.cost - left.cost || left.statement.localeCompare(right.statement));
+}
+
+export interface CostPart {
+  readonly label: string;
+  readonly unit: string;
+  readonly points: readonly ChartPoint[];
+  readonly usage: readonly ChartPoint[];
+}
+
+function costPart(label: string, unit: string, usage: readonly ChartPoint[], pricePerMillion: number): CostPart {
+  return { label, unit, usage, points: scaled(usage, pricePerMillion / 1_000_000) };
+}
+
+export function costParts(data: ProjectData): CostPart[] {
+  const parts = [
+    costPart("Worker requests", "requests", metricPoints(data.worker, "worker.invocations"), LIST_PRICE_PER_MILLION.workerRequests),
+    costPart("Worker CPU", "CPU ms", metricPoints(data.worker, "worker.cpuMsSum"), LIST_PRICE_PER_MILLION.workerCpuMs)
+  ];
+  if (data.durableObjects !== undefined) {
+    parts.push(costPart("Durable Object requests", "requests", metricPoints(data.durableObjects, "do.invocations"), LIST_PRICE_PER_MILLION.durableObjectRequests));
+  }
+  if (data.d1 !== undefined) {
+    parts.push(costPart("D1 rows written", "rows", metricPoints(data.d1, "d1.rowsWritten"), LIST_PRICE_PER_MILLION.d1RowsWritten));
+    parts.push(costPart("D1 rows read", "rows", metricPoints(data.d1, "d1.rowsRead"), LIST_PRICE_PER_MILLION.d1RowsRead));
+  }
+  return parts;
+}
+
+export function totalIn(points: readonly ChartPoint[], view: TimeWindow | null): number {
+  let total = 0;
+  for (const point of pointsIn(points, view)) total += point.value ?? 0;
+  return total;
 }
 
 export function durableObjectCpuAverage(history: ProjectMetricHistory): ChartPoint[] {
