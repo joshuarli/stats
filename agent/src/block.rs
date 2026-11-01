@@ -113,12 +113,16 @@ mod tests {
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
 
     fn scratch() -> PathBuf {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/block-tests");
         fs::create_dir_all(&root).unwrap();
         let nanos = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let path = root.join(format!("{}-{nanos}", std::process::id()));
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = root.join(format!("{}-{nanos}-{id}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         path
     }
