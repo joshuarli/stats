@@ -105,6 +105,13 @@ const HOST_SYSTEM = `CREATE TABLE IF NOT EXISTS host_system (
 ) STRICT`;
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
 
+const WEIGHTED_HISTORY_ENDS_MS = 1793565600000;
+const WEIGHTED_METRICS = `(metric LIKE 'worker.%' AND metric <> 'worker.cpuMsMax') OR metric LIKE 'route.%' OR metric LIKE 'r2.%.ops.%' OR metric IN ('d1.queries', 'd1.rowsRead', 'd1.rowsWritten') OR metric LIKE 'd1q.%'`;
+const PURGE_WEIGHTED_PROJECT_HISTORY: readonly string[] = [
+  `DELETE FROM project_samples WHERE bucket_ms < ${WEIGHTED_HISTORY_ENDS_MS} AND (${WEIGHTED_METRICS})`,
+  `DELETE FROM project_hours WHERE hour_ms < ${WEIGHTED_HISTORY_ENDS_MS} AND (${WEIGHTED_METRICS})`
+];
+
 interface Migration {
   readonly version: number;
   readonly statements: readonly string[];
@@ -114,7 +121,8 @@ const MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] },
   { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] },
   { version: 3, statements: [HOST_SYSTEM] },
-  { version: 4, statements: PROJECT_STATEMENTS }
+  { version: 4, statements: PROJECT_STATEMENTS },
+  { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
