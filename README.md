@@ -133,3 +133,13 @@ zoomed or when the tab is hidden), `/` focuses the host search.
 
 A host is online when the server received a sample in the last 45 seconds.
 Missing values render as `—` or `unavailable`, never as zero.
+
+Charts mark where a metric is elevated or critical: a tinted zone and dashed
+limit line, a line that changes color where it crosses a limit, a marker where
+it went bad and where it recovered, and a caption such as "Critical since
+07:11 · 23 min" or "OK · recovering since 07:29". Status always carries an
+icon and a word, never color alone. Series colors mean the same thing on every
+chart (in/read blue, out/write aqua, CPU blue, memory aqua, I/O violet), and
+the status colors are reserved for state. The limits are in
+`cloudflare/src/client/health.ts`. A metric is recovered after five minutes
+back inside its limits. The device tables list only devices still reporting.

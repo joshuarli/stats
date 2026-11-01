@@ -4,20 +4,21 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { alignSeries, windowIndexes, windowStats, type ChartPoint } from "../chart-data";
 import { axisTime, clock, percent } from "../format";
+import { describeState, findEpisodes, healthOf, HEALTH_GLYPH, HEALTH_LABEL, markersOf, RECOVERY_MS, worse, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
+import { HealthMark } from "./ui";
 
 export type { ChartPoint };
 
+export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
+
 export interface ChartSeries {
   readonly label: string;
-  readonly color: number;
+  readonly color: number | VizColor;
   readonly points: readonly ChartPoint[];
   readonly dashed?: boolean | undefined;
-}
-
-export interface ChartThreshold {
-  readonly value: number;
-  readonly label: string;
+  readonly scored?: boolean | undefined;
+  readonly graded?: boolean | undefined;
 }
 
 export interface TimeChartProps {
@@ -27,7 +28,7 @@ export interface TimeChartProps {
   readonly min?: number | undefined;
   readonly max?: number | undefined;
   readonly area?: boolean | undefined;
-  readonly threshold?: ChartThreshold | undefined;
+  readonly limits?: Limits | undefined;
   readonly legend?: boolean | undefined;
   readonly highlight?: string | null | undefined;
   readonly stepMs?: number | undefined;
@@ -37,6 +38,10 @@ export interface TimeChartProps {
 const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
 const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
+
+const colorVariable = (color: number | VizColor): string => (typeof color === "number" ? `--s${color}` : `--viz-${color}`);
+const colorClass = (color: number | VizColor): string => (typeof color === "number" ? `series-${color}` : `viz-${color}`);
+const MAX_MARKERS = 6;
 
 function withAlpha(color: string, alpha: number): string | undefined {
   return /^#[0-9a-f]{6}$/iu.test(color) ? `${color}${Math.round(alpha * 255).toString(16).padStart(2, "0")}` : undefined;
@@ -55,6 +60,18 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   let plot: uPlot | undefined;
 
   const latest = createMemo(() => windowStats(aligned().columns[0] ?? [], 0, aligned().times.length - 1)?.last);
+  const scoredColumns = createMemo(() => props.series.flatMap((entry, position) => (entry.scored === false ? [] : [aligned().columns[position] ?? []])));
+  const healths = createMemo((): (Health | null)[] => {
+    const limits = props.limits;
+    if (limits === undefined) return [];
+    return aligned().times.map((_, index) => scoredColumns().reduce<Health | null>((worst, column) => worse(worst, healthOf(column[index], limits)), null));
+  });
+  const episodes = createMemo(() => findEpisodes(healths(), aligned().times, RECOVERY_MS));
+  const state = createMemo(() => (props.limits === undefined ? undefined : describeState(aligned().times, healths(), episodes())));
+  const healthAt = (value: number | null | undefined): Health | undefined => {
+    const limits = props.limits;
+    return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
+  };
 
   const data = (): uPlot.AlignedData => [aligned().times.map(time => time / 1000), ...aligned().columns.map(column => [...column])] as uPlot.AlignedData;
 
@@ -72,7 +89,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     const token = (name: string) => styles.getPropertyValue(name).trim();
     const dpr = window.devicePixelRatio;
     const axisFont = `11px ${token("--font")}`;
-    const colors = props.series.map(entry => token(`--s${entry.color}`));
+    const colors = props.series.map(entry => token(colorVariable(entry.color)));
     const axis = (extra: Partial<uPlot.Axis>): uPlot.Axis => ({
       stroke: token("--mut"),
       font: axisFont,
@@ -107,33 +124,132 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         const amount = document.createElement("em");
         amount.textContent = format(value);
         for (const child of [swatch, name, amount]) line.appendChild(child);
+        const health = entry.scored === false ? undefined : healthAt(value);
+        if (health === "elevated" || health === "critical") {
+          const mark = document.createElement("span");
+          mark.className = `health health-${health}`;
+          const icon = document.createElement("span");
+          icon.className = "health-icon";
+          icon.textContent = HEALTH_GLYPH[health];
+          const word = document.createElement("span");
+          word.textContent = HEALTH_LABEL[health];
+          mark.appendChild(icon);
+          mark.appendChild(word);
+          line.appendChild(mark);
+        }
         return line;
       }));
       tooltip.hidden = false;
       tooltip.style.left = `${left > chart.over.clientWidth * 0.6 ? left - tooltip.offsetWidth - 14 : left + 14}px`;
     };
 
-    const drawThreshold = (chart: uPlot) => {
-      const threshold = props.threshold;
-      if (threshold === undefined) return;
-      const y = Math.round(chart.valToPos(threshold.value, "y", true));
+    const yAt = (chart: uPlot, value: number) => {
+      const { top, height } = chart.bbox;
+      return Math.min(top + height, Math.max(top, chart.valToPos(value, "y", true)));
+    };
+
+    const drawBands = (chart: uPlot) => {
+      const limits = props.limits;
+      if (limits === undefined) return;
       const { left, top, width, height } = chart.bbox;
-      if (y < top || y > top + height) return;
+      const elevated = yAt(chart, limits.elevated);
+      const critical = yAt(chart, limits.critical);
       const context = chart.ctx;
       context.save();
-      context.strokeStyle = token("--bad");
-      context.fillStyle = token("--bad");
-      context.globalAlpha = 0.55;
+      const fill = (from: number, to: number, color: string, alpha: number) => {
+        context.globalAlpha = alpha;
+        context.fillStyle = color;
+        context.fillRect(left, Math.min(from, to), width, Math.abs(to - from));
+      };
+      if (limits.direction === "above") {
+        fill(critical, elevated, token("--serious"), 0.1);
+        fill(top, critical, token("--critical"), 0.13);
+      } else {
+        fill(elevated, critical, token("--serious"), 0.1);
+        fill(critical, top + height, token("--critical"), 0.13);
+      }
+      context.restore();
+    };
+
+    const drawLimits = (chart: uPlot) => {
+      const limits = props.limits;
+      if (limits === undefined) return;
+      const { left, top, width, height } = chart.bbox;
+      const context = chart.ctx;
+      context.save();
       context.setLineDash([4 * dpr, 3 * dpr]);
-      context.beginPath();
-      context.moveTo(left, y);
-      context.lineTo(left + width, y);
-      context.stroke();
-      context.setLineDash([]);
       context.font = `${10 * dpr}px ${token("--font")}`;
       context.textAlign = "right";
-      context.fillText(threshold.label, left + width - 4 * dpr, y - 4 * dpr);
+      for (const [value, color, label] of [[limits.elevated, "--serious", "elevated"], [limits.critical, "--critical", "critical"]] as const) {
+        const y = Math.round(chart.valToPos(value, "y", true));
+        if (y < top || y > top + height) continue;
+        context.strokeStyle = token(color);
+        context.globalAlpha = 0.7;
+        context.beginPath();
+        context.moveTo(left, y);
+        context.lineTo(left + width, y);
+        context.stroke();
+        context.globalAlpha = 1;
+        const text = `${label} ${format(value)}`;
+        const baseline = y - 4 * dpr < top + 10 * dpr ? y + 11 * dpr : y - 4 * dpr;
+        context.lineJoin = "round";
+        context.lineWidth = 3 * dpr;
+        context.strokeStyle = token("--surface");
+        context.strokeText(text, left + width - 4 * dpr, baseline);
+        context.fillStyle = token("--text-2");
+        context.fillText(text, left + width - 4 * dpr, baseline);
+      }
       context.restore();
+    };
+
+    const drawMarkers = (chart: uPlot) => {
+      const limits = props.limits;
+      if (limits === undefined) return;
+      const { left, top, width, height } = chart.bbox;
+      const times = aligned().times;
+      const context = chart.ctx;
+      context.save();
+      for (const marker of markersOf(episodes()).slice(-MAX_MARKERS)) {
+        const time = times[marker.index];
+        if (time === undefined) continue;
+        const x = chart.valToPos(time / 1000, "x", true);
+        const values = scoredColumns().flatMap(column => (column[marker.index] === null || column[marker.index] === undefined ? [] : [column[marker.index]!]));
+        if (values.length === 0 || x < left || x > left + width) continue;
+        const value = limits.direction === "above" ? Math.max(...values) : Math.min(...values);
+        const y = chart.valToPos(value, "y", true);
+        if (y < top || y > top + height) continue;
+        const color = token(marker.kind === "critical" ? "--critical" : marker.kind === "elevated" ? "--serious" : "--good");
+        context.lineWidth = 2 * dpr;
+        context.strokeStyle = token("--surface");
+        context.fillStyle = marker.kind === "recovered" ? token("--surface") : color;
+        context.beginPath();
+        context.arc(x, y, 4.5 * dpr, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        if (marker.kind === "recovered") {
+          context.lineWidth = 1.75 * dpr;
+          context.strokeStyle = color;
+          context.beginPath();
+          context.arc(x, y, 3.5 * dpr, 0, Math.PI * 2);
+          context.stroke();
+        }
+      }
+      context.restore();
+    };
+
+    const gradedStroke = (chart: uPlot, base: string): CanvasGradient => {
+      const limits = props.limits;
+      const { top, height } = chart.bbox;
+      const gradient = chart.ctx.createLinearGradient(0, top, 0, top + height);
+      if (limits === undefined) return gradient;
+      const offset = (value: number) => Math.min(1, Math.max(0, (chart.valToPos(value, "y", true) - top) / height));
+      const elevated = offset(limits.elevated);
+      const critical = offset(limits.critical);
+      const stops: readonly (readonly [number, string])[] = limits.direction === "above"
+        ? [[0, token("--critical")], [critical, token("--critical")], [critical, token("--serious")], [elevated, token("--serious")], [elevated, base], [1, base]]
+        : [[0, base], [elevated, base], [elevated, token("--serious")], [critical, token("--serious")], [critical, token("--critical")], [1, token("--critical")]];
+      for (const [position, color] of stops) gradient.addColorStop(position, color);
+      return gradient;
     };
 
     const options: uPlot.Options = {
@@ -155,7 +271,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         y: {
           range: (_chart, low, high) => {
             if (low === null || high === null) return [props.min ?? 0, props.max ?? 1];
-            const top = props.threshold === undefined || props.max !== undefined ? high : Math.max(high, props.threshold.value * 1.08);
+            const top = props.limits === undefined || props.limits.direction === "below" || props.max !== undefined ? high : Math.max(high, props.limits.elevated * 1.3);
             const pad = (top - low || 1) * 0.08;
             return [props.min ?? low - pad, props.max ?? top + pad];
           }
@@ -183,8 +299,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           const end = props.area === true && position === 0 ? withAlpha(color, 0) : undefined;
           return {
             label: entry.label,
-            stroke: color,
-            width: 1.5,
+            stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
+            width: entry.graded === true ? 2 : 1.5,
             spanGaps: false,
             points: { show: false },
             ...(entry.dashed === true ? { dash: [4, 3] } : {}),
@@ -224,7 +340,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           chart.setSelect(CLEARED_SELECT, false);
           telemetry.zoomTo({ fromMs, toMs });
         }],
-        draw: [drawThreshold]
+        drawClear: [drawBands],
+        draw: [drawLimits, drawMarkers]
       }
     };
     plot = new uPlot(options, data(), element);
@@ -306,6 +423,14 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
 
   return (
     <div class="chart">
+      <Show when={state()}>
+        {(current) => (
+          <div class={`chart-state health-${current().health}`} role="status">
+            <HealthMark health={current().health} showOk word={false} />
+            <span>{current().text}</span>
+          </div>
+        )}
+      </Show>
       <div
         class="chart-plot"
         ref={(element) => { host = element; }}
@@ -342,14 +467,14 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                         aria-label={`Show only ${entry.label}`}
                         onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
                       >
-                        <span class={`legend-swatch series-${entry.color}${entry.dashed === true ? " dashed" : ""}`} />
+                        <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
                       </button>
                     </td>
                     <td>{entry.label}</td>
                     <td>{format(stats()?.min)}</td>
                     <td>{format(stats()?.avg)}</td>
-                    <td>{format(stats()?.max)}</td>
-                    <td class="legend-now">{format(shown())}</td>
+                    <td>{format(stats()?.max)}{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</td>
+                    <td class="legend-now">{format(shown())}{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</td>
                   </tr>
                 );
               }}

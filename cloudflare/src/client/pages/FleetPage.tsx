@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { pointsIn } from "../chart-data";
+import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
 import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
 import { loadFleetRows, type FleetRow } from "../queries";
@@ -214,7 +215,7 @@ function FleetDashboard(props: {
             format={percent}
             min={0}
             max={100}
-            threshold={{ value: 90, label: "alert 90%" }}
+            limits={LIMITS.cpuPercent}
             highlight={props.hover}
             sortTooltip
           />
@@ -326,7 +327,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
       <td>
         <div class="cpu-cell">
           <span class="metric-value-small">{percent(cpu())}</span>
-          <Meter value={cpu()} warn={75} bad={90} />
+          <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
           <Sparkline points={trend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
         </div>
       </td>
@@ -334,7 +335,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
         <div class="cell-stack">
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(memory())}</span>
-            <Meter value={memory()} warn={80} bad={92} />
+            <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
           </div>
           <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>

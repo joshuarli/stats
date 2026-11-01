@@ -4,6 +4,7 @@ import { useParams } from "@solidjs/router";
 import { getBlock, getDisks, getFilesystems, getLatest, getNets, getSummary, type BlockSeries, type DiskSeries, type FilesystemSeries, type Host, type NetSeries, type Psi, type Series, type SummaryPoint } from "../api";
 import { pointsIn, windowStats, type ChartPoint } from "../chart-data";
 import { age, bytes, count, errorMessage, isFiniteNumber, microseconds, percent, percentUsed, rate, uptime } from "../format";
+import { healthOf, LIMITS, loadLimits, memoryAvailableLimits, type Health, type Limits } from "../health";
 import { cpuUsed, loadOne, memoryFree, memoryUsed, psiCpu, sparkPoints, sumSeries } from "../metrics";
 import { loadQuery } from "../queries";
 import { statusFor } from "../status";
@@ -11,7 +12,7 @@ import { useTelemetry } from "../state";
 import { CapacityBar } from "../components/CapacityBar";
 import { PageHeader } from "../components/PageHeader";
 import { Sparkline } from "../components/Sparkline";
-import { TimeChart } from "../components/TimeChart";
+import { TimeChart, type VizColor } from "../components/TimeChart";
 import { Badge, EmptyState, ErrorState, Meter, Notice, Skeleton, Tile, Widget } from "../components/ui";
 
 export function HostPage(): JSX.Element {
@@ -137,7 +138,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         </Errored>
         <Errored fallback={(error) => <Widget title="Disk busy"><ErrorState error={error()} compact /></Widget>}>
           <Loading fallback={<Widget title="Disk busy"><Skeleton rows={4} chart /></Widget>}>
-            <PerSeriesWidget title="Disk busy" subtitle="time with I/O in flight; above 100% means concurrent I/O" series={disks().series ?? []} pick={point => point.busyPct} format={percent} stepMs={disks().stepMs} empty="No disk series in this range." />
+            <PerSeriesWidget title="Disk busy" subtitle="time with I/O in flight; above 100% means concurrent I/O" series={disks().series ?? []} pick={point => point.busyPct} format={percent} limits={LIMITS.diskBusyPercent} stepMs={disks().stepMs} empty="No disk series in this range." />
           </Loading>
         </Errored>
         <Errored fallback={(error) => <Widget title="Network packets"><ErrorState error={error()} compact /></Widget>}>
@@ -163,6 +164,8 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               read={{ label: "drops", pick: point => point.rxDropsPerSec + point.txDropsPerSec }}
               write={{ label: "errors", pick: point => point.rxErrorsPerSec + point.txErrorsPerSec }}
               format={perSecond}
+              colors={["serious", "critical"]}
+              limits={LIMITS.netFaultsPerSec}
               stepMs={nets().stepMs}
               empty="No network series in this range."
             />
@@ -180,7 +183,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         </Errored>
         <Errored fallback={(error) => <Widget title="Filesystem usage"><ErrorState error={error()} compact /></Widget>}>
           <Loading fallback={<Widget title="Filesystem usage"><Skeleton rows={3} chart /></Widget>}>
-            <PerSeriesWidget title="Filesystem usage" subtitle="used share per mount" series={filesystems().series ?? []} pick={point => percentUsed(point.total, point.available)} format={percent} max={100} stepMs={filesystems().stepMs} empty="No filesystem series in this range." />
+            <PerSeriesWidget title="Filesystem usage" subtitle="used share per mount" series={filesystems().series ?? []} pick={point => percentUsed(point.total, point.available)} format={percent} limits={LIMITS.filesystemUsedPercent} max={100} stepMs={filesystems().stepMs} empty="No filesystem series in this range." />
           </Loading>
         </Errored>
         <Errored fallback={(error) => <Widget title="Filesystems"><ErrorState error={error()} compact /></Widget>}>
@@ -192,7 +195,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
 
       <Errored fallback={(error) => <Widget title="Devices"><ErrorState error={error()} compact /></Widget>}>
         <Loading fallback={<Widget title="Devices"><Skeleton rows={4} /></Widget>}>
-          <DeviceTables disks={disks().series ?? []} nets={nets().series ?? []} />
+          <DeviceTables disks={disks().series ?? []} nets={nets().series ?? []} diskStepMs={disks().stepMs} netStepMs={nets().stepMs} />
         </Loading>
       </Errored>
     </>
@@ -238,7 +241,14 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
   const last = createMemo(() => windowed().at(-1));
   const free = createMemo(() => memoryFree(last()));
   const total = createMemo(() => last()?.mem?.total);
-  const series = (label: string, color: number, pick: (point: SummaryPoint) => number | undefined, dashed?: boolean) => ({ label, color, points: summarySeries(props.points, pick), dashed });
+  const loadScale = createMemo(() => loadLimits(last()?.cpuCount));
+  const memoryScale = createMemo(() => memoryAvailableLimits(total()));
+  const health = (value: number | undefined, limits: Limits | undefined): Health | undefined => (limits === undefined ? undefined : healthOf(value, limits) ?? undefined);
+  const cpuHealth = createMemo(() => health(cpu()?.last, LIMITS.cpuPercent));
+  const memoryHealth = createMemo(() => health(memory()?.last, LIMITS.memoryUsedPercent));
+  const loadHealth = createMemo(() => health(load()?.last, loadScale()));
+  const pressureHealth = createMemo(() => health(pressure()?.last, LIMITS.pressureSome));
+  const series = (label: string, color: number | VizColor, pick: (point: SummaryPoint) => number | undefined, extra: { readonly dashed?: boolean; readonly scored?: boolean; readonly graded?: boolean } = {}) => ({ label, color, points: summarySeries(props.points, pick), ...extra });
   return (
     <Show
       when={props.points.length > 0}
@@ -249,10 +259,10 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
       }
     >
       <section class="tiles" aria-label="Host summary">
-        <Tile label="CPU" value={percent(cpu()?.last)} detail={range(cpu(), percent)} spark={<Sparkline points={sparkPoints(windowed(), cpuUsed)} label="CPU trend" color={0} />} />
-        <Tile label="Memory used" value={percent(memory()?.last)} detail={free() === undefined || total() === undefined ? range(memory(), percent) : `${bytes(free())} free of ${bytes(total())}`} spark={<Sparkline points={sparkPoints(windowed(), memoryUsed)} label="Memory used trend" color={1} />} />
-        <Tile label="Load 1m" value={count(load()?.last)} detail={range(load(), count)} spark={<Sparkline points={sparkPoints(windowed(), loadOne)} label="Load trend" color={2} />} />
-        <Tile label="CPU pressure" value={percent(pressure()?.last)} detail={range(pressure(), percent)} spark={<Sparkline points={sparkPoints(windowed(), psiCpu)} label="CPU pressure trend" color={7} />} />
+        <Tile label="CPU" health={cpuHealth()} value={percent(cpu()?.last)} detail={range(cpu(), percent)} spark={<Sparkline points={sparkPoints(windowed(), cpuUsed)} label="CPU trend" color={0} health={cpuHealth()} />} />
+        <Tile label="Memory used" health={memoryHealth()} value={percent(memory()?.last)} detail={free() === undefined || total() === undefined ? range(memory(), percent) : `${bytes(free())} free of ${bytes(total())}`} spark={<Sparkline points={sparkPoints(windowed(), memoryUsed)} label="Memory used trend" color={1} health={memoryHealth()} />} />
+        <Tile label="Load 1m" health={loadHealth()} value={count(load()?.last)} detail={range(load(), count)} spark={<Sparkline points={sparkPoints(windowed(), loadOne)} label="Load trend" color={0} health={loadHealth()} />} />
+        <Tile label="CPU pressure" health={pressureHealth()} value={percent(pressure()?.last)} detail={range(pressure(), percent)} spark={<Sparkline points={sparkPoints(windowed(), psiCpu)} label="CPU pressure trend" color={0} health={pressureHealth()} />} />
       </section>
       <Show when={props.points.some(point => point.partial)}>
         <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
@@ -263,11 +273,11 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             label="CPU"
             legend
             area
-            series={[series("total", 0, cpuUsed), series("user", 1, point => point.cpu?.user), series("system", 2, point => point.cpu?.system), series("iowait", 3, point => point.cpu?.iowait), series("steal", 4, point => point.cpu?.steal)]}
+            series={[series("total", "neutral", cpuUsed, { graded: true }), series("user", "blue", point => point.cpu?.user, { scored: false }), series("system", "aqua", point => point.cpu?.system, { scored: false }), series("iowait", "violet", point => point.cpu?.iowait, { scored: false }), series("steal", "magenta", point => point.cpu?.steal, { scored: false })]}
             format={percent}
             min={0}
             max={100}
-            threshold={{ value: 90, label: "alert 90%" }}
+            limits={LIMITS.cpuPercent}
             stepMs={props.stepMs}
           />
         </Widget>
@@ -276,25 +286,27 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             label="Load"
             legend
             area
-            series={[series("1 min", 0, point => point.load?.one), series("5 min", 1, point => point.load?.five), series("15 min", 2, point => point.load?.fifteen)]}
+            series={[series("1 min", "ramp-5", point => point.load?.one, { graded: true }), series("5 min", "ramp-3", point => point.load?.five, { scored: false }), series("15 min", "ramp-1", point => point.load?.fifteen, { scored: false })]}
             format={value => count(value)}
+            limits={loadScale()}
             min={0}
             stepMs={props.stepMs}
           />
         </Widget>
         <Widget title="Available memory" subtitle="to unprivileged processes" expandable>
-          <TimeChart label="Available memory" legend area series={[series("available", 1, point => point.mem?.available)]} format={bytes} min={0} stepMs={props.stepMs} />
+          <TimeChart label="Available memory" legend area series={[series("available", "aqua", point => point.mem?.available, { graded: true })]} format={bytes} limits={memoryScale()} min={0} stepMs={props.stepMs} />
         </Widget>
         <Widget title="Swap used" subtitle="swap in use" expandable>
-          <TimeChart label="Swap used" legend area series={[series("swap used", 3, point => point.mem?.swapUsed)]} format={bytes} min={0} stepMs={props.stepMs} />
+          <TimeChart label="Swap used" legend area series={[series("swap used", "aqua", point => point.mem?.swapUsed)]} format={bytes} min={0} stepMs={props.stepMs} />
         </Widget>
         <Widget title="Swap activity" subtitle="bytes paged to and from swap per second" expandable>
           <TimeChart
             label="Swap activity"
             legend
             area
-            series={[series("swap in", 0, point => point.mem?.swapInBytesPerSec), series("swap out", 2, point => point.mem?.swapOutBytesPerSec)]}
+            series={[series("swap in", "blue", point => point.mem?.swapInBytesPerSec), series("swap out", "aqua", point => point.mem?.swapOutBytesPerSec)]}
             format={rate}
+            limits={LIMITS.swapBytesPerSec}
             min={0}
             stepMs={props.stepMs}
           />
@@ -305,11 +317,12 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             legend
             area
             series={[
-              { label: "10s", color: 1, points: psiSeries(props.points, value => value.memory?.some10) },
-              { label: "60s", color: 2, points: psiSeries(props.points, value => value.memory?.some60) },
-              { label: "300s", color: 3, points: psiSeries(props.points, value => value.memory?.some300) }
+              { label: "10s", color: "ramp-5", points: psiSeries(props.points, value => value.memory?.some10) },
+              { label: "60s", color: "ramp-3", scored: false, points: psiSeries(props.points, value => value.memory?.some60) },
+              { label: "300s", color: "ramp-1", scored: false, points: psiSeries(props.points, value => value.memory?.some300) }
             ]}
             format={percent}
+            limits={LIMITS.pressureSome}
             min={0}
             stepMs={props.stepMs}
           />
@@ -320,11 +333,12 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             legend
             area
             series={[
-              { label: "cpu", color: 0, points: psiSeries(props.points, value => value.cpu?.some10) },
-              { label: "memory", color: 1, points: psiSeries(props.points, value => value.memory?.some10) },
-              { label: "i/o", color: 2, points: psiSeries(props.points, value => value.io?.some10) }
+              { label: "cpu", color: "blue", points: psiSeries(props.points, value => value.cpu?.some10) },
+              { label: "memory", color: "aqua", points: psiSeries(props.points, value => value.memory?.some10) },
+              { label: "i/o", color: "violet", points: psiSeries(props.points, value => value.io?.some10) }
             ]}
             format={percent}
+            limits={LIMITS.pressureSome}
             min={0}
             stepMs={props.stepMs}
           />
@@ -336,11 +350,12 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
               legend
               area
               series={[
-                { label: "cpu", color: 0, points: psiSeries(props.points, value => value.cpu?.full10) },
-                { label: "memory", color: 1, points: psiSeries(props.points, value => value.memory?.full10) },
-                { label: "i/o", color: 2, points: psiSeries(props.points, value => value.io?.full10) }
+                { label: "cpu", color: "blue", points: psiSeries(props.points, value => value.cpu?.full10) },
+                { label: "memory", color: "aqua", points: psiSeries(props.points, value => value.memory?.full10) },
+                { label: "i/o", color: "violet", points: psiSeries(props.points, value => value.io?.full10) }
               ]}
               format={percent}
+              limits={LIMITS.pressureFull}
               min={0}
               stepMs={props.stepMs}
             />
@@ -358,6 +373,8 @@ function ThroughputWidget<T extends { readonly atMs: number }>(props: {
   readonly read: { readonly label: string; readonly pick: (point: T) => number | undefined };
   readonly write: { readonly label: string; readonly pick: (point: T) => number | undefined };
   readonly format?: (value: number | undefined) => string;
+  readonly colors?: readonly [VizColor, VizColor];
+  readonly limits?: Limits;
   readonly stepMs: number;
   readonly empty: string;
 }): JSX.Element {
@@ -369,10 +386,11 @@ function ThroughputWidget<T extends { readonly atMs: number }>(props: {
           legend
           area
           series={[
-            { label: props.read.label, color: 0, points: sumSeries(props.series, props.read.pick) },
-            { label: props.write.label, color: 2, points: sumSeries(props.series, props.write.pick) }
+            { label: props.read.label, color: props.colors?.[0] ?? "blue", points: sumSeries(props.series, props.read.pick) },
+            { label: props.write.label, color: props.colors?.[1] ?? "aqua", points: sumSeries(props.series, props.write.pick) }
           ]}
           format={props.format ?? rate}
+          limits={props.limits}
           min={0}
           stepMs={props.stepMs}
         />
@@ -385,24 +403,34 @@ function perSecond(value: number | undefined): string {
   return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
 }
 
+const SERIES_COLORS = ["blue", "aqua", "violet", "magenta"] as const satisfies readonly VizColor[];
+
 function PerSeriesWidget<T extends { readonly atMs: number }>(props: {
   readonly title: string;
   readonly subtitle: string;
   readonly series: readonly Series<T>[];
   readonly pick: (point: T) => number | undefined;
   readonly format: (value: number | undefined) => string;
+  readonly limits?: Limits;
   readonly max?: number;
   readonly stepMs: number;
   readonly empty: string;
 }): JSX.Element {
+  const shown = createMemo(() => {
+    const peak = (entry: Series<T>) => Math.max(Number.NEGATIVE_INFINITY, ...entry.points.map(point => props.pick(point) ?? Number.NEGATIVE_INFINITY));
+    const ranked = [...props.series].sort((left, right) => peak(right) - peak(left)).slice(0, SERIES_COLORS.length);
+    return ranked.sort((left, right) => left.id.localeCompare(right.id));
+  });
+  const subtitle = () => (props.series.length > shown().length ? `${props.subtitle} · highest ${shown().length} of ${props.series.length}` : props.subtitle);
   return (
-    <Widget title={props.title} subtitle={props.subtitle} expandable>
+    <Widget title={props.title} subtitle={subtitle()} expandable>
       {props.series.length === 0 ? <EmptyState title={props.empty} icon="disk" /> : (
         <TimeChart
           label={props.title}
           legend
-          series={props.series.map((entry, index) => ({ label: entry.name ?? entry.id, color: index % 8, points: entry.points.map(point => ({ atMs: point.atMs, value: props.pick(point) })) }))}
+          series={shown().map((entry, index) => ({ label: entry.name ?? entry.id, color: SERIES_COLORS[index] ?? "neutral", points: entry.points.map(point => ({ atMs: point.atMs, value: props.pick(point) })) }))}
           format={props.format}
+          limits={props.limits}
           min={0}
           max={props.max}
           stepMs={props.stepMs}
@@ -412,18 +440,30 @@ function PerSeriesWidget<T extends { readonly atMs: number }>(props: {
   );
 }
 
-function DeviceTables(props: { readonly disks: readonly DiskSeries[]; readonly nets: readonly NetSeries[] }): JSX.Element {
+function reporting<T extends { readonly atMs: number }>(series: readonly Series<T>[], stepMs: number): { readonly active: readonly Series<T>[]; readonly retired: number } {
+  const latest = Math.max(0, ...series.map(entry => entry.points.at(-1)?.atMs ?? 0));
+  const active = series.filter(entry => (entry.points.at(-1)?.atMs ?? 0) >= latest - 2 * stepMs);
+  return { active, retired: series.length - active.length };
+}
+
+function retiredNote(subtitle: string, retired: number): string {
+  return retired === 0 ? subtitle : `${subtitle} · ${retired} retired hidden, still in the totals`;
+}
+
+function DeviceTables(props: { readonly disks: readonly DiskSeries[]; readonly nets: readonly NetSeries[]; readonly diskStepMs: number; readonly netStepMs: number }): JSX.Element {
   const { view } = useTelemetry();
+  const disks = createMemo(() => reporting(props.disks, props.diskStepMs));
+  const nets = createMemo(() => reporting(props.nets, props.netStepMs));
   const lastIn = <T extends { readonly atMs: number }>(points: readonly T[]) => pointsIn(points, view()).at(-1);
   return (
     <>
-      <Widget title="Disks" subtitle="kernel block device activity" bodyClass="flush">
+      <Widget title="Disks" subtitle={retiredNote("kernel block device activity", disks().retired)} bodyClass="flush">
         {props.disks.length === 0 ? <EmptyState title="No disk series in this range." icon="disk" /> : (
           <div class="table-scroll">
             <table class="data-table compact" aria-label="Disk activity">
               <thead><tr><th scope="col">Device</th><th scope="col">Read</th><th scope="col">Write</th><th scope="col">IOPS read / write</th><th scope="col">Busy</th><th scope="col">Trend</th></tr></thead>
               <tbody>
-                <For each={props.disks}>
+                <For each={disks().active}>
                   {(entry) => {
                     const point = () => lastIn(entry.points);
                     return (
@@ -432,7 +472,7 @@ function DeviceTables(props: { readonly disks: readonly DiskSeries[]; readonly n
                         <td>{rate(point()?.readBytesPerSec)}</td>
                         <td>{rate(point()?.writeBytesPerSec)}</td>
                         <td>{count(point()?.readsPerSec)} <span class="cell-note">/ {count(point()?.writesPerSec)}</span></td>
-                        <td><div class="cpu-cell"><span class="metric-value-small">{percent(point()?.busyPct)}</span><Meter value={point()?.busyPct} warn={75} bad={100} /></div></td>
+                        <td><div class="cpu-cell"><span class="metric-value-small">{percent(point()?.busyPct)}</span><Meter value={point()?.busyPct} warn={LIMITS.diskBusyPercent.elevated} bad={LIMITS.diskBusyPercent.critical} /></div></td>
                         <td><Sparkline points={pointsIn(entry.points, view()).map(value => ({ atMs: value.atMs, value: value.readBytesPerSec }))} label={`${entry.id} read rate`} /></td>
                       </tr>
                     );
@@ -443,13 +483,13 @@ function DeviceTables(props: { readonly disks: readonly DiskSeries[]; readonly n
           </div>
         )}
       </Widget>
-      <Widget title="Network" subtitle="interface counters since the previous sample" bodyClass="flush">
+      <Widget title="Network" subtitle={retiredNote("interface counters since the previous sample", nets().retired)} bodyClass="flush">
         {props.nets.length === 0 ? <EmptyState title="No network series in this range." icon="network" /> : (
           <div class="table-scroll">
             <table class="data-table compact" aria-label="Network activity">
               <thead><tr><th scope="col">Interface</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Drops</th><th scope="col">Errors</th><th scope="col">Trend</th></tr></thead>
               <tbody>
-                <For each={props.nets}>
+                <For each={nets().active}>
                   {(entry) => {
                     const point = () => lastIn(entry.points);
                     const drops = () => {
@@ -529,12 +569,13 @@ function BlockWidget(props: { readonly series: readonly BlockSeries[]; readonly 
           label="Block latency"
           legend
           series={[
-            { label: "min", color: 4, points: points().map(point => ({ atMs: point.atMs, value: point.minUs })), dashed: true },
-            { label: "p50", color: 3, points: points().map(point => ({ atMs: point.atMs, value: point.p50Us })) },
-            { label: "p95", color: 0, points: points().map(point => ({ atMs: point.atMs, value: point.p95Us })) },
-            { label: "p99", color: 1, points: points().map(point => ({ atMs: point.atMs, value: point.p99Us })) },
-            { label: "max", color: 2, points: points().map(point => ({ atMs: point.atMs, value: point.maxUs })), dashed: true }
+            { label: "min", color: "ramp-1", scored: false, points: points().map(point => ({ atMs: point.atMs, value: point.minUs })), dashed: true },
+            { label: "p50", color: "ramp-2", scored: false, points: points().map(point => ({ atMs: point.atMs, value: point.p50Us })) },
+            { label: "p95", color: "ramp-3", scored: false, points: points().map(point => ({ atMs: point.atMs, value: point.p95Us })) },
+            { label: "p99", color: "ramp-4", points: points().map(point => ({ atMs: point.atMs, value: point.p99Us })) },
+            { label: "max", color: "ramp-5", scored: false, points: points().map(point => ({ atMs: point.atMs, value: point.maxUs })), dashed: true }
           ]}
+          limits={LIMITS.blockP99Us}
           format={microseconds}
           min={0}
           stepMs={props.stepMs}

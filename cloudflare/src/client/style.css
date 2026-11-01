@@ -10,17 +10,32 @@
   --line-strong: #e0dfda;
   --hover: #f5f4f1;
   --accent: #5865d6;
-  --ok: #4f9c78;
-  --warn: #b8923a;
-  --bad: #c0605a;
-  --s0: #5865d6;
-  --s1: #3f9188;
-  --s2: #a2823f;
-  --s3: #b5627a;
-  --s4: #6f8f3f;
-  --s5: #8a6fc0;
-  --s6: #3f86b5;
-  --s7: #8f8f88;
+  --good: #0ca30c;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --ok: var(--good);
+  --warn: var(--serious);
+  --bad: var(--critical);
+  --viz-blue: #2a78d6;
+  --viz-aqua: #1baf7a;
+  --viz-violet: #6250d6;
+  --viz-magenta: #e87ba4;
+  --viz-neutral: #52514e;
+  --viz-serious: var(--serious);
+  --viz-critical: var(--critical);
+  --viz-ramp-1: #86b6ef;
+  --viz-ramp-2: #5598e7;
+  --viz-ramp-3: #2a78d6;
+  --viz-ramp-4: #1c5cab;
+  --viz-ramp-5: #104281;
+  --s0: #2a78d6;
+  --s1: #1baf7a;
+  --s2: #6250d6;
+  --s3: #e87ba4;
+  --s4: #eb6834;
+  --s5: #eda100;
+  --s6: #008300;
+  --s7: #e34948;
   --font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -176,7 +191,7 @@ kbd {
 .widget.expanded .chart-plot { height: auto; flex: 1; min-height: 0; }
 .chart-empty { position: absolute; inset: 0 0 auto; height: 176px; display: grid; place-items: center; color: var(--muted); background: var(--surface); }
 .chart-plot .uplot { font-family: var(--font); }
-.u-hz .u-cursor-x { border-right: 1px solid var(--s7); opacity: .45; }
+.u-hz .u-cursor-x { border-right: 1px solid var(--muted); opacity: .45; }
 .u-select { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 1px 0 var(--accent), inset -1px 0 var(--accent); }
 .chart-tip { position: absolute; top: 8px; z-index: 3; pointer-events: none; min-width: 150px; background: var(--surface); border-radius: 7px; padding: 7px 9px; font-size: 12px; box-shadow: 0 0 0 1px var(--line-strong), 0 10px 28px rgb(0 0 0 / 10%); }
 .chart-tip[hidden] { display: none; }
@@ -199,11 +214,11 @@ kbd {
 .legend-swatch { display: block; width: 10px; height: 8px; border-radius: 2px; background: currentColor; }
 .legend-swatch.dashed { height: 0; background: none; border-top: 1.5px dashed currentColor; }
 
-.sparkline { display: block; color: var(--s7); overflow: visible; }
+.sparkline { display: block; color: var(--muted); overflow: visible; }
 .spark-line { fill: none; stroke: currentColor; stroke-width: 1.25; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .spark-fill-start { stop-color: currentColor; stop-opacity: .16; }
 .spark-fill-end { stop-color: currentColor; stop-opacity: 0; }
-.spark-dot { display: none; }
+.spark-dot { display: none; fill: currentColor; }
 .spark-inline { width: 56px; height: 18px; }
 .series-0 { color: var(--s0); }
 .series-1 { color: var(--s1); }
@@ -213,6 +228,31 @@ kbd {
 .series-5 { color: var(--s5); }
 .series-6 { color: var(--s6); }
 .series-7 { color: var(--s7); }
+.viz-blue { color: var(--viz-blue); }
+.viz-aqua { color: var(--viz-aqua); }
+.viz-violet { color: var(--viz-violet); }
+.viz-magenta { color: var(--viz-magenta); }
+.viz-neutral { color: var(--viz-neutral); }
+.viz-serious { color: var(--viz-serious); }
+.viz-critical { color: var(--viz-critical); }
+.viz-ramp-1 { color: var(--viz-ramp-1); }
+.viz-ramp-2 { color: var(--viz-ramp-2); }
+.viz-ramp-3 { color: var(--viz-ramp-3); }
+.viz-ramp-4 { color: var(--viz-ramp-4); }
+.viz-ramp-5 { color: var(--viz-ramp-5); }
+
+.health { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 11.5px; white-space: nowrap; }
+.health-icon { font-size: 9px; line-height: 1; }
+.health-ok .health-icon { color: var(--good); }
+.health-elevated .health-icon { color: var(--serious); }
+.health-critical .health-icon { color: var(--critical); }
+.chart-state { display: flex; align-items: center; gap: 6px; padding: 0 14px 6px; font-size: 12px; color: var(--text-2); }
+.chart-state .health-icon { font-size: 10px; }
+.chart-legend td .health { margin-left: 6px; }
+.tile-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sparkline.health-elevated .spark-dot { display: block; fill: var(--serious); stroke: var(--surface); stroke-width: 1.5; }
+.sparkline.health-critical .spark-dot { display: block; fill: var(--critical); stroke: var(--surface); stroke-width: 1.5; }
+.chart-tip .health { margin-left: 6px; }
 
 .fleet-layout { display: grid; grid-template-columns: 188px minmax(0, 1fr); gap: 20px; align-items: start; }
 .fleet-main { min-width: 0; }

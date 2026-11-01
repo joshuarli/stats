@@ -1,10 +1,11 @@
 import type { JSX } from "@solidjs/web";
 import { bytes, percent } from "../format";
+import { healthOf, LIMITS } from "../health";
 
 export function CapacityBar(props: { readonly total: number; readonly available: number }): JSX.Element {
   const used = () => Math.max(0, props.total - props.available);
   const ratio = () => (props.total > 0 ? Math.min(100, Math.max(0, (used() / props.total) * 100)) : 0);
-  const tone = () => (ratio() >= 90 ? "bad" : ratio() >= 75 ? "warn" : "ok");
+  const tone = () => ({ critical: "bad", elevated: "warn", ok: "ok", unknown: "ok" })[healthOf(ratio(), LIMITS.filesystemUsedPercent) ?? "unknown"];
   return (
     <div class="capacity">
       <div class="capacity-track" aria-hidden="true">

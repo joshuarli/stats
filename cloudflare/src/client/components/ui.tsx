@@ -2,6 +2,7 @@ import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
+import { HEALTH_GLYPH, HEALTH_LABEL, type Health } from "../health";
 
 export type Tone = "ok" | "warn" | "bad" | "neutral" | "info" | "accent";
 
@@ -60,15 +61,25 @@ export function Widget(props: ParentProps<{
   );
 }
 
+export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined; readonly word?: boolean | undefined }): JSX.Element {
+  return props.health === undefined || (props.health === "ok" && props.showOk !== true) ? null : (
+    <span class={`health health-${props.health}`}>
+      <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[props.health]}</span>
+      <span class={props.word === false ? "sr-only" : "health-word"}>{HEALTH_LABEL[props.health]}</span>
+    </span>
+  );
+}
+
 export function Tile(props: {
   readonly label: string;
   readonly value: string;
   readonly detail?: string | undefined;
   readonly spark?: JSX.Element | undefined;
+  readonly health?: Health | undefined;
 }): JSX.Element {
   return (
     <article class="tile">
-      <div class="tile-label">{props.label}</div>
+      <div class="tile-label"><span>{props.label}</span><HealthMark health={props.health} /></div>
       <div class="tile-value">{props.value}</div>
       {props.detail === undefined ? null : <div class="tile-detail">{props.detail}</div>}
       {props.spark === undefined ? null : <div class="tile-spark">{props.spark}</div>}
