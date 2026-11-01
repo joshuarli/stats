@@ -7,10 +7,10 @@ pub mod queue;
 pub mod runtime;
 pub mod transport;
 
+use model::Sample;
+
 #[cfg(target_os = "linux")]
 mod linux;
-
-pub use model::Sample;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

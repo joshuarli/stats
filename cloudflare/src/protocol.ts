@@ -1,8 +1,6 @@
 import type { RejectCode } from "./codes";
 import { BLOCK_BUCKETS, MAX_BODY_BYTES } from "./limits";
 
-export type { RejectCode };
-export { MAX_BODY_BYTES };
 export const MAX_SAMPLES = 16;
 export const MAX_DEVICES = 16;
 export const MAX_SAFE_INTEGER = 9_007_199_254_740_991n;
@@ -269,8 +267,4 @@ export function canonicalJson(value: unknown): string {
     return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
   }
   return JSON.stringify(value);
-}
-
-export function sampleBytes(sample: Sample): number {
-  return new TextEncoder().encode(canonicalJson(sample)).length;
 }

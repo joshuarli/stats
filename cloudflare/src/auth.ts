@@ -13,14 +13,6 @@ export function generateToken(): string {
   return `nft_${base64url(crypto.getRandomValues(new Uint8Array(32)))}`;
 }
 
-export function validHostId(value: string): boolean {
-  return /^h_[0-9a-f]{32}$/u.test(value);
-}
-
-export function validToken(value: string): boolean {
-  return /^nft_[A-Za-z0-9_-]{43}$/u.test(value);
-}
-
 export async function tokenHash(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
