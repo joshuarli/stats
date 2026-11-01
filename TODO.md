@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 31
 
-### STA-28 · P3 · sampleIntervalMs and uploadIntervalMs accept values the service cannot serve
-
-- **Area:** Config
-- **Where:** `agent/src/config.rs:132-136`, `cloudflare/src/limits.ts:5`, `cloudflare/src/client/chart-data.ts:16-18`, `README.md:63-65`, `docs/architecture.md:43`
-- **Problem:** The config accepts a 1,000 ms sample interval, but raw history uses a fixed 15,000 ms `stepMs` and `alignSeries` snaps to it. A supported 10,000 ms host loses every other point: points at 0, 10, 20, 30, and 40 seconds align to 0, 15, 30, and 45, and the 10-second value is overwritten by the 20-second value. The config also accepts a 1,000 ms upload interval, but the Worker allows six requests per host per minute; the agent is rate-limited and can overflow its queue. The README warns about the upload interval, but neither bound is enforced and the architecture doc says the sample minimum is 1,000 ms.
-- **Recommendation:** Reject `sampleIntervalMs` below 15,000 and `uploadIntervalMs` below 10,000 in `config.rs`, matching the raw history step and the server's rate limit. Update the README and architecture text and add a config test. If sub-15-second sampling is ever required, the raw history step must become per-host before the limit is relaxed.
-- **Fix with:** make-invalid-states-unrepresentable
-- **Effort:** S
-
 ### STA-29 · P4 · Dead exports in the agent and Worker
 
 - **Area:** Dead code

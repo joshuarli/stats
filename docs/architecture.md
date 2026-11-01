@@ -40,7 +40,8 @@ libraries.
 
 `seq` is `floor(monoMs / 1000)` and the boot id comes from the kernel, so a
 process restart within a boot continues the sequence without a state file.
-`sampleIntervalMs` has a 1000 ms minimum, which keeps `seq` unique.
+`sampleIntervalMs` has a 15,000 ms minimum, which matches the raw history step
+and keeps `seq` unique.
 
 ## Worker
 

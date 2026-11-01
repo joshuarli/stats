@@ -60,9 +60,11 @@ never accepted in argv or written to logs.
 ```
 
 Only `endpoint`, `hostId`, and `tokenFile` are required; the interval, queue,
-and timeout values shown are the defaults. Unknown keys are rejected, and `agent/src/config.rs` holds the
-accepted range of each value. The server allows six ingest requests per host
-per minute, so keep `uploadIntervalMs` at 10000 or more.
+and timeout values shown are the defaults. Unknown keys are rejected, and
+`agent/src/config.rs` holds the accepted range of each value.
+`sampleIntervalMs` must be at least 15000 because raw history uses a
+15-second step, and `uploadIntervalMs` must be at least 10000 to stay under
+the server's six ingest requests per host per minute.
 
 `blockLatencyFile` is optional. When set, each sample attaches the `block`
 group from that file if it is a regular file, not group- or world-writable,

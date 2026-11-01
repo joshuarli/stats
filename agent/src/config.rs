@@ -129,11 +129,11 @@ pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
     if !valid_endpoint(&config.endpoint) {
         return Err(ConfigError::new("endpoint must be https, or loopback http for local tests"));
     }
-    if !(1_000..=3_600_000).contains(&config.sample_interval_ms) {
-        return Err(ConfigError::new("sampleIntervalMs must be between 1000 and 3600000"));
+    if !(15_000..=3_600_000).contains(&config.sample_interval_ms) {
+        return Err(ConfigError::new("sampleIntervalMs must be between 15000 and 3600000"));
     }
-    if !(1_000..=3_600_000).contains(&config.upload_interval_ms) {
-        return Err(ConfigError::new("uploadIntervalMs must be between 1000 and 3600000"));
+    if !(10_000..=3_600_000).contains(&config.upload_interval_ms) {
+        return Err(ConfigError::new("uploadIntervalMs must be between 10000 and 3600000"));
     }
     if !(1..=256).contains(&config.max_queue_samples) {
         return Err(ConfigError::new("maxQueueSamples must be between 1 and 256"));
@@ -308,6 +308,23 @@ mod tests {
         let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":10000,\"blockLatencyFile\":\"\"");
         write(&path, &text, 0o600);
         assert!(load(&path).unwrap_err().to_string().contains("blockLatencyFile"));
+    }
+
+    #[test]
+    fn rejects_intervals_below_the_serving_contract() {
+        let root = scratch();
+        let token = root.join("token");
+        write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
+
+        let sample_path = root.join("agent-fast-sample.json");
+        let text = valid_config(&token).replace("\"sampleIntervalMs\":15000", "\"sampleIntervalMs\":14999");
+        write(&sample_path, &text, 0o600);
+        assert!(load(&sample_path).unwrap_err().to_string().contains("15000"));
+
+        let upload_path = root.join("agent-fast-upload.json");
+        let text = valid_config(&token).replace("\"uploadIntervalMs\":30000", "\"uploadIntervalMs\":9999");
+        write(&upload_path, &text, 0o600);
+        assert!(load(&upload_path).unwrap_err().to_string().contains("10000"));
     }
 
     #[test]
