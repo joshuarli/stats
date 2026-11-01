@@ -21,7 +21,7 @@ sudo bpftrace bpf/biolatency.bt
 Generate bounded block I/O in another terminal:
 
 ```sh
-dd if=/dev/zero of=/tmp/niceforge-bpf-io bs=4k count=1000 oflag=dsync
+dd if=/dev/zero of=/tmp/stats-bpf-io bs=4k count=1000 oflag=dsync
 ```
 
 The probe exits after 10 seconds and prints the `@latency_us` histogram. The
@@ -35,7 +35,7 @@ exited are not counted.
 Run the collector as root so bpftrace can attach the tracepoints:
 
 ```sh
-sudo bpf/collector.sh /run/niceforge-telemetry/block-latency.json \
+sudo bpf/collector.sh /run/stats/block-latency.json \
   bpf/biolatency-collector.bt
 ```
 
@@ -43,8 +43,8 @@ sudo bpf/collector.sh /run/niceforge-telemetry/block-latency.json \
 agent's optional `blockLatencyFile` to the same path. The agent accepts the
 snapshot only when it is a regular, non-group/world-writable file modified
 within 30 seconds; otherwise the sample omits `block`. A systemd unit is in
-`contrib/systemd/niceforge-block-latency.service`; install the collector and
-scripts under `/usr/local/lib/niceforge-telemetry/` and the unit under
+`contrib/systemd/stats-block-latency.service`; install the collector and
+scripts under `/usr/local/lib/stats/` and the unit under
 `/etc/systemd/system/`.
 
 The snapshot is JSON with `v`, `buckets` (16 decimal strings), `count`,

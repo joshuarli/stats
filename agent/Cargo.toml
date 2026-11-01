@@ -1,15 +1,15 @@
 [package]
-name = "niceforge-telemetry"
+name = "stats"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 
 [lib]
-name = "niceforge_telemetry"
+name = "stats"
 path = "src/lib.rs"
 
 [[bin]]
-name = "niceforge-telemetry"
+name = "stats"
 path = "src/main.rs"
 
 [dependencies]

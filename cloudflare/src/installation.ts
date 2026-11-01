@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, downsample, HOUR_MS, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
+import { downsample, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -48,7 +48,7 @@ export interface History {
   readonly kind: HistoryKind;
   readonly fromMs: number;
   readonly toMs: number;
-  readonly resolution: "raw" | "1m" | "1h";
+  readonly resolution: "raw" | "1m";
   readonly stepMs: number;
   readonly points?: readonly unknown[];
   readonly series?: readonly unknown[];
@@ -180,6 +180,16 @@ export class Installation extends DurableObject<Env> {
     return true;
   }
 
+  async purgeHost(hostId: string): Promise<boolean> {
+    if (this.host(hostId) === undefined) return false;
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM samples WHERE host_id = ?", hostId);
+      this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ?", hostId);
+      this.ctx.storage.sql.exec("DELETE FROM hosts WHERE host_id = ?", hostId);
+    });
+    return true;
+  }
+
   async listHosts(): Promise<HostSummary[]> {
     const now = this.now();
     return this.ctx.storage.sql.exec<HostRow>("SELECT * FROM hosts ORDER BY host_id").toArray().map(host => ({
@@ -213,21 +223,9 @@ export class Installation extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, ?, ?, ?)", hostId, bucketMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
   }
 
-  private rebuildHour(hostId: string, hourMs: number): void {
-    const rows = this.ctx.storage.sql.exec<{ payload: string }>("SELECT payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ?", hostId, hourMs, hourMs + HOUR_MS).toArray();
-    const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
-    const payload = combineRollups(payloads, hourMs, HOUR_MS);
-    if (payload === null) {
-      this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1h' AND bucket_ms = ?", hostId, hourMs);
-      return;
-    }
-    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1h', ?, ?, ?, ?)", hostId, hourMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
-  }
-
   private rebuildRollups(hostId: string, minutes: readonly number[]): void {
     const unique = [...new Set(minutes)].sort((left, right) => left - right);
     for (const minute of unique) this.rebuildMinute(hostId, minute);
-    for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
   async history(hostId: string, range: RangeKey, kind: HistoryKind): Promise<History | null> {
@@ -235,9 +233,9 @@ export class Installation extends DurableObject<Env> {
     const toMs = this.now();
     const fromMs = toMs - RANGE_MS[range];
     const rawRange = RANGE_MS[range] <= 48 * 60 * 60 * 1000;
-    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : range === "7d" ? "1m" : "1h";
+    const resolution: "raw" | "1m" = rawRange ? "raw" : "1m";
     let points: HistoryPoints;
-    let bucketMs = rawRange ? 15_000 : resolution === "1m" ? MINUTE_MS : HOUR_MS;
+    let bucketMs = rawRange ? 15_000 : MINUTE_MS;
     if (rawRange) {
       const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
       const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
@@ -265,8 +263,7 @@ export class Installation extends DurableObject<Env> {
     const now = this.now();
     const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
     const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - 7 * 24 * 60 * 60 * 1000).rowsWritten;
-    const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - 90 * 24 * 60 * 60 * 1000).rowsWritten;
-    const more = raw + minute + hour >= 3000;
+    const more = raw + minute >= 3000;
     await this.ctx.storage.setAlarm(now + (more ? 60_000 : 600_000));
   }
 
@@ -398,6 +395,8 @@ export class Installation extends DurableObject<Env> {
       if (rotate !== null && request.method === "POST") return json(await this.rotateHost(rotate[1]!));
       const revoke = /^\/admin\/hosts\/(h_[0-9a-f]{32})$/u.exec(path);
       if (revoke !== null && request.method === "DELETE") return (await this.revokeHost(revoke[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
+      const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
+      if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       return failure("not_found", "unknown object route", 404);
     } catch (error) {
       return failure("internal", error instanceof Error ? error.message : "internal error", 500);

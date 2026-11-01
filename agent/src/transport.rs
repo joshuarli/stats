@@ -134,7 +134,7 @@ impl HttpTransport {
             .http_status_as_error(false)
             .max_redirects(0)
             .timeout_global(Some(timeout))
-            .user_agent(concat!("niceforge-telemetry/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("stats/", env!("CARGO_PKG_VERSION")))
             .tls_config(tls)
             .build()
             .into();

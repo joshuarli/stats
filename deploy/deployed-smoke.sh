@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-base=${NICEFORGE_TELEMETRY_URL:-https://stats.17166969.xyz}
-work=$(mktemp -d "${TMPDIR:-/tmp}/niceforge-smoke.XXXXXX")
+base=${STATS_URL:-https://stats.17166969.xyz}
+work=$(mktemp -d "${TMPDIR:-/tmp}/stats-smoke.XXXXXX")
 trap 'rm -rf "$work"' 0 1 2 15
 
 fail() {
@@ -11,7 +11,7 @@ fail() {
 }
 
 curl -fsS -D "$work/headers" -o "$work/health" "$base/health" || fail "health request failed"
-jaq -e '.ok == true and .service == "niceforge-telemetry"' "$work/health" >/dev/null || fail "health response is not this service"
+jaq -e '.ok == true and .service == "stats"' "$work/health" >/dev/null || fail "health response is not this service"
 
 for header in \
   "content-security-policy:.*frame-ancestors 'none'" \

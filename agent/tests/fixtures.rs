@@ -1,4 +1,4 @@
-use niceforge_telemetry::model::{Cpu, Disk, FileSystem, Net, PsiGroup, Sample, Unavailable};
+use stats::model::{Cpu, Disk, FileSystem, Net, PsiGroup, Sample, Unavailable};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -288,7 +288,7 @@ fn every_fixture_file_is_manifested() {
 
 #[test]
 fn serializer_uses_the_wire_names() {
-    assert_eq!(niceforge_telemetry::model::sequence_for(1_000_999), 1_000);
+    assert_eq!(stats::model::sequence_for(1_000_999), 1_000);
     let sample = Sample {
         cpu: Some(Cpu {
             user: "1".into(),

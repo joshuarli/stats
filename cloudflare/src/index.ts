@@ -30,7 +30,7 @@ function internal(request: Request, path: string): Request {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname;
-    if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "niceforge-telemetry" }));
+    if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
     const stub = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
     if (path === "/ingest/v1/batches") return secure(await stub.fetch(internal(request, "/ingest")));
     if (path.startsWith("/api/v1/")) {

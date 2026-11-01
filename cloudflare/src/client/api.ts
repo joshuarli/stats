@@ -115,7 +115,7 @@ interface HistoryBase {
   readonly range: string;
   readonly fromMs: number;
   readonly toMs: number;
-  readonly resolution: "raw" | "1m" | "1h";
+  readonly resolution: "raw" | "1m";
   readonly stepMs: number;
 }
 
@@ -318,7 +318,7 @@ function decodeSeries<T>(value: unknown, decodePoint: (point: unknown) => T): Se
 
 function decodeHistoryBase(entry: JsonObject): HistoryBase {
   const resolution = entry.resolution;
-  if (resolution !== "raw" && resolution !== "1m" && resolution !== "1h") throw new Error("expected a history resolution");
+  if (resolution !== "raw" && resolution !== "1m") throw new Error("expected a history resolution");
   return {
     hostId: string(entry.hostId),
     range: string(entry.range),

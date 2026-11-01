@@ -1,11 +1,12 @@
 import { bindings, defineConfig, exports } from "cf/config";
 import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 
-const domain = process.env.NICEFORGE_TELEMETRY_DOMAIN;
+const domain = process.env.STATS_DOMAIN;
+const WORKER_NAME = "stats-worker";
 
 export default defineConfig({
   worker: {
-    name: "niceforge-telemetry",
+    name: WORKER_NAME,
     compatibilityDate: "2026-10-30",
     compatibilityFlags: ["nodejs_compat"],
     entrypoint,
@@ -14,7 +15,7 @@ export default defineConfig({
     },
     env: {
       ENVIRONMENT: bindings.text("production"),
-      INSTALLATION: bindings.durableObject({ worker: "niceforge-telemetry", exportName: "Installation" }),
+      INSTALLATION: bindings.durableObject({ worker: WORKER_NAME, exportName: "Installation" }),
       ASSETS: bindings.assets()
     },
     assets: { runWorkerFirst: true },

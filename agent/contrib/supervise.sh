@@ -2,7 +2,7 @@
 set -eu
 
 config=${1:?usage: supervise.sh <config> [binary]}
-binary=${2:-niceforge-telemetry}
+binary=${2:-stats}
 delay=5
 child=
 
@@ -21,7 +21,7 @@ while :; do
   status=0
   wait "$child" || status=$?
   child=
-  echo "niceforge-telemetry exited with $status; restarting in ${delay}s" >&2
+  echo "stats exited with $status; restarting in ${delay}s" >&2
   sleep "$delay"
   delay=$((delay * 2))
   [ "$delay" -le 60 ] || delay=60

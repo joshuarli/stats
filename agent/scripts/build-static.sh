@@ -44,8 +44,8 @@ for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
     "CARGO_TARGET_$(printf '%s' "$target" | tr 'a-z-' 'A-Z_')_LINKER=$cc" \
     cargo build --release --target "$target"
 
-  binary="$agent/target/$target/release/niceforge-telemetry"
-  destination="$dist/niceforge-telemetry-$version-$target"
+  binary="$agent/target/$target/release/stats"
+  destination="$dist/stats-$version-$target"
   cp "$binary" "$destination"
   "$readobj" --elf-output-style=GNU --program-headers --dynamic-table "$destination" > "$destination.elf.txt"
   if grep -Eq 'INTERP|NEEDED' "$destination.elf.txt"; then

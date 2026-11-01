@@ -1,0 +1,12 @@
+[Unit]
+Description=Stats block latency collector
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/stats/collector.sh /run/stats/block-latency.json /usr/local/lib/stats/biolatency-collector.bt
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

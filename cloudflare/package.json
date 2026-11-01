@@ -1,5 +1,5 @@
 {
-  "name": "@niceforge/telemetry",
+  "name": "@stats/telemetry",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.0.2",

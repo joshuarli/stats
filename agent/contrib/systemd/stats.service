@@ -1,15 +1,15 @@
 [Unit]
-Description=Niceforge telemetry agent
+Description=Stats telemetry agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/niceforge-telemetry --config /etc/niceforge-telemetry/agent.json
+ExecStart=/usr/local/bin/stats --config /etc/stats/agent.json
 Restart=always
 RestartSec=5s
-User=niceforge-telemetry
-Group=niceforge-telemetry
+User=stats
+Group=stats
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

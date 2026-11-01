@@ -124,10 +124,11 @@ Niceforge runner host.
    the oldest on saturation with a loss counter.
 9. Storage: one Durable Object per installation, SQLite tables for hosts, raw
    samples keyed by `(hostId, bootId, seq)` for exactly-once storage, and
-   rollups keyed by `(hostId, resolution, bucketStartMs)`. Retain raw 48 h,
-   one-minute aggregates 7 d, hourly aggregates 90 d. Late arrival recomputes
-   the affected minute and the following minute, and the affected hour; delta
-   sums and coverage are stored, never counter averages. A bucket with less
+   rollups keyed by `(hostId, resolution, bucketStartMs)`. Retain raw 48 h and
+   one-minute aggregates 7 d; the original 90 d hourly tier was removed on
+   2026-11-01 to cap retention at a 7 d sliding window. Late arrival recomputes
+   the affected minute and the following minute; delta sums and coverage are
+   stored, never counter averages. A bucket with less
    than 80% interval coverage is marked partial. Cleanup runs on a Durable
    Object alarm in bounded batches. Reversal: measured per-object contention or
    the 10 GB ceiling.
@@ -143,10 +144,10 @@ Niceforge runner host.
     still keeps both boundaries.
 11. HTTP surface is closed and bounded: ingest batch (64 KiB, 16 samples, six
     requests per host per minute), host list (500), latest sample, bounded
-    history (`1h`, `6h`, `24h`, `7d`, `90d`; `summary`, `disks`, `nets`,
+    history (`1h`, `6h`, `24h`, `7d`; `summary`, `disks`, `nets`,
     `filesystems`; at most 900 returned points), health, and Access-protected
-    host provisioning/rotation/revocation. No arbitrary SQL, PromQL, labels, or
-    unbounded ranges.
+    host provisioning/rotation/revocation/hard delete. No arbitrary SQL, PromQL,
+    labels, or unbounded ranges.
 12. Dashboard is plain TypeScript/HTML/CSS with esbuild, one HTML entrypoint
     and one JavaScript bundle, native SVG charts, no framework or chart
     dependency, no animation. Playwright tests intercept `fetch`; no test
@@ -161,7 +162,7 @@ Niceforge runner host.
     at 15 s on an idle representative host. Compare with Node Exporter only on
     the same host/interval; report median and spread, never a cherry-picked
     partial metric set.
-15. Test tooling is isolated: `@niceforge/telemetry` pins
+15. Test tooling is isolated: `@stats/telemetry` pins
     `@cloudflare/vitest-plugin` 1.4.11, `@cloudflare/vite-plugin`
     2.0.0-beta.v.8, Vite 8.3.5, cf 1.0.0-beta.26, and workerd 1.20261023.1.
     The Vitest plugin vendors Wrangler 4.156.0 for its Workers test runtime;

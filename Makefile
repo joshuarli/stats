@@ -1,9 +1,9 @@
 .DEFAULT_GOAL := check
 
-NICEFORGE_TELEMETRY_DOMAIN ?= stats.17166969.xyz
-TELEMETRY_URL ?= https://$(NICEFORGE_TELEMETRY_DOMAIN)
+STATS_DOMAIN ?= stats.17166969.xyz
+STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
-export NICEFORGE_TELEMETRY_DOMAIN
+export STATS_DOMAIN
 
 .PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-oracle deploy-threadripper smoke-deployed release check
 
@@ -30,15 +30,15 @@ agent-build: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' agent/scripts/build-static.sh
 
 cloudflare-test: work-ready
-	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry typecheck
-	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry test
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry typecheck
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test
 
 dashboard-test: work-ready
-	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry build
-	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @niceforge/telemetry test:ui
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:ui
 
 lint: node-ready
-	pnpm --filter @niceforge/telemetry lint
+	pnpm --filter @stats/telemetry lint
 
 auth-ready:
 	@cf auth whoami >/dev/null
@@ -73,7 +73,7 @@ deploy-oracle: deploy-host-oracle
 deploy-threadripper: deploy-host-threadripper
 
 smoke-deployed:
-	NICEFORGE_TELEMETRY_URL='$(TELEMETRY_URL)' deploy/deployed-smoke.sh
+	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
 release: agent-build
 	TMPDIR='$(CURDIR)/.work/tmp' bench/bench.sh --selftest

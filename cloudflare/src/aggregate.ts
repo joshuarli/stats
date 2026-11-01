@@ -2,18 +2,16 @@ import type { Block, Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
 import type { Delta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
 
-export type RangeKey = "1h" | "6h" | "24h" | "7d" | "90d";
+export type RangeKey = "1h" | "6h" | "24h" | "7d";
 export type HistoryKind = "summary" | "disks" | "nets" | "filesystems" | "block";
 
 export const RANGE_MS: Record<RangeKey, number> = {
   "1h": 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "90d": 90 * 24 * 60 * 60 * 1000
+  "7d": 7 * 24 * 60 * 60 * 1000
 };
 export const MINUTE_MS = 60_000;
-export const HOUR_MS = 60 * MINUTE_MS;
 export const MAX_POINTS = 900;
 
 export interface CpuPercent {
@@ -133,7 +131,6 @@ export function rangeKey(value: string | null): RangeKey | null {
     case "6h":
     case "24h":
     case "7d":
-    case "90d":
       return value;
     default:
       return null;
@@ -179,15 +176,6 @@ function sumCpu(cpu: Cpu, add: Cpu): Cpu {
     steal: (BigInt(cpu.steal) + BigInt(add.steal)).toString(),
     total: (BigInt(cpu.total) + BigInt(add.total)).toString()
   };
-}
-
-function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
-  for (const [id, values] of Object.entries(source)) {
-    const current = target[id] ?? {};
-    const next: Record<string, string> = { ...current };
-    for (const [key, value] of Object.entries(values)) next[key] = (BigInt(current[key] ?? "0") + BigInt(value)).toString();
-    target[id] = next;
-  }
 }
 
 function addBlock(target: BlockRollup | undefined, source: Block | BlockRollup): BlockRollup {
@@ -279,60 +267,6 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     v: 1,
     bucketMs,
     samples: rows.length,
-    coverageMs,
-    partial: coverageMs < spanMs * 0.8,
-    ...(cpu === undefined ? {} : { cpu }),
-    gauges,
-    psi,
-    disks,
-    nets,
-    filesystems,
-    ...(block === undefined ? {} : { block })
-  };
-}
-
-export function combineRollups(payloads: readonly RollupPayload[], bucketMs: number, spanMs: number): RollupPayload | null {
-  if (payloads.length === 0) return null;
-  let cpu: Cpu | undefined;
-  const gauges: Record<string, Gauge> = {};
-  const psi: Record<string, Record<string, Gauge>> = {};
-  const disks: Record<string, Record<string, string>> = {};
-  const nets: Record<string, Record<string, string>> = {};
-  const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
-  let block: BlockRollup | undefined;
-  let coverageMs = 0;
-  let samples = 0;
-  for (const payload of payloads) {
-    coverageMs += payload.coverageMs;
-    samples += payload.samples;
-    if (payload.cpu !== undefined) cpu = cpu === undefined ? { ...payload.cpu } : sumCpu(cpu, payload.cpu);
-    for (const [key, value] of Object.entries(payload.gauges)) {
-      const target = gauges[key] ?? { sum: 0, count: 0 };
-      gauges[key] = { sum: target.sum + value.sum, count: target.count + value.count };
-    }
-    for (const [name, group] of Object.entries(payload.psi)) {
-      const target = psi[name] ?? {};
-      for (const [field, value] of Object.entries(group)) {
-        const current = target[field] ?? { sum: 0, count: 0 };
-        target[field] = { sum: current.sum + value.sum, count: current.count + value.count };
-      }
-      psi[name] = target;
-    }
-    sumDevices(disks, payload.disks);
-    sumDevices(nets, payload.nets);
-    for (const [id, value] of Object.entries(payload.filesystems)) {
-      const target = filesystems[id] ?? { total: { sum: 0, count: 0 }, available: { sum: 0, count: 0 } };
-      filesystems[id] = {
-        total: { sum: target.total.sum + value.total.sum, count: target.total.count + value.total.count },
-        available: { sum: target.available.sum + value.available.sum, count: target.available.count + value.available.count }
-      };
-    }
-    if (payload.block !== undefined) block = addBlock(block, payload.block);
-  }
-  return {
-    v: 1,
-    bucketMs,
-    samples,
     coverageMs,
     partial: coverageMs < spanMs * 0.8,
     ...(cpu === undefined ? {} : { cpu }),

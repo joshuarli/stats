@@ -1,4 +1,4 @@
-# Niceforge host telemetry
+# Stats
 
 A small static-musl Linux host monitor, an outbound HTTPS batcher, a Cloudflare
 Worker with one SQLite-backed Durable Object, and a bounded HTML/SVG dashboard.
@@ -125,20 +125,19 @@ temporarily unavailable.
 One Durable Object per installation stores:
 
 - raw samples for 48 hours, unique on `(hostId, bootId, seq)`;
-- one-minute aggregates for 7 days;
-- hourly aggregates for 90 days.
+- one-minute aggregates for 7 days.
 
 Aggregates store counter delta sums plus covered interval, and gauge min/avg/max.
 They never average counters. Block histograms sum bucket counts and totals and
 keep the observed minimum and maximum; percentiles are derived from bucket
-upper bounds and are not exact. A late sample recomputes its minute bucket, the
-following minute, and both affected hours. A bucket with less than 80% of its
-span covered by usable intervals is marked partial. Retention runs on a Durable
-Object alarm in bounded batches; it never repairs or invents data.
+upper bounds and are not exact. A late sample recomputes its minute bucket and
+the following minute. A bucket with less than 80% of its span covered by usable
+intervals is marked partial. Retention runs on a Durable Object alarm in bounded
+batches; it never repairs or invents data.
 
-Queries choose raw for ranges up to 48 hours, one-minute rollups up to 7 days,
-and hourly beyond. Results are downsampled to at most 900 points with an explicit
-step, and gaps remain gaps.
+Queries choose raw for ranges up to 48 hours and one-minute rollups beyond. Both
+tiers are sliding windows, and the longest range is 7 days. Results are
+downsampled to at most 900 points with an explicit step, and gaps remain gaps.
 
 ## Agent
 
@@ -149,12 +148,12 @@ A token is never accepted in argv or written to logs.
 {
   "endpoint": "https://telemetry.example.com",
   "hostId": "h_0123456789abcdef0123456789abcdef",
-  "tokenFile": "/etc/niceforge-telemetry/token",
+  "tokenFile": "/etc/stats/token",
   "sampleIntervalMs": 15000,
   "uploadIntervalMs": 30000,
   "maxQueueSamples": 16,
   "requestTimeoutMs": 10000,
-  "blockLatencyFile": "/run/niceforge-telemetry/block-latency.json"
+  "blockLatencyFile": "/run/stats/block-latency.json"
 }
 ```
 
@@ -165,7 +164,7 @@ atomically by `bpf/collector.sh`; a missing or stale file simply
 leaves `block` absent. The baseline agent never loads BPF and works without
 this field.
 
-`niceforge-telemetry --config /etc/niceforge-telemetry/agent.json` runs in the
+`stats --config /etc/stats/agent.json` runs in the
 foreground. `--once` prints one sample as JSON and exits without reading a
 credential or contacting the network. `--version` prints the version.
 
@@ -182,8 +181,8 @@ Credentials are 32 random bytes encoded as `nft_` plus base64url. Rotate or
 revoke them in the operator API. The server stores only a SHA-256 verifier.
 
 `contrib/supervise.sh` is an init-independent loop for hosts without a service
-manager. `contrib/openrc/niceforge-telemetry` is available on Alpine, and
-`contrib/systemd/niceforge-telemetry.service` is available on systemd hosts.
+manager. `contrib/openrc/stats` is available on Alpine, and
+`contrib/systemd/stats.service` is available on systemd hosts.
 No service manager is required; the supervisor or the host's init works.
 
 ## Cloudflare Worker
@@ -194,11 +193,16 @@ Local tests run entirely in the Workers runtime. Production routes:
 - `GET /health` — public, no host data.
 - `GET /api/v1/hosts` — Access-protected host list.
 - `GET /api/v1/hosts/:hostId/latest` — Access-protected latest sample.
-- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`
+- `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d&kind=summary|disks|nets|filesystems|block`
   — Access-protected bounded history.
 - `POST /api/v1/admin/hosts`, `GET /api/v1/admin/hosts`,
   `POST /api/v1/admin/hosts/:hostId/rotate`,
   `DELETE /api/v1/admin/hosts/:hostId` — Access-protected provisioning.
+- `DELETE /api/v1/admin/hosts/:hostId/purge` — Access-protected hard delete.
+
+Revocation keeps the host row, token verifier, and stored telemetry so history
+stays readable. Purge deletes the host row, raw samples, and rollups in one
+transaction; it cannot be undone.
 
 Human requests carry `Cf-Access-Jwt-Assertion`, verified in the Worker against
 the team JWKS with issuer, audience, expiry, and not-before checks. Edge Access
@@ -218,8 +222,8 @@ Configuration values: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD`,
 ## Dashboard
 
 The dashboard is a client-rendered Solid application built by Vite's client
-environment. The fleet table and per-host view share a 1 h, 6 h, 24 h, 7 d, and
-90 d range control. The host view includes CPU, load, available memory, pressure,
+environment. The fleet table and per-host view share a 1 h, 6 h, 24 h, and 7 d
+range control. The host view includes CPU, load, available memory, pressure,
 disk, network, filesystem, and block-latency widgets; the block chart appears
 only when the optional probe reports completions. Charts are native SVG with
 keyboard focus, pointer/keyboard readouts, and explicit gaps. Missing data
@@ -228,8 +232,8 @@ decoded once at the boundary, and request failures stay in a typed `ApiFailure`
 channel. Access handles login; the browser never sees a host token or an
 operator secret.
 
-Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
-`pnpm --filter @niceforge/telemetry test:ui` with request interception from
+Build: `pnpm --filter @stats/telemetry build`. Browser tests:
+`pnpm --filter @stats/telemetry test:ui` with request interception from
 deterministic fixtures. No fixture endpoint or auth bypass exists in the built
 assets.
 
@@ -274,7 +278,7 @@ path was live-proven in T9.
 
 `agent/scripts/build-static.sh` builds both musl targets with the committed Zig
 wrappers, strips them, writes versioned
-`niceforge-telemetry-<version>-<target>` artifacts and SHA-256 receipts under
+`stats-<version>-<target>` artifacts and SHA-256 receipts under
 `agent/dist/`, and rejects an ELF with `PT_INTERP` or `NEEDED`.
 Recorded 2026-10-31: 1,943,832 bytes x86_64 and 1,733,792 bytes aarch64
 stripped binaries; repeated builds produced identical SHA-256 digests, and the
@@ -300,18 +304,18 @@ agent never loads BPF and runs without the collector. See
 Installation is a single binary, owner-only files, and an optional service:
 
 ```sh
-useradd --system --no-create-home --shell /usr/sbin/nologin niceforge-telemetry
-install -m 0755 niceforge-telemetry /usr/local/bin/niceforge-telemetry
-install -d -m 0700 -o niceforge-telemetry -g niceforge-telemetry /etc/niceforge-telemetry
-install -m 0600 -o niceforge-telemetry -g niceforge-telemetry agent.json /etc/niceforge-telemetry/agent.json
-install -m 0600 -o niceforge-telemetry -g niceforge-telemetry token /etc/niceforge-telemetry/token
+useradd --system --no-create-home --shell /usr/sbin/nologin stats
+install -m 0755 stats /usr/local/bin/stats
+install -d -m 0700 -o stats -g stats /etc/stats
+install -m 0600 -o stats -g stats agent.json /etc/stats/agent.json
+install -m 0600 -o stats -g stats token /etc/stats/token
 ```
 
-On systemd hosts, install `contrib/systemd/niceforge-telemetry.service` to
+On systemd hosts, install `contrib/systemd/stats.service` to
 `/etc/systemd/system/`, then `systemctl daemon-reload` and `systemctl enable
---now niceforge-telemetry`. Without a service manager, run
-`contrib/supervise.sh /etc/niceforge-telemetry/agent.json`. On Alpine, install
-`contrib/openrc/niceforge-telemetry` and run `rc-service niceforge-telemetry
+--now stats`. Without a service manager, run
+`contrib/supervise.sh /etc/stats/agent.json`. On Alpine, install
+`contrib/openrc/stats` and run `rc-service stats
 start`. Stop with SIGTERM; the supervisor and service scripts stop the child and
 do not delete configuration. Remove the binary, configuration, and token only
 after revoking the host credential. Cloudflare teardown is separate and
@@ -329,7 +333,7 @@ owner-run.
 The manifest also records the dashboard label and static-musl target. Host
 deploys install the binary and service unit from `agent/contrib/`; they compare
 the SHA-256 and unit content, restart only on a change, preserve
-`/etc/niceforge-telemetry/agent.json` and the token, and fail when the config is
+`/etc/stats/agent.json` and the token, and fail when the config is
 missing.
 
 Routine rollout:
@@ -345,7 +349,7 @@ make smoke-deployed        # read-only live check
 
 `make deploy` runs `make worker-test`, builds one bundle with `cf build`, deploys
 it with `cf deploy --prebuilt`, smoke-checks the live site, then updates the
-hosts. `NICEFORGE_TELEMETRY_DOMAIN` defaults to `stats.17166969.xyz`; override it
+hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`; override it
 for another hostname. Pass `SECRETS_FILE=...` to upload Worker secrets; omitting
 it leaves existing secrets in place. The `cf` session must be authenticated.
 
@@ -364,8 +368,8 @@ Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
    Without these path applications, Access challenges `/health` and ingest
    before the Worker sees them.
 2. Deploy the Worker with `make worker-deploy`. `cloudflare.config.ts` declares
-   the Worker, the SQLite Durable Object export, the `ASSETS` binding, the custom
-   domain, and the disabled `workers_dev` and preview URLs. `cf build` validates
+   the `stats-worker` Worker, the SQLite Durable Object export, the `ASSETS`
+   binding, the custom domain, and the disabled `workers_dev` and preview URLs. `cf build` validates
    the same output without uploading. `wrangler.test.jsonc` is test-only
    configuration for `@cloudflare/vitest-plugin`; it is not a deploy
    configuration.

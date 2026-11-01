@@ -50,10 +50,10 @@ function Sidebar(): JSX.Element {
   const location = useLocation();
   return (
     <aside class="sidebar">
-      <a class="brand" href="#/" aria-label="Niceforge telemetry home">
+      <a class="brand" href="#/" aria-label="Stats home">
         <span class="brand-mark"><Icon name="activity" size={18} /></span>
         <span class="brand-copy">
-          <strong>Niceforge</strong>
+          <strong>Stats</strong>
           <small>Telemetry</small>
         </span>
       </a>

@@ -3,7 +3,7 @@
 Run on a named Linux host only:
 
 ```sh
-bench/bench.sh agent/dist/niceforge-telemetry-x86_64-unknown-linux-musl 4 15000 .work/tmp/bench-idle.json
+bench/bench.sh agent/dist/stats-x86_64-unknown-linux-musl 4 15000 .work/tmp/bench-idle.json
 ```
 
 The agent's `--bench <iterations> <interval_ms>` mode samples without network,

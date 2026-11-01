@@ -40,7 +40,7 @@ if [ -z "$version" ]; then
   echo "deploy: cannot read the agent version" >&2
   exit 1
 fi
-artifact="$repo/agent/dist/niceforge-telemetry-$version-$rust_target"
+artifact="$repo/agent/dist/stats-$version-$rust_target"
 if [ ! -f "$artifact" ]; then
   echo "deploy: missing $artifact; run make agent-build" >&2
   exit 1
@@ -48,18 +48,18 @@ fi
 
 case "$init" in
   systemd)
-    unit_source="$repo/agent/contrib/systemd/niceforge-telemetry.service"
-    unit_path=/etc/systemd/system/niceforge-telemetry.service
+    unit_source="$repo/agent/contrib/systemd/stats.service"
+    unit_path=/etc/systemd/system/stats.service
     unit_mode=0644
     ;;
   openrc)
-    unit_source="$repo/agent/contrib/openrc/niceforge-telemetry"
-    unit_path=/etc/init.d/niceforge-telemetry
+    unit_source="$repo/agent/contrib/openrc/stats"
+    unit_path=/etc/init.d/stats
     unit_mode=0755
     ;;
 esac
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/niceforge-host.XXXXXX")
+work=$(mktemp -d "${TMPDIR:-/tmp}/stats-host.XXXXXX")
 trap 'rm -rf "$work"' 0 1 2 15
 
 ssh_opts=${SSH_OPTS:--o BatchMode=yes -o ConnectTimeout=10}
@@ -77,7 +77,7 @@ hash_file() {
 }
 
 local_hash=$(hash_file "$artifact")
-remote_hash=$(remote 'if [ -f /usr/local/bin/niceforge-telemetry ]; then sha256sum /usr/local/bin/niceforge-telemetry | cut -d" " -f1; fi')
+remote_hash=$(remote 'if [ -f /usr/local/bin/stats ]; then sha256sum /usr/local/bin/stats | cut -d" " -f1; fi')
 binary_changed=0
 if [ "$remote_hash" != "$local_hash" ]; then
   binary_changed=1
@@ -92,15 +92,15 @@ if ! cmp -s "$work/unit" "$unit_source"; then
   unit_changed=1
 fi
 
-if ! remote "$elevate test -f /etc/niceforge-telemetry/agent.json"; then
-  echo "$label: /etc/niceforge-telemetry/agent.json is missing; provision the agent first" >&2
+if ! remote "$elevate test -f /etc/stats/agent.json"; then
+  echo "$label: /etc/stats/agent.json is missing; provision the agent first" >&2
   exit 1
 fi
 
 is_active() {
   case "$init" in
-    systemd) remote "$elevate systemctl is-active --quiet niceforge-telemetry" ;;
-    openrc) remote "$elevate /sbin/rc-service niceforge-telemetry status >/dev/null 2>&1" ;;
+    systemd) remote "$elevate systemctl is-active --quiet stats" ;;
+    openrc) remote "$elevate /sbin/rc-service stats status >/dev/null 2>&1" ;;
   esac
 }
 
@@ -116,9 +116,9 @@ fi
 
 if [ "$binary_changed" -eq 1 ]; then
   echo "$label: installing agent $version"
-  remote_tmp=$(remote 'mktemp /tmp/niceforge-telemetry.XXXXXX')
+  remote_tmp=$(remote 'mktemp /tmp/stats.XXXXXX')
   remote "cat > '$remote_tmp'" < "$artifact"
-  remote "$elevate install -m 0755 -o root -g root '$remote_tmp' /usr/local/bin/niceforge-telemetry"
+  remote "$elevate install -m 0755 -o root -g root '$remote_tmp' /usr/local/bin/stats"
   remote "rm -f '$remote_tmp'"
 fi
 
@@ -133,19 +133,23 @@ case "$init" in
     if [ "$unit_changed" -eq 1 ]; then
       remote "$elevate systemctl daemon-reload"
     fi
-    remote "$elevate systemctl enable niceforge-telemetry >/dev/null"
+    remote "$elevate systemctl enable stats >/dev/null"
     if [ "$binary_changed" -eq 1 ] || [ "$unit_changed" -eq 1 ]; then
-      remote "$elevate systemctl restart niceforge-telemetry"
+      remote "$elevate systemctl restart stats"
     elif [ "$active" -eq 0 ]; then
-      remote "$elevate systemctl start niceforge-telemetry"
+      remote "$elevate systemctl start stats"
     fi
     ;;
   openrc)
-    remote "$elevate /sbin/rc-update add niceforge-telemetry default >/dev/null"
+    remote "$elevate touch /var/log/stats.log"
+    remote "$elevate chown stats:stats /var/log/stats.log"
+    remote "$elevate chmod 0640 /var/log/stats.log"
+    remote "$elevate /sbin/rc-update add stats default >/dev/null"
     if [ "$binary_changed" -eq 1 ] || [ "$unit_changed" -eq 1 ]; then
-      remote "$elevate /sbin/rc-service niceforge-telemetry restart >/dev/null"
+      remote "$elevate /sbin/rc-service stats restart >/dev/null"
     elif [ "$active" -eq 0 ]; then
-      remote "$elevate /sbin/rc-service niceforge-telemetry start >/dev/null"
+      remote "$elevate rm -f /run/stats.pid"
+      remote "$elevate /sbin/rc-service stats start >/dev/null"
     fi
     ;;
 esac

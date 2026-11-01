@@ -1,6 +1,6 @@
-use niceforge_telemetry::config::{load, load_token};
-use niceforge_telemetry::runtime::{install_signal_handlers, run};
-use niceforge_telemetry::{sample_once, VERSION};
+use stats::config::{load, load_token};
+use stats::runtime::{install_signal_handlers, run};
+use stats::{sample_once, VERSION};
 use serde::Serialize;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -27,7 +27,7 @@ fn cpu_times() -> (f64, f64, u64) {
 
 fn bench(iterations: u32, interval_ms: u64) -> i32 {
     if iterations == 0 || iterations > 1000 || !(100..=3_600_000).contains(&interval_ms) {
-        eprintln!("usage: niceforge-telemetry --bench <1-1000> <100-3600000 ms>");
+        eprintln!("usage: stats --bench <1-1000> <100-3600000 ms>");
         return 2;
     }
     let (user_before, system_before, _) = cpu_times();
@@ -95,7 +95,7 @@ fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let status = match arguments.as_slice() {
         [flag] if flag == "--version" => {
-            println!("niceforge-telemetry {VERSION}");
+            println!("stats {VERSION}");
             0
         }
         [flag] if flag == "--once" => once(),
@@ -105,7 +105,7 @@ fn main() {
             match (parsed_iterations, parsed_interval) {
                 (Some(iterations), Some(interval)) => bench(iterations, interval),
                 _ => {
-                    eprintln!("usage: niceforge-telemetry --bench <1-1000> <100-3600000 ms>");
+                    eprintln!("usage: stats --bench <1-1000> <100-3600000 ms>");
                     2
                 }
             }
@@ -144,7 +144,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("usage: niceforge-telemetry --config <path> | --once | --bench <iterations> <interval_ms> | --version");
+            eprintln!("usage: stats --config <path> | --once | --bench <iterations> <interval_ms> | --version");
             2
         }
     };

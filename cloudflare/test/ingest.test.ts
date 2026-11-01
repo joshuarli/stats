@@ -136,6 +136,19 @@ describe("ingest", () => {
     expect((await ingest(host.token, body)).status).toBe(401);
   });
 
+  it("purges a host with its samples and rollups", async () => {
+    const host = await createHost();
+    const body = rewrite("batch-full.json", host.hostId);
+    expect((await ingest(host.token, body)).status).toBe(200);
+    const purged = await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId));
+    expect(purged).toBe(true);
+    const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) =>
+      state.storage.sql.exec<{ hosts: number; samples: number; rollups: number }>("SELECT (SELECT count(*) FROM hosts WHERE host_id = ?) AS hosts, (SELECT count(*) FROM samples WHERE host_id = ?) AS samples, (SELECT count(*) FROM rollups WHERE host_id = ?) AS rollups", host.hostId, host.hostId, host.hostId).one()
+    );
+    expect(counts).toEqual({ hosts: 0, samples: 0, rollups: 0 });
+    expect((await ingest(host.token, body)).status).toBe(401);
+  });
+
   it("rate limits a host after six requests in a window", async () => {
     const host = await createHost();
     const body = { v: 1, hostId: host.hostId, bootId: "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", samples: [sample(1, 1000, now)] };

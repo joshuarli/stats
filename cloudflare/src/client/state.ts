@@ -1,14 +1,13 @@
 import { createContext, useContext, type Accessor, type Setter } from "solid-js";
 import type { Host } from "./api";
 
-export const ranges = ["1h", "6h", "24h", "7d", "90d"] as const;
+export const ranges = ["1h", "6h", "24h", "7d"] as const;
 export type Range = (typeof ranges)[number];
 export const rangeLabels: Record<Range, string> = {
   "1h": "Past 1 hour",
   "6h": "Past 6 hours",
   "24h": "Past 24 hours",
-  "7d": "Past 7 days",
-  "90d": "Past 90 days"
+  "7d": "Past 7 days"
 };
 export type Theme = "light" | "dark";
 

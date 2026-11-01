@@ -46,7 +46,7 @@ describe("Access authorization", () => {
     expect((await SELF.fetch("https://example.com/")).status).toBe(401);
     const response = await SELF.fetch("https://example.com/", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("Niceforge telemetry");
+    expect(await response.text()).toContain("<title>Stats</title>");
   });
 
   it("provisions, rotates, and revokes a host", async () => {
@@ -67,5 +67,11 @@ describe("Access authorization", () => {
     expect((await rotated.json() as { token: string }).token).not.toBe(host.token);
     const revoked = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
     expect(revoked.status).toBe(204);
+    const purged = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect(purged.status).toBe(204);
+    const after = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect((await after.json() as { hosts: { hostId: string }[] }).hosts.some(entry => entry.hostId === host.hostId)).toBe(false);
+    const missing = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    expect(missing.status).toBe(404);
   });
 });
