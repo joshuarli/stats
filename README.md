@@ -87,8 +87,9 @@ an upload.
   permanent ones below keep the batch and retry with exponential backoff and
   jitter (1 s base, 60 s cap). 429 honors `Retry-After`. A batch put back on a
   full queue displaces the newest samples.
-- 400, 404, 413, 422, a bad URL, or an oversized encoded batch drops the
-  batch.
+- 400, 404, 413, 422, or a bad URL drops the batch. A queued batch is trimmed
+  to the 65,536-byte encoded body cap before it is sent; a single sample
+  larger than the cap is dropped.
 - 401 and 403 keep the batch, retry at the 60 s cap, and reread the token file
   before each retry. Rotating a host token is a file replace; the agent picks
   up the new token without a restart. A revoked host keeps retrying and

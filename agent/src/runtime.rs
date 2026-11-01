@@ -44,6 +44,9 @@ pub trait BatchSender: Send + Sync {
     fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         self.send(boot_id, samples)
     }
+    fn fits(&self, _boot_id: &str, _samples: &[Sample]) -> bool {
+        true
+    }
     fn replace_token(&self, _token: String) -> bool {
         false
     }
@@ -56,6 +59,10 @@ impl BatchSender for HttpTransport {
 
     fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
         HttpTransport::send_final(self, boot_id, samples)
+    }
+
+    fn fits(&self, boot_id: &str, samples: &[Sample]) -> bool {
+        HttpTransport::fits(self, boot_id, samples)
     }
 
     fn replace_token(&self, token: String) -> bool {
@@ -121,7 +128,7 @@ pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: 
 }
 
 fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff, final_flush: bool) -> FlushOutcome {
-    let (batch, pending) = {
+    let (mut batch, pending) = {
         let mut queue = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let limit = if queue.len() > 2 { 16 } else { 2 };
         let batch = queue.take_batch(limit);
@@ -129,6 +136,13 @@ fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &st
     };
     if batch.is_empty() {
         return FlushOutcome::default();
+    }
+    while batch.len() > 1 && !sender.fits(boot_id, &batch) {
+        if let Some(sample) = batch.pop() {
+            queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(vec![sample]);
+        } else {
+            break;
+        }
     }
     let result = if final_flush { sender.send_final(boot_id, &batch) } else { sender.send(boot_id, &batch) };
     match result {
@@ -326,18 +340,30 @@ mod tests {
         results: Mutex<Vec<Result<SendOutcome, TransportError>>>,
         batches: Mutex<Vec<usize>>,
         tokens: Mutex<Vec<String>>,
+        fit: usize,
     }
 
     impl FakeSender {
         fn new(results: Vec<Result<SendOutcome, TransportError>>) -> Self {
-            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()), tokens: Mutex::new(Vec::new()) }
+            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()), tokens: Mutex::new(Vec::new()), fit: 16 }
+        }
+
+        fn limited(results: Vec<Result<SendOutcome, TransportError>>, fit: usize) -> Self {
+            Self { fit, ..Self::new(results) }
         }
     }
 
     impl BatchSender for FakeSender {
         fn send(&self, _boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
             self.batches.lock().unwrap().push(samples.len());
+            if samples.len() > self.fit {
+                return Err(TransportError::Permanent("batch is over the cap".to_owned()));
+            }
             self.results.lock().unwrap().remove(0)
+        }
+
+        fn fits(&self, _boot_id: &str, samples: &[Sample]) -> bool {
+            samples.len() <= self.fit
         }
 
         fn replace_token(&self, token: String) -> bool {
@@ -404,6 +430,19 @@ mod tests {
         let sender = FakeSender::new(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]);
         flush_once(&normal, &sender, "boot", &mut backoff);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
+    }
+
+    #[test]
+    fn trims_a_batch_that_does_not_fit_and_keeps_the_tail() {
+        let queue = queue(5);
+        let sender = FakeSender::limited(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })], 2);
+        let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
+        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        assert_eq!(outcome.sent, Some(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
+        assert_eq!(outcome.dropped, 0);
+        assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
+        let remaining: Vec<String> = queue.lock().unwrap().take_batch(10).iter().map(|sample| sample.seq.clone()).collect();
+        assert_eq!(remaining, ["2", "3", "4"]);
     }
 
     #[test]

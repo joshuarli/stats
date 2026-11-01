@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 31
 
-### STA-25 · P1 · A backlog flush can exceed the body cap and drop every queued sample
-
-- **Area:** Data
-- **Where:** `agent/src/runtime.rs:123-146`, `agent/src/transport.rs:8`, `agent/src/transport.rs:62-69`
-- **Problem:** `flush_batch` takes up to 16 samples whenever the queue holds more than two, and `encode` rejects a body over 65,536 bytes as `Permanent`; `flush_batch` then drops the entire batch without trying fewer samples. The protocol caps allow this: a sample with 16 disks, 2 interfaces, and 16 filesystems is 4,488 bytes when measured from `fixtures/v1/batch-full.json`, so a 15-sample batch exceeds the cap; with 16 of each group a 10-sample batch exceeds it. A backlog after a network outage loses up to 16 samples, and the next flush repeats the same choice. The README documents the drop but not that the agent chose an over-cap batch itself.
-- **Recommendation:** Size the batch by encoded bytes. Add `BatchSender::fits` (default true; the HTTP transport evaluates `encode`) and, in `flush_batch`, return the tail to the front of the queue until the batch fits. Keep the protocol's 16-sample limit. Add a runtime test with a sender that fits two samples and a transport test that a maximal batch does not fit, then update the README.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-26 · P2 · Rolled disk and network rates are understated after a device misses an interval
 
 - **Area:** Data
