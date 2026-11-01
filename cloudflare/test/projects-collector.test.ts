@@ -1,4 +1,4 @@
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
 import type { BoundQuery } from "../src/projects/queries";
@@ -38,9 +38,12 @@ function fakeAnalytics(rows: Rows, options: { failOn?: "operations" } = {}): Ana
 }
 
 let counter = 0;
+const created: ReturnType<typeof env.INSTALLATION.get>[] = [];
 function stub() {
   counter += 1;
-  return env.INSTALLATION.get(env.INSTALLATION.idFromName(`collector-${counter}`));
+  const instance = env.INSTALLATION.get(env.INSTALLATION.idFromName(`collector-${counter}`));
+  created.push(instance);
+  return instance;
 }
 
 function collect(store: ReturnType<typeof stub>, analytics: AnalyticsQuery, now = NOW) {
@@ -51,8 +54,12 @@ function inside<T>(store: ReturnType<typeof stub>, body: (sql: SqlStorage) => T)
   return runInDurableObject(store, async (_instance, state) => body(state.storage.sql));
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  for (const store of created.splice(0)) {
+    await runDurableObjectAlarm(store);
+    await runInDurableObject(store, async (_instance, state) => state.storage.deleteAlarm());
+  }
 });
 
 describe("collector", () => {
