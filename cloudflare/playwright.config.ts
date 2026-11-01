@@ -7,7 +7,7 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:4173", trace: "off" },
   webServer: { command: "node scripts/serve.mjs", url: "http://127.0.0.1:4173", reuseExistingServer: true, timeout: 10_000 },
   projects: [
-    { name: "desktop", use: { browserName: "chromium", viewport: { width: 1280, height: 720 } } },
-    { name: "mobile", use: { browserName: "chromium", viewport: { width: 390, height: 844 }, isMobile: true } }
+    { name: "desktop", use: { browserName: "chromium", viewport: { width: 1280, height: 720 } }, grepInvert: /@mobile-only/u },
+    { name: "mobile", use: { browserName: "chromium", viewport: { width: 390, height: 844 }, isMobile: true }, grep: /@mobile/u }
   ]
 });

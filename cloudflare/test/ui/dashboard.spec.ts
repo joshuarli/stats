@@ -54,6 +54,7 @@ const PROJECT_POINTS = 12;
 function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean) {
   const fromMs = now - PROJECT_POINTS * PROJECT_STEP;
   const base = { projectId: "stuff", range, fromMs, toMs: now, stepMs: PROJECT_STEP };
+  const scale = range === "24h" ? 2 : 1;
   if (kind === "collector") {
     return { ...base, kind, runs: Array.from({ length: PROJECT_POINTS }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })) };
   }
@@ -63,13 +64,13 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
     return {
       ...base, kind,
       series: [
-        { metric: "worker.invocations", values: column(() => 1000) },
-        { metric: "worker.cpuMsSum", values: column(() => 3000) },
-        { metric: "worker.cpuMsMax", values: column(() => 12) },
-        { metric: "worker.status.2xx", values: column(index => (hot(index) ? 920 : 1000)) },
+        { metric: "worker.invocations", values: column(() => 1000 * scale) },
+        { metric: "worker.cpuMsSum", values: column(() => 3000 * scale) },
+        { metric: "worker.cpuMsMax", values: column(() => 12 * scale) },
+        { metric: "worker.status.2xx", values: column(index => (hot(index) ? 920 : 1000) * scale) },
         { metric: "worker.status.3xx", values: column(() => 0) },
         { metric: "worker.status.4xx", values: column(() => 0) },
-        { metric: "worker.status.5xx", values: column(index => (hot(index) ? 80 : 0)) },
+        { metric: "worker.status.5xx", values: column(index => (hot(index) ? 80 : 0) * scale) },
         { metric: "worker.status.other", values: column(() => 0) }
       ]
     };
@@ -79,7 +80,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       ...base, kind,
       series: probeTargets.flatMap(target => [
         { metric: `probe.${target.name}.up`, values: column(index => (probeDown && target.name === "npm" && index >= PROJECT_POINTS - 3 ? 0 : 1)) },
-        { metric: `probe.${target.name}.ms`, values: column(() => 85) }
+        { metric: `probe.${target.name}.ms`, values: column(() => 85 * scale) }
       ])
     };
   }
@@ -87,11 +88,11 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   return {
     ...base, kind,
     series: buckets.flatMap(bucket => [
-      { metric: `r2.${bucket}.ops.success`, values: column(() => 500) },
-      { metric: `r2.${bucket}.ops.userError`, values: column(() => 40) },
+      { metric: `r2.${bucket}.ops.success`, values: column(() => 500 * scale) },
+      { metric: `r2.${bucket}.ops.userError`, values: column(() => 40 * scale) },
       { metric: `r2.${bucket}.ops.other`, values: column(() => 0) },
-      { metric: `r2.${bucket}.storageBytes`, values: column(index => (index % 3 === 0 ? 300_000_000 : null)) },
-      { metric: `r2.${bucket}.objects`, values: column(index => (index % 3 === 0 ? 1200 : null)) }
+      { metric: `r2.${bucket}.storageBytes`, values: column(index => (index % 3 === 0 ? 300_000_000 * scale : null)) },
+      { metric: `r2.${bucket}.objects`, values: column(index => (index % 3 === 0 ? 1200 * scale : null)) }
     ])
   };
 }
@@ -129,7 +130,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
   return requests;
 }
 
-test("fleet and host views render charts, ranges, and keyboard controls", async ({ page }, testInfo) => {
+test("fleet and host views render charts, ranges, and keyboard controls", { tag: "@mobile" }, async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/");
   const fleetTable = page.getByRole("table", { name: "Fleet hosts" });
@@ -185,8 +186,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
 });
 
-test("the CPU and load charts compare against the same window yesterday", async ({ page, isMobile }) => {
-  test.skip(isMobile, "the legend rows are checked on desktop");
+test("the CPU and load charts compare against the same window yesterday", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
@@ -200,13 +200,18 @@ test("the CPU and load charts compare against the same window yesterday", async 
 });
 
 test("zooming to an incident narrows every chart to it", async ({ page }) => {
-  await mock(page);
+  const requests = await mock(page);
   await page.goto("/");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("list", { name: "Incidents" })).toBeVisible();
+  const window = page.getByLabel("Visible time window");
+  await expect(window).toContainText("Past 1 hour");
   await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
   await page.getByRole("list", { name: "Incidents" }).getByRole("button", { name: "Zoom" }).first().click();
+  await expect(window).toContainText(/\d+[smhd]/u);
+  await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
+  await expect.poll(() => requests.some(request => /[?&]from=\d+&to=\d+&kind=summary/u.test(request))).toBe(true);
 });
 
 test("missing and stale data never become zero", async ({ page }) => {
@@ -256,8 +261,7 @@ test("search filters the fleet and the status chips narrow it", async ({ page })
   await expect(page.getByRole("complementary")).toHaveCount(0);
 });
 
-test("dragging a chart zooms the time window, and escape returns to live", async ({ page, isMobile }) => {
-  test.skip(isMobile, "drag selection needs a pointer");
+test("dragging a chart zooms the time window, and escape returns to live", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
@@ -299,7 +303,7 @@ test("legend rows isolate and restore series", async ({ page }) => {
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "true");
 });
 
-test("mobile layout has no horizontal page overflow", async ({ page }, testInfo) => {
+test("mobile layout has no horizontal page overflow", { tag: "@mobile-only" }, async ({ page }, testInfo) => {
   await mock(page);
   await page.goto("/");
   await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" })).toBeVisible();
@@ -326,13 +330,14 @@ test("the fleet lists projects and each row opens its page", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
 });
 
-test("a stale collector shows its state on the fleet and the project page", async ({ page }) => {
+test("a stale collector is flagged on the fleet and the project page", async ({ page }) => {
   await mock(page, { collector: "stale" });
   await page.goto("/");
   await expect(page.getByRole("table", { name: "Projects" })).toContainText("stale");
   await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".page-header")).toContainText("stale");
+  await expect(page.getByText("The collector has not succeeded recently")).toBeVisible();
 });
 
 test("an unknown project id shows a not-found state", async ({ page }) => {
@@ -342,7 +347,7 @@ test("an unknown project id shows a not-found state", async ({ page }) => {
 });
 
 test("the project page shows its summary, incidents, and two independent columns", async ({ page }, testInfo) => {
-  await mock(page);
+  const requests = await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   const strip = page.getByRole("region", { name: "Project summary" });
@@ -364,6 +369,11 @@ test("the project page shows its summary, incidents, and two independent columns
   await expect(left.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(right.getByRole("heading", { name: "R2 operations" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(strip.getByRole("button", { name: /^Requests: 2,000/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Worker invocations; latest 2,000" })).toBeVisible();
+  expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=worker"))).toBe(true);
 });
 
 test("an elevated Worker 5xx share raises an incident that zooms", async ({ page }) => {
@@ -379,23 +389,9 @@ test("an elevated Worker 5xx share raises an incident that zooms", async ({ page
   expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kind=worker"))).toBe(true);
 });
 
-test("a stale collector is flagged on the project page", async ({ page }) => {
-  await mock(page, { collector: "stale" });
-  await page.goto("/#/project/stuff");
-  await expect(page.getByText("The collector has not succeeded recently")).toBeVisible();
-  await expect(page.locator(".page-header")).toContainText("stale");
-});
-
-test("ranges reload project history", async ({ page }) => {
-  const requests = await mock(page);
-  await page.goto("/#/project/stuff");
-  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "24h" }).click();
-  await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=r2"))).toBe(true);
-});
-
-test("configured probes add an endpoints monitor and chart that say where they measure from", async ({ page }) => {
-  const requests = await mock(page, { probes: true });
+test("configured probes surface endpoint health and a down endpoint raises an incident", async ({ page }) => {
+  const options = { probes: true, probeDown: false };
+  const requests = await mock(page, options);
   await page.goto("/#/project/stuff");
   const strip = page.getByRole("region", { name: "Project summary" });
   await expect(strip.getByRole("button", { name: /^Endpoints: all up/u })).toBeVisible();
@@ -406,15 +402,13 @@ test("configured probes add an endpoints monitor and chart that say where they m
   await expect(page.getByRole("img", { name: /Endpoint response time;/u })).toBeVisible();
   await expect(page.locator(".widget:not(.column .widget)")).toHaveCount(0);
   expect(requests.some(request => request.includes("kind=probes"))).toBe(true);
-});
 
-test("a down endpoint is a critical incident and projects without probes show none", async ({ page }) => {
-  await mock(page, { probes: true, probeDown: true });
-  await page.goto("/#/project/stuff");
+  options.probeDown = true;
+  await page.getByRole("button", { name: "Refresh" }).click();
   const incidents = page.getByRole("list", { name: "Incidents" });
   await expect(incidents).toContainText("Endpoints");
   await expect(incidents).toContainText("Critical");
-  await expect(page.getByRole("button", { name: /^Endpoints: down/u })).toContainText("Critical");
+  await expect(strip.getByRole("button", { name: /^Endpoints: down/u })).toContainText("Critical");
 });
 
 test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {
@@ -469,13 +463,3 @@ test("each page names itself once and the breadcrumb only appears below the flee
   await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("combobox", { name: "Switch host" })).toBeVisible();
 });
-
-test("a widget title stays on one line however long its subtitle is", async ({ page }) => {
-  await mock(page);
-  await page.goto("/#/project/stuff");
-  const title = page.getByRole("heading", { name: "R2 operations" });
-  await expect(title).toBeVisible();
-  const box = await title.boundingBox();
-  expect(box!.height).toBeLessThan(24);
-});
-

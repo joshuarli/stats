@@ -43,7 +43,7 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
 }
 
 for (const range of ["1h", "24h", "7d"]) {
-  test(`threadripper host page, ${range}`, async ({ page }) => {
+  test(`threadripper host page, ${range}`, { tag: "@mobile" }, async ({ page }) => {
     await replay(page, "threadripper", threadripper.capturedAtMs, threadripper.system);
     await page.goto("/");
     await page.locator("table").getByRole("link", { name: "threadripper" }).click();
@@ -67,7 +67,7 @@ for (const range of ["1h", "24h", "7d"]) {
   });
 }
 
-test("stuff project page, 1h", async ({ page }) => {
+test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   await replayProject(page, "stuff", stuff.capturedAtMs);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
