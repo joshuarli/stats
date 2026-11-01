@@ -1,5 +1,6 @@
 import type { Block, Cpu, Disk, FileSystem, Net, Sample } from "./protocol";
 import type { Delta } from "./delta";
+import { DISK_FIELDS, NET_FIELDS } from "./delta";
 
 export type RangeKey = "1h" | "6h" | "24h" | "7d" | "90d";
 export type HistoryKind = "summary" | "disks" | "nets" | "filesystems" | "block";
@@ -107,7 +108,7 @@ export interface RollupPayload {
   readonly samples: number;
   readonly coverageMs: number;
   readonly partial: boolean;
-  readonly cpu?: Readonly<Record<string, string>>;
+  readonly cpu?: Cpu;
   readonly gauges: Readonly<Record<string, Gauge>>;
   readonly psi: Readonly<Record<string, Readonly<Record<string, Gauge>>>>;
   readonly disks: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -125,7 +126,18 @@ export interface RawRow {
 }
 
 export function rangeKey(value: string | null): RangeKey | null {
-  return value !== null && Object.hasOwn(RANGE_MS, value) ? value as RangeKey : null;
+  switch (value) {
+    case null:
+      return null;
+    case "1h":
+    case "6h":
+    case "24h":
+    case "7d":
+    case "90d":
+      return value;
+    default:
+      return null;
+  }
 }
 
 export function kindValue(value: string | null): HistoryKind | null {
@@ -158,10 +170,15 @@ function cpuPercent(cpu: { user: string; system: string; idle: string; iowait: s
   return { user: (Number(cpu.user) / total) * 100, system: (Number(cpu.system) / total) * 100, idle: (Number(cpu.idle) / total) * 100, iowait: (Number(cpu.iowait) / total) * 100, steal: (Number(cpu.steal) / total) * 100 };
 }
 
-function sumCpu(cpu: Record<string, string> | Cpu, add: Record<string, string> | Cpu): Record<string, string> {
-  const result: Record<string, string> = { ...cpu };
-  for (const [key, value] of Object.entries(add)) result[key] = (BigInt(result[key] ?? "0") + BigInt(value)).toString();
-  return result;
+function sumCpu(cpu: Cpu, add: Cpu): Cpu {
+  return {
+    user: (BigInt(cpu.user) + BigInt(add.user)).toString(),
+    system: (BigInt(cpu.system) + BigInt(add.system)).toString(),
+    idle: (BigInt(cpu.idle) + BigInt(add.idle)).toString(),
+    iowait: (BigInt(cpu.iowait) + BigInt(add.iowait)).toString(),
+    steal: (BigInt(cpu.steal) + BigInt(add.steal)).toString(),
+    total: (BigInt(cpu.total) + BigInt(add.total)).toString()
+  };
 }
 
 function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
@@ -210,7 +227,7 @@ export function blockPoint(atMs: number, block: Block | BlockRollup): BlockPoint
 export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs: number): RollupPayload | null {
   if (rows.length === 0) return null;
   const coverageMs = rows.reduce((total, row) => total + row.delta.intervalMs, 0);
-  let cpu: Record<string, string> | undefined;
+  let cpu: Cpu | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -232,7 +249,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     if (sample.uptimeMs !== undefined) gaugeAdd(gauges, "uptimeMs", Number(sample.uptimeMs));
     if (sample.cpuCount !== undefined) gaugeAdd(gauges, "cpuCount", sample.cpuCount);
     if (sample.psi !== undefined) {
-      for (const [name, group] of Object.entries(sample.psi)) {
+      for (const [name, group] of [["cpu", sample.psi.cpu], ["memory", sample.psi.memory], ["io", sample.psi.io]] as const) {
         if (group === undefined) continue;
         const target = psi[name] ?? {};
         for (const field of ["some10", "some60", "some300"] as const) gaugeAdd(target, field, Number(group[field]));
@@ -240,12 +257,14 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
       }
     }
     for (const [id, disk] of Object.entries(delta.disks)) {
-      disks[id] = disks[id] ?? {};
-      for (const [key, value] of Object.entries(disk)) if (key !== "id" && key !== "name") disks[id]![key] = (BigInt(disks[id]![key] ?? "0") + BigInt(value as string)).toString();
+      const target = disks[id] ?? {};
+      for (const field of DISK_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(disk[field])).toString();
+      disks[id] = target;
     }
     for (const [id, net] of Object.entries(delta.nets)) {
-      nets[id] = nets[id] ?? {};
-      for (const [key, value] of Object.entries(net)) if (key !== "id") nets[id]![key] = (BigInt(nets[id]![key] ?? "0") + BigInt(value as string)).toString();
+      const target = nets[id] ?? {};
+      for (const field of NET_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(net[field])).toString();
+      nets[id] = target;
     }
     for (const filesystem of sample.filesystems ?? []) {
       const target = filesystems[filesystem.id] ?? { total: { sum: 0, count: 0 }, available: { sum: 0, count: 0 } };
@@ -274,7 +293,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
 
 export function combineRollups(payloads: readonly RollupPayload[], bucketMs: number, spanMs: number): RollupPayload | null {
   if (payloads.length === 0) return null;
-  let cpu: Record<string, string> | undefined;
+  let cpu: Cpu | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -327,7 +346,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
 }
 
 function summaryFromRollup(payload: RollupPayload): SummaryPoint {
-  const cpu = payload.cpu === undefined ? undefined : cpuPercent(payload.cpu as { user: string; system: string; idle: string; iowait: string; steal: string; total: string });
+  const cpu = payload.cpu === undefined ? undefined : cpuPercent(payload.cpu);
   const load = gaugeAverage(payload.gauges, "load.one") === undefined ? undefined : {
     one: gaugeAverage(payload.gauges, "load.one")!,
     five: gaugeAverage(payload.gauges, "load.five")!,
@@ -396,7 +415,9 @@ function filesystemPoints(row: RawRow): Array<{ id: string; point: FilesystemPoi
   return (row.sample.filesystems ?? []).map((filesystem: FileSystem) => ({ id: filesystem.id, point: { atMs, total: Number(filesystem.total), available: Number(filesystem.available) } }));
 }
 
-export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[] {
+export type HistoryPoints = SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[];
+
+export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): HistoryPoints {
   if (kind === "summary") return rows.map(summaryFromRaw);
   if (kind === "block") {
     const points = rows.flatMap(row => row.sample.block === undefined ? [] : (blockPoint(Number(row.sample.atMs), row.sample.block) ?? []));
@@ -419,7 +440,7 @@ function rate(value: string | undefined, coverage: number, multiplier = 1): numb
   return value === undefined || coverage <= 0 ? 0 : (Number(value) * multiplier * 1000) / coverage;
 }
 
-export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKind): SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[] {
+export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKind): HistoryPoints {
   if (kind === "summary") return payloads.map(summaryFromRollup);
   if (kind === "block") {
     const points = payloads.flatMap(payload => payload.block === undefined ? [] : (blockPoint(payload.bucketMs, payload.block) ?? []));

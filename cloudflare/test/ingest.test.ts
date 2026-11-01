@@ -19,8 +19,14 @@ async function createHost(name = "test"): Promise<{ hostId: string; token: strin
   return runInDurableObject(stub(), async (instance: Installation) => instance.createHost(name));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function rewrite(name: string, hostId: string): Record<string, unknown> {
-  return { ...JSON.parse(fixture(name)), hostId };
+  const parsed: unknown = JSON.parse(fixture(name));
+  if (!isRecord(parsed)) throw new Error(`${name} is not a batch object`);
+  return { ...parsed, hostId };
 }
 
 async function ingest(token: string, body: unknown): Promise<Response> {

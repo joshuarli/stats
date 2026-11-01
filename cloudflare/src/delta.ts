@@ -25,8 +25,8 @@ function cpuDelta(previous: Cpu, current: Cpu): Cpu | null {
   return { user: user!, system: system!, idle: idle!, iowait: iowait!, steal: steal!, total: total! };
 }
 
-const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
-const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
+export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
+export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
 
 function counterDelta(previous: object, current: object, fields: readonly string[]): Record<string, string> | null {
   const delta: Record<string, string> = {};

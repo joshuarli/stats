@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
-import { computeDelta, parseDelta, type Delta } from "./delta";
-import { combineRollups, downsample, HOUR_MS, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
+import { computeDelta, parseDelta } from "./delta";
+import { combineRollups, downsample, HOUR_MS, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -101,18 +101,20 @@ async function readLimitedText(request: Request, limit: number): Promise<string 
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > limit) return null;
   if (request.body === null) return "";
-  const reader = request.body.getReader();
+  // SAFETY: Workers' Request.body getReader() erases the chunk type; HTTP body chunks are Uint8Array.
+  const reader = request.body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
   const chunks: Uint8Array[] = [];
   let total = 0;
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
+    const result = await reader.read();
+    if (result.done) break;
+    const chunk = result.value;
+    total += chunk.length;
     if (total > limit) {
       await reader.cancel();
       return null;
     }
-    chunks.push(value);
+    chunks.push(chunk);
   }
   const bytes = new Uint8Array(total);
   let offset = 0;
@@ -124,13 +126,18 @@ async function readLimitedText(request: Request, limit: number): Promise<string 
 }
 
 function validName(name: string): boolean {
-  return name.length >= 1 && name.length <= 64 && ![...name].some(character => character.codePointAt(0)! < 32 || character === "\u007f");
+  if (name.length < 1 || name.length > 64) return false;
+  for (const character of name) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined || codePoint < 32 || codePoint === 0x7f) return false;
+  }
+  return true;
 }
 
 export class Installation extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    ctx.blockConcurrencyWhile(async () => {
+    void ctx.blockConcurrencyWhile(async () => {
       for (const statement of [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME]) this.ctx.storage.sql.exec(statement);
     });
   }
@@ -220,7 +227,7 @@ export class Installation extends DurableObject<Env> {
   private rebuildRollups(hostId: string, minutes: readonly number[]): void {
     const unique = [...new Set(minutes)].sort((left, right) => left - right);
     for (const minute of unique) this.rebuildMinute(hostId, minute);
-    for (const hour of [...new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))]) this.rebuildHour(hostId, hour);
+    for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
   async history(hostId: string, range: RangeKey, kind: HistoryKind): Promise<History | null> {
@@ -229,7 +236,7 @@ export class Installation extends DurableObject<Env> {
     const fromMs = toMs - RANGE_MS[range];
     const rawRange = RANGE_MS[range] <= 48 * 60 * 60 * 1000;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : range === "7d" ? "1m" : "1h";
-    let points: ReturnType<typeof rawPoints> | ReturnType<typeof rollupPoints>;
+    let points: HistoryPoints;
     let bucketMs = rawRange ? 15_000 : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     if (rawRange) {
       const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
@@ -254,7 +261,7 @@ export class Installation extends DurableObject<Env> {
     };
   }
 
-  async alarm(): Promise<void> {
+  override async alarm(): Promise<void> {
     const now = this.now();
     const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
     const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - 7 * 24 * 60 * 60 * 1000).rowsWritten;
@@ -362,7 +369,7 @@ export class Installation extends DurableObject<Env> {
     return json({ v: 1, accepted, duplicates, rejected });
   }
 
-  async fetch(request: Request): Promise<Response> {
+  override async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
     try {
       if (path === "/ingest") return await this.ingest(request);
