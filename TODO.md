@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 31
 
-### STA-27 · P3 · A valid Linux disk id with a 7-digit minor is rejected
-
-- **Area:** Data
-- **Where:** `cloudflare/src/protocol.ts:120`, `cloudflare/src/protocol.ts:225`, `agent/tests/fixtures.rs:80-83`, `docs/protocol.md:38`
-- **Problem:** Linux `dev_t` allows a 20-bit minor, up to 1,048,575 (seven digits), but the Worker's `DISK_ID` regex allows at most six minor digits. The agent's `parse_diskstats` and the fixture validator accept any digit length, so an agent on a host with such a device sends a sample the Worker rejects as `invalid_sample`; every sample containing that device is lost. Probes against `parseBatch`: `8:999999` is accepted, `8:1000000` and `8:1048575` are rejected. No fixture covers the boundary.
-- **Recommendation:** Accept the Linux `dev_t` bounds in both validators (major at most 4095, minor at most 1,048,575), add an accepted boundary fixture and a rejected out-of-range fixture to `fixtures/v1`, and state the bounds in `docs/protocol.md`.
-- **Fix with:** make-invalid-states-unrepresentable
-- **Effort:** S
-
 ### STA-28 · P3 · sampleIntervalMs and uploadIntervalMs accept values the service cannot serve
 
 - **Area:** Config

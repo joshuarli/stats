@@ -117,7 +117,14 @@ const HOST = /^h_[0-9a-f]{32}$/u;
 const BOOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const DECIMAL = /^(0|[1-9][0-9]{0,19})$/u;
 const FIXED = /^(0|[1-9][0-9]{0,5})\.[0-9]+$/u;
-const DISK_ID = /^[0-9]{1,6}:[0-9]{1,6}$/u;
+const DISK_ID = /^([0-9]{1,4}):([0-9]{1,7})$/u;
+const DISK_MAJOR_MAX = 4_095;
+const DISK_MINOR_MAX = 1_048_575;
+
+function validDiskId(value: string): boolean {
+  const match = DISK_ID.exec(value);
+  return match !== null && Number(match[1]) <= DISK_MAJOR_MAX && Number(match[2]) <= DISK_MINOR_MAX;
+}
 const DISK_NAME = /^[A-Za-z0-9._-]{1,32}$/u;
 const IFNAME = /^[A-Za-z0-9_.:@-]{1,15}$/u;
 
@@ -222,7 +229,7 @@ export function parseSample(value: unknown): SampleResult {
   if (cpuCount !== undefined && (typeof cpuCount !== "number" || !Number.isInteger(cpuCount) || cpuCount < 1 || cpuCount > 4096)) return fail("cpuCount");
   if (value.disks !== undefined) {
     const disks = arrayUnique(value.disks, "id", MAX_DEVICES);
-    if (disks === null || !disks.every(disk => exact(disk, ["id", "name", "reads", "readSectors", "writes", "writeSectors", "ioMs"]) && typeof disk.id === "string" && DISK_ID.test(disk.id) && typeof disk.name === "string" && DISK_NAME.test(disk.name) && ["reads", "readSectors", "writes", "writeSectors", "ioMs"].every(key => decimal(disk[key])))) return fail("disks");
+    if (disks === null || !disks.every(disk => exact(disk, ["id", "name", "reads", "readSectors", "writes", "writeSectors", "ioMs"]) && typeof disk.id === "string" && validDiskId(disk.id) && typeof disk.name === "string" && DISK_NAME.test(disk.name) && ["reads", "readSectors", "writes", "writeSectors", "ioMs"].every(key => decimal(disk[key])))) return fail("disks");
   }
   if (value.nets !== undefined) {
     const nets = arrayUnique(value.nets, "id", MAX_DEVICES);

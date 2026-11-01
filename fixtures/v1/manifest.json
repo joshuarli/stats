@@ -26,6 +26,15 @@
       "expect": "accept"
     },
     {
+      "file": "disk-minor-boundary.json",
+      "expect": "accept"
+    },
+    {
+      "file": "invalid-disk-id.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
       "file": "out-of-order-late.json",
       "expect": "accept"
     },
