@@ -77,6 +77,7 @@ project list by editing `PROJECTS` there and redeploying.
 
 Check a deployment from your machine:
 
+- `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket of the last 24 hours with `cf sql query` and fails above 5% total error; it needs `cf access login`.
 - `node cloudflare/scripts/check-analytics-sql.mjs` runs the three queries
   read-only against the live account through `cf sql query` and fails on a
   non-200 response or a row the parser rejects.

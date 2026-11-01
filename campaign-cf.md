@@ -5,7 +5,7 @@
 - **Goal:** `stats` monitors a Cloudflare project as a first-class target beside hosts. One configured project, `stuff`, shows its Worker (invocations, status mix, CPU), its three R2 buckets (operations by outcome, storage, objects), endpoint availability, and the collector's own health, with the same status strip, limits, incidents, and two-column layout as the host page. Data comes from the Analytics SQL binding on a five-minute cron. No agent, no token, no change in `../stuff`.
 - **State:** A1 to D1 accepted; E1 review fixes applied; Worker deployed 2026-11-01 (`8390a8f6`) with the owner's go-ahead; N1, N3 and N7 verified live; N2 missed the 5% gate on three buckets that later converged except one (see `docs/operations.md`); the temporary diagnostic route was deployed and removed (version `2367b5c2`). Baseline `d1b369c`. Every fact marked proven below was run on 2026-11-01 against the live account with read-only `cf sql query`.
 - **Accepted:** A1, A2, A3, A4, A5, B1, B2, C1, D1. **Red:** none. **Parked:** none.
-- **Next:** E1 final report.
+- **Next:** none; the campaign is complete. Open: N2 re-run after a day, N6, and the owner's call on probes `site` blips.
 - **Resume:** `Execute campaign-cf.md from item E1. Read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
@@ -33,6 +33,7 @@
 - **O1 · Access.** stats-worker reads analytics through the `analytics` Worker binding (`ANALYTICS_SQL`). No API token, no secret, no GraphQL. The binding can read all account analytics; only the fixed queries in `cloudflare/src/projects/queries.ts` ever run, and nothing from a request reaches SQL. This is a permission change the owner accepted.
 - **O2 · Worker CPU depth.** Worker CPU is shown as weighted average and approximate maximum per bucket, labeled "CPU time", never latency. No p50 or p99 (the SQL source has none; real quantiles need GraphQL and a token).
 - **O3 · Probes.** HTTP availability probes of the four public domains are in scope as the last functional slice (C1), config-driven (empty list means off). Live behavior is on **Needs environment**.
+- **O5 · Parity (2026-11-01, decided in the owner's absence).** Accept up to about 10% error on the largest Worker buckets and keep the 90 minute window. Widening it is not shown to help (one stale bucket predates the deploy that coincided with the others converging) and would double the rows read per run. Re-check with `node cloudflare/scripts/check-parity.mjs` after a day of data; reverse this if settled hours miss the 5% gate.
 - **O4 · Navigation.** Projects appear on the fleet page in a table under the hosts table; each row opens `#/project/:projectId`.
 
 ### Prescribed
@@ -112,6 +113,7 @@ Run after the owner deploys (`make deploy`).
 - **N4 · Ingestion lag.** Measure how late `logs.workersLogs` rows arrive (newest event timestamp against now over several days of traffic) and set `SETTLE_MS` if 45 minutes is wrong.
 - **N5 · Source retention.** Record how far back each dataset actually serves once the account has history; the project page's 90-day view fills from collection regardless.
 - **N7 · Binding and Log Explorer.** The binding docs say Log Explorer-backed datasets are not supported through the Workers binding, and `logs.workersLogs` is Log Explorer-backed. The CLI returns the same `{data, rows, statistics}` shape, so `check-analytics-sql.mjs` passes, but only a deployed run settles it. After N1, confirm `kind=worker` history has rows; if the collector fails on the Worker query, the Worker metrics need another source (a new S1 and an owner decision).
+- **N2 re-run.** `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket from the last 24 hours with `cf sql query` and exits 1 above 5% total error. On 2026-11-01 it found 14 of 15 buckets exact and -3.5% total (the one miss left the window stale).
 - **N6 · Golden snapshots for the project page.** After a day of collection, capture the real API responses and add replay goldens (a follow-up, not part of this campaign).
 
 ## Execution boundary and non-goals
