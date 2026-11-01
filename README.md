@@ -341,7 +341,7 @@ missing.
 Routine rollout:
 
 ```sh
-make worker-check          # cf build validation, no upload
+make worker-check          # build + deploy validation, no upload
 make deploy                # tests, Worker, live smoke, then both hosts
 make deploy-oracle         # one host, idempotent
 make deploy-threadripper   # one host, idempotent
@@ -349,7 +349,7 @@ make deploy-hosts          # every host in the manifest
 make smoke-deployed        # read-only live check
 ```
 
-`make deploy` runs `make worker-test`, builds one bundle with `cf build`, deploys
+`make deploy` runs `make worker-test`, builds one bundle with `vite build`, deploys
 it with `cf deploy --prebuilt`, smoke-checks the live site, then updates the
 hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`; override it
 for another hostname. Pass `SECRETS_FILE=...` to upload Worker secrets; omitting
@@ -371,7 +371,7 @@ Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
    before the Worker sees them.
 2. Deploy the Worker with `make worker-deploy`. `cloudflare.config.ts` declares
    the `stats-worker` Worker, the SQLite Durable Object export, the `ASSETS`
-   binding, the custom domain, and the disabled `workers_dev` and preview URLs. `cf build` validates
+   binding, the custom domain, and the disabled `workers_dev` and preview URLs. `make worker-check` validates
    the same output without uploading. `wrangler.test.jsonc` is test-only
    configuration for `@cloudflare/vitest-plugin`; it is not a deploy
    configuration.

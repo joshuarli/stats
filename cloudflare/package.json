@@ -9,10 +9,10 @@
   "scripts": {
     "test": "node scripts/check-config.mjs && vite build && vitest run",
     "test:ui": "playwright test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs -p tsconfig.json --noEmit --fast",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
     "build": "vite build",
-    "deploy": "cf deploy"
+    "deploy": "pnpm build && cf deploy --prebuilt"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",
@@ -23,7 +23,7 @@
     "cf": "1.0.0-beta.26",
     "oxlint": "1.90.0",
     "oxlint-tsgolint": "7.0.2005",
-    "typescript": "7.0.2",
+    "tsrs": "0.20.1-ts7.1.0-beta",
     "vite": "8.3.5",
     "vitest": "5.0.5"
   },

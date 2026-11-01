@@ -44,10 +44,10 @@ auth-ready:
 	@cf auth whoami >/dev/null
 
 worker-check: node-ready
-	cd cloudflare && cf deploy --dry-run --mode production
+	cd cloudflare && pnpm build && cf deploy --prebuilt --dry-run --mode production
 
 worker-bundle: node-ready
-	cd cloudflare && cf build --mode production
+	cd cloudflare && pnpm build
 
 worker-deploy: auth-ready worker-bundle
 	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
