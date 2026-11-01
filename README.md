@@ -224,9 +224,9 @@ disk, network, filesystem, and block-latency widgets; the block chart appears
 only when the optional probe reports completions. Charts are native SVG with
 keyboard focus, pointer/keyboard readouts, and explicit gaps. Missing data
 renders as `—`, `unavailable`, or a gap; it is never zero. API responses are
-decoded once with Effect Schema, and request failures stay in a typed
-`ApiFailure` channel. Access handles login; the browser never sees a host token
-or an operator secret.
+decoded once at the boundary, and request failures stay in a typed `ApiFailure`
+channel. Access handles login; the browser never sees a host token or an
+operator secret.
 
 Build: `pnpm --filter @niceforge/telemetry build`. Browser tests:
 `pnpm --filter @niceforge/telemetry test:ui` with request interception from

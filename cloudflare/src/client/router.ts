@@ -1,7 +1,9 @@
 import { createRouter, hashHistory } from "@solidjs/router";
+import { lazy } from "solid-js";
 import { FleetPage } from "./pages/FleetPage";
-import { HostPage } from "./pages/HostPage";
-import { NotFoundPage } from "./pages/NotFoundPage";
+
+const HostPage = lazy(() => import("./pages/HostPage").then(module => ({ default: module.HostPage })));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then(module => ({ default: module.NotFoundPage })));
 
 export const Router = createRouter({
   routes: [
