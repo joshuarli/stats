@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-15 · P3 · A block-latency snapshot can be attached to two samples or skipped
-
-- **Area:** Data
-- **Where:** `agent/src/runtime.rs:174-181`, `agent/src/block.rs:66-87`, `bpf/collector.sh`
-- **Problem:** The collector rewrites the snapshot every 15 s. The agent samples every 15 s on an independent phase and attaches any snapshot younger than 30 s. Drift between the two phases can attach the same interval histogram to consecutive samples, which the server then sums twice, or skip one entirely. The snapshot has no sequence number and the agent remembers no mtime. `unproven` on a live host.
-- **Recommendation:** Remember the last attached mtime (or add a snapshot sequence) and attach each snapshot at most once.
-- **Fix with:** make-invalid-states-unrepresentable
-- **Effort:** S
-
 ### STA-16 · P3 · Network interfaces past 16 are picked in directory order
 
 - **Area:** Data

@@ -63,7 +63,7 @@ fn snapshot_block(snapshot: Snapshot) -> Option<Block> {
     })
 }
 
-pub fn read(path: &Path) -> Option<Block> {
+fn read_snapshot(path: &Path) -> Option<(Block, SystemTime)> {
     let link = fs::symlink_metadata(path).ok()?;
     if link.file_type().is_symlink() || !link.is_file() || link.len() > SNAPSHOT_LIMIT as u64 {
         return None;
@@ -75,7 +75,8 @@ pub fn read(path: &Path) -> Option<Block> {
             return None;
         }
     }
-    let age = SystemTime::now().duration_since(link.modified().ok()?).ok()?;
+    let modified = link.modified().ok()?;
+    let age = SystemTime::now().duration_since(modified).ok()?;
     if age > MAX_AGE {
         return None;
     }
@@ -83,13 +84,39 @@ pub fn read(path: &Path) -> Option<Block> {
     if bytes.len() > SNAPSHOT_LIMIT {
         return None;
     }
-    snapshot_block(serde_json::from_slice(&bytes).ok()?)
+    Some((snapshot_block(serde_json::from_slice(&bytes).ok()?)?, modified))
+}
+
+#[derive(Default)]
+pub struct SnapshotReader {
+    last: Option<SystemTime>,
+}
+
+impl SnapshotReader {
+    pub fn read(&mut self, path: &Path) -> Option<Block> {
+        let (block, modified) = read_snapshot(path)?;
+        if self.last == Some(modified) {
+            return None;
+        }
+        self.last = Some(modified);
+        Some(block)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::PathBuf;
+
+    fn scratch() -> PathBuf {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/block-tests");
+        fs::create_dir_all(&root).unwrap();
+        let nanos = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = root.join(format!("{}-{nanos}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
 
     fn value(buckets: Vec<&str>, count: &str, total: &str, min: &str, max: &str) -> serde_json::Value {
         json!({ "v": 1, "buckets": buckets, "count": count, "totalUs": total, "minUs": min, "maxUs": max })
@@ -129,5 +156,18 @@ mod tests {
         assert!(parse(value(buckets("01"), "1", "10", "1", "10")).is_none());
         assert!(parse(value(buckets("+1"), "1", "10", "1", "10")).is_none());
         assert!(parse(value(buckets("-1"), "1", "10", "1", "10")).is_none());
+    }
+
+    #[test]
+    fn attaches_each_snapshot_once() {
+        let root = scratch();
+        let path = root.join("snapshot.json");
+        let snapshot = serde_json::to_vec(&value(buckets("1"), "1", "10", "1", "10")).unwrap();
+        fs::write(&path, &snapshot).unwrap();
+        let mut reader = SnapshotReader::default();
+        assert!(reader.read(&path).is_some());
+        assert!(reader.read(&path).is_none());
+        fs::File::options().write(true).open(&path).unwrap().set_modified(SystemTime::now() - Duration::from_secs(1)).unwrap();
+        assert!(reader.read(&path).is_some());
     }
 }

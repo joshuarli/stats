@@ -183,10 +183,10 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn sample_with_block(config: &AgentConfig) -> Option<Sample> {
+fn sample_with_block(config: &AgentConfig, snapshots: &mut block::SnapshotReader) -> Option<Sample> {
     let mut sample = sample_once()?;
     if let Some(path) = &config.block_latency_file {
-        if let Some(value) = block::read(path) {
+        if let Some(value) = snapshots.read(path) {
             sample.block = Some(value);
         }
     }
@@ -210,14 +210,15 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
 
     let mut report = RunReport::default();
     let interval = Duration::from_millis(config.sample_interval_ms);
-    if let Some(sample) = sample_with_block(config) {
+    let mut snapshots = block::SnapshotReader::default();
+    if let Some(sample) = sample_with_block(config, &mut snapshots) {
         queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
         report.sampled += 1;
     } else {
         report.sample_failures += 1;
     }
     while sleep_interruptible(interval, stop) {
-        if let Some(sample) = sample_with_block(config) {
+        if let Some(sample) = sample_with_block(config, &mut snapshots) {
             queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
             report.sampled += 1;
         } else {
