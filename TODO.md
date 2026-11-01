@@ -29,15 +29,6 @@ Next: 25
 - **Fix with:** durable-state
 - **Effort:** S
 
-### STA-6 · P3 · Durable Object SQLite has no schema version or migration path
-
-- **Area:** Data
-- **Where:** `cloudflare/src/installation.ts:57-90`, `cloudflare/src/installation.ts:138-143`
-- **Problem:** The schema is `CREATE TABLE/INDEX IF NOT EXISTS` with no `user_version` and no `ALTER`. A deploy that adds a column or index leaves the live object on the old shape. Tests still pass because every test object is fresh, while production requests fail. `rollups.payload` carries `v: 1`, but nothing reads it, so a changed rollup shape would mix with old rows.
-- **Recommendation:** Keep a numbered migration list applied in `blockConcurrencyWhile` and gated on `PRAGMA user_version`. Add one test that opens an object created with the previous schema.
-- **Fix with:** durable-state
-- **Effort:** M
-
 ### STA-7 · P3 · Admin caller errors return 500 with the raw exception text
 
 - **Area:** Errors

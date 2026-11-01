@@ -89,6 +89,32 @@ const ROLLUPS = `CREATE TABLE IF NOT EXISTS rollups (
   PRIMARY KEY (host_id, resolution, bucket_ms)
 ) STRICT`;
 const ROLLUP_TIME = "CREATE INDEX IF NOT EXISTS rollups_by_time ON rollups (host_id, resolution, bucket_ms)";
+const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
+
+interface Migration {
+  readonly version: number;
+  readonly statements: readonly string[];
+}
+
+const MIGRATIONS: readonly Migration[] = [
+  { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] }
+];
+
+export function migrate(storage: DurableObjectStorage): void {
+  const sql = storage.sql;
+  sql.exec(SCHEMA_VERSION);
+  const row = sql.exec<{ version: number }>("SELECT version FROM schema_version LIMIT 1").toArray()[0];
+  let current = row?.version ?? 0;
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= current) continue;
+    storage.transactionSync(() => {
+      for (const statement of migration.statements) sql.exec(statement);
+      if (row === undefined) sql.exec("INSERT INTO schema_version (version) VALUES (?)", migration.version);
+      else sql.exec("UPDATE schema_version SET version = ?", migration.version);
+    });
+    current = migration.version;
+  }
+}
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return Response.json(body, { status, headers });
@@ -139,7 +165,7 @@ export class Installation extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      for (const statement of [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME]) this.ctx.storage.sql.exec(statement);
+      migrate(this.ctx.storage);
     });
   }
 
