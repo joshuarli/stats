@@ -1,5 +1,5 @@
-use crate::model::{Cpu, Disk, FileSystem, Mem, Psi, PsiGroup, SwapActivity};
-use std::collections::{BTreeMap, HashSet};
+use crate::model::{Cpu, CpuInfo, Disk, FileSystem, Mem, Psi, PsiGroup, SwapActivity};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 fn parse_u64(text: &str) -> Option<u64> {
     if text.is_empty() || text.len() > 20 || !text.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -78,6 +78,69 @@ pub fn parse_meminfo(bytes: &[u8]) -> Option<Mem> {
         swap_free: kib("SwapFree")?.to_string(),
         swap_activity: None,
     })
+}
+
+pub fn clean_text(text: &str, limit: usize) -> Option<String> {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let printable: String = collapsed.chars().filter(|character| !character.is_control()).take(limit).collect();
+    if printable.is_empty() { None } else { Some(printable) }
+}
+
+pub fn parse_os_release(bytes: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let value = |key: &str| {
+        text.lines().find_map(|line| {
+            let raw = line.strip_prefix(key)?.strip_prefix('=')?;
+            clean_text(raw.trim().trim_matches(|character| character == '"' || character == '\''), 128)
+        })
+    };
+    value("PRETTY_NAME").or_else(|| value("NAME"))
+}
+
+pub fn parse_cpuinfo(bytes: &[u8], max_mhz: Option<u32>) -> Option<CpuInfo> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut threads = 0_u32;
+    let mut model = None;
+    let mut sockets = BTreeSet::new();
+    let mut cores = BTreeSet::new();
+    let mut physical: Option<String> = None;
+    let mut core: Option<String> = None;
+    let mut counted = false;
+    let mut finish = |physical: &mut Option<String>, core: &mut Option<String>, counted: &mut bool, threads: &mut u32| {
+        if *counted {
+            *threads += 1;
+        }
+        if let Some(socket) = physical.take() {
+            if let Some(core) = core.take() {
+                cores.insert((socket.clone(), core));
+            }
+            sockets.insert(socket);
+        }
+        *core = None;
+        *counted = false;
+    };
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            if line.trim().is_empty() {
+                finish(&mut physical, &mut core, &mut counted, &mut threads);
+            }
+            continue;
+        };
+        let (key, value) = (key.trim(), value.trim());
+        match key {
+            "processor" => counted = true,
+            "physical id" => physical = Some(value.to_owned()),
+            "core id" => core = Some(value.to_owned()),
+            "model name" | "Model" | "Hardware" if model.is_none() => model = clean_text(value, 128),
+            _ => {}
+        }
+    }
+    finish(&mut physical, &mut core, &mut counted, &mut threads);
+    if threads == 0 {
+        return None;
+    }
+    let count = |value: usize| u32::try_from(value).ok().filter(|count| *count > 0);
+    Some(CpuInfo { model, threads, cores: count(cores.len()), sockets: count(sockets.len()), max_mhz })
 }
 
 pub fn parse_vmstat_swap(bytes: &[u8], page_size: u64) -> Option<SwapActivity> {
@@ -365,6 +428,29 @@ mod tests {
         assert!(parse_vmstat_swap(b"pswpin 10\n", 4096).is_none());
         assert!(parse_vmstat_swap(b"pswpin 10\npswpout x\n", 4096).is_none());
         assert!(parse_vmstat_swap(b"pswpin 18446744073709551615\npswpout 1\n", 4096).is_none());
+    }
+
+    #[test]
+    fn cpuinfo_counts_threads_cores_and_sockets_from_the_topology_lines() {
+        let two_sockets = "processor\t: 0\nmodel name\t: AMD  EPYC 9654\nphysical id\t: 0\ncore id\t\t: 0\n\nprocessor\t: 1\nmodel name\t: AMD  EPYC 9654\nphysical id\t: 0\ncore id\t\t: 0\n\nprocessor\t: 2\nmodel name\t: AMD  EPYC 9654\nphysical id\t: 1\ncore id\t\t: 0\n\nprocessor\t: 3\nmodel name\t: AMD  EPYC 9654\nphysical id\t: 1\ncore id\t\t: 1\n";
+        let info = parse_cpuinfo(two_sockets.as_bytes(), Some(3700)).unwrap();
+        assert_eq!(info, CpuInfo { model: Some("AMD EPYC 9654".to_owned()), threads: 4, cores: Some(3), sockets: Some(2), max_mhz: Some(3700) });
+    }
+
+    #[test]
+    fn cpuinfo_without_topology_reports_only_what_it_has() {
+        let arm = "processor\t: 0\nBogoMIPS\t: 50.00\n\nprocessor\t: 1\nBogoMIPS\t: 50.00\n\nHardware\t: BCM2835\n";
+        let info = parse_cpuinfo(arm.as_bytes(), None).unwrap();
+        assert_eq!(info, CpuInfo { model: Some("BCM2835".to_owned()), threads: 2, cores: None, sockets: None, max_mhz: None });
+        assert!(parse_cpuinfo(b"model name\t: nothing\n", None).is_none());
+        assert!(parse_cpuinfo(&[0xff, 0xfe], None).is_none());
+    }
+
+    #[test]
+    fn os_release_prefers_the_pretty_name_and_strips_quotes() {
+        assert_eq!(parse_os_release(b"NAME=\"Alpine Linux\"\nPRETTY_NAME=\"Alpine Linux edge\"\n").as_deref(), Some("Alpine Linux edge"));
+        assert_eq!(parse_os_release(b"ID=x\nNAME='Plain'\n").as_deref(), Some("Plain"));
+        assert!(parse_os_release(b"ID=x\n").is_none());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
-import { canonicalJson, parseBatch, type Sample } from "./protocol";
+import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, compact, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
@@ -95,6 +95,11 @@ const ROLLUPS = `CREATE TABLE IF NOT EXISTS rollups (
 const ROLLUP_TIME = "CREATE INDEX IF NOT EXISTS rollups_by_time ON rollups (host_id, resolution, bucket_ms)";
 const SAMPLE_EXPIRY = "CREATE INDEX IF NOT EXISTS samples_by_received ON samples (received_at_ms)";
 const ROLLUP_EXPIRY = "CREATE INDEX IF NOT EXISTS rollups_by_expiry ON rollups (resolution, bucket_ms)";
+const HOST_SYSTEM = `CREATE TABLE IF NOT EXISTS host_system (
+  host_id TEXT PRIMARY KEY,
+  reported_at_ms INTEGER NOT NULL,
+  payload TEXT NOT NULL
+) STRICT`;
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
 
 interface Migration {
@@ -104,7 +109,8 @@ interface Migration {
 
 const MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: [HOSTS, SAMPLES, SAMPLE_TIME, SAMPLE_MONO, ROLLUPS, ROLLUP_TIME] },
-  { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] }
+  { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] },
+  { version: 3, statements: [HOST_SYSTEM] }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number }): number {
@@ -228,6 +234,7 @@ export class Installation extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM samples WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ?", hostId);
+      this.ctx.storage.sql.exec("DELETE FROM host_system WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM hosts WHERE host_id = ?", hostId);
       this.dataVersion += 1;
     });
@@ -250,6 +257,11 @@ export class Installation extends DurableObject<Env> {
     const row = this.ctx.storage.sql.exec<{ payload: string; received_at_ms: number }>("SELECT payload, received_at_ms FROM samples WHERE host_id = ? ORDER BY at_ms DESC, received_at_ms DESC LIMIT 1", hostId).toArray()[0];
     if (row === undefined) return null;
     return { hostId, receivedAtMs: row.received_at_ms, sample: JSON.parse(row.payload) as Sample };
+  }
+
+  async system(hostId: string): Promise<{ hostId: string; reportedAtMs: number; system: SystemInfo } | null> {
+    const row = this.ctx.storage.sql.exec<{ reported_at_ms: number; payload: string }>("SELECT reported_at_ms, payload FROM host_system WHERE host_id = ?", hostId).toArray()[0];
+    return row === undefined ? null : { hostId, reportedAtMs: row.reported_at_ms, system: JSON.parse(row.payload) as SystemInfo };
   }
 
   private rebuildMinute(hostId: string, bucketMs: number): void {
@@ -438,6 +450,7 @@ export class Installation extends DurableObject<Env> {
         accepted += 1;
       }
       if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
+      if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(parsed.system));
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
       this.dataVersion += 1;
     });
@@ -460,6 +473,11 @@ export class Installation extends DurableObject<Env> {
       if (latest !== null && request.method === "GET") {
         const sample = await this.latest(latest[1]!);
         return sample === null ? failure("not_found", "no samples for host", 404) : json(sample);
+      }
+      const system = /^\/hosts\/(h_[0-9a-f]{32})\/system$/u.exec(path);
+      if (system !== null && request.method === "GET") {
+        const found = await this.system(system[1]!);
+        return found === null ? failure("not_found", "no system details for host", 404) : json(found);
       }
       const history = /^\/hosts\/(h_[0-9a-f]{32})\/history$/u.exec(path);
       if (history !== null && request.method === "GET") {

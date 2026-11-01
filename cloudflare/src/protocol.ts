@@ -102,12 +102,29 @@ export interface Sample {
   readonly block?: Block;
 }
 
+export interface CpuInfo {
+  readonly model?: string;
+  readonly threads: number;
+  readonly cores?: number;
+  readonly sockets?: number;
+  readonly maxMhz?: number;
+}
+
+export interface SystemInfo {
+  readonly agent: string;
+  readonly hostname: string;
+  readonly os?: string;
+  readonly kernel: string;
+  readonly arch: string;
+  readonly cpu: CpuInfo;
+}
+
 export type SampleResult =
   | { readonly ok: true; readonly sample: Sample }
   | { readonly ok: false; readonly code: "invalid_sample"; readonly message: string; readonly seq?: string };
 
 export type BatchResult =
-  | { readonly ok: true; readonly hostId: string; readonly bootId: string; readonly samples: readonly SampleResult[] }
+  | { readonly ok: true; readonly hostId: string; readonly bootId: string; readonly system?: SystemInfo; readonly samples: readonly SampleResult[] }
   | { readonly ok: false; readonly code: RejectCode; readonly message: string };
 
 const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"] as const;
@@ -204,6 +221,36 @@ function parsePsiGroup(value: unknown): PsiGroup | null {
   return value as unknown as PsiGroup;
 }
 
+function plainText(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0)!;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return false;
+  }
+  return true;
+}
+
+function text(value: unknown, limit: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= limit && plainText(value);
+}
+
+function bounded(value: unknown, high: number): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= high;
+}
+
+function parseSystem(value: unknown): SystemInfo | null {
+  if (!subset(value, ["agent", "hostname", "os", "kernel", "arch", "cpu"])) return null;
+  if (!["agent", "hostname", "kernel", "arch", "cpu"].every(key => key in value)) return null;
+  const cpu = value.cpu;
+  if (!text(value.agent, 32) || !text(value.hostname, 64) || !text(value.kernel, 64) || !text(value.arch, 16)) return null;
+  if (value.os !== undefined && !text(value.os, 128)) return null;
+  if (!subset(cpu, ["model", "threads", "cores", "sockets", "maxMhz"]) || !bounded(cpu.threads, 4096)) return null;
+  if (cpu.model !== undefined && !text(cpu.model, 128)) return null;
+  if (cpu.cores !== undefined && !bounded(cpu.cores, 4096)) return null;
+  if (cpu.sockets !== undefined && !bounded(cpu.sockets, 256)) return null;
+  if (cpu.maxMhz !== undefined && !bounded(cpu.maxMhz, 100_000)) return null;
+  return value as unknown as SystemInfo;
+}
+
 export function parseSample(value: unknown): SampleResult {
   if (!subset(value, SAMPLE_KEYS)) return { ok: false, code: "invalid_sample", message: "unknown sample field" };
   const seq = value.seq;
@@ -262,11 +309,17 @@ export function parseBatch(text: string): BatchResult {
   } catch {
     return { ok: false, code: "invalid_json", message: "body is not valid JSON" };
   }
-  if (!exact(value, ["v", "hostId", "bootId", "samples"])) return { ok: false, code: "invalid_batch", message: "batch shape" };
+  if (!subset(value, ["v", "hostId", "bootId", "samples", "system"]) || !["v", "hostId", "bootId", "samples"].every(key => key in value)) return { ok: false, code: "invalid_batch", message: "batch shape" };
   if (value.v !== 1) return { ok: false, code: "unknown_version", message: "unknown protocol version" };
   if (typeof value.hostId !== "string" || !HOST.test(value.hostId) || typeof value.bootId !== "string" || !BOOT.test(value.bootId)) return { ok: false, code: "invalid_batch", message: "host or boot identity" };
   if (!Array.isArray(value.samples) || value.samples.length < 1 || value.samples.length > MAX_SAMPLES) return { ok: false, code: "invalid_batch", message: "sample count" };
-  return { ok: true, hostId: value.hostId, bootId: value.bootId, samples: value.samples.map(parseSample) };
+  let system: SystemInfo | undefined;
+  if (value.system !== undefined) {
+    const parsed = parseSystem(value.system);
+    if (parsed === null) return { ok: false, code: "invalid_batch", message: "system shape" };
+    system = parsed;
+  }
+  return { ok: true, hostId: value.hostId, bootId: value.bootId, ...(system === undefined ? {} : { system }), samples: value.samples.map(parseSample) };
 }
 
 export function canonicalJson(value: unknown): string {

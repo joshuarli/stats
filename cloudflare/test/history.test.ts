@@ -261,3 +261,34 @@ describe("history reads", () => {
     expect(after).toBeGreaterThan(before);
   });
 });
+
+describe("system details", () => {
+  async function system(hostId: string): Promise<Response> {
+    return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/system`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+  }
+
+  it("keeps what the agent last reported, serves it behind Access, and drops it with the host", async () => {
+    const host = await createHost();
+    expect((await system(host.hostId)).status).toBe(404);
+    expect((await ingest(host.token, "batch-system.json", host.hostId)).status).toBe(200);
+    const body = await (await system(host.hostId)).json() as { hostId: string; reportedAtMs: number; system: { hostname: string; cpu: { threads: number; cores: number } } };
+    expect(body.hostId).toBe(host.hostId);
+    expect(body.reportedAtMs).toBe(now);
+    expect(body.system.hostname).toBe("threadripper");
+    expect(body.system.cpu).toMatchObject({ threads: 32, cores: 16 });
+
+    expect((await ingest(host.token, "batch-minimal.json", host.hostId)).status).toBe(200);
+    expect((await system(host.hostId)).status).toBe(200);
+
+    expect((await SELF.fetch(`https://example.com/api/v1/hosts/${host.hostId}/system`)).status).toBe(401);
+    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toBe(true);
+    expect((await system(host.hostId)).status).toBe(404);
+  });
+
+  it("rejects a batch whose system details are malformed", async () => {
+    const host = await createHost();
+    const response = await ingest(host.token, "invalid-system.json", host.hostId);
+    expect(response.status).toBe(400);
+    expect((await system(host.hostId)).status).toBe(404);
+  });
+});

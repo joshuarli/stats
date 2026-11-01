@@ -236,19 +236,49 @@ fn validate_sample(value: &Value) -> bool {
     })
 }
 
+fn text(value: &Value, limit: usize) -> bool {
+    value.as_str().is_some_and(|text| !text.is_empty() && text.chars().count() <= limit && !text.chars().any(char::is_control))
+}
+
+fn bounded(value: &Value, high: u64) -> bool {
+    value.as_u64().is_some_and(|number| (1..=high).contains(&number))
+}
+
+fn validate_system(value: &Value) -> bool {
+    let Some(map) = value.as_object() else { return false };
+    if !keys(value, &["agent", "hostname", "os", "kernel", "arch", "cpu"]) || !["agent", "hostname", "kernel", "arch", "cpu"].iter().all(|key| map.contains_key(*key)) {
+        return false;
+    }
+    let cpu = &value["cpu"];
+    text(&value["agent"], 32)
+        && text(&value["hostname"], 64)
+        && map.get("os").is_none_or(|os| text(os, 128))
+        && text(&value["kernel"], 64)
+        && text(&value["arch"], 16)
+        && keys(cpu, &["model", "threads", "cores", "sockets", "maxMhz"])
+        && bounded(&cpu["threads"], 4096)
+        && cpu.get("model").is_none_or(|model| text(model, 128))
+        && cpu.get("cores").is_none_or(|cores| bounded(cores, 4096))
+        && cpu.get("sockets").is_none_or(|sockets| bounded(sockets, 256))
+        && cpu.get("maxMhz").is_none_or(|mhz| bounded(mhz, 100_000))
+}
+
 fn validate(text: &str) -> Result<(), Failure> {
     if text.len() > 65_536 {
         return Err(Failure::TooLarge);
     }
     let value: Value = serde_json::from_str(text).map_err(|_| Failure::InvalidJson)?;
     let Some(map) = value.as_object() else { return Err(Failure::InvalidBatch) };
-    if map.len() != 4 || !["v", "hostId", "bootId", "samples"].iter().all(|key| map.contains_key(*key)) {
+    if !keys(&value, &["v", "hostId", "bootId", "samples", "system"]) || !["v", "hostId", "bootId", "samples"].iter().all(|key| map.contains_key(*key)) {
         return Err(Failure::InvalidBatch);
     }
     if value["v"].as_u64() != Some(1) {
         return Err(Failure::UnknownVersion);
     }
     if !value["hostId"].as_str().is_some_and(valid_host) || !value["bootId"].as_str().is_some_and(valid_boot) {
+        return Err(Failure::InvalidBatch);
+    }
+    if map.get("system").is_some_and(|system| !validate_system(system)) {
         return Err(Failure::InvalidBatch);
     }
     let Some(samples) = value["samples"].as_array() else { return Err(Failure::InvalidBatch) };

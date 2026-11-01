@@ -120,6 +120,15 @@
       "file": "invalid-swap-unpaired.json",
       "expect": "reject",
       "code": "invalid_sample"
+    },
+    {
+      "file": "batch-system.json",
+      "expect": "accept"
+    },
+    {
+      "file": "invalid-system.json",
+      "expect": "reject",
+      "code": "invalid_batch"
     }
   ]
 }

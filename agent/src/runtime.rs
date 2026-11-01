@@ -290,7 +290,15 @@ fn sample_with_block(config: &AgentConfig, snapshots: &mut block::SnapshotReader
 
 pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeError> {
     let boot_id = crate::boot_identity().ok_or(RuntimeError::BootIdentity)?;
-    let sender: Arc<dyn BatchSender> = Arc::new(HttpTransport::new(&config.endpoint, &config.host_id, &token, Duration::from_millis(config.request_timeout_ms))?);
+    let transport = HttpTransport::new(&config.endpoint, &config.host_id, &token, Duration::from_millis(config.request_timeout_ms))?;
+    let transport = match crate::system_info() {
+        Some(info) => transport.announcing(info),
+        None => {
+            eprintln!("stats: system information is unavailable; the host page will not show it");
+            transport
+        }
+    };
+    let sender: Arc<dyn BatchSender> = Arc::new(transport);
     let queue = Arc::new(Mutex::new(Queue::new(config.max_queue_samples)));
     let stop = &STOP;
     stop.store(false, Ordering::SeqCst);

@@ -57,7 +57,8 @@ Methods other than GET and HEAD on non-API paths are rejected before routing.
 
 Routes under `/api/v1/` (handled in `installation.ts`):
 
-- `GET /hosts`, `GET /hosts/:hostId/latest`.
+- `GET /hosts`, `GET /hosts/:hostId/latest`, `GET /hosts/:hostId/system`
+  (404 until the agent has reported).
 - `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
   `range` for an explicit window; the response then omits `range`.
@@ -99,6 +100,7 @@ One Durable Object per installation holds three tables, created with
 `CREATE TABLE IF NOT EXISTS` in `installation.ts`:
 
 - `hosts`: credentials, revocation, last receipt, and the rate-limit window.
+- `host_system`: the latest `system` object per host and when it arrived.
 - `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 90 days.

@@ -1,7 +1,7 @@
 use crate::CollectionScope;
-use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, SwapActivity, Unavailable};
+use crate::model::{sequence_for, Disk, FileSystem, Load, Mem, Net, Psi, Sample, SwapActivity, SystemInfo, Unavailable};
 use crate::parse::{
-    file_systems, fixed3, parse_cpu, parse_diskstats, parse_meminfo, parse_mounts, parse_psi, parse_vmstat_swap, statfs_facts,
+    file_systems, fixed3, parse_cpu, parse_diskstats, clean_text, parse_cpuinfo, parse_meminfo, parse_mounts, parse_os_release, parse_psi, parse_vmstat_swap, statfs_facts,
 };
 use std::collections::HashSet;
 use std::ffi::CString;
@@ -224,6 +224,37 @@ fn read_mem(buffer: &mut Vec<u8>) -> Option<Mem> {
     let mut mem = parse_meminfo(buffer)?;
     mem.swap_activity = read_swap_activity(buffer);
     Some(mem)
+}
+
+const CPUINFO_LIMIT: usize = 1_048_576;
+const OS_RELEASE_LIMIT: usize = 16_384;
+
+fn uname_field(field: &[libc::c_char], limit: usize) -> Option<String> {
+    let bytes: Vec<u8> = field.iter().take_while(|byte| **byte != 0).map(|byte| *byte as u8).collect();
+    clean_text(&String::from_utf8_lossy(&bytes), limit)
+}
+
+pub fn system_info() -> Option<SystemInfo> {
+    let mut name: libc::utsname = unsafe { std::mem::zeroed() };
+    if unsafe { libc::uname(&mut name) } != 0 {
+        return None;
+    }
+    let mut buffer = Vec::with_capacity(CPUINFO_LIMIT);
+    read_bounded(Path::new("/proc/cpuinfo"), &mut buffer, CPUINFO_LIMIT).ok()?;
+    let max_mhz = read_counter("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq").and_then(|khz| u32::try_from(khz / 1000).ok()).filter(|mhz| *mhz > 0);
+    let cpu = parse_cpuinfo(&buffer, max_mhz)?;
+    let mut release = Vec::with_capacity(OS_RELEASE_LIMIT);
+    let os = ["/etc/os-release", "/usr/lib/os-release"]
+        .iter()
+        .find_map(|path| read_bounded(Path::new(path), &mut release, OS_RELEASE_LIMIT).ok().and_then(|()| parse_os_release(&release)));
+    Some(SystemInfo {
+        agent: crate::VERSION.to_owned(),
+        hostname: uname_field(&name.nodename, 64)?,
+        os,
+        kernel: uname_field(&name.release, 64)?,
+        arch: uname_field(&name.machine, 16)?,
+        cpu,
+    })
 }
 
 pub fn sample(scope: CollectionScope) -> Option<Sample> {

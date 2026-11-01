@@ -51,6 +51,30 @@ pub struct SwapActivity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CpuInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    pub threads: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cores: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sockets: Option<u32>,
+    #[serde(rename = "maxMhz", skip_serializing_if = "Option::is_none")]
+    pub max_mhz: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SystemInfo {
+    pub agent: String,
+    pub hostname: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    pub kernel: String,
+    pub arch: String,
+    pub cpu: CpuInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Disk {
     pub id: String,
     pub name: String,

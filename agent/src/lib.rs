@@ -7,7 +7,7 @@ pub mod queue;
 pub mod runtime;
 pub mod transport;
 
-use model::Sample;
+use model::{Sample, SystemInfo};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -27,6 +27,16 @@ pub fn sample_once(scope: CollectionScope) -> Option<Sample> {
 
 #[cfg(not(target_os = "linux"))]
 pub fn sample_once(_scope: CollectionScope) -> Option<Sample> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+pub fn system_info() -> Option<SystemInfo> {
+    linux::system_info()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn system_info() -> Option<SystemInfo> {
     None
 }
 

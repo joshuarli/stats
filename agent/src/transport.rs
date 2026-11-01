@@ -1,13 +1,14 @@
-use crate::model::Sample;
+use crate::model::{Sample, SystemInfo};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
 const MAX_BODY: usize = 65_536;
 const MAX_RESPONSE: u64 = 16_384;
 const FINAL_TIMEOUT: Duration = Duration::from_secs(2);
+const SYSTEM_INTERVAL: Duration = Duration::from_secs(3600);
 
 #[derive(Serialize)]
 pub struct Batch<'a> {
@@ -16,6 +17,8 @@ pub struct Batch<'a> {
     pub host_id: &'a str,
     #[serde(rename = "bootId")]
     pub boot_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<&'a SystemInfo>,
     pub samples: &'a [Sample],
 }
 
@@ -57,14 +60,14 @@ struct IngestResponse {
     rejected: Vec<serde_json::Value>,
 }
 
-pub fn encode(host_id: &str, boot_id: &str, samples: &[Sample]) -> Result<Vec<u8>, TransportError> {
+pub fn encode(host_id: &str, boot_id: &str, samples: &[Sample], system: Option<&SystemInfo>) -> Result<Vec<u8>, TransportError> {
     if samples.is_empty() {
         return Err(TransportError::Permanent("empty batch".to_owned()));
     }
     if samples.len() > 16 {
         return Err(TransportError::Permanent("batch exceeds 16 samples".to_owned()));
     }
-    let body = serde_json::to_vec(&Batch { v: 1, host_id, boot_id, samples }).map_err(|error| TransportError::Permanent(format!("encode: {error}")))?;
+    let body = serde_json::to_vec(&Batch { v: 1, host_id, boot_id, system, samples }).map_err(|error| TransportError::Permanent(format!("encode: {error}")))?;
     if body.len() > MAX_BODY {
         return Err(TransportError::Permanent(format!("batch is {} bytes, over the {} byte cap", body.len(), MAX_BODY)));
     }
@@ -123,7 +126,30 @@ fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError
     }
 }
 
+pub struct SystemSchedule {
+    info: SystemInfo,
+    sent_at: Option<Instant>,
+}
+
+impl SystemSchedule {
+    pub fn new(info: SystemInfo) -> Self {
+        Self { info, sent_at: None }
+    }
+
+    pub fn due(&self, now: Instant) -> Option<&SystemInfo> {
+        match self.sent_at {
+            Some(sent) if now.saturating_duration_since(sent) < SYSTEM_INTERVAL => None,
+            _ => Some(&self.info),
+        }
+    }
+
+    pub fn delivered(&mut self, now: Instant) {
+        self.sent_at = Some(now);
+    }
+}
+
 pub struct HttpTransport {
+    system: Option<Mutex<SystemSchedule>>,
     agent: ureq::Agent,
     final_agent: ureq::Agent,
     url: String,
@@ -151,7 +177,18 @@ impl HttpTransport {
             url: format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/')),
             token: Mutex::new(token.to_owned()),
             host_id: host_id.to_owned(),
+            system: None,
         })
+    }
+
+    pub fn announcing(mut self, info: SystemInfo) -> Self {
+        self.system = Some(Mutex::new(SystemSchedule::new(info)));
+        self
+    }
+
+    fn due_system(&self) -> Option<SystemInfo> {
+        let schedule = self.system.as_ref()?.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        schedule.due(Instant::now()).cloned()
     }
 
     fn token(&self) -> String {
@@ -168,11 +205,13 @@ impl HttpTransport {
     }
 
     pub fn fits(&self, boot_id: &str, samples: &[Sample]) -> bool {
-        encode(&self.host_id, boot_id, samples).is_ok()
+        let system = self.system.as_ref().map(|schedule| schedule.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).info.clone());
+        encode(&self.host_id, boot_id, samples, system.as_ref()).is_ok()
     }
 
     fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        let body = encode(&self.host_id, boot_id, samples)?;
+        let system = self.due_system();
+        let body = encode(&self.host_id, boot_id, samples, system.as_ref())?;
         let mut response = match agent
             .post(&self.url)
             .header("Authorization", format!("Bearer {}", self.token()))
@@ -193,7 +232,13 @@ impl HttpTransport {
             return Err(classify_status(status, retry_after));
         }
         let body = response.body_mut().with_config().limit(MAX_RESPONSE).read_to_vec().map_err(|error| TransportError::Retryable(format!("response body: {error}")))?;
-        parse_response(&body)
+        let outcome = parse_response(&body)?;
+        if system.is_some() {
+            if let Some(schedule) = &self.system {
+                schedule.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).delivered(Instant::now());
+            }
+        }
+        Ok(outcome)
     }
 
     pub fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
@@ -302,6 +347,46 @@ mod tests {
         assert_eq!(payload["bootId"], boot);
         assert_eq!(payload["hostId"], host);
         assert_eq!(payload["samples"][0]["seq"], "1");
+    }
+
+    fn system_info() -> SystemInfo {
+        SystemInfo {
+            agent: "0.1.0".to_owned(),
+            hostname: "threadripper".to_owned(),
+            os: Some("Alpine Linux edge".to_owned()),
+            kernel: "7.2.9".to_owned(),
+            arch: "x86_64".to_owned(),
+            cpu: crate::model::CpuInfo { model: Some("AMD Ryzen 9 9950X".to_owned()), threads: 32, cores: Some(16), sockets: Some(1), max_mhz: Some(5756) },
+        }
+    }
+
+    #[test]
+    fn system_details_ride_along_until_delivered_and_then_once_an_hour() {
+        let start = Instant::now();
+        let mut schedule = SystemSchedule::new(system_info());
+        assert!(schedule.due(start).is_some());
+        assert!(schedule.due(start + Duration::from_secs(5)).is_some());
+        schedule.delivered(start);
+        assert!(schedule.due(start + Duration::from_secs(3599)).is_none());
+        assert!(schedule.due(start + Duration::from_secs(3600)).is_some());
+    }
+
+    #[test]
+    fn the_first_batch_announces_the_system_and_a_failed_one_does_not_count() {
+        let receiver = receiver(response(1, 0, "[]"));
+        let (host, token, boot) = config();
+        let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap().announcing(system_info());
+        transport.send(&boot, &[sample()]).unwrap();
+        let request = receiver.request.recv_timeout(Duration::from_secs(2)).unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
+        assert_eq!(payload["system"]["hostname"], "threadripper");
+        assert_eq!(payload["system"]["cpu"]["cores"], 16);
+        assert_eq!(payload["system"]["cpu"]["maxMhz"], 5756);
+        assert!(transport.due_system().is_none());
+
+        let unreachable = HttpTransport::new("http://127.0.0.1:1", &host, &token, Duration::from_secs(1)).unwrap().announcing(system_info());
+        assert!(unreachable.send(&boot, &[sample()]).is_err());
+        assert!(unreachable.due_system().is_some());
     }
 
     #[test]
@@ -440,9 +525,9 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_oversized_batches() {
-        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &[]), Err(TransportError::Permanent(_))));
+        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &[], None), Err(TransportError::Permanent(_))));
         let huge = vec![sample(); 64];
-        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &huge), Err(TransportError::Permanent(_))));
+        assert!(matches!(encode("h_0123456789abcdef0123456789abcdef", "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", &huge, None), Err(TransportError::Permanent(_))));
     }
 
     #[test]

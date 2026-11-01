@@ -20,7 +20,28 @@ and a body of at most 65,536 bytes. A batch contains 1–16 samples.
 `hostId` must match the credential's host. `bootId` is the kernel boot UUID from
 `/proc/sys/kernel/random/boot_id`. Counters are decimal u64 strings; timing and
 sequence fields are decimal strings at most 2^53-1 so neither edge can round
-them silently. JSON numbers are used only for `v` and `cpuCount`.
+them silently. JSON numbers are used only for `v`, `cpuCount`, and the `system`
+integers.
+
+## System details
+
+A batch may carry one optional `system` object: static facts about the host.
+The agent attaches it to its first upload after it starts and then at most once
+an hour, and only a delivered upload resets that clock. The server keeps the
+latest object per host and the time it arrived.
+
+| Field | Required | Shape |
+| --- | --- | --- |
+| `agent` | yes | agent version, 1–32 characters |
+| `hostname` | yes | kernel node name, 1–64 characters |
+| `os` | no | `PRETTY_NAME` from `os-release`, 1–128 characters |
+| `kernel` | yes | kernel release, 1–64 characters |
+| `arch` | yes | machine architecture, 1–16 characters |
+| `cpu` | yes | `threads` (integer 1–4096) and optionally `model` (1–128 characters), `cores` (1–4096, distinct physical id and core id pairs), `sockets` (1–256, distinct physical ids), `maxMhz` (1–100000, `cpuinfo_max_freq`) |
+
+Strings contain no control characters. Unknown fields at any level make the
+whole batch invalid. A field the kernel does not expose is absent, never zero
+or an empty string.
 
 ## Sample
 

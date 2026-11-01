@@ -1,0 +1,34 @@
+{
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "samples": [
+    {
+      "atMs": "1793510400000",
+      "cpu": {
+        "idle": "90000000",
+        "iowait": "100000",
+        "steal": "0",
+        "system": "2000000",
+        "total": "93100000",
+        "user": "1000000"
+      },
+      "monoMs": "900000000",
+      "seq": "900000"
+    }
+  ],
+  "system": {
+    "agent": "0.1.0",
+    "arch": "x86_64",
+    "cpu": {
+      "cores": 16,
+      "maxMhz": 5756,
+      "model": "AMD Ryzen 9 9950X 16-Core Processor",
+      "sockets": 1,
+      "threads": 32
+    },
+    "hostname": "threadripper",
+    "kernel": "7.2.9-2-stable",
+    "os": "Alpine Linux edge"
+  },
+  "v": 1
+}
