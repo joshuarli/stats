@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, Loading, onSettled, refresh, type ParentProps } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, Loading, onSettled, refresh, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
@@ -75,28 +75,26 @@ export function Shell(props: ParentProps): JSX.Element {
 
 function Breadcrumb(): JSX.Element {
   const location = useLocation();
-  const current = () => HOST_PATH.exec(location.pathname)?.[1];
+  const host = () => HOST_PATH.exec(location.pathname)?.[1];
   const project = () => PROJECT_PATH.exec(location.pathname)?.[1];
   return (
-    <nav class="breadcrumb" aria-label="Breadcrumb">
-      {project() !== undefined ? (
-        <>
-          <a href="#/">Hosts</a>
-          <Icon name="chevronRight" size={12} />
-          <span>{project()}</span>
-        </>
-      ) : current() === undefined ? <span>Hosts</span> : (
-        <>
-          <a href="#/">Hosts</a>
-          <Icon name="chevronRight" size={12} />
-          <Errored fallback={null}>
-            <Loading fallback={null}>
-              <HostSwitcher current={current() ?? ""} />
-            </Loading>
-          </Errored>
-        </>
-      )}
-    </nav>
+    <Show when={host() !== undefined || project() !== undefined}>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="#/">Fleet</a>
+        <Show when={host()}>
+          {(current) => (
+            <>
+              <Icon name="chevronRight" size={12} />
+              <Errored fallback={null}>
+                <Loading fallback={null}>
+                  <HostSwitcher current={current()} />
+                </Loading>
+              </Errored>
+            </>
+          )}
+        </Show>
+      </nav>
+    </Show>
   );
 }
 

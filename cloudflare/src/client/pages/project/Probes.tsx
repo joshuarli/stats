@@ -1,9 +1,9 @@
 import type { JSX } from "@solidjs/web";
 import { milliseconds } from "../../format";
 import { LIMITS } from "../../health";
-import { TimeChart } from "../../components/TimeChart";
+
 import { Widget } from "../../components/ui";
-import { AXIS_WIDTH, PanelLabel, seriesColor } from "../host/shared";
+import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 import { endpointText, metricPoints, type ProjectData } from "./series";
 
 export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element {
@@ -13,12 +13,9 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
       {history() === undefined ? null : (
         <>
           <PanelLabel>Availability: 1 is up, 0 is down</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Endpoint availability"
-            compact
-            legend="inline"
             timeAxis={false}
-            yAxisWidth={AXIS_WIDTH}
             series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), points: metricPoints(history()!, `probe.${name}.up`) }))}
             format={endpointText}
             limits={LIMITS.probeUp}
@@ -27,11 +24,8 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
             stepMs={history()!.stepMs}
           />
           <PanelLabel>Response time of the probe request</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Endpoint response time"
-            compact
-            legend="inline"
-            yAxisWidth={AXIS_WIDTH}
             series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), scored: false, points: metricPoints(history()!, `probe.${name}.ms`) }))}
             format={milliseconds}
             min={0}

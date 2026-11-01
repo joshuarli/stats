@@ -47,6 +47,7 @@ export interface TimeChartProps {
 
 const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
+const TIME_LABEL_OVERHANG = 16;
 const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
 
 const colorVariable = (color: number | VizColor): string => (typeof color === "number" ? `--s${color}` : `--viz-${color}`);
@@ -316,7 +317,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       height: element.clientHeight,
       legend: { show: false },
       focus: { alpha: 0.16 },
-      padding: [8, 8, props.timeAxis === false ? 8 : 0, 0],
+      padding: [8, props.timeAxis === false ? 8 : TIME_LABEL_OVERHANG, props.timeAxis === false ? 8 : 0, 0],
       select: { show: true, ...CLEARED_SELECT },
       cursor: {
         y: false,

@@ -3,20 +3,17 @@ import type { JSX } from "@solidjs/web";
 import type { CollectorState } from "../../api";
 import { age, count, dateTime, minutes } from "../../format";
 import { LIMITS } from "../../health";
-import { TimeChart } from "../../components/TimeChart";
+
 import { Widget } from "../../components/ui";
-import { AXIS_WIDTH } from "../host/shared";
+import { PanelChart } from "../host/shared";
 import type { ProjectData } from "./series";
 
 export function CollectorWidget(props: { readonly data: ProjectData; readonly collector: CollectorState; readonly now: number; readonly rowsRead: number | undefined }): JSX.Element {
   return (
     <Widget id="collector" title="Collector" subtitle="How long this page's data has gone without a successful collection" expandable>
-      <TimeChart
+      <PanelChart
         label="Collector silence"
-        compact
         area
-        legend="inline"
-        yAxisWidth={AXIS_WIDTH}
         series={[{ label: "since last success", color: "neutral", graded: true, points: props.data.silence }]}
         format={minutes}
         limits={LIMITS.collectorStaleMinutes}

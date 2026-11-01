@@ -170,7 +170,7 @@ kbd {
 .widget-pending { opacity: .75; }
 .widget-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px 0; }
 .widget-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.widget-title h2 { margin: 0; font-size: 13px; font-weight: 550; }
+.widget-title h2 { margin: 0; font-size: 13px; font-weight: 550; white-space: nowrap; }
 .widget-title p { margin: 0; color: var(--muted); font-size: 12px; }
 .widget-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .widget-body { padding: 6px 14px 12px; min-width: 0; }
@@ -280,7 +280,6 @@ kbd {
 .search input::placeholder { color: var(--muted); }
 .search-icon { display: flex; }
 .table-note { color: var(--muted); font-size: 12px; }
-.widget-count { color: var(--muted); }
 .table-scroll { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { text-align: left; font-weight: 400; color: var(--muted); font-size: 11.5px; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }

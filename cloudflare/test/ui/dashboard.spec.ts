@@ -458,3 +458,32 @@ test("a status pill keeps its place and background when hovered", async ({ page 
   const name = await table.getByRole("link", { name: "alpha" }).boundingBox();
   expect(Math.abs((pill!.y + pill!.height / 2) - (name!.y + name!.height / 2))).toBeLessThan(14);
 });
+
+test("each page names itself once and the breadcrumb only appears below the fleet", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Fleet", level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  await expect(page.getByText(/^\d+ hosts?$/u)).toHaveCount(0);
+  await expect(page.getByText(/^\d+ projects?$/u)).toHaveCount(0);
+
+  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
+  const crumb = page.getByRole("navigation", { name: "Breadcrumb" });
+  await expect(crumb).toHaveText("Fleet");
+  await expect(crumb.getByRole("link", { name: "Fleet" })).toBeVisible();
+
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("combobox", { name: "Switch host" })).toBeVisible();
+});
+
+test("a widget title stays on one line however long its subtitle is", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  const title = page.getByRole("heading", { name: "R2 operations" });
+  await expect(title).toBeVisible();
+  const box = await title.boundingBox();
+  expect(box!.height).toBeLessThan(24);
+});
+

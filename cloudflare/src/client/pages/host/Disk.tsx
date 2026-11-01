@@ -7,9 +7,9 @@ import { healthOf, LIMITS } from "../../health";
 import { sumSeries } from "../../metrics";
 import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
-import { TimeChart, type ChartEvent } from "../../components/TimeChart";
+import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Meter, Widget } from "../../components/ui";
-import { AXIS_WIDTH, colorsFor, PanelLabel, perSecond, reporting, retiredNote, summarySeries, topSeries } from "./shared";
+import { colorsFor, PanelLabel, perSecond, reporting, retiredNote, summarySeries, topSeries, PanelChart } from "./shared";
 
 export function DiskWidget(props: { readonly series: readonly DiskSeries[]; readonly stepMs: number; readonly summary: readonly SummaryPoint[]; readonly summaryStepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
@@ -23,12 +23,9 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
       {props.series.length === 0 ? <EmptyState title="No disk series in this range." icon="disk" /> : (
         <>
           <PanelLabel>Throughput</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Disk throughput"
-            compact
-            legend="inline"
             timeAxis={false}
-            yAxisWidth={AXIS_WIDTH}
             series={[
               { label: "read", color: "blue", mirror: false, points: sumSeries(props.series, point => point.readBytesPerSec) },
               { label: "write", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.writeBytesPerSec) }
@@ -39,12 +36,9 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             stepMs={props.stepMs}
           />
           <PanelLabel>Operations per second</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Disk operations"
-            compact
-            legend="inline"
             timeAxis={false}
-            yAxisWidth={AXIS_WIDTH}
             series={[
               { label: "reads", color: "blue", mirror: false, points: sumSeries(props.series, point => point.readsPerSec) },
               { label: "writes", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.writesPerSec) }
@@ -55,12 +49,9 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             stepMs={props.stepMs}
           />
           <PanelLabel>Busy time per device</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Disk busy"
-            compact
-            legend="inline"
             timeAxis={!reportsPressure()}
-            yAxisWidth={AXIS_WIDTH}
             series={shown().map(entry => ({ label: entry.name ?? entry.id, color: colors().get(entry.id) ?? "neutral", points: entry.points.map(point => ({ atMs: point.atMs, value: point.busyPct })) }))}
             format={percent}
             limits={LIMITS.diskBusyPercent}
@@ -70,12 +61,9 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
           />
           <Show when={reportsPressure()}>
             <PanelLabel>I/O pressure: share of time tasks stall (some) or all stall (full), 10 s average</PanelLabel>
-            <TimeChart
+            <PanelChart
               label="I/O pressure"
-              compact
               area
-              legend="inline"
-              yAxisWidth={AXIS_WIDTH}
               series={[
                 { label: "some", color: "ramp-3", points: summarySeries(props.summary, point => point.psi?.io?.some10) },
                 { label: "full", color: "ramp-5", scored: false, points: summarySeries(props.summary, point => point.psi?.io?.full10) }

@@ -1,11 +1,11 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { pointsIn } from "../chart-data";
-import { collectorStatus, HEALTH_TONE, LIMITS } from "../health";
+import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
 import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
-import { statusFor, type HostStatus } from "../status";
+import { collectorStatus, statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host, Project } from "../api";
 import { PageHeader } from "../components/PageHeader";
@@ -98,7 +98,7 @@ export function FleetPage(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Hosts" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line" />
+      <PageHeader title="Fleet" hint="Drag a chart to zoom · double-click to reset · hover a row to isolate its line" />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
@@ -147,7 +147,6 @@ function ProjectsSection(): JSX.Element {
         id="projects"
         title="Projects"
         class={isPending(projects) ? "widget-pending" : undefined}
-        meta={<span class="widget-count">{count(projects().length)} {projects().length === 1 ? "project" : "projects"}</span>}
         bodyClass="flush"
       >
         <div class="table-scroll">
@@ -176,7 +175,7 @@ function ProjectRow(props: { readonly project: Project; readonly now: number }):
     <tr>
       <td>
         <EntityCell
-          marker={<span class={`status-dot tone-${HEALTH_TONE[status().health]}`} aria-hidden="true" />}
+          marker={<span class={`status-dot tone-${status().tone}`} aria-hidden="true" />}
           name={props.project.name}
           href={`#/project/${props.project.id}`}
           id={props.project.id}
@@ -184,7 +183,7 @@ function ProjectRow(props: { readonly project: Project; readonly now: number }):
       </td>
       <td><span class="cell-strong">{props.project.worker}</span></td>
       <td class="numeric"><span class="metric-value-small">{count(props.project.buckets.length)}</span></td>
-      <td><StateCell tone={HEALTH_TONE[status().health]} label={status().label} note={age(props.project.collector.lastSuccessAtMs, props.now)} /></td>
+      <td><StateCell tone={status().tone} label={status().label} note={age(props.project.collector.lastSuccessAtMs, props.now)} /></td>
     </tr>
   );
 }
@@ -283,7 +282,6 @@ function FleetDashboard(props: {
       <Widget
         title="Hosts"
         class={props.pending ? "widget-pending" : undefined}
-        meta={<span class="widget-count">{count(props.total)} {props.total === 1 ? "host" : "hosts"}</span>}
         bodyClass="flush"
       >
         <div class="table-toolbar">

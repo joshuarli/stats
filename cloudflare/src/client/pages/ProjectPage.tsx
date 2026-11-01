@@ -3,7 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getProjectCollector, getProjectMetrics, type Project } from "../api";
 import { errorMessage } from "../format";
-import { collectorStatus, HEALTH_TONE } from "../health";
+import { collectorStatus } from "../status";
 import { loadProjects, loadQuery } from "../queries";
 import { useTelemetry } from "../state";
 import { PageHeader } from "../components/PageHeader";
@@ -78,7 +78,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     <>
       <PageHeader
         title={props.project.name}
-        titleExtra={<Badge tone={HEALTH_TONE[status().health]} dot>{status().label}</Badge>}
+        titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
         hint="Worker script, R2 buckets, and the collector that reads them · drag a chart to zoom"
       />
       <Show when={refreshError()}>

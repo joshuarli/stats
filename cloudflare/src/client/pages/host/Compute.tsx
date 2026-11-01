@@ -7,7 +7,7 @@ import { LIMITS, loadLimits } from "../../health";
 import { cpuUsed } from "../../metrics";
 import { TimeChart, type ChartEvent, type VizColor } from "../../components/TimeChart";
 import { Notice, Widget } from "../../components/ui";
-import { AXIS_WIDTH, PanelLabel, summarySeries } from "./shared";
+import { AXIS_WIDTH, PanelLabel, summarySeries, PanelChart } from "./shared";
 
 function psiSeries(points: readonly SummaryPoint[], pick: (pressure: Psi) => number | undefined): ChartPoint[] {
   return points.map(point => ({ atMs: point.atMs, value: point.psi === undefined ? undefined : pick(point.psi) }));
@@ -66,12 +66,9 @@ export function CpuWidget(props: {
       />
       <Show when={reportsPressure(props.points)}>
         <PanelLabel>CPU pressure: share of time runnable tasks wait for a CPU, 10 s average</PanelLabel>
-        <TimeChart
+        <PanelChart
           label="CPU pressure"
-          compact
           area
-          legend="inline"
-          yAxisWidth={AXIS_WIDTH}
           series={[
             { label: "some", color: "ramp-3", points: psiSeries(props.points, value => value.cpu?.some10) },
             { label: "full", color: "ramp-5", scored: false, points: psiSeries(props.points, value => value.cpu?.full10) }

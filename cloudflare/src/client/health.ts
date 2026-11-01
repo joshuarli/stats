@@ -1,4 +1,3 @@
-import type { CollectorState } from "./api";
 import { clock } from "./format";
 
 export type Health = "ok" | "elevated" | "critical";
@@ -145,20 +144,3 @@ export function evaluate(times: readonly number[], columns: readonly (readonly (
   const episodes = findEpisodes(healths, times, RECOVERY_MS);
   return { healths, episodes, state: describeState(times, healths, episodes) };
 }
-
-export interface CollectorStatus {
-  readonly label: "collecting" | "waiting" | "stale" | "failing";
-  readonly health: Health;
-}
-
-export function collectorStatus(collector: CollectorState, nowMs: number): CollectorStatus {
-  if (collector.lastSuccessAtMs === null) {
-    return collector.lastError === null ? { label: "waiting", health: "elevated" } : { label: "failing", health: "critical" };
-  }
-  const silentMinutes = Math.max(0, nowMs - collector.lastSuccessAtMs) / 60_000;
-  const health = healthOf(silentMinutes, LIMITS.collectorStaleMinutes) ?? "ok";
-  if (health !== "ok") return { label: collector.lastError === null ? "stale" : "failing", health };
-  return collector.lastError === null ? { label: "collecting", health: "ok" } : { label: "failing", health: "elevated" };
-}
-
-export const HEALTH_TONE = { ok: "ok", elevated: "warn", critical: "bad" } as const satisfies Readonly<Record<Health, string>>;

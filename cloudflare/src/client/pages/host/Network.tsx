@@ -7,9 +7,9 @@ import { healthOf, LIMITS } from "../../health";
 import { sumSeries } from "../../metrics";
 import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
-import { TimeChart, type ChartEvent } from "../../components/TimeChart";
+import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Widget } from "../../components/ui";
-import { AXIS_WIDTH, PanelLabel, perSecond, reporting, retiredNote } from "./shared";
+import { PanelLabel, perSecond, reporting, retiredNote, PanelChart } from "./shared";
 
 export function NetworkWidget(props: { readonly series: readonly NetSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
@@ -20,13 +20,10 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
       {props.series.length === 0 ? <EmptyState title="No network series in this range." icon="network" /> : (
         <>
           <PanelLabel>Throughput</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Network throughput"
-            compact
             area
-            legend="inline"
             timeAxis={false}
-            yAxisWidth={AXIS_WIDTH}
             series={[
               { label: "receive", color: "blue", mirror: false, points: sumSeries(props.series, point => point.rxBytesPerSec) },
               { label: "transmit", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.txBytesPerSec) }
@@ -36,13 +33,10 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
             stepMs={props.stepMs}
           />
           <PanelLabel>Packets per second</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Network packets"
-            compact
             area
-            legend="inline"
             timeAxis={false}
-            yAxisWidth={AXIS_WIDTH}
             series={[
               { label: "receive", color: "blue", mirror: false, points: sumSeries(props.series, point => point.rxPacketsPerSec) },
               { label: "transmit", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.txPacketsPerSec) }
@@ -52,11 +46,8 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
             stepMs={props.stepMs}
           />
           <PanelLabel>Drops and errors per second</PanelLabel>
-          <TimeChart
+          <PanelChart
             label="Network drops and errors"
-            compact
-            legend="inline"
-            yAxisWidth={AXIS_WIDTH}
             series={[
               { label: "drops", color: "serious", points: sumSeries(props.series, point => point.rxDropsPerSec + point.txDropsPerSec) },
               { label: "errors", color: "critical", points: sumSeries(props.series, point => point.rxErrorsPerSec + point.txErrorsPerSec) }

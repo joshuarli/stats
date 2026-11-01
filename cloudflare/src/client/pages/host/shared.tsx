@@ -3,7 +3,7 @@ import type { Series, SummaryPoint } from "../../api";
 import type { ChartPoint } from "../../chart-data";
 import { count, isFiniteNumber } from "../../format";
 import { rebootTimes } from "../../incidents";
-import type { ChartEvent, VizColor } from "../../components/TimeChart";
+import { TimeChart, type ChartEvent, type TimeChartProps, type VizColor } from "../../components/TimeChart";
 
 export const AXIS_WIDTH = 76;
 export const SERIES_COLORS = ["blue", "aqua", "violet", "magenta"] as const satisfies readonly VizColor[];
@@ -45,6 +45,10 @@ export function retiredNote(subtitle: string, retired: number): string {
 
 export function summarySeries(points: readonly SummaryPoint[], pick: (point: SummaryPoint) => number | undefined): ChartPoint[] {
   return points.map(point => ({ atMs: point.atMs, value: pick(point) }));
+}
+
+export function PanelChart(props: TimeChartProps): JSX.Element {
+  return <TimeChart compact legend="inline" yAxisWidth={AXIS_WIDTH} {...props} />;
 }
 
 export function PanelLabel(props: { readonly children: JSX.Element }): JSX.Element {

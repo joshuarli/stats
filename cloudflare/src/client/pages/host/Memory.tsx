@@ -3,9 +3,9 @@ import type { JSX } from "@solidjs/web";
 import type { SummaryPoint } from "../../api";
 import { bytes, percent, rate } from "../../format";
 import { LIMITS, memoryUsedLimits } from "../../health";
-import { TimeChart, type ChartEvent } from "../../components/TimeChart";
+import type { ChartEvent } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
-import { AXIS_WIDTH, PanelLabel, summarySeries } from "./shared";
+import { PanelLabel, summarySeries, PanelChart } from "./shared";
 
 export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const total = createMemo(() => props.points.at(-1)?.mem?.total);
@@ -15,13 +15,10 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
   return (
     <Widget id="memory" title="Memory" subtitle="RAM in use against total, swap, paging, and stalls" expandable>
       <PanelLabel>RAM and swap in use</PanelLabel>
-      <TimeChart
+      <PanelChart
         label="Memory in use"
-        compact
         area
-        legend="inline"
         timeAxis={false}
-        yAxisWidth={AXIS_WIDTH}
         series={[
           { label: "RAM used", color: "neutral", graded: true, points: summarySeries(props.points, used) },
           { label: "swap used", color: "violet", scored: false, points: summarySeries(props.points, point => point.mem?.swapUsed) }
@@ -34,13 +31,10 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
         stepMs={props.stepMs}
       />
       <PanelLabel>Paging to and from swap</PanelLabel>
-      <TimeChart
+      <PanelChart
         label="Swap activity"
-        compact
         area
-        legend="inline"
         timeAxis={!reportsPressure()}
-        yAxisWidth={AXIS_WIDTH}
         series={[
           { label: "swap in", color: "blue", points: summarySeries(props.points, point => point.mem?.swapInBytesPerSec) },
           { label: "swap out", color: "aqua", points: summarySeries(props.points, point => point.mem?.swapOutBytesPerSec) }
@@ -53,12 +47,9 @@ export function MemoryWidget(props: { readonly points: readonly SummaryPoint[]; 
       />
       <Show when={reportsPressure()}>
         <PanelLabel>Memory pressure: share of time tasks stall (some) or all stall (full), 10 s average</PanelLabel>
-        <TimeChart
+        <PanelChart
           label="Memory pressure"
-          compact
           area
-          legend="inline"
-          yAxisWidth={AXIS_WIDTH}
           series={[
             { label: "some", color: "ramp-3", points: summarySeries(props.points, point => point.psi?.memory?.some10) },
             { label: "full", color: "ramp-5", scored: false, points: summarySeries(props.points, point => point.psi?.memory?.full10) }
