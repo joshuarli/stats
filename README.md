@@ -19,6 +19,7 @@ Layout:
 | `cloudflare/` | Worker, Durable Object, dashboard, tests |
 | `bench/` | Benchmark harness and recorded method |
 | `bpf/` | Optional block-latency probe and collector |
+| `deploy/` | Worker deploy, host inventory, and live smoke checks |
 | `tools/` | Zig cross-linker wrappers for static musl builds |
 
 The campaign record is [`docs/CAMPAIGN-HOST-TELEMETRY.md`](docs/CAMPAIGN-HOST-TELEMETRY.md).
@@ -316,12 +317,43 @@ do not delete configuration. Remove the binary, configuration, and token only
 after revoking the host credential. Cloudflare teardown is separate and
 owner-run.
 
-## Deployment outline
+## Deployment
+
+`deploy/hosts.json` is the host inventory. It currently tracks:
+
+| Key | SSH | Init | Elevation |
+| --- | --- | --- | --- |
+| `oracle` | `ubuntu@oracle` | systemd | passwordless `sudo` |
+| `threadripper` | `josh@threadripper` | OpenRC | passwordless `doas` |
+
+The manifest also records the dashboard label and static-musl target. Host
+deploys install the binary and service unit from `agent/contrib/`; they compare
+the SHA-256 and unit content, restart only on a change, preserve
+`/etc/niceforge-telemetry/agent.json` and the token, and fail when the config is
+missing.
+
+Routine rollout:
+
+```sh
+make worker-check          # cf build validation, no upload
+make deploy                # tests, Worker, live smoke, then both hosts
+make deploy-oracle         # one host, idempotent
+make deploy-threadripper   # one host, idempotent
+make deploy-hosts          # every host in the manifest
+make smoke-deployed        # read-only live check
+```
+
+`make deploy` runs `make worker-test`, builds one bundle with `cf build`, deploys
+it with `cf deploy --prebuilt`, smoke-checks the live site, then updates the
+hosts. `NICEFORGE_TELEMETRY_DOMAIN` defaults to `stats.17166969.xyz`; override it
+for another hostname. Pass `SECRETS_FILE=...` to upload Worker secrets; omitting
+it leaves existing secrets in place. The `cf` session must be authenticated.
+
+### First deployment
 
 Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
 
-1. Build the assets: `pnpm --filter @niceforge/telemetry build`.
-2. Create an Access application for the dashboard hostname with an owner allow
+1. Create an Access application for the dashboard hostname with an owner allow
    policy; record the team domain and audience. Access fronts the whole
    hostname, so also create path-scoped Bypass applications for the public
    health check and host ingest:
@@ -331,26 +363,23 @@ Recorded 2026-10-31 as the T9 proof at `https://stats.17166969.xyz`.
 
    Without these path applications, Access challenges `/health` and ingest
    before the Worker sees them.
-3. Build and deploy with cf:
-   ```sh
-   NICEFORGE_TELEMETRY_DOMAIN=stats.17166969.xyz \
-     pnpm --filter @niceforge/telemetry deploy
-   ```
-   `cloudflare.config.ts` declares the Worker, the SQLite Durable Object export,
-   the `ASSETS` binding, the custom domain, and the disabled `workers_dev` and
-   preview URLs. `cf build` validates the same output without uploading.
-   `wrangler.test.jsonc` is test-only configuration for
-   `@cloudflare/vitest-plugin`; it is not a deploy configuration.
-4. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` as Worker secrets, for example
-   with `cf deploy --secrets-file`. `ENVIRONMENT` is the production text
+2. Deploy the Worker with `make worker-deploy`. `cloudflare.config.ts` declares
+   the Worker, the SQLite Durable Object export, the `ASSETS` binding, the custom
+   domain, and the disabled `workers_dev` and preview URLs. `cf build` validates
+   the same output without uploading. `wrangler.test.jsonc` is test-only
+   configuration for `@cloudflare/vitest-plugin`; it is not a deploy
+   configuration.
+3. Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` as Worker secrets, for example with
+   `make worker-deploy SECRETS_FILE=...`. `ENVIRONMENT` is the production text
    binding in `cloudflare.config.ts`.
-5. Authenticate a human through Access (`cf access login
-   https://stats.17166969.xyz`), then provision one host with `POST
-   /api/v1/admin/hosts`. Record the token once in an owner-only file.
-6. Verify live ingest, replay dedupe, latest/history, the dashboard, rotation,
-   and revocation, then revoke the disposable host. Set spend alarms before
-   fleet use.
-7. Tear down only the resources this deployment created.
+4. Authenticate a human through Access (`cf access login
+   https://stats.17166969.xyz`), then provision each host with `POST
+   /api/v1/admin/hosts`. Record each token once in an owner-only file, install
+   the agent config and token, then run `make deploy-hosts`.
+5. Verify live ingest, replay dedupe, latest/history, the dashboard, rotation,
+   and revocation with `make smoke-deployed` plus host checks, then revoke any
+   disposable host. Set spend alarms before fleet use.
+6. Tear down only the resources this deployment created.
 
 Recorded 2026-10-31: live ingest accepted two samples, an exact replay returned
 two duplicates, latest and 1 h history returned, the dashboard returned 200

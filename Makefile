@@ -1,6 +1,11 @@
 .DEFAULT_GOAL := check
 
-.PHONY: work-ready node-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint release check
+NICEFORGE_TELEMETRY_DOMAIN ?= stats.17166969.xyz
+TELEMETRY_URL ?= https://$(NICEFORGE_TELEMETRY_DOMAIN)
+SECRETS_FILE ?=
+export NICEFORGE_TELEMETRY_DOMAIN
+
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-oracle deploy-threadripper smoke-deployed release check
 
 work-ready:
 	@set -eu; \
@@ -34,6 +39,41 @@ dashboard-test: work-ready
 
 lint: node-ready
 	pnpm --filter @niceforge/telemetry lint
+
+auth-ready:
+	@cf auth whoami >/dev/null
+
+worker-check: node-ready
+	cd cloudflare && cf deploy --dry-run --mode production
+
+worker-bundle: node-ready
+	cd cloudflare && cf build --mode production
+
+worker-deploy: auth-ready worker-bundle
+	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
+
+worker-test: cloudflare-test dashboard-test lint
+
+deploy: auth-ready worker-test agent-test
+	$(MAKE) worker-deploy
+	$(MAKE) smoke-deployed
+	$(MAKE) deploy-hosts
+
+deploy-hosts: agent-test agent-build
+	@set -eu; \
+	hosts="$$(jaq -er '.hosts | keys[]' deploy/hosts.json)"; \
+	test -n "$$hosts" || { echo 'no hosts in deploy/hosts.json' >&2; exit 1; }; \
+	for host in $$hosts; do deploy/deploy-host.sh "$$host"; done
+
+deploy-host-%: agent-test agent-build
+	deploy/deploy-host.sh '$*'
+
+deploy-oracle: deploy-host-oracle
+
+deploy-threadripper: deploy-host-threadripper
+
+smoke-deployed:
+	NICEFORGE_TELEMETRY_URL='$(TELEMETRY_URL)' deploy/deployed-smoke.sh
 
 release: agent-build
 	TMPDIR='$(CURDIR)/.work/tmp' bench/bench.sh --selftest
