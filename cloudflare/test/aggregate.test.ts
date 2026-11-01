@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rawPoints, rollupFromRaw, rollupPoints, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
+import { compact, rawPoints, rollupFromRaw, rollupPoints, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
 import { computeDelta } from "../src/delta";
 import type { Disk, Net, Sample } from "../src/protocol";
 
@@ -103,5 +103,11 @@ describe("swap activity", () => {
     expect(computeDelta(withSwap("4000", "6000"), withSwap("100", "7000", "15000"), 15_000).swap).toBeUndefined();
     expect(computeDelta(withSwap(undefined, undefined), withSwap("1", "1", "15000"), 15_000).swap).toBeUndefined();
     expect(computeDelta(withSwap("1", "1"), withSwap(undefined, undefined, "15000"), 15_000).swap).toBeUndefined();
+  });
+});
+
+describe("compact", () => {
+  it("rounds fractions to three decimals and leaves integers, strings, and gaps alone", () => {
+    expect(compact({ rate: 4.733333333333333, bytes: 1_793_513_270_426, label: "eth0", nested: [{ busy: 0.0004 }, { busy: 99.9996 }], none: null })).toEqual({ rate: 4.733, bytes: 1_793_513_270_426, label: "eth0", nested: [{ busy: 0 }, { busy: 100 }], none: null });
   });
 });

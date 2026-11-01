@@ -118,7 +118,13 @@ never repairs or invents data.
 History picks raw when the window starts within 48 hours, one-minute rollups
 within 7 days, and hourly rollups beyond, so a zoomed window reads finer data
 than the preset range it came from. Results are downsampled to at most 900
-points and carry a `stepMs`.
+points and carry a `stepMs`, with fractions rounded to three decimals.
+
+A preset range ends at the current 15-second raw step, and the Durable Object
+keeps the last window it built for every history kind. The dashboard asks for
+all five kinds on each refresh, so one read and parse of the window serves all
+of them. Ingest, a purge, and an alarm that deleted rows discard it; an alarm
+that deleted nothing keeps it.
 
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the

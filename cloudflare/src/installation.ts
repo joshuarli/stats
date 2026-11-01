@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
-import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
+import { combineRollups, compact, downsample, historyQuery, kindValue, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
+import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 
 export const ONLINE_WINDOW_MS = 45_000;
@@ -175,6 +175,9 @@ function validName(name: string): boolean {
 }
 
 export class Installation extends DurableObject<Env> {
+  private dataVersion = 0;
+  private historyCache: { readonly key: string; readonly byKind: ReadonlyMap<HistoryKind, History> } | undefined;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
@@ -226,6 +229,7 @@ export class Installation extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM samples WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM hosts WHERE host_id = ?", hostId);
+      this.dataVersion += 1;
     });
     return true;
   }
@@ -283,32 +287,46 @@ export class Installation extends DurableObject<Env> {
   async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
     if (this.host(hostId) === undefined) return null;
     const now = this.now();
-    const toMs = "range" in query ? now : query.toMs;
-    const fromMs = "range" in query ? now - RANGE_MS[query.range] : query.fromMs;
+    const at = Math.floor(now / RAW_STEP_MS) * RAW_STEP_MS;
+    const toMs = "range" in query ? at : query.toMs;
+    const fromMs = "range" in query ? at - RANGE_MS[query.range] : query.fromMs;
     const range = "range" in query ? { range: query.range } : {};
     const rawRange = fromMs >= now - RAW_RETENTION_MS;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - MINUTE_RETENTION_MS ? "1m" : "1h";
-    let points: HistoryPoints;
-    const bucketMs = rawRange ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
-    if (rawRange) {
+    const key = `${this.dataVersion}|${hostId}|${resolution}|${fromMs}|${toMs}`;
+    if (this.historyCache?.key !== key) this.historyCache = { key, byKind: this.buildHistory(hostId, fromMs, toMs, range, resolution) };
+    return this.historyCache.byKind.get(kind) ?? null;
+  }
+
+  private buildHistory(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h"): ReadonlyMap<HistoryKind, History> {
+    const bucketMs = resolution === "raw" ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
+    let pointsFor: (kind: HistoryKind) => HistoryPoints;
+    if (resolution === "raw") {
       const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
       const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
-      points = rawPoints(raw, kind);
+      pointsFor = kind => rawPoints(raw, kind);
     } else {
       const rows = this.ctx.storage.sql.exec<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs).toArray();
-      points = rollupPoints(rows.map(row => JSON.parse(row.payload) as RollupPayload), kind);
+      const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
+      pointsFor = kind => rollupPoints(payloads, kind);
     }
-    if (kind === "summary") {
-      const sampled = downsample(points as Parameters<typeof downsample>[0]);
-      return { hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items };
+    const byKind = new Map<HistoryKind, History>();
+    for (const kind of HISTORY_KINDS) {
+      const points = pointsFor(kind);
+      if (kind === "summary") {
+        const sampled = downsample(points as Parameters<typeof downsample>[0]);
+        byKind.set(kind, compact({ hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items }) as History);
+        continue;
+      }
+      const series = points as { id: string; name?: string; points: unknown[] }[];
+      const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
+      const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
+      byKind.set(kind, compact({
+        hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
+        series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
+      }) as History);
     }
-    const series = points as { id: string; name?: string; points: unknown[] }[];
-    const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
-    const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
-    return {
-      hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
-      series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
-    };
+    return byKind;
   }
 
   override async alarm(): Promise<void> {
@@ -317,6 +335,7 @@ export class Installation extends DurableObject<Env> {
       const raw = this.ctx.storage.sql.exec("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS).rowsWritten;
       const minute = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS).rowsWritten;
       const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
+      if (raw + minute + hour > 0) this.dataVersion += 1;
       await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour }));
     } catch (error) {
       console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
@@ -420,6 +439,7 @@ export class Installation extends DurableObject<Env> {
       }
       if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
+      this.dataVersion += 1;
     });
 
     if (accepted === 0 && duplicates === 0) {
