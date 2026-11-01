@@ -37,13 +37,23 @@ function block(range: string, empty = false) {
   return { hostId, range, kind: "block", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "block", points: [{ atMs: now - 15_000, count: 110, totalUs: 600_000, minUs: 1_500, maxUs: 45_000, p50Us: 5_000, p95Us: 25_000, p99Us: 45_000 }, { atMs: now, count: 90, totalUs: 500_000, minUs: 1_200, maxUs: 40_000, p50Us: 4_000, p95Us: 20_000, p99Us: 40_000 }] }] };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean } = {}): Promise<string[]> {
+const projectCollector = { fresh: { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false }, stale: { lastRunAtMs: now - 20 * 60_000, lastSuccessAtMs: now - 20 * 60_000, lastError: null, stale: true } } as const;
+
+function projects(collector: keyof typeof projectCollector) {
+  return [{
+    id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], probes: [],
+    collector: projectCollector[collector]
+  }];
+}
+
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector } = {}): Promise<string[]> {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     requests.push(url.pathname + url.search);
     const range = url.searchParams.get("range") ?? "1h";
     const kind = url.searchParams.get("kind") ?? "summary";
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh") });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
@@ -70,7 +80,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
 test("fleet and host views render charts, ranges, and keyboard controls", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/");
-  const fleetTable = page.locator("table");
+  const fleetTable = page.getByRole("table", { name: "Fleet hosts" });
   await expect(fleetTable.getByRole("link", { name: "alpha" })).toBeVisible();
   await expect(fleetTable).toContainText("online");
   await expect(page.getByRole("img", { name: "alpha CPU trend" })).toBeVisible();
@@ -127,7 +137,7 @@ test("the CPU and load charts compare against the same window yesterday", async 
   test.skip(isMobile, "the legend rows are checked on desktop");
   const requests = await mock(page);
   await page.goto("/");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "CPU" })).toBeVisible();
   await expect(page.getByRole("row", { name: /yesterday/ })).toHaveCount(2);
   const day = 24 * 60 * 60 * 1000;
@@ -140,7 +150,7 @@ test("the CPU and load charts compare against the same window yesterday", async 
 test("zooming to an incident narrows every chart to it", async ({ page }) => {
   await mock(page);
   await page.goto("/");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("list", { name: "Incidents" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
   await page.getByRole("list", { name: "Incidents" }).getByRole("button", { name: "Zoom" }).first().click();
@@ -150,8 +160,8 @@ test("zooming to an incident narrows every chart to it", async ({ page }) => {
 test("missing and stale data never become zero", async ({ page }) => {
   await mock(page, { online: false, empty: true, system: false });
   await page.goto("/");
-  await expect(page.locator("table")).toContainText("stale");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("stale");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
   await expect(page.getByText("This host has not reported system details.")).toBeVisible();
 });
@@ -160,7 +170,7 @@ test("host summary rebuilds after an empty range becomes populated", async ({ pa
   const options = { empty: true };
   await mock(page, options);
   await page.goto("/");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
   options.empty = false;
   await page.getByRole("button", { name: "Refresh" }).click();
@@ -171,15 +181,15 @@ test("host summary rebuilds after an empty range becomes populated", async ({ pa
 test("fleet charts keep a stale host that has points", async ({ page }) => {
   await mock(page, { online: false });
   await page.goto("/");
-  await expect(page.locator("table")).toContainText("stale");
-  await expect(page.locator("table")).toContainText("alpha");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("stale");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("alpha");
   await expect(page.locator(".chart-empty")).toHaveCount(0);
 });
 
 test("search filters the fleet and status facets narrow it", async ({ page }) => {
   await mock(page);
   await page.goto("/");
-  const table = page.locator("table");
+  const table = page.getByRole("table", { name: "Fleet hosts" });
   await expect(table).toContainText("alpha");
 
   const search = page.getByRole("searchbox", { name: "Search hosts" });
@@ -199,7 +209,7 @@ test("dragging a chart zooms the time window, and escape returns to live", async
   test.skip(isMobile, "drag selection needs a pointer");
   const requests = await mock(page);
   await page.goto("/");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
   await page.waitForLoadState("networkidle");
   const plot = page.locator(".chart-plot .u-over").first();
@@ -228,7 +238,7 @@ test("dragging a chart zooms the time window, and escape returns to live", async
 test("legend rows isolate and restore series", async ({ page }) => {
   await mock(page);
   await page.goto("/");
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   const cpuLegend = page.locator(".chart", { has: page.getByRole("img", { name: /CPU;/ }) }).locator(".chart-legend");
   await expect(cpuLegend).toContainText("iowait");
   await cpuLegend.getByRole("button", { name: "Show only user" }).click();
@@ -241,10 +251,41 @@ test("legend rows isolate and restore series", async ({ page }) => {
 test("mobile layout has no horizontal page overflow", async ({ page }, testInfo) => {
   await mock(page);
   await page.goto("/");
-  await expect(page.locator("table").getByRole("link", { name: "alpha" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   expect(overflow).toBe(true);
-  await page.locator("table").getByRole("link", { name: "alpha" }).click();
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true });
+});
+
+test("the fleet lists projects and each row opens its page", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  const table = page.getByRole("table", { name: "Projects" });
+  await expect(table).toContainText("stuff");
+  await expect(table).toContainText("3");
+  await expect(table).toContainText("collecting");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
+  const hostsBox = await page.getByRole("table", { name: "Fleet hosts" }).boundingBox();
+  const projectsBox = await table.boundingBox();
+  expect(projectsBox!.y).toBeGreaterThan(hostsBox!.y);
+  await table.getByRole("link", { name: "stuff" }).click();
+  await expect(page).toHaveURL(/#\/project\/stuff$/u);
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+});
+
+test("a stale collector shows its state on the fleet and the project page", async ({ page }) => {
+  await mock(page, { collector: "stale" });
+  await page.goto("/");
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("stale");
+  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  await expect(page.locator(".page-header")).toContainText("stale");
+});
+
+test("an unknown project id shows a not-found state", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/other");
+  await expect(page.getByText("Project not found")).toBeVisible();
 });

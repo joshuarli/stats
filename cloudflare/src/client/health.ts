@@ -1,3 +1,4 @@
+import type { CollectorState } from "./api";
 import { clock } from "./format";
 
 export type Health = "ok" | "elevated" | "critical";
@@ -38,7 +39,12 @@ export const LIMITS = {
   filesystemUsedPercent: { elevated: 80, critical: 90, direction: "above" },
   swapBytesPerSec: { elevated: MIB, critical: 16 * MIB, direction: "above" },
   netFaultsPerSec: { elevated: 1, critical: 10, direction: "above" },
-  blockP99Us: { elevated: 25_000, critical: 100_000, direction: "above" }
+  blockP99Us: { elevated: 25_000, critical: 100_000, direction: "above" },
+  workerServerErrorPercent: { elevated: 1, critical: 5, direction: "above" },
+  workerCpuMs: { elevated: 5, critical: 20, direction: "above" },
+  r2OtherPercent: { elevated: 0.5, critical: 2, direction: "above" },
+  collectorStaleMinutes: { elevated: 15, critical: 60, direction: "above" },
+  probeUp: { elevated: 0, critical: 0, direction: "below" }
 } as const satisfies Readonly<Record<string, Limits>>;
 
 export function loadLimits(cpuCount: number | undefined): Limits | undefined {
@@ -139,3 +145,20 @@ export function evaluate(times: readonly number[], columns: readonly (readonly (
   const episodes = findEpisodes(healths, times, RECOVERY_MS);
   return { healths, episodes, state: describeState(times, healths, episodes) };
 }
+
+export interface CollectorStatus {
+  readonly label: "collecting" | "waiting" | "stale" | "failing";
+  readonly health: Health;
+}
+
+export function collectorStatus(collector: CollectorState, nowMs: number): CollectorStatus {
+  if (collector.lastSuccessAtMs === null) {
+    return collector.lastError === null ? { label: "waiting", health: "elevated" } : { label: "failing", health: "critical" };
+  }
+  const silentMinutes = Math.max(0, nowMs - collector.lastSuccessAtMs) / 60_000;
+  const health = healthOf(silentMinutes, LIMITS.collectorStaleMinutes) ?? "ok";
+  if (health !== "ok") return { label: collector.lastError === null ? "stale" : "failing", health };
+  return collector.lastError === null ? { label: "collecting", health: "ok" } : { label: "failing", health: "elevated" };
+}
+
+export const HEALTH_TONE = { ok: "ok", elevated: "warn", critical: "bad" } as const satisfies Readonly<Record<Health, string>>;

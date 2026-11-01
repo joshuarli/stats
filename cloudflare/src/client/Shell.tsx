@@ -8,6 +8,7 @@ import { loadHosts } from "./queries";
 import { createViewState, LIVE_INTERVAL_MS, TelemetryContext, useTelemetry, type Range } from "./state";
 
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
+const PROJECT_PATH = /^\/project\/([a-z][a-z0-9-]{0,31})$/u;
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName));
@@ -75,9 +76,16 @@ export function Shell(props: ParentProps): JSX.Element {
 function Breadcrumb(): JSX.Element {
   const location = useLocation();
   const current = () => HOST_PATH.exec(location.pathname)?.[1];
+  const project = () => PROJECT_PATH.exec(location.pathname)?.[1];
   return (
     <nav class="breadcrumb" aria-label="Breadcrumb">
-      {current() === undefined ? <span>Hosts</span> : (
+      {project() !== undefined ? (
+        <>
+          <a href="#/">Hosts</a>
+          <Icon name="chevronRight" size={12} />
+          <span>{project()}</span>
+        </>
+      ) : current() === undefined ? <span>Hosts</span> : (
         <>
           <a href="#/">Hosts</a>
           <Icon name="chevronRight" size={12} />

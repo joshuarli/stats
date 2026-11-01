@@ -1,13 +1,13 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { pointsIn } from "../chart-data";
-import { LIMITS } from "../health";
+import { collectorStatus, HEALTH_TONE, LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
 import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
-import { loadFleetRows, type FleetRow } from "../queries";
+import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
-import type { Host } from "../api";
+import type { Host, Project } from "../api";
 import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
@@ -132,9 +132,72 @@ export function FleetPage(): JSX.Element {
               />
             </Loading>
           </Errored>
+          <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} compact />}>
+            <Loading fallback={<Widget title="Projects"><Skeleton rows={2} /></Widget>}>
+              <ProjectsSection />
+            </Loading>
+          </Errored>
         </div>
       </div>
     </>
+  );
+}
+
+function ProjectsSection(): JSX.Element {
+  const { now, tick } = useTelemetry();
+  const projects = createMemo(loadProjects);
+  createEffect(() => tick(), () => { void refresh(projects); }, { defer: true });
+  return (
+    <Show when={projects().length > 0}>
+      <Widget
+        id="projects"
+        title="Projects"
+        class={isPending(projects) ? "widget-pending" : undefined}
+        meta={<span class="widget-count">{count(projects().length)} {projects().length === 1 ? "project" : "projects"}</span>}
+        bodyClass="flush"
+      >
+        <div class="table-scroll">
+          <table class="data-table" aria-label="Projects">
+            <thead>
+              <tr>
+                <th scope="col">Project</th>
+                <th scope="col">Worker</th>
+                <th scope="col" class="numeric">R2 buckets</th>
+                <th scope="col">Collector</th>
+              </tr>
+            </thead>
+            <tbody>
+              <For each={projects()}>{(project) => <ProjectRow project={project} now={now()} />}</For>
+            </tbody>
+          </table>
+        </div>
+      </Widget>
+    </Show>
+  );
+}
+
+function ProjectRow(props: { readonly project: Project; readonly now: number }): JSX.Element {
+  const status = createMemo(() => collectorStatus(props.project.collector, props.now));
+  return (
+    <tr>
+      <td>
+        <div class="host-cell">
+          <span class={`status-dot tone-${HEALTH_TONE[status().health]}`} aria-hidden="true" />
+          <div>
+            <a class="host-name" href={`#/project/${props.project.id}`}>{props.project.name}</a>
+            <span class="host-id">{props.project.id}</span>
+          </div>
+        </div>
+      </td>
+      <td><span class="cell-strong">{props.project.worker}</span></td>
+      <td class="numeric"><span class="metric-value-small">{count(props.project.buckets.length)}</span></td>
+      <td>
+        <div class="status-cell">
+          <Badge tone={HEALTH_TONE[status().health]} dot>{status().label}</Badge>
+          <span class="cell-note">{age(props.project.collector.lastSuccessAtMs, props.now)}</span>
+        </div>
+      </td>
+    </tr>
   );
 }
 

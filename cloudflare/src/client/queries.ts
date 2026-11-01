@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { getDisks, getHosts, getNets, getSummary, type DiskSeries, type HistoryQuery, type Host, type NetSeries, type SummaryPoint } from "./api";
+import { getDisks, getHosts, getNets, getProjects, getSummary, type DiskSeries, type HistoryQuery, type Host, type NetSeries, type Project, type SummaryPoint } from "./api";
 
 export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
@@ -9,6 +9,10 @@ export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>): Promise
 
 export function loadHosts(): Promise<readonly Host[]> {
   return loadQuery(signal => getHosts(signal));
+}
+
+export function loadProjects(): Promise<readonly Project[]> {
+  return loadQuery(signal => getProjects(signal));
 }
 
 export interface FleetRow {

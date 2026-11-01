@@ -7,6 +7,7 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
   await page.clock.setFixedTime(capturedAtMs);
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
     const kind = url.searchParams.get("kind") ?? "summary";
     const range = url.searchParams.get("range");
     if (range === null && url.pathname.endsWith("/history")) {

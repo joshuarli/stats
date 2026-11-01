@@ -164,6 +164,60 @@ export interface BlockHistory extends HistoryBase {
   readonly series?: readonly Series<BlockPoint>[];
 }
 
+export interface ProbeTarget {
+  readonly name: string;
+  readonly url: string;
+}
+
+export interface CollectorState {
+  readonly lastRunAtMs: number | null;
+  readonly lastSuccessAtMs: number | null;
+  readonly lastError: string | null;
+  readonly stale: boolean;
+}
+
+export interface Project {
+  readonly id: string;
+  readonly name: string;
+  readonly worker: string;
+  readonly buckets: readonly string[];
+  readonly probes: readonly ProbeTarget[];
+  readonly collector: CollectorState;
+}
+
+export type ProjectMetricKind = "worker" | "r2" | "probes";
+
+export interface ProjectSeries {
+  readonly metric: string;
+  readonly values: readonly (number | null)[];
+}
+
+export interface ProjectMetricHistory {
+  readonly projectId: string;
+  readonly range: RangeKey;
+  readonly kind: ProjectMetricKind;
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly stepMs: number;
+  readonly series: readonly ProjectSeries[];
+}
+
+export interface CollectorRun {
+  readonly atMs: number;
+  readonly ok: boolean;
+  readonly detail: string;
+  readonly rowsRead: number;
+  readonly durationMs: number;
+}
+
+export interface ProjectCollectorHistory {
+  readonly projectId: string;
+  readonly range: RangeKey;
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly runs: readonly CollectorRun[];
+}
+
 type JsonObject = { readonly [key: string]: unknown };
 
 export class ApiFailure extends Error {
@@ -322,6 +376,67 @@ function decodeHost(value: unknown): Host {
   };
 }
 
+function nullable<T>(value: unknown, decode: (entry: unknown) => T): T | null {
+  return value === null ? null : decode(value);
+}
+
+function rangeValue(value: unknown): RangeKey {
+  const text = string(value);
+  const found = RANGES.find(range => range === text);
+  if (found === undefined) throw new Error("expected a range");
+  return found;
+}
+
+function decodeProject(value: unknown): Project {
+  const entry = record(value);
+  const collector = record(entry.collector);
+  return {
+    id: string(entry.id),
+    name: string(entry.name),
+    worker: string(entry.worker),
+    buckets: array(entry.buckets, string),
+    probes: array(entry.probes, probe => {
+      const target = record(probe);
+      return { name: string(target.name), url: string(target.url) };
+    }),
+    collector: {
+      lastRunAtMs: nullable(collector.lastRunAtMs, number),
+      lastSuccessAtMs: nullable(collector.lastSuccessAtMs, number),
+      lastError: nullable(collector.lastError, string),
+      stale: boolean(collector.stale)
+    }
+  };
+}
+
+function decodeProjectMetricHistory(kind: ProjectMetricKind): (value: unknown) => ProjectMetricHistory {
+  return value => {
+    const entry = record(value);
+    if (entry.kind !== kind) throw new Error(`expected ${kind} history`);
+    const series = array(entry.series, item => {
+      const found = record(item);
+      return { metric: string(found.metric), values: array(found.values, cell => nullable(cell, number)) };
+    });
+    const stepMs = number(entry.stepMs);
+    if (stepMs <= 0) throw new Error("expected a positive step");
+    return { projectId: string(entry.projectId), range: rangeValue(entry.range), kind, fromMs: number(entry.fromMs), toMs: number(entry.toMs), stepMs, series };
+  };
+}
+
+function decodeProjectCollectorHistory(value: unknown): ProjectCollectorHistory {
+  const entry = record(value);
+  if (entry.kind !== "collector") throw new Error("expected collector history");
+  return {
+    projectId: string(entry.projectId),
+    range: rangeValue(entry.range),
+    fromMs: number(entry.fromMs),
+    toMs: number(entry.toMs),
+    runs: array(entry.runs, item => {
+      const run = record(item);
+      return { atMs: number(run.atMs), ok: boolean(run.ok), detail: string(run.detail), rowsRead: number(run.rowsRead), durationMs: number(run.durationMs) };
+    })
+  };
+}
+
 function decodeSystem(value: unknown): HostSystem {
   const entry = record(value);
   const system = record(entry.system);
@@ -430,7 +545,8 @@ function failureMessage(error: unknown): string {
 
 function statusMessage(status: number): string {
   if (status === 401 || status === 403) return "Sign in through Cloudflare Access.";
-  if (status === 404) return "No telemetry is stored for this host.";
+  if (status === 404) return "No telemetry is stored for this target.";
+  if (status === 503) return "The telemetry service is not configured correctly.";
   if (status === 429) return "Telemetry is rate limited. Try again shortly.";
   return `The telemetry service returned ${status}.`;
 }
@@ -466,6 +582,18 @@ const hostPath = (hostId: string, suffix = "") => `/api/v1/hosts/${encodeURIComp
 export async function getHosts(signal: AbortSignal): Promise<readonly Host[]> {
   const body = await getJson("/api/v1/hosts", value => array(record(value).hosts, decodeHost), signal);
   return body;
+}
+
+export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
+  return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
+}
+
+export function getProjectMetrics(projectId: string, range: RangeKey, kind: ProjectMetricKind, signal: AbortSignal): Promise<ProjectMetricHistory> {
+  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=${kind}`, decodeProjectMetricHistory(kind), signal);
+}
+
+export function getProjectCollector(projectId: string, range: RangeKey, signal: AbortSignal): Promise<ProjectCollectorHistory> {
+  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=collector`, decodeProjectCollectorHistory, signal);
 }
 
 export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {
