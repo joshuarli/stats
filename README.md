@@ -136,9 +136,10 @@ following minute, and both affected hours. A bucket with less than 80% of its
 span covered by usable intervals is marked partial. Retention runs on a Durable
 Object alarm in bounded batches; it never repairs or invents data.
 
-Queries choose raw for ranges up to 48 hours, one-minute rollups up to 7 days,
-and hourly beyond. Each tier is a sliding window, and the longest range is 90
-days. Results are downsampled to at most 900 points with an explicit step, and
+Queries choose raw when the window starts within the last 48 hours, one-minute
+rollups when it starts within 7 days, and hourly rollups beyond. A zoomed
+window therefore reads finer data than the preset range it came from. The
+longest window is 90 days. Results are downsampled to at most 900 points with an explicit step, and
 gaps remain gaps.
 
 ## Agent
@@ -196,7 +197,9 @@ Local tests run entirely in the Workers runtime. Production routes:
 - `GET /api/v1/hosts` — Access-protected host list.
 - `GET /api/v1/hosts/:hostId/latest` — Access-protected latest sample.
 - `GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`
-  — Access-protected bounded history.
+  — Access-protected bounded history. Pass `from` and `to` (epoch milliseconds,
+  at most 90 days apart) instead of `range` to read an explicit window; the
+  response then omits `range`.
 - `POST /api/v1/admin/hosts`, `GET /api/v1/admin/hosts`,
   `POST /api/v1/admin/hosts/:hostId/rotate`,
   `DELETE /api/v1/admin/hosts/:hostId` — Access-protected provisioning.

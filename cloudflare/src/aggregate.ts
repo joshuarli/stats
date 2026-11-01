@@ -140,6 +140,22 @@ export function rangeKey(value: string | null): RangeKey | null {
   }
 }
 
+export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
+
+export function historyQuery(params: URLSearchParams): HistoryQuery | null {
+  const range = params.get("range");
+  const from = params.get("from");
+  const to = params.get("to");
+  if (from === null && to === null) {
+    const key = range === null ? "1h" : rangeKey(range);
+    return key === null ? null : { range: key };
+  }
+  if (range !== null || from === null || to === null || !/^[0-9]{1,15}$/u.test(from) || !/^[0-9]{1,15}$/u.test(to)) return null;
+  const fromMs = Number(from);
+  const toMs = Number(to);
+  return fromMs < toMs && toMs - fromMs <= RANGE_MS["90d"] ? { fromMs, toMs } : null;
+}
+
 export function kindValue(value: string | null): HistoryKind | null {
   return value === "summary" || value === "disks" || value === "nets" || value === "filesystems" || value === "block" ? value : null;
 }

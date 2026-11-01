@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, downsample, HOUR_MS, kindValue, MINUTE_MS, rangeKey, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
+import { combineRollups, downsample, historyQuery, HOUR_MS, kindValue, MINUTE_MS, rawPoints, rollupPoints, rollupFromRaw, RANGE_MS, type HistoryKind, type HistoryPoints, type HistoryQuery, type RawRow, type RangeKey, type RollupPayload } from "./aggregate";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const RAW_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -44,7 +44,7 @@ export interface LatestSample {
 
 export interface History {
   readonly hostId: string;
-  readonly range: RangeKey;
+  readonly range?: RangeKey;
   readonly kind: HistoryKind;
   readonly fromMs: number;
   readonly toMs: number;
@@ -240,12 +240,14 @@ export class Installation extends DurableObject<Env> {
     for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
-  async history(hostId: string, range: RangeKey, kind: HistoryKind): Promise<History | null> {
+  async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
     if (this.host(hostId) === undefined) return null;
-    const toMs = this.now();
-    const fromMs = toMs - RANGE_MS[range];
-    const rawRange = RANGE_MS[range] <= 48 * 60 * 60 * 1000;
-    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : range === "7d" ? "1m" : "1h";
+    const now = this.now();
+    const toMs = "range" in query ? now : query.toMs;
+    const fromMs = "range" in query ? now - RANGE_MS[query.range] : query.fromMs;
+    const range = "range" in query ? { range: query.range } : {};
+    const rawRange = fromMs >= now - RAW_RETENTION_MS;
+    const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - 7 * 24 * 60 * 60 * 1000 ? "1m" : "1h";
     let points: HistoryPoints;
     let bucketMs = rawRange ? 15_000 : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     if (rawRange) {
@@ -260,13 +262,13 @@ export class Installation extends DurableObject<Env> {
     }
     if (kind === "summary") {
       const sampled = downsample(points as Parameters<typeof downsample>[0]);
-      return { hostId, range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items };
+      return { hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items };
     }
     const series = points as { id: string; name?: string; points: unknown[] }[];
     const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
     const stride = Math.max(1, Math.ceil(longest / 900));
     return {
-      hostId, range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
+      hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
       series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
     };
   }
@@ -392,10 +394,10 @@ export class Installation extends DurableObject<Env> {
       const history = /^\/hosts\/(h_[0-9a-f]{32})\/history$/u.exec(path);
       if (history !== null && request.method === "GET") {
         const url = new URL(request.url);
-        const range = url.searchParams.get("range") === null ? "1h" : rangeKey(url.searchParams.get("range"));
+        const query = historyQuery(url.searchParams);
         const kind = url.searchParams.get("kind") === null ? "summary" : kindValue(url.searchParams.get("kind"));
-        if (range === null || kind === null) return failure("invalid_request", "range or kind is not supported", 400);
-        const result = await this.history(history[1]!, range, kind);
+        if (query === null || kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
+        const result = await this.history(history[1]!, query, kind);
         return result === null ? failure("not_found", "host not found", 404) : json(result);
       }
       if (path === "/admin/hosts" && request.method === "POST") {

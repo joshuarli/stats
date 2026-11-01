@@ -2,7 +2,7 @@ import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare
 import { describe, expect, it } from "vitest";
 import type { Installation } from "../src/installation";
 import { privateJwk } from "./access-key";
-import { downsample } from "../src/aggregate";
+import { downsample, historyQuery } from "../src/aggregate";
 
 const encoder = new TextEncoder();
 const now = 1_793_510_415_000;
@@ -41,7 +41,61 @@ async function history(hostId: string, range: string, kind: string): Promise<Res
   return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?range=${range}&kind=${kind}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
 }
 
+async function historySearch(hostId: string, search: string): Promise<Response> {
+  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?${search}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+}
+
+describe("history query", () => {
+  const parse = (search: string) => historyQuery(new URLSearchParams(search));
+
+  it("accepts a preset range, a from/to window, or nothing", () => {
+    expect(parse("")).toEqual({ range: "1h" });
+    expect(parse("range=7d")).toEqual({ range: "7d" });
+    expect(parse("from=1000&to=2000")).toEqual({ fromMs: 1_000, toMs: 2_000 });
+  });
+
+  it("rejects ambiguous, partial, or unbounded windows", () => {
+    for (const search of ["from=1000", "to=2000", "range=1h&from=1000&to=2000", "from=2000&to=1000", "from=1000&to=1000", "from=abc&to=2000", "from=1.5&to=2000", "from=-1&to=2000", `from=0&to=${90 * 24 * 60 * 60 * 1000 + 1}`, "range=2h"]) {
+      expect(parse(search), search).toBeNull();
+    }
+    expect(parse(`from=0&to=${90 * 24 * 60 * 60 * 1000}`)).not.toBeNull();
+  });
+});
+
 describe("history", () => {
+  it("serves an explicit window at the finest tier that still holds it", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const preset = await (await history(host.hostId, "1h", "summary")).json() as { points: { atMs: number }[] };
+    const [first, second] = preset.points;
+    expect(preset.points.length).toBe(2);
+
+    const around = await historySearch(host.hostId, `from=${first!.atMs - 1_000}&to=${second!.atMs + 1_000}&kind=summary`);
+    expect(around.status).toBe(200);
+    const body = await around.json() as { range?: string; fromMs: number; toMs: number; resolution: string; points: { atMs: number }[] };
+    expect(body.range).toBeUndefined();
+    expect(body.fromMs).toBe(first!.atMs - 1_000);
+    expect(body.toMs).toBe(second!.atMs + 1_000);
+    expect(body.resolution).toBe("raw");
+    expect(body.points.map(point => point.atMs)).toEqual([first!.atMs, second!.atMs]);
+
+    const narrow = await (await historySearch(host.hostId, `from=${first!.atMs - 1_000}&to=${first!.atMs + 1_000}&kind=summary`)).json() as { points: unknown[] };
+    expect(narrow.points.length).toBe(1);
+    const after = await (await historySearch(host.hostId, `from=${second!.atMs + 1}&to=${second!.atMs + 60_000}&kind=summary`)).json() as { points: unknown[] };
+    expect(after.points.length).toBe(0);
+
+    const day = 24 * 60 * 60 * 1000;
+    const tiers = new Map([[`from=${now - 3 * day}&to=${now - 2 * day}`, "1m"], [`from=${now - 30 * day}&to=${now - 29 * day}`, "1h"], [`from=${now - 600_000}&to=${now}`, "raw"]]);
+    for (const [search, resolution] of tiers) {
+      const response = await historySearch(host.hostId, `${search}&kind=summary`);
+      expect(response.status, search).toBe(200);
+      expect((await response.json() as { resolution: string }).resolution, search).toBe(resolution);
+    }
+
+    expect((await historySearch(host.hostId, "from=1000&kind=summary")).status).toBe(400);
+    expect((await historySearch(host.hostId, `range=1h&from=${now - 1_000}&to=${now}&kind=summary`)).status).toBe(400);
+  });
+
   it("returns bounded raw and rolled history", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
