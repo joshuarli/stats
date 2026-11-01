@@ -112,6 +112,11 @@ const PURGE_WEIGHTED_PROJECT_HISTORY: readonly string[] = [
   `DELETE FROM project_hours WHERE hour_ms < ${WEIGHTED_HISTORY_ENDS_MS} AND (${WEIGHTED_METRICS})`
 ];
 
+const UNCORRECTED_RUNS_END_MS = 1793571049204;
+const FORGET_UNCORRECTED_RUNS: readonly string[] = [
+  `DELETE FROM collector_runs WHERE at_ms < ${UNCORRECTED_RUNS_END_MS}`
+];
+
 interface Migration {
   readonly version: number;
   readonly statements: readonly string[];
@@ -122,7 +127,8 @@ const MIGRATIONS: readonly Migration[] = [
   { version: 2, statements: [SAMPLE_EXPIRY, ROLLUP_EXPIRY] },
   { version: 3, statements: [HOST_SYSTEM] },
   { version: 4, statements: PROJECT_STATEMENTS },
-  { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY }
+  { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY },
+  { version: 6, statements: FORGET_UNCORRECTED_RUNS }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {

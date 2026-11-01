@@ -180,9 +180,10 @@ fetch events. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with a fixed detail,
 writes one `collector_failed` log line, and rethrows so the cron shows it.
 
-**Storage** (schema version 5; version 5 dropped Worker, route, R2 operation, and D1
+**Storage** (schema version 6; version 5 dropped Worker, route, R2 operation, and D1
 history before 2026-11-01 20:40 UTC, which was weighted by a mismatched
-`sampleInterval`):
+`sampleInterval`, and version 6 dropped the collector runs before 22:10 UTC the
+same day so those buckets read as unknown instead of zero):
 
 - `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
   7 days.
