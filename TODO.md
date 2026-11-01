@@ -20,15 +20,6 @@ Next: 25
 - **Effort:** M
 - **Design:** [docs/rfc/STA-3-runtime-failure-visibility.md](docs/rfc/STA-3-runtime-failure-visibility.md)
 
-### STA-12 · P3 · Access JWT signature rejection is untested
-
-- **Area:** Tests
-- **Where:** `cloudflare/test/access.test.ts:34-47`, `cloudflare/src/access.ts:79-91`, `cloudflare/test/ingest.test.ts:77-81`
-- **Problem:** Every negative Access case signs with the real key and changes only claims or the header. None alters the signature or the payload after signing. There is also no case for a future `nbf`, for an `aud` array, or for a JWKS fetch failure returning 503. Making verification always succeed would leave the suite green. This check is the only gate on the admin routes. Separately, the abort test swallows any error from `state.abort()` in an empty `catch`.
-- **Recommendation:** Add cases for a tampered signature, a tampered payload, a future `nbf`, an array `aud`, and a missing JWKS. Replace the empty `catch` with an assertion on the expected abort error.
-- **Fix with:** test-audit
-- **Effort:** S
-
 ### STA-13 · P3 · Agent upload loop, shutdown, and real sample shape are untested
 
 - **Area:** Tests

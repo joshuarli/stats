@@ -77,11 +77,16 @@ describe("ingest", () => {
     const latest = await runInDurableObject(stub(), async (instance: Installation) => instance.latest(host.hostId));
     expect(latest?.sample.seq).toBe("900015");
 
+    let aborted = false;
+    let abortError: unknown;
     try {
       await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => state.abort());
-    } catch {
-      // the object reset is the point of this check
+    } catch (error) {
+      aborted = true;
+      abortError = error;
     }
+    expect(aborted).toBe(true);
+    expect(abortError).toBeInstanceOf(Error);
     const persisted = await runInDurableObject(stub(), async (instance: Installation) => instance.latest(host.hostId));
     expect(persisted?.sample.seq).toBe("900015");
   });
