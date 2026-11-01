@@ -85,7 +85,7 @@ export function r2OperationsQuery(buckets: readonly string[], startMs: number): 
   return {
     query: [
       "SELECT bucketName, toStartOfFiveMinutes(timestamp) AS bucket, actionStatus,",
-      "SUM(sampleInterval) AS operations",
+      "COUNT(*) AS operations",
       "FROM events.r2CombinedOperations",
       `WHERE bucketName IN (${names.placeholders}) AND timestamp >= $start`,
       "GROUP BY bucketName, toStartOfFiveMinutes(timestamp), actionStatus",
@@ -115,9 +115,9 @@ export function d1Query(databases: readonly string[], startMs: number): BoundQue
   return {
     query: [
       "SELECT toStartOfFiveMinutes(timestamp) AS bucket,",
-      "SUM(sampleInterval) AS queries,",
-      "SUM(rowsRead * sampleInterval) AS rows_read,",
-      "SUM(rowsWritten * sampleInterval) AS rows_written",
+      "COUNT(*) AS queries,",
+      "SUM(rowsRead) AS rows_read,",
+      "SUM(rowsWritten) AS rows_written",
       "FROM events.d1Queries",
       `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
       "GROUP BY toStartOfFiveMinutes(timestamp)",
@@ -132,9 +132,9 @@ export function d1StatementQuery(databases: readonly string[], startMs: number):
   return {
     query: [
       `SELECT toStartOfFiveMinutes(timestamp) AS bucket, substring(query, 1, ${D1_STATEMENT_PREFIX_LENGTH}) AS statement,`,
-      "SUM(sampleInterval) AS queries,",
-      "SUM(rowsRead * sampleInterval) AS rows_read,",
-      "SUM(rowsWritten * sampleInterval) AS rows_written",
+      "COUNT(*) AS queries,",
+      "SUM(rowsRead) AS rows_read,",
+      "SUM(rowsWritten) AS rows_written",
       "FROM events.d1Queries",
       `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
       `GROUP BY toStartOfFiveMinutes(timestamp), substring(query, 1, ${D1_STATEMENT_PREFIX_LENGTH})`,

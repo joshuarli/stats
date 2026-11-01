@@ -163,13 +163,17 @@ namespaces, D1 queries and per-statement rows when it lists databases, R2
 operations and storage when it lists buckets) and sends one GET
 to each probe. The queries live in
 `src/projects/queries.ts`, bind every value as a parameter, and take nothing
-from a request. R2, D1, and Durable Object counts are `SUM(sampleInterval)`
-because those datasets are sampled. Worker events are `COUNT(*)` and
-`SUM(cpuTimeMs)`: `logs.workersLogs` keeps every invocation event but stamps
-each with `sampleInterval` equal to the inverse of `headSamplingRate`, so
-weighting overcounts by that factor. Measured 2026-11-01: 40 requests to
-`stats` (rate 0.1) left 40 rows weighted 10, and 200 requests to `stuff`
-(rate 0.25) left 244 rows weighted 4. History stored before the change is
+from a request. Worker, R2, and D1 events are `COUNT(*)` and unweighted
+sums; only Durable Object invocations use `SUM(sampleInterval)`, whose weight is
+1. At this account's volumes those datasets keep every event but stamp rows with
+a `sampleInterval` that does not match what was kept, so weighting inflated
+counts by the stamp. Measured 2026-11-01: 40 requests to `stats` (head sampling
+0.1) left 40 rows weighted 10, and 200 requests to `stuff` (0.25) left 244 rows
+weighted 4. For D1, unweighted rows written summed to 2.8M over six hours
+against 682M weighted, and the database grew 190 MB, about 68 bytes per
+unweighted row. R2 operations for `usr-memories` were 66k unweighted against
+68k Worker events, but 668k weighted. If the platform starts sampling at higher
+volumes, these counts become undercounts; re-run the checks above. History stored before the change is
 inflated by that factor and ages out of the 90 minute rewrite window; Worker
 counts for a project that owns a Durable Object also include the object's own
 fetch events. Everything is parsed before anything is
@@ -209,7 +213,7 @@ CPU time per invocation, not latency; the SQL source has no quantiles. R2
 `userError` (mostly 404s) is shown but never scored.
 
 D1, summed over the project's databases from `events.d1Queries`: `d1.queries`,
-`d1.rowsRead`, `d1.rowsWritten`, all sample-weighted. `d1q.<statement>.queries|rowsRead|rowsWritten`
+`d1.rowsRead`, `d1.rowsWritten`. `d1q.<statement>.queries|rowsRead|rowsWritten`
 cover the 10 statements with the highest billed cost in the collected window,
 where a row written counts as 1000 rows read (the price ratio). The statement
 is the first 160 characters of the query text with whitespace collapsed, cut to

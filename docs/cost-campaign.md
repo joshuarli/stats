@@ -23,14 +23,14 @@ stored or wire format needs a yes first.
 
 Rules for reading the numbers:
 
-- R2, D1, and Durable Object counts are `sampleInterval`-weighted, so they move
-  by about one sample (100 events) per bucket; ignore smaller changes. Worker
-  counts are exact: `logs.workersLogs` keeps every invocation event but stamps
-  it with the inverse of `headSamplingRate`, so weighting overcounted `stats`
-  by 10 and `stuff` by 4 until the collector stopped weighting them (see
-  `docs/architecture.md`). Every Worker figure quoted before that fix was
-  inflated by that factor. The D1 and R2 weights have not been checked the
-  same way.
+- Worker, R2, and D1 counts are unweighted. Those datasets keep every event at
+  current volumes but stamp a `sampleInterval` that does not match, so weighted
+  figures were inflated by the stamp: 10 for `stats`, 4 for `stuff`, and
+  hundreds for D1 (see `docs/architecture.md` for the measurements). Every
+  Worker, R2, and D1 figure quoted before the fix was inflated, including the
+  "D1 rows written per hour" reading that suggested a four-figure daily cost.
+  Re-check against a known source when volumes change: D1 database growth,
+  Worker events against R2 operations, or a counted burst.
 - Estimated cost is list price before included allowances. It ranks components;
   it is not the bill.
 - `usr-memories` is excluded from baselines until its backfill ends. Its D1 and

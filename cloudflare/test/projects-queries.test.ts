@@ -38,7 +38,7 @@ function total(points: readonly { metric: string; value: number }[], metric: str
 describe("analytics query text", () => {
   it.each(Object.entries(built))("%s binds every value and respects the SQL dialect", (_name, bound) => {
     const sql = bound.query;
-    if (sql !== built.worker.query) expect(sql).not.toMatch(/COUNT\s*\(/i);
+    if (![built.worker.query, built.r2Operations.query, built.d1.query].includes(sql)) expect(sql).not.toMatch(/COUNT\s*\(/i);
     expect(sql).not.toMatch(/\bMIN\s*\(/i);
     expect(sql).not.toMatch(/toStartOfInterval|quantile/i);
     if (sql !== built.r2Storage.query) {
@@ -56,11 +56,13 @@ describe("analytics query text", () => {
     }
   });
 
-  it("weights D1 rows by sampleInterval, binds the database id, and orders statements by rows written", () => {
+  it("counts D1 queries and rows unweighted, binds the database id, and orders statements by rows written", () => {
     const statements = d1StatementQuery([DATABASE], START_MS);
     for (const bound of [built.d1, statements]) {
-      expect(bound.query).toMatch(/SUM\(rowsRead \* sampleInterval\) AS rows_read/u);
-      expect(bound.query).toMatch(/SUM\(rowsWritten \* sampleInterval\) AS rows_written/u);
+      expect(bound.query).toMatch(/COUNT\(\*\) AS queries/u);
+      expect(bound.query).toMatch(/SUM\(rowsRead\) AS rows_read/u);
+      expect(bound.query).toMatch(/SUM\(rowsWritten\) AS rows_written/u);
+      expect(bound.query).not.toContain("sampleInterval");
       expect(bound.query).not.toContain(DATABASE);
       expect(bound.params["database0"]).toBe(DATABASE);
     }
@@ -69,16 +71,16 @@ describe("analytics query text", () => {
     expect(() => d1Query(["x' OR 1=1 --"], START_MS)).toThrow(RangeError);
   });
 
-  it("counts Worker log events unweighted because the dataset keeps every one, and weights the other datasets", () => {
+  it("counts Worker, R2, and D1 events unweighted because those datasets keep every event", () => {
     expect(built.worker.query).toMatch(/COUNT\(\*\) AS invocations/u);
     expect(built.worker.query).toMatch(/SUM\(cpuTimeMs\) AS cpu_sum/u);
     expect(built.worker.query).not.toContain("sampleInterval");
     expect(routeQuery("stuff", START_MS).query).not.toContain("sampleInterval");
   });
 
-  it("weights event counts by sampleInterval and groups each dataset on its own time column", () => {
+  it("groups each dataset on its own time column", () => {
     expect(built.worker.query).toContain("APPROX_MAX(cpuTimeMs)");
-    expect(built.r2Operations.query).toMatch(/SUM\([^)]*sampleInterval[^)]*\) AS operations/u);
+    expect(built.r2Operations.query).toMatch(/COUNT\(\*\) AS operations/u);
     expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/u);
     expect(built.r2Operations.query).toContain("toStartOfFiveMinutes(timestamp)");
     expect(built.r2Storage.query).toContain("usageReportTimestamp >= $start");
