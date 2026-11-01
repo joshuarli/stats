@@ -42,14 +42,6 @@ export function count(value: number | undefined): string {
   return isFiniteNumber(value) ? number.format(value) : unavailableText;
 }
 
-export function uptime(ms: number | undefined): string {
-  if (!isFiniteNumber(ms) || ms < 0) return unavailableText;
-  const days = Math.floor(ms / 86_400_000);
-  const hours = Math.floor((ms % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((ms % 3_600_000) / 60_000);
-  return days > 0 ? `${days}d ${hours}h` : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-}
-
 export function age(receivedAtMs: number | null | undefined, now = Date.now()): string {
   if (!isFiniteNumber(receivedAtMs)) return "never";
   const seconds = Math.max(0, Math.round((now - receivedAtMs) / 1000));

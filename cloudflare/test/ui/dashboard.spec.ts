@@ -37,7 +37,7 @@ function block(range: string, empty = false) {
   return { hostId, range, kind: "block", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "block", points: [{ atMs: now - 15_000, count: 110, totalUs: 600_000, minUs: 1_500, maxUs: 45_000, p50Us: 5_000, p95Us: 25_000, p99Us: 45_000 }, { atMs: now, count: 90, totalUs: 500_000, minUs: 1_200, maxUs: 40_000, p50Us: 4_000, p95Us: 20_000, p99Us: 40_000 }] }] };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; latest?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean } = {}): Promise<string[]> {
   const requests: string[] = [];
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
@@ -47,9 +47,9 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; la
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
     }
-    if (url.pathname.endsWith("/latest")) {
-      if (options.latest === false) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no samples" } } });
-      return route.fulfill({ json: { hostId, receivedAtMs: options.online === false ? now - 120_000 : now - 5_000, sample: { seq: "900015", atMs: String(now - 5_000), monoMs: "900015000", uptimeMs: "900000000", cpuCount: 8, cpu: { user: "1", system: "1", idle: "1", iowait: "0", steal: "0", total: "4" }, load: { one: "0.500", five: "0.400", fifteen: "0.300" }, mem: { total: "8589934592", available: "4294967296", swapTotal: "0", swapFree: "0" }, psi: { cpu: { some10: "1.20", some60: "0.80", some300: "0.40", total: "1" } }, disks: [{ id: "8:0", name: "sda", reads: "1", readSectors: "1", writes: "1", writeSectors: "1", ioMs: "1" }], nets: [{ id: "eth0", rxBytes: "1", rxPackets: "1", rxDrops: "0", rxErrors: "0", txBytes: "1", txPackets: "1", txDrops: "0", txErrors: "0" }], filesystems: [{ id: "/", type: "ext4", total: "100000000000", available: "40000000000" }], block: { buckets: Array.from({ length: 16 }, () => "0"), count: "0", totalUs: "0", minUs: "0", maxUs: "0" } } } });
+    if (url.pathname.endsWith("/system")) {
+      if (options.system === false) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no system details for host" } } });
+      return route.fulfill({ json: { hostId, reportedAtMs: now - 60_000, system: { agent: "0.1.0", hostname: "alpha-box", os: "Alpine Linux edge", kernel: "7.2.9-2-stable", arch: "x86_64", cpu: { model: "AMD Ryzen 9 9950X 16-Core Processor", threads: 32, cores: 16, sockets: 1, maxMhz: 5756 } } } });
     }
     const empty = options.empty === true;
     if (kind === "disks") return route.fulfill({ json: disks(range, empty) });
@@ -72,6 +72,14 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
 
   await fleetTable.getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
+  const system = page.getByRole("region", { name: "System" });
+  await expect(system).toContainText("AMD Ryzen 9 9950X 16-Core Processor");
+  await expect(system).toContainText("16 cores · 32 threads · 1 socket · up to 5.76 GHz");
+  await expect(system).toContainText("Alpine Linux edge");
+  await expect(system).toContainText("kernel 7.2.9-2-stable · x86_64");
+  await expect(system).toContainText("alpha-box");
+  await expect(system).toContainText("8 GiB");
+  await expect(page.getByLabel("Host metadata")).toHaveCount(0);
   const cpuChart = page.getByRole("img", { name: /CPU;/ });
   await expect(cpuChart).toBeVisible();
   await expect(cpuChart).toHaveAttribute("tabindex", "0");
@@ -101,15 +109,16 @@ test("fleet and host views render charts, ranges, and keyboard controls", async 
 });
 
 test("missing and stale data never become zero", async ({ page }) => {
-  await mock(page, { online: false, empty: true, latest: false });
+  await mock(page, { online: false, empty: true, system: false });
   await page.goto("/");
   await expect(page.locator("table")).toContainText("stale");
   await page.locator("table").getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
+  await expect(page.getByText("This host has not reported system details.")).toBeVisible();
 });
 
 test("host summary rebuilds after an empty range becomes populated", async ({ page }) => {
-  const options = { empty: true, latest: false };
+  const options = { empty: true };
   await mock(page, options);
   await page.goto("/");
   await page.locator("table").getByRole("link", { name: "alpha" }).click();

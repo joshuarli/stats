@@ -106,16 +106,26 @@ export type NetSeries = Series<NetPoint>;
 export type FilesystemSeries = Series<FilesystemPoint>;
 export type BlockSeries = Series<BlockPoint>;
 
-export interface Latest {
-  readonly hostId: string;
-  readonly receivedAtMs: number;
-  readonly sample: {
-    readonly seq: string;
-    readonly atMs: string;
-    readonly monoMs: string;
-    readonly uptimeMs?: string;
-    readonly cpuCount?: number;
-  };
+export interface CpuInfo {
+  readonly model?: string;
+  readonly threads: number;
+  readonly cores?: number;
+  readonly sockets?: number;
+  readonly maxMhz?: number;
+}
+
+export interface SystemInfo {
+  readonly agent: string;
+  readonly hostname: string;
+  readonly os?: string;
+  readonly kernel: string;
+  readonly arch: string;
+  readonly cpu: CpuInfo;
+}
+
+export interface HostSystem {
+  readonly reportedAtMs: number;
+  readonly system: SystemInfo;
 }
 
 export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
@@ -312,18 +322,25 @@ function decodeHost(value: unknown): Host {
   };
 }
 
-function decodeLatest(value: unknown): Latest {
+function decodeSystem(value: unknown): HostSystem {
   const entry = record(value);
-  const sample = record(entry.sample);
+  const system = record(entry.system);
+  const cpu = record(system.cpu);
   return {
-    hostId: string(entry.hostId),
-    receivedAtMs: number(entry.receivedAtMs),
-    sample: {
-      seq: string(sample.seq),
-      atMs: string(sample.atMs),
-      monoMs: string(sample.monoMs),
-      ...(sample.uptimeMs === undefined ? {} : { uptimeMs: string(sample.uptimeMs) }),
-      ...(sample.cpuCount === undefined ? {} : { cpuCount: number(sample.cpuCount) })
+    reportedAtMs: number(entry.reportedAtMs),
+    system: {
+      agent: string(system.agent),
+      hostname: string(system.hostname),
+      ...(system.os === undefined ? {} : { os: string(system.os) }),
+      kernel: string(system.kernel),
+      arch: string(system.arch),
+      cpu: {
+        threads: number(cpu.threads),
+        ...(cpu.model === undefined ? {} : { model: string(cpu.model) }),
+        ...(cpu.cores === undefined ? {} : { cores: number(cpu.cores) }),
+        ...(cpu.sockets === undefined ? {} : { sockets: number(cpu.sockets) }),
+        ...(cpu.maxMhz === undefined ? {} : { maxMhz: number(cpu.maxMhz) })
+      }
     }
   };
 }
@@ -451,9 +468,9 @@ export async function getHosts(signal: AbortSignal): Promise<readonly Host[]> {
   return body;
 }
 
-export async function getLatest(hostId: string, signal: AbortSignal): Promise<Latest | null> {
+export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {
   try {
-    return await getJson(hostPath(hostId, "/latest"), decodeLatest, signal);
+    return await getJson(hostPath(hostId, "/system"), decodeSystem, signal);
   } catch (error) {
     if (error instanceof ApiFailure && error.status === 404) return null;
     throw error;

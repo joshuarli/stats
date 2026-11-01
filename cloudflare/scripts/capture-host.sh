@@ -19,11 +19,16 @@ host_id=$(printf '%s' "$hosts" | jaq -er --arg name "$name" '.hosts[] | select(.
 rm -rf "$out"
 mkdir -p "$out"
 printf '%s' "$hosts" | jaq -c . > "$out/hosts.json"
-get "/api/v1/hosts/$host_id/latest" | jaq -c . > "$out/latest.json"
+system=false
+if get "/api/v1/hosts/$host_id/system" > "$out/system.json.tmp" 2>/dev/null; then
+  jaq -c . < "$out/system.json.tmp" > "$out/system.json"
+  system=true
+fi
+rm -f "$out/system.json.tmp"
 for range in 1h 6h 24h 7d 90d; do
   for kind in summary disks nets filesystems block; do
     get "/api/v1/hosts/$host_id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done
 done
-jaq -n --arg hostId "$host_id" --argjson capturedAtMs "$(($(date +%s) * 1000))" '{hostId: $hostId, capturedAtMs: $capturedAtMs}' > "$out/capture.json"
+jaq -n --arg hostId "$host_id" --argjson capturedAtMs "$(($(date +%s) * 1000))" --argjson system "$system" '{hostId: $hostId, capturedAtMs: $capturedAtMs, system: $system}' > "$out/capture.json"
 echo "captured $name ($host_id) into $out"

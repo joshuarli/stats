@@ -1,9 +1,9 @@
 import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
-import { getBlock, getDisks, getFilesystems, getLatest, getNets, getSummary, type BlockSeries, type DiskSeries, type FilesystemSeries, type Host, type NetSeries, type Psi, type Series, type SummaryPoint } from "../api";
+import { getBlock, getDisks, getFilesystems, getNets, getSummary, getSystem, type BlockSeries, type DiskSeries, type FilesystemSeries, type Host, type HostSystem, type NetSeries, type Psi, type Series, type SummaryPoint } from "../api";
 import { pointsIn, windowStats, type ChartPoint } from "../chart-data";
-import { age, bytes, count, errorMessage, isFiniteNumber, microseconds, percent, percentUsed, rate, uptime } from "../format";
+import { bytes, count, errorMessage, isFiniteNumber, microseconds, percent, percentUsed, rate } from "../format";
 import { healthOf, LIMITS, loadLimits, memoryAvailableLimits, type Health, type Limits } from "../health";
 import { cpuUsed, loadOne, memoryFree, memoryUsed, psiCpu, sparkPoints, sumSeries } from "../metrics";
 import { loadQuery } from "../queries";
@@ -43,10 +43,10 @@ export function HostPage(): JSX.Element {
 
 function HostView(props: { readonly host: Host }): JSX.Element {
   const hostId = () => props.host.hostId;
-  const { query, now, refreshHosts, tick } = useTelemetry();
+  const { query, refreshHosts, tick } = useTelemetry();
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
 
-  const latest = createMemo(() => loadQuery(signal => getLatest(hostId(), signal)));
+  const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
   const summary = createMemo(() => loadQuery(signal => getSummary(hostId(), query(), signal)));
   const disks = createMemo(() => loadQuery(signal => getDisks(hostId(), query(), signal)));
   const nets = createMemo(() => loadQuery(signal => getNets(hostId(), query(), signal)));
@@ -58,7 +58,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const doRefresh = async () => {
     setRefreshError(null);
     try {
-      await Promise.all([refreshHosts(), refresh(latest), refresh(summary), refresh(disks), refresh(nets), refresh(filesystems), refresh(block)]);
+      await Promise.all([refreshHosts(), refresh(summary), refresh(disks), refresh(nets), refresh(filesystems), refresh(block)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
@@ -72,19 +72,12 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
         hint="Drag a chart to zoom · double-click to reset · click a legend row to isolate"
       >
-        <Errored fallback={null}>
-          <Loading fallback={null}>
-            <HostTags
-              hostId={hostId()}
-              receivedAtMs={latest()?.receivedAtMs ?? props.host.lastReceivedAtMs ?? undefined}
-              uptimeMs={latest()?.sample.uptimeMs === undefined ? undefined : Number(latest()?.sample.uptimeMs)}
-              cpuCount={latest()?.sample.cpuCount}
-              seq={latest()?.sample.seq}
-              now={now()}
-            />
-          </Loading>
-        </Errored>
       </PageHeader>
+      <Errored fallback={(error) => <ErrorState error={error()} compact />}>
+        <Loading fallback={<Widget title="System"><Skeleton rows={2} /></Widget>}>
+          <SystemPanel system={system()} memoryBytes={summary().points?.at(-1)?.mem?.total} />
+        </Loading>
+      </Errored>
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
@@ -202,27 +195,53 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   );
 }
 
-function HostTags(props: {
-  readonly hostId: string;
-  readonly receivedAtMs: number | undefined;
-  readonly uptimeMs: number | undefined;
-  readonly cpuCount: number | undefined;
-  readonly seq: string | undefined;
-  readonly now: number;
-}): JSX.Element {
-  const items = () => [
-    { label: "id", value: props.hostId },
-    { label: "last sample", value: age(props.receivedAtMs, props.now) },
-    { label: "uptime", value: uptime(props.uptimeMs) },
-    { label: "cpus", value: count(props.cpuCount) },
-    { label: "seq", value: props.seq ?? "—" }
-  ];
+function ghz(mhz: number): string {
+  return `${(mhz / 1000).toFixed(2)} GHz`;
+}
+
+function plural(value: number, noun: string): string {
+  return `${value} ${noun}${value === 1 ? "" : "s"}`;
+}
+
+function SystemPanel(props: { readonly system: HostSystem | null; readonly memoryBytes: number | undefined }): JSX.Element {
+  const facts = () => {
+    const found = props.system;
+    if (found === null) return [];
+    const { system } = found;
+    const topology = [
+      system.cpu.cores === undefined ? undefined : plural(system.cpu.cores, "core"),
+      plural(system.cpu.threads, "thread"),
+      system.cpu.sockets === undefined ? undefined : plural(system.cpu.sockets, "socket"),
+      system.cpu.maxMhz === undefined ? undefined : `up to ${ghz(system.cpu.maxMhz)}`
+    ].filter((part): part is string => part !== undefined);
+    return [
+      { label: "CPU", value: system.cpu.model ?? "unknown model", detail: topology.join(" · ") },
+      { label: "Memory", value: bytes(props.memoryBytes), detail: undefined },
+      { label: "OS", value: system.os ?? "unknown", detail: `kernel ${system.kernel} · ${system.arch}` },
+      { label: "Hostname", value: system.hostname, detail: `agent ${system.agent}` }
+    ];
+  };
   return (
-    <ul class="tags" aria-label="Host metadata">
-      <For each={items()}>
-        {(item) => <li class="tag"><span>{item.label}</span>{item.value}</li>}
-      </For>
-    </ul>
+    <Show
+      when={props.system !== null}
+      fallback={
+        <Widget title="System">
+          <EmptyState title="This host has not reported system details." detail="The agent sends them with its first upload after an update." icon="host" />
+        </Widget>
+      }
+    >
+      <section class="sysinfo" aria-label="System">
+        <For each={facts()}>
+          {(fact) => (
+            <div class="sysinfo-fact">
+              <span class="sysinfo-label">{fact.label}</span>
+              <span class="sysinfo-value">{fact.value}</span>
+              {fact.detail === undefined ? null : <span class="sysinfo-detail">{fact.detail}</span>}
+            </div>
+          )}
+        </For>
+      </section>
+    </Show>
   );
 }
 
@@ -243,6 +262,7 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
   const total = createMemo(() => last()?.mem?.total);
   const loadScale = createMemo(() => loadLimits(last()?.cpuCount));
   const memoryScale = createMemo(() => memoryAvailableLimits(total()));
+  const reportsPressure = createMemo(() => props.points.some(point => point.psi !== undefined));
   const health = (value: number | undefined, limits: Limits | undefined): Health | undefined => (limits === undefined ? undefined : healthOf(value, limits) ?? undefined);
   const cpuHealth = createMemo(() => health(cpu()?.last, LIMITS.cpuPercent));
   const memoryHealth = createMemo(() => health(memory()?.last, LIMITS.memoryUsedPercent));
@@ -311,6 +331,14 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
             stepMs={props.stepMs}
           />
         </Widget>
+        <Show
+          when={reportsPressure()}
+          fallback={
+            <Widget title="Pressure" subtitle="PSI">
+              <EmptyState title="This host does not report pressure stalls." detail="The kernel needs PSI enabled (CONFIG_PSI, and no psi=0 on the command line) for /proc/pressure to exist." icon="activity" />
+            </Widget>
+          }
+        >
         <Widget title="Memory pressure" subtitle="PSI some: share of time tasks stalled on memory" expandable>
           <TimeChart
             label="Memory pressure"
@@ -360,6 +388,7 @@ function SummarySection(props: { readonly points: readonly SummaryPoint[]; reado
               stepMs={props.stepMs}
             />
           </Widget>
+        </Show>
         </Show>
       </section>
     </Show>
