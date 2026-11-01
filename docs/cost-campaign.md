@@ -62,6 +62,21 @@ Unweighted last-hour readings on 2026-11-01, outside the backfill:
 - Durable Object CPU is not a billed dimension (requests, duration, and rows
   are), so lane B items are latency and headroom work, not cost work.
 
+Corrected cost picture (unweighted, 2026-11-01, list prices):
+
+- Workers requests and CPU across all three Workers sit near the plan's
+  included amounts: about 1.6k events an hour for `stuff`, 0.4k for `stats`, and
+  7k to 15k an hour for `usr-memories` outside the backfill (68k during it).
+  There is little to save here, and Durable Object CPU is not billed.
+- D1 writes were 114k to 940k rows an hour during the backfill, not hundreds of
+  millions. The database grew 190 MB in six hours, which matches that count.
+- The spend that can still matter is `usr-memories` R2 operations (about 66k an
+  hour during the backfill, mostly `PUT /sync/objects`, which is Class A at
+  about $4.50 per million) and its D1 writes at steady state. Both are lane D.
+
+Lanes B and C therefore buy latency and headroom more than money, and lane D is
+where a cost change can still show up once the backfill ends.
+
 ## Lanes
 
 Each lane ends with a ticket in the repo that owns the code. Order inside a
