@@ -3,6 +3,7 @@ import { BUCKET_MS } from "./queries.ts";
 export const MAX_ROUTES_PER_PROJECT = 15;
 const ROUTE_KEY_MAX_LENGTH = 80;
 const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
+const ALARM_LABEL_PATTERN = /^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2}/;
 const API_VERSION_SEGMENT = /^v\d+$/;
 const MAX_PLAIN_SEGMENT_LENGTH = 24;
 const MAX_DISTINCT_CHILDREN = 10;
@@ -102,6 +103,7 @@ export function parseWorkerRows(rows: readonly unknown[]): MetricPoint[] {
 }
 
 export function routeKey(label: string): string {
+  if (ALARM_LABEL_PATTERN.test(label)) return "alarm";
   const match = ROUTE_LABEL_PATTERN.exec(label);
   const normalized =
     match === null

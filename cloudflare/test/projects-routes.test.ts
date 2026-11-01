@@ -38,6 +38,7 @@ describe("route keys", () => {
     expect(routeKey("POST /ingest/v1/batches")).toBe("POST /ingest/v1/batches");
     expect(routeKey("Installation.jsrpc")).toBe("Installation.jsrpc");
     expect(routeKey("*/5 * * * *")).toBe("*/5 * * * *");
+    expect(routeKey("11/1/2026, 8:23:33 PM")).toBe("alarm");
     expect(routeKey("GET /café")).toBe("GET /caf?");
     expect(routeKey(`GET /${"ab/".repeat(60)}`)).toHaveLength(80);
   });
