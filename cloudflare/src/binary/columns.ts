@@ -1,17 +1,12 @@
-/** Experimental, dependency-free numeric frames. Not imported by production routes. */
 export type NumericType = "f64" | "u64" | "u8";
-export type Cells = ArrayLike<number | bigint | null>;
-export interface ColumnInput { readonly name: string; readonly type: NumericType; readonly values: Cells }
-export interface TableInput { readonly name: string; readonly rows: number; readonly columns: readonly ColumnInput[] }
-export interface FrameInput { readonly metadata: unknown; readonly tables: readonly TableInput[] }
-export interface ColumnView {
-  readonly name: string;
-  readonly type: NumericType;
-  readonly values: Float64Array | BigUint64Array | Uint8Array;
-  /** null means every cell is present. Otherwise a set bit means present. */
-  readonly validity: Uint8Array | null;
-}
+interface ColumnBase { readonly name: string; readonly validity: Uint8Array | null }
+export interface F64Column extends ColumnBase { readonly type: "f64"; readonly values: Float64Array }
+export interface U64Column extends ColumnBase { readonly type: "u64"; readonly values: BigUint64Array }
+export interface U8Column extends ColumnBase { readonly type: "u8"; readonly values: Uint8Array }
+/** A null validity means every cell is present. Otherwise a set bit means present and absent slots hold zero bytes. */
+export type ColumnView = F64Column | U64Column | U8Column;
 export interface TableView { readonly name: string; readonly rows: number; readonly columns: readonly ColumnView[] }
+export interface FrameInput { readonly metadata: unknown; readonly tables: readonly TableView[] }
 export interface FrameView {
   readonly metadata: unknown;
   readonly tables: readonly TableView[];
@@ -25,13 +20,11 @@ const MAX_METADATA = 1024 * 1024;
 const MAX_TABLES = 4096;
 const MAX_COLUMNS = 32768;
 const MAX_ROWS = 16384;
-const MAX_U64 = (1n << 64n) - 1n;
 const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 interface Descriptor { name: string; type: NumericType; nullable?: boolean; ref?: number }
 interface TableDescriptor { name: string; rows: number; columns: Descriptor[] }
-interface Block { column: ColumnInput; rows: number; nullable: boolean }
 
 function fail(message: string): never { throw new Error(`stats columns: ${message}`); }
 function align(value: number): number { return Math.ceil(value / 8) * 8; }
@@ -48,22 +41,18 @@ function record(value: unknown): Record<string, unknown> {
 function keys(value: Record<string, unknown>, allowed: readonly string[]): void {
   if (Object.keys(value).some(key => !allowed.includes(key))) fail("unknown descriptor field");
 }
-function checkedCell(type: NumericType, value: number | bigint | null | undefined): void {
-  if (value === null) return;
-  if (type === "u64") {
-    if (typeof value !== "bigint" || value < 0n || value > MAX_U64) fail("u64 requires an exact unsigned bigint");
-  } else if (typeof value !== "number" || !Number.isFinite(value) || (type === "u8" && !integer(value, 255))) {
-    fail(`invalid ${type} cell`);
-  }
-}
 
-/** Shared values objects are encoded once; history uses this to intern identical time axes. */
-export function encodeColumns(input: FrameInput): Uint8Array {
+/**
+ * Serializes typed columns. Columns that share one values array within a frame are written once and referenced.
+ * The caller guarantees finite values, zero bytes in absent slots and a zero-padded bitmap; decodeColumns rejects violations.
+ */
+export function encodeColumns(input: FrameInput): Uint8Array<ArrayBuffer> {
+  if (!LITTLE_ENDIAN) fail("encoding requires a little-endian host");
   if (input.tables.length > MAX_TABLES) fail("too many tables");
-  const seen = new Map<Cells, { index: number; type: NumericType; rows: number }>();
+  const seen = new Map<ColumnView["values"], number>();
   const tableNames = new Set<string>();
   const tables: TableDescriptor[] = [];
-  const blocks: Block[] = [];
+  const owned: ColumnView[] = [];
   let count = 0;
   let dataBytes = 0;
   for (const table of input.tables) {
@@ -73,55 +62,42 @@ export function encodeColumns(input: FrameInput): Uint8Array {
     const columnNames = new Set<string>();
     for (const column of table.columns) {
       if (++count > MAX_COLUMNS) fail("too many columns");
-      if (!name(column.name) || columnNames.has(column.name) || !numericType(column.type) || column.values.length !== table.rows) fail("invalid column");
+      const maskBytes = Math.ceil(table.rows / 8);
+      if (!name(column.name) || columnNames.has(column.name) || !numericType(column.type) || column.values.length !== table.rows || (column.validity !== null && column.validity.length !== maskBytes)) fail("invalid column");
       columnNames.add(column.name);
       const previous = seen.get(column.values);
-      if (previous !== undefined && previous.type === column.type && previous.rows === table.rows) {
-        columns.push({ name: column.name, type: column.type, ref: previous.index });
+      if (previous !== undefined) {
+        columns.push({ name: column.name, type: column.type, ref: previous });
         continue;
       }
-      let nullable = false;
-      for (let row = 0; row < table.rows; row += 1) {
-        const value = column.values[row];
-        checkedCell(column.type, value);
-        if (value === null) nullable = true;
-      }
-      seen.set(column.values, { index: count - 1, type: column.type, rows: table.rows });
-      columns.push({ name: column.name, type: column.type, nullable });
-      blocks.push({ column, rows: table.rows, nullable });
-      dataBytes += (nullable ? align(Math.ceil(table.rows / 8)) : 0) + align(table.rows * width(column.type));
+      seen.set(column.values, count - 1);
+      columns.push({ name: column.name, type: column.type, nullable: column.validity !== null });
+      owned.push(column);
+      dataBytes += (column.validity === null ? 0 : align(maskBytes)) + align(table.rows * width(column.type));
       if (dataBytes > MAX_BYTES) fail("frame too large");
     }
     tables.push({ name: table.name, rows: table.rows, columns });
   }
-  const text = JSON.stringify({ metadata: input.metadata, tables });
-  if (text.length > MAX_METADATA) fail("metadata too large");
-  const metadata = encoder.encode(text);
+  const metadata = encoder.encode(JSON.stringify({ metadata: input.metadata, tables }));
   if (metadata.length > MAX_METADATA) fail("metadata too large");
   const start = align(HEADER + metadata.length);
   const length = start + dataBytes;
   if (length > MAX_BYTES) fail("frame too large");
   const bytes = new Uint8Array(length);
-  bytes.set([83, 84, 67, 49]); // STC1
+  bytes.set([83, 84, 67, 49]);
   const view = new DataView(bytes.buffer);
   view.setUint16(4, 1, true);
   view.setUint32(8, metadata.length, true);
   view.setUint32(12, length, true);
   bytes.set(metadata, HEADER);
   let offset = start;
-  for (const { column, rows, nullable } of blocks) {
-    const mask = offset;
-    if (nullable) offset += align(Math.ceil(rows / 8));
-    const size = width(column.type);
-    for (let row = 0; row < rows; row += 1) {
-      const value = column.values[row];
-      if (value === null) continue;
-      if (nullable) bytes[mask + (row >>> 3)]! |= 1 << (row & 7);
-      if (column.type === "u64") view.setBigUint64(offset + row * size, value as bigint, true);
-      else if (column.type === "f64") view.setFloat64(offset + row * size, value as number, true);
-      else view.setUint8(offset + row, value as number);
+  for (const column of owned) {
+    if (column.validity !== null) {
+      bytes.set(column.validity, offset);
+      offset += align(column.validity.length);
     }
-    offset += align(rows * size);
+    bytes.set(new Uint8Array(column.values.buffer, column.values.byteOffset, column.values.byteLength), offset);
+    offset += align(column.values.byteLength);
   }
   return bytes;
 }
@@ -163,12 +139,13 @@ export function decodeColumns(input: ArrayBuffer | Uint8Array): FrameView {
       keys(column, ["name", "type", "nullable", "ref"]);
       if (!name(column.name) || columnNames.has(column.name) || !numericType(column.type)) fail("invalid column");
       columnNames.add(column.name);
+      const type = column.type;
       let found: ColumnView;
       if (column.ref !== undefined) {
         if (!integer(column.ref, all.length - 1) || column.nullable !== undefined) fail("invalid column reference");
         const prior = all[column.ref]!;
-        if (prior.type !== column.type || prior.values.length !== rows) fail("incompatible column reference");
-        found = { ...prior, name: column.name };
+        if (prior.type !== type || prior.values.length !== rows) fail("incompatible column reference");
+        found = { ...prior, name: column.name } as ColumnView;
       } else {
         if (typeof column.nullable !== "boolean") fail("invalid nullability");
         let validity: Uint8Array | null = null;
@@ -179,21 +156,18 @@ export function decodeColumns(input: ArrayBuffer | Uint8Array): FrameView {
           if (rows % 8 !== 0 && (validity[maskBytes - 1]! >>> (rows % 8)) !== 0) fail("invalid bitmap padding");
           offset += align(maskBytes);
         }
-        const size = width(column.type);
+        const size = width(type);
         const end = offset + rows * size;
         zeroes(end, align(end));
         if (end > bytes.length) fail("truncated values");
-        let values: ColumnView["values"];
         const at = bytes.byteOffset + offset;
-        if (column.type === "u8") values = bytes.subarray(offset, end);
-        else if (LITTLE_ENDIAN) values = column.type === "f64" ? new Float64Array(bytes.buffer, at, rows) : new BigUint64Array(bytes.buffer, at, rows);
-        else if (column.type === "f64") values = Float64Array.from({ length: rows }, (_, index) => view.getFloat64(offset + index * 8, true));
-        else values = BigUint64Array.from({ length: rows }, (_, index) => view.getBigUint64(offset + index * 8, true));
+        if (type === "u8") found = { name: column.name, type, values: bytes.subarray(offset, end), validity };
+        else if (type === "f64") found = { name: column.name, type, values: LITTLE_ENDIAN ? new Float64Array(bytes.buffer, at, rows) : Float64Array.from({ length: rows }, (_, index) => view.getFloat64(offset + index * 8, true)), validity };
+        else found = { name: column.name, type, values: LITTLE_ENDIAN ? new BigUint64Array(bytes.buffer, at, rows) : BigUint64Array.from({ length: rows }, (_, index) => view.getBigUint64(offset + index * 8, true)), validity };
         for (let row = 0; row < rows; row += 1) {
-          if (column.type === "f64" && !Number.isFinite(values[row] as number)) fail("non-finite value");
+          if (found.type === "f64" && !Number.isFinite(found.values[row])) fail("non-finite value");
           if (validity !== null && (validity[row >>> 3]! & (1 << (row & 7))) === 0) zeroes(offset + row * size, offset + (row + 1) * size);
         }
-        found = { name: column.name, type: column.type, values, validity };
         offset = align(end);
       }
       all.push(found);
@@ -205,7 +179,6 @@ export function decodeColumns(input: ArrayBuffer | Uint8Array): FrameView {
   return { metadata: root.metadata, tables, zeroCopy };
 }
 
-export function cell(column: ColumnView, row: number): number | bigint | null {
-  if (!integer(row, column.values.length - 1)) fail("row out of bounds");
-  return column.validity !== null && (column.validity[row >>> 3]! & (1 << (row & 7))) === 0 ? null : column.values[row]!;
+export function isPresent(column: ColumnView, row: number): boolean {
+  return column.validity === null || (column.validity[row >>> 3]! & (1 << (row & 7))) !== 0;
 }

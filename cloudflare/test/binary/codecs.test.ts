@@ -2,15 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { cell, decodeColumns, encodeColumns, type NumericType } from "../../src/binary/columns.ts";
-import { encodeHistory, openHistory, materializeHistory } from "../../src/binary/history.ts";
+import { decodeColumns, encodeColumns, type NumericType } from "../../src/binary/columns.ts";
+import { openHistory } from "../../src/binary/history.ts";
+import { cell, encodeCells, encodeHistory, materializeHistory, type Cell, type CellFrame as TestFrame } from "../support/history.ts";
 import { encodeStored, decodeStored } from "./storage-candidate.ts";
 import { captures, histories, root, syntheticCases } from "./cases.ts";
 
-type Cell = number | bigint | null;
-interface TestColumn { name: string; type: NumericType; values: Cell[] }
-interface TestTable { name: string; rows: number; columns: TestColumn[] }
-interface TestFrame { metadata: unknown; tables: TestTable[] }
 interface Metadata { surprise?: boolean; tables: { rows: number; columns: { nullable?: boolean; ref?: number }[] }[] }
 interface HistoryMetadata { format: string; node: { entries: { name: string }[]; metadata: { hostId: string } } }
 const frame = (values: readonly unknown[], type: NumericType = "f64"): TestFrame => ({ metadata: { test: true }, tables: [{ name: "t", rows: values.length, columns: [{ name: "v", type, values: values as Cell[] }] }] });
@@ -21,15 +18,15 @@ function rebuild(bytes: Uint8Array, change: (data: TestFrame) => void): Uint8Arr
   const source = decodeColumns(bytes);
   const data: TestFrame = { metadata: source.metadata, tables: source.tables.map(table => ({ name: table.name, rows: table.rows, columns: table.columns.map(column => ({ name: column.name, type: column.type, values: Array.from({ length: table.rows }, (_, index) => cell(column, index)) })) })) };
   change(data);
-  return encodeColumns(data);
+  return encodeCells(data);
 }
 
 await test("numeric columns retain zero, missing, negative zero, f64 and u64 boundaries", () => {
   const numericCases: [NumericType, Cell[]][] = [["f64", [null, 0, -0, Number.MAX_SAFE_INTEGER, -1.125, Number.MIN_VALUE]], ["u64", [null, 0n, 9007199254740993n, 18446744073709551615n]], ["u8", [null, 0, 1, 255]]];
-  for (const [type, input] of numericCases) assert.deepEqual(values(encodeColumns(frame(input, type))), input);
+  for (const [type, input] of numericCases) assert.deepEqual(values(encodeCells(frame(input, type))), input);
 });
 await test("aligned numeric and bitmap views share the input buffer; unaligned input copies explicitly", () => {
-  const encoded = encodeColumns(frame([0, null, 3.125]));
+  const encoded = encodeCells(frame([0, null, 3.125]));
   const opened = decodeColumns(encoded);
   assert.equal(opened.zeroCopy, true);
   assert.equal(opened.tables[0]!.columns[0]!.values.buffer, encoded.buffer);
@@ -44,22 +41,24 @@ await test("reused axes are shared, including reference indexes following other 
   const axis = [1, 2, 3], other = [4, 5, 6];
   const data = frame(axis);
   data.tables[0]!.columns.push({ name: "again", type: "f64", values: axis }, { name: "other", type: "f64", values: other }, { name: "otherAgain", type: "f64", values: other });
-  const columns = decodeColumns(encodeColumns(data)).tables[0]!.columns;
+  const columns = decodeColumns(encodeCells(data)).tables[0]!.columns;
   assert.equal(columns[0]!.values, columns[1]!.values);
   assert.equal(columns[2]!.values, columns[3]!.values);
 });
 await test("column encoder rejects type confusion, overflow, holes and invalid descriptors", () => {
-  for (const value of [NaN, Infinity, -Infinity, undefined, 1n]) assert.throws(() => encodeColumns(frame([value])));
-  for (const value of [-1n, 1n << 64n, 1]) assert.throws(() => encodeColumns(frame([value], "u64")));
-  for (const value of [-1, 256, 1.5]) assert.throws(() => encodeColumns(frame([value], "u8")));
+  for (const value of [NaN, Infinity, -Infinity, undefined, 1n]) assert.throws(() => encodeCells(frame([value])));
+  for (const value of [-1n, 1n << 64n, 1]) assert.throws(() => encodeCells(frame([value], "u64")));
+  for (const value of [-1, 256, 1.5]) assert.throws(() => encodeCells(frame([value], "u8")));
   const holey: unknown[] = []; holey.length = 1;
-  assert.throws(() => encodeColumns(frame(holey)));
+  assert.throws(() => encodeCells(frame(holey)));
   assert.throws(() => encodeColumns({ metadata: {}, tables: [{ name: "x", rows: 16385, columns: [] }] }));
   const duplicate = frame([1]); duplicate.tables[0]!.columns.push(duplicate.tables[0]!.columns[0]!);
-  assert.throws(() => encodeColumns(duplicate));
+  assert.throws(() => encodeCells(duplicate));
+  assert.throws(() => encodeColumns({ metadata: {}, tables: [{ name: "x", rows: 2, columns: [{ name: "v", type: "f64", values: new Float64Array(3), validity: null }] }] }));
+  assert.throws(() => encodeColumns({ metadata: {}, tables: [{ name: "x", rows: 2, columns: [{ name: "v", type: "f64", values: new Float64Array(2), validity: new Uint8Array(2) }] }] }));
 });
 await test("column parser rejects every truncation, extra bytes, version, flags and oversized length", () => {
-  const encoded = encodeColumns(frame([null, 0, 1.25]));
+  const encoded = encodeCells(frame([null, 0, 1.25]));
   for (let length = 0; length < encoded.length; length += 1) assert.throws(() => decodeColumns(encoded.subarray(0, length)));
   assert.throws(() => decodeColumns(new Uint8Array([...encoded, 0])));
   for (const offset of [0, 4, 6]) assert.throws(() => decodeColumns(mutate(encoded, bytes => { bytes[offset] = bytes[offset]! ^ 255; })));
@@ -67,7 +66,7 @@ await test("column parser rejects every truncation, extra bytes, version, flags 
   assert.throws(() => decodeColumns(new Uint8Array(new SharedArrayBuffer(32))));
 });
 await test("column parser rejects non-finite numbers, null-slot data and padding", () => {
-  const encoded = encodeColumns(frame([null, 0, 1.25]));
+  const encoded = encodeCells(frame([null, 0, 1.25]));
   const column = decodeColumns(encoded).tables[0]!.columns[0]!;
   const at = column.values.byteOffset;
   assert.throws(() => decodeColumns(mutate(encoded, (_, view) => view.setFloat64(at + 8, Infinity, true))));
@@ -76,7 +75,7 @@ await test("column parser rejects non-finite numbers, null-slot data and padding
   assert.throws(() => decodeColumns(mutate(encoded, bytes => { bytes[column.validity!.byteOffset + 1] = 1; })));
 });
 await test("column parser rejects unknown metadata fields and forward/cyclic references", () => {
-  const encoded = encodeColumns(frame([1]));
+  const encoded = encodeCells(frame([1]));
   function rewrite(callback: (metadata: Metadata) => void): Uint8Array {
     const view = new DataView(encoded.buffer);
     const oldLength = view.getUint32(8, true);
@@ -189,7 +188,7 @@ await test("storage enforces complexity limits and rejects unsupported JSON valu
 await test("deterministic randomized mutation smoke checks both bounded parsers", () => {
   let seed = 0x12345678;
   const random = () => { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0; };
-  const columns = encodeColumns(frame([null, 0, 1.25]));
+  const columns = encodeCells(frame([null, 0, 1.25]));
   const stored = encodeStored("sample", { value: "18446744073709551615", flag: false });
   const decoders: [Uint8Array, (bytes: Uint8Array) => unknown][] = [[columns, decodeColumns], [stored, bytes => decodeStored("sample", bytes)]];
   for (let iteration = 0; iteration < 1000; iteration += 1) {
@@ -200,7 +199,7 @@ await test("deterministic randomized mutation smoke checks both bounded parsers"
   }
 });
 await test("v1 golden byte vectors pin endianness, tags, framing and dictionary order", () => {
-  const columns = encodeColumns({ metadata: {}, tables: [{ name: "t", rows: 2, columns: [{ name: "v", type: "u64", values: [0n, 18446744073709551615n] }] }] });
+  const columns = encodeCells({ metadata: {}, tables: [{ name: "t", rows: 2, columns: [{ name: "v", type: "u64", values: [0n, 18446744073709551615n] }] }] });
   assert.equal(hex(columns), "535443310100000067000000880000007b226d65746164617461223a7b7d2c227461626c6573223a5b7b226e616d65223a2274222c22726f7773223a322c22636f6c756d6e73223a5b7b226e616d65223a2276222c2274797065223a22753634222c226e756c6c61626c65223a66616c73657d5d7d5d7d000000000000000000ffffffffffffffff");
   assert.equal(hex(encodeStored("sample", { a: "18446744073709551615", b: 0 })), "53545231000100002c0000000200000000016100016207020005ffffffffffffffff01030000000000000000");
 });

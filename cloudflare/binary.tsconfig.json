@@ -4,5 +4,5 @@
     "types": ["node"],
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/binary/**/*.ts", "test/binary/**/*.ts"]
+  "include": ["src/binary/**/*.ts", "test/binary/**/*.ts", "test/support/**/*.ts"]
 }
