@@ -172,17 +172,24 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       return route.fulfill({ json: { hostId, reportedAtMs: now - 60_000, system: { agent: "0.1.0", hostname: "alpha-box", os: "Alpine Linux edge", kernel: "7.2.9-2-stable", arch: "x86_64", cpu: { model: "AMD Ryzen 9 9950X 16-Core Processor", threads: 32, cores: 16, sockets: 1, maxMhz: 5756 } } } });
     }
     const empty = options.empty === true;
-    if (kind === "disks") return route.fulfill({ json: disks(range, empty) });
-    if (kind === "nets") return route.fulfill({ json: nets(range, empty) });
-    if (kind === "filesystems") return route.fulfill({ json: filesystems(range, empty) });
-    if (kind === "block") return route.fulfill({ json: block(range, empty) });
-    const body = summary(range, empty);
-    const from = url.searchParams.get("from");
-    const to = url.searchParams.get("to");
-    if (from !== null && to !== null) {
-      return route.fulfill({ json: { ...body, fromMs: Number(from), toMs: Number(to), points: body.points.slice(0, 4).map((point, index) => ({ ...point, atMs: Number(to) - (4 - index) * 15_000 })) } });
+    const historyBody = (kind: string): unknown => {
+      if (kind === "disks") return disks(range, empty);
+      if (kind === "nets") return nets(range, empty);
+      if (kind === "filesystems") return filesystems(range, empty);
+      if (kind === "block") return block(range, empty);
+      const body = summary(range, empty);
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      if (from !== null && to !== null) {
+        return { ...body, fromMs: Number(from), toMs: Number(to), points: body.points.slice(0, 4).map((point, index) => ({ ...point, atMs: Number(to) - (4 - index) * 15_000 })) };
+      }
+      return body;
+    };
+    const kinds = url.searchParams.get("kinds");
+    if (kinds !== null) {
+      return route.fulfill({ json: { hostId, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, historyBody(kind)])) } });
     }
-    return route.fulfill({ json: body });
+    return route.fulfill({ json: historyBody(kind) });
   });
   return requests;
 }
@@ -198,19 +205,19 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
 
   await fleetTable.getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
-  const system = page.getByRole("region", { name: "System" });
+  await page.getByRole("button", { name: "Host information" }).hover();
+  const system = page.getByRole("tooltip", { name: "Host information" });
   await expect(system).toContainText("AMD Ryzen 9 9950X 16-Core Processor");
   await expect(system).toContainText("16 cores · 32 threads · 1 socket · up to 5.76 GHz");
   await expect(system).toContainText("Alpine Linux edge");
   await expect(system).toContainText("kernel 7.2.9-2-stable · x86_64");
   await expect(system).toContainText("alpha-box");
   await expect(system).toContainText("8 GiB");
+  await page.mouse.move(0, 0);
   await expect(page.getByLabel("Host metadata")).toHaveCount(0);
-  const incidents = page.getByRole("list", { name: "Incidents" });
-  await expect(incidents).toContainText("CPU");
-  await expect(incidents).toContainText("Critical");
-  await expect(incidents).toContainText("ongoing");
-  await expect(page.getByRole("button", { name: /^CPU: .*Jump to chart/ })).toContainText("Critical");
+  const cpuCell = page.getByRole("button", { name: /^CPU: .*Jump to chart/ });
+  await expect(cpuCell).toHaveClass(/is-critical/);
+  await expect(cpuCell.locator(".health-word")).toHaveCount(0);
   const cpuChart = page.getByRole("img", { name: /CPU;/ });
   await expect(cpuChart).toBeVisible();
   await expect(cpuChart).toHaveAttribute("tabindex", "0");
@@ -231,16 +238,26 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
   await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
-  await expect(page.getByRole("table", { name: "Filesystem capacity" })).toContainText("not enough history");
-  for (const panel of ["CPU pressure:", "Memory pressure:", "I/O pressure:"]) await expect(page.getByText(panel)).toBeVisible();
+  await expect(page.getByRole("table", { name: "Filesystem capacity" })).toContainText("Mount");
+  for (const panel of ["CPU pressure", "Memory pressure", "I/O pressure"]) await expect(page.getByText(panel)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pressure" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Full stalls" })).toHaveCount(0);
-  for (const title of ["Incidents", "CPU", "Load", "Memory", "Disk", "Network", "Filesystems"]) {
+  for (const title of ["CPU", "Load", "Memory", "Disk", "Network", "Filesystems"]) {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
   }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Block latency;/ })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
+});
+
+test("the host page reads every history kind in one request", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "CPU" })).toBeVisible();
+  const hostHistory = () => requests.filter(request => request.startsWith(`/api/v1/hosts/${hostId}/history`));
+  await expect.poll(() => hostHistory().some(request => request.includes("range=1h&kinds=summary,disks,nets,filesystems,block"))).toBe(true);
+  expect(hostHistory().filter(request => request.includes("range=1h&kind="))).toHaveLength(0);
 });
 
 test("the CPU and load charts compare against the same window yesterday", async ({ page }) => {
@@ -256,19 +273,22 @@ test("the CPU and load charts compare against the same window yesterday", async 
   })).toBe(true);
 });
 
-test("zooming to an incident narrows every chart to it", async ({ page }) => {
-  const requests = await mock(page);
+test("a bad period is marked on the strip and explained on chart hover", async ({ page }) => {
+  await mock(page);
   await page.goto("/");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
-  await expect(page.getByRole("list", { name: "Incidents" })).toBeVisible();
-  const window = page.getByLabel("Visible time window");
-  await expect(window).toContainText("Past 1 hour");
-  await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
-  await page.getByRole("list", { name: "Incidents" }).getByRole("button", { name: "Zoom" }).first().click();
-  await expect(window).toContainText(/\d+[smhd]/u);
-  await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
-  await expect.poll(() => requests.some(request => /[?&]from=\d+&to=\d+&kind=summary/u.test(request))).toBe(true);
+  await expect(page.getByRole("button", { name: /^CPU: .*Jump to chart/u })).toHaveClass(/is-critical/);
+  const plot = page.locator(".chart", { has: page.getByRole("img", { name: /^CPU;/ }) }).locator(".u-over");
+  await plot.scrollIntoViewIfNeeded();
+  const box = await plot.boundingBox();
+  if (box === null) throw new Error("chart plot has no box");
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2);
+  const episode = page.locator(".chart-tip-episode");
+  await expect(episode).toBeVisible();
+  await expect(episode).toContainText("Critical");
+  await expect(episode).toContainText("ongoing");
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
+  await expect(page.locator(".chart-tip-episode")).toHaveCount(0);
 });
 
 test("missing and stale data never become zero", async ({ page }) => {
@@ -277,7 +297,8 @@ test("missing and stale data never become zero", async ({ page }) => {
   await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("stale");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
-  await expect(page.getByText("This host has not reported system details.")).toBeVisible();
+  await page.getByRole("button", { name: "Host information" }).click();
+  await expect(page.getByRole("tooltip", { name: "Host information" })).toContainText("This host has not reported system details.");
 });
 
 test("host summary rebuilds after an empty range becomes populated", async ({ page }) => {
@@ -353,10 +374,11 @@ test("legend rows isolate and restore series", async ({ page }) => {
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   const cpuLegend = page.locator(".chart", { has: page.getByRole("img", { name: /CPU;/ }) }).locator(".chart-legend");
   await expect(cpuLegend).toContainText("iowait");
-  await cpuLegend.getByRole("button", { name: "Show only user" }).click();
+  const userRow = cpuLegend.getByRole("row", { name: /Show only user/u });
+  await userRow.locator("td").nth(1).click();
   await expect(cpuLegend.getByRole("button", { name: "Show only user" })).toHaveAttribute("aria-pressed", "true");
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "false");
-  await cpuLegend.getByRole("button", { name: "Show only user" }).click();
+  await userRow.locator("td").nth(3).click();
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "true");
 });
 
@@ -403,7 +425,7 @@ test("an unknown project id shows a not-found state", async ({ page }) => {
   await expect(page.getByText("Project not found")).toBeVisible();
 });
 
-test("the project page shows its summary, incidents, and two independent columns", async ({ page }, testInfo) => {
+test("the project page shows its summary and rows of aligned chart cards", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
@@ -414,17 +436,16 @@ test("the project page shows its summary, incidents, and two independent columns
   await expect(strip.getByRole("button", { name: /^Requests: 1,000/u })).toBeVisible();
   await expect(strip.getByRole("button", { name: /^CPU time: 3 ms/u })).toBeVisible();
   await expect(strip.getByRole("button", { name: /^R2 storage: /u })).toContainText("858.3 MiB");
-  for (const title of ["Incidents", "Requests", "Response status", "CPU time", "R2 operations", "R2 storage", "Collector"]) {
+  for (const title of ["Requests", "Response status", "CPU time", "R2 operations", "R2 storage", "Collector"]) {
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
   }
-  await expect(page.getByRole("list", { name: "Incidents" })).toHaveCount(0);
-  await expect(page.getByText("Every monitored metric stayed inside its limits.")).toBeVisible();
   await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  await expect(page.locator(".widget:not(.column .widget)")).toHaveCount(0);
-  const left = page.getByRole("region", { name: "Left column" });
-  const right = page.getByRole("region", { name: "Right column" });
-  await expect(left.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
-  await expect(right.getByRole("heading", { name: "R2 operations" })).toBeVisible();
+  await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
+  const cards = page.locator(".charts > .widget");
+  await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(cards.nth(1).getByRole("heading", { name: "Estimated cost" })).toBeVisible();
+  const tops = await cards.evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
+  for (let index = 0; index + 1 < tops.length; index += 2) expect(tops[index]).toBe(tops[index + 1]);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
   await page.getByRole("button", { name: "24h", exact: true }).click();
@@ -433,16 +454,16 @@ test("the project page shows its summary, incidents, and two independent columns
   expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=worker"))).toBe(true);
 });
 
-test("an elevated Worker 5xx share raises an incident that zooms", async ({ page }) => {
+test("an elevated Worker 5xx share raises an incident that is marked and explained on hover", async ({ page }) => {
   const requests = await mock(page, { spike: true });
   await page.goto("/#/project/stuff");
-  const incidents = page.getByRole("list", { name: "Incidents" });
-  await expect(incidents).toContainText("Worker 5xx");
-  await expect(incidents).toContainText("Critical");
-  await expect(incidents).toContainText("ongoing");
-  await expect(page.getByRole("button", { name: /^Worker 5xx: .*Jump to chart/u })).toContainText("Critical");
-  await incidents.getByRole("button", { name: "Zoom" }).first().click();
-  await expect(page.getByRole("button", { name: "Zoom out" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Worker 5xx: .*Jump to chart/u })).toHaveClass(/is-critical/);
+  const plot = page.locator(".chart", { has: page.getByRole("img", { name: /Worker 5xx share;/u }) }).locator(".u-over");
+  await plot.scrollIntoViewIfNeeded();
+  const box = await plot.boundingBox();
+  if (box === null) throw new Error("chart plot has no box");
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2);
+  await expect(page.locator(".chart-tip-episode")).toContainText("Critical");
   expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kind=worker"))).toBe(true);
 });
 
@@ -486,18 +507,15 @@ test("configured probes surface endpoint health and a down endpoint raises an in
   await expect(strip.getByRole("button", { name: /^Endpoints: all up/u })).toBeVisible();
   const widget = page.locator("#endpoints");
   await expect(widget.getByRole("heading", { name: "Endpoints" })).toBeVisible();
-  await expect(widget).toContainText("from Cloudflare's edge");
   await expect(page.getByRole("img", { name: /Endpoint availability;/u })).toBeVisible();
   await expect(page.getByRole("img", { name: /Endpoint response time;/u })).toBeVisible();
-  await expect(page.locator(".widget:not(.column .widget)")).toHaveCount(0);
+  await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
   expect(requests.some(request => request.includes("kind=probes"))).toBe(true);
 
   options.probeDown = true;
   await page.getByRole("button", { name: "Refresh" }).click();
-  const incidents = page.getByRole("list", { name: "Incidents" });
-  await expect(incidents).toContainText("Endpoints");
-  await expect(incidents).toContainText("Critical");
-  await expect(strip.getByRole("button", { name: /^Endpoints: down/u })).toContainText("Critical");
+  const down = strip.getByRole("button", { name: /^Endpoints: down/u });
+  await expect(down).toHaveClass(/is-critical/);
 });
 
 test("CPU by route ranks routes, and Durable Object charts appear only for projects with namespaces", async ({ page }) => {

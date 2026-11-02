@@ -1,8 +1,38 @@
 import { expect, test, type Page } from "@playwright/test";
 import stuff from "./captures/stuff/capture.json" with { type: "json" };
 import threadripper from "./captures/threadripper/capture.json" with { type: "json" };
+import block1h from "./captures/threadripper/block-1h.json" with { type: "json" };
+import block24h from "./captures/threadripper/block-24h.json" with { type: "json" };
+import block7d from "./captures/threadripper/block-7d.json" with { type: "json" };
+import disks1h from "./captures/threadripper/disks-1h.json" with { type: "json" };
+import disks24h from "./captures/threadripper/disks-24h.json" with { type: "json" };
+import disks7d from "./captures/threadripper/disks-7d.json" with { type: "json" };
+import filesystems1h from "./captures/threadripper/filesystems-1h.json" with { type: "json" };
+import filesystems24h from "./captures/threadripper/filesystems-24h.json" with { type: "json" };
+import filesystems7d from "./captures/threadripper/filesystems-7d.json" with { type: "json" };
+import nets1h from "./captures/threadripper/nets-1h.json" with { type: "json" };
+import nets24h from "./captures/threadripper/nets-24h.json" with { type: "json" };
+import nets7d from "./captures/threadripper/nets-7d.json" with { type: "json" };
+import summary1h from "./captures/threadripper/summary-1h.json" with { type: "json" };
+import summary24h from "./captures/threadripper/summary-24h.json" with { type: "json" };
+import summary7d from "./captures/threadripper/summary-7d.json" with { type: "json" };
 
 const captureFile = (name: string, file: string): string => new URL(`./captures/${name}/${file}`, import.meta.url).pathname;
+
+const capturedHistory = {
+  "1h": { summary: summary1h, disks: disks1h, nets: nets1h, filesystems: filesystems1h, block: block1h },
+  "24h": { summary: summary24h, disks: disks24h, nets: nets24h, filesystems: filesystems24h, block: block24h },
+  "7d": { summary: summary7d, disks: disks7d, nets: nets7d, filesystems: filesystems7d, block: block7d }
+} as const;
+
+function capturedKind(name: string, range: string, kind: string): unknown {
+  if (name !== "threadripper") throw new Error(`no composed history for ${name}`);
+  const byRange = capturedHistory[range as keyof typeof capturedHistory];
+  if (byRange === undefined) throw new Error(`no composed history for ${range}`);
+  const history = byRange[kind as keyof typeof byRange];
+  if (history === undefined) throw new Error(`no composed history for ${range} ${kind}`);
+  return history;
+}
 
 async function freeze(page: Page, capturedAtMs: number): Promise<void> {
   await page.clock.setFixedTime(capturedAtMs);
@@ -21,10 +51,26 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
     const kind = url.searchParams.get("kind") ?? "summary";
+    const kindsParam = url.searchParams.get("kinds");
+    const kinds = kindsParam === null ? null : kindsParam.split(",");
     const range = url.searchParams.get("range");
+    const fromMs = Number(url.searchParams.get("from"));
+    const toMs = Number(url.searchParams.get("to"));
+    const emptyHistory = (entry: string) => ({
+      hostId: threadripper.hostId,
+      kind: entry,
+      fromMs,
+      toMs,
+      resolution: "raw",
+      stepMs: 15_000,
+      ...(entry === "summary" ? { points: [] } : { series: [] })
+    });
     if (range === null && url.pathname.endsWith("/history")) {
-      const empty = kind === "summary" ? { points: [] } : { series: [] };
-      return route.fulfill({ json: { hostId: threadripper.hostId, kind, fromMs: Number(url.searchParams.get("from")), toMs: Number(url.searchParams.get("to")), resolution: "raw", stepMs: 15_000, ...empty } });
+      if (kinds !== null) return route.fulfill({ json: { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, emptyHistory(entry)])) } });
+      return route.fulfill({ json: emptyHistory(kind) });
+    }
+    if (kinds !== null) {
+      return route.fulfill({ json: { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, capturedKind(name, range ?? "1h", entry)])) } });
     }
     if (url.pathname.endsWith("/system") && !hasSystem) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no system details for host" } } });
     const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range ?? "1h"}.json`;
@@ -53,16 +99,17 @@ for (const range of ["1h", "24h", "7d"]) {
     await expect(page.getByRole("heading", { name: "Filesystems" })).toBeVisible();
     await page.waitForLoadState("networkidle");
     await page.mouse.move(0, 0);
-    if (!threadripper.system) await expect(page.getByText("This host has not reported system details.")).toBeVisible();
+    if (!threadripper.system) {
+      await page.getByRole("button", { name: "Host information" }).click();
+      await expect(page.getByRole("tooltip", { name: "Host information" })).toContainText("This host has not reported system details.");
+      await page.mouse.move(0, 0);
+    }
     const regions = [
-      ...(threadripper.system ? [["system", page.getByRole("region", { name: "System" })] as const] : []),
       ["tiles", page.getByRole("region", { name: "Host summary" })] as const,
-      ["incidents", page.locator("#incidents")] as const,
-      ["left", page.getByRole("region", { name: "Left column" })] as const,
-      ["right", page.getByRole("region", { name: "Right column" })] as const
+      ["charts", page.getByRole("region", { name: "Charts" })] as const
     ];
     for (const [file, region] of regions) {
-      await expect(region).toHaveScreenshot(`threadripper-${range}-${file}.png`);
+      await expect(region).toHaveScreenshot(`threadripper-${range}-${file}.webp`);
     }
   });
 }
@@ -77,12 +124,10 @@ test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   await page.mouse.move(0, 0);
   const regions = [
     ["tiles", page.getByRole("region", { name: "Project summary" })] as const,
-    ["incidents", page.locator("#incidents")] as const,
-    ["left", page.getByRole("region", { name: "Left column" })] as const,
-    ["right", page.getByRole("region", { name: "Right column" })] as const
+    ["charts", page.getByRole("region", { name: "Charts" })] as const
   ];
   for (const [file, region] of regions) {
-    await expect(region).toHaveScreenshot(`stuff-1h-${file}.png`);
+    await expect(region).toHaveScreenshot(`stuff-1h-${file}.webp`);
   }
 });
 

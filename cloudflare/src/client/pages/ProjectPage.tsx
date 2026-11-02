@@ -8,7 +8,7 @@ import { loadProjects, loadQuery } from "../queries";
 import { useTelemetry } from "../state";
 import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
-import { IncidentTimeline, StatusStrip } from "./host/Status";
+import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { CostWidget } from "./project/Cost";
 import { D1Widget } from "./project/D1";
@@ -94,7 +94,6 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-        hint={`Worker script, ${hasNamespaces() ? "Durable Objects, " : ""}${hasDatabases() ? "D1, " : ""}${hasBuckets() ? "R2 buckets, " : ""}and the collector that reads them · drag a chart to zoom`}
       />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
@@ -113,37 +112,24 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
           <Show
             when={hasData()}
             fallback={
-              <Widget title="Data" subtitle="Nothing collected in this range">
+              <Widget title="Data">
                 <EmptyState title="No data was collected in this range." detail="Missing data is shown as a gap, never as zero." icon="activity" />
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} label="Project summary" threeColumns={cells().length === 5 || cells().length === 6} />
-            <section class="columns" aria-label="Charts">
-              <div class="column" role="region" aria-label="Left column">
-                <RequestsWidget data={data()} />
-                <StatusWidget data={data()} />
-                <CpuTimeWidget data={data()} />
-                <RoutesWidget data={data()} view={view()} />
-                <Show when={props.project.probes.length > 0}>
-                  <ProbesWidget data={data()} />
-                </Show>
-              </div>
-              <div class="column" role="region" aria-label="Right column">
-                <IncidentTimeline cells={cells()} />
-                <CostWidget data={data()} view={view()} />
-                <Show when={hasDatabases()}>
-                  <D1Widget data={data()} view={view()} />
-                </Show>
-                <Show when={hasNamespaces()}>
-                  <DurableObjectsWidget data={data()} />
-                </Show>
-                <Show when={hasBuckets()}>
-                  <OperationsWidget data={data()} />
-                  <StorageWidget data={data()} />
-                </Show>
-                <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
-              </div>
+            <StatusStrip cells={cells()} label="Project summary" />
+            <section class="charts" aria-label="Charts">
+              <RequestsWidget data={data()} />
+              <CostWidget data={data()} view={view()} />
+              <StatusWidget data={data()} />
+              {hasBuckets() ? <OperationsWidget data={data()} /> : null}
+              <CpuTimeWidget data={data()} />
+              {hasBuckets() ? <StorageWidget data={data()} /> : null}
+              <RoutesWidget data={data()} view={view()} />
+              {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
+              {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
+              {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
+              <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
             </section>
           </Show>
         </Loading>

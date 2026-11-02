@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeState, duration, findEpisodes as find, healthOf, loadLimits, markersOf, memoryUsedLimits, type Health } from "../src/client/health";
+import { duration, episodeText, findEpisodes as find, healthOf, loadLimits, markersOf, memoryUsedLimits, type Health } from "../src/client/health";
 
 const minute = 60_000;
 const findEpisodes = (healths: readonly (Health | null)[], recoveryMs = minute) => find(healths, healths.map((_, index) => index * minute), recoveryMs);
@@ -45,27 +45,17 @@ describe("health", () => {
     ]);
   });
 
-  it("describes the current state with how long it has lasted or when it recovered", () => {
-    const times = sequence.map((_, index) => index * 60_000);
-    const open = describeState(times, sequence, findEpisodes(sequence))!;
-    expect(open.health).toBe("critical");
-    expect(open.text).toMatch(/^Critical since .* · 3 min$/u);
-
-    const recovered = sequence.slice(0, 7);
-    const closed = describeState(times, recovered, findEpisodes(recovered))!;
-    expect(closed.health).toBe("ok");
-    expect(closed.text).toMatch(/^OK · recovered .* after 3 min critical$/u);
-
-    const settling: (Health | null)[] = ["elevated", "ok"];
-    expect(describeState(times, settling, findEpisodes(settling, 5 * minute))!.text).toMatch(/^OK · recovering since /u);
-    expect(describeState(times, ["ok", "ok"], [])!.text).toBe("OK");
-    expect(describeState(times, [null, null], [])).toBeUndefined();
-  });
-
   it("keeps a spiky signal in one episode until it has stayed ok for the recovery window", () => {
     const spiky: (Health | null)[] = ["elevated", "ok", "ok", "elevated", "ok", "ok", "ok", "ok", "ok", "ok"];
     expect(findEpisodes(spiky, 4 * minute)).toEqual([{ startIndex: 0, endIndex: 4, criticalIndex: null, peak: "elevated", okSince: null }]);
     expect(findEpisodes(spiky, minute)).toHaveLength(2);
+  });
+
+  it("describes an episode for the chart tooltip", () => {
+    const times = sequence.map((_, index) => index * 60_000);
+    const [closed, open] = findEpisodes(sequence);
+    expect(episodeText(times, closed!)).toMatch(/^Critical · .* to .* · 3 min$/u);
+    expect(episodeText(times, open!)).toMatch(/^Critical since .* · ongoing$/u);
   });
 
   it("formats durations", () => {

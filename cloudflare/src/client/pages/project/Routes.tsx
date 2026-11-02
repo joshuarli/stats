@@ -9,7 +9,7 @@ import { durableObjectCpuAverage, durableObjectWallAverage, metricPoints, provis
 export function RoutesWidget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
   const rows = () => routeRows(props.data.routes, props.view);
   return (
-    <Widget id="routes" title="CPU by route" subtitle="The busiest routes by CPU time, estimated from sampled logs. :id is an id, :* a path level with many values" expandable>
+    <Widget id="routes" title="CPU by route" expandable>
       <Show when={rows().length > 0} fallback={<PanelLabel>No route data was collected in this range</PanelLabel>}>
         <div class="table-scroll flush-table">
           <table class="data-table compact" aria-label="CPU time by route">
@@ -43,10 +43,9 @@ export function RoutesWidget(props: { readonly data: ProjectData; readonly view:
 export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX.Element {
   const history = () => props.data.durableObjects;
   return (
-    <Widget id="durable-objects" title="Durable Objects" subtitle="Invocations of the project's Durable Object namespaces, with CPU and wall time per invocation" expandable>
+    <Widget id="durable-objects" title="Durable Objects" expandable>
       {history() === undefined ? null : (
         <>
-          <PanelLabel>Invocations and failed invocations per bucket</PanelLabel>
           <PanelChart
             label="Durable Object invocations"
             timeAxis={false}
@@ -59,7 +58,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Average CPU time per invocation. Buckets under 100 invocations are not shown</PanelLabel>
+          <PanelLabel>Average CPU time. Buckets under 100 invocations are not shown</PanelLabel>
           <PanelChart
             label="Durable Object average CPU time"
             area
@@ -80,7 +79,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Average wall time per invocation, including time spent waiting</PanelLabel>
+          <PanelLabel>Average wall time</PanelLabel>
           <PanelChart
             label="Durable Object average wall time"
             series={[{ label: "average", color: "aqua", scored: false, points: durableObjectWallAverage(history()!) }]}

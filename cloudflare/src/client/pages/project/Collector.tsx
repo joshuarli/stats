@@ -10,7 +10,7 @@ import type { ProjectData } from "./series";
 
 export function CollectorWidget(props: { readonly data: ProjectData; readonly collector: CollectorState; readonly now: number; readonly rowsRead: number | undefined }): JSX.Element {
   return (
-    <Widget id="collector" title="Collector" subtitle="How long this page's data has gone without a successful collection" expandable>
+    <Widget id="collector" title="Collector" expandable>
       <PanelChart
         label="Collector silence"
         area

@@ -93,7 +93,7 @@ export function FleetPage(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Fleet" hint="Select a host or project to inspect its telemetry" />
+      <PageHeader title="Fleet" />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>

@@ -10,7 +10,7 @@ const STATUS_COLORS = { "2xx": "blue", "3xx": "aqua", "4xx": "violet", "5xx": "c
 
 export function RequestsWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="requests" title="Requests" subtitle="Worker invocations per bucket, estimated from sampled logs" expandable>
+    <Widget id="requests" title="Requests" expandable>
       <PanelChart
         label="Worker invocations"
         area
@@ -26,8 +26,7 @@ export function RequestsWidget(props: { readonly data: ProjectData }): JSX.Eleme
 
 export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="status" title="Response status" subtitle="Invocations by status class, and the 5xx share of all invocations" expandable>
-      <PanelLabel>Invocations by status class</PanelLabel>
+    <Widget id="status" title="Response status" expandable>
       <PanelChart
         label="Worker status mix"
         timeAxis={false}
@@ -42,7 +41,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         stepMs={props.data.worker.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
-      <PanelLabel>5xx share of invocations. Buckets under 100 invocations are not scored</PanelLabel>
+      <PanelLabel>5xx share. Buckets under 100 invocations are not scored</PanelLabel>
       <PanelChart
         label="Worker 5xx share"
         area
@@ -59,8 +58,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
 
 export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="cpu" title="CPU time" subtitle="Time the Worker spent computing per invocation, not request latency" expandable>
-      <PanelLabel>Average CPU time per invocation. Buckets under 100 invocations are not scored</PanelLabel>
+    <Widget id="cpu" title="CPU time" expandable>
       <PanelChart
         label="Worker average CPU time"
         area

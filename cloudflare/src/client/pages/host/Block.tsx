@@ -13,7 +13,6 @@ export function BlockWidget(props: { readonly series: readonly BlockSeries[]; re
     <Widget
       id="block"
       title="Block latency"
-      subtitle="eBPF probe histogram"
       meta={last() === undefined ? undefined : <span class="widget-latest">{count(last()?.count)} completions · p50 {microseconds(last()?.p50Us)}</span>}
       expandable
     >
@@ -44,7 +43,7 @@ export function BlockWidget(props: { readonly series: readonly BlockSeries[]; re
 export function BlockCompletionsWidget(props: { readonly series: readonly BlockSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const points = createMemo(() => props.series.at(0)?.points ?? []);
   return (
-    <Widget title="Block completions" subtitle="requests completed per sample window" expandable>
+    <Widget title="Block completions" expandable>
       {points().length === 0 ? (
         <EmptyState title="No block latency samples in this range." icon="disk" />
       ) : (

@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
-import { ApiFailure, getBlock, getDisks, getFilesystems, getNets, getSummary, getSystem, type Host, type SummaryPoint } from "../api";
+import { ApiFailure, getHostHistories, getSummary, getSystem, type Host, type SummaryPoint } from "../api";
 import { errorMessage } from "../format";
 import { RANGE_MS } from "../../limits";
 import { loadQuery } from "../queries";
@@ -17,13 +17,12 @@ import { MemoryWidget } from "./host/Memory";
 import { buildCells } from "./host/monitors";
 import { NetworkWidget } from "./host/Network";
 import { rebootEvents } from "./host/shared";
-import { IncidentTimeline, StatusStrip } from "./host/Status";
-import { SystemPanel } from "./host/System";
+import { StatusStrip } from "./host/Status";
+import { SystemInfo } from "./host/System";
 
 const DAY_MS = 86_400_000;
 const GHOST_RANGES: ReadonlySet<string> = new Set(["1h", "6h", "24h"]);
 const GHOST_REFRESH_TICKS = 20;
-const LONG_REFRESH_TICKS = 40;
 
 export function HostPage(): JSX.Element {
   const params = useParams();
@@ -57,27 +56,16 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
 
   const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
-  const summary = createMemo(() => loadQuery(signal => getSummary(hostId(), query(), signal)));
-  const disks = createMemo(() => loadQuery(signal => getDisks(hostId(), query(), signal)));
-  const nets = createMemo(() => loadQuery(signal => getNets(hostId(), query(), signal)));
-  const filesystems = createMemo(() => loadQuery(signal => getFilesystems(hostId(), query(), signal)));
-  const block = createMemo(() => loadQuery(signal => getBlock(hostId(), query(), signal)));
+  const histories = createMemo(() => loadQuery(signal => getHostHistories(hostId(), query(), signal)));
+  const summary = () => histories().summary;
+  const disks = () => histories().disks;
+  const nets = () => histories().nets;
+  const filesystems = () => histories().filesystems;
+  const block = () => histories().block;
 
-  const week = createMemo(() => {
-    void Math.floor(tick() / LONG_REFRESH_TICKS);
-    return loadQuery(async signal => {
-      try {
-        return (await getFilesystems(hostId(), { range: "7d" }, signal)).series ?? [];
-      } catch (error) {
-        if (signal.aborted) throw error;
-        console.error("filesystem history for the forecast could not be loaded", error);
-        return null;
-      }
-    });
-  });
-
+  const comparisonTick = createMemo(() => Math.floor(tick() / GHOST_REFRESH_TICKS));
   const yesterday = createMemo((): Promise<readonly SummaryPoint[] | null> => {
-    void Math.floor(tick() / GHOST_REFRESH_TICKS);
+    comparisonTick();
     const current = query();
     if (!("range" in current) || !GHOST_RANGES.has(current.range)) return Promise.resolve(null);
     const range = current.range;
@@ -101,7 +89,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const doRefresh = async () => {
     setRefreshError(null);
     try {
-      await Promise.all([refreshHosts(), refresh(summary), refresh(disks), refresh(nets), refresh(filesystems), refresh(block)]);
+      await Promise.all([refreshHosts(), refresh(histories)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
@@ -123,8 +111,16 @@ function HostView(props: { readonly host: Host }): JSX.Element {
     <>
       <PageHeader
         title={props.host.name}
-        titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-        hint="Drag a chart to zoom · double-click to reset · click a legend row to isolate"
+        titleExtra={
+          <>
+            <Badge tone={status().tone} dot>{status().label}</Badge>
+            <Errored fallback={null}>
+              <Loading fallback={null}>
+                <SystemInfo system={system()} memoryBytes={() => summary().points?.at(-1)?.mem?.total} />
+              </Loading>
+            </Errored>
+          </>
+        }
       >
       </PageHeader>
       <Show when={refreshError()}>
@@ -136,12 +132,9 @@ function HostView(props: { readonly host: Host }): JSX.Element {
           <Show
             when={(summary().points ?? []).length > 0}
             fallback={
-              <>
-                <SystemPanel system={system()} memoryBytes={undefined} />
-                <Widget title="Samples" subtitle="No accepted observations for this range">
-                  <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
-                </Widget>
-              </>
+              <Widget title="Samples">
+                <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
+              </Widget>
             }
           >
             <StatusStrip cells={cells()} />
@@ -149,23 +142,17 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
             </Show>
             <PressureNotice points={summary().points ?? []} />
-            <section class="columns" aria-label="Charts">
-              <div class="column" role="region" aria-label="Left column">
-                <SystemPanel system={system()} memoryBytes={summary().points?.at(-1)?.mem?.total} />
-                <CpuWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-                <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
-                <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
-                <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
-                  <BlockWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
-                  <BlockCompletionsWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
-                </Show>
-              </div>
-              <div class="column" role="region" aria-label="Right column">
-                <IncidentTimeline cells={cells()} />
-                <LoadWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-                <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} summary={summary().points ?? []} summaryStepMs={summary().stepMs} events={events()} />
-                <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} longSeries={week()} events={events()} />
-              </div>
+            <section class="charts" aria-label="Charts">
+              <CpuWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+              <LoadWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+              <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
+              <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} events={events()} />
+              <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
+              <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} summary={summary().points ?? []} summaryStepMs={summary().stepMs} events={events()} />
+              <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
+                <BlockWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+                <BlockCompletionsWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+              </Show>
             </section>
           </Show>
         </Loading>
@@ -189,7 +176,7 @@ function SummarySkeleton(): JSX.Element {
   return (
     <>
       <section class="status-strip" aria-hidden="true">
-        <For each={[0, 1, 2, 3, 4, 5]}>{() => <div class="strip-cell"><Skeleton rows={2} /></div>}</For>
+        <For each={[0, 1, 2, 3, 4, 5, 6, 7]}>{() => <div class="strip-cell"><Skeleton rows={2} /></div>}</For>
       </section>
       <section class="chart-grid" aria-hidden="true">
         <Widget title="CPU"><Skeleton rows={2} chart /></Widget>

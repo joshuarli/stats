@@ -86,7 +86,7 @@ Next: 43
 
 - **Area:** Tests
 - **Where:** `cloudflare/test/ui/replay.spec.ts-snapshots/`
-- **Problem:** The 2026-11-01 redesign regenerated 35 golden images with `--update-snapshots`. Only the stuff 1h tiles, left, right and mobile tiles, and the threadripper 1h tiles and left column were looked at. The 24h and 7d goldens, the mobile host pages, and the deployed page were not.
+- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not.
 - **Recommendation:** Open each remaining golden and the deployed `#/project/stats` and `#/host/...` pages, and file or fix anything that reads wrong.
 - **Fix with:** none
 - **Effort:** S

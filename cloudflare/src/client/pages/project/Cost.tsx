@@ -11,7 +11,7 @@ export function CostWidget(props: { readonly data: ProjectData; readonly view: T
   const rows = () => parts().map(part => ({ label: part.label, unit: part.unit, usage: totalIn(part.usage, props.view), cost: totalIn(part.points, props.view) }));
   const total = () => rows().reduce((sum, row) => sum + row.cost, 0);
   return (
-    <Widget id="cost" title="Estimated cost" subtitle="Usage in this range at Workers Paid list prices, before the included monthly allowances. R2 and storage are not included" expandable>
+    <Widget id="cost" title="Estimated cost" expandable>
       <div class="table-scroll flush-table">
         <table class="data-table compact" aria-label="Estimated cost by component">
           <thead>

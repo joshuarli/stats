@@ -4,7 +4,7 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { alignSeries, windowIndexes, windowStats, type ChartPoint } from "../chart-data";
 import { axisTime, clock, percent } from "../format";
-import { evaluate, healthOf, HEALTH_GLYPH, HEALTH_LABEL, markersOf, type Health, type Limits } from "../health";
+import { episodeText, evaluate, healthOf, markersOf, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
 import { HealthMark } from "./ui";
 
@@ -96,7 +96,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   const scoredColumns = createMemo(() => props.series.flatMap((entry, position) => (entry.scored === false ? [] : [aligned().columns[position] ?? []])));
   const evaluation = createMemo(() => evaluate(aligned().times, scoredColumns(), props.limits));
   const episodes = () => evaluation().episodes;
-  const state = () => evaluation().state;
+  const episodeAt = (index: number) => episodes().find(entry => index >= entry.startIndex && (entry.endIndex === null || index <= entry.endIndex));
   const healthAt = (value: number | null | undefined): Health | undefined => {
     const limits = props.limits;
     return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
@@ -156,20 +156,16 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         amount.textContent = format(value);
         for (const child of [swatch, name, amount]) line.appendChild(child);
         const health = entry.scored === false ? undefined : healthAt(value);
-        if (health === "elevated" || health === "critical") {
-          const mark = document.createElement("span");
-          mark.className = `health health-${health}`;
-          const icon = document.createElement("span");
-          icon.className = "health-icon";
-          icon.textContent = HEALTH_GLYPH[health];
-          const word = document.createElement("span");
-          word.textContent = HEALTH_LABEL[health];
-          mark.appendChild(icon);
-          mark.appendChild(word);
-          line.appendChild(mark);
-        }
+        if (health === "elevated" || health === "critical") line.classList.add(`health-${health}`);
         return line;
       }));
+      const episode = episodeAt(index);
+      if (episode !== undefined) {
+        const note = document.createElement("div");
+        note.className = `chart-tip-episode health-${episode.peak}`;
+        note.textContent = episodeText(aligned().times, episode);
+        tooltip.appendChild(note);
+      }
       tooltip.hidden = false;
       tooltip.style.left = `${left > chart.over.clientWidth * 0.6 ? left - tooltip.offsetWidth - 14 : left + 14}px`;
     };
@@ -229,6 +225,31 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       } else {
         fill(elevated, critical, token("--serious"), 0.1);
         fill(critical, top + height, token("--critical"), 0.13);
+      }
+      context.restore();
+    };
+
+    const drawEpisodes = (chart: uPlot) => {
+      const found = episodes();
+      if (found.length === 0) return;
+      const { left, top, width, height } = chart.bbox;
+      const times = aligned().times;
+      const context = chart.ctx;
+      context.save();
+      for (const episode of found) {
+        const startMs = times[episode.startIndex];
+        const endMs = times[episode.endIndex ?? times.length - 1];
+        if (startMs === undefined || endMs === undefined) continue;
+        const start = Math.max(left, Math.min(left + width, chart.valToPos(startMs / 1000, "x", true)));
+        const end = Math.max(left, Math.min(left + width, chart.valToPos(endMs / 1000, "x", true)));
+        if (end <= left || start >= left + width) continue;
+        const color = token(episode.peak === "critical" ? "--critical" : "--serious");
+        const span = Math.max(2 * dpr, end - start);
+        context.fillStyle = color;
+        context.globalAlpha = 0.08;
+        context.fillRect(start, top, span, height);
+        context.globalAlpha = 0.55;
+        context.fillRect(start, top, span, 2 * dpr);
       }
       context.restore();
     };
@@ -467,7 +488,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           chart.setSelect(CLEARED_SELECT, false);
           telemetry.zoomTo({ fromMs, toMs });
         }],
-        drawClear: [drawBands],
+        drawClear: [drawBands, drawEpisodes],
         draw: [drawZero, drawEvents, drawLimits, drawMarkers]
       }
     };
@@ -550,14 +571,6 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
 
   return (
     <div class="chart">
-      <Show when={state()}>
-        {(current) => (
-          <div class={`chart-state health-${current().health}`} role="status">
-            <HealthMark health={current().health} showOk word={false} />
-            <span>{current().text}</span>
-          </div>
-        )}
-      </Show>
       <div
         class={props.compact === true ? "chart-plot compact" : "chart-plot"}
         ref={(element) => { host = element; }}
@@ -612,14 +625,18 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                   return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
                 };
                 return (
-                  <tr class={hidden().has(entry.label) ? "off" : undefined} onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)} onMouseLeave={() => focusSeries(null)}>
+                  <tr
+                    class={hidden().has(entry.label) ? "off" : undefined}
+                    onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
+                    onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
+                    onMouseLeave={() => focusSeries(null)}
+                  >
                     <td>
                       <button
                         class="legend-key"
                         type="button"
                         aria-pressed={hidden().has(entry.label) ? "false" : "true"}
                         aria-label={`Show only ${entry.label}`}
-                        onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
                       >
                         <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
                       </button>

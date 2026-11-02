@@ -9,8 +9,7 @@ import { bucketOutcome, metricPoints, otherShare, provisionalFromMs, r2Metric, t
 
 export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="r2-operations" title="R2 operations" subtitle="All buckets, by outcome" expandable>
-      <PanelLabel>Operations by outcome. User errors such as not-found are expected traffic and are not scored</PanelLabel>
+    <Widget id="r2-operations" title="R2 operations" expandable>
       <PanelChart
         label="R2 operations by outcome"
         timeAxis={false}
@@ -24,7 +23,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         stepMs={props.data.r2.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.r2)}
       />
-      <PanelLabel>Share of operations that failed outside the caller's control. Buckets under 100 operations are not scored</PanelLabel>
+      <PanelLabel>Failure share. Buckets under 100 operations are not scored</PanelLabel>
       <PanelChart
         label="R2 failure share"
         area
@@ -41,8 +40,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
 
 export function StorageWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="r2-storage" title="R2 storage" subtitle="Stored bytes and objects per bucket, as each bucket last reported them" expandable>
-      <PanelLabel>Stored bytes</PanelLabel>
+    <Widget id="r2-storage" title="R2 storage" expandable>
       <PanelChart
         label="R2 stored bytes"
         timeAxis={false}

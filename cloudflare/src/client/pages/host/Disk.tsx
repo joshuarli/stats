@@ -9,20 +9,19 @@ import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Meter, Widget } from "../../components/ui";
-import { colorsFor, PanelLabel, perSecond, reporting, retiredNote, summarySeries, topSeries, PanelChart } from "./shared";
+import { colorsFor, PanelLabel, perSecond, activeSeries, summarySeries, topSeries, PanelChart } from "./shared";
 
 export function DiskWidget(props: { readonly series: readonly DiskSeries[]; readonly stepMs: number; readonly summary: readonly SummaryPoint[]; readonly summaryStepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
-  const split = createMemo(() => reporting(props.series, props.stepMs));
+  const active = createMemo(() => activeSeries(props.series, props.stepMs));
   const shown = createMemo(() => topSeries(props.series, point => point.busyPct));
   const colors = createMemo(() => colorsFor(shown()));
   const reportsPressure = createMemo(() => props.summary.some(point => point.psi?.io !== undefined));
   const lastIn = <T extends { readonly atMs: number }>(points: readonly T[]) => pointsIn(points, view()).at(-1);
   return (
-    <Widget id="disk" title="Disk" subtitle={retiredNote("reads above the line, writes below; all block devices", split().retired)} expandable>
+    <Widget id="disk" title="Disk" expandable>
       {props.series.length === 0 ? <EmptyState title="No disk series in this range." icon="disk" /> : (
         <>
-          <PanelLabel>Throughput</PanelLabel>
           <PanelChart
             label="Disk throughput"
             timeAxis={false}
@@ -60,7 +59,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             stepMs={props.stepMs}
           />
           <Show when={reportsPressure()}>
-            <PanelLabel>I/O pressure: share of time tasks stall (some) or all stall (full), 10 s average</PanelLabel>
+            <PanelLabel>I/O pressure, 10 s average</PanelLabel>
             <PanelChart
               label="I/O pressure"
               area
@@ -79,7 +78,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             <table class="data-table compact" aria-label="Disk activity">
               <thead><tr><th scope="col">Device</th><th scope="col">Read</th><th scope="col">Write</th><th scope="col">IOPS read / write</th><th scope="col">Busy</th><th scope="col">Trend</th></tr></thead>
               <tbody>
-                <For each={split().active}>
+                <For each={active()}>
                   {(entry) => {
                     const point = () => lastIn(entry.points);
                     return (

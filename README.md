@@ -123,23 +123,24 @@ Below the hosts, a Projects table lists each configured Cloudflare project with
 its collector state. A project page (`#/project/<id>`) shows a Worker's
 requests, status mix, and CPU time, its R2 buckets' operations by outcome,
 storage, and objects, endpoint availability probed from Cloudflare's edge, and
-the collector's own health, with the same status strip, limits, incidents, and
-two columns as a host. Worker CPU is CPU time per invocation, not latency,
+the collector's own health, with the same status strip, limits, and aligned
+chart rows as a host. Worker CPU is CPU time per invocation, not latency,
 R2 user errors such as 404s are shown but not scored, and a share or average
 is not scored from a five-minute bucket with fewer than 100 events. Projects are configured
 in `cloudflare/cloudflare.config.ts`; see
 [`docs/architecture.md`](docs/architecture.md#cloudflare-projects).
 
-The host page opens with the host's CPU model and topology, memory, OS,
-kernel, and agent version, which the agent reports with its first upload after
-an update and then hourly. Below that:
+The host page opens with a status strip and an info button beside the host
+name. Hovering or focusing the button opens a card with the CPU model and
+topology, memory, OS, kernel, hostname, and agent version, which the agent
+reports with its first upload after an update and then hourly. Below that:
 
 - A status strip with one cell per resource (CPU, memory, load, pressure, swap
   paging, disk busy, filesystem, network faults): the current value, its state,
-  how long it has been in that state, and a trend. A cell jumps to its chart.
-- An incident list of every elevated or critical period in the window, newest
-  first, each with a Zoom button that narrows every chart to it.
-- Everything below sits in two columns; no graph spans the page.
+  and a trend. All eight fit in one row on a desktop, and a cell jumps to its
+  chart.
+- Charts sit in two-column rows, and both cards in a row start at the same
+  height; no graph spans the page.
 - CPU (with steal and a CPU pressure panel) and load, both with a dashed line
   for the same window yesterday on the 1 h, 6 h, and 24 h ranges.
 - Memory: RAM and swap in use against total, swap paging, and memory pressure
@@ -147,8 +148,7 @@ an update and then hourly. Below that:
 - Disk and network: throughput and operations or packets with reads and
   receive above the line and writes and transmit below it, busy time (and I/O
   pressure) or drops and errors, and a device or interface table.
-- Filesystems: usage over time and one table with capacity, state, and a 7 day
-  linear forecast of when each mount fills.
+- Filesystems: usage over time and one table with capacity and state.
 - Block latency and completions, shown only when the collector is configured.
 
 Dotted vertical lines mark reboots, read from a fall in uptime. Mounts of the
@@ -167,10 +167,16 @@ Missing values render as `—` or `unavailable`, never as zero.
 
 Charts mark where a metric is elevated or critical: a tinted zone and dashed
 limit line, a line that changes color where it crosses a limit, a marker where
-it went bad and where it recovered, and a caption such as "Critical since
-07:11 · 23 min" or "OK · recovering since 07:29". Status always carries an
-icon and a word, never color alone. Series colors mean the same thing on every
-chart (in/read blue, out/write aqua, CPU blue, memory aqua, I/O violet), and
+it went bad and where it recovered, and a red or orange band across each period
+outside its limits. Hovering a band shows the period and its peak; the same
+state is carried by the strip by color and an icon, with the word kept for
+screen readers only. Series colors mean the same thing on every chart
+(in/read blue, out/write aqua, CPU blue, memory aqua, I/O violet), and
 the status colors are reserved for state. The limits are in
 `cloudflare/src/client/health.ts`. A metric is recovered after five minutes
 back inside its limits. The device tables list only devices still reporting.
+
+`make preview` builds the dashboard and serves it on
+`http://127.0.0.1:4174/` from the captured fixtures in
+`cloudflare/test/ui/captures/`, with the clock frozen at the capture time, so
+the UI can be inspected without deploying or signing in through Access.

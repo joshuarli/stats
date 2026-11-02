@@ -11,11 +11,10 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
   const totals = () => props.data.d1;
   const statements = () => (props.data.d1Statements === undefined ? [] : statementRows(props.data.d1Statements, props.view));
   return (
-    <Widget id="d1" title="D1" subtitle="Rows written and read across the project's databases, estimated from sampled queries" expandable>
+    <Widget id="d1" title="D1" expandable>
       <Show when={totals()}>
         {(history) => (
           <>
-            <PanelLabel>Database size, as each database last reported it. D1 caps a database at 10 GB</PanelLabel>
             <PanelChart
               label="D1 database size"
               timeAxis={false}
@@ -24,7 +23,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
               min={0}
               stepMs={history().stepMs}
             />
-            <PanelLabel>Rows written per bucket. Each costs about 1000 times a row read</PanelLabel>
+            <PanelLabel>Rows written per bucket</PanelLabel>
             <PanelChart
               label="D1 rows written"
               area
@@ -51,7 +50,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
         )}
       </Show>
       <Show when={statements().length > 0} fallback={<PanelLabel>No statement data was collected in this range</PanelLabel>}>
-        <PanelLabel>The costliest statements at list price. Text is cut to 60 characters</PanelLabel>
+        <PanelLabel>Costliest statements at list price</PanelLabel>
         <div class="table-scroll flush-table">
           <table class="data-table compact" aria-label="D1 cost by statement">
             <thead>

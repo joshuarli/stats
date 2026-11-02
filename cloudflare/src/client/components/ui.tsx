@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show, type ParentProps } from "solid-js";
+import { createEffect, createSignal, createUniqueId, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
@@ -68,7 +68,6 @@ export function revealWidget(id: string): void {
 
 export function Widget(props: ParentProps<{
   readonly title: string;
-  readonly subtitle?: string | undefined;
   readonly meta?: JSX.Element | undefined;
   readonly class?: string | undefined;
   readonly bodyClass?: string | undefined;
@@ -102,7 +101,6 @@ export function Widget(props: ParentProps<{
         <header class="widget-head">
           <div class="widget-title">
             <h2>{props.title}</h2>
-            {props.subtitle === undefined ? null : <p>{props.subtitle}</p>}
           </div>
           <div class="widget-meta">
             {props.meta}
@@ -126,11 +124,25 @@ export function Widget(props: ParentProps<{
   );
 }
 
-export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined; readonly word?: boolean | undefined }): JSX.Element {
+export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined }): JSX.Element {
   return props.health === undefined || (props.health === "ok" && props.showOk !== true) ? null : (
     <span class={`health health-${props.health}`}>
       <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[props.health]}</span>
-      <span class={props.word === false ? "sr-only" : "health-word"}>{HEALTH_LABEL[props.health]}</span>
+      <span class="sr-only">{HEALTH_LABEL[props.health]}</span>
+    </span>
+  );
+}
+
+export function HoverCard(props: { readonly label: string; readonly children: JSX.Element; readonly align?: "start" | "end" | undefined }): JSX.Element {
+  const id = createUniqueId();
+  return (
+    <span class="hover-card">
+      <button class="icon-button" type="button" aria-label={props.label} aria-describedby={id}>
+        <Icon name="info" size={14} />
+      </button>
+      <div id={id} class={props.align === "end" ? "hover-card-panel align-end" : "hover-card-panel"} role="tooltip" aria-label={props.label}>
+        {props.children}
+      </div>
     </span>
   );
 }

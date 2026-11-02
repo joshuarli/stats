@@ -69,7 +69,9 @@ Routes under `/api/v1/` (handled in `installation.ts`):
   (404 until the agent has reported).
 - `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
-  `range` for an explicit window; the response then omits `range`.
+  `range` for an explicit window; the response then omits `range`. Pass
+  `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
+  under `histories`.
 - `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`
   (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
@@ -135,11 +137,12 @@ points and carry a `stepMs`, with fractions rounded to three decimals.
 
 A preset range ends at the current 15-second raw step, and the Durable Object
 keeps the last four windows it built, each for every history kind. The
-dashboard asks for all five kinds on each refresh, and for a second window for
-the yesterday comparison, so one read and parse of a window serves all of its
-kinds. Ingest, a purge, and an alarm that deleted rows discard them; an alarm
-that deleted nothing keeps them. Summary points carry `cpuCount` and
-`uptimeMs`; the dashboard reads a fall in uptime as a reboot.
+dashboard asks for all five kinds in one batched history request on each
+refresh, and for a second window for the yesterday comparison every five
+minutes, so one read and parse of a window serves all of its kinds. Ingest, a
+purge, and an alarm that deleted rows discard them; an alarm that deleted
+nothing keeps them. Summary points carry `cpuCount` and `uptimeMs`; the
+dashboard reads a fall in uptime as a reboot.
 
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the

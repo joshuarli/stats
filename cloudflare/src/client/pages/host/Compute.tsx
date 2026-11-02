@@ -43,7 +43,7 @@ export function CpuWidget(props: {
 }): JSX.Element {
   const series = useSeries(() => props.points);
   return (
-    <Widget id="cpu" title="CPU" subtitle="% of total counter time" expandable>
+    <Widget id="cpu" title="CPU" expandable>
       <TimeChart
         label="CPU"
         legend
@@ -65,7 +65,7 @@ export function CpuWidget(props: {
         stepMs={props.stepMs}
       />
       <Show when={reportsPressure(props.points)}>
-        <PanelLabel>CPU pressure: share of time runnable tasks wait for a CPU, 10 s average</PanelLabel>
+        <PanelLabel>CPU pressure, 10 s average</PanelLabel>
         <PanelChart
           label="CPU pressure"
           area
@@ -93,7 +93,7 @@ export function LoadWidget(props: {
   const loadScale = createMemo(() => loadLimits(props.points.at(-1)?.cpuCount));
   const series = useSeries(() => props.points);
   return (
-    <Widget id="load" title="Load" subtitle="run-queue length" expandable>
+    <Widget id="load" title="Load" expandable>
       <TimeChart
         label="Load"
         legend

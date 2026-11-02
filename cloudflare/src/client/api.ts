@@ -1,4 +1,4 @@
-import { RANGES, type HistoryKind, type RangeKey } from "../limits";
+import { RANGES, type RangeKey } from "../limits";
 
 export interface Host {
   readonly hostId: string;
@@ -163,6 +163,16 @@ export interface BlockHistory extends HistoryBase {
   readonly kind: "block";
   readonly series?: readonly Series<BlockPoint>[];
 }
+
+export interface HostHistories {
+  readonly summary: SummaryHistory;
+  readonly disks: DiskHistory;
+  readonly nets: NetHistory;
+  readonly filesystems: FilesystemHistory;
+  readonly block: BlockHistory;
+}
+
+export type FleetHistories = Pick<HostHistories, "summary" | "disks" | "nets">;
 
 export interface ProbeTarget {
   readonly name: string;
@@ -542,6 +552,30 @@ function decodeBlockHistory(value: unknown): BlockHistory {
   };
 }
 
+function bundledHistories(value: unknown): JsonObject {
+  return record(record(value).histories);
+}
+
+function decodeHostHistories(value: unknown): HostHistories {
+  const histories = bundledHistories(value);
+  return {
+    summary: decodeSummaryHistory(histories.summary),
+    disks: decodeDiskHistory(histories.disks),
+    nets: decodeNetHistory(histories.nets),
+    filesystems: decodeFilesystemHistory(histories.filesystems),
+    block: decodeBlockHistory(histories.block)
+  };
+}
+
+function decodeFleetHistories(value: unknown): FleetHistories {
+  const histories = bundledHistories(value);
+  return {
+    summary: decodeSummaryHistory(histories.summary),
+    disks: decodeDiskHistory(histories.disks),
+    nets: decodeNetHistory(histories.nets)
+  };
+}
+
 function failureMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "The request was cancelled.";
   return error instanceof Error ? error.message : "The request could not be sent.";
@@ -609,27 +643,19 @@ export async function getSystem(hostId: string, signal: AbortSignal): Promise<Ho
   }
 }
 
-function historyUrl(hostId: string, query: HistoryQuery, kind: HistoryKind): string {
+function historyUrl(hostId: string, query: HistoryQuery): string {
   const window = "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
-  return `${hostPath(hostId, "/history")}?${window}&kind=${kind}`;
+  return `${hostPath(hostId, "/history")}?${window}`;
 }
 
 export function getSummary(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<SummaryHistory> {
-  return getJson(historyUrl(hostId, query, "summary"), decodeSummaryHistory, signal);
+  return getJson(`${historyUrl(hostId, query)}&kind=summary`, decodeSummaryHistory, signal);
 }
 
-export function getDisks(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<DiskHistory> {
-  return getJson(historyUrl(hostId, query, "disks"), decodeDiskHistory, signal);
+export function getHostHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<HostHistories> {
+  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems,block`, decodeHostHistories, signal);
 }
 
-export function getNets(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<NetHistory> {
-  return getJson(historyUrl(hostId, query, "nets"), decodeNetHistory, signal);
-}
-
-export function getFilesystems(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FilesystemHistory> {
-  return getJson(historyUrl(hostId, query, "filesystems"), decodeFilesystemHistory, signal);
-}
-
-export function getBlock(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<BlockHistory> {
-  return getJson(historyUrl(hostId, query, "block"), decodeBlockHistory, signal);
+export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
+  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets`, decodeFleetHistories, signal);
 }

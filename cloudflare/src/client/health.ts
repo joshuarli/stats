@@ -18,11 +18,6 @@ export interface Episode {
   readonly okSince: number | null;
 }
 
-export interface HealthState {
-  readonly health: Health;
-  readonly text: string;
-}
-
 const MIB = 1024 * 1024;
 export const MIN_SCORED_EVENTS = 100;
 export const RECOVERY_MS = 5 * 60_000;
@@ -113,35 +108,20 @@ export function duration(ms: number): string {
   return `${Math.round(hours / 24)} d`;
 }
 
-export function describeState(times: readonly number[], healths: readonly (Health | null)[], episodes: readonly Episode[]): HealthState | undefined {
-  let latest = healths.length - 1;
-  while (latest >= 0 && healths[latest] === null) latest -= 1;
-  const health = latest < 0 ? null : healths[latest];
-  if (health === null || health === undefined) return undefined;
-  const last = episodes.at(-1);
-  const at = (index: number) => times[index] ?? 0;
-  if (health !== "ok") {
-    const start = last?.endIndex === null && last !== undefined ? last.startIndex : latest;
-    return { health, text: `${HEALTH_LABEL[health]} since ${clock(at(start))} · ${duration(at(latest) - at(start))}` };
-  }
-  if (last !== undefined && last.endIndex === null) {
-    return { health, text: `OK · recovering since ${clock(at(last.okSince ?? latest))}` };
-  }
-  if (last?.endIndex !== null && last !== undefined) {
-    return { health, text: `OK · recovered ${clock(at(last.endIndex!))} after ${duration(at(last.endIndex!) - at(last.startIndex))} ${last.peak}` };
-  }
-  return { health, text: "OK" };
+export function episodeText(times: readonly number[], episode: Episode): string {
+  const start = times[episode.startIndex] ?? 0;
+  if (episode.endIndex === null) return `${HEALTH_LABEL[episode.peak]} since ${clock(start)} · ongoing`;
+  const end = times[episode.endIndex] ?? start;
+  return `${HEALTH_LABEL[episode.peak]} · ${clock(start)} to ${clock(end)} · ${duration(end - start)}`;
 }
 
 export interface Evaluation {
   readonly healths: readonly (Health | null)[];
   readonly episodes: readonly Episode[];
-  readonly state: HealthState | undefined;
 }
 
 export function evaluate(times: readonly number[], columns: readonly (readonly (number | null)[])[], limits: Limits | undefined): Evaluation {
-  if (limits === undefined) return { healths: [], episodes: [], state: undefined };
+  if (limits === undefined) return { healths: [], episodes: [] };
   const healths = times.map((_, index) => columns.reduce<Health | null>((worst, column) => worse(worst, healthOf(column[index], limits)), null));
-  const episodes = findEpisodes(healths, times, RECOVERY_MS);
-  return { healths, episodes, state: describeState(times, healths, episodes) };
+  return { healths, episodes: findEpisodes(healths, times, RECOVERY_MS) };
 }

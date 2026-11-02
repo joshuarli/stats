@@ -47,8 +47,9 @@ Reading them:
     GET /api/v1/hosts/:hostId/system
     GET /api/v1/hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block
     GET /api/v1/hosts/:hostId/history?from=<epoch ms>&to=<epoch ms>&kind=...
+    GET /api/v1/hosts/:hostId/history?range=1h&kinds=summary,disks,nets
 
-`from` and `to` replace `range` and may span at most 90 days. History is downsampled to at most 900 points and carries `stepMs`. `latest` and `system` answer 404 until the host has reported.
+`from` and `to` replace `range` and may span at most 90 days. History is downsampled to at most 900 points and carries `stepMs`. `latest` and `system` answer 404 until the host has reported. `kinds` replaces `kind` and returns the selected histories under `histories`.
 
 Data rules: u64 counters and timings arrive as decimal strings. A missing value is absent or `unavailable`, never zero. Rates are computed from monotonic-clock deltas within one boot, and a counter regression is a gap, never a negative rate.
 

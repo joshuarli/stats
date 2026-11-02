@@ -2,7 +2,7 @@ import type { ProjectMetricHistory, ProjectCollectorHistory } from "../../api";
 import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
 import { bytes, count, milliseconds, minutes, percent } from "../../format";
 import { LIMITS, MIN_SCORED_EVENTS, type Limits } from "../../health";
-import { monitorOne } from "../../incidents";
+import { monitorState } from "../../monitoring";
 import { addAll, holdLast, ratio, scaled } from "./math";
 import { LIST_PRICE_PER_MILLION } from "../../pricing";
 import { PROJECT_SETTLE_MS } from "../../../limits";
@@ -225,9 +225,9 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
   return specs.map(spec => {
     const windowed = spec.id === "collector" ? spec.points : pointsIn(spec.points, view);
     const parts = spec.parts === undefined ? [windowed] : spec.parts.map(part => pointsIn(part, view));
-    const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
+    const monitored = monitorState({ limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
     const spark = spec.settledBeforeMs === undefined ? windowed : windowed.filter(point => point.atMs < spec.settledBeforeMs!);
     const arriving = spec.settledBeforeMs !== undefined && windowed.some(point => point.atMs >= spec.settledBeforeMs! && point.value !== undefined);
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format, spec.limits)} · newest still arriving` : rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, state: monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format, spec.limits)} · newest still arriving` : rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
   });
 }

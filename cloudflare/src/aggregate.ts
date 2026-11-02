@@ -152,6 +152,16 @@ export function kindValue(value: string | null): HistoryKind | null {
   return value !== null && (HISTORY_KINDS as readonly string[]).includes(value) ? value as HistoryKind : null;
 }
 
+export function kindsValue(value: string): HistoryKind[] | null {
+  const kinds: HistoryKind[] = [];
+  for (const part of value.split(",")) {
+    const kind = kindValue(part);
+    if (kind === null) return null;
+    if (!kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
 function gaugeAdd(gauges: Record<string, Gauge>, key: string, value: number): void {
   const current = gauges[key];
   gauges[key] = { sum: (current?.sum ?? 0) + value, count: (current?.count ?? 0) + 1 };

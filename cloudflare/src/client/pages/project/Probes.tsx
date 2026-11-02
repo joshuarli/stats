@@ -9,10 +9,9 @@ import { endpointText, metricPoints, type ProjectData } from "./series";
 export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element {
   const history = () => props.data.probes;
   return (
-    <Widget id="endpoints" title="Endpoints" subtitle="Probed from Cloudflare's edge once per collection, not measured from users" expandable>
+    <Widget id="endpoints" title="Endpoints" expandable>
       {history() === undefined ? null : (
         <>
-          <PanelLabel>Availability: 1 is up, 0 is down</PanelLabel>
           <PanelChart
             label="Endpoint availability"
             timeAxis={false}
@@ -23,7 +22,7 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
             max={1}
             stepMs={history()!.stepMs}
           />
-          <PanelLabel>Response time of the probe request</PanelLabel>
+          <PanelLabel>Response time</PanelLabel>
           <PanelChart
             label="Endpoint response time"
             series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), scored: false, points: metricPoints(history()!, `probe.${name}.ms`) }))}

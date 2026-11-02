@@ -13,6 +13,7 @@ make agent-test        # agent unit and fixture-parity tests
 make agent-build       # static x86_64 and aarch64 binaries + ELF checks
 make cloudflare-test   # typecheck + Workers runtime tests
 make dashboard-test    # vite build + Playwright
+make preview           # build and serve the dashboard from captured fixtures
 make lint              # type-aware Oxlint
 make check             # all of the above plus make release
 ```
@@ -29,6 +30,7 @@ go under `.work/tmp`.
 - Tokens never appear in argv, logs, telemetry responses, or built assets; the provisioning response returns a new token once, and the server stores only a SHA-256 verifier.
 - Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
 - Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
+- Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
 - The baseline agent never loads BPF, needs no root, service manager, or runtime, and links no dynamic libraries.
 
 ## Docs

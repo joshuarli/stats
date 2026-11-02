@@ -2,7 +2,7 @@ import type { JSX } from "@solidjs/web";
 import type { Series, SummaryPoint } from "../../api";
 import type { ChartPoint } from "../../chart-data";
 import { count, isFiniteNumber } from "../../format";
-import { rebootTimes } from "../../incidents";
+import { rebootTimes } from "../../monitoring";
 import { TimeChart, type ChartEvent, type TimeChartProps, type VizColor } from "../../components/TimeChart";
 
 export const AXIS_WIDTH = 76;
@@ -33,14 +33,9 @@ export function colorsFor<T extends { readonly atMs: number }>(shown: readonly S
   return new Map(shown.map((entry, index) => [entry.id, SERIES_COLORS[index] ?? "neutral"]));
 }
 
-export function reporting<T extends { readonly atMs: number }>(series: readonly Series<T>[], stepMs: number): { readonly active: readonly Series<T>[]; readonly retired: number } {
+export function activeSeries<T extends { readonly atMs: number }>(series: readonly Series<T>[], stepMs: number): readonly Series<T>[] {
   const latest = Math.max(0, ...series.map(entry => entry.points.at(-1)?.atMs ?? 0));
-  const active = series.filter(entry => (entry.points.at(-1)?.atMs ?? 0) >= latest - 2 * stepMs);
-  return { active, retired: series.length - active.length };
-}
-
-export function retiredNote(subtitle: string, retired: number): string {
-  return retired === 0 ? subtitle : `${subtitle} · ${retired} retired hidden, still in the totals`;
+  return series.filter(entry => (entry.points.at(-1)?.atMs ?? 0) >= latest - 2 * stepMs);
 }
 
 export function summarySeries(points: readonly SummaryPoint[], pick: (point: SummaryPoint) => number | undefined): ChartPoint[] {

@@ -9,17 +9,16 @@ import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Widget } from "../../components/ui";
-import { PanelLabel, perSecond, reporting, retiredNote, PanelChart } from "./shared";
+import { PanelLabel, perSecond, activeSeries, PanelChart } from "./shared";
 
 export function NetworkWidget(props: { readonly series: readonly NetSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
-  const split = createMemo(() => reporting(props.series, props.stepMs));
+  const active = createMemo(() => activeSeries(props.series, props.stepMs));
   const lastIn = <T extends { readonly atMs: number }>(points: readonly T[]) => pointsIn(points, view()).at(-1);
   return (
-    <Widget id="network" title="Network" subtitle={retiredNote("receive above the line, transmit below; all interfaces", split().retired)} expandable>
+    <Widget id="network" title="Network" expandable>
       {props.series.length === 0 ? <EmptyState title="No network series in this range." icon="network" /> : (
         <>
-          <PanelLabel>Throughput</PanelLabel>
           <PanelChart
             label="Network throughput"
             area
@@ -62,7 +61,7 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
             <table class="data-table compact" aria-label="Network activity">
               <thead><tr><th scope="col">Interface</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Drops</th><th scope="col">Errors</th><th scope="col">Trend</th></tr></thead>
               <tbody>
-                <For each={split().active}>
+                <For each={active()}>
                   {(entry) => {
                     const point = () => lastIn(entry.points);
                     const drops = () => (point() === undefined ? undefined : point()!.rxDropsPerSec + point()!.txDropsPerSec);

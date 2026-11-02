@@ -6,7 +6,7 @@ SECRETS_FILE ?=
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -34,8 +34,13 @@ cloudflare-test: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test
 
 dashboard-test: work-ready
+	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:ui
+
+preview: work-ready node-ready
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
+	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/scripts/preview.mjs
 
 lint: node-ready
 	pnpm --filter @stats/telemetry lint

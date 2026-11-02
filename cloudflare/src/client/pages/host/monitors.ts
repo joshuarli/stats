@@ -1,8 +1,8 @@
 import type { DiskSeries, FilesystemSeries, NetSeries, SummaryPoint } from "../../api";
 import { alignSeries, pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
 import { count, percent, percentUsed, rate } from "../../format";
-import { LIMITS, loadLimits, type Limits } from "../../health";
-import { monitorOne, type Monitored } from "../../incidents";
+import { LIMITS, loadLimits, type Health, type Limits } from "../../health";
+import { monitorState } from "../../monitoring";
 import { cpuUsed, loadOne, memoryUsed, sumSeries } from "../../metrics";
 import type { VizColor } from "../../components/TimeChart";
 import { perSecond, summarySeries } from "./shared";
@@ -22,7 +22,7 @@ export interface MonitorCell {
   readonly id: string;
   readonly label: string;
   readonly anchor: string;
-  readonly monitored: Monitored;
+  readonly state: Health | undefined;
   readonly spark: readonly ChartPoint[];
   readonly format: (value: number | undefined) => string;
   readonly value: number | undefined;
@@ -134,7 +134,7 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
   ];
   return specs.map(spec => {
     const spark = spec.series.length === 1 ? spec.series[0]! : worstOf(spec.series, spec.stepMs);
-    const monitored = monitorOne({ id: spec.id, label: spec.label, anchor: spec.anchor, limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, monitored, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
+    const state = monitorState({ limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
   });
 }

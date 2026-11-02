@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, compact, downsample, historyQuery, kindValue, rangeKey, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
+import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValue, rangeKey, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
@@ -60,6 +60,11 @@ export interface History {
   readonly stepMs: number;
   readonly points?: readonly unknown[];
   readonly series?: readonly unknown[];
+}
+
+export interface HistoryBundle {
+  readonly hostId: string;
+  readonly histories: Readonly<Partial<Record<HistoryKind, History>>>;
 }
 
 const HOSTS = `CREATE TABLE IF NOT EXISTS hosts (
@@ -319,7 +324,7 @@ export class Installation extends DurableObject<Env> {
     for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
-  async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
+  private historyWindow(hostId: string, query: HistoryQuery): ReadonlyMap<HistoryKind, History> | null {
     if (this.host(hostId) === undefined) return null;
     const now = this.now();
     const at = Math.floor(now / RAW_STEP_MS) * RAW_STEP_MS;
@@ -335,7 +340,23 @@ export class Installation extends DurableObject<Env> {
       this.historyCache.set(key, byKind);
       if (this.historyCache.size > HISTORY_WINDOWS_KEPT) this.historyCache.delete(this.historyCache.keys().next().value!);
     }
-    return byKind.get(kind) ?? null;
+    return byKind;
+  }
+
+  async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
+    return this.historyWindow(hostId, query)?.get(kind) ?? null;
+  }
+
+  async histories(hostId: string, query: HistoryQuery, kinds: readonly HistoryKind[]): Promise<HistoryBundle | null> {
+    const byKind = this.historyWindow(hostId, query);
+    if (byKind === null) return null;
+    const histories: Partial<Record<HistoryKind, History>> = {};
+    for (const kind of kinds) {
+      const history = byKind.get(kind);
+      if (history === undefined) throw new Error(`history kind ${kind} was not built`);
+      histories[kind] = history;
+    }
+    return { hostId, histories };
   }
 
   private buildHistory(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h"): ReadonlyMap<HistoryKind, History> {
@@ -558,8 +579,18 @@ export class Installation extends DurableObject<Env> {
       if (history !== null && request.method === "GET") {
         const url = new URL(request.url);
         const query = historyQuery(url.searchParams);
-        const kind = url.searchParams.get("kind") === null ? "summary" : kindValue(url.searchParams.get("kind"));
-        if (query === null || kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
+        if (query === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
+        const kindsParam = url.searchParams.get("kinds");
+        const kindParam = url.searchParams.get("kind");
+        if (kindsParam !== null) {
+          if (kindParam !== null) return failure("invalid_request", "kind and kinds cannot be combined", 400);
+          const kinds = kindsValue(kindsParam);
+          if (kinds === null) return failure("invalid_request", "kinds must be supported history kinds", 400);
+          const result = await this.histories(history[1]!, query, kinds);
+          return result === null ? failure("not_found", "host not found", 404) : json(result);
+        }
+        const kind = kindParam === null ? "summary" : kindValue(kindParam);
+        if (kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
         const result = await this.history(history[1]!, query, kind);
         return result === null ? failure("not_found", "host not found", 404) : json(result);
       }

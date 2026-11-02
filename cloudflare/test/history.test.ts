@@ -155,6 +155,28 @@ describe("history", () => {
     expect(sampled.length).toBeLessThanOrEqual(900);
   });
 
+  it("returns several history kinds in one response", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const response = await historySearch(host.hostId, "range=1h&kinds=summary,disks,nets,filesystems,block");
+    expect(response.status).toBe(200);
+    const body = await response.json() as { hostId: string; histories: Record<string, { kind: string; points?: unknown[]; series?: { points: unknown[] }[] }> };
+    expect(body.hostId).toBe(host.hostId);
+    expect(Object.keys(body.histories)).toEqual(["summary", "disks", "nets", "filesystems", "block"]);
+    for (const [kind, history] of Object.entries(body.histories)) expect(history.kind, kind).toBe(kind);
+    expect(body.histories.summary!.points).toHaveLength(2);
+    for (const kind of ["disks", "nets", "filesystems", "block"]) {
+      const series = body.histories[kind]!.series;
+      expect(series, kind).not.toHaveLength(0);
+      expect(series!.every(entry => entry.points.length > 0), kind).toBe(true);
+    }
+
+    for (const search of ["kinds=summary,memory", "kind=summary&kinds=summary", "kinds="]) {
+      expect((await historySearch(host.hostId, search)).status, search).toBe(400);
+    }
+    expect((await historySearch("h_0123456789abcdef0123456789abcdef", "range=1h&kinds=summary")).status).toBe(404);
+  });
+
   it("repairs a late sample in the rolled bucket", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
