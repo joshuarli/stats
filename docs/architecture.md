@@ -154,8 +154,7 @@ them, so the next read parses its window again. On top of that it keeps the
 last four windows it served, keyed by the host's history version, and builds a
 window's kinds as they are asked for, as typed columns rather than point
 objects; a request serializes those columns, and the frame is not cached. The dashboard asks for all five kinds in
-one batched history request on each refresh, and for a second window for the
-yesterday comparison every five minutes. Summary points carry `cpuCount` and
+one batched history request on each refresh. Summary points carry `cpuCount` and
 `uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 History responses carry an `ETag` derived from the last host ingest or the last

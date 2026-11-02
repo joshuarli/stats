@@ -85,8 +85,4 @@ export class Table<Field extends string> {
     this.cache.set(name, made);
     return made;
   }
-
-  shifted(deltaMs: number): Table<Field> {
-    return new Table<Field>(this.rows, this.times.map(time => time + deltaMs), this.columns, this.cache);
-  }
 }

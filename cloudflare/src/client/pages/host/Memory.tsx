@@ -6,11 +6,16 @@ import { LIMITS, memoryUsedLimits } from "../../health";
 import { lastCell, memoryUsedBytes } from "../../metrics";
 import type { ChartEvent } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
-import { PanelLabel, PanelChart } from "./shared";
+import { PanelLabel, PanelChart, peakOf } from "./shared";
 
 export function MemoryWidget(props: { readonly table: SummaryTable; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const total = createMemo(() => lastCell(props.table.cells("mem.total")));
   const limits = createMemo(() => memoryUsedLimits(total()));
+  const scale = createMemo(() => {
+    const maximum = total();
+    if (maximum === undefined || maximum <= 0) return undefined;
+    return Math.max(maximum, peakOf(props.table.cells("mem.swapUsed")));
+  });
   const reportsPressure = createMemo(() => props.table.has("psi.memory"));
   const reportsPressureLevel = createMemo(() => props.table.has("mem.pressure"));
   return (
@@ -26,6 +31,7 @@ export function MemoryWidget(props: { readonly table: SummaryTable; readonly ste
         format={bytes}
         limits={limits()}
         min={0}
+        max={scale()}
         events={props.events}
         stepMs={props.stepMs}
       />

@@ -21,7 +21,6 @@ export interface ChartSeries {
   readonly graded?: boolean | undefined;
   readonly mirror?: boolean | undefined;
   readonly joinGaps?: boolean | undefined;
-  readonly reference?: boolean | undefined;
 }
 
 export interface ChartEvent {
@@ -74,7 +73,6 @@ function withAlpha(color: string, alpha: number): string | undefined {
 export function TimeChart(props: TimeChartProps): JSX.Element {
   const telemetry = useTelemetry();
   const series = () => (typeof props.series === "function" ? props.series() : props.series);
-  const hasValues = (track: Track): boolean => track.values.some(value => value !== null);
   const format = (value: number | null | undefined): string => (value === null || value === undefined ? "—" : (props.format ?? percent)(value));
   const aligned = createMemo(() => alignTracks(series().map(entry => entry.track), props.stepMs));
   const hasData = createMemo(() => aligned().columns.some(column => column.some(value => value !== null)));
@@ -432,7 +430,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           const end = filled ? withAlpha(color, mirrored() ? 0.2 : 0) : undefined;
           return {
             label: entry.label,
-            show: !hidden().has(entry.label) && (entry.reference !== true || hasValues(entry.track)),
+            show: !hidden().has(entry.label),
             stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
             width: entry.graded === true ? 2 : series().some(other => other.graded === true) ? 1.1 : 1.5,
             spanGaps: entry.joinGaps === true,
@@ -513,7 +511,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   });
 
   createUpdateEffect(
-    () => series().map(entry => !hidden().has(entry.label) && (entry.reference !== true || hasValues(entry.track))),
+    () => series().map(entry => !hidden().has(entry.label)),
     (shown, previous) => {
       if (plot === undefined) return;
       shown.forEach((visible, position) => {
@@ -589,21 +587,19 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                 return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
               };
               return (
-                <Show when={entry.reference !== true || hasValues(entry.track)}>
-                  <button
-                    class={hidden().has(entry.label) ? "inline-key off" : "inline-key"}
-                    type="button"
-                    aria-pressed={hidden().has(entry.label) ? "false" : "true"}
-                    onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
-                    onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
-                    onMouseLeave={() => focusSeries(null)}
-                  >
-                    <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
-                    <span class="inline-label">{entry.label}</span>
-                    <b>{format(shown())}</b>
-                    {entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}
-                  </button>
-                </Show>
+                <button
+                  class={hidden().has(entry.label) ? "inline-key off" : "inline-key"}
+                  type="button"
+                  aria-pressed={hidden().has(entry.label) ? "false" : "true"}
+                  onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
+                  onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
+                  onMouseLeave={() => focusSeries(null)}
+                >
+                  <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
+                  <span class="inline-label">{entry.label}</span>
+                  <b>{format(shown())}</b>
+                  {entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}
+                </button>
               );
             }}
           </For>
@@ -624,30 +620,28 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                     return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
                   };
                   return (
-                    <Show when={entry.reference !== true || hasValues(entry.track)}>
-                      <tr
-                        class={hidden().has(entry.label) ? "off" : undefined}
-                        onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
-                        onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
-                        onMouseLeave={() => focusSeries(null)}
-                      >
-                        <td>
-                          <button
-                            class="legend-key"
-                            type="button"
-                            aria-pressed={hidden().has(entry.label) ? "false" : "true"}
-                            aria-label={`Show only ${entry.label}`}
-                          >
-                            <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
-                          </button>
-                        </td>
-                        <td>{entry.label}</td>
-                        <td>{format(stats()?.min)}</td>
-                        <td>{format(stats()?.avg)}</td>
-                        <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(stats()?.max)} />}</span></td>
-                        <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}</span></td>
-                      </tr>
-                    </Show>
+                    <tr
+                      class={hidden().has(entry.label) ? "off" : undefined}
+                      onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
+                      onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
+                      onMouseLeave={() => focusSeries(null)}
+                    >
+                      <td>
+                        <button
+                          class="legend-key"
+                          type="button"
+                          aria-pressed={hidden().has(entry.label) ? "false" : "true"}
+                          aria-label={`Show only ${entry.label}`}
+                        >
+                          <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
+                        </button>
+                      </td>
+                      <td>{entry.label}</td>
+                      <td>{format(stats()?.min)}</td>
+                      <td>{format(stats()?.avg)}</td>
+                      <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(stats()?.max)} />}</span></td>
+                      <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}</span></td>
+                    </tr>
                   );
                 }}
               </For>

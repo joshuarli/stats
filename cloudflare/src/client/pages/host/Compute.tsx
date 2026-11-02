@@ -19,11 +19,6 @@ function useSeries(table: () => SummaryTable) {
   return (label: string, color: number | VizColor, cells: Cells, extra: SeriesExtra = {}) => ({ label, color, track: { times: table().times, values: cells }, ...extra });
 }
 
-function ghostOf(yesterday: SummaryTable | null, pick: (table: SummaryTable) => Cells) {
-  const track = yesterday === null || yesterday.rows === 0 ? { times: [], values: [] } : { times: yesterday.times, values: pick(yesterday) };
-  return [{ label: "yesterday", color: "ghost" as const, dashed: true, scored: false, reference: true, track }];
-}
-
 export function reportsPressure(table: SummaryTable): boolean {
   return table.has("psi");
 }
@@ -44,7 +39,6 @@ export function PressureNotice(props: { readonly table: SummaryTable }): JSX.Ele
 
 export function CpuWidget(props: {
   readonly table: SummaryTable;
-  readonly yesterday: () => SummaryTable | null;
   readonly stepMs: number;
   readonly events: readonly ChartEvent[];
 }): JSX.Element {
@@ -54,8 +48,7 @@ export function CpuWidget(props: {
     series("user", "aqua", props.table.cells("cpu.user"), { scored: false }),
     series("system", "violet", props.table.cells("cpu.system"), { scored: false }),
     series("iowait", "magenta", props.table.cells("cpu.iowait"), { scored: false }),
-    series("steal", "ghost", props.table.cells("cpu.steal"), { scored: false }),
-    ...ghostOf(props.yesterday(), cpuUsed)
+    series("steal", "ghost", props.table.cells("cpu.steal"), { scored: false })
   ]);
   return (
     <Widget id="cpu" title="CPU" expandable>
@@ -109,7 +102,6 @@ export function CpuWidget(props: {
 
 export function LoadWidget(props: {
   readonly table: SummaryTable;
-  readonly yesterday: () => SummaryTable | null;
   readonly stepMs: number;
   readonly events: readonly ChartEvent[];
 }): JSX.Element {
@@ -118,8 +110,7 @@ export function LoadWidget(props: {
   const chartSeries = createMemo(() => [
     series("1 min", "ramp-5", props.table.cells("load.one"), { graded: true }),
     series("5 min", "ramp-3", props.table.cells("load.five"), { scored: false }),
-    series("15 min", "ramp-1", props.table.cells("load.fifteen"), { scored: false }),
-    ...ghostOf(props.yesterday(), table => table.cells("load.one"))
+    series("15 min", "ramp-1", props.table.cells("load.fifteen"), { scored: false })
   ]);
   return (
     <Widget id="load" title="Load" expandable>

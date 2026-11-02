@@ -338,19 +338,6 @@ test("the host page reads every history kind in one request", async ({ page }) =
   expect(hostHistory().filter(request => request.includes("range=1h&kind="))).toHaveLength(0);
 });
 
-test("the CPU and load charts compare against the same window yesterday", async ({ page }) => {
-  const requests = await mock(page);
-  await page.goto("/");
-  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
-  await expect(page.getByRole("heading", { name: "CPU" })).toBeVisible();
-  await expect(page.getByRole("row", { name: /yesterday/ })).toHaveCount(2);
-  const day = 24 * 60 * 60 * 1000;
-  await expect.poll(() => requests.some(request => {
-    const match = /[?&]from=(\d+)&to=(\d+)&kind=summary/u.exec(request);
-    return match !== null && Date.now() - Number(match[2]) > day - 60_000 && Date.now() - Number(match[2]) < day + 60_000;
-  })).toBe(true);
-});
-
 test("a bad period is marked on the strip and explained on chart hover", async ({ page }) => {
   await mock(page);
   await page.goto("/");
@@ -439,7 +426,7 @@ test("dragging a chart zooms the time window, and escape returns to live", async
   await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Back to live/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "1h" })).toHaveAttribute("aria-pressed", "false");
-  await expect.poll(() => requests.some(request => /[?&]from=\d+&to=\d+&kind=summary/u.test(request) && !request.includes("range="))).toBe(true);
+  await expect.poll(() => requests.some(request => /[?&]from=\d+&to=\d+&kinds=summary,/u.test(request) && !request.includes("range="))).toBe(true);
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
