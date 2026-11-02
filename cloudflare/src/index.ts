@@ -14,13 +14,15 @@ const SECURITY: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "no-referrer",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
-  "Cache-Control": "no-store"
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()"
 };
 
-function secure(response: Response): Response {
+const ASSET_CACHE = "private, max-age=31536000, immutable";
+
+function secure(response: Response, cacheControl = "no-store"): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY)) headers.set(name, value);
+  headers.set("Cache-Control", cacheControl);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -42,7 +44,7 @@ function negotiated(request: Request, response: Response): Response {
   headers.append("Vary", "Accept-Encoding");
   const coding = response.status === 200 && headers.get("Content-Type") === HISTORY_CONTENT_TYPE ? acceptedCoding(request.headers.get("Accept-Encoding")) : null;
   if (coding !== null) headers.set("Content-Encoding", coding);
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(response.status === 304 ? null : response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 function error(status: number, code: string, message: string): Response {
@@ -89,7 +91,7 @@ export default {
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "invalid_request", "method not allowed");
     const access = await verifyAccess(request, env);
     if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);
-    return secure(await env.ASSETS.fetch(request));
+    return secure(await env.ASSETS.fetch(request), path.startsWith("/assets/") ? ASSET_CACHE : "no-store");
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {

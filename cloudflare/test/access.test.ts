@@ -89,7 +89,15 @@ describe("Access authorization", () => {
     expect((await SELF.fetch("https://example.com/")).status).toBe(401);
     const response = await SELF.fetch("https://example.com/", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain("<title>Stats</title>");
+    const html = await response.text();
+    expect(html).toContain("<title>Stats</title>");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    for (const path of [/src="([^"]+\.js)"/u.exec(html)?.[1], /href="([^"]+\.css)"/u.exec(html)?.[1]].filter((entry): entry is string => entry !== undefined)) {
+      const asset = await SELF.fetch(`https://example.com${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+      expect(asset.status, path).toBe(200);
+      expect(asset.headers.get("cache-control"), path).toBe("private, max-age=31536000, immutable");
+      expect(asset.headers.get("content-security-policy"), path).toContain("default-src 'self'");
+    }
   });
 
   it("serves llms.txt only behind Access", async () => {
