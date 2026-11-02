@@ -321,11 +321,11 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .entity-cell { display: flex; align-items: center; gap: 10px; }
 .entity-name { font-weight: 500; display: block; line-height: 1.25; }
 .entity-name::after { content: ""; position: absolute; inset: 0; }
-.entity-id { display: block; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font: 11px var(--mono); }
+.entity-id { display: block; max-width: 20ch; white-space: normal; overflow-wrap: anywhere; color: var(--muted); font: 11px var(--mono); }
 .entity-note { font: 11.5px var(--font); }
 .state-cell { display: flex; align-items: center; gap: 8px; }
 .cell-note { color: var(--muted); font-size: 12px; }
-.clip-note { display: block; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
+.wrap-note { display: block; max-width: 28ch; white-space: normal; }
 .entity-cell ~ .cell-note { display: block; margin-left: 17px; line-height: 16px; }
 .cell-strong { color: var(--text); }
 .cell-stack { display: flex; flex-direction: column; line-height: 1.3; }
@@ -473,7 +473,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   .charts .widget[id] { scroll-margin-top: 150px; }
 }
 @media (max-width: 640px) {
-  .fleet-table-scroll .clip-note { max-width: 17ch; }
+  .fleet-table-scroll .wrap-note { max-width: 20ch; }
 }
 .chart-legend td { white-space: nowrap; }
 .charts > .widget > .widget-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }

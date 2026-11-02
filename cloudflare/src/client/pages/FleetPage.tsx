@@ -328,7 +328,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           note={info()?.os}
         />
         <Show when={cpuModel()}>
-          {(model) => <span class="cell-note clip-note" title={model()}>{model()}</span>}
+          {(model) => <span class="cell-note wrap-note">{model()}</span>}
         </Show>
         <Show when={cpuNote()}>
           <span class="cell-note">{cpuNote()}</span>
