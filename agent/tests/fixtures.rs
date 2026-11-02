@@ -1,4 +1,4 @@
-use stats::model::{Cpu, Disk, FileSystem, Net, PsiGroup, Sample, Unavailable};
+use stats::model::{Cpu, Disk, FileSystem, Mem, MemoryPressure, Net, Power, PsiGroup, Sample, SwapActivity, SystemPower, Unavailable};
 use stats::parse::FILESYSTEM_TYPES;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -362,25 +362,57 @@ fn serializer_uses_the_wire_names() {
         }),
         ..Sample::empty(1, 2, 3)
     };
-    let value = serde_json::to_value(&sample).unwrap();
-    for key in ["seq", "atMs", "monoMs", "cpu"] {
-        assert!(value.get(key).is_some(), "{key}");
-    }
+    assert_eq!(
+        serde_json::to_value(&sample).unwrap(),
+        serde_json::json!({
+            "seq": "1",
+            "atMs": "2",
+            "monoMs": "3",
+            "cpu": { "user": "1", "system": "2", "idle": "3", "iowait": "4", "steal": "5", "total": "15" }
+        })
+    );
+
+    let mem = Mem {
+        total: "8".into(),
+        available: "4".into(),
+        swap_total: "2".into(),
+        swap_free: "1".into(),
+        swap_activity: Some(SwapActivity { swap_in: "10".into(), swap_out: "20".into() }),
+        pressure: Some(MemoryPressure::Warn),
+    };
+    assert_eq!(
+        serde_json::to_value(mem).unwrap(),
+        serde_json::json!({ "total": "8", "available": "4", "swapTotal": "2", "swapFree": "1", "swapIn": "10", "swapOut": "20", "pressure": "warn" })
+    );
+
+    let power = Power {
+        gpu_nj: Some("5".into()),
+        system: Some(SystemPower { milliwatt_sum: "6".into(), readings: "7".into() }),
+    };
+    assert_eq!(serde_json::to_value(power).unwrap(), serde_json::json!({ "gpuNj": "5", "systemMwSum": "6", "systemReadings": "7" }));
     assert_eq!(serde_json::to_value(Unavailable::Filesystems).unwrap().as_str(), Some("filesystems"));
 
     let disk = Disk { id: "8:0".into(), name: "sda".into(), reads: "1".into(), read_sectors: "2".into(), writes: "3".into(), write_sectors: "4".into(), io_ms: Some("5".into()) };
-    let disk = serde_json::to_value(disk).unwrap();
-    assert!(disk.get("readSectors").is_some() && disk.get("ioMs").is_some());
+    assert_eq!(
+        serde_json::to_value(disk).unwrap(),
+        serde_json::json!({ "id": "8:0", "name": "sda", "reads": "1", "readSectors": "2", "writes": "3", "writeSectors": "4", "ioMs": "5" })
+    );
 
     let net = Net { id: "eth0".into(), rx_bytes: "1".into(), rx_packets: "2".into(), rx_drops: "3".into(), rx_errors: "4".into(), tx_bytes: "5".into(), tx_packets: "6".into(), tx_drops: Some("7".into()), tx_errors: "8".into() };
-    let net = serde_json::to_value(net).unwrap();
-    assert!(net.get("rxBytes").is_some() && net.get("txErrors").is_some());
+    assert_eq!(
+        serde_json::to_value(net).unwrap(),
+        serde_json::json!({ "id": "eth0", "rxBytes": "1", "rxPackets": "2", "rxDrops": "3", "rxErrors": "4", "txBytes": "5", "txPackets": "6", "txDrops": "7", "txErrors": "8" })
+    );
 
     let psi = PsiGroup { some10: "0.00".into(), some60: "0.00".into(), some300: "0.00".into(), total: "0".into(), full10: Some("0.00".into()), full60: None, full300: None, full_total: None };
-    let psi = serde_json::to_value(psi).unwrap();
-    assert!(psi.get("full10").is_some() && psi.get("fullTotal").is_none());
+    assert_eq!(
+        serde_json::to_value(psi).unwrap(),
+        serde_json::json!({ "some10": "0.00", "some60": "0.00", "some300": "0.00", "total": "0", "full10": "0.00" })
+    );
 
     let filesystem = FileSystem { id: "/".into(), fs_type: "ext4".into(), total: "1".into(), available: "1".into() };
-    let filesystem = serde_json::to_value(filesystem).unwrap();
-    assert_eq!(filesystem["type"], "ext4");
+    assert_eq!(
+        serde_json::to_value(filesystem).unwrap(),
+        serde_json::json!({ "id": "/", "type": "ext4", "total": "1", "available": "1" })
+    );
 }
