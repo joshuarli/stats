@@ -5,7 +5,6 @@ import type { DeviceHistory, SummaryHistory } from "../../history";
 import { LIMITS, loadLimits, type Health, type Limits } from "../../health";
 import { monitorState } from "../../monitoring";
 import { cpuUsed, memoryUsed, netFaults, usedShare } from "../../metrics";
-import type { VizColor } from "../../components/TimeChart";
 import { perSecond } from "./shared";
 
 export interface HostData {
@@ -25,26 +24,7 @@ export interface MonitorCell {
   readonly value: number | undefined;
   readonly detail: string;
   readonly limits: Limits | undefined;
-  readonly hue: VizColor;
 }
-
-export const CELL_HUES: Readonly<Record<string, VizColor>> = {
-  cpu: "blue",
-  load: "blue",
-  pressure: "blue",
-  memory: "aqua",
-  swap: "aqua",
-  disk: "violet",
-  filesystem: "violet",
-  network: "magenta",
-  requests: "blue",
-  "server-errors": "blue",
-  "cpu-time": "violet",
-  "r2-other": "aqua",
-  "r2-storage": "aqua",
-  endpoints: "magenta",
-  collector: "neutral"
-};
 
 export function worstOf(tracks: readonly Track[], stepMs: number): Track {
   const aligned = alignTracks(tracks, stepMs);
@@ -67,7 +47,7 @@ export function lastValue(cells: Cells): number | undefined {
   return undefined;
 }
 
-export function rangeText(cells: Cells, format: (value: number | undefined) => string, limits?: Limits): string {
+export function rangeText(cells: Cells, format: (value: number | undefined) => string): string {
   let low = Number.POSITIVE_INFINITY;
   let high = Number.NEGATIVE_INFINITY;
   for (const value of cells) {
@@ -76,8 +56,7 @@ export function rangeText(cells: Cells, format: (value: number | undefined) => s
     if (value > high) high = value;
   }
   if (low > high) return "unavailable";
-  const ceiling = limits === undefined || limits.direction !== "above" ? "" : ` · elevated at ${format(limits.elevated)}`;
-  return low === high ? `steady${ceiling}` : `peak ${format(high)}${ceiling}`;
+  return low === high ? "steady" : `peak ${format(high)}`;
 }
 
 interface Spec {
@@ -130,6 +109,6 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
   return specs.map(spec => {
     const spark = spec.series.length === 1 ? spec.series[0]!.values : worstOf(spec.series, spec.stepMs).values;
     const state = monitorState({ limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format), limits: spec.limits };
   });
 }

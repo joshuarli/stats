@@ -403,6 +403,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         axis({
           show: props.timeAxis !== false,
           size: 28,
+          space: 110,
+          grid: { show: false },
           values: (chart, splits) => {
             const scale = chart.scales.x;
             const spanMs = scale?.min === undefined || scale.min === null || scale.max === undefined || scale.max === null ? 0 : (scale.max - scale.min) * 1000;
@@ -412,7 +414,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         axis({
           ...(props.compact === true ? { space: 28 } : {}),
           ...(mirrored() ? { splits: (chart: uPlot) => { const reach = chart.scales.y?.max ?? 0; return [-reach / 2, 0, reach / 2]; } } : {}),
-          values: (_chart, splits) => splits.map(value => format(mirrored() ? Math.abs(value) : value)),
+          values: (_chart, splits) => splits.map(value => format(mirrored() ? Math.abs(value) : value)).map((label, index, labels) => (label === labels[index - 1] ? "" : label)),
           size: (_chart, values: string[] | null) => props.yAxisWidth ?? Math.ceil(Math.max(4, ...(values ?? []).map(value => value.length)) * 6.4 + 16)
         })
       ],
@@ -421,7 +423,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         ...props.series.map((entry, position): uPlot.Series => {
           const color = colors[position] ?? "";
           const filled = props.area === true && (position === 0 || entry.mirror === true);
-          const start = filled ? withAlpha(color, 0.2) : undefined;
+          const start = filled ? withAlpha(color, 0.18) : undefined;
           const end = filled ? withAlpha(color, mirrored() ? 0.2 : 0) : undefined;
           return {
             label: entry.label,

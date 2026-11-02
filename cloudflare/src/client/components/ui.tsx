@@ -148,6 +148,13 @@ export function HoverCard(props: { readonly label: string; readonly children: JS
   );
 }
 
+const VALUE_WITH_UNIT = /^(-?\d[\d.,]*)(\s*[^\d\s.,].*)$/u;
+
+export function MetricValue(props: { readonly text: string }): JSX.Element {
+  const match = VALUE_WITH_UNIT.exec(props.text);
+  return match === null ? props.text : <>{match[1]}<span class="tile-unit">{match[2]}</span></>;
+}
+
 export function Tile(props: {
   readonly label: string;
   readonly value: string;
@@ -158,7 +165,7 @@ export function Tile(props: {
   return (
     <article class="tile">
       <div class="tile-label"><span>{props.label}</span><HealthMark health={props.health} /></div>
-      <div class="tile-value">{props.value}</div>
+      <div class="tile-value"><MetricValue text={props.value} /></div>
       {props.detail === undefined ? null : <div class="tile-detail">{props.detail}</div>}
       {props.spark === undefined ? null : <div class="tile-spark">{props.spark}</div>}
     </article>

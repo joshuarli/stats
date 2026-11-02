@@ -7,7 +7,7 @@ import { monitorState } from "../../monitoring";
 import { addAll, holdLast, ratio, scaled } from "./math";
 import { LIST_PRICE_PER_MILLION } from "../../pricing";
 import { PROJECT_SETTLE_MS } from "../../../limits";
-import { CELL_HUES, lastValue, rangeText, type MonitorCell } from "../host/monitors";
+import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
@@ -241,6 +241,6 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
     const monitored = monitorState({ limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
     const spark = spec.settledBeforeMs === undefined ? windowed!.values : settledPrefix(windowed!, spec.settledBeforeMs);
     const arriving = spec.settledBeforeMs !== undefined && windowed!.times.some((time, index) => time >= spec.settledBeforeMs! && windowed!.values[index] !== null);
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, state: monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format, spec.limits)} · newest still arriving` : rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, state: monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format)} · newest still arriving` : rangeText(spark, spec.format), limits: spec.limits };
   });
 }

@@ -2,9 +2,8 @@ import { createMemo, createUniqueId } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Health } from "../health";
 import type { Cells } from "../columns";
-import type { VizColor } from "./TimeChart";
 
-export function Sparkline(props: { readonly values: Cells; readonly label: string; readonly color?: number | undefined; readonly hue?: VizColor | undefined; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
+export function Sparkline(props: { readonly values: Cells; readonly label: string; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
   const id = createUniqueId();
   const geometry = createMemo(() => {
     const values = props.values.filter((value): value is number => value !== null && Number.isFinite(value));
@@ -18,9 +17,8 @@ export function Sparkline(props: { readonly values: Cells; readonly label: strin
     const lastY = last === undefined ? 36 : 36 - ((last - low) / span) * 30;
     return { path, area, lastY };
   });
-  const color = props.color ?? 0;
   return (
-    <svg class={`sparkline ${props.hue === undefined ? `series-${color}` : `viz-${props.hue}`}${props.health === undefined || props.health === "ok" ? "" : ` health-${props.health}`}${props.class === undefined ? "" : ` ${props.class}`}`} viewBox="0 0 160 40" role="img" aria-label={props.label} preserveAspectRatio="none">
+    <svg class={`sparkline${props.health === undefined || props.health === "ok" ? "" : ` health-${props.health}`}${props.class === undefined ? "" : ` ${props.class}`}`} viewBox="0 0 160 40" role="img" aria-label={props.label} preserveAspectRatio="none">
       <defs>
         <linearGradient id={`spark-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" class="spark-fill-start" />
