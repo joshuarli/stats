@@ -3,16 +3,17 @@ import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 
 export const root = fileURLToPath(new URL("../../..", import.meta.url));
-export function captures() {
+export interface Capture { readonly name: string; readonly value: unknown }
+export function captures(): Capture[] {
   const directory = join(root, "cloudflare/test/ui/captures");
-  const result = [];
-  function visit(path) {
+  const result: Capture[] = [];
+  function visit(path: string): void {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const file = join(path, entry.name);
       if (entry.isDirectory()) visit(file);
-      else if (/\.json$/u.test(entry.name)) {
-        const value = JSON.parse(readFileSync(file, "utf8"));
-        if (value !== null && typeof value === "object" && typeof value.kind === "string") result.push({ name: relative(root, file), value });
+      else if (entry.name.endsWith(".json")) {
+        const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+        if (value !== null && typeof value === "object" && "kind" in value && typeof value.kind === "string") result.push({ name: relative(root, file), value });
       }
     }
   }

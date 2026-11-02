@@ -12,9 +12,9 @@
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
     "build": "vite build",
-    "test:binary": "node --experimental-strip-types --test test/binary/*.test.mjs",
+    "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
     "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
-    "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.mjs",
+    "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.ts",
     "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast"
   },
   "devDependencies": {
@@ -23,6 +23,7 @@
     "@cloudflare/workers-types": "5.20261031.1",
     "@playwright/test": "1.64.1",
     "@solidjs/vite-plugin": "3.0.0-next.54",
+    "@types/node": "26.6.6",
     "cf": "1.0.0-beta.26",
     "oxlint": "1.90.0",
     "oxlint-tsgolint": "7.0.2005",

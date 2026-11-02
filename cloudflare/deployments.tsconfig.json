@@ -9,7 +9,8 @@
     "exactOptionalPropertyTypes": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": []
+    "skipLibCheck": true,
+    "types": ["@cloudflare/workers-types", "node"]
   },
-  "include": ["src/deployments/model.ts", "src/deployments/compare.ts", "src/deployments/collector.ts", "src/deployments/decode.ts"]
+  "include": ["src/deployments/model.ts", "src/deployments/compare.ts", "src/deployments/collector.ts", "src/deployments/decode.ts", "src/deployments/store.ts", "test/deployments/**/*.ts"]
 }
