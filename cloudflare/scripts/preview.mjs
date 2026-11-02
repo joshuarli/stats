@@ -162,7 +162,7 @@ const server = createServer(async (request, response) => {
           if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
           histories[kind] = body;
         }
-        return json(response, { projectId: project[1], histories });
+        return json(response, { projectId: decodeURIComponent(project[1]), histories });
       }
       const body = await history(capture, url.searchParams.get("kind") ?? "worker", url);
       return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : json(response, body);
