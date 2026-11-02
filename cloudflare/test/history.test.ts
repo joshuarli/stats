@@ -196,6 +196,9 @@ describe("history", () => {
     expect(unchanged.status).toBe(304);
     expect(await unchanged.text()).toBe("");
 
+    const weakened = await historySearch(host.hostId, "range=1h&kinds=summary,disks", { "If-None-Match": `W/${etag!}` });
+    expect(weakened.status).toBe(304);
+
     const otherWindow = await historySearch(host.hostId, "range=6h&kinds=summary,disks", { "If-None-Match": etag! });
     expect(otherWindow.status).toBe(200);
 

@@ -167,10 +167,15 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return Response.json(body, { status, headers });
 }
 
+function opaqueTag(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith("W/") ? trimmed.slice(2) : trimmed;
+}
+
 function etagMatches(request: Request, etag: string): boolean {
   const header = request.headers.get("if-none-match");
   if (header === null) return false;
-  return header.split(",").some(value => value.trim() === etag || value.trim() === "*");
+  return header.split(",").some(value => value.trim() === "*" || opaqueTag(value) === etag);
 }
 
 function notModified(etag: string): Response {
