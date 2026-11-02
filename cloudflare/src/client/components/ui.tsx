@@ -125,11 +125,11 @@ export function Widget(props: ParentProps<{
   );
 }
 
-export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined }): JSX.Element {
+export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined; readonly labelled?: boolean | undefined }): JSX.Element {
   return props.health === undefined || (props.health === "ok" && props.showOk !== true) ? null : (
     <span class={`health health-${props.health}`}>
       <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[props.health]}</span>
-      <span class="sr-only">{HEALTH_LABEL[props.health]}</span>
+      <span class={props.labelled === true && props.health !== "ok" ? "health-text" : "sr-only"}>{HEALTH_LABEL[props.health]}</span>
     </span>
   );
 }

@@ -124,7 +124,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     const axisFont = `11px ${token("--font")}`;
     const colors = props.series.map(entry => token(colorVariable(entry.color)));
     const axis = (extra: Partial<uPlot.Axis>): uPlot.Axis => ({
-      stroke: token("--mut"),
+      stroke: token("--muted"),
       font: axisFont,
       grid: { stroke: token("--line"), width: 1 },
       ticks: { show: false },
@@ -173,11 +173,6 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       tooltip.style.left = `${left > chart.over.clientWidth * 0.6 ? left - tooltip.offsetWidth - 14 : left + 14}px`;
     };
 
-    const yAt = (chart: uPlot, value: number) => {
-      const { top, height } = chart.bbox;
-      return Math.min(top + height, Math.max(top, chart.valToPos(value, "y", true)));
-    };
-
     const drawProvisional = (chart: uPlot) => {
       const from = props.provisionalFromMs;
       if (from === undefined) return;
@@ -190,7 +185,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       context.fillStyle = token("--text");
       context.fillRect(x, top, left + width - x, height);
       context.globalAlpha = 0.45;
-      context.strokeStyle = token("--mut");
+      context.strokeStyle = token("--muted");
       context.lineWidth = dpr;
       context.setLineDash([3 * dpr, 3 * dpr]);
       context.beginPath();
@@ -202,32 +197,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         context.globalAlpha = 1;
         context.font = `${10 * dpr}px ${token("--font")}`;
         context.textAlign = "left";
-        context.fillStyle = token("--mut");
+        context.fillStyle = token("--muted");
         context.fillText("still arriving", x + 5 * dpr, top + height - 6 * dpr);
-      }
-      context.restore();
-    };
-
-    const drawBands = (chart: uPlot) => {
-      drawProvisional(chart);
-      const limits = props.limits;
-      if (limits === undefined) return;
-      const { left, top, width, height } = chart.bbox;
-      const elevated = yAt(chart, limits.elevated);
-      const critical = yAt(chart, limits.critical);
-      const context = chart.ctx;
-      context.save();
-      const fill = (from: number, to: number, color: string, alpha: number) => {
-        context.globalAlpha = alpha;
-        context.fillStyle = color;
-        context.fillRect(left, Math.min(from, to), width, Math.abs(to - from));
-      };
-      if (limits.direction === "above") {
-        fill(critical, elevated, token("--serious"), 0.1);
-        fill(top, critical, token("--critical"), 0.13);
-      } else {
-        fill(elevated, critical, token("--serious"), 0.1);
-        fill(critical, top + height, token("--critical"), 0.13);
       }
       context.restore();
     };
@@ -263,32 +234,36 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       const { left, top, width, height } = chart.bbox;
       const context = chart.ctx;
       context.save();
-      context.setLineDash([4 * dpr, 3 * dpr]);
+      context.setLineDash([3 * dpr, 3 * dpr]);
+      context.lineWidth = dpr;
       context.font = `${10 * dpr}px ${token("--font")}`;
       context.textAlign = "right";
       const placed: number[] = [];
-      for (const [value, color, label] of [[limits.critical, "--critical", "critical"], [limits.elevated, "--serious", "elevated"]] as const) {
+      for (const [value, color] of [[limits.critical, "--critical"], [limits.elevated, "--serious"]] as const) {
         const y = Math.round(chart.valToPos(value, "y", true));
         if (y < top || y > top + height) continue;
         context.strokeStyle = token(color);
-        context.globalAlpha = 0.7;
+        context.globalAlpha = 0.55;
         context.beginPath();
         context.moveTo(left, y);
         context.lineTo(left + width, y);
         context.stroke();
         context.globalAlpha = 1;
-        const text = `${label} ${format(value)}`;
-        const above = limits.direction === "above" ? label === "critical" : label === "elevated";
+        const above = limits.direction === "above" ? color === "--critical" : color === "--serious";
         const preferred = above ? y - 4 * dpr : y + 11 * dpr;
         const baseline = preferred < top + 10 * dpr ? y + 11 * dpr : preferred > top + height - 2 * dpr ? y - 4 * dpr : preferred;
         if (placed.some(other => Math.abs(other - baseline) < LIMIT_LABEL_GAP_PX * dpr)) continue;
         placed.push(baseline);
+        const text = format(value);
         context.lineJoin = "round";
         context.lineWidth = 3 * dpr;
         context.strokeStyle = token("--surface");
+        context.setLineDash([]);
         context.strokeText(text, left + width - 4 * dpr, baseline);
         context.fillStyle = token("--text-2");
         context.fillText(text, left + width - 4 * dpr, baseline);
+        context.setLineDash([3 * dpr, 3 * dpr]);
+        context.lineWidth = dpr;
       }
       context.restore();
     };
@@ -300,7 +275,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       if (y < top || y > top + height) return;
       const context = chart.ctx;
       context.save();
-      context.strokeStyle = token("--mut");
+      context.strokeStyle = token("--muted");
       context.globalAlpha = 0.55;
       context.lineWidth = dpr;
       context.beginPath();
@@ -323,7 +298,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       for (const event of events) {
         const x = Math.round(chart.valToPos(event.atMs / 1000, "x", true));
         if (x < left || x > left + width) continue;
-        context.strokeStyle = token("--mut");
+        context.strokeStyle = token("--muted");
         context.globalAlpha = 0.7;
         context.beginPath();
         context.moveTo(x, top);
@@ -491,7 +466,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           chart.setSelect(CLEARED_SELECT, false);
           telemetry.zoomTo({ fromMs, toMs });
         }],
-        drawClear: [drawBands, drawEpisodes],
+        drawClear: [drawProvisional, drawEpisodes],
         draw: [drawZero, drawEvents, drawLimits, drawMarkers]
       }
     };
@@ -618,7 +593,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         <div class="chart-legend-scroll" role="region" aria-label={`${props.label} series statistics`} tabindex="0">
           <table class="chart-legend">
             <thead>
-              <tr><th /><th>series</th><th>min</th><th>avg</th><th>max</th><th>{cursor() === null ? "last" : "at cursor"}</th></tr>
+              <tr><th /><th>Series</th><th>Min</th><th>Avg</th><th>Max</th><th>{cursor() === null ? "Last" : "At cursor"}</th></tr>
             </thead>
             <tbody>
               <For each={props.series}>

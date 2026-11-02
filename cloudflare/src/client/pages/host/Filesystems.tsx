@@ -51,7 +51,7 @@ export function FilesystemsWidget(props: {
                           <Show when={total() !== undefined && available() !== undefined} fallback={<span class="cell-note">unavailable</span>}>
                             <div class="capacity-with-state">
                               <CapacityBar total={total()!} available={available()!} />
-                              <HealthMark health={healthOf(lastCell(usedShare(entry.table)), LIMITS.filesystemUsedPercent) ?? undefined} />
+                              <HealthMark health={healthOf(lastCell(usedShare(entry.table)), LIMITS.filesystemUsedPercent) ?? undefined} labelled />
                             </div>
                           </Show>
                         </td>

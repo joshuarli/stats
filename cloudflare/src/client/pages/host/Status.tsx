@@ -29,7 +29,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
               onClick={() => scrollTo(cell.anchor)}
               aria-label={`${cell.label}: ${cell.format(cell.value)}.${stateNote()} Jump to chart.`}
             >
-              <span class="tile-label"><span>{cell.label}</span><HealthMark health={health()} showOk /></span>
+              <span class="tile-label"><span>{cell.label}</span><HealthMark health={health()} showOk labelled /></span>
               <span class="tile-value">{cell.format(cell.value)}</span>
               {limits() === undefined ? null : <LimitGauge value={cell.value} limits={limits()!} health={health()} />}
               <span class="tile-detail">{cell.detail}</span>
