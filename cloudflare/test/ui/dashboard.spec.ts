@@ -153,6 +153,33 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   };
 }
 
+const DEPLOYMENT_ID = "0b7f4c3e-1d2a-4b5c-8d9e-0f1a2b3c4d5e";
+const DEPLOYED_VERSION = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d";
+const DEPLOYED_AT = Math.floor((now - 2 * 86_400_000) / 300_000) * 300_000 + 60_000;
+
+function deploymentHistory() {
+  return {
+    projectId: "stuff", worker: "stuff", enabled: true,
+    sync: { lastAttemptAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, error: null, truncated: false },
+    deployments: [{ id: DEPLOYMENT_ID, atMs: DEPLOYED_AT, source: "wrangler", message: "ship cache", versions: [{ id: DEPLOYED_VERSION, percentage: 100 }], deferred: false }],
+    versions: [{ id: DEPLOYED_VERSION, tag: "v42", message: null }]
+  };
+}
+
+function deploymentComparison(window: "1h" | "24h") {
+  const duration = window === "24h" ? 86_400_000 : 3_600_000;
+  const end = Math.floor(DEPLOYED_AT / 300_000) * 300_000;
+  const start = end + 600_000;
+  return {
+    deploymentId: DEPLOYMENT_ID, window,
+    before: { fromMs: end - duration, toMs: end }, after: { fromMs: start, toMs: start + duration },
+    readyAtMs: start + duration + 2_700_000, beforeInvocations: 12_000, afterInvocations: 11_800,
+    reasons: window === "24h" ? ["Another deployment overlaps the comparison windows."] : [],
+    warnings: ["Heuristic signals, not significance tests or proof of causation."],
+    metrics: [{ metric: "worker.cpu", label: "Worker CPU / invocation", unit: "ms", before: 2, after: 1.5, delta: -0.5, deltaPercent: -25, verdict: window === "24h" ? "confounded" : "improved" }]
+  };
+}
+
 async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
@@ -170,6 +197,8 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       if (kinds !== null) return route.fulfill({ json: { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) } });
       return route.fulfill({ json: body(kind) });
     }
+    if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: deploymentHistory() });
+    if (url.pathname === `/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison`) return route.fulfill({ json: deploymentComparison(url.searchParams.get("window") === "24h" ? "24h" : "1h") });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces, databases) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
@@ -462,6 +491,19 @@ test("a stale collector is flagged on the fleet and the project page", async ({ 
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".page-header")).toContainText("stale");
   await expect(page.getByText("The collector has not succeeded recently")).toBeVisible();
+});
+
+test("the project page compares a deployment's before and after windows", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  const deployment = page.getByRole("combobox", { name: "Deployment", exact: true });
+  await expect(deployment).toContainText("v42 100%");
+  const table = page.getByRole("region", { name: "Deployment metric comparison" });
+  await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
+  await page.getByRole("combobox", { name: "Before / after window" }).selectOption("24h");
+  await expect(page.getByText("No verdict: Another deployment overlaps")).toBeVisible();
+  await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("confounded");
 });
 
 test("an unknown project id shows a not-found state", async ({ page }) => {

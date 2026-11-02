@@ -78,7 +78,7 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
   };
 
   return (
-    <DeploymentEvents.Provider value={events}>
+    <DeploymentEvents value={events}>
       <Widget id="deployments" title="Deployments" expandable>
         <p class="panel-label" role="status">{historyError() ?? state()}</p>
         <Show when={(history()?.deployments.length ?? 0) > 0}>
@@ -112,6 +112,6 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
         </Show>
       </Widget>
       {props.children}
-    </DeploymentEvents.Provider>
+    </DeploymentEvents>
   );
 }
