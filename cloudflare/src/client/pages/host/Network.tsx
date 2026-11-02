@@ -48,7 +48,7 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
           <PanelChart
             label="Network drops and errors"
             series={[
-              { label: "drops", color: "serious", points: sumSeries(props.series, point => point.rxDropsPerSec + point.txDropsPerSec) },
+              { label: "drops", color: "serious", points: sumSeries(props.series, point => point.rxDropsPerSec + (point.txDropsPerSec ?? 0)) },
               { label: "errors", color: "critical", points: sumSeries(props.series, point => point.rxErrorsPerSec + point.txErrorsPerSec) }
             ]}
             format={perSecond}
@@ -64,7 +64,7 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
                 <For each={active()}>
                   {(entry) => {
                     const point = () => lastIn(entry.points);
-                    const drops = () => (point() === undefined ? undefined : point()!.rxDropsPerSec + point()!.txDropsPerSec);
+                    const drops = () => (point() === undefined ? undefined : point()!.rxDropsPerSec + (point()!.txDropsPerSec ?? 0));
                     const errors = () => (point() === undefined ? undefined : point()!.rxErrorsPerSec + point()!.txErrorsPerSec);
                     const health = (value: number | undefined) => (value === undefined ? undefined : healthOf(value, LIMITS.netFaultsPerSec) ?? undefined);
                     return (

@@ -168,7 +168,7 @@ fn read_nets(include_virtual: bool) -> Option<Vec<Net>> {
             rx_errors: rx_errors.to_string(),
             tx_bytes: tx_bytes.to_string(),
             tx_packets: tx_packets.to_string(),
-            tx_drops: tx_drops.to_string(),
+            tx_drops: Some(tx_drops.to_string()),
             tx_errors: tx_errors.to_string(),
         });
         if nets.len() == 16 {

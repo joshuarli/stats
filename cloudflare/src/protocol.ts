@@ -11,8 +11,8 @@ export interface Cpu {
   readonly user: string;
   readonly system: string;
   readonly idle: string;
-  readonly iowait: string;
-  readonly steal: string;
+  readonly iowait?: string;
+  readonly steal?: string;
   readonly total: string;
 }
 
@@ -49,7 +49,7 @@ export interface Net {
   readonly rxErrors: string;
   readonly txBytes: string;
   readonly txPackets: string;
-  readonly txDrops: string;
+  readonly txDrops?: string;
   readonly txErrors: string;
 }
 
@@ -129,7 +129,7 @@ export type BatchResult =
 
 const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"] as const;
 const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"] as const;
-const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"] as const;
+const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"] as const;
 const HOST = /^h_[0-9a-f]{32}$/u;
 const BOOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const DECIMAL = /^(0|[1-9][0-9]{0,19})$/u;
@@ -172,8 +172,8 @@ function fixed(value: unknown, digits: number): value is string {
   return typeof value === "string" && FIXED.test(value) && (value.split(".")[1]?.length ?? 0) === digits;
 }
 
-function u64Fields(value: unknown, keys: readonly string[]): value is Record<string, unknown> {
-  return exact(value, keys) && keys.every(key => decimal(value[key]));
+function u64Fields(value: unknown, required: readonly string[], optional: readonly string[] = []): value is Record<string, unknown> {
+  return subset(value, [...required, ...optional]) && required.every(key => key in value) && Object.values(value).every(entry => decimal(entry));
 }
 
 function arrayUnique(value: unknown, key: string, limit: number): readonly Record<string, unknown>[] | null {
@@ -274,7 +274,7 @@ export function parseSample(value: unknown): SampleResult {
       if (value[present] !== undefined) return fail(`${group} is both present and unavailable`);
     }
   }
-  if (value.cpu !== undefined && !u64Fields(value.cpu, ["user", "system", "idle", "iowait", "steal", "total"])) return fail("cpu counters");
+  if (value.cpu !== undefined && !u64Fields(value.cpu, ["user", "system", "idle", "total"], ["iowait", "steal"])) return fail("cpu counters");
   const load = value.load;
   if (load !== undefined && (!exact(load, ["one", "five", "fifteen"]) || !["one", "five", "fifteen"].every(key => fixed(load[key], 3)))) return fail("load");
   if (value.mem !== undefined && !parseMem(value.mem)) return fail("mem");
@@ -287,7 +287,7 @@ export function parseSample(value: unknown): SampleResult {
   }
   if (value.nets !== undefined) {
     const nets = arrayUnique(value.nets, "id", MAX_DEVICES);
-    if (nets === null || !nets.every(net => exact(net, ["id", "rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"]) && typeof net.id === "string" && IFNAME.test(net.id) && ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"].every(key => decimal(net[key])))) return fail("nets");
+    if (nets === null || !nets.every(net => typeof net.id === "string" && IFNAME.test(net.id) && u64Fields(Object.fromEntries(Object.entries(net).filter(([key]) => key !== "id")), ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txErrors"], ["txDrops"]))) return fail("nets");
   }
   if (value.psi !== undefined) {
     if (!subset(value.psi, ["cpu", "memory", "io"]) || Object.keys(value.psi).length === 0) return fail("psi");

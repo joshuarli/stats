@@ -1,0 +1,107 @@
+{
+  "v": 1,
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "5c1d7e2a-4b3f-4a6e-8d9c-0f1e2d3c4b5a",
+  "samples": [
+    {
+      "seq": "86400",
+      "atMs": "1793510400000",
+      "monoMs": "86400000",
+      "unavailable": [
+        "disks",
+        "psi"
+      ],
+      "cpu": {
+        "user": "1200000",
+        "system": "300000",
+        "idle": "8500000",
+        "total": "10000000"
+      },
+      "load": {
+        "one": "2.150",
+        "five": "1.980",
+        "fifteen": "1.700"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17179869184",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "4096",
+        "swapOut": "8192"
+      },
+      "uptimeMs": "86400000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "900000000",
+          "rxPackets": "700000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "120000000",
+          "txPackets": "300000",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "512000000000"
+        }
+      ]
+    },
+    {
+      "seq": "86415",
+      "atMs": "1793510415000",
+      "monoMs": "86415000",
+      "unavailable": [
+        "disks",
+        "psi"
+      ],
+      "cpu": {
+        "user": "1201000",
+        "system": "300400",
+        "idle": "8513600",
+        "total": "10015000"
+      },
+      "load": {
+        "one": "2.100",
+        "five": "1.970",
+        "fifteen": "1.700"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17170000000",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "4096",
+        "swapOut": "8192"
+      },
+      "uptimeMs": "86415000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "900150000",
+          "rxPackets": "700120",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "120030000",
+          "txPackets": "300050",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511990000000"
+        }
+      ]
+    }
+  ]
+}

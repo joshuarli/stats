@@ -54,8 +54,8 @@ pub fn parse_cpu(bytes: &[u8]) -> Option<Cpu> {
         user: user_all.to_string(),
         system: system_all.to_string(),
         idle: idle.to_string(),
-        iowait: iowait.to_string(),
-        steal: steal.to_string(),
+        iowait: Some(iowait.to_string()),
+        steal: Some(steal.to_string()),
         total: total.to_string(),
     })
 }
@@ -280,7 +280,7 @@ fn unescape_mount(value: &str) -> String {
     output
 }
 
-pub const FILESYSTEM_TYPES: [&str; 12] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay"];
+pub const FILESYSTEM_TYPES: [&str; 13] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"];
 
 const VIRTUAL_FILESYSTEM_TYPES: [&str; 2] = ["tmpfs", "overlay"];
 
@@ -345,8 +345,8 @@ mod tests {
         assert_eq!(cpu.user, "120");
         assert_eq!(cpu.system, "43");
         assert_eq!(cpu.idle, "400");
-        assert_eq!(cpu.iowait, "5");
-        assert_eq!(cpu.steal, "8");
+        assert_eq!(cpu.iowait.as_deref(), Some("5"));
+        assert_eq!(cpu.steal.as_deref(), Some("8"));
         assert_eq!(cpu.total, "576");
     }
 
@@ -357,8 +357,8 @@ mod tests {
         assert_eq!(second.user.parse::<u64>().unwrap() - first.user.parse::<u64>().unwrap(), 1550);
         assert_eq!(second.system.parse::<u64>().unwrap() - first.system.parse::<u64>().unwrap(), 510);
         assert_eq!(second.idle.parse::<u64>().unwrap() - first.idle.parse::<u64>().unwrap(), 13500);
-        assert_eq!(second.iowait.parse::<u64>().unwrap() - first.iowait.parse::<u64>().unwrap(), 100);
-        assert_eq!(second.steal.parse::<u64>().unwrap() - first.steal.parse::<u64>().unwrap(), 10);
+        assert_eq!(second.iowait.as_deref().unwrap().parse::<u64>().unwrap() - first.iowait.as_deref().unwrap().parse::<u64>().unwrap(), 100);
+        assert_eq!(second.steal.as_deref().unwrap().parse::<u64>().unwrap() - first.steal.as_deref().unwrap().parse::<u64>().unwrap(), 10);
         assert_eq!(second.total.parse::<u64>().unwrap() - first.total.parse::<u64>().unwrap(), 15670);
     }
 

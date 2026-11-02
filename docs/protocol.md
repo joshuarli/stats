@@ -51,13 +51,13 @@ or an empty string.
 | `atMs` | yes | epoch milliseconds, at most 2^53-1 |
 | `monoMs` | yes | monotonic milliseconds since boot, at most 2^53-1 |
 | `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`; at most 8, unique |
-| `cpu` | no | `user`, `system`, `idle`, `iowait`, `steal`, `total`, each a u64 string |
+| `cpu` | no | `user`, `system`, `idle`, `total`, and optionally `iowait` and `steal`, each a u64 string |
 | `load` | no | `one`, `five`, `fifteen`, each a fixed 3-decimal string |
 | `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string; optionally `swapIn` and `swapOut` together, cumulative bytes paged in from and out to swap since boot (`pswpin` and `pswpout` from `/proc/vmstat` times the page size), each a u64 string |
 | `uptimeMs` | no | u64 string |
 | `cpuCount` | no | integer 1–4096 |
 | `disks` | no | 0–16 objects: `id` (`major:minor`, Linux `dev_t` bounds: major at most 4095, minor at most 1048575), `name` (1–32 chars), `reads`, `readSectors`, `writes`, `writeSectors`, `ioMs` |
-| `nets` | no | 0–16 objects: `id` (interface name), `rxBytes`, `rxPackets`, `rxDrops`, `rxErrors`, `txBytes`, `txPackets`, `txDrops`, `txErrors` |
+| `nets` | no | 0–16 objects: `id` (interface name), `rxBytes`, `rxPackets`, `rxDrops`, `rxErrors`, `txBytes`, `txPackets`, `txErrors`, and optionally `txDrops` |
 | `psi` | no | optional `cpu`, `memory`, `io`; each has `some10`, `some60`, `some300` (fixed 2-decimal percent) and `total` (microseconds); each may also have all four of `full10`, `full60`, `full300`, `fullTotal` |
 | `filesystems` | no | 0–16 objects: `id` (mount path), `type` (allow-list enum), `total`, `available` |
 | `block` | no | `buckets` (exactly 16 u64 strings), `count`, `totalUs`, `minUs`, `maxUs` |
@@ -75,7 +75,9 @@ latency. A zero count requires all four totals to be zero. The group is absent
 when the optional probe is not configured; it is never synthesized.
 
 CPU constants: `user` is user+nice, `system` is system+irq+softirq; `total` is
-their sum with `idle`, `iowait`, and `steal`. Disk sectors are always 512-byte
+their sum with `idle` and, when present, `iowait` and `steal`. macOS exposes
+neither `iowait` nor `steal` nor an interface's transmit drops, so its agent
+omits those fields and the Worker reports no value for them. Disk sectors are always 512-byte
 kernel sectors. Filesystem `available` uses `f_bavail` (available to an
 unprivileged process). `psi` averages are percentages; `total` is microseconds.
 

@@ -28,7 +28,7 @@ function numberList(text, pattern, label) {
 
 const errorCodes = new Set(quotedList(source("cloudflare/src/codes.ts"), /export const ERROR_CODES = \[([\s\S]*?)\] as const;/u, "ERROR_CODES"));
 const serverFilesystems = quotedList(source("cloudflare/src/protocol.ts"), /const FS_TYPES = \[([^\]]+)\] as const;/u, "protocol FS_TYPES");
-const agentFilesystems = quotedList(source("agent/src/parse.rs"), /pub const FILESYSTEM_TYPES: \[&str; 12\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
+const agentFilesystems = quotedList(source("agent/src/parse.rs"), /pub const FILESYSTEM_TYPES: \[&str; [0-9]+\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
 const serverBounds = numberList(source("cloudflare/src/limits.ts"), /export const BLOCK_BOUNDS_US = \[([^\]]+)\] as const;/u, "BLOCK_BOUNDS_US");
 const collectorBounds = [...source("bpf/biolatency-collector.bt").matchAll(/\$latency_us <= ([0-9_]+)/gu)].map(entry => Number(entry[1].replaceAll("_", "")));
 const blockBuckets = Number(/export const BLOCK_BUCKETS = ([0-9]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1]);

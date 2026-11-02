@@ -127,7 +127,7 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
       label: "Net faults",
       anchor: "network",
       limits: LIMITS.netFaultsPerSec,
-      series: [sumSeries(nets, point => point.rxDropsPerSec + point.txDropsPerSec + point.rxErrorsPerSec + point.txErrorsPerSec)],
+      series: [sumSeries(nets, point => point.rxDropsPerSec + (point.txDropsPerSec ?? 0) + point.rxErrorsPerSec + point.txErrorsPerSec)],
       stepMs: data.netStepMs,
       format: perSecond
     }

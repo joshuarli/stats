@@ -10,6 +10,10 @@
       "expect": "accept"
     },
     {
+      "file": "batch-macos.json",
+      "expect": "accept"
+    },
+    {
       "file": "u64-boundaries.json",
       "expect": "accept"
     },

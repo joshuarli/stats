@@ -9,8 +9,8 @@ export interface CpuPercent {
   readonly user: number;
   readonly system: number;
   readonly idle: number;
-  readonly iowait: number;
-  readonly steal: number;
+  readonly iowait?: number;
+  readonly steal?: number;
 }
 export interface LoadValues {
   readonly one: number;
@@ -63,7 +63,7 @@ export interface NetPoint {
   readonly rxPacketsPerSec: number;
   readonly txPacketsPerSec: number;
   readonly rxDropsPerSec: number;
-  readonly txDropsPerSec: number;
+  readonly txDropsPerSec?: number;
   readonly rxErrorsPerSec: number;
   readonly txErrorsPerSec: number;
 }
@@ -187,10 +187,17 @@ function psiAverages(sample: Sample): PsiAverages | undefined {
   };
 }
 
-function cpuPercent(cpu: { user: string; system: string; idle: string; iowait: string; steal: string; total: string }): CpuPercent | undefined {
+function cpuPercent(cpu: Cpu): CpuPercent | undefined {
   const total = Number(cpu.total);
   if (!Number.isFinite(total) || total <= 0) return undefined;
-  return { user: (Number(cpu.user) / total) * 100, system: (Number(cpu.system) / total) * 100, idle: (Number(cpu.idle) / total) * 100, iowait: (Number(cpu.iowait) / total) * 100, steal: (Number(cpu.steal) / total) * 100 };
+  const share = (value: string) => (Number(value) / total) * 100;
+  return {
+    user: share(cpu.user),
+    system: share(cpu.system),
+    idle: share(cpu.idle),
+    ...(cpu.iowait === undefined ? {} : { iowait: share(cpu.iowait) }),
+    ...(cpu.steal === undefined ? {} : { steal: share(cpu.steal) })
+  };
 }
 
 function sumCpu(cpu: Cpu, add: Cpu): Cpu {
@@ -198,9 +205,9 @@ function sumCpu(cpu: Cpu, add: Cpu): Cpu {
     user: (BigInt(cpu.user) + BigInt(add.user)).toString(),
     system: (BigInt(cpu.system) + BigInt(add.system)).toString(),
     idle: (BigInt(cpu.idle) + BigInt(add.idle)).toString(),
-    iowait: (BigInt(cpu.iowait) + BigInt(add.iowait)).toString(),
-    steal: (BigInt(cpu.steal) + BigInt(add.steal)).toString(),
-    total: (BigInt(cpu.total) + BigInt(add.total)).toString()
+    total: (BigInt(cpu.total) + BigInt(add.total)).toString(),
+    ...(cpu.iowait === undefined || add.iowait === undefined ? {} : { iowait: (BigInt(cpu.iowait) + BigInt(add.iowait)).toString() }),
+    ...(cpu.steal === undefined || add.steal === undefined ? {} : { steal: (BigInt(cpu.steal) + BigInt(add.steal)).toString() })
   };
 }
 
@@ -305,7 +312,10 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     }
     for (const [id, net] of Object.entries(delta.nets)) {
       const target = nets[id] ?? {};
-      for (const field of NET_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(net[field])).toString();
+      for (const field of NET_FIELDS) {
+        const value = net[field];
+        if (value !== undefined) target[field] = (BigInt(target[field] ?? "0") + BigInt(value)).toString();
+      }
       target[DEVICE_COVERAGE] = (BigInt(target[DEVICE_COVERAGE] ?? "0") + BigInt(delta.intervalMs)).toString();
       nets[id] = target;
     }
@@ -454,7 +464,7 @@ function netPoints(row: RawRow): Array<{ id: string; point: NetPoint }> {
       rxPacketsPerSec: (Number(net.rxPackets) * 1000) / row.delta.intervalMs,
       txPacketsPerSec: (Number(net.txPackets) * 1000) / row.delta.intervalMs,
       rxDropsPerSec: (Number(net.rxDrops) * 1000) / row.delta.intervalMs,
-      txDropsPerSec: (Number(net.txDrops) * 1000) / row.delta.intervalMs,
+      ...(net.txDrops === undefined ? {} : { txDropsPerSec: (Number(net.txDrops) * 1000) / row.delta.intervalMs }),
       rxErrorsPerSec: (Number(net.rxErrors) * 1000) / row.delta.intervalMs,
       txErrorsPerSec: (Number(net.txErrors) * 1000) / row.delta.intervalMs
     }
@@ -539,7 +549,7 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
         rxPacketsPerSec: rate(values.rxPackets, coverage),
         txPacketsPerSec: rate(values.txPackets, coverage),
         rxDropsPerSec: rate(values.rxDrops, coverage),
-        txDropsPerSec: rate(values.txDrops, coverage),
+        ...(values.txDrops === undefined ? {} : { txDropsPerSec: rate(values.txDrops, coverage) }),
         rxErrorsPerSec: rate(values.rxErrors, coverage),
         txErrorsPerSec: rate(values.txErrors, coverage)
       });

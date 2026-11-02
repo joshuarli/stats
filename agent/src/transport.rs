@@ -323,8 +323,8 @@ mod tests {
                 user: "1".into(),
                 system: "2".into(),
                 idle: "3".into(),
-                iowait: "4".into(),
-                steal: "5".into(),
+                iowait: Some("4".into()),
+                steal: Some("5".into()),
                 total: "15".into(),
             }),
             ..Sample::empty(1, 2, 3)
@@ -511,7 +511,7 @@ mod tests {
             rx_errors: "1".into(),
             tx_bytes: "1".into(),
             tx_packets: "1".into(),
-            tx_drops: "1".into(),
+            tx_drops: Some("1".into()),
             tx_errors: "1".into(),
         };
         let filesystem = |index: usize| crate::model::FileSystem { id: format!("/mnt/volume-{index}"), fs_type: "ext4".into(), total: "1".into(), available: "1".into() };

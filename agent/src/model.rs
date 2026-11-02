@@ -18,8 +18,10 @@ pub struct Cpu {
     pub user: String,
     pub system: String,
     pub idle: String,
-    pub iowait: String,
-    pub steal: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iowait: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steal: Option<String>,
     pub total: String,
 }
 
@@ -103,8 +105,8 @@ pub struct Net {
     pub tx_bytes: String,
     #[serde(rename = "txPackets")]
     pub tx_packets: String,
-    #[serde(rename = "txDrops")]
-    pub tx_drops: String,
+    #[serde(rename = "txDrops", skip_serializing_if = "Option::is_none")]
+    pub tx_drops: Option<String>,
     #[serde(rename = "txErrors")]
     pub tx_errors: String,
 }

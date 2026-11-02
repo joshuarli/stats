@@ -13,8 +13,8 @@ export interface Cpu {
   readonly user: number;
   readonly system: number;
   readonly idle: number;
-  readonly iowait: number;
-  readonly steal: number;
+  readonly iowait?: number;
+  readonly steal?: number;
 }
 
 export interface Load {
@@ -74,7 +74,7 @@ export interface NetPoint {
   readonly rxPacketsPerSec: number;
   readonly txPacketsPerSec: number;
   readonly rxDropsPerSec: number;
-  readonly txDropsPerSec: number;
+  readonly txDropsPerSec?: number;
   readonly rxErrorsPerSec: number;
   readonly txErrorsPerSec: number;
 }
@@ -289,8 +289,8 @@ function decodeCpu(value: unknown): Cpu {
     user: number(entry.user),
     system: number(entry.system),
     idle: number(entry.idle),
-    iowait: number(entry.iowait),
-    steal: number(entry.steal)
+    ...(entry.iowait === undefined ? {} : { iowait: number(entry.iowait) }),
+    ...(entry.steal === undefined ? {} : { steal: number(entry.steal) })
   };
 }
 
@@ -364,7 +364,7 @@ function decodeNetPoint(value: unknown): NetPoint {
     rxPacketsPerSec: number(entry.rxPacketsPerSec),
     txPacketsPerSec: number(entry.txPacketsPerSec),
     rxDropsPerSec: number(entry.rxDropsPerSec),
-    txDropsPerSec: number(entry.txDropsPerSec),
+    ...(entry.txDropsPerSec === undefined ? {} : { txDropsPerSec: number(entry.txDropsPerSec) }),
     rxErrorsPerSec: number(entry.rxErrorsPerSec),
     txErrorsPerSec: number(entry.txErrorsPerSec)
   };

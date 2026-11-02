@@ -69,8 +69,12 @@ fn keys(value: &Value, allowed: &[&str]) -> bool {
     value.as_object().is_some_and(|map| map.keys().all(|key| allowed.contains(&key.as_str())))
 }
 
-fn u64_map(value: &Value, keys: &[&str]) -> bool {
-    object(value, keys) && keys.iter().all(|key| decimal(&value[*key]))
+fn u64_map(value: &Value, required: &[&str], optional: &[&str]) -> bool {
+    value.as_object().is_some_and(|map| {
+        map.keys().all(|key| required.contains(&key.as_str()) || optional.contains(&key.as_str()))
+            && required.iter().all(|key| map.contains_key(*key))
+            && map.values().all(decimal)
+    })
 }
 
 fn id(value: &Value, valid: impl Fn(&str) -> bool) -> bool {
@@ -133,7 +137,7 @@ fn validate_block(value: &Value) -> bool {
 fn validate_group(sample: &Value, key: &str) -> bool {
     let value = &sample[key];
     match key {
-        "cpu" => u64_map(value, &["user", "system", "idle", "iowait", "steal", "total"]),
+        "cpu" => u64_map(value, &["user", "system", "idle", "total"], &["iowait", "steal"]),
         "load" => object(value, &["one", "five", "fifteen"]) && ["one", "five", "fifteen"].iter().all(|field| fixed(&value[*field], 3)),
         "mem" => {
             let required = ["total", "available", "swapTotal", "swapFree"];
@@ -161,9 +165,11 @@ fn validate_group(sample: &Value, key: &str) -> bool {
             value.as_array().is_some_and(|interfaces| {
                 interfaces.len() <= 16
                     && interfaces.iter().enumerate().all(|(index, interface)| {
-                        object(interface, &["id", "rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"])
-                            && id(&interface["id"], valid_ifname)
-                            && ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"].iter().all(|field| decimal(&interface[*field]))
+                        id(&interface["id"], valid_ifname)
+                            && interface.as_object().is_some_and(|map| {
+                                let counters: serde_json::Map<String, Value> = map.iter().filter(|(key, _)| *key != "id").map(|(key, value)| (key.clone(), value.clone())).collect();
+                                u64_map(&Value::Object(counters), &["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txErrors"], &["txDrops"])
+                            })
                             && interfaces[..index].iter().all(|other| other["id"] != interface["id"])
                     })
             })
@@ -342,8 +348,8 @@ fn serializer_uses_the_wire_names() {
             user: "1".into(),
             system: "2".into(),
             idle: "3".into(),
-            iowait: "4".into(),
-            steal: "5".into(),
+            iowait: Some("4".into()),
+            steal: Some("5".into()),
             total: "15".into(),
         }),
         ..Sample::empty(1, 2, 3)
@@ -358,7 +364,7 @@ fn serializer_uses_the_wire_names() {
     let disk = serde_json::to_value(disk).unwrap();
     assert!(disk.get("readSectors").is_some() && disk.get("ioMs").is_some());
 
-    let net = Net { id: "eth0".into(), rx_bytes: "1".into(), rx_packets: "2".into(), rx_drops: "3".into(), rx_errors: "4".into(), tx_bytes: "5".into(), tx_packets: "6".into(), tx_drops: "7".into(), tx_errors: "8".into() };
+    let net = Net { id: "eth0".into(), rx_bytes: "1".into(), rx_packets: "2".into(), rx_drops: "3".into(), rx_errors: "4".into(), tx_bytes: "5".into(), tx_packets: "6".into(), tx_drops: Some("7".into()), tx_errors: "8".into() };
     let net = serde_json::to_value(net).unwrap();
     assert!(net.get("rxBytes").is_some() && net.get("txErrors").is_some());
 

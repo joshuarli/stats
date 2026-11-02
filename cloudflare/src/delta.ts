@@ -24,11 +24,11 @@ function cpuDelta(previous: Cpu, current: Cpu): Cpu | null {
   const user = difference(current.user, previous.user);
   const system = difference(current.system, previous.system);
   const idle = difference(current.idle, previous.idle);
-  const iowait = difference(current.iowait, previous.iowait);
-  const steal = difference(current.steal, previous.steal);
   const total = difference(current.total, previous.total);
-  if ([user, system, idle, iowait, steal, total].some(value => value === null)) return null;
-  return { user: user!, system: system!, idle: idle!, iowait: iowait!, steal: steal!, total: total! };
+  if ([user, system, idle, total].some(value => value === null)) return null;
+  const optional = counterDelta(previous, current, CPU_OPTIONAL_FIELDS);
+  if (optional === null) return null;
+  return { user: user!, system: system!, idle: idle!, total: total!, ...optional };
 }
 
 function swapDelta(previous: Sample, current: Sample): SwapDelta | null {
@@ -40,6 +40,7 @@ function swapDelta(previous: Sample, current: Sample): SwapDelta | null {
   return swapIn === null || swapOut === null ? null : { swapIn, swapOut };
 }
 
+const CPU_OPTIONAL_FIELDS = ["iowait", "steal"] as const;
 export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
 export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
 
@@ -48,7 +49,8 @@ function counterDelta(previous: object, current: object, fields: readonly string
   const before = previous as Record<string, string>;
   const after = current as Record<string, string>;
   for (const field of fields) {
-    const value = difference(after[field]!, before[field]!);
+    if (after[field] === undefined || before[field] === undefined) continue;
+    const value = difference(after[field], before[field]);
     if (value === null) return null;
     delta[field] = value;
   }
@@ -78,7 +80,7 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
       if (prior === undefined) continue;
       const values = counterDelta(prior, net, NET_FIELDS);
       if (values === null) continue;
-      nets[net.id] = { id: net.id, rxBytes: values.rxBytes!, rxPackets: values.rxPackets!, rxDrops: values.rxDrops!, rxErrors: values.rxErrors!, txBytes: values.txBytes!, txPackets: values.txPackets!, txDrops: values.txDrops!, txErrors: values.txErrors! };
+      nets[net.id] = { id: net.id, ...values } as Net;
     }
   }
   return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), disks, nets };
