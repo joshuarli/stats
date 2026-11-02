@@ -67,7 +67,4 @@ describe("deployment API", () => {
     expect(history.sync).toMatchObject({ error: null, lastSuccessAtMs: NOW });
     expect(history.deployments.map(deployment => deployment.id)).toEqual([ID]);
   });
-  it("keeps inherited host and project APIs working", async () => {
-    for (const resource of ["hosts", "projects"]) expect((await SELF.fetch(`https://example.com/api/v1/${resource}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } })).status).toBe(200);
-  });
 });

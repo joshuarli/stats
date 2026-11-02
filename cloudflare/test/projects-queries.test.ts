@@ -100,6 +100,7 @@ describe("analytics query text", () => {
 
   it("passes the start as an ISO instant, binds each bucket, and rejects values that could change the statement", () => {
     expect(built.worker.params).toEqual({ script: "stuff", start: "2026-11-01T15:00:00.000Z" });
+    expect(routeQuery("stats", START_MS).params).toEqual({ script: "stats", start: "2026-11-01T15:00:00.000Z" });
     expect(built.r2Operations.params).toEqual({
       bucket0: "stuff-mycrates",
       bucket1: "stuff-mynpm",

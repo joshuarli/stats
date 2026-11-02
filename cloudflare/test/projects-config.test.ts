@@ -76,7 +76,7 @@ describe("project registry", () => {
 
   it("accepts only https probe URLs without credentials or fragments", () => {
     const withUrl = (url: string) => ({ ...valid, probes: [{ name: "npm", url }] });
-    expect(parse(withUrl("https://example.com/"))).toBeDefined();
+    expect(parse(withUrl("https://example.com/"))[0]?.probes).toEqual([{ name: "npm", url: "https://example.com/" }]);
     expect(rejection(withUrl("http://example.com/"))).toContain("probes[0].url");
     expect(rejection(withUrl("ftp://example.com/"))).toContain("probes[0].url");
     expect(rejection(withUrl("https://user:pw@example.com/"))).toContain("probes[0].url");
@@ -87,7 +87,7 @@ describe("project registry", () => {
   it("limits and distinguishes probes", () => {
     const probe = (n: number) => ({ name: `probe-${n}`, url: `https://example.com/${n}` });
     const many = Array.from({ length: MAX_PROBES_PER_PROJECT }, (_, i) => probe(i));
-    expect(parse({ ...valid, probes: many })).toBeDefined();
+    expect(parse({ ...valid, probes: many })[0]?.probes).toHaveLength(MAX_PROBES_PER_PROJECT);
     expect(rejection({ ...valid, probes: [...many, probe(9)] })).toContain("projects[0].probes: expected at most 8");
     expect(rejection({ ...valid, probes: [probe(1), { ...probe(2), name: "probe-1" }] })).toContain("probes[1].name: duplicate");
     expect(rejection({ ...valid, probes: [{ name: "Bad Name", url: "https://example.com/" }] })).toContain("probes[0].name");

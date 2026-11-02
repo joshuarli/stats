@@ -44,17 +44,27 @@ describe("probes", () => {
     expect([199, 200, 204, 301, 399, 400, 404, 500, 522].map(isUp)).toEqual([false, true, true, true, true, false, false, false, false]);
   });
 
-  it("records up and elapsed milliseconds for each probe in the current bucket", async () => {
+  it("records up and a time for each probe in the current bucket", async () => {
     const points = await runProbes({
       fetch: fetchWith({ [probes[0]!.url]: 200, [probes[1]!.url]: 301 }),
       probes,
       now: NOW,
-      clock: ticking(7),
     });
     expect(points.every((point) => point.bucketMs === BUCKET)).toBe(true);
     expect(valueOf(points, "probe.crates.up")).toBe(1);
     expect(valueOf(points, "probe.npm.up")).toBe(1);
-    expect(valueOf(points, "probe.crates.ms")).toBeGreaterThan(0);
+    expect(valueOf(points, "probe.crates.ms")).toBeTypeOf("number");
+    expect(valueOf(points, "probe.npm.ms")).toBeTypeOf("number");
+  });
+
+  it("measures elapsed time from the injected clock", async () => {
+    const points = await runProbes({
+      fetch: fetchWith({ [probes[0]!.url]: 200 }),
+      probes: [probes[0]!],
+      now: NOW,
+      clock: ticking(7),
+    });
+    expect(valueOf(points, "probe.crates.ms")).toBe(7);
   });
 
   it("does not follow redirects and asks with GET", async () => {

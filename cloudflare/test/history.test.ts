@@ -2,30 +2,13 @@ import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare
 import { describe, expect, it } from "vitest";
 import type { Installation } from "../src/installation";
 import { retentionDelayMs } from "../src/installation";
-import { privateJwk } from "./access-key";
-import { downsample, historyQuery } from "../src/aggregate";
+import { historyQuery } from "../src/aggregate";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
+import { accessToken } from "./access-token";
 import { readFrame as frame } from "./support/history";
 
-const encoder = new TextEncoder();
 const now = 1_793_510_415_000;
 const files: Record<string, string> = JSON.parse(env.FIXTURES ?? "{}");
-
-function b64url(value: Uint8Array | string): string {
-  const bytes = typeof value === "string" ? encoder.encode(value) : value;
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
-}
-
-async function accessToken(): Promise<string> {
-  const seconds = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", kid: "test-key", typ: "JWT" };
-  const claims = { iss: "https://test.cloudflareaccess.com", aud: "test-aud", exp: seconds + 3600, nbf: seconds - 10, iat: seconds - 10 };
-  const key = await crypto.subtle.importKey("jwk", privateJwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(`${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`));
-  return `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}.${b64url(new Uint8Array(signature))}`;
-}
 
 function stub() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
@@ -111,16 +94,17 @@ describe("history", () => {
     expect(body.points.length).toBe(2);
     expect(body.points[0]!.coverageMs).toBe(0);
     expect(body.points[1]!.coverageMs).toBe(15_000);
-    expect(body.points[1]!.cpu?.user).toBeGreaterThan(0);
+    expect(body.points[1]!.cpu?.user).toBe(9.609);
 
     for (const range of ["1h", "6h", "24h", "7d", "90d"]) {
       expect((await history(host.hostId, range, "summary")).status, range).toBe(200);
     }
-    for (const kind of ["disks", "nets", "filesystems"]) {
+    const seriesIds: Record<string, string[]> = { disks: ["259:0", "8:0"], nets: ["eth0", "tailscale0"], filesystems: ["/", "/var"] };
+    for (const kind of Object.keys(seriesIds)) {
       const response = await history(host.hostId, "1h", kind);
       expect(response.status, kind).toBe(200);
       const value = await frame(response) as { series: { id: string; points: unknown[] }[] };
-      expect(value.series.length, kind).toBeGreaterThan(0);
+      expect(value.series.map(series => series.id), kind).toEqual(seriesIds[kind]);
       expect(value.series.every(series => series.points.length <= 900), kind).toBe(true);
     }
 
@@ -159,9 +143,6 @@ describe("history", () => {
     expect(blockWeekBody.series[0]!.points[0]!.count).toBe(110);
     expect((await history(host.hostId, "2h", "summary")).status).toBe(400);
     expect((await history(host.hostId, "1h", "memory")).status).toBe(400);
-    const sampled = downsample(Array.from({ length: 1200 }, (_, index) => index)).items;
-    expect(sampled.length).toBeGreaterThan(0);
-    expect(sampled.length).toBeLessThanOrEqual(900);
   });
 
   it("returns several history kinds in one response", async () => {
@@ -357,10 +338,11 @@ describe("history reads", () => {
   it("returns history that includes a later batch", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    const before = ((await frame(await history(host.hostId, "1h", "summary"))) as { points: unknown[] }).points.length;
+    const before = (await frame(await history(host.hostId, "1h", "summary"))) as { points: { atMs: number }[] };
+    expect(before.points.map(point => point.atMs)).toEqual([now - 15_000, now]);
     expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
-    const after = ((await frame(await history(host.hostId, "1h", "summary"))) as { points: unknown[] }).points.length;
-    expect(after).toBeGreaterThan(before);
+    const after = (await frame(await history(host.hostId, "1h", "summary"))) as { points: { atMs: number }[] };
+    expect(after.points.map(point => point.atMs)).toEqual([now - 15_000, now, now]);
   });
 });
 

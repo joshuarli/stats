@@ -1,27 +1,9 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { verifyAccess } from "../src/access";
-import { privateJwk } from "./access-key";
+import { accessToken, b64url } from "./access-token";
 
-const encoder = new TextEncoder();
-const team = "test.cloudflareaccess.com";
 const audience = "test-aud";
-
-function b64url(value: Uint8Array | string): string {
-  const bytes = typeof value === "string" ? encoder.encode(value) : value;
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
-}
-
-async function accessToken(overrides: Record<string, unknown> = {}, header: Record<string, unknown> = {}): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const headerValue = { alg: "RS256", kid: "test-key", typ: "JWT", ...header };
-  const claims = { iss: `https://${team}`, aud: audience, exp: now + 3600, nbf: now - 10, iat: now - 10, ...overrides };
-  const key = await crypto.subtle.importKey("jwk", privateJwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(`${b64url(JSON.stringify(headerValue))}.${b64url(JSON.stringify(claims))}`));
-  return `${b64url(JSON.stringify(headerValue))}.${b64url(JSON.stringify(claims))}.${b64url(new Uint8Array(signature))}`;
-}
 
 function api(token?: string): Promise<Response> {
   return SELF.fetch("https://example.com/api/v1/hosts", { headers: token === undefined ? {} : { "Cf-Access-Jwt-Assertion": token } });

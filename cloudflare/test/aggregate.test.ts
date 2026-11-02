@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { combineRollups, rawPoints, rollupFromRaw, rollupPoints, type DiskPoint, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
+import { combineRollups, downsample, pointsFromRows, rollupFromRaw, rollupPoints, rowPoints, type DiskPoint, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
 import { computeDelta } from "../src/delta";
+import { MAX_POINTS, type HistoryKind } from "../src/limits";
 import type { Disk, Net, Sample } from "../src/protocol";
+
+const rawPoints = (rows: readonly RawRow[], kind: HistoryKind) => pointsFromRows(rows.map(rowPoints), kind);
 
 const disk = (sectors: string): Disk => ({
   id: "8:0",
@@ -211,7 +214,8 @@ describe("gpu and power", () => {
   it("gives no system watts for a bucket where readings did not advance", () => {
     const quiet: RawRow[] = [{ sample: third, delta: computeDelta(second, third, 15_000) }];
     const [point] = rollupPoints([rollupFromRaw(quiet, 0, 60_000)!], "summary") as SummaryPoint[];
-    expect(point!.power).toEqual({ gpuWatts: expect.any(Number) });
+    expect(point!.power!.gpuWatts).toBeCloseTo(2_000_000_000 / 15_000 / 1e6, 9);
+    expect(point!.power).not.toHaveProperty("systemWatts");
   });
 
   it("leaves everything absent when a sample lacks the groups, a counter regressed, or the total did not advance", () => {
@@ -244,5 +248,25 @@ describe("gpu and power", () => {
     const [point] = rollupPoints([stored], "summary") as SummaryPoint[];
     expect(point).not.toHaveProperty("gpu");
     expect(point).not.toHaveProperty("power");
+  });
+});
+
+describe("downsampling", () => {
+  it("keeps every stride-th point and reports the stride so the step widens with it", () => {
+    const { items, stride } = downsample(Array.from({ length: 1200 }, (_, index) => index));
+    expect(stride).toBe(2);
+    expect(items).toHaveLength(600);
+    expect(items[0]).toBe(0);
+    expect(items[1]).toBe(2);
+    expect(items.at(-1)).toBe(1198);
+    expect(items.length).toBeLessThanOrEqual(MAX_POINTS);
+  });
+
+  it("returns a copy unchanged when the input already fits", () => {
+    const input = [1, 2, 3];
+    const { items, stride } = downsample(input);
+    expect(stride).toBe(1);
+    expect(items).toEqual(input);
+    expect(items).not.toBe(input);
   });
 });

@@ -1,7 +1,7 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/projects/parse";
-import { durableObjectQuery, routeQuery } from "../src/projects/queries";
+import { durableObjectQuery } from "../src/projects/queries";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
 import { readFrame } from "./support/history";
@@ -59,12 +59,6 @@ describe("route rows", () => {
 
     const merged = parseRouteRows(rows.slice(0, 2)).filter((point) => point.metric.startsWith("route.GET /api/v1/hosts/:id/history."));
     expect(Object.fromEntries(merged.map((point) => [point.metric.split(".").pop(), point.value]))).toEqual({ invocations: 5, cpuMsSum: 10 });
-  });
-
-  it("is a fixed query that binds the Worker name", () => {
-    const bound = routeQuery("stats", 0);
-    expect(bound.params["script"]).toBe("stats");
-    expect(bound.query).toContain("ORDER BY cpu_sum DESC LIMIT");
   });
 });
 

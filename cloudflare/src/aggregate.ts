@@ -597,10 +597,6 @@ export function pointsFromRows(rows: readonly RowPoints[], kind: HistoryKind): H
   return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, group]) => ({ id, ...(group.name === undefined ? {} : { name: group.name }), points: group.points })) as never;
 }
 
-export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): HistoryPoints {
-  return pointsFromRows(rows.map(rowPoints), kind);
-}
-
 function rate(value: string | undefined, coverage: number, multiplier = 1): number {
   return value === undefined || coverage <= 0 ? 0 : (Number(value) * multiplier * 1000) / coverage;
 }

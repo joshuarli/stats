@@ -250,6 +250,24 @@ describe("project history", () => {
     expect(seriesOf(exact, "worker.status.5xx")[indexOf(exact, OLD_BUCKET)]).toBe(0);
   });
 
+  it("starts filling when the clock reaches the settle time of the newest bucket", async () => {
+    const settledAt = NEWEST_BUCKET + BUCKET + PROJECT_SETTLE_MS;
+    await record(metricRun(settledAt, []));
+    const filledAt = (now: number) => runInDurableObject(installation(), async (instance) => {
+      const original = (instance as unknown as { env: Env }).env;
+      Object.defineProperty(instance, "env", { value: { ...original, TEST_NOW_MS: String(now) }, configurable: true });
+      try {
+        const response = await instance.fetch(new Request("https://installation/projects/stuff/history?range=6h&kind=worker"));
+        const body = await readFrame(response) as { fromMs: number; stepMs: number; series: { metric: string; values: (number | null)[] }[] };
+        return seriesOf(body, "worker.invocations")[(NEWEST_BUCKET - body.fromMs) / body.stepMs];
+      } finally {
+        Object.defineProperty(instance, "env", { value: original, configurable: true });
+      }
+    });
+    expect(await filledAt(settledAt - 1)).toBeNull();
+    expect(await filledAt(settledAt)).toBe(0);
+  });
+
   it("fills while a run's 90 minute window still reaches the bucket and stops once it does not", async () => {
     await record(metricRun(OLD_BUCKET + 90 * 60_000, []));
     const inside = await history("6h", "worker");
@@ -264,7 +282,6 @@ describe("project history", () => {
     await record(metricRun(NOW - BUCKET, []), metricRun(OLD_BUCKET + HOUR_MS, []));
     const worker = await history("6h", "worker");
     expect(seriesOf(worker, "worker.invocations")[indexOf(worker, NEWEST_BUCKET)]).toBeNull();
-    expect(PROJECT_SETTLE_MS).toBe(45 * 60_000);
     expect(seriesOf(worker, "worker.cpuMsMax")[indexOf(worker, OLD_BUCKET)]).toBeNull();
     const r2 = await history("6h", "r2");
     expect(seriesOf(r2, "r2.stuff-mynpm.storageBytes")[indexOf(r2, OLD_BUCKET)]).toBeNull();
