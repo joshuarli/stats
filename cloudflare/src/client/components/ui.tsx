@@ -20,6 +20,7 @@ export function EntityCell(props: {
   readonly name: string;
   readonly href: string;
   readonly id: string;
+  readonly note?: string | undefined;
   readonly onHover?: ((hovered: boolean) => void) | undefined;
 }): JSX.Element {
   const hover = (hovered: boolean) => () => props.onHover?.(hovered);
@@ -28,7 +29,7 @@ export function EntityCell(props: {
       {props.marker}
       <div>
         <a class="entity-name" href={props.href} onMouseEnter={hover(true)} onFocus={hover(true)} onMouseLeave={hover(false)} onBlur={hover(false)}>{props.name}</a>
-        <span class="entity-id" title={props.id}>{props.id}</span>
+        <span class={props.note === undefined ? "entity-id" : "entity-id entity-note"} title={props.id}>{props.note ?? props.id}</span>
       </div>
     </div>
   );

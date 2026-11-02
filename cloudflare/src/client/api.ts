@@ -55,6 +55,7 @@ export interface SummaryPoint {
   readonly mem?: Mem;
   readonly psi?: Psi;
   readonly cpuCount?: number;
+  readonly uptimeMs?: number;
 }
 
 export interface DiskPoint {
@@ -326,7 +327,8 @@ function decodeSummaryPoint(value: unknown): SummaryPoint {
     ...(entry.load === undefined ? {} : { load: decodeLoad(entry.load) }),
     ...(entry.mem === undefined ? {} : { mem: decodeMem(entry.mem) }),
     ...(entry.psi === undefined ? {} : { psi: decodePsi(entry.psi) }),
-    ...(entry.cpuCount === undefined ? {} : { cpuCount: number(entry.cpuCount) })
+    ...(entry.cpuCount === undefined ? {} : { cpuCount: number(entry.cpuCount) }),
+    ...(entry.uptimeMs === undefined ? {} : { uptimeMs: number(entry.uptimeMs) })
   };
 }
 

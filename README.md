@@ -116,8 +116,10 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 ## Dashboard
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
-hosts with status chips (online, stale, no samples, revoked) above the table,
-and sortable columns.
+hosts with status chips (online, stale, no samples, revoked) above the table.
+A host row shows its status dot, OS, CPU model and core count, and sparklines
+for CPU, memory, disk, and network, so the state of the fleet reads without
+opening a host.
 
 Below the hosts, a Projects table lists each configured Cloudflare project with
 its collector state. A project page (`#/project/<id>`) shows a Worker's
@@ -132,15 +134,15 @@ in `cloudflare/cloudflare.config.ts`; see
 
 The host page opens with a status strip and an info button beside the host
 name. Hovering or focusing the button opens a card with the CPU model and
-topology, memory, OS, kernel, hostname, and agent version, which the agent
-reports with its first upload after an update and then hourly. Below that:
+topology, memory, OS, kernel, hostname, agent version, and uptime, which the
+agent reports with its first upload after an update and then hourly. Below that:
 
 - A status strip with one cell per resource (CPU, memory, load, pressure, swap
   paging, disk busy, filesystem, network faults): the current value, its state,
   and a trend. All eight fit in one row on a desktop, and a cell jumps to its
   chart.
-- Charts sit in two-column rows, and both cards in a row start at the same
-  height; no graph spans the page.
+- Charts sit in two-column rows, and the two cards in each row start at the
+  same top edge; no graph spans the page.
 - CPU (with steal and a CPU pressure panel) and load, both with a dashed line
   for the same window yesterday on the 1 h, 6 h, and 24 h ranges.
 - Memory: RAM and swap in use against total, swap paging, and memory pressure

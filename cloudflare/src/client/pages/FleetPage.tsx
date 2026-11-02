@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, Errored, For, isPending, latest
 import type { JSX } from "@solidjs/web";
 import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
-import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest } from "../metrics";
+import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest, sumSeries } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { collectorStatus, statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
@@ -266,7 +266,6 @@ function FleetDashboard(props: {
               <thead>
                 <tr>
                   {header("name", "Host")}
-                  {header("status", "Status")}
                   <th scope="col">CPU</th>
                   <th scope="col">Memory</th>
                   <th scope="col" class="numeric">Load 1m</th>
@@ -292,6 +291,7 @@ function FleetDashboard(props: {
 function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }): JSX.Element {
   const last = createMemo(() => latestPoint(props.row.summary));
   const status = createMemo(() => hostStatus(props.row.host));
+  const info = createMemo(() => props.row.system?.system);
   const cpu = createMemo(() => cpuUsed(last()));
   const memory = createMemo(() => memoryUsed(last()));
   const free = createMemo(() => memoryFree(last()));
@@ -300,38 +300,74 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
   const diskWrite = createMemo(() => sumLatest(props.row.disks, point => point.writeBytesPerSec));
   const netIn = createMemo(() => sumLatest(props.row.nets, point => point.rxBytesPerSec));
   const netOut = createMemo(() => sumLatest(props.row.nets, point => point.txBytesPerSec));
-  const trend = createMemo(() => sparkPoints(props.row.summary, cpuUsed));
+  const cpuTrend = createMemo(() => sparkPoints(props.row.summary, cpuUsed));
+  const memoryTrend = createMemo(() => sparkPoints(props.row.summary, memoryUsed));
+  const diskTrend = createMemo(() => sumSeries(props.row.disks, point => (point.readBytesPerSec === undefined || point.writeBytesPerSec === undefined ? undefined : point.readBytesPerSec + point.writeBytesPerSec)));
+  const netTrend = createMemo(() => sumSeries(props.row.nets, point => (point.rxBytesPerSec === undefined || point.txBytesPerSec === undefined ? undefined : point.rxBytesPerSec + point.txBytesPerSec)));
+  const cpuNote = createMemo(() => {
+    const cores = info()?.cpu.cores ?? last()?.cpuCount;
+    const threads = info()?.cpu.threads;
+    return [
+      cores === undefined ? undefined : `${count(cores)} cores`,
+      threads === undefined || threads === cores ? undefined : `${count(threads)} threads`
+    ].filter((part): part is string => part !== undefined).join(" · ");
+  });
+  const cpuModel = createMemo(() => info()?.cpu.model);
   const reporting = () => status().label === "online";
   return (
     <tr>
       <td>
         <EntityCell
-          marker={<span class={`status-dot tone-${status().tone}`} aria-hidden="true" />}
+          marker={<span class={`status-dot tone-${status().tone}`} role="img" aria-label={status().label} title={status().label} />}
           name={props.row.host.name}
           href={`#/host/${props.row.host.hostId}`}
           id={props.row.host.hostId}
+          note={info()?.os}
         />
-      </td>
-      <td><StateCell tone={status().tone} label={status().label} note={reporting() ? undefined : age(props.row.host.lastReceivedAtMs, props.now)} /></td>
-      <td>
-        <div class="cpu-cell">
-          <span class="metric-value-small">{percent(cpu())}</span>
-          <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
-          <Sparkline points={trend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
-        </div>
+        <Show when={!reporting()}>
+          <span class="cell-note">{age(props.row.host.lastReceivedAtMs, props.now)}</span>
+        </Show>
       </td>
       <td>
         <div class="cell-stack">
           <div class="cpu-cell">
-            <span class="metric-value-small">{percent(memory())}</span>
-            <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
+            <span class="metric-value-small">{percent(cpu())}</span>
+            <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
+            <Sparkline points={cpuTrend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
           </div>
-          <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
+          <Show when={cpuModel()}>
+            {(model) => <span class="cell-note clip-note" title={model()}>{model()}</span>}
+          </Show>
+          <Show when={cpuNote()}>
+            <span class="cell-note">{cpuNote()}</span>
+          </Show>
+        </div>
+      </td>
+      <td>
+        <div class="cpu-cell">
+          <div class="cell-stack">
+            <div class="cpu-cell">
+              <span class="metric-value-small">{percent(memory())}</span>
+              <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
+            </div>
+            <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
+          </div>
+          <Sparkline points={memoryTrend()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
         </div>
       </td>
       <td class="numeric"><span class="metric-value-small">{count(loadOne(last()))}</span></td>
-      <td><span class="cell-strong">{rate(diskRead())}</span><span class="cell-note"> / {rate(diskWrite())}</span></td>
-      <td><span class="cell-strong">{rate(netIn())}</span><span class="cell-note"> / {rate(netOut())}</span></td>
+      <td>
+        <div class="cpu-cell">
+          <span><span class="cell-strong">{rate(diskRead())}</span><span class="cell-note"> / {rate(diskWrite())}</span></span>
+          <Sparkline points={diskTrend()} label={`${props.row.host.name} disk throughput trend`} class="spark-inline" />
+        </div>
+      </td>
+      <td>
+        <div class="cpu-cell">
+          <span><span class="cell-strong">{rate(netIn())}</span><span class="cell-note"> / {rate(netOut())}</span></span>
+          <Sparkline points={netTrend()} label={`${props.row.host.name} network throughput trend`} class="spark-inline" />
+        </div>
+      </td>
       <td class="numeric"><span class="metric-value-small">{percent(psiCpu(last()))}</span></td>
     </tr>
   );

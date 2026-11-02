@@ -2,6 +2,7 @@ import { For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { HostSystem } from "../../api";
 import { bytes } from "../../format";
+import { duration } from "../../health";
 import { HoverCard } from "../../components/ui";
 
 function ghz(mhz: number): string {
@@ -12,11 +13,12 @@ function plural(value: number, noun: string): string {
   return `${value} ${noun}${value === 1 ? "" : "s"}`;
 }
 
-export function SystemInfo(props: { readonly system: HostSystem | null; readonly memoryBytes: () => number | undefined }): JSX.Element {
+export function SystemInfo(props: { readonly system: HostSystem | null; readonly memoryBytes: () => number | undefined; readonly uptimeMs: () => number | undefined }): JSX.Element {
   const facts = () => {
     const found = props.system;
     if (found === null) return [];
     const { system } = found;
+    const uptime = props.uptimeMs();
     const topology = [
       system.cpu.cores === undefined ? undefined : plural(system.cpu.cores, "core"),
       plural(system.cpu.threads, "thread"),
@@ -27,7 +29,8 @@ export function SystemInfo(props: { readonly system: HostSystem | null; readonly
       { label: "CPU", value: system.cpu.model ?? "unknown model", detail: topology.join(" · ") },
       { label: "Memory", value: bytes(props.memoryBytes()), detail: undefined },
       { label: "OS", value: system.os ?? "unknown", detail: `kernel ${system.kernel} · ${system.arch}` },
-      { label: "Hostname", value: system.hostname, detail: `agent ${system.agent}` }
+      { label: "Hostname", value: system.hostname, detail: `agent ${system.agent}` },
+      { label: "Uptime", value: uptime === undefined ? "—" : duration(uptime), detail: undefined }
     ];
   };
   return (

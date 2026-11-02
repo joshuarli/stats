@@ -116,7 +116,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             <Badge tone={status().tone} dot>{status().label}</Badge>
             <Errored fallback={null}>
               <Loading fallback={null}>
-                <SystemInfo system={system()} memoryBytes={() => summary().points?.at(-1)?.mem?.total} />
+                <SystemInfo system={system()} memoryBytes={() => summary().points?.at(-1)?.mem?.total} uptimeMs={() => summary().points?.at(-1)?.uptimeMs} />
               </Loading>
             </Errored>
           </>

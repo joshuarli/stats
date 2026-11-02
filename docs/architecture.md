@@ -276,10 +276,12 @@ operator secret.
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its
 resource group; a tile past a limit gets a status-coloured edge and tint, and
-the host's eight tiles share one row. Chart cards are laid out in aligned
-two-column rows so both cards in a row start at the same height; the host's
-CPU, memory, OS, kernel, and agent facts live in a hover card beside its name
-rather than on the page. A chart's axis fits its data, and an elevated limit is
+the host's eight tiles share one row. The fleet table carries the status dot,
+OS, CPU model and core count, and a sparkline for CPU, memory, disk, and
+network. Chart cards are laid out in aligned
+two-column rows so both cards in a row start at the same top edge; the host's
+CPU, memory, OS, kernel, agent, and uptime facts live in a hover card beside
+its name rather than on the page. A chart's axis fits its data, and an elevated limit is
 drawn only once the data reaches half of it. Periods outside a chart's limits
 get a tinted vertical band, and hovering one shows its peak, range, and
 duration. On project pages the newest buckets, which the collector has not yet

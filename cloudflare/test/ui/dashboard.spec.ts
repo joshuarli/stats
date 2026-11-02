@@ -13,6 +13,7 @@ function summary(range: string, empty = false) {
       atMs: now - (length - index) * step,
       coverageMs: step,
       partial: false,
+      uptimeMs: 3_600_000 + index * step,
       cpu: { user: index >= 8 ? 93 : 8 + index, system: 3, idle: 80, iowait: 1, steal: 0 },
       load: { one: 0.4 + index / 100, five: 0.5, fifteen: 0.6 },
       mem: { total: 8_589_934_592, available: 4_294_967_296 - index * 1_000_000, swapUsed: 0, swapInBytesPerSec: 4096 * index, swapOutBytesPerSec: 8192 },
@@ -199,8 +200,14 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await page.goto("/");
   const fleetTable = page.getByRole("table", { name: "Fleet hosts" });
   await expect(fleetTable.getByRole("link", { name: "alpha" })).toBeVisible();
-  await expect(fleetTable).toContainText("online");
+  await expect(fleetTable.locator(".status-dot").first()).toHaveAttribute("title", "online");
+  await expect(fleetTable).toContainText("AMD Ryzen 9 9950X 16-Core Processor");
+  await expect(fleetTable).toContainText("16 cores · 32 threads");
+  await expect(fleetTable).toContainText("Alpine Linux edge");
   await expect(page.getByRole("img", { name: "alpha CPU trend" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "alpha memory trend" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "alpha disk throughput trend" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "alpha network throughput trend" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("fleet.png"), fullPage: true });
 
   await fleetTable.getByRole("link", { name: "alpha" }).click();
@@ -213,6 +220,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(system).toContainText("kernel 7.2.9-2-stable · x86_64");
   await expect(system).toContainText("alpha-box");
   await expect(system).toContainText("8 GiB");
+  await expect(system).toContainText("Uptime");
   await page.mouse.move(0, 0);
   await expect(page.getByLabel("Host metadata")).toHaveCount(0);
   const cpuCell = page.getByRole("button", { name: /^CPU: .*Jump to chart/ });
@@ -294,7 +302,7 @@ test("a bad period is marked on the strip and explained on chart hover", async (
 test("missing and stale data never become zero", async ({ page }) => {
   await mock(page, { online: false, empty: true, system: false });
   await page.goto("/");
-  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("stale");
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).locator(".status-dot").first()).toHaveAttribute("title", "stale");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
   await page.getByRole("button", { name: "Host information" }).click();
@@ -600,9 +608,9 @@ test("project charts follow a refresh, not just the first load", async ({ page }
 });
 
 test("a status pill keeps its place and background when hovered", async ({ page }) => {
-  await mock(page, { online: false });
+  await mock(page);
   await page.goto("/");
-  const table = page.getByRole("table", { name: "Fleet hosts" });
+  const table = page.getByRole("table", { name: "Projects" });
   const cell = table.locator(".state-cell").first();
   const before = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
   await cell.locator(".badge").hover({ force: true });
@@ -610,7 +618,7 @@ test("a status pill keeps its place and background when hovered", async ({ page 
   expect(after).toEqual(before);
   expect(before[1]).toBe("0px");
   const pill = await cell.locator(".badge").boundingBox();
-  const name = await table.getByRole("link", { name: "alpha" }).boundingBox();
+  const name = await table.getByRole("link", { name: "stuff" }).boundingBox();
   expect(Math.abs((pill!.y + pill!.height / 2) - (name!.y + name!.height / 2))).toBeLessThan(14);
 });
 
