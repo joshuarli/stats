@@ -60,11 +60,14 @@ cf workers deployments create --worker stats \
 
 ## Observability
 
-`cloudflare.config.ts` enables Workers Logs at 10% head sampling. The Worker
+`cloudflare.config.ts` enables Workers Logs and Workers traces, each at 10%
+head sampling. Traces carry the platform's automatic spans, including one per
+Durable Object SQLite statement with its query and row counts; the Worker adds
+no custom spans. The Worker
 writes a fixed JSON line for ingest rejections other than duplicates, alarm
 failures, and the 500 catch-all, with `event`, `hostId` when known, and `code`.
 The free plan includes 200,000 log events per day with three-day retention.
-Set a spend alarm before raising `headSamplingRate` or the fleet size, and
+Set a spend alarm before raising either `headSamplingRate` or the fleet size, and
 lower the rate or move to Workers Paid when the allowance is close.
 
 ## Project collection

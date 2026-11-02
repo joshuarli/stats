@@ -64,7 +64,8 @@ export default defineConfig({
     previewUrls: false,
     observability: {
       enabled: true,
-      logs: { enabled: true, invocationLogs: true, headSamplingRate: 0.1 }
+      logs: { enabled: true, invocationLogs: true, headSamplingRate: 0.1 },
+      traces: { enabled: true, headSamplingRate: 0.1 }
     },
     ...(domain === undefined ? {} : { domains: [domain] })
   }

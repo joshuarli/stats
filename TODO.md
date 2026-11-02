@@ -24,7 +24,7 @@ Next: 43
 - **Area:** Performance
 - **Where:** `cloudflare/src/installation.ts:327`
 - **Problem:** In `events.durableObjectsInvocations` the HTTP calls with about 88 KB responses took 52 and 55 ms of CPU on 2026-11-01 (a third took 34 ms at 83 KB), against a 5.3 ms average for all HTTP calls. `buildHistory` parses the payload and delta JSON of every raw sample in the window on a cache miss, and the four-window `historyCache` is lost whenever the object is evicted. Unproven: the parse is the dominant cost.
-- **Recommendation:** Profile one raw-resolution read by phase (SQL, parse, `rollupPoints`, `compact`). If parsing dominates, read the 1m rollups for windows that do not need 15 s steps, or keep the parsed window across requests only while the object is alive and say so.
+- **Recommendation:** Capture a CPU profile of the Durable Object while the dashboard reads raw-resolution history, and attribute it to SQL, parse, `rollupPoints`, and `compact`. Do not time phases with `Date.now()` or `performance.now()`: the runtime freezes them between I/O, so CPU-only phases read as zero. If parsing dominates, read the 1m rollups for windows that do not need 15 s steps, or keep the parsed window across requests only while the object is alive and say so.
 - **Fix with:** make-it-fast
 - **Effort:** M
 
@@ -33,7 +33,7 @@ Next: 43
 - **Area:** Performance
 - **Where:** `cloudflare/src/installation.ts:431`
 - **Problem:** The slowest HTTP calls with 49-byte (ingest) responses took 33 to 47 ms of CPU on 2026-11-01, against 5.3 ms for the average HTTP call. A Node microbenchmark of the pure-JS phases on `fixtures/v1/batch-full.json` came to about 0.8 ms per ingest, 0.64 ms of it the hour rebuild, so the tail is not JS. SQLite work or a cold wake is the suspect. Unproven.
-- **Recommendation:** Count `rowsRead` and `rowsWritten` per statement for one ingest in a test, and compare slow and fast invocations by wall time against CPU. Do not move the hour rebuild until that shows it matters, because deferring it changes how fresh the 90-day charts are.
+- **Recommendation:** Compare the SQLite statement spans (query, rows read and written) of slow and fast ingest traces, now that the Worker samples traces, and compare their wall time against CPU. Do not move the hour rebuild until that shows it matters, because deferring it changes how fresh the 90-day charts are.
 - **Fix with:** make-it-fast
 - **Effort:** M
 

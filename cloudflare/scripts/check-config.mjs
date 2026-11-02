@@ -10,7 +10,8 @@ const checks = [
   ["production environment", /ENVIRONMENT:\s*bindings\.text\("production"\)/u],
   ["sqlite export", /Installation:\s*exports\.durableObject\(\{\s*storage:\s*"sqlite"\s*\}\)/u],
   ["workers logs", /observability:\s*\{[\s\S]*?enabled:\s*true/u],
-  ["log sampling", /logs:\s*\{[\s\S]*?headSamplingRate:\s*0\.1/u]
+  ["log sampling", /logs:\s*\{[\s\S]*?headSamplingRate:\s*0\.1/u],
+  ["trace sampling", /traces:\s*\{\s*enabled:\s*true,\s*headSamplingRate:\s*0\.1\s*\}/u]
 ];
 const failures = checks.filter(([, pattern]) => !pattern.test(text)).map(([name]) => name);
 if (failures.length > 0) {
