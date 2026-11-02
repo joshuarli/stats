@@ -1,14 +1,17 @@
 import { useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { Series, SummaryPoint } from "../../api";
-import type { ChartPoint } from "../../chart-data";
+import type { Cells } from "../../columns";
 import { count, isFiniteNumber } from "../../format";
+import type { DeviceSeries, SummaryTable } from "../../history";
 import { rebootTimes } from "../../monitoring";
 import { TimeChart, type ChartEvent, type TimeChartProps, type VizColor } from "../../components/TimeChart";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
+import type { HostKind } from "../../../binary/history";
 
 export const AXIS_WIDTH = 76;
 export const SERIES_COLORS = ["blue", "aqua", "violet", "magenta"] as const satisfies readonly VizColor[];
+
+type DeviceKind = Exclude<HostKind, "summary">;
 
 export function seriesColor(index: number): VizColor {
   return SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral";
@@ -18,30 +21,30 @@ export function perSecond(value: number | undefined): string {
   return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
 }
 
-export function rebootEvents(points: readonly SummaryPoint[]): ChartEvent[] {
-  return rebootTimes(points).map(atMs => ({ atMs, label: "↻ reboot" }));
+export function rebootEvents(table: SummaryTable): ChartEvent[] {
+  return rebootTimes(table.times, table.cells("uptimeMs")).map(atMs => ({ atMs, label: "↻ reboot" }));
 }
 
-export function peakOf<T extends { readonly atMs: number }>(entry: Series<T>, pick: (point: T) => number | undefined): number {
-  return Math.max(Number.NEGATIVE_INFINITY, ...entry.points.map(point => pick(point) ?? Number.NEGATIVE_INFINITY));
+export function peakOf(cells: Cells): number {
+  let peak = Number.NEGATIVE_INFINITY;
+  for (const value of cells) if (value !== null && value > peak) peak = value;
+  return peak;
 }
 
-export function topSeries<T extends { readonly atMs: number }>(series: readonly Series<T>[], pick: (point: T) => number | undefined): Series<T>[] {
-  const ranked = [...series].sort((left, right) => peakOf(right, pick) - peakOf(left, pick)).slice(0, SERIES_COLORS.length);
+export function topSeries<K extends DeviceKind>(series: readonly DeviceSeries<K>[], cells: (table: DeviceSeries<K>["table"]) => Cells): DeviceSeries<K>[] {
+  const peaks = new Map(series.map(entry => [entry, peakOf(cells(entry.table))]));
+  const ranked = [...series].sort((left, right) => peaks.get(right)! - peaks.get(left)!).slice(0, SERIES_COLORS.length);
   return ranked.sort((left, right) => left.id.localeCompare(right.id));
 }
 
-export function colorsFor<T extends { readonly atMs: number }>(shown: readonly Series<T>[]): ReadonlyMap<string, VizColor> {
+export function colorsFor<K extends DeviceKind>(shown: readonly DeviceSeries<K>[]): ReadonlyMap<string, VizColor> {
   return new Map(shown.map((entry, index) => [entry.id, SERIES_COLORS[index] ?? "neutral"]));
 }
 
-export function activeSeries<T extends { readonly atMs: number }>(series: readonly Series<T>[], stepMs: number): readonly Series<T>[] {
-  const latest = Math.max(0, ...series.map(entry => entry.points.at(-1)?.atMs ?? 0));
-  return series.filter(entry => (entry.points.at(-1)?.atMs ?? 0) >= latest - 2 * stepMs);
-}
-
-export function summarySeries(points: readonly SummaryPoint[], pick: (point: SummaryPoint) => number | undefined): ChartPoint[] {
-  return points.map(point => ({ atMs: point.atMs, value: pick(point) }));
+export function activeSeries<K extends DeviceKind>(series: readonly DeviceSeries<K>[], stepMs: number): readonly DeviceSeries<K>[] {
+  const lastAt = (entry: DeviceSeries<K>) => entry.table.times.at(-1) ?? 0;
+  const latest = Math.max(0, ...series.map(lastAt));
+  return series.filter(entry => lastAt(entry) >= latest - 2 * stepMs);
 }
 
 export function PanelChart(props: TimeChartProps): JSX.Element {

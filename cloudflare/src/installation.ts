@@ -2,7 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rangeKey, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
+import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rangeKey, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
+import { HISTORY_CONTENT_TYPE } from "./binary/history";
+import { encodeHostBundle, encodeHostHistory, encodeProjectBundle, encodeProjectHistory, hostHistoryColumns, type HostHistory, type HostHistoryColumns } from "./history-frame";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
@@ -49,23 +51,6 @@ export interface LatestSample {
 export type AdminResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly status: 400 | 404; readonly code: "invalid_request" | "not_found"; readonly message: string };
-
-export interface History {
-  readonly hostId: string;
-  readonly range?: RangeKey;
-  readonly kind: HistoryKind;
-  readonly fromMs: number;
-  readonly toMs: number;
-  readonly resolution: "raw" | "1m" | "1h";
-  readonly stepMs: number;
-  readonly points?: readonly unknown[];
-  readonly series?: readonly unknown[];
-}
-
-export interface HistoryBundle {
-  readonly hostId: string;
-  readonly histories: Readonly<Partial<Record<HistoryKind, History>>>;
-}
 
 const HOSTS = `CREATE TABLE IF NOT EXISTS hosts (
   host_id TEXT PRIMARY KEY,
@@ -183,7 +168,11 @@ function notModified(etag: string): Response {
 }
 
 function historyEtag(scope: string, version: number | null, window: string, kinds: string): string {
-  return `"${scope}:${version ?? "none"}:${window}:${kinds}"`;
+  return `"${scope}:${version ?? "none"}:${window}:${kinds}:stc1"`;
+}
+
+function frameResponse(frame: Uint8Array<ArrayBuffer>, etag: string): Response {
+  return new Response(frame, { headers: { "Content-Type": HISTORY_CONTENT_TYPE, ETag: etag } });
 }
 
 function historyWindowKey(query: HistoryQuery): string {
@@ -256,7 +245,7 @@ type RawSampleRow = {
 
 function cachedRow(row: RawSampleRow): CachedRow {
   const raw: RawRow = { sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) };
-  return { atMs: row.at_ms, monoMs: row.mono_ms, points: compact(rowPoints(raw)) };
+  return { atMs: row.at_ms, monoMs: row.mono_ms, points: rowPoints(raw) };
 }
 
 function rowOrder(left: CachedRow, right: CachedRow): number {
@@ -275,7 +264,7 @@ function firstAtOrAfter(rows: readonly CachedRow[], atMs: number): number {
 }
 
 export class Installation extends DurableObject<Env> {
-  private readonly historyCache = new Map<string, (kind: HistoryKind) => History>();
+  private readonly historyCache = new Map<string, (kind: HistoryKind) => HostHistoryColumns>();
   private readonly rawRows = new Map<string, HostRawRows>();
   private rawRowsThrough = 0;
 
@@ -438,7 +427,7 @@ export class Installation extends DurableObject<Env> {
     for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
-  private historyWindow(hostId: string, query: HistoryQuery): ((kind: HistoryKind) => History) | null {
+  private historyWindow(hostId: string, query: HistoryQuery): ((kind: HistoryKind) => HostHistoryColumns) | null {
     if (this.host(hostId) === undefined) return null;
     const now = this.now();
     const at = Math.floor(now / RAW_STEP_MS) * RAW_STEP_MS;
@@ -457,52 +446,38 @@ export class Installation extends DurableObject<Env> {
     return build;
   }
 
-  async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
-    return this.historyWindow(hostId, query)?.(kind) ?? null;
-  }
-
-  async histories(hostId: string, query: HistoryQuery, kinds: readonly HistoryKind[]): Promise<HistoryBundle | null> {
-    const build = this.historyWindow(hostId, query);
-    if (build === null) return null;
-    const histories: Partial<Record<HistoryKind, History>> = {};
-    for (const kind of kinds) histories[kind] = build(kind);
-    return { hostId, histories };
-  }
-
-  private historyBuilder(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h", now: number): (kind: HistoryKind) => History {
+  private historyBuilder(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h", now: number): (kind: HistoryKind) => HostHistoryColumns {
     const bucketMs = resolution === "raw" ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     let pointsFor: (kind: HistoryKind) => HistoryPoints;
-    let rounded: <T>(value: T) => T;
     if (resolution === "raw") {
       const rows = this.rawRowsBetween(hostId, fromMs, toMs, now).map(row => row.points);
       pointsFor = kind => pointsFromRows(rows, kind);
-      rounded = value => value;
     } else {
       const rows = this.ctx.storage.sql.exec<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs).toArray();
       const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
       pointsFor = kind => rollupPoints(payloads, kind);
-      rounded = compact;
     }
-    const built = new Map<HistoryKind, History>();
+    const built = new Map<HistoryKind, HostHistoryColumns>();
     return kind => {
       const existing = built.get(kind);
       if (existing !== undefined) return existing;
       const points = pointsFor(kind);
-      let history: History;
+      let history: HostHistory;
       if (kind === "summary") {
         const sampled = downsample(points as Parameters<typeof downsample>[0]);
-        history = rounded({ hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items }) as History;
+        history = { hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items } as HostHistory;
       } else {
         const series = points as { id: string; name?: string; points: unknown[] }[];
         const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
         const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
-        history = rounded({
+        history = {
           hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
           series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
-        }) as History;
+        } as HostHistory;
       }
-      built.set(kind, history);
-      return history;
+      const columns = hostHistoryColumns(history);
+      built.set(kind, columns);
+      return columns;
     };
   }
 
@@ -541,13 +516,14 @@ export class Installation extends DurableObject<Env> {
       if (kinds === null) return failure("invalid_request", "kinds must be supported project kinds", 400);
       const etag = historyEtag(`project:${project.id}`, version, windowKey, kinds.join("+"));
       if (etagMatches(request, etag)) return notModified(etag);
-      return json(readProjectHistories(sql, project, key, kinds, this.now()), 200, { ETag: etag });
+      const { histories } = readProjectHistories(sql, project, key, kinds, this.now());
+      return frameResponse(encodeProjectBundle(project.id, kinds.map(kind => histories[kind]!)), etag);
     }
     const kind = projectKind(kindParam);
     if (kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
     const etag = historyEtag(`project:${project.id}`, version, windowKey, kind);
     if (etagMatches(request, etag)) return notModified(etag);
-    return json(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now()), 200, { ETag: etag });
+    return frameResponse(encodeProjectHistory(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now())), etag);
   }
 
   private async ensureAlarm(now: number): Promise<void> {
@@ -727,15 +703,15 @@ export class Installation extends DurableObject<Env> {
           if (kinds === null) return failure("invalid_request", "kinds must be supported history kinds", 400);
           const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(found.host_id), historyWindowKey(query), kinds.join("+"));
           if (etagMatches(request, etag)) return notModified(etag);
-          const result = await this.histories(history[1]!, query, kinds);
-          return result === null ? failure("not_found", "host not found", 404) : json(result, 200, { ETag: etag });
+          const build = this.historyWindow(found.host_id, query);
+          return build === null ? failure("not_found", "host not found", 404) : frameResponse(encodeHostBundle(found.host_id, kinds.map(build)), etag);
         }
         const kind = kindParam === null ? "summary" : kindValue(kindParam);
         if (kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
         const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(found.host_id), historyWindowKey(query), kind);
         if (etagMatches(request, etag)) return notModified(etag);
-        const result = await this.history(history[1]!, query, kind);
-        return result === null ? failure("not_found", "host not found", 404) : json(result, 200, { ETag: etag });
+        const build = this.historyWindow(found.host_id, query);
+        return build === null ? failure("not_found", "host not found", 404) : frameResponse(encodeHostHistory(build(kind)), etag);
       }
       if (path === "/projects" && request.method === "GET") return this.projectList();
       const projectHistory = /^\/projects\/([a-z][a-z0-9-]{0,31})\/history$/u.exec(path);

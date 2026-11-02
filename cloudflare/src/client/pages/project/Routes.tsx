@@ -4,7 +4,8 @@ import type { TimeWindow } from "../../chart-data";
 import { count, milliseconds, percent } from "../../format";
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart } from "../host/shared";
-import { durableObjectCpuAverage, durableObjectWallAverage, metricPoints, provisionalFromMs, routeRows, type ProjectData } from "./series";
+import { durableObjectCpuAverage, durableObjectWallAverage, provisionalFromMs, routeRows, type ProjectData } from "./series";
+import { metricTrack } from "../../history";
 
 export function RoutesWidget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
   const rows = () => routeRows(props.data.routes, props.view);
@@ -50,8 +51,8 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             label="Durable Object invocations"
             timeAxis={false}
             series={[
-              { label: "invocations", color: "blue", scored: false, points: metricPoints(history()!, "do.invocations") },
-              { label: "errors", color: "critical", scored: false, points: metricPoints(history()!, "do.errors") }
+              { label: "invocations", color: "blue", scored: false, track: metricTrack(history()!, "do.invocations") },
+              { label: "errors", color: "critical", scored: false, track: metricTrack(history()!, "do.errors") }
             ]}
             format={count}
             min={0}
@@ -63,7 +64,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             label="Durable Object average CPU time"
             area
             timeAxis={false}
-            series={[{ label: "average", color: "neutral", scored: false, points: durableObjectCpuAverage(history()!) }]}
+            series={[{ label: "average", color: "neutral", scored: false, track: durableObjectCpuAverage(history()!) }]}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
@@ -73,7 +74,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
           <PanelChart
             label="Durable Object maximum CPU time"
             timeAxis={false}
-            series={[{ label: "maximum", color: "violet", scored: false, points: metricPoints(history()!, "do.cpuMsMax") }]}
+            series={[{ label: "maximum", color: "violet", scored: false, track: metricTrack(history()!, "do.cpuMsMax") }]}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}
@@ -82,7 +83,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
           <PanelLabel>Average wall time</PanelLabel>
           <PanelChart
             label="Durable Object average wall time"
-            series={[{ label: "average", color: "aqua", scored: false, points: durableObjectWallAverage(history()!) }]}
+            series={[{ label: "average", color: "aqua", scored: false, track: durableObjectWallAverage(history()!) }]}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}

@@ -17,7 +17,8 @@ import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
-import { buildProjectCells, hasAnyValue, metricPoints, silenceMinutes, type ProjectData } from "./project/series";
+import { metricTrack } from "../history";
+import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 
 export function ProjectPage(): JSX.Element {
@@ -95,7 +96,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   }));
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
   const cells = createMemo(() => buildProjectCells(data(), view()));
-  const hasData = createMemo(() => hasAnyValue(metricPoints(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricPoints(data().r2, `r2.${bucket}.storageBytes`))));
+  const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
   const deployments = createProjectDeployments(id, () => `${projectTick()}:${manualTick()}`);
 

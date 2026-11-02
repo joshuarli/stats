@@ -4,6 +4,7 @@ import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRo
 import { durableObjectQuery, routeQuery } from "../src/projects/queries";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
+import { readFrame } from "./support/history";
 
 const NOW = 1_793_510_415_000;
 const BUCKET = 300_000;
@@ -18,7 +19,7 @@ async function history(kind: string): Promise<{ series: { metric: string; values
     headers: { "Cf-Access-Jwt-Assertion": await accessToken() },
   });
   expect(response.status).toBe(200);
-  return response.json();
+  return await readFrame(response) as Awaited<ReturnType<typeof history>>;
 }
 
 function routeRow(label: string, cpuSum: number, invocations = 10, slot = 0) {

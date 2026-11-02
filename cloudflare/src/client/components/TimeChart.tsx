@@ -2,20 +2,19 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { alignSeries, windowIndexes, windowStats, type ChartPoint } from "../chart-data";
+import { alignTracks, windowIndexes, windowStats } from "../chart-data";
+import type { Track } from "../columns";
 import { axisTime, clock, percent } from "../format";
 import { episodeText, evaluate, healthOf, markersOf, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
 import { HealthMark } from "./ui";
-
-export type { ChartPoint };
 
 export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "ghost" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
 
 export interface ChartSeries {
   readonly label: string;
   readonly color: number | VizColor;
-  readonly points: readonly ChartPoint[];
+  readonly track: Track;
   readonly dashed?: boolean | undefined;
   readonly scored?: boolean | undefined;
   readonly graded?: boolean | undefined;
@@ -73,7 +72,7 @@ function withAlpha(color: string, alpha: number): string | undefined {
 export function TimeChart(props: TimeChartProps): JSX.Element {
   const telemetry = useTelemetry();
   const format = (value: number | null | undefined): string => (value === null || value === undefined ? "—" : (props.format ?? percent)(value));
-  const aligned = createMemo(() => alignSeries(props.series.map(entry => entry.points), props.stepMs));
+  const aligned = createMemo(() => alignTracks(props.series.map(entry => entry.track), props.stepMs));
   const hasData = createMemo(() => aligned().columns.some(column => column.some(value => value !== null)));
   const signature = createMemo(() => props.series.map(entry => `${entry.label}:${entry.color}`).join("|"));
   const [hidden, setHidden] = createSignal<ReadonlySet<string>>(new Set<string>());
@@ -104,7 +103,10 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   };
 
   const mirrored = createMemo(() => props.series.some(entry => entry.mirror === true));
-  const data = (): uPlot.AlignedData => [aligned().times.map(time => time / 1000), ...aligned().columns.map((column, position) => (props.series[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]))] as uPlot.AlignedData;
+  const data = (): uPlot.AlignedData => {
+    const columns = aligned().columns.map((column, position) => (props.series[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]));
+    return [aligned().times.map(time => time / 1000), ...columns];
+  };
 
   const applyView = () => {
     const times = aligned().times;

@@ -1,25 +1,21 @@
 import { createMemo, createUniqueId } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Health } from "../health";
+import type { Cells } from "../columns";
 import type { VizColor } from "./TimeChart";
 
-export interface SparkPoint {
-  readonly atMs: number;
-  readonly value?: number | undefined;
-}
-
-export function Sparkline(props: { readonly points: readonly SparkPoint[]; readonly label: string; readonly color?: number | undefined; readonly hue?: VizColor | undefined; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
+export function Sparkline(props: { readonly values: Cells; readonly label: string; readonly color?: number | undefined; readonly hue?: VizColor | undefined; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
   const id = createUniqueId();
   const geometry = createMemo(() => {
-    const points = props.points.filter((point): point is { readonly atMs: number; readonly value: number } => point.value !== undefined && Number.isFinite(point.value));
-    if (points.length === 0) return null;
-    const low = props.zeroBased === true ? Math.min(0, ...points.map(point => point.value)) : Math.min(...points.map(point => point.value));
-    const high = Math.max(...points.map(point => point.value));
+    const values = props.values.filter((value): value is number => value !== null && Number.isFinite(value));
+    if (values.length === 0) return null;
+    const low = props.zeroBased === true ? Math.min(0, ...values) : Math.min(...values);
+    const high = Math.max(...values);
     const span = high - low || 1;
-    const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${((index / Math.max(1, points.length - 1)) * 160).toFixed(2)},${(36 - ((point.value - low) / span) * 30).toFixed(2)}`).join(" ");
+    const path = values.map((value, index) => `${index === 0 ? "M" : "L"}${((index / Math.max(1, values.length - 1)) * 160).toFixed(2)},${(36 - ((value - low) / span) * 30).toFixed(2)}`).join(" ");
     const area = `${path} L160,40 L0,40 Z`;
-    const last = points.at(-1);
-    const lastY = last === undefined ? 36 : 36 - ((last.value - low) / span) * 30;
+    const last = values.at(-1);
+    const lastY = last === undefined ? 36 : 36 - ((last - low) / span) * 30;
     return { path, area, lastY };
   });
   const color = props.color ?? 0;

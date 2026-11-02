@@ -16,9 +16,9 @@ export interface FrameView {
 
 const HEADER = 16;
 const MAX_BYTES = 32 * 1024 * 1024;
-const MAX_METADATA = 1024 * 1024;
-const MAX_TABLES = 4096;
-const MAX_COLUMNS = 32768;
+const MAX_METADATA = 4 * 1024 * 1024;
+const MAX_TABLES = 16384;
+const MAX_COLUMNS = 131072;
 const MAX_ROWS = 16384;
 const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 const encoder = new TextEncoder();

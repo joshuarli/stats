@@ -1,23 +1,23 @@
 import type { JSX } from "@solidjs/web";
-import type { SummaryPoint } from "../../api";
 import { watts } from "../../format";
+import type { SummaryTable } from "../../history";
 import type { ChartEvent } from "../../components/TimeChart";
 import { Widget } from "../../components/ui";
-import { PanelChart, summarySeries } from "./shared";
+import { PanelChart } from "./shared";
 
-export function reportsPower(points: readonly SummaryPoint[]): boolean {
-  return points.some(point => point.power !== undefined);
+export function reportsPower(table: SummaryTable): boolean {
+  return table.has("power");
 }
 
-export function PowerWidget(props: { readonly points: readonly SummaryPoint[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
+export function PowerWidget(props: { readonly table: SummaryTable; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   return (
     <Widget id="power" title="Power" expandable>
       <PanelChart
         label="Power"
         area
         series={[
-          { label: "system", color: "blue", scored: false, joinGaps: true, points: summarySeries(props.points, point => point.power?.systemWatts) },
-          { label: "GPU", color: "aqua", scored: false, points: summarySeries(props.points, point => point.power?.gpuWatts) }
+          { label: "system", color: "blue", scored: false, joinGaps: true, track: props.table.track("power.systemWatts") },
+          { label: "GPU", color: "aqua", scored: false, track: props.table.track("power.gpuWatts") }
         ]}
         format={watts}
         min={0}

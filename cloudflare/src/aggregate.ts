@@ -663,17 +663,6 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
   return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, points]) => ({ id, points }));
 }
 
-export function compact<T>(value: T): T {
-  return roundNumbers(value) as T;
-}
-
-function roundNumbers(value: unknown): unknown {
-  if (typeof value === "number") return Number.isInteger(value) || !Number.isFinite(value) ? value : Math.round(value * 1000) / 1000;
-  if (Array.isArray(value)) return (value as unknown[]).map(roundNumbers);
-  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, roundNumbers(entry)]));
-  return value;
-}
-
 export function downsample<T>(items: readonly T[], max = MAX_POINTS): { items: T[]; stride: number } {
   if (items.length <= max) return { items: [...items], stride: 1 };
   const stride = Math.ceil(items.length / max);

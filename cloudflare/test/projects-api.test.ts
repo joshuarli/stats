@@ -1,10 +1,12 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Installation } from "../src/installation";
+import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGES } from "../src/limits";
 import { bucketWidthMs } from "../src/projects/history";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
+import { readFrame } from "./support/history";
 
 const NOW = 1_793_510_415_000;
 const BUCKET = 300_000;
@@ -22,7 +24,7 @@ async function get(path: string, headers: Record<string, string> = {}): Promise<
 async function history(range: string, kind: string): Promise<{ stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] }> {
   const response = await get(`/projects/stuff/history?range=${range}&kind=${kind}`);
   expect(response.status).toBe(200);
-  return response.json();
+  return await readFrame(response) as Awaited<ReturnType<typeof history>>;
 }
 
 function metricRun(atMs: number, points: { metric: string; bucketMs: number; value: number }[]): CollectorRun {
@@ -124,7 +126,7 @@ describe("project history", () => {
     ]));
     const response = await get("/projects/stuff/history?range=1h&kinds=worker,routes,collector,probes");
     expect(response.status).toBe(200);
-    const body = await response.json() as { projectId: string; histories: Record<string, { kind: string; series?: unknown[]; runs?: unknown[] }> };
+    const body = await readFrame(response) as { projectId: string; histories: Record<string, { kind: string; series?: unknown[]; runs?: unknown[] }> };
     expect(body.projectId).toBe("stuff");
     expect(Object.keys(body.histories)).toEqual(["worker", "routes", "collector", "probes"]);
     for (const [kind, history] of Object.entries(body.histories)) expect(history.kind, kind).toBe(kind);
@@ -144,8 +146,14 @@ describe("project history", () => {
     const etag = first.headers.get("etag");
     expect(etag).not.toBeNull();
 
+    expect(first.headers.get("content-type")).toBe(HISTORY_CONTENT_TYPE);
+    expect(first.headers.get("vary")).toBe("Accept-Encoding");
+    expect(first.headers.get("content-encoding")).toBeNull();
+    expect((await get(path, { "Accept-Encoding": "gzip, br" })).headers.get("content-encoding")).toBe("br");
+
     const unchanged = await get(path, { "If-None-Match": etag! });
     expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("vary")).toBe("Accept-Encoding");
     expect(await unchanged.text()).toBe("");
 
     await record(metricRun(NOW - 2 * BUCKET, []));
@@ -275,7 +283,7 @@ describe("project history", () => {
   it("returns the collector runs in the range", async () => {
     await record(metricRun(NOW - 2 * HOUR_MS, []), failedRun(NOW - 60_000));
     const response = await get("/projects/stuff/history?range=1h&kind=collector");
-    const body = await response.json() as { runs: { atMs: number; ok: boolean; detail: string }[] };
+    const body = await readFrame(response) as { runs: { atMs: number; ok: boolean; detail: string }[] };
     expect(body.runs).toEqual([{ atMs: NOW - 60_000, ok: false, detail: "collector_failed", rowsRead: 0, durationMs: 1 }]);
   });
 });

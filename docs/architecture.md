@@ -59,7 +59,7 @@ the host bearer token. Every other path that serves assets or data first passes
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
-tells an agent how to authenticate and read the JSON API. A Vite plugin in
+tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`
 into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
 files `llms.txt` links to; no other doc is served.
@@ -72,10 +72,12 @@ Routes under `/api/v1/` (handled in `installation.ts`):
   Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
   `range` for an explicit window; the response then omits `range`. Pass
   `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
-  under `histories`.
+  as a bundle.
 - `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
   Pass `kinds=worker,r2,collector` instead of `kind` to receive several
-  kinds at once under `histories` (see [Cloudflare projects](#cloudflare-projects)).
+  kinds at once as a bundle (see [Cloudflare projects](#cloudflare-projects)).
+  Both history routes answer in the [history frame](#history-frames); every
+  other route and every error answers in JSON.
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 
@@ -150,15 +152,72 @@ read host dropped first. A late sample, which rewrites the next sample's delta,
 drops its host's rows; a purge and an alarm that deleted rows drop all of
 them, so the next read parses its window again. On top of that it keeps the
 last four windows it served, keyed by the host's history version, and builds a
-window's kinds as they are asked for. The dashboard asks for all five kinds in
+window's kinds as they are asked for, as typed columns rather than point
+objects; a request serializes those columns, and the frame is not cached. The dashboard asks for all five kinds in
 one batched history request on each refresh, and for a second window for the
 yesterday comparison every five minutes. Summary points carry `cpuCount` and
 `uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 History responses carry an `ETag` derived from the last host ingest or the last
-collector run, plus the requested window and kinds. The dashboard sends
-`If-None-Match` and reuses its cached body on `304`, so a poll that finds no new
-source data returns before building history.
+collector run, plus the requested window and kinds and the frame format
+(`:stc1`), so a validator never matches a different representation. The match
+is weak, so a `W/` prefix added by an intermediary still revalidates. The
+dashboard sends `If-None-Match` and reuses its decoded history on `304`, so a
+poll that finds no new source data returns before building history. The `304`
+carries `ETag` and `Vary: Accept-Encoding`, never `Content-Encoding`.
+
+### History frames
+
+A history response is one binary frame with content type
+`application/vnd.stats.history.v1`: a 16-byte header, a bounded JSON
+descriptor, then little-endian numeric columns. Cloudflare's edge does not
+compress custom content types, so the Worker compresses the frame itself: it
+sets `Content-Encoding` to `br` when the request's `Accept-Encoding` allows it
+(quality above zero, `*` included), else `gzip`, else leaves the body as is, and
+adds `Vary: Accept-Encoding` to every `200` and `304` on a history route. The
+Worker hands the runtime an uncompressed body with the header and the runtime
+compresses on the wire (`encodeBody: "automatic"`, the default). Errors on
+these routes stay uncompressed JSON. The security headers and
+`Cache-Control: no-store` apply as to every API response.
+
+Header: ASCII `STC1`; version `1` and flags `0` (u16 each); descriptor length
+and total frame length (u32 each). The descriptor is
+`{metadata, tables: [{name, rows, columns}]}`; a column is `{name, type,
+nullable}` with `type` `f64`, `u64`, or `u8`, or `{name, type, ref}` when it
+shares an earlier column's values (every kind of one host shares one `atMs`
+axis where the axes match). Each table's data follows the descriptor, every
+column padded to eight bytes: a validity bitmap (least-significant bit first,
+set means present) when `nullable`, then the values, with zero in every absent
+slot. An absent cell is missing, never zero. Unknown versions, flags, fields,
+non-finite numbers, nonzero padding, and trailing bytes are rejected.
+
+`metadata` is `{format: "stats-history", node}`. A node is one of:
+
+- Host `summary`: `{form: "points", metadata, series: [{metadata: {}, table}]}`.
+  `metadata` is `{hostId, range?, kind, fromMs, toMs, resolution, stepMs}`.
+  Columns are the flattened point fields (`atMs`, `coverageMs`, `partial`,
+  `cpu.user`, `mem.pressure.warnPct`, ...). An optional object such as `psi` or
+  `cpu` is a `u8` presence column, 1 where present; its fields are `f64`
+  columns present only where the object is. `partial` is `u8` 0 or 1. Field
+  names are fixed per kind in `cloudflare/src/binary/history.ts`.
+- Host `disks`, `nets`, `filesystems`, `block`: `{form: "series", metadata,
+  series: [{metadata: {id, name?}, table}]}`, one table per device with its own
+  `atMs`, so a device that appears or disappears has no cell for the rows it
+  was absent.
+- Project metric kinds: `{form: "metrics", metadata, table}` where `metadata`
+  is `{projectId, range, kind, fromMs, toMs, stepMs}` and the table has one
+  `f64` column per metric, named by the metric, row `i` at `fromMs + i *
+  stepMs`.
+- Project `collector`: `{form: "collector", value}` with the run list as JSON,
+  since run details are text.
+- A bundle: `{form: "bundle", metadata: {hostId} | {projectId}, entries:
+  [{name, node}]}`, one entry per requested kind, in request order.
+
+Floating-point values are exact binary64; host histories are rounded to three
+decimals before they are written, as the JSON they replaced was. The dashboard
+validates a whole frame once (`openHistory`) and reads columns directly; point
+objects are never rebuilt. See [binary-history.md](binary-history.md) for limits,
+measurements, and test coverage.
 
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the
@@ -272,9 +331,9 @@ minutes, 1 hour, and 3 hours that gives at most 900 points, and the first
 bucket of a range that reaches the retention limit is the first one retention
 left whole. Widths under an
 hour read `project_samples`; the rest read `project_hours`. A metric response
-is `{projectId, range, kind, fromMs, toMs, stepMs, series: [{metric, values}]}`
-with every series aligned to `fromMs + i * stepMs`; `kind=collector` returns
-`runs`. `kinds=...` returns `{projectId, histories: {kind: response}}` and reads
+is a table with one column per metric, every row aligned to `fromMs + i *
+stepMs`, in the [history frame](#history-frames); `kind=collector` returns
+`runs`. `kinds=...` returns a bundle with one entry per requested kind and reads
 one grouped metric window for all requested metric kinds. `GET /projects`
 returns each project with `collector.lastRunAtMs`, `lastSuccessAtMs`,
 `lastError`, and `stale` (no success in 15 minutes).
@@ -286,9 +345,12 @@ fixed queries run, and no request data reaches SQL.
 
 `cloudflare/src/client/` is a Solid application built by Vite's client
 environment and charted with uPlot. `api.ts` decodes every response once at the
-boundary; request failures stay in the typed `ApiFailure` channel. `state.ts`
-owns the range, zoom stack, and live-refresh state; `chart-data.ts` aligns
-series onto a shared time grid. Host and fleet data refresh every 15 seconds;
+boundary; request failures stay in the typed `ApiFailure` channel. A history
+response is validated once and wrapped in tables (`columns.ts`, `history.ts`): a
+time axis plus named numeric columns whose absent cells are `null`, converted to
+chart arrays only for the columns a view reads. `state.ts` owns the range, zoom
+stack, and live-refresh state; `chart-data.ts` aligns series onto a shared time
+grid, passing through series that already share a gap-free axis. Host and fleet data refresh every 15 seconds;
 project data and the project list refresh every five minutes to match the
 collector cron, while the manual Refresh button is immediate. Routes are the
 fleet page, `#/host/:hostId`, and `#/project/:projectId`; the fleet page lists

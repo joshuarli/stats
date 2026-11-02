@@ -6,6 +6,7 @@ if [ -z "$name" ]; then
   echo "usage: scripts/capture-host.sh <host name>" >&2
   exit 2
 fi
+here=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 base=${STATS_URL:-https://stats.17166969.xyz}
 out="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)/test/ui/captures/$name"
 token=$(cf access token "$base")
@@ -27,7 +28,7 @@ fi
 rm -f "$out/system.json.tmp"
 for range in 1h 6h 24h 7d 90d; do
   for kind in summary disks nets filesystems block; do
-    get "/api/v1/hosts/$host_id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
+    get "/api/v1/hosts/$host_id/history?range=$range&kind=$kind" | node "$here/history-json.mjs" | jaq -c . > "$out/$kind-$range.json"
   done
 done
 jaq -n --arg hostId "$host_id" --argjson capturedAtMs "$(($(date +%s) * 1000))" --argjson system "$system" '{hostId: $hostId, capturedAtMs: $capturedAtMs, system: $system}' > "$out/capture.json"

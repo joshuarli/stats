@@ -2,6 +2,8 @@ import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
+import { encodeHistory } from "../test/support/history.ts";
 
 const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
 const assets = join(cloudflare, ".cloudflare", "output", "v0", "workers", "default", "assets");
@@ -116,6 +118,11 @@ async function history(capture, kind, url) {
   return chosen === undefined ? undefined : shift(chosen, shiftFor(capture));
 }
 
+function frame(response, body) {
+  response.writeHead(200, { "Content-Type": HISTORY_CONTENT_TYPE, "Cache-Control": "no-store" });
+  response.end(encodeHistory(body));
+}
+
 function json(response, body, status = 200) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify(body));
@@ -145,10 +152,10 @@ const server = createServer(async (request, response) => {
           if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
           histories[kind] = body;
         }
-        return json(response, { hostId: capture.hostId, histories });
+        return frame(response, { hostId: capture.hostId, histories });
       }
       const body = await history(capture, url.searchParams.get("kind") ?? "summary", url);
-      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : json(response, body);
+      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(response, body);
     }
     const project = /^\/api\/v1\/projects\/([^/]+)\/history$/u.exec(path);
     if (project !== null) {
@@ -162,10 +169,10 @@ const server = createServer(async (request, response) => {
           if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
           histories[kind] = body;
         }
-        return json(response, { projectId: decodeURIComponent(project[1]), histories });
+        return frame(response, { projectId: decodeURIComponent(project[1]), histories });
       }
       const body = await history(capture, url.searchParams.get("kind") ?? "worker", url);
-      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : json(response, body);
+      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(response, body);
     }
 
     const relative = path === "/" ? "/index.html" : path;

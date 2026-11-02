@@ -33,7 +33,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
               <span class="tile-value">{cell.format(cell.value)}</span>
               {limits() === undefined ? null : <LimitGauge value={cell.value} limits={limits()!} health={health()} />}
               <span class="tile-detail">{cell.detail}</span>
-              <span class="tile-spark"><Sparkline points={cell.spark} label={`${cell.label} trend`} hue={cell.hue} zeroBased health={health()} /></span>
+              <span class="tile-spark"><Sparkline values={cell.spark} label={`${cell.label} trend`} hue={cell.hue} zeroBased health={health()} /></span>
             </button>
           );
         }}

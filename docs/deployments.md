@@ -71,7 +71,7 @@ independent; a failure in one does not suppress execution of the other.
 `src/deployments/installation.ts` extends the existing Installation class and is
 exported under the same `Installation` name in `src/index.ts`. The binding,
 Durable Object namespace and fixed `installation` object id are unchanged. The
-host implementation and binary-history experiment are not replaced. Additive
+host implementation is not replaced. Additive
 `CREATE TABLE IF NOT EXISTS` initialization adds four tables to the same SQLite
 database without changing existing host schema versions:
 

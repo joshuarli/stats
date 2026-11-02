@@ -1,44 +1,67 @@
 import { describe, expect, it } from "vitest";
-import { alignSeries, duration, panWindow, pointsIn, windowIndexes, windowStats } from "../src/client/chart-data";
+import { alignTracks, duration, panWindow, sumTracks, windowIndexes, windowStats, windowTracks } from "../src/client/chart-data";
 
 describe("chart data", () => {
   it("keeps a missing value as a gap instead of interpolating or zeroing it", () => {
-    const aligned = alignSeries([
-      [{ atMs: 1_000, value: 1 }, { atMs: 2_000, value: undefined }, { atMs: 3_000, value: 3 }],
-      [{ atMs: 1_000, value: 10 }, { atMs: 3_000, value: 30 }]
+    const aligned = alignTracks([
+      { times: [1_000, 2_000, 3_000], values: [1, null, 3] },
+      { times: [1_000, 3_000], values: [10, 30] }
     ]);
     expect(aligned.times).toEqual([1_000, 2_000, 3_000]);
     expect(aligned.columns).toEqual([[1, null, 3], [10, null, 30]]);
   });
 
   it("joins series whose sample times jitter onto one step grid", () => {
-    const aligned = alignSeries([
-      [{ atMs: 15_010, value: 1 }, { atMs: 30_020, value: 2 }],
-      [{ atMs: 14_990, value: 5 }, { atMs: 44_990, value: 7 }]
+    const aligned = alignTracks([
+      { times: [15_010, 30_020], values: [1, 2] },
+      { times: [14_990, 44_990], values: [5, 7] }
     ], 15_000);
     expect(aligned.times).toEqual([15_000, 30_000, 45_000]);
     expect(aligned.columns).toEqual([[1, 2, null], [5, null, 7]]);
   });
 
   it("fills a gap at the start of a window with null slots", () => {
-    const aligned = alignSeries([
-      [{ atMs: 0, value: 1 }, { atMs: 60_000, value: 2 }, { atMs: 75_000, value: 3 }, { atMs: 90_000, value: 4 }]
-    ], 15_000);
+    const aligned = alignTracks([{ times: [0, 60_000, 75_000, 90_000], values: [1, 2, 3, 4] }], 15_000);
     expect(aligned.times).toEqual([0, 15_000, 30_000, 45_000, 60_000, 75_000, 90_000]);
     expect(aligned.columns).toEqual([[1, null, null, null, 2, 3, 4]]);
   });
 
   it("fills an outage in the middle of a window instead of bridging it", () => {
     const resume = 15_000 + 196 * 15_000;
-    const aligned = alignSeries([
-      [{ atMs: 0, value: 1 }, { atMs: 15_000, value: 2 }, { atMs: resume, value: 3 }, { atMs: resume + 15_000, value: 4 }]
-    ], 15_000);
+    const aligned = alignTracks([{ times: [0, 15_000, resume, resume + 15_000], values: [1, 2, 3, 4] }], 15_000);
     expect(aligned.times).toHaveLength(199);
     expect(aligned.times[0]).toBe(0);
     expect(aligned.times.at(-1)).toBe(resume + 15_000);
     expect(aligned.columns[0]!.slice(0, 2)).toEqual([1, 2]);
     expect(aligned.columns[0]!.slice(2, -2).every(value => value === null)).toBe(true);
     expect(aligned.columns[0]!.slice(-2)).toEqual([3, 4]);
+  });
+
+  it("passes series that already share a gap-free axis through without copying", () => {
+    const times = [15_000, 30_000, 45_000];
+    const cpu = [1, null, 3];
+    const load = [4, 5, 6];
+    const aligned = alignTracks([{ times, values: cpu }, { times, values: load }], 15_000);
+    expect(aligned.times).toBe(times);
+    expect(aligned.columns[0]).toBe(cpu);
+    expect(aligned.columns[1]).toBe(load);
+  });
+
+  it("snaps a shared axis with jitter and fills a shared axis with an outage", () => {
+    const jittered = [15_010, 30_020, 44_990];
+    const snapped = alignTracks([{ times: jittered, values: [1, 2, 3] }], 15_000);
+    expect(snapped.times).toEqual([15_000, 30_000, 45_000]);
+    expect(snapped.columns).toEqual([[1, 2, 3]]);
+    const gapped = [0, 15_000, 60_000];
+    const filled = alignTracks([{ times: gapped, values: [1, 2, 3] }, { times: gapped, values: [4, null, 6] }], 15_000);
+    expect(filled.times).toEqual([0, 15_000, 30_000, 45_000, 60_000]);
+    expect(filled.columns).toEqual([[1, 2, null, null, 3], [4, null, null, null, 6]]);
+  });
+
+  it("lets the later of two samples that snap to one slot win", () => {
+    const aligned = alignTracks([{ times: [15_000, 15_001, 30_000], values: [1, 2, 3] }], 15_000);
+    expect(aligned.times).toEqual([15_000, 30_000]);
+    expect(aligned.columns).toEqual([[2, 3]]);
   });
 
   it("computes window statistics over present values only", () => {
@@ -53,7 +76,21 @@ describe("chart data", () => {
     expect(windowIndexes(times, null)).toEqual([0, 3]);
     expect(windowIndexes(times, { fromMs: 1_500, toMs: 3_500 })).toEqual([1, 2]);
     expect(windowIndexes(times, { fromMs: 9_000, toMs: 10_000 })).toEqual([4, 3]);
-    expect(pointsIn([{ atMs: 1_000 }, { atMs: 2_000 }, { atMs: 3_000 }], { fromMs: 1_500, toMs: 3_000 })).toEqual([{ atMs: 2_000 }, { atMs: 3_000 }]);
+    const windowed = windowTracks([{ times, values: [1, 2, 3, 4] }, { times, values: [5, null, 7, 8] }], { fromMs: 1_500, toMs: 3_000 });
+    expect(windowed.map(track => track.values)).toEqual([[2, 3], [null, 7]]);
+    expect(windowed[0]!.times).toEqual([2_000, 3_000]);
+    expect(windowed[0]!.times).toBe(windowed[1]!.times);
+  });
+
+  it("sums series per sample time and leaves times with no value as gaps", () => {
+    const totals = sumTracks([
+      { times: [1_000, 2_000], values: [4, null] },
+      { times: [1_000, 3_000], values: [6, 5] }
+    ]);
+    expect(totals).toEqual({ times: [1_000, 2_000, 3_000], values: [10, null, 5] });
+    const times = [1_000, 2_000, 3_000];
+    expect(sumTracks([{ times, values: [1, null, null] }, { times: [...times], values: [2, 3, null] }])).toEqual({ times, values: [3, 3, null] });
+    expect(sumTracks([])).toEqual({ times: [], values: [] });
   });
 
   it("pans by half a window and never leaves the loaded bounds", () => {

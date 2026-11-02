@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { fulfillHistory } from "./history-route";
 
 const hostId = "h_0123456789abcdef0123456789abcdef";
 const now = Date.now();
@@ -194,8 +195,8 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
     if (projectPath !== null) {
       const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets);
-      if (kinds !== null) return route.fulfill({ json: { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) } });
-      return route.fulfill({ json: body(kind) });
+      if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
+      return fulfillHistory(route, body(kind));
     }
     if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: deploymentHistory() });
     if (url.pathname === `/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison`) return route.fulfill({ json: deploymentComparison(url.searchParams.get("window") === "24h" ? "24h" : "1h") });
@@ -222,9 +223,9 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       return body;
     };
     if (kinds !== null) {
-      return route.fulfill({ json: { hostId, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, historyBody(kind)])) } });
+      return fulfillHistory(route, { hostId, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, historyBody(kind)])) });
     }
-    return route.fulfill({ json: historyBody(kind) });
+    return fulfillHistory(route, historyBody(kind));
   });
   return requests;
 }

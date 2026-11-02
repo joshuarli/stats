@@ -1,4 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { expect, test, type Page, type Route } from "@playwright/test";
+import { fulfillHistory } from "./history-route";
 import stuff from "./captures/stuff/capture.json" with { type: "json" };
 import stuffCollector from "./captures/stuff/collector-1h.json" with { type: "json" };
 import stuffProbes from "./captures/stuff/probes-1h.json" with { type: "json" };
@@ -47,6 +49,10 @@ function capturedKind(name: string, range: string, kind: string): unknown {
   return history;
 }
 
+function fulfillCapture(route: Route, name: string, file: string, history: boolean) {
+  return history ? fulfillHistory(route, JSON.parse(readFileSync(captureFile(name, file), "utf8"))) : route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
+}
+
 async function freeze(page: Page, capturedAtMs: number): Promise<void> {
   await page.clock.setFixedTime(capturedAtMs);
   await page.addInitScript(() => {
@@ -79,15 +85,15 @@ async function replay(page: Page, name: string, capturedAtMs: number, hasSystem:
       ...(entry === "summary" ? { points: [] } : { series: [] })
     });
     if (range === null && url.pathname.endsWith("/history")) {
-      if (kinds !== null) return route.fulfill({ json: { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, emptyHistory(entry)])) } });
-      return route.fulfill({ json: emptyHistory(kind) });
+      if (kinds !== null) return fulfillHistory(route, { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, emptyHistory(entry)])) });
+      return fulfillHistory(route, emptyHistory(kind));
     }
     if (kinds !== null) {
-      return route.fulfill({ json: { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, capturedKind(name, range ?? "1h", entry)])) } });
+      return fulfillHistory(route, { hostId: threadripper.hostId, histories: Object.fromEntries(kinds.map(entry => [entry, capturedKind(name, range ?? "1h", entry)])) });
     }
     if (url.pathname.endsWith("/system") && !hasSystem) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no system details for host" } } });
     const file = url.pathname === "/api/v1/hosts" ? "hosts.json" : url.pathname.endsWith("/system") ? "system.json" : `${kind}-${range ?? "1h"}.json`;
-    return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
+    return fulfillCapture(route, name, file, url.pathname.endsWith("/history"));
   });
 }
 
@@ -105,10 +111,9 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
         if (history === undefined) throw new Error(`no captured project history for ${kind}`);
         return [kind, history];
       }));
-      return route.fulfill({ json: { projectId: "stuff", histories } });
+      return fulfillHistory(route, { projectId: "stuff", histories });
     }
-    const file = `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`;
-    return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
+    return fulfillCapture(route, name, `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`, true);
   });
 }
 

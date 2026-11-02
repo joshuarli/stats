@@ -1,7 +1,4 @@
-export interface ChartPoint {
-  readonly atMs: number;
-  readonly value?: number | undefined;
-}
+import type { Cells, Times, Track } from "./columns";
 
 export interface TimeWindow {
   readonly fromMs: number;
@@ -9,8 +6,8 @@ export interface TimeWindow {
 }
 
 export interface AlignedSeries {
-  readonly times: readonly number[];
-  readonly columns: readonly (readonly (number | null)[])[];
+  readonly times: Times;
+  readonly columns: readonly Cells[];
 }
 
 export interface WindowStats {
@@ -20,35 +17,124 @@ export interface WindowStats {
   readonly last: number;
 }
 
-export function alignSeries(series: readonly (readonly ChartPoint[])[], stepMs?: number): AlignedSeries {
-  const step = stepMs !== undefined && stepMs > 0 ? stepMs : undefined;
-  const snap = (atMs: number) => (step === undefined ? atMs : Math.round(atMs / step) * step);
-  const lookups = series.map(points => {
+interface Grid {
+  readonly times: Times;
+  readonly dense: boolean;
+}
+
+const grids = new WeakMap<Times, Map<number, Grid>>();
+
+function gridOf(times: Times, step: number): Grid {
+  let byStep = grids.get(times);
+  if (byStep === undefined) {
+    byStep = new Map();
+    grids.set(times, byStep);
+  }
+  let found = byStep.get(step);
+  if (found === undefined) {
+    const snapped = times.map(time => Math.round(time / step) * step);
+    let dense = true;
+    let identical = true;
+    for (let index = 0; index < snapped.length; index += 1) {
+      if (snapped[index] !== times[index]) identical = false;
+      if (index > 0 && snapped[index]! - snapped[index - 1]! !== step) dense = false;
+    }
+    found = { times: identical ? times : snapped, dense };
+    byStep.set(step, found);
+  }
+  return found;
+}
+
+function alignedOnGrid(tracks: readonly Track[], step: number): AlignedSeries {
+  const first = tracks[0];
+  if (first !== undefined && tracks.every(track => track.times === first.times)) {
+    const grid = gridOf(first.times, step);
+    if (grid.dense || grid.times.length === 0) return { times: grid.times, columns: tracks.map(track => track.values) };
+  }
+  const snapped = tracks.map(track => gridOf(track.times, step).times);
+  let low = Number.POSITIVE_INFINITY;
+  let high = Number.NEGATIVE_INFINITY;
+  for (const times of snapped) {
+    for (const time of times) {
+      if (time < low) low = time;
+      if (time > high) high = time;
+    }
+  }
+  if (!Number.isFinite(low)) return { times: [], columns: tracks.map(() => []) };
+  const count = Math.floor((high - low) / step) + 1;
+  const times = Array.from({ length: count }, (_, index) => low + index * step);
+  const columns = tracks.map((track, position) => {
+    const column = Array.from({ length: count }, (): number | null => null);
+    const at = snapped[position]!;
+    for (let index = 0; index < at.length; index += 1) {
+      const value = track.values[index];
+      column[Math.round((at[index]! - low) / step)] = value !== undefined && value !== null && Number.isFinite(value) ? value : null;
+    }
+    return column;
+  });
+  return { times, columns };
+}
+
+function alignedByTime(tracks: readonly Track[]): AlignedSeries {
+  const lookups = tracks.map(track => {
     const byTime = new Map<number, number | null>();
-    for (const point of points) {
-      const value = point.value;
-      byTime.set(snap(point.atMs), value !== undefined && Number.isFinite(value) ? value : null);
+    for (let index = 0; index < track.times.length; index += 1) {
+      const value = track.values[index];
+      byTime.set(track.times[index]!, value !== undefined && value !== null && Number.isFinite(value) ? value : null);
     }
     return byTime;
   });
-  if (step === undefined) {
-    const times = [...new Set(lookups.flatMap(byTime => [...byTime.keys()]))].sort((left, right) => left - right);
-    return { times, columns: lookups.map(byTime => times.map(time => byTime.get(time) ?? null)) };
-  }
-  let first = Number.POSITIVE_INFINITY;
-  let last = Number.NEGATIVE_INFINITY;
-  for (const byTime of lookups) {
-    for (const time of byTime.keys()) {
-      first = Math.min(first, time);
-      last = Math.max(last, time);
-    }
-  }
-  if (!Number.isFinite(first)) return { times: [], columns: lookups.map(() => []) };
-  const times = Array.from({ length: Math.floor((last - first) / step) + 1 }, (_, index) => first + index * step);
+  const times = [...new Set(lookups.flatMap(byTime => [...byTime.keys()]))].sort((left, right) => left - right);
   return { times, columns: lookups.map(byTime => times.map(time => byTime.get(time) ?? null)) };
 }
 
-export function windowIndexes(times: readonly number[], window: TimeWindow | null): readonly [number, number] {
+export function alignTracks(tracks: readonly Track[], stepMs?: number): AlignedSeries {
+  return stepMs !== undefined && stepMs > 0 ? alignedOnGrid(tracks, stepMs) : alignedByTime(tracks);
+}
+
+export function sumTracks(tracks: readonly Track[]): Track {
+  const first = tracks[0];
+  if (first === undefined) return { times: [], values: [] };
+  const shared = tracks.every(track => track.times === first.times || (track.times.length === first.times.length && track.times.every((time, index) => time === first.times[index])));
+  if (shared && first.times.every((time, index) => index === 0 || time > first.times[index - 1]!)) {
+    const values = first.times.map((_, row) => {
+      let total: number | null = null;
+      for (const track of tracks) {
+        const value = track.values[row];
+        if (value !== undefined && value !== null && Number.isFinite(value)) total = (total ?? 0) + value;
+      }
+      return total;
+    });
+    return { times: first.times, values };
+  }
+  const totals = new Map<number, number | null>();
+  for (const track of tracks) {
+    for (let index = 0; index < track.times.length; index += 1) {
+      const value = track.values[index];
+      const time = track.times[index]!;
+      const known = totals.get(time) ?? null;
+      totals.set(time, value !== undefined && value !== null && Number.isFinite(value) ? (known ?? 0) + value : known);
+    }
+  }
+  const ordered = [...totals].sort((left, right) => left[0] - right[0]);
+  return { times: ordered.map(([time]) => time), values: ordered.map(([, value]) => value) };
+}
+
+export function windowTracks(tracks: readonly Track[], window: TimeWindow | null): Track[] {
+  if (window === null) return [...tracks];
+  const windows = new Map<Times, { readonly times: Times; readonly first: number; readonly last: number }>();
+  return tracks.map(track => {
+    let found = windows.get(track.times);
+    if (found === undefined) {
+      const [first, last] = windowIndexes(track.times, window);
+      found = { times: track.times.slice(first, last + 1), first, last };
+      windows.set(track.times, found);
+    }
+    return { times: found.times, values: track.values.slice(found.first, found.last + 1) };
+  });
+}
+
+export function windowIndexes(times: Times, window: TimeWindow | null): readonly [number, number] {
   if (times.length === 0) return [0, -1];
   if (window === null) return [0, times.length - 1];
   let first = times.findIndex(time => time >= window.fromMs);
@@ -58,7 +144,7 @@ export function windowIndexes(times: readonly number[], window: TimeWindow | nul
   return [first, last];
 }
 
-export function windowStats(values: readonly (number | null)[], first: number, last: number): WindowStats | undefined {
+export function windowStats(values: Cells, first: number, last: number): WindowStats | undefined {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
   let sum = 0;
@@ -74,10 +160,6 @@ export function windowStats(values: readonly (number | null)[], first: number, l
     latest = value;
   }
   return count === 0 || latest === undefined ? undefined : { min, avg: sum / count, max, last: latest };
-}
-
-export function pointsIn<T extends { readonly atMs: number }>(points: readonly T[], window: TimeWindow | null): readonly T[] {
-  return window === null ? points : points.filter(point => point.atMs >= window.fromMs && point.atMs <= window.toMs);
 }
 
 export function panWindow(window: TimeWindow, direction: -1 | 1, bounds: TimeWindow): TimeWindow {

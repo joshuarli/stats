@@ -1,7 +1,9 @@
 import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
-import { ApiFailure, getHostHistories, getSummary, getSystem, type Host, type SummaryPoint } from "../api";
+import { ApiFailure, getHostHistories, getSummary, getSystem, type Host } from "../api";
+import type { SummaryTable } from "../history";
+import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
 import { RANGE_MS } from "../../limits";
 import { loadQuery } from "../queries";
@@ -65,7 +67,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const block = () => histories().block;
 
   const comparisonTick = createMemo(() => Math.floor(tick() / GHOST_REFRESH_TICKS));
-  const yesterday = createMemo((): Promise<readonly SummaryPoint[] | null> => {
+  const yesterday = createMemo((): Promise<SummaryTable | null> => {
     comparisonTick();
     const current = query();
     if (!("range" in current) || !GHOST_RANGES.has(current.range)) return Promise.resolve(null);
@@ -74,7 +76,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
       const to = Date.now();
       try {
         const history = await getSummary(hostId(), { fromMs: to - RANGE_MS[range] - DAY_MS, toMs: to - DAY_MS }, signal);
-        return (history.points ?? []).map(point => ({ ...point, atMs: point.atMs + DAY_MS }));
+        return history.table.shifted(DAY_MS);
       } catch (error) {
         if (signal.aborted || !(error instanceof ApiFailure)) throw error;
         console.error("yesterday's history could not be loaded", error);
@@ -84,8 +86,9 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   });
 
   const status = createMemo(() => statusFor(props.host, props.host.lastReceivedAtMs));
-  const events = createMemo(() => rebootEvents(summary().points ?? []));
-  const reportsBlock = createMemo(() => (block().series ?? []).some(entry => entry.points.length > 0));
+  const table = () => summary().table;
+  const events = createMemo(() => rebootEvents(table()));
+  const reportsBlock = createMemo(() => block().series.some(entry => entry.table.rows > 0));
 
   const doRefresh = async () => {
     setRefreshError(null);
@@ -97,16 +100,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   };
   createEffect(() => tick(), () => { void doRefresh(); }, { defer: true });
 
-  const cells = createMemo(() => buildCells({
-    points: summary().points ?? [],
-    stepMs: summary().stepMs,
-    disks: disks().series ?? [],
-    diskStepMs: disks().stepMs,
-    nets: nets().series ?? [],
-    netStepMs: nets().stepMs,
-    filesystems: filesystems().series ?? [],
-    fsStepMs: filesystems().stepMs
-  }, view()));
+  const cells = createMemo(() => buildCells({ summary: summary(), disks: disks(), nets: nets(), filesystems: filesystems() }, view()));
 
   return (
     <>
@@ -117,7 +111,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             <Badge tone={status().tone} dot>{status().label}</Badge>
             <Errored fallback={null}>
               <Loading fallback={null}>
-                <SystemInfo system={system()} memoryBytes={() => summary().points?.at(-1)?.mem?.total} uptimeMs={() => summary().points?.at(-1)?.uptimeMs} />
+                <SystemInfo system={system()} memoryBytes={() => lastCell(table().cells("mem.total"))} uptimeMs={() => lastCell(table().cells("uptimeMs"))} />
               </Loading>
             </Errored>
           </>
@@ -131,7 +125,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
       <Errored fallback={(error) => <ErrorState error={error()} compact />}>
         <Loading fallback={<SummarySkeleton />}>
           <Show
-            when={(summary().points ?? []).length > 0}
+            when={table().rows > 0}
             fallback={
               <Widget title="Samples">
                 <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
@@ -139,23 +133,23 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             }
           >
             <StatusStrip cells={cells()} />
-            <Show when={(summary().points ?? []).some(point => point.partial)}>
+            <Show when={table().cells("partial").some(value => value === 1)}>
               <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
             </Show>
-            <PressureNotice points={summary().points ?? []} />
+            <PressureNotice table={table()} />
             <section class="charts" aria-label="Charts">
-              <CpuWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-              <LoadWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-              <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
-              <Show when={reportsPower(summary().points ?? [])}>
-                <PowerWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
+              <CpuWidget table={table()} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+              <LoadWidget table={table()} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+              <MemoryWidget table={table()} stepMs={summary().stepMs} events={events()} />
+              <Show when={reportsPower(table())}>
+                <PowerWidget table={table()} stepMs={summary().stepMs} events={events()} />
               </Show>
-              <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} events={events()} />
-              <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
-              <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} summary={summary().points ?? []} summaryStepMs={summary().stepMs} events={events()} />
+              <FilesystemsWidget series={filesystems().series} stepMs={filesystems().stepMs} events={events()} />
+              <NetworkWidget series={nets().series} stepMs={nets().stepMs} events={events()} />
+              <DiskWidget series={disks().series} stepMs={disks().stepMs} summary={table()} summaryStepMs={summary().stepMs} events={events()} />
               <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
-                <BlockWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
-                <BlockCompletionsWidget series={block().series ?? []} stepMs={block().stepMs} events={events()} />
+                <BlockWidget series={block().series} stepMs={block().stepMs} events={events()} />
+                <BlockCompletionsWidget series={block().series} stepMs={block().stepMs} events={events()} />
               </Show>
             </section>
           </Show>

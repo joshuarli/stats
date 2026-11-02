@@ -55,6 +55,13 @@
       }
     },
     {
+      "files": ["test/ui/history-route.ts"],
+      "rules": {
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-member-access": "off"
+      }
+    },
+    {
       "files": ["src/client/components/TimeChart.tsx"],
       "rules": {
         "jsx-a11y/no-noninteractive-element-interactions": "off",

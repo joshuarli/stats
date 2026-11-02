@@ -1,5 +1,6 @@
 import { verifyAccess } from "./access";
 import { bearerToken } from "./auth";
+import { HISTORY_CONTENT_TYPE } from "./binary/history";
 import { Installation } from "./deployments/installation";
 import { collectDeployments } from "./deployments/collector";
 import { parseProjects } from "./projects/config";
@@ -20,6 +21,27 @@ const SECURITY: Record<string, string> = {
 function secure(response: Response): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function acceptedCoding(header: string | null): "br" | "gzip" | null {
+  if (header === null) return null;
+  const weights = new Map<string, number>();
+  for (const part of header.split(",")) {
+    const [coding = "", ...parameters] = part.trim().toLowerCase().split(";");
+    const quality = parameters.map(parameter => parameter.trim()).find(parameter => parameter.startsWith("q="));
+    weights.set(coding.trim(), quality === undefined ? 1 : Number(quality.slice(2)));
+  }
+  const allows = (coding: string) => (weights.get(coding) ?? weights.get("*") ?? 0) > 0;
+  return allows("br") ? "br" : allows("gzip") ? "gzip" : null;
+}
+
+function negotiated(request: Request, response: Response): Response {
+  if (response.status !== 200 && response.status !== 304) return response;
+  const headers = new Headers(response.headers);
+  headers.append("Vary", "Accept-Encoding");
+  const coding = response.status === 200 && headers.get("Content-Type") === HISTORY_CONTENT_TYPE ? acceptedCoding(request.headers.get("Accept-Encoding")) : null;
+  if (coding !== null) headers.set("Content-Encoding", coding);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -61,7 +83,8 @@ export default {
       if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);
       const suffix = path.slice("/api/v1".length);
       if (!/^\/(hosts|admin\/hosts|projects)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
-      return secure(await stub.fetch(internal(request, suffix)));
+      const response = await stub.fetch(internal(request, suffix));
+      return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
     }
     if (request.method !== "GET" && request.method !== "HEAD") return error(405, "invalid_request", "method not allowed");
     const access = await verifyAccess(request, env);

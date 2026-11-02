@@ -1,24 +1,23 @@
 import { createMemo, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { DiskSeries, SummaryPoint } from "../../api";
-import { pointsIn } from "../../chart-data";
+import { sumTracks, windowIndexes } from "../../chart-data";
 import { count, percent, rate } from "../../format";
+import type { DiskSeries, SummaryTable } from "../../history";
 import { healthOf, LIMITS } from "../../health";
-import { sumSeries } from "../../metrics";
 import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Meter, Widget } from "../../components/ui";
-import { colorsFor, PanelLabel, perSecond, activeSeries, summarySeries, topSeries, PanelChart } from "./shared";
+import { colorsFor, PanelLabel, perSecond, activeSeries, topSeries, PanelChart } from "./shared";
 
-export function DiskWidget(props: { readonly series: readonly DiskSeries[]; readonly stepMs: number; readonly summary: readonly SummaryPoint[]; readonly summaryStepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
+export function DiskWidget(props: { readonly series: readonly DiskSeries[]; readonly stepMs: number; readonly summary: SummaryTable; readonly summaryStepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
   const active = createMemo(() => activeSeries(props.series, props.stepMs));
-  const shown = createMemo(() => topSeries(props.series, point => point.busyPct));
+  const shown = createMemo(() => topSeries(props.series, table => table.cells("busyPct")));
   const colors = createMemo(() => colorsFor(shown()));
-  const reportsPressure = createMemo(() => props.summary.some(point => point.psi?.io !== undefined));
-  const reportsBusy = createMemo(() => props.series.some(entry => entry.points.some(point => point.busyPct !== undefined)));
-  const lastIn = <T extends { readonly atMs: number }>(points: readonly T[]) => pointsIn(points, view()).at(-1);
+  const reportsPressure = createMemo(() => props.summary.has("psi.io"));
+  const reportsBusy = createMemo(() => props.series.some(entry => entry.table.has("busyPct")));
+  const total = (field: "readBytesPerSec" | "writeBytesPerSec" | "readsPerSec" | "writesPerSec") => sumTracks(props.series.map(entry => entry.table.track(field)));
   return (
     <Widget id="disk" title="Disk" expandable>
       {props.series.length === 0 ? <EmptyState title="No disk series in this range." icon="disk" /> : (
@@ -27,8 +26,8 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             label="Disk throughput"
             timeAxis={false}
             series={[
-              { label: "read", color: "blue", mirror: false, points: sumSeries(props.series, point => point.readBytesPerSec) },
-              { label: "write", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.writeBytesPerSec) }
+              { label: "read", color: "blue", mirror: false, track: total("readBytesPerSec") },
+              { label: "write", color: "aqua", mirror: true, track: total("writeBytesPerSec") }
             ]}
             area
             format={rate}
@@ -40,8 +39,8 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             label="Disk operations"
             timeAxis={!reportsBusy() && !reportsPressure()}
             series={[
-              { label: "reads", color: "blue", mirror: false, points: sumSeries(props.series, point => point.readsPerSec) },
-              { label: "writes", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.writesPerSec) }
+              { label: "reads", color: "blue", mirror: false, track: total("readsPerSec") },
+              { label: "writes", color: "aqua", mirror: true, track: total("writesPerSec") }
             ]}
             area
             format={perSecond}
@@ -53,7 +52,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             <PanelChart
               label="Disk busy"
               timeAxis={!reportsPressure()}
-              series={shown().map(entry => ({ label: entry.name ?? entry.id, color: colors().get(entry.id) ?? "neutral", points: entry.points.map(point => ({ atMs: point.atMs, value: point.busyPct })) }))}
+              series={shown().map(entry => ({ label: entry.name ?? entry.id, color: colors().get(entry.id) ?? "neutral", track: entry.table.track("busyPct") }))}
               format={percent}
               limits={LIMITS.diskBusyPercent}
               min={0}
@@ -67,8 +66,8 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
               label="I/O pressure"
               area
               series={[
-                { label: "some", color: "ramp-3", points: summarySeries(props.summary, point => point.psi?.io?.some10) },
-                { label: "full", color: "ramp-5", scored: false, points: summarySeries(props.summary, point => point.psi?.io?.full10) }
+                { label: "some", color: "ramp-3", track: props.summary.track("psi.io.some10") },
+                { label: "full", color: "ramp-5", scored: false, track: props.summary.track("psi.io.full10") }
               ]}
               format={percent}
               limits={LIMITS.pressureSome}
@@ -83,22 +82,25 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
               <tbody>
                 <For each={active()}>
                   {(entry) => {
-                    const point = () => lastIn(entry.points);
+                    const range = () => windowIndexes(entry.table.times, view());
+                    const row = () => (range()[1] >= range()[0] ? range()[1] : undefined);
+                    const at = (field: "readBytesPerSec" | "writeBytesPerSec" | "readsPerSec" | "writesPerSec" | "busyPct") => (row() === undefined ? undefined : entry.table.at(field, row()!));
+                    const busy = () => at("busyPct");
                     return (
                       <tr>
                         <td><span class="device-name">{entry.name ?? entry.id}</span><span class="cell-note">{entry.id}</span></td>
-                        <td>{rate(point()?.readBytesPerSec)}</td>
-                        <td>{rate(point()?.writeBytesPerSec)}</td>
-                        <td>{count(point()?.readsPerSec)} <span class="cell-note">/ {count(point()?.writesPerSec)}</span></td>
+                        <td>{rate(at("readBytesPerSec"))}</td>
+                        <td>{rate(at("writeBytesPerSec"))}</td>
+                        <td>{count(at("readsPerSec"))} <span class="cell-note">/ {count(at("writesPerSec"))}</span></td>
                         <Show when={reportsBusy()}>
                           <td>
                             <div class="cpu-cell">
-                              <span class="metric-value-small">{percent(point()?.busyPct)}</span>
-                              <Meter value={point()?.busyPct} warn={LIMITS.diskBusyPercent.elevated} bad={LIMITS.diskBusyPercent.critical} />
-                              <HealthMark health={point()?.busyPct === undefined ? undefined : healthOf(point()!.busyPct!, LIMITS.diskBusyPercent) ?? undefined} />
+                              <span class="metric-value-small">{percent(busy())}</span>
+                              <Meter value={busy()} warn={LIMITS.diskBusyPercent.elevated} bad={LIMITS.diskBusyPercent.critical} />
+                              <HealthMark health={busy() === undefined ? undefined : healthOf(busy()!, LIMITS.diskBusyPercent) ?? undefined} />
                             </div>
                           </td>
-                          <td><Sparkline points={pointsIn(entry.points, view()).map(value => ({ atMs: value.atMs, value: value.busyPct }))} label={`${entry.id} busy time`} /></td>
+                          <td><Sparkline values={entry.table.cells("busyPct").slice(range()[0], range()[1] + 1)} label={`${entry.id} busy time`} /></td>
                         </Show>
                       </tr>
                     );

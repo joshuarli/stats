@@ -4,6 +4,8 @@ import type { Installation } from "../src/installation";
 import { retentionDelayMs } from "../src/installation";
 import { privateJwk } from "./access-key";
 import { downsample, historyQuery } from "../src/aggregate";
+import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
+import { readFrame as frame } from "./support/history";
 
 const encoder = new TextEncoder();
 const now = 1_793_510_415_000;
@@ -69,22 +71,22 @@ describe("history", () => {
   it("serves an explicit window at the finest tier that still holds it", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    const preset = await (await history(host.hostId, "1h", "summary")).json() as { points: { atMs: number }[] };
+    const preset = await frame(await history(host.hostId, "1h", "summary")) as { points: { atMs: number }[] };
     const [first, second] = preset.points;
     expect(preset.points.length).toBe(2);
 
     const around = await historySearch(host.hostId, `from=${first!.atMs - 1_000}&to=${second!.atMs + 1_000}&kind=summary`);
     expect(around.status).toBe(200);
-    const body = await around.json() as { range?: string; fromMs: number; toMs: number; resolution: string; points: { atMs: number }[] };
+    const body = await frame(around) as { range?: string; fromMs: number; toMs: number; resolution: string; points: { atMs: number }[] };
     expect(body.range).toBeUndefined();
     expect(body.fromMs).toBe(first!.atMs - 1_000);
     expect(body.toMs).toBe(second!.atMs + 1_000);
     expect(body.resolution).toBe("raw");
     expect(body.points.map(point => point.atMs)).toEqual([first!.atMs, second!.atMs]);
 
-    const narrow = await (await historySearch(host.hostId, `from=${first!.atMs - 1_000}&to=${first!.atMs + 1_000}&kind=summary`)).json() as { points: unknown[] };
+    const narrow = await frame(await historySearch(host.hostId, `from=${first!.atMs - 1_000}&to=${first!.atMs + 1_000}&kind=summary`)) as { points: unknown[] };
     expect(narrow.points.length).toBe(1);
-    const after = await (await historySearch(host.hostId, `from=${second!.atMs + 1}&to=${second!.atMs + 60_000}&kind=summary`)).json() as { points: unknown[] };
+    const after = await frame(await historySearch(host.hostId, `from=${second!.atMs + 1}&to=${second!.atMs + 60_000}&kind=summary`)) as { points: unknown[] };
     expect(after.points.length).toBe(0);
 
     const day = 24 * 60 * 60 * 1000;
@@ -92,7 +94,7 @@ describe("history", () => {
     for (const [search, resolution] of tiers) {
       const response = await historySearch(host.hostId, `${search}&kind=summary`);
       expect(response.status, search).toBe(200);
-      expect((await response.json() as { resolution: string }).resolution, search).toBe(resolution);
+      expect((await frame(response) as { resolution: string }).resolution, search).toBe(resolution);
     }
 
     expect((await historySearch(host.hostId, "from=1000&kind=summary")).status).toBe(400);
@@ -104,7 +106,7 @@ describe("history", () => {
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
     const summary = await history(host.hostId, "1h", "summary");
     expect(summary.status).toBe(200);
-    const body = await summary.json() as { resolution: string; points: { atMs: number; coverageMs: number; cpu?: { user: number } }[] };
+    const body = await frame(summary) as { resolution: string; points: { atMs: number; coverageMs: number; cpu?: { user: number } }[] };
     expect(body.resolution).toBe("raw");
     expect(body.points.length).toBe(2);
     expect(body.points[0]!.coverageMs).toBe(0);
@@ -117,13 +119,13 @@ describe("history", () => {
     for (const kind of ["disks", "nets", "filesystems"]) {
       const response = await history(host.hostId, "1h", kind);
       expect(response.status, kind).toBe(200);
-      const value = await response.json() as { series: { id: string; points: unknown[] }[] };
+      const value = await frame(response) as { series: { id: string; points: unknown[] }[] };
       expect(value.series.length, kind).toBeGreaterThan(0);
       expect(value.series.every(series => series.points.length <= 900), kind).toBe(true);
     }
 
     const week = await history(host.hostId, "7d", "summary");
-    const weekBody = await week.json() as { resolution: string; stepMs: number; points: { coverageMs: number; partial: boolean }[] };
+    const weekBody = await frame(week) as { resolution: string; stepMs: number; points: { coverageMs: number; partial: boolean }[] };
     expect(weekBody.resolution).toBe("1m");
     expect(weekBody.stepMs).toBe(60_000);
     expect(weekBody.points.length).toBe(1);
@@ -131,19 +133,19 @@ describe("history", () => {
     expect(weekBody.points[0]!.partial).toBe(true);
 
     const sixHours = await history(host.hostId, "6h", "summary");
-    expect((await sixHours.json() as { resolution: string }).resolution).toBe("raw");
+    expect((await frame(sixHours) as { resolution: string }).resolution).toBe("raw");
     const day = await history(host.hostId, "24h", "summary");
-    const dayBody = await day.json() as { resolution: string; stepMs: number };
+    const dayBody = await frame(day) as { resolution: string; stepMs: number };
     expect(dayBody.resolution).toBe("1m");
     expect(dayBody.stepMs).toBe(60_000);
 
     const quarter = await history(host.hostId, "90d", "summary");
-    const quarterBody = await quarter.json() as { resolution: string; stepMs: number };
+    const quarterBody = await frame(quarter) as { resolution: string; stepMs: number };
     expect(quarterBody.resolution).toBe("1h");
     expect(quarterBody.stepMs).toBe(3_600_000);
 
     const block = await history(host.hostId, "1h", "block");
-    const blockBody = await block.json() as { resolution: string; series: { points: { count: number; p50Us: number; p95Us: number; p99Us: number; maxUs: number }[] }[] };
+    const blockBody = await frame(block) as { resolution: string; series: { points: { count: number; p50Us: number; p95Us: number; p99Us: number; maxUs: number }[] }[] };
     expect(blockBody.resolution).toBe("raw");
     expect(blockBody.series[0]!.points[0]!.count).toBe(110);
     expect(blockBody.series[0]!.points[0]!.p50Us).toBeGreaterThan(0);
@@ -152,7 +154,7 @@ describe("history", () => {
     expect(blockBody.series[0]!.points[0]!.maxUs).toBe(45_000);
 
     const blockWeek = await history(host.hostId, "7d", "block");
-    const blockWeekBody = await blockWeek.json() as { resolution: string; series: { points: { count: number }[] }[] };
+    const blockWeekBody = await frame(blockWeek) as { resolution: string; series: { points: { count: number }[] }[] };
     expect(blockWeekBody.resolution).toBe("1m");
     expect(blockWeekBody.series[0]!.points[0]!.count).toBe(110);
     expect((await history(host.hostId, "2h", "summary")).status).toBe(400);
@@ -167,7 +169,7 @@ describe("history", () => {
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
     const response = await historySearch(host.hostId, "range=1h&kinds=summary,disks,nets,filesystems,block");
     expect(response.status).toBe(200);
-    const body = await response.json() as { hostId: string; histories: Record<string, { kind: string; points?: unknown[]; series?: { points: unknown[] }[] }> };
+    const body = await frame(response) as { hostId: string; histories: Record<string, { kind: string; points?: unknown[]; series?: { points: unknown[] }[] }> };
     expect(body.hostId).toBe(host.hostId);
     expect(Object.keys(body.histories)).toEqual(["summary", "disks", "nets", "filesystems", "block"]);
     for (const [kind, history] of Object.entries(body.histories)) expect(history.kind, kind).toBe(kind);
@@ -208,12 +210,58 @@ describe("history", () => {
     expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
+  it("sends history as a frame, compressed to what the client accepts, with every security header", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const accepted: [string | null, string | null][] = [
+      [null, null], ["identity", null], ["gzip", "gzip"], ["br, gzip", "br"], ["gzip, deflate, br", "br"],
+      ["br;q=0, gzip", "gzip"], ["gzip;q=0, br;q=0.5", "br"], ["br;q=0, gzip;q=0", null], ["*", "br"], ["deflate", null]
+    ];
+    for (const [header, coding] of accepted) {
+      const response = await historySearch(host.hostId, "range=1h&kinds=summary,disks", header === null ? {} : { "Accept-Encoding": header });
+      expect(response.status, String(header)).toBe(200);
+      expect(response.headers.get("content-type")).toBe(HISTORY_CONTENT_TYPE);
+      expect(response.headers.get("content-encoding"), String(header)).toBe(coding);
+      expect(response.headers.get("vary")).toBe("Accept-Encoding");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("content-security-policy")).toContain("default-src 'self'");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(response.headers.get("x-frame-options")).toBe("DENY");
+      expect(Object.keys(await frame(response) as object)).toContain("histories");
+    }
+  });
+
+  it("revalidates with Vary and leaves errors as uncompressed JSON", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const first = await historySearch(host.hostId, "range=1h&kind=summary", { "Accept-Encoding": "br" });
+    const etag = first.headers.get("etag")!;
+    expect(etag.endsWith(':stc1"')).toBe(true);
+    const unchanged = await historySearch(host.hostId, "range=1h&kind=summary", { "Accept-Encoding": "br", "If-None-Match": etag });
+    expect(unchanged.status).toBe(304);
+    expect(unchanged.headers.get("vary")).toBe("Accept-Encoding");
+    expect(unchanged.headers.get("etag")).toBe(etag);
+    expect(unchanged.headers.get("content-encoding")).toBeNull();
+    const other = await historySearch(host.hostId, "range=1h&kind=disks");
+    expect(other.headers.get("etag")).not.toBe(etag);
+
+    const missing = await historySearch("h_0123456789abcdef0123456789abcdef", "range=1h&kinds=summary", { "Accept-Encoding": "br" });
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("content-encoding")).toBeNull();
+    expect(missing.headers.get("content-type")).toContain("application/json");
+    expect(await missing.json()).toEqual({ error: { code: "not_found", message: "host not found" } });
+    const invalid = await historySearch(host.hostId, "range=1h&kinds=bogus", { "Accept-Encoding": "br" });
+    expect(invalid.status).toBe(400);
+    expect(invalid.headers.get("content-encoding")).toBeNull();
+    expect(invalid.headers.get("content-type")).toContain("application/json");
+  });
+
   it("repairs a late sample in the rolled bucket", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
     expect((await ingest(host.token, "out-of-order-late.json", host.hostId)).status).toBe(200);
     const response = await history(host.hostId, "7d", "summary");
-    const body = await response.json() as { points: { coverageMs: number }[] };
+    const body = await frame(response) as { points: { coverageMs: number }[] };
     expect(body.points[0]!.coverageMs).toBe(15_000);
   });
 
@@ -228,9 +276,9 @@ describe("history", () => {
         state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, 15_000, 1, ?)", host.hostId, bucketMs, JSON.stringify({ v: 1, bucketMs, samples: 1, coverageMs: 15_000, partial: true, gauges: {}, psi: {}, disks: {}, nets: {}, filesystems: {} }));
       }
     });
-    const raw = await (await history(host.hostId, "1h", "summary")).json() as { stepMs: number };
+    const raw = await frame(await history(host.hostId, "1h", "summary")) as { stepMs: number };
     expect(raw.stepMs).toBe(15_000);
-    const rolled = await (await history(host.hostId, "7d", "summary")).json() as { stepMs: number };
+    const rolled = await frame(await history(host.hostId, "7d", "summary")) as { stepMs: number };
     expect(rolled.stepMs).toBe(60_000);
   });
 
@@ -279,7 +327,7 @@ describe("history reads", () => {
     async function everyKind(hostId: string): Promise<unknown> {
       const response = await historySearch(hostId, "range=1h&kinds=summary,disks,nets,filesystems,block");
       expect(response.status).toBe(200);
-      const body = await response.json() as { histories: Record<string, Record<string, unknown>> };
+      const body = await frame(response) as { histories: Record<string, Record<string, unknown>> };
       return Object.fromEntries(Object.entries(body.histories).map(([kind, value]) => [kind, { ...value, hostId: undefined }]));
     }
     async function readBetween(first: unknown[], second: unknown[]): Promise<{ primed: unknown; fresh: unknown }> {
@@ -309,9 +357,9 @@ describe("history reads", () => {
   it("returns history that includes a later batch", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    const before = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
+    const before = ((await frame(await history(host.hostId, "1h", "summary"))) as { points: unknown[] }).points.length;
     expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
-    const after = ((await (await history(host.hostId, "1h", "summary")).json()) as { points: unknown[] }).points.length;
+    const after = ((await frame(await history(host.hostId, "1h", "summary"))) as { points: unknown[] }).points.length;
     expect(after).toBeGreaterThan(before);
   });
 });

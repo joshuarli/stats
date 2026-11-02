@@ -1,6 +1,7 @@
-import type { ProjectMetricHistory, ProjectCollectorHistory } from "../../api";
-import { pointsIn, type ChartPoint, type TimeWindow } from "../../chart-data";
+import { windowIndexes, windowTracks, type TimeWindow } from "../../chart-data";
+import type { Cells, Track } from "../../columns";
 import { bytes, count, milliseconds, minutes, percent } from "../../format";
+import { metricTrack, type CollectorHistory, type MetricHistory } from "../../history";
 import { LIMITS, MIN_SCORED_EVENTS, type Limits } from "../../health";
 import { monitorState } from "../../monitoring";
 import { addAll, holdLast, ratio, scaled } from "./math";
@@ -13,61 +14,62 @@ export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
 const ROUTE_PREFIX = "route.";
 const R2_OUTCOMES = ["success", "userError", "other"] as const;
 
-export function metricPoints(history: ProjectMetricHistory, metric: string): ChartPoint[] {
-  const found = history.series.find(entry => entry.metric === metric);
-  if (found === undefined) return [];
-  return found.values.map((value, index) => ({ atMs: history.fromMs + index * history.stepMs, value: value ?? undefined }));
-}
-
-export function provisionalFromMs(history: ProjectMetricHistory): number {
+export function provisionalFromMs(history: MetricHistory): number {
   const cutoff = history.toMs - history.stepMs - PROJECT_SETTLE_MS;
   return history.fromMs + (Math.floor((cutoff - history.fromMs) / history.stepMs) + 1) * history.stepMs;
 }
 
-export function silenceMinutes(history: ProjectCollectorHistory, nowMs: number, lastSuccessAtMs: number | null): ChartPoint[] {
-  const points: ChartPoint[] = [];
+export function silenceMinutes(history: CollectorHistory, nowMs: number, lastSuccessAtMs: number | null): Track {
+  const times: number[] = [];
+  const values: number[] = [];
   let lastSuccess: number | undefined;
   for (const run of history.runs) {
-    if (lastSuccess !== undefined) points.push({ atMs: run.atMs, value: (run.atMs - lastSuccess) / MINUTE_MS });
+    if (lastSuccess !== undefined) {
+      times.push(run.atMs);
+      values.push((run.atMs - lastSuccess) / MINUTE_MS);
+    }
     if (run.ok) lastSuccess = run.atMs;
   }
   const reference = lastSuccess ?? lastSuccessAtMs ?? undefined;
-  if (reference !== undefined) points.push({ atMs: nowMs, value: Math.max(0, nowMs - reference) / MINUTE_MS });
-  return points;
+  if (reference !== undefined) {
+    times.push(nowMs);
+    values.push(Math.max(0, nowMs - reference) / MINUTE_MS);
+  }
+  return { times, values };
 }
 
 export interface ProjectData {
-  readonly worker: ProjectMetricHistory;
-  readonly routes: ProjectMetricHistory;
-  readonly durableObjects: ProjectMetricHistory | undefined;
-  readonly r2: ProjectMetricHistory;
-  readonly d1: ProjectMetricHistory | undefined;
-  readonly d1Statements: ProjectMetricHistory | undefined;
-  readonly probes: ProjectMetricHistory | undefined;
+  readonly worker: MetricHistory;
+  readonly routes: MetricHistory;
+  readonly durableObjects: MetricHistory | undefined;
+  readonly r2: MetricHistory;
+  readonly d1: MetricHistory | undefined;
+  readonly d1Statements: MetricHistory | undefined;
+  readonly probes: MetricHistory | undefined;
   readonly probeNames: readonly string[];
   readonly buckets: readonly string[];
   readonly databases: readonly string[];
-  readonly silence: readonly ChartPoint[];
+  readonly silence: Track;
 }
 
 export function r2Metric(bucket: string, suffix: string): string {
   return `r2.${bucket}.${suffix}`;
 }
 
-export function bucketOutcome(data: ProjectData, outcome: (typeof R2_OUTCOMES)[number]): ChartPoint[] {
-  return addAll(data.buckets.map(bucket => metricPoints(data.r2, r2Metric(bucket, `ops.${outcome}`))));
+export function bucketOutcome(data: ProjectData, outcome: (typeof R2_OUTCOMES)[number]): Track {
+  return addAll(data.buckets.map(bucket => metricTrack(data.r2, r2Metric(bucket, `ops.${outcome}`))));
 }
 
-function bucketGauge(data: ProjectData, suffix: "storageBytes" | "objects"): ChartPoint[] {
-  return addAll(data.buckets.map(bucket => holdLast(metricPoints(data.r2, r2Metric(bucket, suffix)))));
+function bucketGauge(data: ProjectData, suffix: "storageBytes" | "objects"): Track {
+  return addAll(data.buckets.map(bucket => holdLast(metricTrack(data.r2, r2Metric(bucket, suffix)))));
 }
 
-export function serverErrorShare(data: ProjectData): ChartPoint[] {
-  return ratio(metricPoints(data.worker, "worker.status.5xx"), metricPoints(data.worker, "worker.invocations"), 100, MIN_SCORED_EVENTS);
+export function serverErrorShare(data: ProjectData): Track {
+  return ratio(metricTrack(data.worker, "worker.status.5xx"), metricTrack(data.worker, "worker.invocations"), 100, MIN_SCORED_EVENTS);
 }
 
-export function cpuAverage(data: ProjectData): ChartPoint[] {
-  return ratio(metricPoints(data.worker, "worker.cpuMsSum"), metricPoints(data.worker, "worker.invocations"), 1, MIN_SCORED_EVENTS);
+export function cpuAverage(data: ProjectData): Track {
+  return ratio(metricTrack(data.worker, "worker.cpuMsSum"), metricTrack(data.worker, "worker.invocations"), 1, MIN_SCORED_EVENTS);
 }
 
 export interface RouteRow {
@@ -78,12 +80,12 @@ export interface RouteRow {
   readonly averageMs: number | undefined;
 }
 
-function seriesTotal(history: ProjectMetricHistory, metric: string, view: TimeWindow | null): number {
-  return totalIn(metricPoints(history, metric), view);
+function seriesTotal(history: MetricHistory, metric: string, view: TimeWindow | null): number {
+  return totalIn(metricTrack(history, metric), view);
 }
 
-export function routeRows(history: ProjectMetricHistory, view: TimeWindow | null): RouteRow[] {
-  const routes = new Set(history.series.map(entry => entry.metric.slice(ROUTE_PREFIX.length, entry.metric.lastIndexOf("."))));
+export function routeRows(history: MetricHistory, view: TimeWindow | null): RouteRow[] {
+  const routes = new Set(history.table.names().map(metric => metric.slice(ROUTE_PREFIX.length, metric.lastIndexOf("."))));
   const totals = [...routes].map(route => ({
     route,
     invocations: seriesTotal(history, `${ROUTE_PREFIX}${route}.invocations`, view),
@@ -103,8 +105,8 @@ export interface StatementRow {
   readonly cost: number;
 }
 
-export function statementRows(history: ProjectMetricHistory, view: TimeWindow | null): StatementRow[] {
-  const statements = new Set(history.series.map(entry => entry.metric.slice("d1q.".length, entry.metric.lastIndexOf("."))));
+export function statementRows(history: MetricHistory, view: TimeWindow | null): StatementRow[] {
+  const statements = new Set(history.table.names().map(metric => metric.slice("d1q.".length, metric.lastIndexOf("."))));
   return [...statements]
     .map(statement => {
       const rowsRead = seriesTotal(history, `d1q.${statement}.rowsRead`, view);
@@ -123,51 +125,52 @@ export function statementRows(history: ProjectMetricHistory, view: TimeWindow | 
 export interface CostPart {
   readonly label: string;
   readonly unit: string;
-  readonly points: readonly ChartPoint[];
-  readonly usage: readonly ChartPoint[];
+  readonly points: Track;
+  readonly usage: Track;
 }
 
-function costPart(label: string, unit: string, usage: readonly ChartPoint[], pricePerMillion: number): CostPart {
+function costPart(label: string, unit: string, usage: Track, pricePerMillion: number): CostPart {
   return { label, unit, usage, points: scaled(usage, pricePerMillion / 1_000_000) };
 }
 
 export function costParts(data: ProjectData): CostPart[] {
   const parts = [
-    costPart("Worker requests", "requests", metricPoints(data.worker, "worker.invocations"), LIST_PRICE_PER_MILLION.workerRequests),
-    costPart("Worker CPU", "CPU ms", metricPoints(data.worker, "worker.cpuMsSum"), LIST_PRICE_PER_MILLION.workerCpuMs)
+    costPart("Worker requests", "requests", metricTrack(data.worker, "worker.invocations"), LIST_PRICE_PER_MILLION.workerRequests),
+    costPart("Worker CPU", "CPU ms", metricTrack(data.worker, "worker.cpuMsSum"), LIST_PRICE_PER_MILLION.workerCpuMs)
   ];
   if (data.durableObjects !== undefined) {
-    parts.push(costPart("Durable Object requests", "requests", metricPoints(data.durableObjects, "do.invocations"), LIST_PRICE_PER_MILLION.durableObjectRequests));
+    parts.push(costPart("Durable Object requests", "requests", metricTrack(data.durableObjects, "do.invocations"), LIST_PRICE_PER_MILLION.durableObjectRequests));
   }
   if (data.d1 !== undefined) {
-    parts.push(costPart("D1 rows written", "rows", metricPoints(data.d1, "d1.rowsWritten"), LIST_PRICE_PER_MILLION.d1RowsWritten));
-    parts.push(costPart("D1 rows read", "rows", metricPoints(data.d1, "d1.rowsRead"), LIST_PRICE_PER_MILLION.d1RowsRead));
+    parts.push(costPart("D1 rows written", "rows", metricTrack(data.d1, "d1.rowsWritten"), LIST_PRICE_PER_MILLION.d1RowsWritten));
+    parts.push(costPart("D1 rows read", "rows", metricTrack(data.d1, "d1.rowsRead"), LIST_PRICE_PER_MILLION.d1RowsRead));
   }
   return parts;
 }
 
-export function totalIn(points: readonly ChartPoint[], view: TimeWindow | null): number {
+export function totalIn(track: Track, view: TimeWindow | null): number {
+  const [first, last] = windowIndexes(track.times, view);
   let total = 0;
-  for (const point of pointsIn(points, view)) total += point.value ?? 0;
+  for (let index = first; index <= last; index += 1) total += track.values[index] ?? 0;
   return total;
 }
 
-export function durableObjectCpuAverage(history: ProjectMetricHistory): ChartPoint[] {
-  return ratio(metricPoints(history, "do.cpuMsSum"), metricPoints(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
+export function durableObjectCpuAverage(history: MetricHistory): Track {
+  return ratio(metricTrack(history, "do.cpuMsSum"), metricTrack(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
 }
 
-export function durableObjectWallAverage(history: ProjectMetricHistory): ChartPoint[] {
-  return ratio(metricPoints(history, "do.wallMsSum"), metricPoints(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
+export function durableObjectWallAverage(history: MetricHistory): Track {
+  return ratio(metricTrack(history, "do.wallMsSum"), metricTrack(history, "do.invocations"), 1, MIN_SCORED_EVENTS);
 }
 
-export function otherShare(data: ProjectData): ChartPoint[] {
+export function otherShare(data: ProjectData): Track {
   const total = addAll(R2_OUTCOMES.map(outcome => bucketOutcome(data, outcome)));
   return ratio(bucketOutcome(data, "other"), total, 100, MIN_SCORED_EVENTS);
 }
 
-export function probeUp(data: ProjectData): ChartPoint[][] {
+export function probeUp(data: ProjectData): Track[] {
   const history = data.probes;
-  return history === undefined ? [] : data.probeNames.map(name => metricPoints(history, `probe.${name}.up`));
+  return history === undefined ? [] : data.probeNames.map(name => metricTrack(history, `probe.${name}.up`));
 }
 
 function collectedAgo(value: number | undefined): string {
@@ -178,36 +181,46 @@ export function endpointText(value: number | undefined): string {
   return value === undefined ? count(value) : value >= 1 ? "all up" : "down";
 }
 
-function weakest(series: readonly (readonly ChartPoint[])[]): ChartPoint[] {
+function weakest(series: readonly Track[]): Track {
   const first = series[0];
-  if (first === undefined) return [];
-  return first.map((point, index) => {
-    const values = series.flatMap(column => (column[index]?.value === undefined ? [] : [column[index]!.value!]));
-    return { atMs: point.atMs, value: values.length === 0 ? undefined : Math.min(...values) };
+  if (first === undefined) return { times: [], values: [] };
+  const values = first.times.map((_, index) => {
+    let lowest: number | null = null;
+    for (const track of series) {
+      const value = track.values[index];
+      if (value !== undefined && value !== null && (lowest === null || value < lowest)) lowest = value;
+    }
+    return lowest;
   });
+  return { times: first.times, values };
 }
 
-export function hasAnyValue(...series: readonly (readonly ChartPoint[])[]): boolean {
-  return series.some(points => points.some(point => point.value !== undefined));
+export function hasAnyValue(...series: readonly Track[]): boolean {
+  return series.some(track => track.values.some(value => value !== null));
 }
 
 interface Spec {
   readonly id: string;
-  readonly parts?: readonly (readonly ChartPoint[])[];
+  readonly parts?: readonly Track[];
   readonly label: string;
   readonly anchor: string;
   readonly limits: Limits | undefined;
-  readonly points: readonly ChartPoint[];
+  readonly points: Track;
   readonly format: (value: number | undefined) => string;
   readonly settledBeforeMs?: number;
   readonly detail?: string;
+}
+
+function settledPrefix(track: Track, settledBeforeMs: number): Cells {
+  const unsettled = track.times.findIndex(time => time >= settledBeforeMs);
+  return unsettled === -1 ? track.values : track.values.slice(0, unsettled);
 }
 
 export function buildProjectCells(data: ProjectData, view: TimeWindow | null): MonitorCell[] {
   const stepMs = data.worker.stepMs;
   const workerSettled = provisionalFromMs(data.worker);
   const specs: Spec[] = [
-    { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricPoints(data.worker, "worker.invocations"), format: count, settledBeforeMs: workerSettled },
+    { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricTrack(data.worker, "worker.invocations"), format: count, settledBeforeMs: workerSettled },
     { id: "server-errors", label: "Worker 5xx", anchor: "status", limits: LIMITS.workerServerErrorPercent, points: serverErrorShare(data), format: percent },
     { id: "cpu-time", label: "CPU time", anchor: "cpu", limits: LIMITS.workerCpuMs, points: cpuAverage(data), format: milliseconds },
     ...(data.buckets.length === 0
@@ -216,18 +229,18 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
           { id: "r2-other", label: "R2 failures", anchor: "r2-operations", limits: LIMITS.r2OtherPercent, points: otherShare(data), format: percent },
           { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes }
         ]),
-    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: collectedAgo, detail: `longest gap ${minutes(Math.round(Math.max(0, ...data.silence.map(point => point.value ?? 0))))} · stale after ${LIMITS.collectorStaleMinutes.elevated} min` }
+    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: collectedAgo, detail: `longest gap ${minutes(Math.round(Math.max(0, ...data.silence.values.map(value => value ?? 0))))} · stale after ${LIMITS.collectorStaleMinutes.elevated} min` }
   ];
   const ups = probeUp(data);
   if (ups.length > 0) {
     specs.splice(specs.length - 1, 0, { id: "endpoints", label: "Endpoints", anchor: "endpoints", limits: LIMITS.probeUp, points: weakest(ups), parts: ups, format: endpointText, detail: `${ups.length} probed from the edge` });
   }
   return specs.map(spec => {
-    const windowed = spec.id === "collector" ? spec.points : pointsIn(spec.points, view);
-    const parts = spec.parts === undefined ? [windowed] : spec.parts.map(part => pointsIn(part, view));
+    const [windowed] = spec.id === "collector" ? [spec.points] : windowTracks([spec.points], view);
+    const parts = spec.parts === undefined ? [windowed!] : spec.id === "collector" ? [...spec.parts] : windowTracks(spec.parts, view);
     const monitored = monitorState({ limits: spec.limits, series: parts, stepMs: spec.id === "collector" ? undefined : stepMs });
-    const spark = spec.settledBeforeMs === undefined ? windowed : windowed.filter(point => point.atMs < spec.settledBeforeMs!);
-    const arriving = spec.settledBeforeMs !== undefined && windowed.some(point => point.atMs >= spec.settledBeforeMs! && point.value !== undefined);
+    const spark = spec.settledBeforeMs === undefined ? windowed!.values : settledPrefix(windowed!, spec.settledBeforeMs);
+    const arriving = spec.settledBeforeMs !== undefined && windowed!.times.some((time, index) => time >= spec.settledBeforeMs! && windowed!.values[index] !== null);
     return { id: spec.id, label: spec.label, anchor: spec.anchor, state: monitored, spark, format: spec.format, value: lastValue(spark), detail: spec.detail !== undefined ? spec.detail : arriving ? `${rangeText(spark, spec.format, spec.limits)} · newest still arriving` : rangeText(spark, spec.format, spec.limits), limits: spec.limits, hue: CELL_HUES[spec.id] ?? "neutral" };
   });
 }

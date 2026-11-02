@@ -131,6 +131,14 @@ await test("history shares identical axes without inventing data for sparse devi
   assert.equal(axes[0]!.values, axes[2]!.values);
   assert.notEqual(axes[0]!.values, axes.at(-1)!.values);
 });
+await test("a host with thousands of short-lived devices still fits one frame", () => {
+  const nets = histories(3).nets;
+  const point = nets.series[0]!.points[0]!;
+  const value = { ...nets, series: Array.from({ length: 3000 }, (_, index) => ({ id: `veth${index.toString(16).padStart(8, "0")}`, points: [{ ...point, atMs: point.atMs + index }, { ...point, atMs: point.atMs + index + 15000 }] })) };
+  const encoded = encodeHistory(value);
+  assert.ok(encoded.length > 1024 * 1024);
+  assert.deepEqual(materializeHistory(openHistory(encoded).root), value);
+});
 await test("history rejects unknown fields, invalid timestamps and new kinds instead of dropping them", () => {
   const value = histories(1).summary;
   for (const patch of [{ surprise: 1 }, { atMs: 1.5 }, { partial: 0 }, { cpu: null }, { mem: { total: Infinity } }]) assert.throws(() => encodeHistory({ ...value, points: [{ ...value.points[0], ...patch }] }));

@@ -1,5 +1,6 @@
 import { onCleanup } from "solid-js";
-import { getFleetHistories, getHosts, getProjects, getSystem, type DiskSeries, type HistoryQuery, type Host, type HostSystem, type NetSeries, type Project, type SummaryPoint } from "./api";
+import { getFleetHistories, getHosts, getProjects, getSystem, type HistoryQuery, type Host, type HostSystem, type Project } from "./api";
+import type { DiskSeries, NetSeries, SummaryTable } from "./history";
 
 export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const controller = new AbortController();
@@ -18,7 +19,7 @@ export function loadProjects(): Promise<readonly Project[]> {
 export interface FleetRow {
   readonly host: Host;
   readonly system: HostSystem | null;
-  readonly summary: readonly SummaryPoint[];
+  readonly summary: SummaryTable;
   readonly stepMs: number;
   readonly disks: readonly DiskSeries[];
   readonly nets: readonly NetSeries[];
@@ -39,10 +40,10 @@ export function loadFleetRows(hosts: readonly Host[], query: HistoryQuery): Prom
     return {
       host,
       system,
-      summary: history.summary.points ?? [],
+      summary: history.summary.table,
       stepMs: history.summary.stepMs,
-      disks: history.disks.series ?? [],
-      nets: history.nets.series ?? []
+      disks: history.disks.series,
+      nets: history.nets.series
     };
   }));
 }

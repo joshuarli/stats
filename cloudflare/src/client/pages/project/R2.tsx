@@ -5,7 +5,8 @@ import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 
 import { Widget } from "../../components/ui";
 import { holdLast } from "./math";
-import { bucketOutcome, metricPoints, otherShare, provisionalFromMs, r2Metric, type ProjectData } from "./series";
+import { bucketOutcome, otherShare, provisionalFromMs, r2Metric, type ProjectData } from "./series";
+import { metricTrack } from "../../history";
 
 export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
@@ -14,9 +15,9 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         label="R2 operations by outcome"
         timeAxis={false}
         series={[
-          { label: "success", color: "blue", scored: false, points: bucketOutcome(props.data, "success") },
-          { label: "user error", color: "neutral", scored: false, points: bucketOutcome(props.data, "userError") },
-          { label: "other failure", color: "critical", scored: false, points: bucketOutcome(props.data, "other") }
+          { label: "success", color: "blue", scored: false, track: bucketOutcome(props.data, "success") },
+          { label: "user error", color: "neutral", scored: false, track: bucketOutcome(props.data, "userError") },
+          { label: "other failure", color: "critical", scored: false, track: bucketOutcome(props.data, "other") }
         ]}
         format={count}
         min={0}
@@ -27,7 +28,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
       <PanelChart
         label="R2 failure share"
         area
-        series={[{ label: "failure share", color: "critical", graded: true, points: otherShare(props.data) }]}
+        series={[{ label: "failure share", color: "critical", graded: true, track: otherShare(props.data) }]}
         format={percent}
         limits={LIMITS.r2OtherPercent}
         min={0}
@@ -44,7 +45,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
       <PanelChart
         label="R2 stored bytes"
         timeAxis={false}
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: holdLast(metricPoints(props.data.r2, r2Metric(bucket, "storageBytes"))) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, track: holdLast(metricTrack(props.data.r2, r2Metric(bucket, "storageBytes"))) }))}
         format={bytes}
         min={0}
         stepMs={props.data.r2.stepMs}
@@ -52,7 +53,7 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
       <PanelLabel>Objects</PanelLabel>
       <PanelChart
         label="R2 objects"
-        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, points: holdLast(metricPoints(props.data.r2, r2Metric(bucket, "objects"))) }))}
+        series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, track: holdLast(metricTrack(props.data.r2, r2Metric(bucket, "objects"))) }))}
         format={count}
         min={0}
         stepMs={props.data.r2.stepMs}

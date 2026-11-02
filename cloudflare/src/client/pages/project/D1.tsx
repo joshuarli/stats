@@ -5,7 +5,8 @@ import { bytes, count, dollars } from "../../format";
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart, seriesColor } from "../host/shared";
 import { holdLast } from "./math";
-import { metricPoints, provisionalFromMs, statementRows, type ProjectData } from "./series";
+import { provisionalFromMs, statementRows, type ProjectData } from "./series";
+import { metricTrack } from "../../history";
 
 export function D1Widget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
   const totals = () => props.data.d1;
@@ -18,7 +19,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
             <PanelChart
               label="D1 database size"
               timeAxis={false}
-              series={props.data.databases.map((id, index) => ({ label: id.slice(0, 8), color: seriesColor(index), scored: false, points: holdLast(metricPoints(history(), `d1.${id}.storageBytes`)) }))}
+              series={props.data.databases.map((id, index) => ({ label: id.slice(0, 8), color: seriesColor(index), scored: false, track: holdLast(metricTrack(history(), `d1.${id}.storageBytes`)) }))}
               format={bytes}
               min={0}
               stepMs={history().stepMs}
@@ -28,7 +29,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
               label="D1 rows written"
               area
               timeAxis={false}
-              series={[{ label: "rows written", color: "critical", scored: false, points: metricPoints(history(), "d1.rowsWritten") }]}
+              series={[{ label: "rows written", color: "critical", scored: false, track: metricTrack(history(), "d1.rowsWritten") }]}
               format={count}
               min={0}
               stepMs={history().stepMs}
@@ -38,8 +39,8 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
             <PanelChart
               label="D1 rows read and queries"
               series={[
-                { label: "rows read", color: "blue", scored: false, points: metricPoints(history(), "d1.rowsRead") },
-                { label: "queries", color: "aqua", scored: false, points: metricPoints(history(), "d1.queries") }
+                { label: "rows read", color: "blue", scored: false, track: metricTrack(history(), "d1.rowsRead") },
+                { label: "queries", color: "aqua", scored: false, track: metricTrack(history(), "d1.queries") }
               ]}
               format={count}
               min={0}
