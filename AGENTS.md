@@ -1,6 +1,6 @@
 # Stats
 
-A static-musl Linux host agent (`agent/`), a Cloudflare Worker with one
+A host agent (`agent/`), static musl on Linux and a native binary on macOS, a Cloudflare Worker with one
 SQLite-backed Durable Object and a Solid dashboard (`cloudflare/`), the shared
 wire fixtures (`fixtures/v1/`), an optional bpftrace block-latency collector
 (`bpf/`), and deploy scripts (`deploy/`).
@@ -31,7 +31,7 @@ go under `.work/tmp`.
 - Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
 - Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
 - Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
-- The baseline agent never loads BPF, needs no root, service manager, or runtime, and links no dynamic libraries.
+- The baseline agent never loads BPF and needs no root, service manager, or runtime. On Linux it links no dynamic libraries; on macOS it links only system libraries and frameworks.
 
 ## Docs
 

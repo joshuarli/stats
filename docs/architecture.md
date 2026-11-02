@@ -1,6 +1,7 @@
 # Architecture
 
-A static-musl Rust agent samples each Linux host and posts batches over HTTPS
+A Rust agent, static musl on Linux and native on macOS (`agent/src/linux.rs`,
+`agent/src/macos.rs`), samples each host and posts batches over HTTPS
 to a Cloudflare Worker. The Worker forwards ingest and API calls to one
 SQLite-backed Durable Object, which stores raw samples and rollups and answers
 history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for

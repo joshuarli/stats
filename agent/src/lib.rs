@@ -11,6 +11,13 @@ use model::{Sample, SystemInfo};
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+use linux as platform;
+
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos as platform;
 
 #[cfg(test)]
 mod test_support;
@@ -23,32 +30,32 @@ pub struct CollectionScope {
     pub virtual_filesystems: bool,
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn sample_once(scope: CollectionScope) -> Option<Sample> {
-    linux::sample(scope)
+    platform::sample(scope)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn sample_once(_scope: CollectionScope) -> Option<Sample> {
     None
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn system_info() -> Option<SystemInfo> {
-    linux::system_info()
+    platform::system_info()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn system_info() -> Option<SystemInfo> {
     None
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn boot_identity() -> Option<String> {
-    linux::boot_identity()
+    platform::boot_identity()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn boot_identity() -> Option<String> {
     None
 }

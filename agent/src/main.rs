@@ -22,7 +22,17 @@ fn cpu_times() -> (f64, f64, u64) {
     unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) };
     let user = usage.ru_utime.tv_sec as f64 * 1000.0 + usage.ru_utime.tv_usec as f64 / 1000.0;
     let system = usage.ru_stime.tv_sec as f64 * 1000.0 + usage.ru_stime.tv_usec as f64 / 1000.0;
-    (user, system, usage.ru_maxrss as u64 * 1024)
+    (user, system, max_rss_bytes(usage.ru_maxrss))
+}
+
+#[cfg(target_os = "macos")]
+fn max_rss_bytes(max_rss: libc::c_long) -> u64 {
+    max_rss as u64
+}
+
+#[cfg(not(target_os = "macos"))]
+fn max_rss_bytes(max_rss: libc::c_long) -> u64 {
+    max_rss as u64 * 1024
 }
 
 fn bench(iterations: u32, interval_ms: u64) -> i32 {

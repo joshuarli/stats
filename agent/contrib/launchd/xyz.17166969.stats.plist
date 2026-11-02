@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>xyz.17166969.stats</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>HOME_DIR/.local/bin/stats</string>
+    <string>--config</string>
+    <string>HOME_DIR/.config/stats/agent.json</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardErrorPath</key>
+  <string>HOME_DIR/Library/Logs/stats.log</string>
+</dict>
+</plist>

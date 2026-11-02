@@ -1,7 +1,8 @@
 # Stats
 
-A small Linux host monitor. One static-musl binary samples CPU, load, memory,
-pressure, disks, network, and filesystems every 15 seconds and posts batches
+A small Linux and macOS host monitor. One binary (static musl on Linux)
+samples CPU, load, memory, pressure, disks, network, and filesystems every 15
+seconds and posts batches
 over outbound HTTPS to a Cloudflare Worker. The Worker stores them in a
 SQLite-backed Durable Object and serves a dashboard behind Cloudflare Access.
 The agent runs on ordinary Debian and Alpine hosts without root, systemd,
@@ -39,6 +40,32 @@ Start it with one of:
 Stop it with SIGTERM; the supervisor and service scripts stop the child and
 keep the configuration. Revoke the host credential before removing the binary,
 configuration, and token.
+
+## Install on macOS
+
+The macOS agent runs as a launchd user agent under your own account, with no
+root. Build it natively with `cargo build --release --manifest-path
+agent/Cargo.toml`, provision the host, then:
+
+```sh
+install -d -m 0700 ~/.local/bin ~/.config/stats
+install -m 0755 agent/target/release/stats ~/.local/bin/stats
+install -m 0600 agent.json token ~/.config/stats/
+sed "s|HOME_DIR|$HOME|g" agent/contrib/launchd/xyz.17166969.stats.plist \
+  > ~/Library/LaunchAgents/xyz.17166969.stats.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/xyz.17166969.stats.plist
+```
+
+Set `tokenFile` in `agent.json` to the absolute path of `~/.config/stats/token`.
+Logs go to `~/Library/Logs/stats.log`. Stop it with
+`launchctl bootout "gui/$(id -u)/xyz.17166969.stats"`.
+
+macOS has no pressure stall information and its disk statistics need IOKit,
+so `psi` and `disks` are reported as unavailable. It has no I/O wait, steal
+time, or interface transmit drops, so those fields are absent. Network
+interfaces default to Ethernet-type `en*` ports, and filesystems to writable
+local volumes that Finder shows plus the `/System/Volumes/Data` volume. The
+binary links only system libraries and frameworks.
 
 ## Configuration
 
