@@ -47,8 +47,11 @@ pnpm --dir cloudflare exec tsrs -p binary.tsconfig.json --noEmit --fast
 `binary.tsconfig.json` inherits the repository's strict options but omits
 unrelated Worker/Vite ambient types. Existing full checks remain required before
 integration: `make cloudflare-test`, `make lint`, and `make dashboard-test`.
-The new Node tests are intentionally separate from the workerd Vitest suite;
-run the explicit command above as well.
+The Node tests remain a separate process from workerd Vitest, but are now
+included in the regular `cloudflare` package test script and `make cloudflare-test`.
+The regular typecheck also invokes `binary.tsconfig.json`, so these checks
+cannot silently be skipped during a normal repository check. Use the commands
+above for focused codec development.
 
 ## Measured results: 2026-11-02
 

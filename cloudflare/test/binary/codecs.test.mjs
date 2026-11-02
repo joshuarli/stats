@@ -101,6 +101,19 @@ test("all project kinds, collector text, and bundles survive", () => {
   const value = { projectId: "stuff", histories: historiesByKind };
   assert.deepEqual(materializeHistory(openHistory(encodeHistory(value)).root), value);
 });
+test("bundles reject cross-host data, mislabeled kinds, and malformed root identities", () => {
+  const data = histories(2);
+  const hostId = data.summary.hostId;
+  const valid = { hostId, histories: { summary: data.summary } };
+  assert.deepEqual(materializeHistory(openHistory(encodeHistory(valid)).root), valid);
+  assert.throws(() => encodeHistory({ hostId, histories: { summary: { ...data.summary, hostId: "h_other" } } }));
+  assert.throws(() => encodeHistory({ hostId, histories: { disks: data.summary } }));
+  assert.throws(() => encodeHistory({ ...valid, unknown: true }));
+  assert.throws(() => encodeHistory({ projectId: "stuff", histories: { worker: { ...data.project, kind: "r2" } } }));
+  assert.throws(() => openHistory(rebuild(encodeHistory(valid), frame => { frame.metadata.node.entries[0].name = "nets"; })));
+  assert.throws(() => openHistory(rebuild(encodeHistory(valid), frame => { frame.metadata.node.metadata.hostId = "h_other"; })));
+});
+
 test("history shares identical axes without inventing data for sparse devices", () => {
   const data = histories(20);
   const encoded = encodeHistory({ hostId: data.summary.hostId, histories: { summary: data.summary, filesystems: data.filesystems, nets: data.nets } });

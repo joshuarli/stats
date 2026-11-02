@@ -7,11 +7,13 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && vite build && vitest run",
+    "test": "node scripts/check-config.mjs && pnpm run test:binary && vite build && vitest run",
     "test:ui": "playwright test",
-    "typecheck": "tsrs -p tsconfig.json --noEmit --fast",
+    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
-    "build": "vite build"
+    "build": "vite build",
+    "test:binary": "node --experimental-strip-types --test test/binary/*.test.mjs",
+    "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",

@@ -57,6 +57,18 @@ function omit(value: ObjectValue, key: string): ObjectValue { return Object.from
 function exact(value: ObjectValue, allowed: readonly string[]): void {
   if (Object.keys(value).some(key => !allowed.includes(key))) fail("unknown metadata field");
 }
+function bundleIdentity(value: ObjectValue): { readonly key: "hostId" | "projectId"; readonly id: string } {
+  const host = Object.hasOwn(value, "hostId");
+  const project = Object.hasOwn(value, "projectId");
+  if (host === project) fail("bundle must have exactly one identity");
+  const key = host ? "hostId" : "projectId";
+  exact(value, [key]);
+  return { key, id: text(value[key]) };
+}
+function bundleEntry(identity: { readonly key: "hostId" | "projectId"; readonly id: string }, name: string, value: ObjectValue): void {
+  if (identity.key === "hostId" ? !Object.hasOwn(SCHEMAS, name) : name !== "collector" && !PROJECT_KINDS.includes(name)) fail("invalid bundled history kind");
+  if (value.kind !== name || value[identity.key] !== identity.id) fail("history bundle identity or kind mismatch");
+}
 function windowMetadata(value: ObjectValue): void {
   for (const key of ["fromMs", "toMs", "stepMs"]) if (typeof value[key] !== "number" || !Number.isSafeInteger(value[key]) || value[key] < 0) fail("invalid time window");
   if ((value.stepMs as number) <= 0 || (value.fromMs as number) > (value.toMs as number)) fail("invalid time window");
@@ -145,9 +157,16 @@ export function encodeHistory(history: unknown): Uint8Array {
     }) };
   }
   const root = object(history);
-  const node: Node = Object.hasOwn(root, "histories") ? {
-    form: "bundle", metadata: omit(root, "histories"), entries: Object.entries(object(root.histories)).map(([name, entry]) => ({ name, node: single(entry) }))
-  } : single(root);
+  let node: Node;
+  if (Object.hasOwn(root, "histories")) {
+    const metadata = omit(root, "histories");
+    const identity = bundleIdentity(metadata);
+    const entries = Object.entries(object(root.histories)).map(([name, entry]) => {
+      bundleEntry(identity, name, object(entry));
+      return { name, node: single(entry) };
+    });
+    node = { form: "bundle", metadata, entries };
+  } else node = single(root);
   return encodeColumns({ metadata: { format: "stats-history", node }, tables });
 }
 
@@ -210,14 +229,19 @@ export function openHistory(input: ArrayBuffer | Uint8Array): { readonly root: H
     const node = object(value);
     if (node.form === "bundle" && allowBundle) {
       exact(node, ["form", "metadata", "entries"]);
+      const metadata = object(node.metadata);
+      const identity = bundleIdentity(metadata);
       const names = new Set<string>();
-      return { form: "bundle", metadata: object(node.metadata), entries: list(node.entries).map(value => {
+      return { form: "bundle", metadata, entries: list(node.entries).map(value => {
         const entry = object(value);
         exact(entry, ["name", "node"]);
         const name = text(entry.name);
         if (names.has(name)) fail("duplicate history kind");
         names.add(name);
-        return { name, history: visit(entry.node, false) };
+        const history = visit(entry.node, false);
+        if (history.form === "bundle") fail("nested bundle");
+        bundleEntry(identity, name, history.form === "collector" ? history.value : history.metadata);
+        return { name, history };
       }) };
     }
     if (node.form === "collector") {
