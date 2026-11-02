@@ -18,6 +18,7 @@ export const NAMESPACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 export const D1_DATABASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const WORKER_EVENT_LOG_TYPE = "cf-worker-event";
+const WORKER_ENTRYPOINT = "attributes['$workers.executionModel'] = 'stateless'";
 
 export function workerQuery(script: string, startMs: number): BoundQuery {
   return {
@@ -28,7 +29,7 @@ export function workerQuery(script: string, startMs: number): BoundQuery {
       "SUM(cpuTimeMs) AS cpu_sum,",
       "APPROX_MAX(cpuTimeMs) AS cpu_max",
       "FROM logs.workersLogs",
-      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
+      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND ${WORKER_ENTRYPOINT} AND timestamp >= $start`,
       "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), httpStatus",
       `LIMIT ${ROW_LIMIT}`,
     ].join(" "),
@@ -44,7 +45,7 @@ export function routeQuery(script: string, startMs: number): BoundQuery {
       "COUNT(*) AS invocations,",
       "SUM(cpuTimeMs) AS cpu_sum",
       "FROM logs.workersLogs",
-      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND timestamp >= $start`,
+      `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND ${WORKER_ENTRYPOINT} AND timestamp >= $start`,
       "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), invocationLabel",
       `ORDER BY cpu_sum DESC LIMIT ${ROW_LIMIT}`,
     ].join(" "),

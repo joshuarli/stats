@@ -175,8 +175,11 @@ unweighted row. R2 operations for `usr-memories` were 66k unweighted against
 68k Worker events, but 668k weighted. If the platform starts sampling at higher
 volumes, these counts become undercounts; re-run the checks above. History stored before the change is
 inflated by that factor and ages out of the 90 minute rewrite window; Worker
-counts for a project that owns a Durable Object also include the object's own
-fetch events. Everything is parsed before anything is
+and route counts recorded before the stateless-only change keep the broader
+count, including the object's own fetch events, until retention. Every Worker
+and route query keeps only stateless invocations, so a project's own Durable
+Object fetch, RPC, and alarm events are excluded from those series and appear
+only under Durable Objects. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with a fixed detail,
 writes one `collector_failed` log line, and rethrows so the cron shows it.
 
@@ -199,7 +202,8 @@ no rows and late data replaces an earlier value. The existing alarm deletes
 expired project rows in batches of 1000.
 
 **Metrics.** Worker: `worker.invocations`, `worker.cpuMsSum`, `worker.cpuMsMax`
-(approximate), and `worker.status.<class>`. R2, per bucket:
+(approximate), and `worker.status.<class>`, counted over stateless invocations
+only (the entrypoint's fetch and scheduled handlers, not Durable Objects). R2, per bucket:
 `ops.success|userError|other`, `storageBytes`, `objects`. Probes:
 `probe.<name>.up` and `.ms`, measured from Cloudflare's edge. Routes:
 `route.<METHOD path>.invocations` and `.cpuMsSum` for the 15 routes with the
@@ -228,7 +232,9 @@ up here as its own statements.
 
 The project page's Estimated cost widget multiplies collected usage (Worker
 requests and CPU, Durable Object requests, D1 rows) by the Workers Paid list
-prices in `cloudflare/src/client/pricing.ts`. It is a list-price figure for the
+prices in `cloudflare/src/client/pricing.ts`. Worker requests count the
+entrypoint only, so an ingest is one Worker request and one Durable Object
+request, not two Worker requests. It is a list-price figure for the
 range shown, before the included monthly allowances, and leaves out R2, storage,
 and Durable Object duration, so it ranks where spend comes from and is not a
 bill.
@@ -266,13 +272,19 @@ operator secret.
 
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its
-resource group; a tile past a limit gets a status-coloured edge and tint. A
-chart's axis fits its data, and an elevated limit is drawn only once the data
-reaches half of it. On project pages the newest buckets, which the collector has
-not yet settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still
-arriving, and a count tile such as Requests reports the last settled bucket;
-ratio tiles use the newest bucket because both sides of the ratio are partial.
-Widgets collapse, and the choice persists in `localStorage`.
+resource group; a tile past a limit gets a status-coloured edge and tint, and
+the host's eight tiles share one row. Chart cards are laid out in aligned
+two-column rows so both cards in a row start at the same height; the host's
+CPU, memory, OS, kernel, and agent facts live in a hover card beside its name
+rather than on the page. A chart's axis fits its data, and an elevated limit is
+drawn only once the data reaches half of it. Periods outside a chart's limits
+get a tinted vertical band, and hovering one shows its peak, range, and
+duration. On project pages the newest buckets, which the collector has not yet
+settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still arriving,
+and a count tile such as Requests reports the last settled bucket; ratio tiles
+use the newest bucket because both sides of the ratio are partial. Widgets
+collapse, and the choice persists in `localStorage`. `make preview` serves the
+built client from the captured API fixtures with a frozen clock.
 
 ## Non-goals
 

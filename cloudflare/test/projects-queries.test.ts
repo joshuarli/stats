@@ -80,6 +80,12 @@ describe("analytics query text", () => {
     expect(routeQuery("stuff", START_MS).query).not.toContain("sampleInterval");
   });
 
+  it("counts only Worker entrypoint invocations, never the Durable Object's own fetch, RPC, or alarm events", () => {
+    const entrypoint = "attributes['$workers.executionModel'] = 'stateless'";
+    expect(built.worker.query).toContain(entrypoint);
+    expect(routeQuery("stats", START_MS).query).toContain(entrypoint);
+  });
+
   it("groups each dataset on its own time column", () => {
     expect(built.worker.query).toContain("APPROX_MAX(cpuTimeMs)");
     expect(built.r2Operations.query).toMatch(/COUNT\(\*\) AS operations/u);
