@@ -1,12 +1,10 @@
-use crate::model::Disk;
-use std::ffi::{c_char, c_void, CStr, CString};
+use crate::model::{Disk, SystemPower};
+use super::cf::{dictionary_value, number, string, CfRef, Owned};
+use std::ffi::{c_char, c_void, CStr};
 
 type IoObject = libc::mach_port_t;
-type CfRef = *const c_void;
 
 const MAIN_PORT_DEFAULT: libc::mach_port_t = 0;
-const UTF8: u32 = 0x0800_0100;
-const NUMBER_SINT64: isize = 4;
 const SERVICE_PLANE: &CStr = c"IOService";
 const VIRTUAL_INTERCONNECT: &str = "Virtual Interface";
 const SECTOR_BYTES: u64 = 512;
@@ -23,39 +21,9 @@ unsafe extern "C" {
     fn IORegistryEntryGetParentEntry(entry: IoObject, plane: *const c_char, parent: *mut IoObject) -> libc::kern_return_t;
     fn IORegistryEntryGetChildEntry(entry: IoObject, plane: *const c_char, child: *mut IoObject) -> libc::kern_return_t;
     fn IORegistryEntryCreateCFProperty(entry: IoObject, key: CfRef, allocator: CfRef, options: u32) -> CfRef;
+    fn IOServiceGetMatchingService(main_port: libc::mach_port_t, matching: CfRef) -> IoObject;
 }
 
-#[link(name = "CoreFoundation", kind = "framework")]
-unsafe extern "C" {
-    fn CFStringCreateWithCString(allocator: CfRef, text: *const c_char, encoding: u32) -> CfRef;
-    fn CFStringGetCString(string: CfRef, buffer: *mut c_char, size: isize, encoding: u32) -> u8;
-    fn CFDictionaryGetValue(dictionary: CfRef, key: CfRef) -> CfRef;
-    fn CFNumberGetValue(number: CfRef, kind: isize, value: *mut c_void) -> u8;
-    fn CFGetTypeID(object: CfRef) -> usize;
-    fn CFDictionaryGetTypeID() -> usize;
-    fn CFNumberGetTypeID() -> usize;
-    fn CFStringGetTypeID() -> usize;
-    fn CFRelease(object: CfRef);
-}
-
-struct Owned(CfRef);
-
-impl Owned {
-    fn new(object: CfRef) -> Option<Self> {
-        (!object.is_null()).then_some(Self(object))
-    }
-
-    fn string(text: &str) -> Option<Self> {
-        let text = CString::new(text).ok()?;
-        Self::new(unsafe { CFStringCreateWithCString(std::ptr::null(), text.as_ptr(), UTF8) })
-    }
-}
-
-impl Drop for Owned {
-    fn drop(&mut self) {
-        unsafe { CFRelease(self.0) };
-    }
-}
 
 struct Entry(IoObject);
 
@@ -84,40 +52,6 @@ impl Drop for Entry {
     fn drop(&mut self) {
         unsafe { IOObjectRelease(self.0) };
     }
-}
-
-fn has_type(object: CfRef, type_id: usize) -> bool {
-    !object.is_null() && unsafe { CFGetTypeID(object) } == type_id
-}
-
-fn dictionary_value(dictionary: CfRef, key: &str) -> Option<CfRef> {
-    if !has_type(dictionary, unsafe { CFDictionaryGetTypeID() }) {
-        return None;
-    }
-    let key = Owned::string(key)?;
-    let value = unsafe { CFDictionaryGetValue(dictionary, key.0) };
-    (!value.is_null()).then_some(value)
-}
-
-fn number(object: CfRef) -> Option<u64> {
-    if !has_type(object, unsafe { CFNumberGetTypeID() }) {
-        return None;
-    }
-    let mut value: i64 = 0;
-    let converted = unsafe { CFNumberGetValue(object, NUMBER_SINT64, (&mut value as *mut i64).cast()) };
-    if converted == 0 { None } else { u64::try_from(value).ok() }
-}
-
-fn string(object: CfRef) -> Option<String> {
-    if !has_type(object, unsafe { CFStringGetTypeID() }) {
-        return None;
-    }
-    let mut buffer = [0 as c_char; 256];
-    let converted = unsafe { CFStringGetCString(object, buffer.as_mut_ptr(), buffer.len() as isize, UTF8) };
-    if converted == 0 {
-        return None;
-    }
-    unsafe { CStr::from_ptr(buffer.as_ptr()) }.to_str().ok().map(str::to_owned)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,6 +108,18 @@ fn driver_disk(driver: &Entry) -> Option<Disk> {
         write_bytes: field("Bytes (Write)")?,
     };
     disk_from(name, major, minor, counters)
+}
+
+pub fn read_system_power() -> Option<SystemPower> {
+    let matching = unsafe { IOServiceMatching(c"AppleSmartBattery".as_ptr()) };
+    if matching.is_null() {
+        return None;
+    }
+    let battery = Entry::new(unsafe { IOServiceGetMatchingService(MAIN_PORT_DEFAULT, matching) })?;
+    let telemetry = battery.property("PowerTelemetryData")?;
+    let milliwatt_sum = dictionary_value(telemetry.0, "AccumulatedSystemLoad").and_then(number)?;
+    let readings = dictionary_value(telemetry.0, "SystemLoadAccumulatorCount").and_then(number)?;
+    Some(SystemPower { milliwatt_sum: milliwatt_sum.to_string(), readings: readings.to_string() })
 }
 
 pub fn read_disks(limit: usize) -> Option<Vec<Disk>> {

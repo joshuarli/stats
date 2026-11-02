@@ -1,11 +1,13 @@
 use crate::CollectionScope;
-use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, MemoryPressure, Net, Sample, SwapActivity, SystemInfo, Unavailable};
+use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, MemoryPressure, Net, Power, Sample, SwapActivity, SystemInfo, Unavailable};
 use crate::parse::{clean_text, file_systems, statfs_facts, FILESYSTEM_TYPES};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod cf;
 mod iokit;
+mod ioreport;
 
 const MAX_DEVICES: usize = 16;
 const DATA_VOLUME: &str = "/System/Volumes/Data";
@@ -393,6 +395,17 @@ pub fn sample(scope: CollectionScope) -> Option<Sample> {
         None => sample.mark_unavailable(Unavailable::Disks),
     }
     sample.mark_unavailable(Unavailable::Psi);
+    let gpu = ioreport::read_gpu();
+    match gpu.gpu {
+        Some(reading) => sample.gpu = Some(reading),
+        None => sample.mark_unavailable(Unavailable::Gpu),
+    }
+    let power = Power { gpu_nj: gpu.energy_nj.map(|value| value.to_string()), system: iokit::read_system_power() };
+    if power.gpu_nj.is_none() && power.system.is_none() {
+        sample.mark_unavailable(Unavailable::Power);
+    } else {
+        sample.power = Some(power);
+    }
     match read_nets(scope.virtual_interfaces) {
         Some(nets) => sample.nets = Some(nets),
         None => sample.mark_unavailable(Unavailable::Nets),

@@ -11,6 +11,8 @@ pub enum Unavailable {
     Nets,
     Psi,
     Filesystems,
+    Gpu,
+    Power,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -163,6 +165,28 @@ pub struct FileSystem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Gpu {
+    pub active: String,
+    pub total: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Power {
+    #[serde(rename = "gpuNj", skip_serializing_if = "Option::is_none")]
+    pub gpu_nj: Option<String>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub system: Option<SystemPower>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SystemPower {
+    #[serde(rename = "systemMwSum")]
+    pub milliwatt_sum: String,
+    #[serde(rename = "systemReadings")]
+    pub readings: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Block {
     pub buckets: Vec<String>,
     pub count: String,
@@ -203,6 +227,10 @@ pub struct Sample {
     pub filesystems: Option<Vec<FileSystem>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block: Option<Block>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<Gpu>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power: Option<Power>,
 }
 
 pub fn sequence_for(mono_ms: u64) -> u64 {
@@ -226,6 +254,8 @@ impl Sample {
             psi: None,
             filesystems: None,
             block: None,
+            gpu: None,
+            power: None,
         }
     }
 
@@ -239,6 +269,8 @@ impl Sample {
             || self.psi.is_some()
             || self.filesystems.is_some()
             || self.block.is_some()
+            || self.gpu.is_some()
+            || self.power.is_some()
     }
 
     pub fn mark_unavailable(&mut self, group: Unavailable) {
