@@ -7,8 +7,9 @@ import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.
 
 const STALE_AFTER_MS = 15 * 60_000;
 const MAX_HISTORY_POINTS = 900;
-const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "d1", "d1-statements", "probes", "collector"] as const;
-type ProjectKind = (typeof PROJECT_KINDS)[number];
+export const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "d1", "d1-statements", "probes", "collector"] as const;
+export type ProjectKind = (typeof PROJECT_KINDS)[number];
+type MetricKind = Exclude<ProjectKind, "collector">;
 
 const BUCKET_WIDTHS_MS = [BUCKET_MS, 15 * 60_000, HOUR_MS, 3 * HOUR_MS] as const;
 const WORKER_METRICS = [
@@ -35,7 +36,7 @@ interface CollectorSummary {
 interface MetricHistory {
   readonly projectId: string;
   readonly range: RangeKey;
-  readonly kind: Exclude<ProjectKind, "collector">;
+  readonly kind: MetricKind;
   readonly fromMs: number;
   readonly toMs: number;
   readonly stepMs: number;
@@ -57,6 +58,13 @@ interface CollectorHistory {
   }[];
 }
 
+export type ProjectHistory = MetricHistory | CollectorHistory;
+
+export interface ProjectHistoryBundle {
+  readonly projectId: string;
+  readonly histories: Readonly<Partial<Record<ProjectKind, ProjectHistory>>>;
+}
+
 export function bucketWidthMs(rangeMs: number): number {
   const width = BUCKET_WIDTHS_MS.find((candidate) => rangeMs / candidate <= MAX_HISTORY_POINTS);
   if (width === undefined) {
@@ -69,7 +77,17 @@ export function projectKind(value: string | null): ProjectKind | null {
   return value !== null && (PROJECT_KINDS as readonly string[]).includes(value) ? (value as ProjectKind) : null;
 }
 
-function expectedMetrics(project: ProjectConfig, kind: Exclude<ProjectKind, "collector">): string[] {
+export function projectKindsValue(value: string): ProjectKind[] | null {
+  const kinds: ProjectKind[] = [];
+  for (const part of value.split(",")) {
+    const kind = projectKind(part);
+    if (kind === null) return null;
+    if (!kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
+function expectedMetrics(project: ProjectConfig, kind: MetricKind): string[] {
   switch (kind) {
     case "worker":
       return WORKER_METRICS;
@@ -116,31 +134,76 @@ export function readCollectorHistory(sql: SqlStorage, project: ProjectConfig, ra
   return { projectId: project.id, range, kind: "collector", fromMs, toMs: now, runs };
 }
 
-export function readMetricHistory(
-  sql: SqlStorage,
-  project: ProjectConfig,
-  range: RangeKey,
-  kind: Exclude<ProjectKind, "collector">,
-  now: number,
-): MetricHistory {
+interface MetricWindow {
+  readonly stepMs: number;
+  readonly fromMs: number;
+  readonly count: number;
+}
+
+function metricWindow(range: RangeKey, now: number): MetricWindow {
   const stepMs = bucketWidthMs(RANGE_MS[range]);
   const retentionMs = stepMs < HOUR_MS ? PROJECT_SAMPLE_RETENTION_MS : PROJECT_HOUR_RETENTION_MS;
   const floored = Math.floor((now - RANGE_MS[range]) / stepMs) * stepMs;
   const fromMs = floored < now - retentionMs ? floored + stepMs : floored;
   const count = Math.floor((now - fromMs) / stepMs) + 1;
-  const rows = readGrouped(sql, project.id, kind, stepMs, fromMs);
+  return { stepMs, fromMs, count };
+}
+
+export function readProjectHistories(
+  sql: SqlStorage,
+  project: ProjectConfig,
+  range: RangeKey,
+  kinds: readonly ProjectKind[],
+  now: number,
+): ProjectHistoryBundle {
+  const metricKinds = kinds.filter((kind): kind is MetricKind => kind !== "collector");
+  const metrics = new Map<MetricKind, MetricHistory>();
+  if (metricKinds.length > 0) {
+    const window = metricWindow(range, now);
+    const grouped = readGrouped(sql, project.id, metricKinds, window.stepMs, window.fromMs);
+    const fillable = fillableBuckets(sql, window.fromMs, now);
+    for (const kind of metricKinds) {
+      metrics.set(kind, buildMetricHistory(project, range, kind, grouped.get(kind) ?? new Map(), fillable, window, now));
+    }
+  }
+  const histories: Partial<Record<ProjectKind, ProjectHistory>> = {};
+  for (const kind of kinds) {
+    if (kind === "collector") histories.collector = readCollectorHistory(sql, project, range, now);
+    else histories[kind] = metrics.get(kind)!;
+  }
+  return { projectId: project.id, histories };
+}
+
+export function readMetricHistory(
+  sql: SqlStorage,
+  project: ProjectConfig,
+  range: RangeKey,
+  kind: MetricKind,
+  now: number,
+): MetricHistory {
+  return readProjectHistories(sql, project, range, [kind], now).histories[kind] as MetricHistory;
+}
+
+function buildMetricHistory(
+  project: ProjectConfig,
+  range: RangeKey,
+  kind: MetricKind,
+  rows: Grouped,
+  fillable: (startMs: number, endMs: number) => boolean,
+  window: MetricWindow,
+  now: number,
+): MetricHistory {
   const metrics = kind === "routes" ? routeMetrics(rows) : kind === "d1-statements" ? statementMetrics(rows) : expectedMetrics(project, kind);
-  const fillable = fillableBuckets(sql, fromMs, now);
   const series = metrics.map((metric) => {
     const aggregation = aggregationOf(metric);
     const found = rows.get(metric);
     const values: (number | null)[] = [];
-    for (let index = 0; index < count; index += 1) {
-      const atMs = fromMs + index * stepMs;
+    for (let index = 0; index < window.count; index += 1) {
+      const atMs = window.fromMs + index * window.stepMs;
       const row = found?.get(atMs);
       if (row !== undefined) {
         values.push(row[aggregation]);
-      } else if (aggregation === "sum" && fillable(atMs, atMs + stepMs)) {
+      } else if (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)) {
         values.push(0);
       } else {
         values.push(null);
@@ -148,13 +211,15 @@ export function readMetricHistory(
     }
     return { metric, values };
   });
-  return { projectId: project.id, range, kind, fromMs, toMs: now, stepMs, series };
+  return { projectId: project.id, range, kind, fromMs: window.fromMs, toMs: now, stepMs: window.stepMs, series };
 }
 
 type Folded = { sum: number; max: number; min: number };
 type Grouped = ReadonlyMap<string, ReadonlyMap<number, Folded>>;
 
-const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = {
+const METRIC_KINDS: readonly MetricKind[] = PROJECT_KINDS.filter((kind): kind is MetricKind => kind !== "collector");
+
+const KIND_PREFIX: Record<MetricKind, string> = {
   worker: "worker.",
   routes: "route.",
   "durable-objects": "do.",
@@ -163,6 +228,13 @@ const KIND_PREFIX: Record<Exclude<ProjectKind, "collector">, string> = {
   "d1-statements": "d1q.",
   probes: "probe.",
 };
+
+function metricKind(metric: string): MetricKind | null {
+  for (const kind of METRIC_KINDS) {
+    if (metric.startsWith(KIND_PREFIX[kind])) return kind;
+  }
+  return null;
+}
 
 function routeMetrics(rows: Grouped): string[] {
   const cpuTotal = (route: string): number => {
@@ -192,28 +264,35 @@ function statementMetrics(rows: Grouped): string[] {
 function readGrouped(
   sql: SqlStorage,
   project: string,
-  kind: Exclude<ProjectKind, "collector">,
+  kinds: readonly MetricKind[],
   stepMs: number,
   fromMs: number,
-): Grouped {
-  const prefix = KIND_PREFIX[kind];
+): ReadonlyMap<MetricKind, Grouped> {
+  const prefixes = kinds.map((kind) => KIND_PREFIX[kind]);
+  const conditions = prefixes.map(() => "(metric >= ? AND metric < ?)").join(" OR ");
   const [table, column] = stepMs < HOUR_MS ? ["project_samples", "bucket_ms"] : ["project_hours", "hour_ms"];
   const cursor = sql.exec<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
     `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value
-     FROM ${table} WHERE project = ? AND metric >= ? AND metric < ? AND ${column} >= ?
+     FROM ${table} WHERE project = ? AND (${conditions}) AND ${column} >= ?
      GROUP BY metric, at`,
     stepMs,
     stepMs,
     project,
-    prefix,
-    `${prefix}\uffff`,
+    ...prefixes.flatMap((prefix) => [prefix, `${prefix}\uffff`]),
     fromMs,
   );
-  const grouped = new Map<string, Map<number, Folded>>();
+  const grouped = new Map<MetricKind, Map<string, Map<number, Folded>>>();
   for (const row of cursor) {
-    const byTime = grouped.get(row.metric) ?? new Map<number, Folded>();
+    const kind = metricKind(row.metric);
+    if (kind === null) continue;
+    let byMetric = grouped.get(kind);
+    if (byMetric === undefined) {
+      byMetric = new Map();
+      grouped.set(kind, byMetric);
+    }
+    const byTime = byMetric.get(row.metric) ?? new Map<number, Folded>();
     byTime.set(row.at, { sum: row.sum_value, max: row.max_value, min: row.min_value });
-    grouped.set(row.metric, byTime);
+    byMetric.set(row.metric, byTime);
   }
   return grouped;
 }

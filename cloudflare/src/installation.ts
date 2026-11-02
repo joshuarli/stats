@@ -6,7 +6,7 @@ import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValu
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
-import { projectKind, readCollectorHistory, readMetricHistory, summarizeCollector } from "./projects/history";
+import { projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 
 export const ONLINE_WINDOW_MS = 45_000;
@@ -413,9 +413,18 @@ export class Installation extends DurableObject<Env> {
     if (project === undefined) return failure("not_found", "project not found", 404);
     const range = params.get("range");
     const key = range === null ? null : rangeKey(range);
-    const kind = projectKind(params.get("kind"));
-    if (key === null || kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
+    if (key === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
     const sql = this.ctx.storage.sql;
+    const kindsParam = params.get("kinds");
+    const kindParam = params.get("kind");
+    if (kindsParam !== null) {
+      if (kindParam !== null) return failure("invalid_request", "kind and kinds cannot be combined", 400);
+      const kinds = projectKindsValue(kindsParam);
+      if (kinds === null) return failure("invalid_request", "kinds must be supported project kinds", 400);
+      return json(readProjectHistories(sql, project, key, kinds, this.now()));
+    }
+    const kind = projectKind(kindParam);
+    if (kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
     return json(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now()));
   }
 

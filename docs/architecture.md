@@ -72,8 +72,9 @@ Routes under `/api/v1/` (handled in `installation.ts`):
   `range` for an explicit window; the response then omits `range`. Pass
   `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
   under `histories`.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`
-  (see [Cloudflare projects](#cloudflare-projects)).
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
+  Pass `kinds=worker,r2,collector` instead of `kind` to receive several
+  kinds at once under `histories` (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 
@@ -257,8 +258,10 @@ left whole. Widths under an
 hour read `project_samples`; the rest read `project_hours`. A metric response
 is `{projectId, range, kind, fromMs, toMs, stepMs, series: [{metric, values}]}`
 with every series aligned to `fromMs + i * stepMs`; `kind=collector` returns
-`runs`. `GET /projects` returns each project with `collector.lastRunAtMs`,
-`lastSuccessAtMs`, `lastError`, and `stale` (no success in 15 minutes).
+`runs`. `kinds=...` returns `{projectId, histories: {kind: response}}` and reads
+one grouped metric window for all requested metric kinds. `GET /projects`
+returns each project with `collector.lastRunAtMs`, `lastSuccessAtMs`,
+`lastError`, and `stale` (no success in 15 minutes).
 
 **Access.** `ANALYTICS_SQL` can read all of the account's analytics. Only the
 fixed queries run, and no request data reaches SQL.

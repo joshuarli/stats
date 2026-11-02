@@ -161,8 +161,13 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     requests.push(url.pathname + url.search);
     const range = url.searchParams.get("range") ?? "1h";
     const kind = url.searchParams.get("kind") ?? "summary";
+    const kinds = url.searchParams.get("kinds");
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
-    if (projectPath !== null) return route.fulfill({ json: projectHistory(kind, range, options.spike === true, options.probeDown === true, buckets) });
+    if (projectPath !== null) {
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets);
+      if (kinds !== null) return route.fulfill({ json: { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) } });
+      return route.fulfill({ json: body(kind) });
+    }
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces, databases) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
@@ -185,7 +190,6 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       }
       return body;
     };
-    const kinds = url.searchParams.get("kinds");
     if (kinds !== null) {
       return route.fulfill({ json: { hostId, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, historyBody(kind)])) } });
     }
@@ -473,7 +477,7 @@ test("the project page shows its summary and rows of aligned chart cards", async
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(strip.getByRole("button", { name: /^Requests: 2,000/u })).toBeVisible();
   await expect(page.getByRole("img", { name: "Worker invocations; latest 2,000" })).toBeVisible();
-  expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kind=worker"))).toBe(true);
+  expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);
 });
 
 test("an elevated Worker 5xx share raises an incident that is marked and explained on hover", async ({ page }) => {
@@ -486,7 +490,7 @@ test("an elevated Worker 5xx share raises an incident that is marked and explain
   if (box === null) throw new Error("chart plot has no box");
   await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2);
   await expect(page.locator(".chart-tip-episode")).toContainText("Critical");
-  expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kind=worker"))).toBe(true);
+  expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kinds=") && request.includes("worker"))).toBe(true);
 });
 
 test("a tile past its limit is marked, and tiles with limits show headroom", async ({ page }) => {
@@ -532,7 +536,7 @@ test("configured probes surface endpoint health and a down endpoint raises an in
   await expect(page.getByRole("img", { name: /Endpoint availability;/u })).toBeVisible();
   await expect(page.getByRole("img", { name: /Endpoint response time;/u })).toBeVisible();
   await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
-  expect(requests.some(request => request.includes("kind=probes"))).toBe(true);
+  expect(requests.some(request => request.includes("kinds=") && request.includes("probes"))).toBe(true);
 
   options.probeDown = true;
   await page.getByRole("button", { name: "Refresh" }).click();
@@ -551,7 +555,7 @@ test("CPU by route ranks routes, and Durable Object charts appear only for proje
   await expect(rows.first()).toContainText("89.4%");
   await expect(rows.first()).toContainText("18 ms");
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object average CPU time;/u })).toBeVisible();
-  expect(requests.some(request => request.includes("kind=durable-objects"))).toBe(true);
+  expect(requests.some(request => request.includes("kinds=") && request.includes("durable-objects"))).toBe(true);
 });
 
 test("a project without namespaces has no Durable Object widget and makes no request for one", async ({ page }) => {
@@ -559,7 +563,7 @@ test("a project without namespaces has no Durable Object widget and makes no req
   await page.goto("/#/project/stuff");
   await expect(page.locator("#routes")).toBeVisible();
   await expect(page.locator("#durable-objects")).toHaveCount(0);
-  expect(requests.some(request => request.includes("kind=durable-objects"))).toBe(false);
+  expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("durable-objects"))).toBe(false);
 });
 
 test("D1 ranks statements by list cost and the cost estimate adds D1 to the Worker's usage", async ({ page }) => {
@@ -578,7 +582,7 @@ test("D1 ranks statements by list cost and the cost estimate adds D1 to the Work
   await expect(cost.getByRole("row", { name: /D1 rows read/u })).toContainText("$0.60");
   await expect(cost.getByRole("row", { name: /^Total/u })).toContainText("$1.80");
   await expect(page.locator("#d1").getByRole("img", { name: /D1 database size;/u })).toBeVisible();
-  expect(requests.some(request => request.includes("kind=d1-statements"))).toBe(true);
+  expect(requests.some(request => request.includes("kinds=") && request.includes("d1-statements"))).toBe(true);
 });
 
 test("a project without databases has no D1 widget, no D1 request, and a cost estimate without D1 rows", async ({ page }) => {
@@ -588,7 +592,7 @@ test("a project without databases has no D1 widget, no D1 request, and a cost es
   await expect(cost.getByRole("row", { name: /Worker requests/u })).toBeVisible();
   await expect(cost.getByRole("row", { name: /D1/u })).toHaveCount(0);
   await expect(page.locator("#d1")).toHaveCount(0);
-  expect(requests.some(request => request.includes("kind=d1"))).toBe(false);
+  expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("d1"))).toBe(false);
 });
 
 test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {
@@ -596,7 +600,7 @@ test("a project without probes has no endpoints widget and makes no probe reques
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(page.locator("#endpoints")).toHaveCount(0);
-  expect(requests.some(request => request.includes("kind=probes"))).toBe(false);
+  expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("probes"))).toBe(false);
 });
 
 test("a project without buckets shows no R2 widgets or cells", async ({ page }) => {

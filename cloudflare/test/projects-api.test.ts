@@ -116,6 +116,26 @@ describe("project history", () => {
     expect(widths).toEqual([BUCKET, BUCKET, BUCKET, 15 * 60_000, 3 * HOUR_MS]);
   });
 
+  it("returns several kinds in one response", async () => {
+    const start = Math.floor((NOW - 2 * 24 * HOUR_MS) / (15 * 60_000)) * 15 * 60_000;
+    await record(metricRun(NOW - BUCKET, [
+      { metric: "worker.invocations", bucketMs: start, value: 4 },
+      { metric: "probe.npm.up", bucketMs: start, value: 1 },
+    ]));
+    const response = await get("/projects/stuff/history?range=1h&kinds=worker,routes,collector,probes");
+    expect(response.status).toBe(200);
+    const body = await response.json() as { projectId: string; histories: Record<string, { kind: string; series?: unknown[]; runs?: unknown[] }> };
+    expect(body.projectId).toBe("stuff");
+    expect(Object.keys(body.histories)).toEqual(["worker", "routes", "collector", "probes"]);
+    for (const [kind, history] of Object.entries(body.histories)) expect(history.kind, kind).toBe(kind);
+    expect(body.histories.worker).toEqual(await history("1h", "worker"));
+    expect(body.histories.collector!.runs).toHaveLength(1);
+
+    for (const query of ["range=1h&kinds=worker,hosts", "range=1h&kind=worker&kinds=worker", "range=1h&kinds="]) {
+      expect((await get(`/projects/stuff/history?${query}`)).status, query).toBe(400);
+    }
+  });
+
   it("adds sums and takes maxes when 5 minute buckets share a wider bucket", async () => {
     const start = Math.floor((NOW - 2 * 24 * HOUR_MS) / (15 * 60_000)) * 15 * 60_000;
     await record(metricRun(NOW - BUCKET, [

@@ -230,6 +230,17 @@ export interface ProjectCollectorHistory {
   readonly runs: readonly CollectorRun[];
 }
 
+export interface ProjectHistories {
+  readonly worker: ProjectMetricHistory;
+  readonly routes: ProjectMetricHistory;
+  readonly r2: ProjectMetricHistory;
+  readonly collector: ProjectCollectorHistory;
+  readonly "durable-objects"?: ProjectMetricHistory;
+  readonly d1?: ProjectMetricHistory;
+  readonly "d1-statements"?: ProjectMetricHistory;
+  readonly probes?: ProjectMetricHistory;
+}
+
 type JsonObject = { readonly [key: string]: unknown };
 
 export class ApiFailure extends Error {
@@ -451,6 +462,20 @@ function decodeProjectCollectorHistory(value: unknown): ProjectCollectorHistory 
   };
 }
 
+function decodeProjectHistories(value: unknown): ProjectHistories {
+  const histories = record(record(value).histories);
+  return {
+    worker: decodeProjectMetricHistory("worker")(histories.worker),
+    routes: decodeProjectMetricHistory("routes")(histories.routes),
+    r2: decodeProjectMetricHistory("r2")(histories.r2),
+    collector: decodeProjectCollectorHistory(histories.collector),
+    ...(histories["durable-objects"] === undefined ? {} : { "durable-objects": decodeProjectMetricHistory("durable-objects")(histories["durable-objects"]) }),
+    ...(histories.d1 === undefined ? {} : { d1: decodeProjectMetricHistory("d1")(histories.d1) }),
+    ...(histories["d1-statements"] === undefined ? {} : { "d1-statements": decodeProjectMetricHistory("d1-statements")(histories["d1-statements"]) }),
+    ...(histories.probes === undefined ? {} : { probes: decodeProjectMetricHistory("probes")(histories.probes) })
+  };
+}
+
 function decodeSystem(value: unknown): HostSystem {
   const entry = record(value);
   const system = record(entry.system);
@@ -626,12 +651,17 @@ export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
   return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
 }
 
-export function getProjectMetrics(projectId: string, range: RangeKey, kind: ProjectMetricKind, signal: AbortSignal): Promise<ProjectMetricHistory> {
-  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=${kind}`, decodeProjectMetricHistory(kind), signal);
-}
-
-export function getProjectCollector(projectId: string, range: RangeKey, signal: AbortSignal): Promise<ProjectCollectorHistory> {
-  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=collector`, decodeProjectCollectorHistory, signal);
+export function getProjectHistories(
+  projectId: string,
+  range: RangeKey,
+  options: { readonly durableObjects: boolean; readonly d1: boolean; readonly probes: boolean },
+  signal: AbortSignal
+): Promise<ProjectHistories> {
+  const kinds = ["worker", "routes", "r2", "collector"];
+  if (options.durableObjects) kinds.push("durable-objects");
+  if (options.d1) kinds.push("d1", "d1-statements");
+  if (options.probes) kinds.push("probes");
+  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kinds=${kinds.join(",")}`, decodeProjectHistories, signal);
 }
 
 export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {
