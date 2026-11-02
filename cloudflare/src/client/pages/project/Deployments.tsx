@@ -1,7 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ApiFailure } from "../../api";
-import { DeploymentEvents } from "../../components/DeploymentEvents";
 import { Widget } from "../../components/ui";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
@@ -30,7 +29,9 @@ function change(metric: MetricComparison): string {
   return `${sign}${display(metric.delta, metric.unit)}${metric.deltaPercent === null ? "" : ` (${metric.deltaPercent > 0 ? "+" : ""}${display(metric.deltaPercent, "%")})`}`;
 }
 
-export function ProjectDeployments(props: { readonly projectId: string; readonly refreshKey: string; readonly children: JSX.Element }): JSX.Element {
+export type ProjectDeployments = ReturnType<typeof createProjectDeployments>;
+
+export function createProjectDeployments(projectId: () => string, refreshKey: () => string) {
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
   const [window, setWindow] = createSignal<ComparisonWindow>("1h");
@@ -39,7 +40,7 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
   const [comparisonError, setComparisonError] = createSignal<string | null>(null);
   let loadedProject = "";
 
-  createEffect(() => ({ project: props.projectId, tick: props.refreshKey }), ({ project }) => {
+  createEffect(() => ({ project: projectId(), tick: refreshKey() }), ({ project }) => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; }
@@ -51,7 +52,7 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
     }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Deployment history unavailable"); });
   });
 
-  createEffect(() => ({ project: props.projectId, id: selected(), window: window(), tick: props.refreshKey }), query => {
+  createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     setComparison(null);
@@ -66,7 +67,7 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
   const name = (deployment: Deployment) => deployment.versions.map(version => `${versions().get(version.id)?.tag ?? version.id.slice(0, 8)} ${version.percentage}%`).join(" / ");
   const events = createMemo(() => (history()?.deployments ?? []).map(deployment => ({ atMs: deployment.atMs, label: `deploy ${name(deployment)}` })));
   const current = createMemo(() => history()?.deployments.find(deployment => deployment.id === selected()));
-  const state = () => {
+  const status = () => {
     const value = history();
     if (value === null) return "Loading deployment history…";
     if (!value.enabled) return "Deployment tracking is disabled. Configure DEPLOYMENTS_ACCOUNT_ID and the read-only DEPLOYMENTS_API_TOKEN secret.";
@@ -77,10 +78,14 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
     return `Last checked ${new Date(value.sync.lastSuccessAtMs).toLocaleString()}. ${value.deployments.length} deployment events retained.`;
   };
 
+  return { history, selected, setSelected, window, setWindow, comparison, historyError, comparisonError, name, events, current, status };
+}
+
+export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments }): JSX.Element {
+  const { history, selected, setSelected, window, setWindow, comparison, historyError, comparisonError, name, current, status } = props.deployments;
   return (
-    <DeploymentEvents value={events}>
       <Widget id="deployments" title="Deployments" expandable>
-        <p class="panel-label" role="status">{historyError() ?? state()}</p>
+        <p class="panel-label" role="status">{historyError() ?? status()}</p>
         <Show when={(history()?.deployments.length ?? 0) > 0}>
           <div class="deployment-controls">
             <label>Deployment
@@ -111,7 +116,5 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
           )}</Show>
         </Show>
       </Widget>
-      {props.children}
-    </DeploymentEvents>
   );
 }

@@ -97,6 +97,7 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
+    if (url.pathname === `/api/v1/projects/${name}/deployments`) return route.fulfill({ json: { projectId: name, worker: name, enabled: false, sync: null, deployments: [], versions: [] } });
     const kinds = url.searchParams.get("kinds");
     if (kinds !== null) {
       const histories = Object.fromEntries(kinds.split(",").map(kind => {

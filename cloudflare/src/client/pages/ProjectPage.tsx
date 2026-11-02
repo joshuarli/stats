@@ -12,7 +12,8 @@ import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { CostWidget } from "./project/Cost";
 import { D1Widget } from "./project/D1";
-import { ProjectDeployments } from "./project/Deployments";
+import { createProjectDeployments, DeploymentsWidget } from "./project/Deployments";
+import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
@@ -96,9 +97,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const cells = createMemo(() => buildProjectCells(data(), view()));
   const hasData = createMemo(() => hasAnyValue(metricPoints(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricPoints(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
+  const deployments = createProjectDeployments(id, () => `${projectTick()}:${manualTick()}`);
 
   return (
-    <>
+    <DeploymentEvents value={deployments.events}>
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
@@ -115,7 +117,6 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               : "The collector has not succeeded recently, so the newest buckets may be missing."}
         </Notice>
       </Show>
-      <ProjectDeployments projectId={id()} refreshKey={`${projectTick()}:${manualTick()}`}>
       <Errored fallback={(error) => <ErrorState error={error()} compact />}>
         <Loading fallback={<Skeleton rows={4} chart />}>
           <Show
@@ -139,11 +140,11 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
               {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
               <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
+              <DeploymentsWidget deployments={deployments} />
             </section>
           </Show>
         </Loading>
       </Errored>
-      </ProjectDeployments>
-    </>
+    </DeploymentEvents>
   );
 }
