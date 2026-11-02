@@ -28,7 +28,7 @@ fi
 rm -f "$out/system.json.tmp"
 for range in 1h 6h 24h 7d 90d; do
   for kind in summary disks nets filesystems block; do
-    get "/api/v1/hosts/$host_id/history?range=$range&kind=$kind" | node "$here/history-json.mjs" | jaq -c . > "$out/$kind-$range.json"
+    node "$here/api.mjs" "/hosts/$host_id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done
 done
 jaq -n --arg hostId "$host_id" --argjson capturedAtMs "$(($(date +%s) * 1000))" --argjson system "$system" '{hostId: $hostId, capturedAtMs: $capturedAtMs, system: $system}' > "$out/capture.json"

@@ -24,7 +24,7 @@ mkdir -p "$out"
 printf '%s' "$projects" | jaq -c . > "$out/projects.json"
 for range in $ranges; do
   for kind in worker r2 probes collector; do
-    get "/api/v1/projects/$id/history?range=$range&kind=$kind" | node "$here/history-json.mjs" | jaq -c . > "$out/$kind-$range.json"
+    node "$here/api.mjs" "/projects/$id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done
 done
 jaq -n --arg id "$id" --argjson capturedAtMs "$(($(date +%s) * 1000))" '{projectId: $id, capturedAtMs: $capturedAtMs}' > "$out/capture.json"

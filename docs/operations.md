@@ -31,6 +31,13 @@ make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
 ```
 
+`cloudflare/scripts/api.mjs <path>` reads the live API as JSON. It gets an
+Access token through `cf access token`, sends a GET to `/api/v1<path>`, and
+decodes history frames back into the JSON-shaped history, so
+`node cloudflare/scripts/api.mjs '/hosts/<id>/history?range=1h&kinds=summary' | jaq .`
+works like the old JSON API. Errors print the status and body and exit 1.
+`STATS_URL` overrides the origin.
+
 `make add-host NAME=<label> SSH=<user@host>` provisions a host end to end. On
 macOS it builds the native binary and installs a launchd user agent under the
 login account. On Alpine it builds the static musl binary and installs the

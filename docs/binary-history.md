@@ -35,7 +35,7 @@ measurements, and the negative storage result.
   independent oracle that encodes JSON-shaped histories generically and checks
   them field by field; `materializeHistory` and `readHistory` rebuild the
   JSON-shaped history from a frame. Playwright mocks and replays, the preview
-  server, and `scripts/history-json.mjs` use them. The captured JSON files in
+  server, and `scripts/api.mjs` use them. The captured JSON files in
   `cloudflare/test/ui/captures` remain the fixture sources.
 - `cloudflare/test/binary/storage-candidate.ts`: **benchmark-only negative
   result**, not the proposed production store. It preserves decimal u64 strings
