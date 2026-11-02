@@ -52,6 +52,15 @@ export interface Psi {
   readonly io?: PsiGroup;
 }
 
+export interface Gpu {
+  readonly busyPct: number;
+}
+
+export interface Power {
+  readonly gpuWatts?: number;
+  readonly systemWatts?: number;
+}
+
 export interface SummaryPoint {
   readonly atMs: number;
   readonly coverageMs: number;
@@ -60,6 +69,8 @@ export interface SummaryPoint {
   readonly load?: Load;
   readonly mem?: Mem;
   readonly psi?: Psi;
+  readonly gpu?: Gpu;
+  readonly power?: Power;
   readonly cpuCount?: number;
   readonly uptimeMs?: number;
 }
@@ -340,6 +351,18 @@ function decodePsi(value: unknown): Psi {
   };
 }
 
+function decodeGpu(value: unknown): Gpu {
+  return { busyPct: number(record(value).busyPct) };
+}
+
+function decodePower(value: unknown): Power {
+  const entry = record(value);
+  return {
+    ...(entry.gpuWatts === undefined ? {} : { gpuWatts: number(entry.gpuWatts) }),
+    ...(entry.systemWatts === undefined ? {} : { systemWatts: number(entry.systemWatts) })
+  };
+}
+
 function decodeSummaryPoint(value: unknown): SummaryPoint {
   const entry = record(value);
   return {
@@ -350,6 +373,8 @@ function decodeSummaryPoint(value: unknown): SummaryPoint {
     ...(entry.load === undefined ? {} : { load: decodeLoad(entry.load) }),
     ...(entry.mem === undefined ? {} : { mem: decodeMem(entry.mem) }),
     ...(entry.psi === undefined ? {} : { psi: decodePsi(entry.psi) }),
+    ...(entry.gpu === undefined ? {} : { gpu: decodeGpu(entry.gpu) }),
+    ...(entry.power === undefined ? {} : { power: decodePower(entry.power) }),
     ...(entry.cpuCount === undefined ? {} : { cpuCount: number(entry.cpuCount) }),
     ...(entry.uptimeMs === undefined ? {} : { uptimeMs: number(entry.uptimeMs) })
   };

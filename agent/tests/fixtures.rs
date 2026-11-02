@@ -26,8 +26,8 @@ impl Failure {
     }
 }
 
-const SAMPLE_KEYS: [&str; 14] = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"];
-const UNAVAILABLE: [&str; 8] = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"];
+const SAMPLE_KEYS: [&str; 16] = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"];
+const UNAVAILABLE: [&str; 10] = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power"];
 
 fn u64_value(value: &Value) -> Option<u64> {
     let text = value.as_str()?;
@@ -202,6 +202,11 @@ fn validate_group(sample: &Value, key: &str) -> bool {
             })
         }
         "block" => validate_block(value),
+        "gpu" => object(value, &["active", "total"]) && decimal(&value["active"]) && decimal(&value["total"]),
+        "power" => {
+            u64_map(value, &[], &["gpuNj", "systemMwSum", "systemReadings"])
+                && value.as_object().is_some_and(|map| !map.is_empty() && map.contains_key("systemMwSum") == map.contains_key("systemReadings"))
+        }
         _ => false,
     }
 }
@@ -217,7 +222,7 @@ fn validate_sample(value: &Value) -> bool {
     let mut unavailable = HashSet::new();
     if let Some(groups) = map.get("unavailable") {
         let Some(groups) = groups.as_array() else { return false };
-        if groups.len() > 8 {
+        if groups.len() > UNAVAILABLE.len() {
             return false;
         }
         for group in groups {
@@ -227,7 +232,7 @@ fn validate_sample(value: &Value) -> bool {
             }
         }
     }
-    let metrics: Vec<&str> = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block"]
+    let metrics: Vec<&str> = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"]
         .into_iter()
         .filter(|key| map.contains_key(*key))
         .collect();

@@ -25,6 +25,10 @@ export function reportsPressure(points: readonly SummaryPoint[]): boolean {
   return points.some(point => point.psi !== undefined);
 }
 
+export function reportsGpu(points: readonly SummaryPoint[]): boolean {
+  return points.some(point => point.gpu !== undefined);
+}
+
 export function PressureNotice(props: { readonly points: readonly SummaryPoint[] }): JSX.Element {
   return (
     <Show when={!reportsPressure(props.points)}>
@@ -48,6 +52,7 @@ export function CpuWidget(props: {
         label="CPU"
         legend
         area
+        timeAxis={!reportsGpu(props.points) && !reportsPressure(props.points)}
         series={[
           series("total", "neutral", cpuUsed, { graded: true }),
           series("user", "blue", point => point.cpu?.user, { scored: false }),
@@ -64,6 +69,20 @@ export function CpuWidget(props: {
         events={props.events}
         stepMs={props.stepMs}
       />
+      <Show when={reportsGpu(props.points)}>
+        <PanelLabel>GPU busy</PanelLabel>
+        <PanelChart
+          label="GPU busy"
+          area
+          timeAxis={!reportsPressure(props.points)}
+          series={[{ label: "busy", color: "magenta", scored: false, points: summarySeries(props.points, point => point.gpu?.busyPct) }]}
+          format={percent}
+          min={0}
+          max={100}
+          events={props.events}
+          stepMs={props.stepMs}
+        />
+      </Show>
       <Show when={reportsPressure(props.points)}>
         <PanelLabel>CPU pressure, 10 s average</PanelLabel>
         <PanelChart

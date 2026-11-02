@@ -16,6 +16,7 @@ import { FilesystemsWidget } from "./host/Filesystems";
 import { MemoryWidget } from "./host/Memory";
 import { buildCells } from "./host/monitors";
 import { NetworkWidget } from "./host/Network";
+import { PowerWidget, reportsPower } from "./host/Power";
 import { rebootEvents } from "./host/shared";
 import { StatusStrip } from "./host/Status";
 import { SystemInfo } from "./host/System";
@@ -146,6 +147,9 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               <CpuWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
               <LoadWidget points={summary().points ?? []} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
               <MemoryWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
+              <Show when={reportsPower(summary().points ?? [])}>
+                <PowerWidget points={summary().points ?? []} stepMs={summary().stepMs} events={events()} />
+              </Show>
               <FilesystemsWidget series={filesystems().series ?? []} stepMs={filesystems().stepMs} events={events()} />
               <NetworkWidget series={nets().series ?? []} stepMs={nets().stepMs} events={events()} />
               <DiskWidget series={disks().series ?? []} stepMs={disks().stepMs} summary={summary().points ?? []} summaryStepMs={summary().stepMs} events={events()} />

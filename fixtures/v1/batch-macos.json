@@ -61,7 +61,16 @@
           "writes": "370009905",
           "writeSectors": "14625095624"
         }
-      ]
+      ],
+      "gpu": {
+        "active": "12345678901",
+        "total": "98765432100"
+      },
+      "power": {
+        "gpuNj": "40000000000",
+        "systemMwSum": "3600000",
+        "systemReadings": "120"
+      }
     },
     {
       "seq": "86415",
@@ -121,7 +130,16 @@
           "writes": "370010025",
           "writeSectors": "14625101624"
         }
-      ]
+      ],
+      "gpu": {
+        "active": "12422456042",
+        "total": "99125701051"
+      },
+      "power": {
+        "gpuNj": "49700000000",
+        "systemMwSum": "3614800",
+        "systemReadings": "121"
+      }
     }
   ]
 }

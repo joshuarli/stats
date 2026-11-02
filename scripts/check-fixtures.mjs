@@ -7,8 +7,8 @@ const fixtureDir = join(root, "fixtures", "v1");
 const hostPattern = /^h_[0-9a-f]{32}$/u;
 const bootPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const decimal = /^(0|[1-9][0-9]{0,19})$/u;
-const metricGroups = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"];
-const unavailableGroups = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"];
+const metricGroups = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"];
+const unavailableGroups = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power"];
 
 function source(relative) {
   return readFileSync(join(root, relative), "utf8");
@@ -75,7 +75,7 @@ for (const entry of manifest.fixtures) {
         if (!unavailableGroups.includes(key)) fail(`${entry.file}[${index}]: unknown unavailable group ${key}`);
         if (groups.includes(key === "uptime" ? "uptimeMs" : key)) fail(`${entry.file}[${index}]: ${key} is both present and unavailable`);
       }
-      if ((sample.unavailable ?? []).length > 8) fail(`${entry.file}[${index}]: too many unavailable groups`);
+      if ((sample.unavailable ?? []).length > unavailableGroups.length) fail(`${entry.file}[${index}]: too many unavailable groups`);
     }
   }
 }

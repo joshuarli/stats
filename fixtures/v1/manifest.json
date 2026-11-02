@@ -133,6 +133,26 @@
       "file": "invalid-system.json",
       "expect": "reject",
       "code": "invalid_batch"
+    },
+    {
+      "file": "invalid-power-unpaired.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-power-unknown-field.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-gpu-incomplete.json",
+      "expect": "reject",
+      "code": "invalid_sample"
+    },
+    {
+      "file": "invalid-unavailable-count.json",
+      "expect": "reject",
+      "code": "invalid_sample"
     }
   ]
 }

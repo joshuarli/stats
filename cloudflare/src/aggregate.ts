@@ -1,4 +1,4 @@
-import type { Block, Cpu, Disk, FileSystem, MemoryPressure, Net, PsiGroup, Sample } from "./protocol";
+import type { Block, Cpu, Disk, FileSystem, Gpu, MemoryPressure, Net, Power, PsiGroup, Sample } from "./protocol";
 import type { Delta, SwapDelta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
 import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
@@ -42,6 +42,13 @@ export interface PsiAverages {
   readonly memory?: PsiGroupAverages;
   readonly io?: PsiGroupAverages;
 }
+export interface GpuValues {
+  readonly busyPct: number;
+}
+export interface PowerValues {
+  readonly gpuWatts?: number;
+  readonly systemWatts?: number;
+}
 export interface SummaryPoint {
   readonly atMs: number;
   readonly coverageMs: number;
@@ -50,6 +57,8 @@ export interface SummaryPoint {
   readonly load?: LoadValues;
   readonly mem?: MemValues;
   readonly psi?: PsiAverages;
+  readonly gpu?: GpuValues;
+  readonly power?: PowerValues;
   readonly cpuCount?: number;
   readonly uptimeMs?: number;
 }
@@ -107,6 +116,9 @@ interface Gauge {
 export interface SwapRollup extends SwapDelta {
   readonly coveredMs: number;
 }
+export interface PowerRollup extends Power {
+  readonly gpuCoveredMs?: number;
+}
 interface FileSums {
   readonly total: Gauge;
   readonly available: Gauge;
@@ -119,6 +131,8 @@ export interface RollupPayload {
   readonly partial: boolean;
   readonly cpu?: Cpu;
   readonly swap?: SwapRollup;
+  readonly gpu?: Gpu;
+  readonly power?: PowerRollup;
   readonly gauges: Readonly<Record<string, Gauge>>;
   readonly psi: Readonly<Record<string, Readonly<Record<string, Gauge>>>>;
   readonly disks: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -234,6 +248,38 @@ function swapRates(swap: SwapDelta | undefined, coveredMs: number): { swapInByte
   return { swapInBytesPerSec: (Number(swap.swapIn) * 1000) / coveredMs, swapOutBytesPerSec: (Number(swap.swapOut) * 1000) / coveredMs };
 }
 
+function sumGpu(target: Gpu | undefined, add: Gpu): Gpu {
+  return { active: (BigInt(target?.active ?? "0") + BigInt(add.active)).toString(), total: (BigInt(target?.total ?? "0") + BigInt(add.total)).toString() };
+}
+
+function sumPower(target: PowerRollup | undefined, add: Power, gpuCoveredMs: number): PowerRollup {
+  const gpuNj = add.gpuNj === undefined ? target?.gpuNj : (BigInt(target?.gpuNj ?? "0") + BigInt(add.gpuNj)).toString();
+  const system = add.systemMwSum !== undefined && add.systemReadings !== undefined;
+  const systemMwSum = system ? (BigInt(target?.systemMwSum ?? "0") + BigInt(add.systemMwSum!)).toString() : target?.systemMwSum;
+  const systemReadings = system ? (BigInt(target?.systemReadings ?? "0") + BigInt(add.systemReadings!)).toString() : target?.systemReadings;
+  const covered = add.gpuNj === undefined ? target?.gpuCoveredMs : (target?.gpuCoveredMs ?? 0) + gpuCoveredMs;
+  return {
+    ...(gpuNj === undefined ? {} : { gpuNj }),
+    ...(covered === undefined ? {} : { gpuCoveredMs: covered }),
+    ...(systemMwSum === undefined || systemReadings === undefined ? {} : { systemMwSum, systemReadings })
+  };
+}
+
+function gpuValues(gpu: Gpu | undefined): GpuValues | undefined {
+  if (gpu === undefined) return undefined;
+  const total = Number(gpu.total);
+  return total > 0 ? { busyPct: (Number(gpu.active) / total) * 100 } : undefined;
+}
+
+function powerValues(power: PowerRollup | undefined, gpuCoveredMs: number): PowerValues | undefined {
+  if (power === undefined) return undefined;
+  const gpuWatts = power.gpuNj === undefined || gpuCoveredMs <= 0 ? undefined : Number(power.gpuNj) / gpuCoveredMs / 1e6;
+  const readings = power.systemReadings === undefined ? 0 : Number(power.systemReadings);
+  const systemWatts = power.systemMwSum === undefined || readings <= 0 ? undefined : Number(power.systemMwSum) / readings / 1000;
+  if (gpuWatts === undefined && systemWatts === undefined) return undefined;
+  return { ...(gpuWatts === undefined ? {} : { gpuWatts }), ...(systemWatts === undefined ? {} : { systemWatts }) };
+}
+
 function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
   for (const [id, values] of Object.entries(source)) {
     const current = target[id] ?? {};
@@ -282,6 +328,8 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   const coverageMs = rows.reduce((total, row) => total + row.delta.intervalMs, 0);
   let cpu: Cpu | undefined;
   let swap: SwapRollup | undefined;
+  let gpu: Gpu | undefined;
+  let power: PowerRollup | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -291,6 +339,8 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   for (const { sample, delta } of rows) {
     if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
     if (delta.swap !== undefined) swap = sumSwap(swap, delta.swap, delta.intervalMs);
+    if (delta.gpu !== undefined) gpu = sumGpu(gpu, delta.gpu);
+    if (delta.power !== undefined) power = sumPower(power, delta.power, delta.intervalMs);
     if (sample.load !== undefined) {
       gaugeAdd(gauges, "load.one", Number(sample.load.one));
       gaugeAdd(gauges, "load.five", Number(sample.load.five));
@@ -354,6 +404,8 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     partial: coverageMs < spanMs * 0.8,
     ...(cpu === undefined ? {} : { cpu }),
     ...(swap === undefined ? {} : { swap }),
+    ...(gpu === undefined ? {} : { gpu }),
+    ...(power === undefined ? {} : { power }),
     gauges,
     psi,
     disks,
@@ -367,6 +419,8 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
   if (payloads.length === 0) return null;
   let cpu: Cpu | undefined;
   let swap: SwapRollup | undefined;
+  let gpu: Gpu | undefined;
+  let power: PowerRollup | undefined;
   const gauges: Record<string, Gauge> = {};
   const psi: Record<string, Record<string, Gauge>> = {};
   const disks: Record<string, Record<string, string>> = {};
@@ -380,6 +434,8 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     samples += payload.samples;
     if (payload.cpu !== undefined) cpu = cpu === undefined ? { ...payload.cpu } : sumCpu(cpu, payload.cpu);
     if (payload.swap !== undefined) swap = sumSwap(swap, payload.swap, payload.swap.coveredMs);
+    if (payload.gpu !== undefined) gpu = sumGpu(gpu, payload.gpu);
+    if (payload.power !== undefined) power = sumPower(power, payload.power, payload.power.gpuCoveredMs ?? 0);
     for (const [key, value] of Object.entries(payload.gauges)) {
       const target = gauges[key] ?? { sum: 0, count: 0 };
       gauges[key] = { sum: target.sum + value.sum, count: target.count + value.count };
@@ -411,6 +467,8 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     partial: coverageMs < spanMs * 0.8,
     ...(cpu === undefined ? {} : { cpu }),
     ...(swap === undefined ? {} : { swap }),
+    ...(gpu === undefined ? {} : { gpu }),
+    ...(power === undefined ? {} : { power }),
     gauges,
     psi,
     disks,
@@ -440,9 +498,11 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
     some300: gaugeAverage(group, "some300")!,
     ...(gaugeAverage(group, "full10") === undefined ? {} : { full10: gaugeAverage(group, "full10")!, full60: gaugeAverage(group, "full60")!, full300: gaugeAverage(group, "full300")! })
   }])) as PsiAverages;
+  const gpu = gpuValues(payload.gpu);
+  const power = powerValues(payload.power, payload.power?.gpuCoveredMs ?? 0);
   const cpuCount = gaugeAverage(payload.gauges, "cpuCount");
   const uptimeMs = gaugeAverage(payload.gauges, "uptimeMs");
-  return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(cpuCount === undefined ? {} : { cpuCount: Math.round(cpuCount) }), ...(uptimeMs === undefined ? {} : { uptimeMs }) };
+  return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(gpu === undefined ? {} : { gpu }), ...(power === undefined ? {} : { power }), ...(cpuCount === undefined ? {} : { cpuCount: Math.round(cpuCount) }), ...(uptimeMs === undefined ? {} : { uptimeMs }) };
 }
 
 function summaryFromRaw(row: RawRow): SummaryPoint {
@@ -452,7 +512,9 @@ function summaryFromRaw(row: RawRow): SummaryPoint {
   const pressure = pressureShare(row.sample.mem?.pressure);
   const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs), ...(pressure === undefined ? {} : { pressure }) };
   const psi = psiAverages(row.sample);
-  return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }), ...(row.sample.uptimeMs === undefined ? {} : { uptimeMs: Number(row.sample.uptimeMs) }) };
+  const gpu = gpuValues(row.delta.gpu);
+  const power = powerValues(row.delta.power, row.delta.intervalMs);
+  return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(gpu === undefined ? {} : { gpu }), ...(power === undefined ? {} : { power }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }), ...(row.sample.uptimeMs === undefined ? {} : { uptimeMs: Number(row.sample.uptimeMs) }) };
 }
 
 function diskPoints(row: RawRow): Array<{ id: string; name: string; point: DiskPoint }> {

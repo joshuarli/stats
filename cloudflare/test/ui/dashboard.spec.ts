@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const hostId = "h_0123456789abcdef0123456789abcdef";
 const now = Date.now();
 
-function summary(range: string, empty = false) {
+function summary(range: string, empty = false, accelerator = false) {
   const length = empty ? 0 : 12;
   const step = range === "90d" ? 3_600_000 : range === "7d" ? 60_000 : 15_000;
   return {
@@ -17,7 +17,8 @@ function summary(range: string, empty = false) {
       cpu: { user: index >= 8 ? 93 : 8 + index, system: 3, idle: 80, iowait: 1, steal: 0 },
       load: { one: 0.4 + index / 100, five: 0.5, fifteen: 0.6 },
       mem: { total: 8_589_934_592, available: 4_294_967_296 - index * 1_000_000, swapUsed: 0, swapInBytesPerSec: 4096 * index, swapOutBytesPerSec: 8192 },
-      psi: { cpu: { some10: 1.2, some60: 0.8, some300: 0.4 }, memory: { some10: 0.1, some60: 0.05, some300: 0.02, full10: 0.05, full60: 0.03, full300: 0.01 }, io: { some10: 0.3, some60: 0.2, some300: 0.1 } }
+      psi: { cpu: { some10: 1.2, some60: 0.8, some300: 0.4 }, memory: { some10: 0.1, some60: 0.05, some300: 0.02, full10: 0.05, full60: 0.03, full300: 0.01 }, io: { some10: 0.3, some60: 0.2, some300: 0.1 } },
+      ...(accelerator ? { gpu: { busyPct: 20 + index }, power: { gpuWatts: 0.6 + index / 10, ...(index % 4 === 0 ? { systemWatts: 14.8 } : {}) } } : {})
     }))
   };
 }
@@ -152,7 +153,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -183,7 +184,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       if (kind === "nets") return nets(range, empty);
       if (kind === "filesystems") return filesystems(range, empty);
       if (kind === "block") return block(range, empty);
-      const body = summary(range, empty);
+      const body = summary(range, empty, options.accelerator === true);
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
       if (from !== null && to !== null) {
@@ -259,7 +260,19 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   }
   await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Block latency;/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Power" })).toHaveCount(0);
+  await expect(page.getByText("GPU busy")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
+});
+
+test("a host that reports gpu and power shows GPU busy beside CPU and a Power widget", async ({ page }) => {
+  await mock(page, { accelerator: true });
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "Power" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Power;/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /GPU busy;/ })).toBeVisible();
+  await expect(page.locator("#cpu").getByText("GPU busy").first()).toBeVisible();
 });
 
 test("the host page reads every history kind in one request", async ({ page }) => {
