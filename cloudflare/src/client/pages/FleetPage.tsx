@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
+import { createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
@@ -12,6 +12,7 @@ import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
 import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, StateCell, Widget } from "../components/ui";
+import { createUpdateEffect } from "../effect";
 
 const PAGE_SIZE = 10;
 const statusLabels = ["online", "stale", "no samples", "revoked"] as const;
@@ -72,7 +73,7 @@ export function FleetPage(): JSX.Element {
       setRefreshError(errorMessage(error));
     }
   };
-  createEffect(() => tick(), () => { void doRefresh(); }, { defer: true });
+  createUpdateEffect(() => tick(), () => { void doRefresh(); });
 
   const counts = createMemo(() => {
     const all = hosts();
@@ -133,7 +134,7 @@ function ProjectsSection(): JSX.Element {
   const { now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
-  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); }, { defer: true });
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
   return (
     <Show when={projects().length > 0}>
       <Widget

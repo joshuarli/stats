@@ -125,12 +125,19 @@ export function Widget(props: ParentProps<{
   );
 }
 
-export function HealthMark(props: { readonly health: Health | undefined; readonly showOk?: boolean | undefined; readonly labelled?: boolean | undefined }): JSX.Element {
-  return props.health === undefined || (props.health === "ok" && props.showOk !== true) ? null : (
-    <span class={`health health-${props.health}`}>
-      <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[props.health]}</span>
-      <span class={props.labelled === true && props.health !== "ok" ? "health-text" : "sr-only"}>{HEALTH_LABEL[props.health]}</span>
-    </span>
+export function HealthMark(props: { readonly health: Health | undefined | (() => Health | undefined); readonly showOk?: boolean | undefined; readonly labelled?: boolean | undefined }): JSX.Element {
+  const current = () => (typeof props.health === "function" ? props.health() : props.health);
+  return (
+    <Show when={current()}>
+      {(health) => (
+        <Show when={health() !== "ok" || props.showOk === true}>
+          <span class={`health health-${health()}`}>
+            <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[health()]}</span>
+            <span class={props.labelled === true && health() !== "ok" ? "health-text" : "sr-only"}>{HEALTH_LABEL[health()]}</span>
+          </span>
+        </Show>
+      )}
+    </Show>
   );
 }
 

@@ -1,10 +1,11 @@
-import { createEffect, createMemo, createSignal, Errored, For, Loading, onSettled, refresh, Show, type ParentProps } from "solid-js";
+import { createMemo, createSignal, Errored, For, Loading, onSettled, refresh, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
 import { Icon } from "./components/Icon";
 import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
+import { createUpdateEffect } from "./effect";
 import { createViewState, LIVE_INTERVAL_MS, TelemetryContext, useTelemetry, type Range } from "./state";
 
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
@@ -19,10 +20,8 @@ export function Shell(props: ParentProps): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
   const hosts = createMemo(loadHosts);
   const views = createViewState(range, now);
-  const query = createMemo<HistoryQuery>(() => {
-    const window = views.view();
-    return window === null ? { range: range() } : window;
-  });
+  const liveQuery = createMemo<HistoryQuery>(() => ({ range: range() }));
+  const query = createMemo<HistoryQuery>(() => views.view() ?? liveQuery());
   const location = useLocation();
 
   onSettled(() => {
@@ -52,8 +51,8 @@ export function Shell(props: ParentProps): JSX.Element {
     };
   });
 
-  createEffect(() => range(), views.resetZoom, { defer: true });
-  createEffect(() => location.pathname, views.resetZoom, { defer: true });
+  createUpdateEffect(() => range(), () => views.resetZoom());
+  createUpdateEffect(() => location.pathname, () => views.resetZoom());
 
   const refreshHosts = async () => {
     await refresh(hosts);

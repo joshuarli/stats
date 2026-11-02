@@ -65,6 +65,7 @@ export function createViewState(range: Accessor<Range>, now: Accessor<number>): 
   const live = () => mode().kind === "live";
 
   const resetZoom = () => {
+    if (mode().kind === "live" && trail().length === 0) return;
     setMode({ kind: "live" });
     setTrail([]);
   };

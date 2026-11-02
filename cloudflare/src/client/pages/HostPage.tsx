@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
+import { createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { ApiFailure, getHostHistories, getSummary, getSystem, type Host } from "../api";
@@ -6,6 +6,7 @@ import type { SummaryTable } from "../history";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
 import { RANGE_MS } from "../../limits";
+import { createUpdateEffect } from "../effect";
 import { loadQuery } from "../queries";
 import { statusFor } from "../status";
 import { useTelemetry } from "../state";
@@ -98,7 +99,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
       setRefreshError(errorMessage(error));
     }
   };
-  createEffect(() => tick(), () => { void doRefresh(); }, { defer: true });
+  createUpdateEffect(() => tick(), () => { void doRefresh(); });
 
   const cells = createMemo(() => buildCells({ summary: summary(), disks: disks(), nets: nets(), filesystems: filesystems() }, view()));
 

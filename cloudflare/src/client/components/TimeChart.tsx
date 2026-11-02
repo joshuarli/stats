@@ -1,9 +1,10 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { alignTracks, windowIndexes, windowStats } from "../chart-data";
 import type { Track } from "../columns";
+import { createUpdateEffect } from "../effect";
 import { axisTime, clock, percent } from "../format";
 import { episodeText, evaluate, healthOf, markersOf, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
@@ -113,6 +114,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     if (plot === undefined || times.length < 2) return;
     const view = telemetry.view();
     plot.setScale("x", view === null ? { min: times[0]! / 1000, max: times.at(-1)! / 1000 } : { min: view.fromMs / 1000, max: view.toMs / 1000 });
+    setSpan(windowIndexes(times, view));
   };
 
   const build = () => {
@@ -494,25 +496,25 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     };
   });
 
-  createEffect(() => signature(), () => {
+  createUpdateEffect(() => signature(), () => {
     if (plot === undefined) return;
     destroy();
     build();
-  }, { defer: true });
+  });
 
-  createEffect(() => data(), nextData => {
+  createUpdateEffect(() => data(), nextData => {
     if (plot === undefined) return;
     plot.setData(nextData, false);
     applyView();
-  }, { defer: true });
+  });
 
-  createEffect(() => telemetry.view(), applyView, { defer: true });
+  createUpdateEffect(() => telemetry.view(), applyView);
 
-  createEffect(() => props.highlight, label => {
+  createUpdateEffect(() => props.highlight, label => {
     if (plot === undefined) return;
     const position = props.series.findIndex(entry => entry.label === label);
     plot.setSeries(position === -1 ? null : position + 1, { focus: true });
-  }, { defer: true });
+  });
 
   const focusSeries = (label: string | null) => {
     const position = props.series.findIndex(entry => entry.label === label);
@@ -584,7 +586,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                   <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
                   <span class="inline-label">{entry.label}</span>
                   <b>{format(shown())}</b>
-                  {entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}
+                  {entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}
                 </button>
               );
             }}
@@ -625,8 +627,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                       <td>{entry.label}</td>
                       <td>{format(stats()?.min)}</td>
                       <td>{format(stats()?.avg)}</td>
-                      <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</span></td>
-                      <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</span></td>
+                      <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(stats()?.max)} />}</span></td>
+                      <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}</span></td>
                     </tr>
                   );
                 }}

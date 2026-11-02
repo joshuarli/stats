@@ -1,9 +1,10 @@
-import { createEffect, createMemo, createSignal, Errored, Loading, refresh, Show } from "solid-js";
+import { createMemo, createSignal, Errored, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getProjectHistories, type Project } from "../api";
 import { errorMessage } from "../format";
 import { collectorStatus } from "../status";
+import { createUpdateEffect } from "../effect";
 import { loadProjects, loadQuery } from "../queries";
 import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
 import { PageHeader } from "../components/PageHeader";
@@ -27,7 +28,7 @@ export function ProjectPage(): JSX.Element {
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   const project = createMemo(() => projects().find(candidate => candidate.id === (params.projectId ?? "")));
-  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); }, { defer: true });
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
@@ -79,7 +80,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       setRefreshError(errorMessage(error));
     }
   };
-  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void doRefresh(); }, { defer: true });
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void doRefresh(); });
 
   const data = createMemo((): ProjectData => ({
     worker: worker(),
