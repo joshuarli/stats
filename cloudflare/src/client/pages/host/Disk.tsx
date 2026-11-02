@@ -17,6 +17,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
   const shown = createMemo(() => topSeries(props.series, point => point.busyPct));
   const colors = createMemo(() => colorsFor(shown()));
   const reportsPressure = createMemo(() => props.summary.some(point => point.psi?.io !== undefined));
+  const reportsBusy = createMemo(() => props.series.some(entry => entry.points.some(point => point.busyPct !== undefined)));
   const lastIn = <T extends { readonly atMs: number }>(points: readonly T[]) => pointsIn(points, view()).at(-1);
   return (
     <Widget id="disk" title="Disk" expandable>
@@ -37,7 +38,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
           <PanelLabel>Operations per second</PanelLabel>
           <PanelChart
             label="Disk operations"
-            timeAxis={false}
+            timeAxis={!reportsBusy() && !reportsPressure()}
             series={[
               { label: "reads", color: "blue", mirror: false, points: sumSeries(props.series, point => point.readsPerSec) },
               { label: "writes", color: "aqua", mirror: true, points: sumSeries(props.series, point => point.writesPerSec) }
@@ -47,17 +48,19 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             events={props.events}
             stepMs={props.stepMs}
           />
-          <PanelLabel>Busy time per device</PanelLabel>
-          <PanelChart
-            label="Disk busy"
-            timeAxis={!reportsPressure()}
-            series={shown().map(entry => ({ label: entry.name ?? entry.id, color: colors().get(entry.id) ?? "neutral", points: entry.points.map(point => ({ atMs: point.atMs, value: point.busyPct })) }))}
-            format={percent}
-            limits={LIMITS.diskBusyPercent}
-            min={0}
-            events={props.events}
-            stepMs={props.stepMs}
-          />
+          <Show when={reportsBusy()}>
+            <PanelLabel>Busy time per device</PanelLabel>
+            <PanelChart
+              label="Disk busy"
+              timeAxis={!reportsPressure()}
+              series={shown().map(entry => ({ label: entry.name ?? entry.id, color: colors().get(entry.id) ?? "neutral", points: entry.points.map(point => ({ atMs: point.atMs, value: point.busyPct })) }))}
+              format={percent}
+              limits={LIMITS.diskBusyPercent}
+              min={0}
+              events={props.events}
+              stepMs={props.stepMs}
+            />
+          </Show>
           <Show when={reportsPressure()}>
             <PanelLabel>I/O pressure, 10 s average</PanelLabel>
             <PanelChart
@@ -76,7 +79,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
           </Show>
           <div class="table-scroll flush-table">
             <table class="data-table compact" aria-label="Disk activity">
-              <thead><tr><th scope="col">Device</th><th scope="col">Read</th><th scope="col">Write</th><th scope="col">IOPS read / write</th><th scope="col">Busy</th><th scope="col">Trend</th></tr></thead>
+              <thead><tr><th scope="col">Device</th><th scope="col">Read</th><th scope="col">Write</th><th scope="col">IOPS read / write</th><Show when={reportsBusy()}><th scope="col">Busy</th><th scope="col">Trend</th></Show></tr></thead>
               <tbody>
                 <For each={active()}>
                   {(entry) => {
@@ -87,14 +90,16 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
                         <td>{rate(point()?.readBytesPerSec)}</td>
                         <td>{rate(point()?.writeBytesPerSec)}</td>
                         <td>{count(point()?.readsPerSec)} <span class="cell-note">/ {count(point()?.writesPerSec)}</span></td>
-                        <td>
-                          <div class="cpu-cell">
-                            <span class="metric-value-small">{percent(point()?.busyPct)}</span>
-                            <Meter value={point()?.busyPct} warn={LIMITS.diskBusyPercent.elevated} bad={LIMITS.diskBusyPercent.critical} />
-                            <HealthMark health={point() === undefined ? undefined : healthOf(point()!.busyPct, LIMITS.diskBusyPercent) ?? undefined} />
-                          </div>
-                        </td>
-                        <td><Sparkline points={pointsIn(entry.points, view()).map(value => ({ atMs: value.atMs, value: value.busyPct }))} label={`${entry.id} busy time`} /></td>
+                        <Show when={reportsBusy()}>
+                          <td>
+                            <div class="cpu-cell">
+                              <span class="metric-value-small">{percent(point()?.busyPct)}</span>
+                              <Meter value={point()?.busyPct} warn={LIMITS.diskBusyPercent.elevated} bad={LIMITS.diskBusyPercent.critical} />
+                              <HealthMark health={point()?.busyPct === undefined ? undefined : healthOf(point()!.busyPct!, LIMITS.diskBusyPercent) ?? undefined} />
+                            </div>
+                          </td>
+                          <td><Sparkline points={pointsIn(entry.points, view()).map(value => ({ atMs: value.atMs, value: value.busyPct }))} label={`${entry.id} busy time`} /></td>
+                        </Show>
                       </tr>
                     );
                   }}

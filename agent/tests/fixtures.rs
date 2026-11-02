@@ -153,10 +153,12 @@ fn validate_group(sample: &Value, key: &str) -> bool {
             value.as_array().is_some_and(|devices| {
                 devices.len() <= 16
                     && devices.iter().enumerate().all(|(index, device)| {
-                        object(device, &["id", "name", "reads", "readSectors", "writes", "writeSectors", "ioMs"])
-                            && id(&device["id"], valid_disk_id)
+                        id(&device["id"], valid_disk_id)
                             && id(&device["name"], valid_name)
-                            && ["reads", "readSectors", "writes", "writeSectors", "ioMs"].iter().all(|field| decimal(&device[*field]))
+                            && device.as_object().is_some_and(|map| {
+                                let counters: serde_json::Map<String, Value> = map.iter().filter(|(key, _)| *key != "id" && *key != "name").map(|(key, value)| (key.clone(), value.clone())).collect();
+                                u64_map(&Value::Object(counters), &["reads", "readSectors", "writes", "writeSectors"], &["ioMs"])
+                            })
                             && devices[..index].iter().all(|other| other["id"] != device["id"])
                     })
             })
@@ -360,7 +362,7 @@ fn serializer_uses_the_wire_names() {
     }
     assert_eq!(serde_json::to_value(Unavailable::Filesystems).unwrap().as_str(), Some("filesystems"));
 
-    let disk = Disk { id: "8:0".into(), name: "sda".into(), reads: "1".into(), read_sectors: "2".into(), writes: "3".into(), write_sectors: "4".into(), io_ms: "5".into() };
+    let disk = Disk { id: "8:0".into(), name: "sda".into(), reads: "1".into(), read_sectors: "2".into(), writes: "3".into(), write_sectors: "4".into(), io_ms: Some("5".into()) };
     let disk = serde_json::to_value(disk).unwrap();
     assert!(disk.get("readSectors").is_some() && disk.get("ioMs").is_some());
 

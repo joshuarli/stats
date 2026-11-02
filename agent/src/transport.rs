@@ -501,7 +501,7 @@ mod tests {
             read_sectors: "1".into(),
             writes: "1".into(),
             write_sectors: "1".into(),
-            io_ms: "1".into(),
+            io_ms: Some("1".into()),
         };
         let net = |index: usize| crate::model::Net {
             id: format!("eth{index}"),

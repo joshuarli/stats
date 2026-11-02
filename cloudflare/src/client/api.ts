@@ -64,7 +64,7 @@ export interface DiskPoint {
   readonly writeBytesPerSec: number;
   readonly readsPerSec: number;
   readonly writesPerSec: number;
-  readonly busyPct: number;
+  readonly busyPct?: number;
 }
 
 export interface NetPoint {
@@ -351,7 +351,7 @@ function decodeDiskPoint(value: unknown): DiskPoint {
     writeBytesPerSec: number(entry.writeBytesPerSec),
     readsPerSec: number(entry.readsPerSec),
     writesPerSec: number(entry.writesPerSec),
-    busyPct: number(entry.busyPct)
+    ...(entry.busyPct === undefined ? {} : { busyPct: number(entry.busyPct) })
   };
 }
 

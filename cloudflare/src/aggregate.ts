@@ -54,7 +54,7 @@ export interface DiskPoint {
   readonly writeBytesPerSec: number;
   readonly readsPerSec: number;
   readonly writesPerSec: number;
-  readonly busyPct: number;
+  readonly busyPct?: number;
 }
 export interface NetPoint {
   readonly atMs: number;
@@ -306,7 +306,10 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     }
     for (const [id, disk] of Object.entries(delta.disks)) {
       const target = disks[id] ?? {};
-      for (const field of DISK_FIELDS) target[field] = (BigInt(target[field] ?? "0") + BigInt(disk[field])).toString();
+      for (const field of DISK_FIELDS) {
+        const value = disk[field];
+        if (value !== undefined) target[field] = (BigInt(target[field] ?? "0") + BigInt(value)).toString();
+      }
       target[DEVICE_COVERAGE] = (BigInt(target[DEVICE_COVERAGE] ?? "0") + BigInt(delta.intervalMs)).toString();
       disks[id] = target;
     }
@@ -447,7 +450,7 @@ function diskPoints(row: RawRow): Array<{ id: string; name: string; point: DiskP
       writeBytesPerSec: (Number(disk.writeSectors) * 512 * 1000) / row.delta.intervalMs,
       readsPerSec: (Number(disk.reads) * 1000) / row.delta.intervalMs,
       writesPerSec: (Number(disk.writes) * 1000) / row.delta.intervalMs,
-      busyPct: (Number(disk.ioMs) / row.delta.intervalMs) * 100
+      ...(disk.ioMs === undefined ? {} : { busyPct: (Number(disk.ioMs) / row.delta.intervalMs) * 100 })
     }
   }));
 }
@@ -530,7 +533,7 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
           writeBytesPerSec: rate(values.writeSectors, coverage, 512),
           readsPerSec: rate(values.reads, coverage),
           writesPerSec: rate(values.writes, coverage),
-          busyPct: rate(values.ioMs, coverage) / 1000 * 100
+          ...(values.ioMs === undefined ? {} : { busyPct: rate(values.ioMs, coverage) / 1000 * 100 })
         });
         grouped.set(id, points);
       }

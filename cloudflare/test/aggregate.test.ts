@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compact, rawPoints, rollupFromRaw, rollupPoints, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
+import { compact, rawPoints, rollupFromRaw, rollupPoints, type DiskPoint, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
 import { computeDelta } from "../src/delta";
 import type { Disk, Net, Sample } from "../src/protocol";
 
@@ -134,22 +134,29 @@ describe("counters a platform does not expose", () => {
     atMs: String(Number(seq) * 1000),
     monoMs: String(Number(seq) * 1000),
     cpu,
+    disks: [{ id: "1:0", name: "disk0", reads: "0", readSectors: txBytes, writes: "0", writeSectors: "0" }],
     nets: [{ id: "en0", rxBytes: "0", rxPackets: "0", rxDrops: "0", rxErrors: "0", txBytes, txPackets: "0", txErrors: "0" }]
   });
   const first = sample("100", { user: "10", system: "10", idle: "80", total: "100" }, "0");
   const second = sample("115", { user: "30", system: "20", idle: "150", total: "200" }, "15000");
   const rows: RawRow[] = [{ sample: second, delta: computeDelta(first, second, 15_000) }];
 
-  it("leaves iowait, steal, and tx drops absent rather than zero in raw and rolled history", () => {
+  it("leaves iowait, steal, tx drops, and disk busy time absent rather than zero in raw and rolled history", () => {
     const summary = rawPoints(rows, "summary") as SummaryPoint[];
     expect(summary[0]!.cpu).toEqual({ user: 20, system: 10, idle: 70 });
     const nets = rawPoints(rows, "nets") as { points: NetPoint[] }[];
     expect(nets[0]!.points[0]!.txBytesPerSec).toBe(1000);
     expect(nets[0]!.points[0]).not.toHaveProperty("txDropsPerSec");
+    const disks = rawPoints(rows, "disks") as { points: DiskPoint[] }[];
+    expect(disks[0]!.points[0]!.readBytesPerSec).toBe(512_000);
+    expect(disks[0]!.points[0]).not.toHaveProperty("busyPct");
 
     const payload = rollupFromRaw(rows, 0, 60_000)!;
     expect((rollupPoints([payload], "summary") as SummaryPoint[])[0]!.cpu).toEqual({ user: 20, system: 10, idle: 70 });
     const rolledNets = rollupPoints([payload], "nets") as { points: NetPoint[] }[];
     expect(rolledNets[0]!.points[0]).not.toHaveProperty("txDropsPerSec");
+    const rolledDisks = rollupPoints([payload], "disks") as { points: DiskPoint[] }[];
+    expect(rolledDisks[0]!.points[0]!.readBytesPerSec).toBe(512_000);
+    expect(rolledDisks[0]!.points[0]).not.toHaveProperty("busyPct");
   });
 });

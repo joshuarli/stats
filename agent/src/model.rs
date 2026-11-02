@@ -86,8 +86,8 @@ pub struct Disk {
     pub writes: String,
     #[serde(rename = "writeSectors")]
     pub write_sectors: String,
-    #[serde(rename = "ioMs")]
-    pub io_ms: String,
+    #[serde(rename = "ioMs", skip_serializing_if = "Option::is_none")]
+    pub io_ms: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

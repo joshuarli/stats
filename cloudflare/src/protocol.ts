@@ -38,7 +38,7 @@ export interface Disk {
   readonly readSectors: string;
   readonly writes: string;
   readonly writeSectors: string;
-  readonly ioMs: string;
+  readonly ioMs?: string;
 }
 
 export interface Net {
@@ -283,7 +283,7 @@ export function parseSample(value: unknown): SampleResult {
   if (cpuCount !== undefined && (typeof cpuCount !== "number" || !Number.isInteger(cpuCount) || cpuCount < 1 || cpuCount > 4096)) return fail("cpuCount");
   if (value.disks !== undefined) {
     const disks = arrayUnique(value.disks, "id", MAX_DEVICES);
-    if (disks === null || !disks.every(disk => exact(disk, ["id", "name", "reads", "readSectors", "writes", "writeSectors", "ioMs"]) && typeof disk.id === "string" && validDiskId(disk.id) && typeof disk.name === "string" && DISK_NAME.test(disk.name) && ["reads", "readSectors", "writes", "writeSectors", "ioMs"].every(key => decimal(disk[key])))) return fail("disks");
+    if (disks === null || !disks.every(disk => typeof disk.id === "string" && validDiskId(disk.id) && typeof disk.name === "string" && DISK_NAME.test(disk.name) && u64Fields(Object.fromEntries(Object.entries(disk).filter(([key]) => key !== "id" && key !== "name")), ["reads", "readSectors", "writes", "writeSectors"], ["ioMs"]))) return fail("disks");
   }
   if (value.nets !== undefined) {
     const nets = arrayUnique(value.nets, "id", MAX_DEVICES);

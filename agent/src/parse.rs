@@ -193,7 +193,7 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
                 read_sectors: read_sectors.to_string(),
                 writes: writes.to_string(),
                 write_sectors: write_sectors.to_string(),
-                io_ms: io_ms.to_string(),
+                io_ms: Some(io_ms.to_string()),
             },
         );
     }
@@ -393,7 +393,7 @@ mod tests {
         assert_eq!(disks[0].id, "253:0");
         assert_eq!(disks[0].read_sectors, "24");
         assert_eq!(disks[1].id, "8:0");
-        assert_eq!(disks[1].io_ms, "7");
+        assert_eq!(disks[1].io_ms.as_deref(), Some("7"));
     }
 
     #[test]

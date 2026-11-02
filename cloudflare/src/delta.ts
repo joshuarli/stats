@@ -69,7 +69,7 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
       if (prior === undefined) continue;
       const values = counterDelta(prior, disk, DISK_FIELDS);
       if (values === null) continue;
-      disks[disk.id] = { id: disk.id, name: disk.name, reads: values.reads!, readSectors: values.readSectors!, writes: values.writes!, writeSectors: values.writeSectors!, ioMs: values.ioMs! };
+      disks[disk.id] = { id: disk.id, name: disk.name, ...values } as Disk;
     }
   }
   const nets: Record<string, Net> = {};

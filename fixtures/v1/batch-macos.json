@@ -8,7 +8,6 @@
       "atMs": "1793510400000",
       "monoMs": "86400000",
       "unavailable": [
-        "disks",
         "psi"
       ],
       "cpu": {
@@ -51,6 +50,16 @@
           "total": "994662584320",
           "available": "512000000000"
         }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849297",
+          "readSectors": "9270382600",
+          "writes": "370009905",
+          "writeSectors": "14625095624"
+        }
       ]
     },
     {
@@ -58,7 +67,6 @@
       "atMs": "1793510415000",
       "monoMs": "86415000",
       "unavailable": [
-        "disks",
         "psi"
       ],
       "cpu": {
@@ -100,6 +108,16 @@
           "type": "apfs",
           "total": "994662584320",
           "available": "511990000000"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849337",
+          "readSectors": "9270384600",
+          "writes": "370010025",
+          "writeSectors": "14625101624"
         }
       ]
     }
