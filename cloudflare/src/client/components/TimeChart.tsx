@@ -426,7 +426,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           return {
             label: entry.label,
             stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
-            width: entry.graded === true ? 2 : 1.5,
+            width: entry.graded === true ? 2 : props.series.some(other => other.graded === true) ? 1.1 : 1.5,
             spanGaps: entry.joinGaps === true,
             points: { show: false },
             ...(entry.dashed === true ? { dash: [4, 3] } : {}),

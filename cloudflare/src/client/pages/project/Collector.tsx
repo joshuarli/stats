@@ -14,7 +14,7 @@ export function CollectorWidget(props: { readonly data: ProjectData; readonly co
       <PanelChart
         label="Collector silence"
         area
-        series={[{ label: "since last success", color: "neutral", graded: true, track: props.data.silence }]}
+        series={[{ label: "since last success", color: "blue", graded: true, track: props.data.silence }]}
         format={minutes}
         limits={LIMITS.collectorStaleMinutes}
         min={0}

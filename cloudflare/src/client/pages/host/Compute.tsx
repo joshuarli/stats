@@ -56,11 +56,11 @@ export function CpuWidget(props: {
         area
         timeAxis={!reportsGpu(props.table) && !reportsPressure(props.table)}
         series={[
-          series("total", "neutral", cpuUsed(props.table), { graded: true }),
-          series("user", "blue", props.table.cells("cpu.user"), { scored: false }),
-          series("system", "aqua", props.table.cells("cpu.system"), { scored: false }),
-          series("iowait", "violet", props.table.cells("cpu.iowait"), { scored: false }),
-          series("steal", "magenta", props.table.cells("cpu.steal"), { scored: false }),
+          series("total", "blue", cpuUsed(props.table), { graded: true }),
+          series("user", "aqua", props.table.cells("cpu.user"), { scored: false }),
+          series("system", "violet", props.table.cells("cpu.system"), { scored: false }),
+          series("iowait", "magenta", props.table.cells("cpu.iowait"), { scored: false }),
+          series("steal", "ghost", props.table.cells("cpu.steal"), { scored: false }),
           ...ghostOf(props.yesterday, cpuUsed)
         ]}
         format={percent}

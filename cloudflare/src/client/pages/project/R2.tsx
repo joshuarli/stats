@@ -16,7 +16,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         timeAxis={false}
         series={[
           { label: "success", color: "blue", scored: false, track: bucketOutcome(props.data, "success") },
-          { label: "user error", color: "neutral", scored: false, track: bucketOutcome(props.data, "userError") },
+          { label: "user error", color: "ghost", scored: false, track: bucketOutcome(props.data, "userError") },
           { label: "other failure", color: "critical", scored: false, track: bucketOutcome(props.data, "other") }
         ]}
         format={count}

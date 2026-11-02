@@ -64,7 +64,7 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
         label="Worker average CPU time"
         area
         timeAxis={false}
-        series={[{ label: "average", color: "neutral", graded: true, track: cpuAverage(props.data) }]}
+        series={[{ label: "average", color: "blue", graded: true, track: cpuAverage(props.data) }]}
         format={milliseconds}
         limits={LIMITS.workerCpuMs}
         min={0}

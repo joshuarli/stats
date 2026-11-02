@@ -64,7 +64,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             label="Durable Object average CPU time"
             area
             timeAxis={false}
-            series={[{ label: "average", color: "neutral", scored: false, track: durableObjectCpuAverage(history()!) }]}
+            series={[{ label: "average", color: "blue", scored: false, track: durableObjectCpuAverage(history()!) }]}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}

@@ -20,7 +20,7 @@ export function MemoryWidget(props: { readonly table: SummaryTable; readonly ste
         area
         timeAxis={false}
         series={[
-          { label: "RAM used", color: "neutral", graded: true, track: { times: props.table.times, values: memoryUsedBytes(props.table) } },
+          { label: "RAM used", color: "blue", graded: true, track: { times: props.table.times, values: memoryUsedBytes(props.table) } },
           { label: "swap used", color: "violet", scored: false, track: props.table.track("mem.swapUsed") }
         ]}
         format={bytes}
