@@ -437,7 +437,7 @@ test("the project page refreshes on the collector cadence, not every live tick",
   await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
   const projectHistory = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history")).length;
   const initial = projectHistory();
-  expect(initial).toBeGreaterThan(0);
+  expect(initial).toBe(1);
 
   await page.clock.runFor(30_000);
   await page.waitForTimeout(100);
