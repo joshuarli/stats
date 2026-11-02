@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import stuff from "./captures/stuff/capture.json" with { type: "json" };
+import stuffCollector from "./captures/stuff/collector-1h.json" with { type: "json" };
+import stuffProbes from "./captures/stuff/probes-1h.json" with { type: "json" };
+import stuffR2 from "./captures/stuff/r2-1h.json" with { type: "json" };
+import stuffRoutes from "./captures/stuff/routes-1h.json" with { type: "json" };
+import stuffWorker from "./captures/stuff/worker-1h.json" with { type: "json" };
 import threadripper from "./captures/threadripper/capture.json" with { type: "json" };
 import block1h from "./captures/threadripper/block-1h.json" with { type: "json" };
 import block24h from "./captures/threadripper/block-24h.json" with { type: "json" };
@@ -23,6 +28,14 @@ const capturedHistory = {
   "1h": { summary: summary1h, disks: disks1h, nets: nets1h, filesystems: filesystems1h, block: block1h },
   "24h": { summary: summary24h, disks: disks24h, nets: nets24h, filesystems: filesystems24h, block: block24h },
   "7d": { summary: summary7d, disks: disks7d, nets: nets7d, filesystems: filesystems7d, block: block7d }
+} as const;
+
+const capturedProjectHistory = {
+  worker: stuffWorker,
+  routes: stuffRoutes,
+  r2: stuffR2,
+  collector: stuffCollector,
+  probes: stuffProbes
 } as const;
 
 function capturedKind(name: string, range: string, kind: string): unknown {
@@ -83,7 +96,17 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
-    const file = url.pathname === "/api/v1/projects" ? "projects.json" : `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`;
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
+    const kinds = url.searchParams.get("kinds");
+    if (kinds !== null) {
+      const histories = Object.fromEntries(kinds.split(",").map(kind => {
+        const history = capturedProjectHistory[kind as keyof typeof capturedProjectHistory];
+        if (history === undefined) throw new Error(`no captured project history for ${kind}`);
+        return [kind, history];
+      }));
+      return route.fulfill({ json: { projectId: "stuff", histories } });
+    }
+    const file = `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`;
     return route.fulfill({ path: captureFile(name, file), contentType: "application/json" });
   });
 }

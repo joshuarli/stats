@@ -231,6 +231,17 @@ export interface ProjectCollectorHistory {
   readonly runs: readonly CollectorRun[];
 }
 
+export interface ProjectHistories {
+  readonly worker: ProjectMetricHistory;
+  readonly routes: ProjectMetricHistory;
+  readonly r2: ProjectMetricHistory;
+  readonly collector: ProjectCollectorHistory;
+  readonly "durable-objects"?: ProjectMetricHistory;
+  readonly d1?: ProjectMetricHistory;
+  readonly "d1-statements"?: ProjectMetricHistory;
+  readonly probes?: ProjectMetricHistory;
+}
+
 type JsonObject = { readonly [key: string]: unknown };
 
 export class ApiFailure extends Error {
@@ -453,6 +464,20 @@ function decodeProjectCollectorHistory(value: unknown): ProjectCollectorHistory 
   };
 }
 
+function decodeProjectHistories(value: unknown): ProjectHistories {
+  const histories = record(record(value).histories);
+  return {
+    worker: decodeProjectMetricHistory("worker")(histories.worker),
+    routes: decodeProjectMetricHistory("routes")(histories.routes),
+    r2: decodeProjectMetricHistory("r2")(histories.r2),
+    collector: decodeProjectCollectorHistory(histories.collector),
+    ...(histories["durable-objects"] === undefined ? {} : { "durable-objects": decodeProjectMetricHistory("durable-objects")(histories["durable-objects"]) }),
+    ...(histories.d1 === undefined ? {} : { d1: decodeProjectMetricHistory("d1")(histories.d1) }),
+    ...(histories["d1-statements"] === undefined ? {} : { "d1-statements": decodeProjectMetricHistory("d1-statements")(histories["d1-statements"]) }),
+    ...(histories.probes === undefined ? {} : { probes: decodeProjectMetricHistory("probes")(histories.probes) })
+  };
+}
+
 function decodeSystem(value: unknown): HostSystem {
   const entry = record(value);
   const system = record(entry.system);
@@ -591,12 +616,42 @@ function statusMessage(status: number): string {
   return `The telemetry service returned ${status}.`;
 }
 
-async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal): Promise<T> {
+interface ConditionalEntry {
+  readonly etag: string;
+  readonly body: unknown;
+}
+
+const CONDITIONAL_CACHE_LIMIT = 32;
+const conditionalCache = new Map<string, ConditionalEntry>();
+
+function rememberConditional(path: string, etag: string, body: unknown): void {
+  conditionalCache.delete(path);
+  conditionalCache.set(path, { etag, body });
+  while (conditionalCache.size > CONDITIONAL_CACHE_LIMIT) {
+    const oldest = conditionalCache.keys().next().value;
+    if (oldest === undefined) break;
+    conditionalCache.delete(oldest);
+  }
+}
+
+async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal, conditional = false): Promise<T> {
+  const cached = conditional ? conditionalCache.get(path) : undefined;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (cached !== undefined) headers["If-None-Match"] = cached.etag;
   let response: Response;
   try {
-    response = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store", signal });
+    response = await fetch(path, { headers, cache: "no-store", signal });
   } catch (error) {
     throw new ApiFailure(0, failureMessage(error));
+  }
+  if (response.status === 304) {
+    if (cached === undefined) throw new ApiFailure(0, "The response was not modified but no cached copy exists.");
+    try {
+      return decode(cached.body);
+    } catch (error) {
+      console.error("telemetry response decode failed", error);
+      throw new ApiFailure(0, "The response did not match the telemetry contract.", error);
+    }
   }
   if (!response.ok) throw new ApiFailure(response.status, statusMessage(response.status));
   const contentType = response.headers.get("content-type") ?? "";
@@ -609,12 +664,18 @@ async function getJson<T>(path: string, decode: (value: unknown) => T, signal: A
   } catch (error) {
     throw new ApiFailure(0, "The response was not valid JSON.", error);
   }
+  let value: T;
   try {
-    return decode(body);
+    value = decode(body);
   } catch (error) {
     console.error("telemetry response decode failed", error);
     throw new ApiFailure(0, "The response did not match the telemetry contract.", error);
   }
+  if (conditional) {
+    const etag = response.headers.get("etag");
+    if (etag !== null) rememberConditional(path, etag, body);
+  }
+  return value;
 }
 
 const hostPath = (hostId: string, suffix = "") => `/api/v1/hosts/${encodeURIComponent(hostId)}${suffix}`;
@@ -628,12 +689,17 @@ export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
   return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
 }
 
-export function getProjectMetrics(projectId: string, range: RangeKey, kind: ProjectMetricKind, signal: AbortSignal): Promise<ProjectMetricHistory> {
-  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=${kind}`, decodeProjectMetricHistory(kind), signal);
-}
-
-export function getProjectCollector(projectId: string, range: RangeKey, signal: AbortSignal): Promise<ProjectCollectorHistory> {
-  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kind=collector`, decodeProjectCollectorHistory, signal);
+export function getProjectHistories(
+  projectId: string,
+  range: RangeKey,
+  options: { readonly durableObjects: boolean; readonly d1: boolean; readonly probes: boolean },
+  signal: AbortSignal
+): Promise<ProjectHistories> {
+  const kinds = ["worker", "routes", "r2", "collector"];
+  if (options.durableObjects) kinds.push("durable-objects");
+  if (options.d1) kinds.push("d1", "d1-statements");
+  if (options.probes) kinds.push("probes");
+  return getJson(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kinds=${kinds.join(",")}`, decodeProjectHistories, signal, true);
 }
 
 export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {
@@ -651,13 +717,13 @@ function historyUrl(hostId: string, query: HistoryQuery): string {
 }
 
 export function getSummary(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<SummaryHistory> {
-  return getJson(`${historyUrl(hostId, query)}&kind=summary`, decodeSummaryHistory, signal);
+  return getJson(`${historyUrl(hostId, query)}&kind=summary`, decodeSummaryHistory, signal, true);
 }
 
 export function getHostHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<HostHistories> {
-  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems,block`, decodeHostHistories, signal);
+  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems,block`, decodeHostHistories, signal, true);
 }
 
 export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
-  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets`, decodeFleetHistories, signal);
+  return getJson(`${historyUrl(hostId, query)}&kinds=summary,disks,nets`, decodeFleetHistories, signal, true);
 }

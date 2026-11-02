@@ -14,17 +14,20 @@ export const rangeLabels: Record<Range, string> = {
 };
 export const rangeMs = RANGE_MS;
 export const LIVE_INTERVAL_MS = 15_000;
+export const PROJECT_REFRESH_TICKS = 20;
 
 export interface ViewState {
   readonly view: Accessor<TimeWindow | null>;
   readonly canZoomOut: Accessor<boolean>;
   readonly live: Accessor<boolean>;
   readonly tick: Accessor<number>;
+  readonly manualTick: Accessor<number>;
   readonly zoomTo: (window: TimeWindow) => boolean;
   readonly zoomOut: () => void;
   readonly resetZoom: () => void;
   readonly pan: (direction: -1 | 1) => void;
   readonly toggleLive: () => void;
+  readonly autoRefresh: () => void;
   readonly requestRefresh: () => void;
 }
 
@@ -53,6 +56,7 @@ export function createViewState(range: Accessor<Range>, now: Accessor<number>): 
   const [mode, setMode] = createSignal<ViewMode>({ kind: "live" });
   const [trail, setTrail] = createSignal<readonly ViewMode[]>([]);
   const [tick, setTick] = createSignal(0);
+  const [manualTick, setManualTick] = createSignal(0);
 
   const view = () => {
     const current = mode();
@@ -70,6 +74,7 @@ export function createViewState(range: Accessor<Range>, now: Accessor<number>): 
     canZoomOut: () => trail().length > 0,
     live,
     tick,
+    manualTick,
     zoomTo: window => {
       if (window.toMs - window.fromMs < minimumZoomMs(window.fromMs, now())) return false;
       setTrail(entries => [...entries, mode()]);
@@ -97,7 +102,11 @@ export function createViewState(range: Accessor<Range>, now: Accessor<number>): 
         setMode(current => current.kind === "live" ? { kind: "paused" } : { kind: "live" });
       }
     },
-    requestRefresh: () => setTick(value => value + 1)
+    autoRefresh: () => setTick(value => value + 1),
+    requestRefresh: () => {
+      setTick(value => value + 1);
+      setManualTick(value => value + 1);
+    }
   };
 }
 

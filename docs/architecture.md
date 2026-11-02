@@ -72,8 +72,9 @@ Routes under `/api/v1/` (handled in `installation.ts`):
   `range` for an explicit window; the response then omits `range`. Pass
   `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
   under `histories`.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`
-  (see [Cloudflare projects](#cloudflare-projects)).
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
+  Pass `kinds=worker,r2,collector` instead of `kind` to receive several
+  kinds at once under `histories` (see [Cloudflare projects](#cloudflare-projects)).
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 
@@ -113,6 +114,8 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
 `CREATE TABLE IF NOT EXISTS` in `installation.ts`:
 
 - `hosts`: credentials, revocation, last receipt, and the rate-limit window.
+- `host_history_versions`: a per-host version advanced by ingest and retention,
+  used for history ETags.
 - `host_system`: the latest `system` object per host and when it arrived.
 - `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
@@ -130,10 +133,13 @@ less than 80% of its span covered by usable intervals is marked partial.
 A Durable Object alarm deletes expired rows in batches of 1000 per tier. It
 never repairs or invents data.
 
-History picks raw when the window starts within 48 hours, one-minute rollups
-within 7 days, and hourly rollups beyond, so a zoomed window reads finer data
-than the preset range it came from. Results are downsampled to at most 900
-points and carry a `stepMs`, with fractions rounded to three decimals.
+History picks raw when the window starts within 48 hours and spans at most 12
+hours, one-minute rollups within 7 days, and hourly rollups beyond, so a zoomed
+window reads finer data than the preset range it came from. Windows longer than
+12 hours use one-minute rollups even inside the raw retention, because raw
+sampling would be downsampled to about the same resolution after the 900-point
+cap. Results are downsampled to at most 900 points and carry a `stepMs`, with
+fractions rounded to three decimals.
 
 A preset range ends at the current 15-second raw step, and the Durable Object
 keeps the last four windows it built, each for every history kind. The
@@ -143,6 +149,11 @@ minutes, so one read and parse of a window serves all of its kinds. Ingest, a
 purge, and an alarm that deleted rows discard them; an alarm that deleted
 nothing keeps them. Summary points carry `cpuCount` and `uptimeMs`; the
 dashboard reads a fall in uptime as a reboot.
+
+History responses carry an `ETag` derived from the last host ingest or the last
+collector run, plus the requested window and kinds. The dashboard sends
+`If-None-Match` and reuses its cached body on `304`, so a poll that finds no new
+source data returns before building history.
 
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the
@@ -186,10 +197,11 @@ only under Durable Objects. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with a fixed detail,
 writes one `collector_failed` log line, and rethrows so the cron shows it.
 
-**Storage** (schema version 6; version 5 dropped Worker, route, R2 operation, and D1
+**Storage** (schema version 7; version 5 dropped Worker, route, R2 operation, and D1
 history before 2026-11-01 20:40 UTC, which was weighted by a mismatched
-`sampleInterval`, and version 6 dropped the collector runs before 22:10 UTC the
-same day so those buckets read as unknown instead of zero):
+`sampleInterval`, version 6 dropped the collector runs before 22:10 UTC the
+same day so those buckets read as unknown instead of zero, and version 7 added
+per-host history versions for ETags):
 
 - `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
   7 days.
@@ -257,8 +269,10 @@ left whole. Widths under an
 hour read `project_samples`; the rest read `project_hours`. A metric response
 is `{projectId, range, kind, fromMs, toMs, stepMs, series: [{metric, values}]}`
 with every series aligned to `fromMs + i * stepMs`; `kind=collector` returns
-`runs`. `GET /projects` returns each project with `collector.lastRunAtMs`,
-`lastSuccessAtMs`, `lastError`, and `stale` (no success in 15 minutes).
+`runs`. `kinds=...` returns `{projectId, histories: {kind: response}}` and reads
+one grouped metric window for all requested metric kinds. `GET /projects`
+returns each project with `collector.lastRunAtMs`, `lastSuccessAtMs`,
+`lastError`, and `stale` (no success in 15 minutes).
 
 **Access.** `ANALYTICS_SQL` can read all of the account's analytics. Only the
 fixed queries run, and no request data reaches SQL.
@@ -269,9 +283,12 @@ fixed queries run, and no request data reaches SQL.
 environment and charted with uPlot. `api.ts` decodes every response once at the
 boundary; request failures stay in the typed `ApiFailure` channel. `state.ts`
 owns the range, zoom stack, and live-refresh state; `chart-data.ts` aligns
-series onto a shared time grid. Routes are the fleet page, `#/host/:hostId`,
-and `#/project/:projectId`; the fleet page lists projects under the hosts. The browser never sees a host token or an
-operator secret.
+series onto a shared time grid. Host and fleet data refresh every 15 seconds;
+project data and the project list refresh every five minutes to match the
+collector cron, while the manual Refresh button is immediate. Routes are the
+fleet page, `#/host/:hostId`, and `#/project/:projectId`; the fleet page lists
+projects under the hosts. The browser never sees a host token or an operator
+secret.
 
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its

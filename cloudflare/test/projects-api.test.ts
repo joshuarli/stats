@@ -15,8 +15,8 @@ function installation() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
 }
 
-async function get(path: string): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
+  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken(), ...headers } });
 }
 
 async function history(range: string, kind: string): Promise<{ stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] }> {
@@ -114,6 +114,44 @@ describe("project history", () => {
   it("picks the smallest bucket width that gives at most 900 points", () => {
     const widths = RANGES.map((range) => bucketWidthMs({ "1h": HOUR_MS, "6h": 6 * HOUR_MS, "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS, "90d": 90 * 24 * HOUR_MS }[range]));
     expect(widths).toEqual([BUCKET, BUCKET, BUCKET, 15 * 60_000, 3 * HOUR_MS]);
+  });
+
+  it("returns several kinds in one response", async () => {
+    const start = Math.floor((NOW - 2 * 24 * HOUR_MS) / (15 * 60_000)) * 15 * 60_000;
+    await record(metricRun(NOW - BUCKET, [
+      { metric: "worker.invocations", bucketMs: start, value: 4 },
+      { metric: "probe.npm.up", bucketMs: start, value: 1 },
+    ]));
+    const response = await get("/projects/stuff/history?range=1h&kinds=worker,routes,collector,probes");
+    expect(response.status).toBe(200);
+    const body = await response.json() as { projectId: string; histories: Record<string, { kind: string; series?: unknown[]; runs?: unknown[] }> };
+    expect(body.projectId).toBe("stuff");
+    expect(Object.keys(body.histories)).toEqual(["worker", "routes", "collector", "probes"]);
+    for (const [kind, history] of Object.entries(body.histories)) expect(history.kind, kind).toBe(kind);
+    expect(body.histories.worker).toEqual(await history("1h", "worker"));
+    expect(body.histories.collector!.runs).toHaveLength(1);
+
+    for (const query of ["range=1h&kinds=worker,hosts", "range=1h&kind=worker&kinds=worker", "range=1h&kinds="]) {
+      expect((await get(`/projects/stuff/history?${query}`)).status, query).toBe(400);
+    }
+  });
+
+  it("answers with 304 until a collector run changes the project version", async () => {
+    await record(metricRun(NOW - BUCKET, []));
+    const path = "/projects/stuff/history?range=1h&kinds=worker,collector";
+    const first = await get(path);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).not.toBeNull();
+
+    const unchanged = await get(path, { "If-None-Match": etag! });
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+
+    await record(metricRun(NOW - 2 * BUCKET, []));
+    const changed = await get(path, { "If-None-Match": etag! });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
   it("adds sums and takes maxes when 5 minute buckets share a wider bucket", async () => {

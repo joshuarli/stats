@@ -93,10 +93,11 @@ lane is by evidence, not effort.
 
 ### B. `stats`
 
-- Dashboard polling: an open tab reads history on every refresh, each 35 to
-  55 ms of Durable Object CPU on a cache miss (STA-32). Candidates: poll slower
-  while the tab is hidden, and read 1m rollups for windows that do not need
-  15 s steps. Volume is low (tens an hour), so the gain is latency.
+- Dashboard polling: project data now refreshes on the collector cadence, long
+  host windows read 1m rollups, and history responses carry ETags so an
+  unchanged poll returns before building history (STA-32). The remaining host
+  read is still about 35 to 55 ms of Durable Object CPU on a cache miss. Volume
+  is low (tens an hour), so the gain is latency.
 - Ingest CPU of 15 to 25 ms per call is not in the JavaScript (STA-33,
   measured). The remaining suspect is the SQLite commit path; test changes that
   reduce write transactions per ingest against the live Durable Object CPU
