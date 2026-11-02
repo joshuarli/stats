@@ -67,6 +67,9 @@ no custom spans. The Worker
 writes a fixed JSON line for ingest rejections other than duplicates, alarm
 failures, and the 500 catch-all, with `event`, `hostId` when known, and `code`.
 The free plan includes 200,000 log events per day with three-day retention.
+From 2026-12-01, logs and traces from every Worker on the account share one
+ingestion allowance (0.5 GB per day on Free, where ingestion stops at the limit
+until 00:00 UTC), and traces keep seven days.
 Set a spend alarm before raising either `headSamplingRate` or the fleet size, and
 lower the rate or move to Workers Paid when the allowance is close.
 
