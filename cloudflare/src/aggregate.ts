@@ -1,4 +1,4 @@
-import type { Block, Cpu, Disk, FileSystem, Net, PsiGroup, Sample } from "./protocol";
+import type { Block, Cpu, Disk, FileSystem, MemoryPressure, Net, PsiGroup, Sample } from "./protocol";
 import type { Delta, SwapDelta } from "./delta";
 import { DISK_FIELDS, NET_FIELDS } from "./delta";
 import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
@@ -23,6 +23,11 @@ export interface MemValues {
   readonly swapUsed: number;
   readonly swapInBytesPerSec?: number;
   readonly swapOutBytesPerSec?: number;
+  readonly pressure?: MemoryPressureShare;
+}
+export interface MemoryPressureShare {
+  readonly warnPct: number;
+  readonly criticalPct: number;
 }
 export interface PsiGroupAverages {
   readonly some10: number;
@@ -200,6 +205,11 @@ function cpuPercent(cpu: Cpu): CpuPercent | undefined {
   };
 }
 
+function pressureShare(level: MemoryPressure | undefined): MemoryPressureShare | undefined {
+  if (level === undefined) return undefined;
+  return { warnPct: level === "normal" ? 0 : 100, criticalPct: level === "critical" ? 100 : 0 };
+}
+
 function sumCpu(cpu: Cpu, add: Cpu): Cpu {
   return {
     user: (BigInt(cpu.user) + BigInt(add.user)).toString(),
@@ -290,6 +300,11 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
       gaugeAdd(gauges, "mem.total", Number(sample.mem.total));
       gaugeAdd(gauges, "mem.available", Number(sample.mem.available));
       gaugeAdd(gauges, "mem.swapUsed", Number(sample.mem.swapTotal) - Number(sample.mem.swapFree));
+      const pressure = pressureShare(sample.mem.pressure);
+      if (pressure !== undefined) {
+        gaugeAdd(gauges, "mem.pressureWarnPct", pressure.warnPct);
+        gaugeAdd(gauges, "mem.pressureCriticalPct", pressure.criticalPct);
+      }
     }
     if (sample.uptimeMs !== undefined) gaugeAdd(gauges, "uptimeMs", Number(sample.uptimeMs));
     if (sample.cpuCount !== undefined) gaugeAdd(gauges, "cpuCount", sample.cpuCount);
@@ -416,7 +431,8 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
     total: gaugeAverage(payload.gauges, "mem.total")!,
     available: gaugeAverage(payload.gauges, "mem.available")!,
     swapUsed: gaugeAverage(payload.gauges, "mem.swapUsed")!,
-    ...swapRates(payload.swap, payload.swap?.coveredMs ?? 0)
+    ...swapRates(payload.swap, payload.swap?.coveredMs ?? 0),
+    ...(gaugeAverage(payload.gauges, "mem.pressureWarnPct") === undefined ? {} : { pressure: { warnPct: gaugeAverage(payload.gauges, "mem.pressureWarnPct")!, criticalPct: gaugeAverage(payload.gauges, "mem.pressureCriticalPct")! } })
   };
   const psi = Object.keys(payload.psi).length === 0 ? undefined : Object.fromEntries(Object.entries(payload.psi).map(([name, group]) => [name, {
     some10: gaugeAverage(group, "some10")!,
@@ -433,7 +449,8 @@ function summaryFromRaw(row: RawRow): SummaryPoint {
   const atMs = Number(row.sample.atMs);
   const cpu = row.delta.cpu === undefined ? undefined : cpuPercent(row.delta.cpu);
   const load = row.sample.load === undefined ? undefined : { one: Number(row.sample.load.one), five: Number(row.sample.load.five), fifteen: Number(row.sample.load.fifteen) };
-  const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs) };
+  const pressure = pressureShare(row.sample.mem?.pressure);
+  const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs), ...(pressure === undefined ? {} : { pressure }) };
   const psi = psiAverages(row.sample);
   return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }), ...(row.sample.uptimeMs === undefined ? {} : { uptimeMs: Number(row.sample.uptimeMs) }) };
 }

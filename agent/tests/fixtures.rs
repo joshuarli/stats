@@ -143,8 +143,9 @@ fn validate_group(sample: &Value, key: &str) -> bool {
             let required = ["total", "available", "swapTotal", "swapFree"];
             let activity = ["swapIn", "swapOut"];
             let present = activity.iter().filter(|key| value.get(**key).is_some()).count();
-            keys(value, &["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut"])
+            keys(value, &["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut", "pressure"])
                 && required.iter().all(|key| decimal(&value[*key]))
+                && value.get("pressure").is_none_or(|level| ["normal", "warn", "critical"].iter().any(|name| level == name))
                 && (present == 0 || (present == 2 && activity.iter().all(|key| decimal(&value[*key]))))
         }
         "uptimeMs" => decimal(value),

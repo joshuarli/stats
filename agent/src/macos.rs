@@ -1,5 +1,5 @@
 use crate::CollectionScope;
-use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, Net, Sample, SwapActivity, SystemInfo, Unavailable};
+use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, MemoryPressure, Net, Sample, SwapActivity, SystemInfo, Unavailable};
 use crate::parse::{clean_text, file_systems, statfs_facts, FILESYSTEM_TYPES};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
@@ -136,6 +136,15 @@ fn available_bytes(total: u64, pages: &PageCounts, page_size: u64) -> u64 {
     total.saturating_sub(used_pages.saturating_mul(page_size))
 }
 
+fn memory_pressure(level: i32) -> Option<MemoryPressure> {
+    match level {
+        1 => Some(MemoryPressure::Normal),
+        2 => Some(MemoryPressure::Warn),
+        4 => Some(MemoryPressure::Critical),
+        _ => None,
+    }
+}
+
 fn read_mem() -> Option<Mem> {
     let total: u64 = sysctl_value("hw.memsize")?;
     let page_size = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok().filter(|size| *size > 0)?;
@@ -161,6 +170,7 @@ fn read_mem() -> Option<Mem> {
             swap_in: stats.swapins.checked_mul(page_size)?.to_string(),
             swap_out: stats.swapouts.checked_mul(page_size)?.to_string(),
         }),
+        pressure: sysctl_value::<i32>("kern.memorystatus_vm_pressure_level").and_then(memory_pressure),
     })
 }
 
@@ -445,6 +455,12 @@ mod tests {
         assert_eq!(cpu.idle, "70");
         assert_eq!(cpu.total, (87 + u64::from(u32::MAX)).to_string());
         assert_eq!((cpu.iowait, cpu.steal), (None, None));
+    }
+
+    #[test]
+    fn kernel_pressure_levels_map_to_their_names_and_unknown_levels_to_nothing() {
+        assert_eq!([1, 2, 4].map(memory_pressure), [Some(MemoryPressure::Normal), Some(MemoryPressure::Warn), Some(MemoryPressure::Critical)]);
+        assert_eq!([0, 3, 8].map(memory_pressure), [None, None, None]);
     }
 
     #[test]

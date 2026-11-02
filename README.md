@@ -61,7 +61,8 @@ Logs go to `~/Library/Logs/stats.log`. Stop it with
 `launchctl bootout "gui/$(id -u)/xyz.17166969.stats"`.
 
 macOS has no pressure stall information, so `psi` is reported as
-unavailable. It has no I/O wait, steal time, interface transmit drops, or disk
+unavailable; the kernel's memory pressure level (normal, warn, critical) is sent
+instead, and the dashboard charts the share of time at each. It has no I/O wait, steal time, interface transmit drops, or disk
 busy time, so those fields are absent and the dashboard hides disk busy time
 for the host. Disks are the physical devices IOKit reports, without disk
 images. Network

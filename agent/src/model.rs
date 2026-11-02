@@ -42,6 +42,16 @@ pub struct Mem {
     pub swap_free: String,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub swap_activity: Option<SwapActivity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pressure: Option<MemoryPressure>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryPressure {
+    Normal,
+    Warn,
+    Critical,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

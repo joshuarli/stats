@@ -53,7 +53,7 @@ or an empty string.
 | `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`; at most 8, unique |
 | `cpu` | no | `user`, `system`, `idle`, `total`, and optionally `iowait` and `steal`, each a u64 string |
 | `load` | no | `one`, `five`, `fifteen`, each a fixed 3-decimal string |
-| `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string; optionally `swapIn` and `swapOut` together, cumulative bytes paged in from and out to swap since boot (`pswpin` and `pswpout` from `/proc/vmstat` times the page size), each a u64 string |
+| `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string; optionally `swapIn` and `swapOut` together, cumulative bytes paged in from and out to swap since boot (`pswpin` and `pswpout` from `/proc/vmstat` times the page size), each a u64 string; optionally `pressure`, the kernel memory pressure level `normal`, `warn`, or `critical` (macOS `kern.memorystatus_vm_pressure_level`) |
 | `uptimeMs` | no | u64 string |
 | `cpuCount` | no | integer 1–4096 |
 | `disks` | no | 0–16 objects: `id` (`major:minor`, Linux `dev_t` bounds: major at most 4095, minor at most 1048575), `name` (1–32 chars), `reads`, `readSectors`, `writes`, `writeSectors`, and optionally `ioMs` |

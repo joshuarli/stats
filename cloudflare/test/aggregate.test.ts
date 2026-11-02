@@ -160,3 +160,23 @@ describe("counters a platform does not expose", () => {
     expect(rolledDisks[0]!.points[0]).not.toHaveProperty("busyPct");
   });
 });
+
+describe("memory pressure level", () => {
+  const row = (seq: number, pressure?: "normal" | "warn" | "critical"): RawRow => ({
+    sample: { seq: String(seq), atMs: String(seq * 15_000), monoMs: String(seq * 15_000), mem: { total: "100", available: "50", swapTotal: "0", swapFree: "0", ...(pressure === undefined ? {} : { pressure }) } },
+    delta: { intervalMs: 15_000, disks: {}, nets: {} }
+  });
+
+  it("is a share of time at warn or worse and at critical, raw and rolled", () => {
+    const rows = [row(1, "normal"), row(2, "warn"), row(3, "critical"), row(4, "normal")];
+    const raw = rawPoints(rows, "summary") as SummaryPoint[];
+    expect(raw.map(point => point.mem!.pressure)).toEqual([{ warnPct: 0, criticalPct: 0 }, { warnPct: 100, criticalPct: 0 }, { warnPct: 100, criticalPct: 100 }, { warnPct: 0, criticalPct: 0 }]);
+    const rolled = rollupPoints([rollupFromRaw(rows, 0, 60_000)!], "summary") as SummaryPoint[];
+    expect(rolled[0]!.mem!.pressure).toEqual({ warnPct: 50, criticalPct: 25 });
+  });
+
+  it("is absent when the host does not report it", () => {
+    expect((rawPoints([row(1)], "summary") as SummaryPoint[])[0]!.mem).not.toHaveProperty("pressure");
+    expect((rollupPoints([rollupFromRaw([row(1)], 0, 60_000)!], "summary") as SummaryPoint[])[0]!.mem).not.toHaveProperty("pressure");
+  });
+});

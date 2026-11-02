@@ -27,7 +27,8 @@
         "swapTotal": "2147483648",
         "swapFree": "1073741824",
         "swapIn": "4096",
-        "swapOut": "8192"
+        "swapOut": "8192",
+        "pressure": "normal"
       },
       "uptimeMs": "86400000",
       "cpuCount": 12,
@@ -86,7 +87,8 @@
         "swapTotal": "2147483648",
         "swapFree": "1073741824",
         "swapIn": "4096",
-        "swapOut": "8192"
+        "swapOut": "8192",
+        "pressure": "warn"
       },
       "uptimeMs": "86415000",
       "cpuCount": 12,

@@ -29,7 +29,11 @@ export interface Mem {
   readonly swapFree: string;
   readonly swapIn?: string;
   readonly swapOut?: string;
+  readonly pressure?: MemoryPressure;
 }
+
+export const MEMORY_PRESSURE_LEVELS = ["normal", "warn", "critical"] as const;
+export type MemoryPressure = (typeof MEMORY_PRESSURE_LEVELS)[number];
 
 export interface Disk {
   readonly id: string;
@@ -205,7 +209,8 @@ function parseBlock(value: unknown): Block | null {
 }
 
 function parseMem(value: unknown): boolean {
-  if (!subset(value, ["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut"])) return false;
+  if (!subset(value, ["total", "available", "swapTotal", "swapFree", "swapIn", "swapOut", "pressure"])) return false;
+  if (value.pressure !== undefined && !(MEMORY_PRESSURE_LEVELS as readonly unknown[]).includes(value.pressure)) return false;
   if (!["total", "available", "swapTotal", "swapFree"].every(key => decimal(value[key]))) return false;
   const activity = ["swapIn", "swapOut"].filter(key => key in value);
   return activity.length === 0 || (activity.length === 2 && activity.every(key => decimal(value[key])));

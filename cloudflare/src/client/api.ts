@@ -29,6 +29,12 @@ export interface Mem {
   readonly swapUsed: number;
   readonly swapInBytesPerSec?: number;
   readonly swapOutBytesPerSec?: number;
+  readonly pressure?: MemoryPressureShare;
+}
+
+export interface MemoryPressureShare {
+  readonly warnPct: number;
+  readonly criticalPct: number;
 }
 
 export interface PsiGroup {
@@ -305,8 +311,14 @@ function decodeMem(value: unknown): Mem {
     total: number(entry.total),
     available: number(entry.available),
     swapUsed: number(entry.swapUsed),
-    ...(entry.swapInBytesPerSec === undefined ? {} : { swapInBytesPerSec: number(entry.swapInBytesPerSec), swapOutBytesPerSec: number(entry.swapOutBytesPerSec) })
+    ...(entry.swapInBytesPerSec === undefined ? {} : { swapInBytesPerSec: number(entry.swapInBytesPerSec), swapOutBytesPerSec: number(entry.swapOutBytesPerSec) }),
+    ...(entry.pressure === undefined ? {} : { pressure: decodePressureShare(entry.pressure) })
   };
+}
+
+function decodePressureShare(value: unknown): MemoryPressureShare {
+  const entry = record(value);
+  return { warnPct: number(entry.warnPct), criticalPct: number(entry.criticalPct) };
 }
 
 function decodePsiGroup(value: unknown): PsiGroup {

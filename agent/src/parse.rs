@@ -77,6 +77,7 @@ pub fn parse_meminfo(bytes: &[u8]) -> Option<Mem> {
         swap_total: kib("SwapTotal")?.to_string(),
         swap_free: kib("SwapFree")?.to_string(),
         swap_activity: None,
+        pressure: None,
     })
 }
 
