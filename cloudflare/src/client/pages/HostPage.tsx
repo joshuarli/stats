@@ -1,7 +1,7 @@
-import { createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
-import { ApiFailure, getHostHistories, getSummary, getSystem, type Host } from "../api";
+import { getHostHistories, getSummary, getSystem, type Host } from "../api";
 import type { SummaryTable } from "../history";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
@@ -68,23 +68,28 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const block = () => histories().block;
 
   const comparisonTick = createMemo(() => Math.floor(tick() / GHOST_REFRESH_TICKS));
-  const yesterday = createMemo((): Promise<SummaryTable | null> => {
-    comparisonTick();
-    const current = query();
-    if (!("range" in current) || !GHOST_RANGES.has(current.range)) return Promise.resolve(null);
-    const range = current.range;
-    return loadQuery(async signal => {
+  const [yesterday, setYesterday] = createSignal<SummaryTable | null>(null);
+  createEffect(
+    () => {
+      comparisonTick();
+      const current = query();
+      if (!("range" in current) || !GHOST_RANGES.has(current.range)) return null;
+      return histories().summary.table.rows === 0 ? null : current.range;
+    },
+    (range, previous) => {
+      if (range !== previous) setYesterday(null);
+      if (range === null) return;
+      const controller = new AbortController();
       const to = Date.now();
-      try {
-        const history = await getSummary(hostId(), { fromMs: to - RANGE_MS[range] - DAY_MS, toMs: to - DAY_MS }, signal);
-        return history.table.shifted(DAY_MS);
-      } catch (error) {
-        if (signal.aborted || !(error instanceof ApiFailure)) throw error;
-        console.error("yesterday's history could not be loaded", error);
-        return null;
-      }
-    });
-  });
+      getSummary(hostId(), { fromMs: to - RANGE_MS[range] - DAY_MS, toMs: to - DAY_MS }, controller.signal)
+        .then(history => { if (!controller.signal.aborted) setYesterday(history.table.shifted(DAY_MS)); })
+        .catch(error => {
+          if (controller.signal.aborted) return;
+          console.error("yesterday's history could not be loaded", error);
+        });
+      return () => controller.abort();
+    }
+  );
 
   const status = createMemo(() => statusFor(props.host, props.host.lastReceivedAtMs));
   const table = () => summary().table;
@@ -139,8 +144,8 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             </Show>
             <PressureNotice table={table()} />
             <section class="charts" aria-label="Charts">
-              <CpuWidget table={table()} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
-              <LoadWidget table={table()} yesterday={yesterday()} stepMs={summary().stepMs} events={events()} />
+              <CpuWidget table={table()} yesterday={yesterday} stepMs={summary().stepMs} events={events()} />
+              <LoadWidget table={table()} yesterday={yesterday} stepMs={summary().stepMs} events={events()} />
               <MemoryWidget table={table()} stepMs={summary().stepMs} events={events()} />
               <Show when={reportsPower(table())}>
                 <PowerWidget table={table()} stepMs={summary().stepMs} events={events()} />

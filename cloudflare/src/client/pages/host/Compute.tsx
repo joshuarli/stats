@@ -20,7 +20,8 @@ function useSeries(table: () => SummaryTable) {
 }
 
 function ghostOf(yesterday: SummaryTable | null, pick: (table: SummaryTable) => Cells) {
-  return yesterday === null || yesterday.rows === 0 ? [] : [{ label: "yesterday", color: "ghost" as const, dashed: true, scored: false, track: { times: yesterday.times, values: pick(yesterday) } }];
+  const track = yesterday === null || yesterday.rows === 0 ? { times: [], values: [] } : { times: yesterday.times, values: pick(yesterday) };
+  return [{ label: "yesterday", color: "ghost" as const, dashed: true, scored: false, reference: true, track }];
 }
 
 export function reportsPressure(table: SummaryTable): boolean {
@@ -43,11 +44,19 @@ export function PressureNotice(props: { readonly table: SummaryTable }): JSX.Ele
 
 export function CpuWidget(props: {
   readonly table: SummaryTable;
-  readonly yesterday: SummaryTable | null;
+  readonly yesterday: () => SummaryTable | null;
   readonly stepMs: number;
   readonly events: readonly ChartEvent[];
 }): JSX.Element {
   const series = useSeries(() => props.table);
+  const chartSeries = createMemo(() => [
+    series("total", "blue", cpuUsed(props.table), { graded: true }),
+    series("user", "aqua", props.table.cells("cpu.user"), { scored: false }),
+    series("system", "violet", props.table.cells("cpu.system"), { scored: false }),
+    series("iowait", "magenta", props.table.cells("cpu.iowait"), { scored: false }),
+    series("steal", "ghost", props.table.cells("cpu.steal"), { scored: false }),
+    ...ghostOf(props.yesterday(), cpuUsed)
+  ]);
   return (
     <Widget id="cpu" title="CPU" expandable>
       <TimeChart
@@ -55,14 +64,7 @@ export function CpuWidget(props: {
         legend
         area
         timeAxis={!reportsGpu(props.table) && !reportsPressure(props.table)}
-        series={[
-          series("total", "blue", cpuUsed(props.table), { graded: true }),
-          series("user", "aqua", props.table.cells("cpu.user"), { scored: false }),
-          series("system", "violet", props.table.cells("cpu.system"), { scored: false }),
-          series("iowait", "magenta", props.table.cells("cpu.iowait"), { scored: false }),
-          series("steal", "ghost", props.table.cells("cpu.steal"), { scored: false }),
-          ...ghostOf(props.yesterday, cpuUsed)
-        ]}
+        series={chartSeries}
         format={percent}
         min={0}
         max={100}
@@ -107,24 +109,25 @@ export function CpuWidget(props: {
 
 export function LoadWidget(props: {
   readonly table: SummaryTable;
-  readonly yesterday: SummaryTable | null;
+  readonly yesterday: () => SummaryTable | null;
   readonly stepMs: number;
   readonly events: readonly ChartEvent[];
 }): JSX.Element {
   const loadScale = createMemo(() => loadLimits(lastCell(props.table.cells("cpuCount"))));
   const series = useSeries(() => props.table);
+  const chartSeries = createMemo(() => [
+    series("1 min", "ramp-5", props.table.cells("load.one"), { graded: true }),
+    series("5 min", "ramp-3", props.table.cells("load.five"), { scored: false }),
+    series("15 min", "ramp-1", props.table.cells("load.fifteen"), { scored: false }),
+    ...ghostOf(props.yesterday(), table => table.cells("load.one"))
+  ]);
   return (
     <Widget id="load" title="Load" expandable>
       <TimeChart
         label="Load"
         legend
         area
-        series={[
-          series("1 min", "ramp-5", props.table.cells("load.one"), { graded: true }),
-          series("5 min", "ramp-3", props.table.cells("load.five"), { scored: false }),
-          series("15 min", "ramp-1", props.table.cells("load.fifteen"), { scored: false }),
-          ...ghostOf(props.yesterday, table => table.cells("load.one"))
-        ]}
+        series={chartSeries}
         format={value => count(value)}
         limits={loadScale()}
         min={0}
