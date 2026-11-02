@@ -141,7 +141,7 @@ function ProjectsSection(): JSX.Element {
         class={isPending(projects) ? "widget-pending" : undefined}
         bodyClass="flush"
       >
-        <div class="table-scroll">
+        <div class="table-scroll projects-table-scroll" role="region" aria-label="Projects table" tabindex="0">
           <table class="data-table" aria-label="Projects">
             <thead>
               <tr>
@@ -262,7 +262,7 @@ function FleetDashboard(props: {
             />
           }
         >
-          <div class="table-scroll">
+          <div class="table-scroll fleet-table-scroll" role="region" aria-label="Fleet hosts table" tabindex="0">
             <table class="data-table" aria-label="Fleet hosts">
               <thead>
                 <tr>

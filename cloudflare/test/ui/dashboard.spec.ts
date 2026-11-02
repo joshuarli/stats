@@ -407,14 +407,34 @@ test("legend rows isolate and restore series", async ({ page }) => {
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "true");
 });
 
-test("mobile layout has no horizontal page overflow", { tag: "@mobile-only" }, async ({ page }, testInfo) => {
+test("mobile pages confine dense data to local scroll areas", { tag: "@mobile-only" }, async ({ page }, testInfo) => {
   await mock(page);
-  await page.goto("/");
-  await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" })).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-  expect(overflow).toBe(true);
-  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
-  await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
+  const pageOverflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const hosts = page.getByRole("table", { name: "Fleet hosts" });
+    await expect(hosts.getByRole("link", { name: "alpha" })).toBeVisible();
+    const fleetScroll = page.getByRole("region", { name: "Fleet hosts table" });
+    expect(await fleetScroll.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+    expect(await hosts.locator("th").first().evaluate(element => getComputedStyle(element).position)).toBe("sticky");
+    await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
+
+    await page.goto(`/#/host/${hostId}`);
+    await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
+    await expect(page.getByRole("img", { name: /CPU;/u })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Time range" })).toBeVisible();
+    await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
+    if (width === 320) {
+      const legend = page.getByRole("region", { name: "CPU series statistics" });
+      expect(await legend.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+    }
+
+    await page.goto("/#/project/stuff");
+    await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+    await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+    await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
+  }
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true });
 });
 

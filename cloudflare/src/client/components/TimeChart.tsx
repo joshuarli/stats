@@ -613,46 +613,48 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         </div>
       </Show>
       <Show when={props.legend === true && hasData()}>
-        <table class="chart-legend">
-          <thead>
-            <tr><th /><th>series</th><th>min</th><th>avg</th><th>max</th><th>{cursor() === null ? "last" : "at cursor"}</th></tr>
-          </thead>
-          <tbody>
-            <For each={props.series}>
-              {(entry, position) => {
-                const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
-                const shown = () => {
-                  const index = cursor();
-                  return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
-                };
-                return (
-                  <tr
-                    class={hidden().has(entry.label) ? "off" : undefined}
-                    onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
-                    onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
-                    onMouseLeave={() => focusSeries(null)}
-                  >
-                    <td>
-                      <button
-                        class="legend-key"
-                        type="button"
-                        aria-pressed={hidden().has(entry.label) ? "false" : "true"}
-                        aria-label={`Show only ${entry.label}`}
-                      >
-                        <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
-                      </button>
-                    </td>
-                    <td>{entry.label}</td>
-                    <td>{format(stats()?.min)}</td>
-                    <td>{format(stats()?.avg)}</td>
-                    <td>{format(stats()?.max)}{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</td>
-                    <td class="legend-now">{format(shown())}{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</td>
-                  </tr>
-                );
-              }}
-            </For>
-          </tbody>
-        </table>
+        <div class="chart-legend-scroll" role="region" aria-label={`${props.label} series statistics`} tabindex="0">
+          <table class="chart-legend">
+            <thead>
+              <tr><th /><th>series</th><th>min</th><th>avg</th><th>max</th><th>{cursor() === null ? "last" : "at cursor"}</th></tr>
+            </thead>
+            <tbody>
+              <For each={props.series}>
+                {(entry, position) => {
+                  const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
+                  const shown = () => {
+                    const index = cursor();
+                    return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
+                  };
+                  return (
+                    <tr
+                      class={hidden().has(entry.label) ? "off" : undefined}
+                      onClick={(event) => toggleSeries(entry.label, event.shiftKey || event.metaKey)}
+                      onMouseEnter={() => focusSeries(hidden().has(entry.label) ? null : entry.label)}
+                      onMouseLeave={() => focusSeries(null)}
+                    >
+                      <td>
+                        <button
+                          class="legend-key"
+                          type="button"
+                          aria-pressed={hidden().has(entry.label) ? "false" : "true"}
+                          aria-label={`Show only ${entry.label}`}
+                        >
+                          <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
+                        </button>
+                      </td>
+                      <td>{entry.label}</td>
+                      <td>{format(stats()?.min)}</td>
+                      <td>{format(stats()?.avg)}</td>
+                      <td>{format(stats()?.max)}{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</td>
+                      <td class="legend-now">{format(shown())}{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</td>
+                    </tr>
+                  );
+                }}
+              </For>
+            </tbody>
+          </table>
+        </div>
       </Show>
     </div>
   );

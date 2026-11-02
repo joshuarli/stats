@@ -361,9 +361,11 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .page-skeleton { margin-bottom: 16px; max-width: 360px; }
 
 @media (max-width: 1000px) {
-  .chart-grid, .tiles { grid-template-columns: minmax(0, 1fr); }
-  .tile { border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
-  .tile:last-child { border-bottom: 0; }
+  .chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  .tile:nth-child(2n), .tile:last-child { border-right: 0; }
+  .tile:last-child, .tile:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
   .window { display: none; }
   .host-switcher { max-width: 140px; }
   .widget.expanded { inset: 8px; }
@@ -401,4 +403,56 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .charts > .notice { grid-column: 1 / -1; margin-bottom: 0; }
 @media (max-width: 960px) {
   .charts { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Keep the primary navigation and dense telemetry usable on narrow screens. */
+@media (max-width: 640px) {
+  .topbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 8px 16px; }
+  .topbar-start { gap: 12px; }
+  .breadcrumb { flex: 1; overflow: hidden; }
+  .host-switcher { max-width: min(55vw, 220px); }
+  .timebar { width: 100%; min-width: 0; gap: 6px; justify-content: space-between; }
+  .timebar .segmented { flex: 1 1 160px; min-width: 0; }
+  .timebar .segment { flex: 1; min-height: 34px; padding: 6px 3px; }
+  .timebar .pan { gap: 0; }
+  .timebar .icon-button { width: 34px; height: 34px; }
+  .timebar .btn { min-height: 34px; white-space: nowrap; }
+  .timebar kbd { display: none; }
+  .timebar .window.zoomed { display: flex; order: 10; flex: 1 0 100%; min-width: 0; max-width: 100%; justify-content: center; overflow-x: auto; }
+
+  .page-header h1 { min-width: 0; overflow-wrap: anywhere; }
+  .page-header .hover-card { margin-left: auto; }
+  .page-header .hover-card-panel { left: auto; right: 0; }
+
+  .table-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .search { width: 100%; max-width: none; min-height: 36px; padding: 5px 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+  .search input { font-size: 16px; } /* Avoid iOS Safari's automatic input zoom. */
+  .pagination { flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .pagination-actions { width: 100%; justify-content: space-between; }
+  .pagination .btn-icon { width: 36px; height: 36px; }
+
+  .fleet-table-scroll, .projects-table-scroll { overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+  :is(.fleet-table-scroll, .projects-table-scroll) .data-table { border-collapse: separate; border-spacing: 0; }
+  :is(.fleet-table-scroll, .projects-table-scroll) .data-table :is(th, td):first-child { position: sticky; left: 0; background: var(--surface); }
+  :is(.fleet-table-scroll, .projects-table-scroll) .data-table th:first-child { z-index: 2; }
+  :is(.fleet-table-scroll, .projects-table-scroll) .data-table td:first-child { z-index: 1; }
+  :is(.fleet-table-scroll, .projects-table-scroll) .data-table tbody tr:hover td:first-child { background: var(--hover); }
+  :is(.fleet-table-scroll, .projects-table-scroll) .entity-name::after { content: none; }
+  .charts .widget[id] { scroll-margin-top: 110px; }
+}
+
+/* 320px phones need more room for metrics without widening the document. */
+@media (max-width: 375px) {
+  .content { padding: 16px 12px 48px; }
+  .topbar { padding-inline: 12px; }
+  .timebar .segmented { flex-basis: 100%; }
+  .widget-head { flex-wrap: wrap; gap: 6px; }
+  .widget-title h2 { white-space: normal; overflow-wrap: anywhere; }
+  .widget-meta { flex-wrap: wrap; white-space: normal; }
+  .strip-cell { padding: 12px 10px 0; gap: 6px; }
+  .strip-cell .tile-spark { margin: 8px -10px 0; }
+  .chart-legend-scroll { min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+  .chart-legend-scroll .chart-legend { min-width: 360px; }
+  .page-header .hover-card-panel { max-width: calc(100vw - 24px); }
+  .charts .widget[id] { scroll-margin-top: 150px; }
 }
