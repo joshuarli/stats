@@ -43,8 +43,17 @@ export function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function isControl(code: number): boolean {
+  return code <= 0x1f || code === 0x7f;
+}
+
+function hasControl(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) if (isControl(value.charCodeAt(index))) return true;
+  return false;
+}
+
 function text(value: unknown, maximum: number): string {
-  if (typeof value !== "string" || value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)) throw new Error("invalid deployment text");
+  if (typeof value !== "string" || value.length > maximum || hasControl(value)) throw new Error("invalid deployment text");
   return value;
 }
 
@@ -52,7 +61,7 @@ function annotation(value: unknown, maximum: number): string | null {
   // Messages can contain line breaks. Keep them as plain text, never HTML or URLs.
   if (value === undefined || value === null) return null;
   if (typeof value !== "string" || value.length > maximum) throw new Error("invalid deployment annotation");
-  return value.replace(/[\u0000-\u001f\u007f]/gu, " ");
+  return Array.from(value, character => isControl(character.charCodeAt(0)) ? " " : character).join("");
 }
 
 function uuid(value: unknown): string {

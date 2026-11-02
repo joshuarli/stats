@@ -32,7 +32,7 @@ async function readJson(response: Response): Promise<unknown> {
   let size = 0;
   try {
     while (true) {
-      const next = await reader.read();
+      const next: ReadableStreamReadResult<Uint8Array> = await reader.read();
       if (next.done) break;
       size += next.value.byteLength;
       if (size > MAX_RESPONSE_BYTES) {
