@@ -44,7 +44,20 @@ configuration, and token.
 ## Install on macOS
 
 The macOS agent runs as a launchd user agent under your own account, with no
-root. Build it natively with `cargo build --release --manifest-path
+root. From a Mac with this repository and `cf access login
+https://stats.17166969.xyz` done, point it at the target:
+
+```sh
+make add-host NAME=m1-max SSH=josh@m1-max
+```
+
+The target creates the host when the name is new, builds the native binary,
+installs `~/.local/bin/stats` and the config and token under
+`~/.config/stats`, loads the launchd agent, and waits for the first upload.
+Set `SSH=local`, or omit `SSH`, to set up the Mac running the command.
+Rerunning it updates only what changed and keeps the existing host and token.
+
+To install by hand, build it natively with `cargo build --release --manifest-path
 agent/Cargo.toml`, provision the host, then:
 
 ```sh

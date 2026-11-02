@@ -3,10 +3,11 @@
 STATS_DOMAIN ?= stats.17166969.xyz
 STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
+SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -28,6 +29,15 @@ agent-test: work-ready
 
 agent-build: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' agent/scripts/build-static.sh
+
+agent-build-macos: work-ready
+	TMPDIR='$(CURDIR)/.work/tmp' cargo build --release --manifest-path agent/Cargo.toml
+
+add-host-check:
+	@test -n '$(NAME)' || { echo 'usage: make add-host NAME=<label> [SSH=<user@host>|local]' >&2; exit 2; }
+
+add-host: add-host-check agent-build-macos
+	deploy/add-macos-host.sh '$(NAME)' '$(SSH)'
 
 cloudflare-test: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry typecheck

@@ -31,6 +31,14 @@ make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
 ```
 
+`make add-host NAME=<label> SSH=<user@host>` sets up a macOS host end to end.
+It creates the host when the label is new, rotates the token when the server
+has the host but the target has no local config, builds the native binary,
+installs the launchd agent under the login user, and waits for a fresh
+receipt. It needs `cf access login https://<host>` and SSH access to the
+target; `SSH=local` installs on the Mac running the command. A rerun updates
+only the binary, config, or plist that changed.
+
 `make deploy` runs `fixtures`, `worker-test`, and `agent-test` in order,
 deploys the bundle those tests built with
 `cf deploy --prebuilt --mode production`, runs `deploy/deployed-smoke.sh`,
