@@ -73,6 +73,16 @@ until 00:00 UTC), and traces keep seven days.
 Set a spend alarm before raising either `headSamplingRate` or the fleet size, and
 lower the rate or move to Workers Paid when the allowance is close.
 
+Capture a CPU profile of the `Installation` object with
+`cf workers versions profile latest-deployed --worker-id stats --profile-type cpu
+--namespace-id <namespace> --actor-id <object>`, listing both IDs with
+`cf durable-objects namespaces list` and
+`cf durable-objects namespaces objects list --id <namespace>`. The capture
+fails with "no loaded isolate" when the object is idle, and the agents'
+30-second ingests alone leave the profile empty, so drive requests at the
+object before and throughout the capture. Read the output with
+`go tool pprof -top`.
+
 ## Project collection
 
 The cron (`*/5 * * * *`) and the `ANALYTICS_SQL` and `PROJECTS` bindings are
