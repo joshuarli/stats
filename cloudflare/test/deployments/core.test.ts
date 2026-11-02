@@ -237,11 +237,11 @@ await test("no credentials means no API calls or writes", async () => {
 await test("half-configured credentials report configuration without fetching", async () => {
   const run = collector(() => { throw new Error("must not fetch"); }, { token: undefined }); await run.run(); assert.equal(run.polls[0]!.error, "configuration");
 });
-await test("collector pins the origin, disables redirects and strips upstream data", async () => {
-  const run = collector(async (url, init) => { assert.equal(new URL(url).origin, "https://api.cloudflare.com"); assert.equal(init.redirect, "error"); assert.equal(init.method, "GET"); assert.ok(init.signal); return response([{ ...raw(), author_email: "private@example.com" }]); });
+await test("collector pins the origin, never follows redirects and strips upstream data", async () => {
+  const run = collector(async (url, init) => { assert.equal(new URL(url).origin, "https://api.cloudflare.com"); assert.equal(init.redirect, "manual"); assert.equal(init.method, "GET"); assert.ok(init.signal); return response([{ ...raw(), author_email: "private@example.com" }]); });
   await run.run(); assert.equal(run.polls[0]!.error, null); assert.equal(JSON.stringify(run.polls).includes("private@example.com"), false);
 });
-const failures: [number, string][] = [[401, "unauthorized"], [403, "unauthorized"], [429, "rate_limited"], [500, "upstream"]];
+const failures: [number, string][] = [[302, "upstream"], [401, "unauthorized"], [403, "unauthorized"], [429, "rate_limited"], [500, "upstream"]];
 for (const [status, code] of failures) await test(`collector handles HTTP ${status} without leaking bodies`, async () => {
   const run = collector(async () => new Response("secret-must-not-leak", { status })); await run.run(); assert.equal(run.polls[0]!.error, code); assert.equal(JSON.stringify(run.polls).includes("secret-must-not-leak"), false);
 });

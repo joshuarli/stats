@@ -4,6 +4,7 @@ import { accessToken } from "./access-token";
 import type { Installation } from "../src/deployments/installation";
 import type { DeploymentHistory } from "../src/deployments/model";
 import type { DeploymentComparison } from "../src/deployments/compare";
+import { collectDeployments } from "../src/deployments/collector";
 
 const NOW = 1_793_510_415_000;
 const ID = "00000000-0000-4000-8000-000000000002";
@@ -51,6 +52,20 @@ describe("deployment API", () => {
     expect(comparison.reasons.some(reason => reason.includes("No proof"))).toBe(true);
     expect(comparison.metrics.every(metric => metric.verdict !== "improved" && metric.verdict !== "regressed")).toBe(true);
     expect((await get("/00000000-0000-4000-8000-000000000099/comparison")).status).toBe(404);
+  });
+  it("polls with request options the Workers runtime accepts", async () => {
+    const created_on = new Date(NOW - 3_600_000).toISOString();
+    await collectDeployments({
+      projects: [{ id: "stuff", worker: "stuff" }], account: "0123456789abcdef0123456789abcdef", token: "test-token", now: NOW, store: stub(),
+      fetch: async (url, init) => {
+        const request = new Request(url, init);
+        expect(request.headers.get("authorization")).toBe("Bearer test-token");
+        return Response.json({ success: true, result: { deployments: [{ id: ID, created_on, source: "api", strategy: "percentage", versions: [{ version_id: VERSION, percentage: 100 }] }] }, result_info: { total_pages: 1 } });
+      },
+    });
+    const history = await (await get()).json() as DeploymentHistory;
+    expect(history.sync).toMatchObject({ error: null, lastSuccessAtMs: NOW });
+    expect(history.deployments.map(deployment => deployment.id)).toEqual([ID]);
   });
   it("keeps inherited host and project APIs working", async () => {
     for (const resource of ["hosts", "projects"]) expect((await SELF.fetch(`https://example.com/api/v1/${resource}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } })).status).toBe(200);

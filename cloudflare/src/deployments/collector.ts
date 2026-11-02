@@ -64,7 +64,7 @@ async function collectProject(input: {
   // One deadline bounds pagination, body reads, and optional metadata requests together.
   const signal = AbortSignal.timeout(20_000);
   const request = async (suffix: string): Promise<Record<string, unknown>> => {
-    const response = await input.fetch(`${base}${suffix}`, { method: "GET", headers: { Authorization: `Bearer ${input.token}` }, redirect: "error", signal });
+    const response = await input.fetch(`${base}${suffix}`, { method: "GET", headers: { Authorization: `Bearer ${input.token}` }, redirect: "manual", signal });
     if (!response.ok) {
       code = response.status === 401 || response.status === 403 ? "unauthorized" : response.status === 429 ? "rate_limited" : "upstream";
       await response.body?.cancel();
