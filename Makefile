@@ -83,7 +83,7 @@ deploy: auth-ready
 	$(MAKE) fixtures
 	$(MAKE) worker-test
 	$(MAKE) agent-test
-	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
+	$(MAKE) worker-deploy
 	$(MAKE) smoke-deployed
 	$(MAKE) deploy-hosts
 

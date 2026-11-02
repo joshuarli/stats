@@ -44,8 +44,7 @@ config, or service unit that changed. A Linux host also needs an entry in
 `deploy/hosts.json` to receive `make deploy-hosts` updates.
 
 `make deploy` runs `fixtures`, `worker-test`, and `agent-test` in order,
-deploys the bundle those tests built with
-`cf deploy --prebuilt --mode production`, runs `deploy/deployed-smoke.sh`,
+rebuilds and deploys the Worker with `make worker-deploy`, runs `deploy/deployed-smoke.sh`,
 then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
