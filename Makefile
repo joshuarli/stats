@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -57,6 +57,15 @@ dashboard-test: work-ready
 	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:ui
+
+dashboard-bench: work-ready node-ready
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
+	@set -eu; \
+	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/scripts/preview.mjs > .work/tmp/preview-bench.log 2>&1 & \
+	pid=$$!; \
+	trap 'kill $$pid 2>/dev/null || true' EXIT; \
+	sleep 1; \
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry exec node scripts/bench-ui.mjs $(BENCH_ARGS)
 
 preview: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build

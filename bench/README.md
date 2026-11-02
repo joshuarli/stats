@@ -43,3 +43,21 @@ host. Node Exporter's default collectors expose a broader metric set than the
 agent's fixed groups, so this is a same-host, same-interval cost comparison,
 not a like-for-like metric-set comparison. `threadripper` was not used because
 its load average was above 5.5 on 32 CPUs; no performance claim is made for it.
+
+## Dashboard load
+
+```sh
+make dashboard-bench
+make dashboard-bench BENCH_ARGS="--runs 9 --cpu 4 --latency 100"
+```
+
+The target builds the client, starts the local preview, and loads the fleet,
+host, and project pages in Chromium under an emulated 1.6 Mbps / 150 ms link.
+It reports medians for first paint, largest paint, content-ready, JS heap, DOM
+nodes, listeners, and transferred bytes. `--runs`, `--latency`, `--down`, and
+`--cpu` change the workload.
+
+The preview serves captured fixtures without the production cache headers or
+the Worker's compression, so compare runs of the same build. The Worker serves
+hashed `/assets/*` with `private, max-age=31536000, immutable`; a reload after
+the first visit should transfer no bundle bytes.
