@@ -1,9 +1,11 @@
+import { useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Series, SummaryPoint } from "../../api";
 import type { ChartPoint } from "../../chart-data";
 import { count, isFiniteNumber } from "../../format";
 import { rebootTimes } from "../../monitoring";
 import { TimeChart, type ChartEvent, type TimeChartProps, type VizColor } from "../../components/TimeChart";
+import { DeploymentEvents } from "../../components/DeploymentEvents";
 
 export const AXIS_WIDTH = 76;
 export const SERIES_COLORS = ["blue", "aqua", "violet", "magenta"] as const satisfies readonly VizColor[];
@@ -43,7 +45,8 @@ export function summarySeries(points: readonly SummaryPoint[], pick: (point: Sum
 }
 
 export function PanelChart(props: TimeChartProps): JSX.Element {
-  return <TimeChart compact legend="inline" yAxisWidth={AXIS_WIDTH} {...props} />;
+  const deployments = useContext(DeploymentEvents);
+  return <TimeChart compact legend="inline" yAxisWidth={AXIS_WIDTH} {...props} events={[...(props.events ?? []), ...deployments()]} />;
 }
 
 export function PanelLabel(props: { readonly children: JSX.Element }): JSX.Element {

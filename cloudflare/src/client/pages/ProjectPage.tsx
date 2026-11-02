@@ -12,6 +12,7 @@ import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { CostWidget } from "./project/Cost";
 import { D1Widget } from "./project/D1";
+import { ProjectDeployments } from "./project/Deployments";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
@@ -114,6 +115,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               : "The collector has not succeeded recently, so the newest buckets may be missing."}
         </Notice>
       </Show>
+      <ProjectDeployments projectId={id()} refreshKey={`${projectTick()}:${manualTick()}`}>
       <Errored fallback={(error) => <ErrorState error={error()} compact />}>
         <Loading fallback={<Skeleton rows={4} chart />}>
           <Show
@@ -141,6 +143,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
           </Show>
         </Loading>
       </Errored>
+      </ProjectDeployments>
     </>
   );
 }

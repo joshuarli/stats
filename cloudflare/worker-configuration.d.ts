@@ -1,6 +1,6 @@
 declare namespace Cloudflare {
   interface Env {
-    readonly INSTALLATION: DurableObjectNamespace<import("./src/installation").Installation>;
+    readonly INSTALLATION: DurableObjectNamespace<import("./src/deployments/installation").Installation>;
     readonly ASSETS: Fetcher;
     readonly ENVIRONMENT: string;
     readonly ANALYTICS_SQL: AnalyticsSQLBinding;
@@ -10,6 +10,8 @@ declare namespace Cloudflare {
     readonly ACCESS_AUD?: string;
     readonly ACCESS_JWKS_JSON?: string;
     readonly FIXTURES?: string;
+    readonly DEPLOYMENTS_ACCOUNT_ID?: string;
+    readonly DEPLOYMENTS_API_TOKEN?: string;
   }
 }
 

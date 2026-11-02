@@ -7,13 +7,15 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && pnpm run test:binary && vite build && vitest run",
+    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:deployments && vite build && vitest run",
     "test:ui": "playwright test",
-    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary",
+    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
     "build": "vite build",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.mjs",
-    "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast"
+    "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
+    "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.mjs",
+    "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",

@@ -1,0 +1,11 @@
+.deployment-controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: .75rem 0; }
+.deployment-controls label { display: flex; flex-direction: column; gap: .35rem; min-width: 0; max-width: 100%; }
+.deployment-controls select { max-width: 100%; padding: .4rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: .3rem; }
+.deployment-table { max-width: 100%; overflow-x: auto; margin: .75rem 0; }
+.deployment-table table { width: 100%; border-collapse: collapse; }
+.deployment-table th, .deployment-table td { padding: .55rem; text-align: left; border-bottom: 1px solid var(--line); }
+.deployment-table td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.deployment-table th[scope="row"] { min-width: 12rem; font-weight: 500; }
+.deployment-notice { padding: .6rem; border: 1px solid var(--line); border-radius: .3rem; }
+#deployments .panel-label { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .deployment-controls { flex-direction: column; } }

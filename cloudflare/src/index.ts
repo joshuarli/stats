@@ -1,6 +1,8 @@
 import { verifyAccess } from "./access";
 import { bearerToken } from "./auth";
-import { Installation } from "./installation";
+import { Installation } from "./deployments/installation";
+import { collectDeployments } from "./deployments/collector";
+import { parseProjects } from "./projects/config";
 import { MAX_BODY_BYTES } from "./limits";
 import { runCollector } from "./projects/collector";
 
@@ -68,12 +70,20 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
-    await runCollector({
-      analytics: env.ANALYTICS_SQL,
-      store: env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")),
-      projectsJson: env.PROJECTS,
-      now: controller.scheduledTime,
-      probeFetch: (url, init) => fetch(url, init)
-    });
+    const store = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
+    const [metrics] = await Promise.allSettled([
+      runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
+      (async () => {
+        try {
+          await collectDeployments({
+            projects: parseProjects(env.PROJECTS),
+            ...(env.DEPLOYMENTS_ACCOUNT_ID === undefined ? {} : { account: env.DEPLOYMENTS_ACCOUNT_ID }),
+            ...(env.DEPLOYMENTS_API_TOKEN === undefined ? {} : { token: env.DEPLOYMENTS_API_TOKEN }),
+            now: controller.scheduledTime, store, fetch: (url, init) => fetch(url, init)
+          });
+        } catch { console.error(JSON.stringify({ event: "deployment_collection_failed" })); }
+      })()
+    ]);
+    if (metrics.status === "rejected") throw metrics.reason;
   }
 } satisfies ExportedHandler<Env>;
