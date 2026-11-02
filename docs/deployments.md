@@ -113,14 +113,17 @@ panel loading/errors do not block the other project charts.
 Comparisons use five-minute additive data, never downsampled chart values, average
 of averages, approximate maxima or manufactured percentiles. The deployment's
 mixed bucket and one whole warm-up bucket are excluded. Windows must fit within
-seven-day fine retention, have complete relevant buckets, and have recorded
-settled coverage. Coverage starts with this implementation: **backfilled deployment
+seven-day fine retention and have recorded settled coverage. Within covered
+windows an absent analytics counter bucket is an idle bucket and counts as zero,
+the same rule the history API uses; probe buckets are never zero-filled because
+probes are not re-collected. Coverage starts with this implementation: **backfilled deployment
 events do not retroactively certify old metrics**. Some historical comparisons
 will remain unavailable even though charts contain numeric samples.
 
 A known stable single-version baseline is required. Split traffic, overlapping
 releases, a stale/truncated deployment history, material observed top-route mix
-changes, missing buckets and fewer than 100 Worker invocations suppress verdicts.
+changes, missing probe buckets and fewer than 100 Worker invocations suppress
+verdicts.
 Worker error-rate signals require 1,000 invocations on each side. Deferred Durable
 Object updates in either deployment suppress DO/cost attribution. Major traffic
 volume changes are warned about; stable top-route observations cannot prove the

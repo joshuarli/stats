@@ -112,15 +112,19 @@ await test("low event counts cannot manufacture a reliability signal", () => {
   assert.equal(errorShare(comparison({ rows: rows("1h", 10, 8, 20) })).verdict, "insufficient-data");
 });
 await test("small CPU changes are unchanged", () => assert.equal(cpu(comparison({ rows: rows("1h", 1, 0.99) })).verdict, "unchanged"));
-await test("missing invocation bucket remains null, not zero", () => {
-  const result = comparison({ rows: rows().filter(row => !(row.metric === "worker.invocations" && row.bucket_ms === AT - H)) });
+const idle = (row: MetricRow): boolean => row.bucket_ms === AT - H && (row.metric === "worker.invocations" || row.metric === "worker.cpuMsSum");
+await test("an absent bucket in an unproven window remains null, not zero", () => {
+  const result = comparison({ rows: rows().filter(row => !idle(row)), metricsSettled: false });
   assert.equal(result.beforeInvocations, null);
   assert.equal(cpu(result).before, null);
   assert.ok(result.reasons.some(reason => reason.includes("missing")));
 });
-await test("missing CPU bucket is unavailable even with complete request counts", () => {
-  const result = comparison({ rows: rows().filter(row => !(row.metric === "worker.cpuMsSum" && row.bucket_ms === AT - H)) });
-  assert.equal(cpu(result).verdict, "insufficient-data");
+await test("an absent bucket in a collected, settled window is an idle bucket", () => {
+  const result = comparison({ rows: rows().filter(row => !idle(row)) });
+  assert.equal(result.beforeInvocations, 11_000);
+  assert.equal(cpu(result).before, 10);
+  assert.equal(cpu(result).verdict, "improved");
+  assert.deepEqual(result.reasons, []);
 });
 const withheld: [string, Partial<ComparisonInput>, RegExp][] = [
   ["unsettled data", { now: AT + H }, /Waiting/],
@@ -153,14 +157,25 @@ await test("24-hour windows compare like duration and wait for settlement", () =
   assert.equal(result.after.toMs - result.after.fromMs, 86400000);
   assert.equal(cpu(result).verdict, "improved");
 });
-await test("configured-but-missing D1 cost is unavailable", () => assert.equal(comparison({ hasD1: true }).metrics.find(metric => metric.metric === "cost")!.verdict, "insufficient-data"));
-await test("R2 totals infer only absent outcomes, not absent buckets", () => {
+await test("configured D1 without rows is unavailable until the window is proven collected", () => {
+  assert.equal(metricOf(comparison({ hasD1: true, metricsSettled: false }), "cost").before, null);
+  assert.equal(metricOf(comparison({ hasD1: true }), "cost").before, metricOf(comparison(), "cost").before);
+});
+await test("R2 absent buckets are idle only in proven windows", () => {
   const data = rows();
   for (const row of data.slice()) if (row.metric === "worker.invocations") data.push({ metric: "r2.bucket.ops.success", bucket_ms: row.bucket_ms, value: row.bucket_ms < AT ? 2000 : 1000 });
   let result = comparison({ rows: data, buckets: ["bucket"] });
   assert.equal(metricOf(result, "r2.bucket").verdict, "improved");
-  result = comparison({ rows: data.filter(row => !(row.metric.startsWith("r2.") && row.bucket_ms === AT - H)), buckets: ["bucket"] });
-  assert.equal(metricOf(result, "r2.bucket").before, null);
+  const sparse = data.filter(row => !(row.metric.startsWith("r2.") && row.bucket_ms === AT - H));
+  assert.equal(metricOf(comparison({ rows: sparse, buckets: ["bucket"], metricsSettled: false }), "r2.bucket").before, null);
+  assert.equal(metricOf(comparison({ rows: sparse, buckets: ["bucket"] }), "r2.bucket").before, 22_000 / 12_000);
+});
+await test("an absent probe bucket stays missing because probes are not re-collected", () => {
+  const data = rows();
+  for (const row of data.slice()) if (row.metric === "worker.invocations" && row.bucket_ms !== AT - H) { data.push({ metric: "probe.health.up", bucket_ms: row.bucket_ms, value: 1 }); data.push({ metric: "probe.health.ms", bucket_ms: row.bucket_ms, value: 50 }); }
+  const result = comparison({ rows: data, probes: ["health"] });
+  assert.equal(metricOf(result, "probe.health.ms").before, null);
+  assert.equal(metricOf(result, "probe.health.failure").before, null);
 });
 await test("probe failures use failure share rather than pretending to be user latency", () => {
   const data = rows();

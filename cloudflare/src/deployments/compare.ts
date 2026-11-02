@@ -50,22 +50,22 @@ function bucketRows(rows: readonly MetricRow[]): Buckets {
   return buckets;
 }
 
-function total(buckets: Buckets, bounds: WindowBounds, metric: string, zeroWith?: string): number | null {
+type AbsentBucket = "missing" | "idle";
+
+function total(buckets: Buckets, bounds: WindowBounds, metric: string, absent: AbsentBucket, zeroWith?: string): number | null {
   let sum = 0;
   for (let at = bounds.fromMs; at < bounds.toMs; at += DEPLOYMENT_BUCKET_MS) {
     const bucket = buckets.get(at);
     const value = bucket?.get(metric);
-    if (value === undefined) {
-      // Only a status absent from the SAME invocation query may be inferred as zero.
-      if (zeroWith === undefined || bucket?.has(zeroWith) !== true) return null;
-    } else sum += value;
+    if (value !== undefined) sum += value;
+    else if (absent === "missing" && (zeroWith === undefined || bucket?.has(zeroWith) !== true)) return null;
   }
   return Number.isFinite(sum) ? sum : null;
 }
 
-function ratio(buckets: Buckets, bounds: WindowBounds, numerator: string, denominator: string, scale = 1, zeroWith?: string): number | null {
-  const count = total(buckets, bounds, denominator);
-  const sum = total(buckets, bounds, numerator, zeroWith);
+function ratio(buckets: Buckets, bounds: WindowBounds, absent: AbsentBucket, numerator: string, denominator: string, scale = 1, zeroWith?: string): number | null {
+  const count = total(buckets, bounds, denominator, absent);
+  const sum = total(buckets, bounds, numerator, absent, zeroWith);
   return count === null || count < 100 || sum === null ? null : sum / count * scale;
 }
 
@@ -113,9 +113,10 @@ export function compareDeployment(input: {
   const deferredObjects = deployment.deferred || previous?.deferred === true;
   if (deferredObjects) warnings.push("Durable Object code updates are deferred; their metrics are not attributed to this deployment.");
   const buckets = bucketRows(input.rows);
-  const beforeCount = total(buckets, before, "worker.invocations");
-  const afterCount = total(buckets, after, "worker.invocations");
-  if (beforeCount === null || afterCount === null) reasons.push("One or more invocation buckets are missing; missing data is not zero.");
+  const analyticsAbsent: AbsentBucket = input.metricsSettled ? "idle" : "missing";
+  const beforeCount = total(buckets, before, "worker.invocations", analyticsAbsent);
+  const afterCount = total(buckets, after, "worker.invocations", analyticsAbsent);
+  if (beforeCount === null || afterCount === null) reasons.push("One or more invocation buckets are missing from a window not yet proven collected; missing data is not zero.");
   else if (beforeCount < 100 || afterCount < 100) reasons.push("Fewer than 100 invocations in a comparison window.");
   if (beforeCount !== null && beforeCount > 0 && afterCount !== null && (afterCount / beforeCount > 2 || afterCount / beforeCount < 0.5)) warnings.push("Traffic volume changed by more than 2x; compare workload and cache behavior.");
   // Top routes are truncated upstream. A large observed shift is enough to withhold
@@ -136,10 +137,10 @@ export function compareDeployment(input: {
   const blocked = reasons.length > 0;
   const metrics: MetricComparison[] = [];
   const addRatio = (metric: string, label: string, unit: string, numerator: string, denominator: string, floor: number, scale = 1, zeroWith?: string, extraBlocked = false) => {
-    metrics.push(result(metric, label, unit, ratio(buckets, before, numerator, denominator, scale, zeroWith), ratio(buckets, after, numerator, denominator, scale, zeroWith), floor, blocked || extraBlocked));
+    metrics.push(result(metric, label, unit, ratio(buckets, before, analyticsAbsent, numerator, denominator, scale, zeroWith), ratio(buckets, after, analyticsAbsent, numerator, denominator, scale, zeroWith), floor, blocked || extraBlocked));
   };
   addRatio("worker.cpu", "Worker CPU / invocation", "ms", "worker.cpuMsSum", "worker.invocations", 0.1);
-  const error = (bounds: WindowBounds) => (total(buckets, bounds, "worker.invocations") ?? 0) < 1000 ? null : ratio(buckets, bounds, "worker.status.5xx", "worker.invocations", 100, "worker.invocations");
+  const error = (bounds: WindowBounds) => (total(buckets, bounds, "worker.invocations", analyticsAbsent) ?? 0) < 1000 ? null : ratio(buckets, bounds, analyticsAbsent, "worker.status.5xx", "worker.invocations", 100, "worker.invocations");
   metrics.push(result("worker.errors", "Worker 5xx share (1,000+ invocations)", "%", error(before), error(after), 0.1, blocked));
   if (input.rows.some(row => row.metric === "do.invocations")) {
     addRatio("do.cpu", "Durable Object CPU / invocation", "ms", "do.cpuMsSum", "do.invocations", 0.1, 1, undefined, deferredObjects);
@@ -152,12 +153,12 @@ export function compareDeployment(input: {
   }
   for (const name of input.buckets ?? []) {
     const operations = (bounds: WindowBounds): number | null => {
-      const invocations = total(buckets, bounds, "worker.invocations");
+      const invocations = total(buckets, bounds, "worker.invocations", analyticsAbsent);
       if (invocations === null || invocations < 100) return null;
       let sum = 0;
       for (let at = bounds.fromMs; at < bounds.toMs; at += DEPLOYMENT_BUCKET_MS) {
         const values = ["success", "userError", "other"].map(outcome => buckets.get(at)?.get(`r2.${name}.ops.${outcome}`));
-        if (values.every(value => value === undefined)) return null;
+        if (analyticsAbsent === "missing" && values.every(value => value === undefined)) return null;
         sum += values.reduce<number>((value, item) => value + (item ?? 0), 0);
       }
       return sum / invocations;
@@ -167,7 +168,7 @@ export function compareDeployment(input: {
   if ((input.buckets?.length ?? 0) > 0) warnings.push("R2 ratios include all clients of the configured bucket, not just this Worker.");
   for (const name of input.probes ?? []) {
     const average = (bounds: WindowBounds, suffix: string): number | null => {
-      const sum = total(buckets, bounds, `probe.${name}.${suffix}`);
+      const sum = total(buckets, bounds, `probe.${name}.${suffix}`, "missing");
       return sum === null ? null : sum / ((bounds.toMs - bounds.fromMs) / DEPLOYMENT_BUCKET_MS);
     };
     metrics.push(result(`probe.${name}.ms`, `Probe ${name} mean edge response time`, "ms", average(before, "ms"), average(after, "ms"), 10, blocked));
@@ -175,8 +176,8 @@ export function compareDeployment(input: {
     metrics.push(result(`probe.${name}.failure`, `Probe ${name} failure share`, "%", failures(before), failures(after), 1, blocked));
   }
   const cost = (bounds: WindowBounds): number | null => {
-    const requests = total(buckets, bounds, "worker.invocations");
-    const cpu = total(buckets, bounds, "worker.cpuMsSum");
+    const requests = total(buckets, bounds, "worker.invocations", analyticsAbsent);
+    const cpu = total(buckets, bounds, "worker.cpuMsSum", analyticsAbsent);
     if (requests === null || requests < 100 || cpu === null) return null;
     let price = requests * LIST_PRICE_PER_MILLION.workerRequests + cpu * LIST_PRICE_PER_MILLION.workerCpuMs;
     const parts: readonly [boolean, string, number][] = [
@@ -186,7 +187,7 @@ export function compareDeployment(input: {
     ];
     for (const [configured, metric, rate] of parts) {
       if (!configured) continue;
-      const value = total(buckets, bounds, metric);
+      const value = total(buckets, bounds, metric, analyticsAbsent);
       if (value === null) return null;
       price += value * rate;
     }
