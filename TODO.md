@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 42
+Next: 43
 
 ### STA-41 · P2 · Watch the usr-memories D1 size against the 10 GB cap
 
@@ -61,6 +61,15 @@ Next: 42
 - **Where:** `cloudflare/scripts/check-parity.mjs`, `docs/operations.md:80`
 - **Problem:** Stored history restarted at 2026-11-01 19:20 UTC after the Worker rename, so the 24 hour comparison of stored buckets against `cf sql query` has no full day to compare yet.
 - **Recommendation:** On or after 2026-11-02 19:20 UTC run `node cloudflare/scripts/check-parity.mjs` (needs `cf access login`). If it fails above 5% total error, record why in `docs/operations.md` next to the existing miss.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-42 · P3 · Decide whether hosts should upload every 10 seconds
+
+- **Area:** Operability
+- **Where:** `agent/src/config.rs:150`, `README.md:66`, `cloudflare/src/installation.ts:14`, `deploy/hosts.json`
+- **Problem:** The default `uploadIntervalMs` is 30000 with `sampleIntervalMs` 15000, so each upload carries two samples and a host sends two ingest requests a minute. The allowed floor is 10000, which sends one sample per request at about four requests a minute. It buys about 20 s of delivery freshness, keeps `ONLINE_WINDOW_MS` (45 s) from flapping when one upload fails, and does not improve chart resolution, because raw history steps at 15 s and the 1m and 1h rollups sit on top. It doubles the request footprint: measured 2026-11-02, `stats` had 1,740 stateless entrypoint invocations in six hours, 760 of them `POST /ingest/v1/batches`, against `MAX_REQUESTS_PER_WINDOW` 6 per host per fixed minute, the free plan's 100,000 Worker requests a day, and the zone rule of 20 `/ingest/*` requests per 10 s per IP per colo. At 10 s one host is about 5,760 ingest requests a day, and a shared egress IP supports about 20 hosts before the zone rule, against about 34 and 60 at 30 s. Unproven: how often one missed upload actually pushes a host past the online window today.
+- **Recommendation:** Leave the default at 30 s. If one host should feel live, set `"uploadIntervalMs": 10000` in its `/etc/stats/agent.json`, which a host deploy preserves, and read the 429 and `ingest_rejected` counts for a day. Revisit the default only when the fleet is known to stay small or the account leaves the free plan.
 - **Fix with:** none
 - **Effort:** S
 
