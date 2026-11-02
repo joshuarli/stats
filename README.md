@@ -173,8 +173,10 @@ agent reports with its first upload after an update and then hourly. Below that:
   chart.
 - Charts sit in two-column rows, and the two cards in each row start at the
   same top edge; no graph spans the page.
-- CPU (with steal and a CPU pressure panel) and load, both with a dashed line
-  for the same window yesterday on the 1 h, 6 h, and 24 h ranges.
+- CPU (with steal, GPU busy where reported, and a CPU pressure panel) and
+  load, both with a dashed line for the same window yesterday on the 1 h, 6 h,
+  and 24 h ranges.
+- Power: system and GPU watts, shown only for hosts that report them.
 - Memory: RAM and swap in use against total, swap paging, and memory pressure
   (some and full) on one shared time axis.
 - Disk and network: throughput and operations or packets with reads and

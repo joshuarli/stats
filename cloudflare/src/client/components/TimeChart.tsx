@@ -20,6 +20,7 @@ export interface ChartSeries {
   readonly scored?: boolean | undefined;
   readonly graded?: boolean | undefined;
   readonly mirror?: boolean | undefined;
+  readonly joinGaps?: boolean | undefined;
 }
 
 export interface ChartEvent {
@@ -449,7 +450,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
             label: entry.label,
             stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
             width: entry.graded === true ? 2 : 1.5,
-            spanGaps: false,
+            spanGaps: entry.joinGaps === true,
             points: { show: false },
             ...(entry.dashed === true ? { dash: [4, 3] } : {}),
             ...(start === undefined || end === undefined ? {} : {
