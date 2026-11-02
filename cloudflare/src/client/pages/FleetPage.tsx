@@ -327,35 +327,31 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           id={props.row.host.hostId}
           note={info()?.os}
         />
+        <Show when={cpuModel()}>
+          {(model) => <span class="cell-note clip-note" title={model()}>{model()}</span>}
+        </Show>
+        <Show when={cpuNote()}>
+          <span class="cell-note">{cpuNote()}</span>
+        </Show>
         <Show when={!reporting()}>
           <span class="cell-note">{age(props.row.host.lastReceivedAtMs, props.now)}</span>
         </Show>
       </td>
       <td>
-        <div class="cell-stack">
-          <div class="cpu-cell">
-            <span class="metric-value-small">{percent(cpu())}</span>
-            <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
-            <Sparkline values={cpuTrend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
-          </div>
-          <Show when={cpuModel()}>
-            {(model) => <span class="cell-note clip-note" title={model()}>{model()}</span>}
-          </Show>
-          <Show when={cpuNote()}>
-            <span class="cell-note">{cpuNote()}</span>
-          </Show>
+        <div class="cpu-cell">
+          <span class="metric-value-small">{percent(cpu())}</span>
+          <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
+          <Sparkline values={cpuTrend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
         </div>
       </td>
       <td>
-        <div class="cpu-cell">
-          <div class="cell-stack">
-            <div class="cpu-cell">
-              <span class="metric-value-small">{percent(memory())}</span>
-              <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
-            </div>
-            <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
+        <div class="cell-stack">
+          <div class="cpu-cell">
+            <span class="metric-value-small">{percent(memory())}</span>
+            <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
+            <Sparkline values={memoryTrend()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
           </div>
-          <Sparkline values={memoryTrend()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
+          <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>
       </td>
       <td class="numeric"><span class="metric-value-small">{count(lastCell(table().cells("load.one")))}</span></td>

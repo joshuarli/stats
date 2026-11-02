@@ -373,7 +373,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       height: element.clientHeight,
       legend: { show: false },
       focus: { alpha: 0.16 },
-      padding: [8, props.timeAxis === false ? 8 : TIME_LABEL_OVERHANG, props.timeAxis === false ? 8 : 0, 0],
+      padding: [8, TIME_LABEL_OVERHANG, props.timeAxis === false ? 8 : 0, 0],
       select: { show: true, ...CLEARED_SELECT },
       cursor: {
         y: false,
@@ -623,8 +623,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                       <td>{entry.label}</td>
                       <td>{format(stats()?.min)}</td>
                       <td>{format(stats()?.avg)}</td>
-                      <td>{format(stats()?.max)}{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</td>
-                      <td class="legend-now">{format(shown())}{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</td>
+                      <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={healthAt(stats()?.max)} />}</span></td>
+                      <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={healthAt(shown())} />}</span></td>
                     </tr>
                   );
                 }}

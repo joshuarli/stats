@@ -203,7 +203,7 @@ kbd {
 .chart { display: flex; flex-direction: column; flex: 1; min-height: 0; position: relative; }
 .chart-plot { height: 176px; position: relative; cursor: crosshair; user-select: none; outline-offset: 2px; }
 .chart-plot.compact { height: 112px; }
-.chart-inline-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 0 0 6px; font-size: 12px; color: var(--text-2); }
+.chart-inline-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 0 0; font-size: 12px; color: var(--text-2); }
 .inline-key { display: inline-flex; align-items: center; gap: 6px; padding: 1px 4px; margin-left: -4px; border-radius: 4px; }
 .inline-key:hover { background: var(--hover); }
 .inline-key.off { opacity: .38; }
@@ -276,7 +276,9 @@ kbd {
 .health-ok .health-icon { color: var(--good); }
 .health-elevated .health-icon { color: var(--serious); }
 .health-critical .health-icon { color: var(--critical); }
-.chart-legend td .health { margin-left: 6px; }
+.chart-legend td .health { margin-left: 0; }
+.mark-slot { display: inline-block; width: 22px; text-align: right; }
+.chart-legend th:nth-child(n+5) { padding-right: 22px; }
 .tile-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sparkline.health-elevated .spark-dot { display: block; fill: var(--serious); stroke: var(--surface); stroke-width: 1.5; }
 .sparkline.health-critical .spark-dot { display: block; fill: var(--critical); stroke: var(--surface); stroke-width: 1.5; }
@@ -316,13 +318,16 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .entity-note { font: 11.5px var(--font); }
 .state-cell { display: flex; align-items: center; gap: 8px; }
 .cell-note { color: var(--muted); font-size: 12px; }
-.clip-note { display: block; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; }
-.entity-cell + .cell-note { display: block; margin-left: 17px; }
+.clip-note { display: block; max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
+.entity-cell ~ .cell-note { display: block; margin-left: 17px; line-height: 16px; }
 .cell-strong { color: var(--text); }
 .cell-stack { display: flex; flex-direction: column; line-height: 1.3; }
 .device-name { display: block; }
 .metric-value-small { min-width: 40px; display: inline-block; }
-.cpu-cell { display: flex; align-items: center; gap: 10px; }
+.cpu-cell { display: flex; align-items: center; gap: 10px; min-height: 20px; }
+.fleet-table-scroll .data-table td { height: auto; padding-top: 13px; padding-bottom: 13px; vertical-align: top; line-height: 20px; }
+.fleet-table-scroll .entity-cell { align-items: flex-start; }
+.fleet-table-scroll .entity-cell > .status-dot { margin-top: 6px; }
 .meter { width: 44px; height: 3px; border-radius: 3px; background: var(--line-strong); overflow: hidden; flex: none; }
 .meter span { display: block; height: 100%; border-radius: 3px; }
 .meter .tone-neutral { background: var(--text-2); opacity: .6; }
@@ -392,7 +397,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .strip-cell .tile-spark { display: block; }
 .stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
 .stack > .widget, .stack > .chart-grid { margin-bottom: 0; }
-.panel-label { font-size: 11.5px; color: var(--muted); margin: 10px 0 0 2px; }
+.panel-label { font-size: 11.5px; color: var(--muted); margin: 10px 0 0; }
 .panel-label:first-child { margin-top: 2px; }
 .flush-table { margin: 12px -14px -12px; border-top: 1px solid var(--line); }
 .table-more { display: flex; padding: 8px 14px; border-top: 1px solid var(--line); }
@@ -402,7 +407,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; align-items: start; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; align-items: stretch; }
 .charts > .widget { margin-bottom: 0; }
 .charts > .notice { grid-column: 1 / -1; margin-bottom: 0; }
 @media (max-width: 960px) {
@@ -459,4 +464,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   .chart-legend-scroll .chart-legend { min-width: 360px; }
   .page-header .hover-card-panel { max-width: calc(100vw - 24px); }
   .charts .widget[id] { scroll-margin-top: 150px; }
+}
+@media (max-width: 640px) {
+  .fleet-table-scroll .clip-note { max-width: 17ch; }
 }

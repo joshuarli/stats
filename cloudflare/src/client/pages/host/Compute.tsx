@@ -128,6 +128,7 @@ export function LoadWidget(props: {
         format={value => count(value)}
         limits={loadScale()}
         min={0}
+        yAxisWidth={AXIS_WIDTH}
         events={props.events}
         stepMs={props.stepMs}
       />
