@@ -481,23 +481,45 @@ function filesystemPoints(row: RawRow): Array<{ id: string; point: FilesystemPoi
 
 export type HistoryPoints = SummaryPoint[] | Series<DiskPoint>[] | Series<NetPoint>[] | Series<FilesystemPoint>[] | Series<BlockPoint>[];
 
-export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): HistoryPoints {
-  if (kind === "summary") return rows.map(summaryFromRaw);
-  if (kind === "block") {
-    const points = rows.flatMap(row => row.sample.block === undefined ? [] : (blockPoint(Number(row.sample.atMs), row.sample.block) ?? []));
-    return [{ id: "block", points }];
-  }
+export interface RowPoints {
+  readonly atMs: number;
+  readonly summary: SummaryPoint;
+  readonly disks: readonly { readonly id: string; readonly name: string; readonly point: DiskPoint }[];
+  readonly nets: readonly { readonly id: string; readonly point: NetPoint }[];
+  readonly filesystems: readonly { readonly id: string; readonly point: FilesystemPoint }[];
+  readonly block?: BlockPoint;
+}
+
+export function rowPoints(row: RawRow): RowPoints {
+  const atMs = Number(row.sample.atMs);
+  const block = row.sample.block === undefined ? null : blockPoint(atMs, row.sample.block);
+  return {
+    atMs,
+    summary: summaryFromRaw(row),
+    disks: diskPoints(row),
+    nets: netPoints(row),
+    filesystems: filesystemPoints(row),
+    ...(block === null ? {} : { block })
+  };
+}
+
+export function pointsFromRows(rows: readonly RowPoints[], kind: HistoryKind): HistoryPoints {
+  if (kind === "summary") return rows.map(row => row.summary);
+  if (kind === "block") return [{ id: "block", points: rows.flatMap(row => row.block ?? []) }];
   const grouped = new Map<string, { name?: string; points: unknown[] }>();
   for (const row of rows) {
-    const values = kind === "disks" ? diskPoints(row) : kind === "nets" ? netPoints(row) : filesystemPoints(row);
-    for (const value of values) {
+    for (const value of row[kind]) {
       const group = grouped.get(value.id) ?? { points: [] };
-      if (kind === "disks" && "name" in value) group.name = value.name as string;
+      if ("name" in value) group.name = value.name;
       group.points.push(value.point);
       grouped.set(value.id, group);
     }
   }
   return [...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([id, group]) => ({ id, ...(group.name === undefined ? {} : { name: group.name }), points: group.points })) as never;
+}
+
+export function rawPoints(rows: readonly RawRow[], kind: HistoryKind): HistoryPoints {
+  return pointsFromRows(rows.map(rowPoints), kind);
 }
 
 function rate(value: string | undefined, coverage: number, multiplier = 1): number {

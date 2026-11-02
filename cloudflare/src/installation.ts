@@ -2,8 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValue, rangeKey, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
-import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
+import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rangeKey, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
+import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
 import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
@@ -227,12 +227,93 @@ function validName(name: string): boolean {
 }
 
 const HISTORY_WINDOWS_KEPT = 4;
+const CACHED_RAW_ROWS_KEPT = 16_000;
+
+interface CachedRow {
+  readonly atMs: number;
+  readonly monoMs: number;
+  readonly points: RowPoints;
+}
+
+interface HostRawRows {
+  fromMs: number;
+  readonly rows: CachedRow[];
+}
+
+type RawSampleRow = {
+  readonly rowid: number;
+  readonly host_id: string;
+  readonly payload: string;
+  readonly delta: string;
+  readonly at_ms: number;
+  readonly mono_ms: number;
+};
+
+function cachedRow(row: RawSampleRow): CachedRow {
+  const raw: RawRow = { sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) };
+  return { atMs: row.at_ms, monoMs: row.mono_ms, points: compact(rowPoints(raw)) };
+}
+
+function rowOrder(left: CachedRow, right: CachedRow): number {
+  return left.atMs - right.atMs || left.monoMs - right.monoMs;
+}
+
+function firstAtOrAfter(rows: readonly CachedRow[], atMs: number): number {
+  let low = 0;
+  let high = rows.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (rows[middle]!.atMs < atMs) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
 
 export class Installation extends DurableObject<Env> {
-  private readonly historyCache = new Map<string, ReadonlyMap<HistoryKind, History>>();
+  private readonly historyCache = new Map<string, (kind: HistoryKind) => History>();
+  private readonly rawRows = new Map<string, HostRawRows>();
+  private rawRowsThrough = 0;
 
   private invalidateHistory(): void {
     this.historyCache.clear();
+    this.rawRows.clear();
+    this.rawRowsThrough = 0;
+  }
+
+  private rawRowsBetween(hostId: string, fromMs: number, toMs: number, now: number): readonly CachedRow[] {
+    const sql = this.ctx.storage.sql;
+    const latest = sql.exec<{ rowid: number | null }>("SELECT MAX(rowid) AS rowid FROM samples").toArray()[0]?.rowid ?? 0;
+    if (latest > this.rawRowsThrough && this.rawRows.size > 0) {
+      for (const row of sql.exec<RawSampleRow>("SELECT rowid, host_id, payload, delta, at_ms, mono_ms FROM samples WHERE rowid > ? ORDER BY rowid", this.rawRowsThrough)) {
+        const cached = this.rawRows.get(row.host_id);
+        if (cached === undefined || row.at_ms < cached.fromMs) continue;
+        const entry = cachedRow(row);
+        const last = cached.rows.at(-1);
+        if (last === undefined || rowOrder(last, entry) <= 0) cached.rows.push(entry);
+        else cached.rows.splice(cached.rows.findIndex(existing => rowOrder(existing, entry) > 0), 0, entry);
+      }
+    }
+    this.rawRowsThrough = latest;
+    let cached = this.rawRows.get(hostId);
+    if (cached === undefined || fromMs < cached.fromMs) {
+      const rows = sql.exec<RawSampleRow>("SELECT rowid, host_id, payload, delta, at_ms, mono_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND rowid <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, this.rawRowsThrough).toArray();
+      cached = { fromMs, rows: rows.map(cachedRow) };
+      this.rawRows.set(hostId, cached);
+    }
+    const expired = firstAtOrAfter(cached.rows, now - RAW_RETENTION_MS);
+    if (expired > 0) {
+      cached.rows.splice(0, expired);
+      cached.fromMs = Math.max(cached.fromMs, now - RAW_RETENTION_MS);
+    }
+    this.rawRows.delete(hostId);
+    this.rawRows.set(hostId, cached);
+    let total = [...this.rawRows.values()].reduce((sum, entry) => sum + entry.rows.length, 0);
+    for (const [otherId, other] of this.rawRows) {
+      if (total <= CACHED_RAW_ROWS_KEPT || otherId === hostId) break;
+      this.rawRows.delete(otherId);
+      total -= other.rows.length;
+    }
+    return cached.rows.slice(firstAtOrAfter(cached.rows, fromMs), firstAtOrAfter(cached.rows, toMs + 1));
   }
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -352,7 +433,7 @@ export class Installation extends DurableObject<Env> {
     for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(hostId, hour);
   }
 
-  private historyWindow(hostId: string, query: HistoryQuery): ReadonlyMap<HistoryKind, History> | null {
+  private historyWindow(hostId: string, query: HistoryQuery): ((kind: HistoryKind) => History) | null {
     if (this.host(hostId) === undefined) return null;
     const now = this.now();
     const at = Math.floor(now / RAW_STEP_MS) * RAW_STEP_MS;
@@ -361,61 +442,63 @@ export class Installation extends DurableObject<Env> {
     const range = "range" in query ? { range: query.range } : {};
     const rawRange = fromMs >= now - RAW_RETENTION_MS && toMs - fromMs <= RAW_HISTORY_SPAN_MS;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - MINUTE_RETENTION_MS ? "1m" : "1h";
-    const key = `${hostId}|${resolution}|${fromMs}|${toMs}`;
-    let byKind = this.historyCache.get(key);
-    if (byKind === undefined) {
-      byKind = this.buildHistory(hostId, fromMs, toMs, range, resolution);
-      this.historyCache.set(key, byKind);
+    const key = `${hostId}|${this.historyVersion(hostId)}|${resolution}|${fromMs}|${toMs}`;
+    let build = this.historyCache.get(key);
+    if (build === undefined) {
+      build = this.historyBuilder(hostId, fromMs, toMs, range, resolution, now);
+      this.historyCache.set(key, build);
       if (this.historyCache.size > HISTORY_WINDOWS_KEPT) this.historyCache.delete(this.historyCache.keys().next().value!);
     }
-    return byKind;
+    return build;
   }
 
   async history(hostId: string, query: HistoryQuery, kind: HistoryKind): Promise<History | null> {
-    return this.historyWindow(hostId, query)?.get(kind) ?? null;
+    return this.historyWindow(hostId, query)?.(kind) ?? null;
   }
 
   async histories(hostId: string, query: HistoryQuery, kinds: readonly HistoryKind[]): Promise<HistoryBundle | null> {
-    const byKind = this.historyWindow(hostId, query);
-    if (byKind === null) return null;
+    const build = this.historyWindow(hostId, query);
+    if (build === null) return null;
     const histories: Partial<Record<HistoryKind, History>> = {};
-    for (const kind of kinds) {
-      const history = byKind.get(kind);
-      if (history === undefined) throw new Error(`history kind ${kind} was not built`);
-      histories[kind] = history;
-    }
+    for (const kind of kinds) histories[kind] = build(kind);
     return { hostId, histories };
   }
 
-  private buildHistory(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h"): ReadonlyMap<HistoryKind, History> {
+  private historyBuilder(hostId: string, fromMs: number, toMs: number, range: { range?: RangeKey }, resolution: "raw" | "1m" | "1h", now: number): (kind: HistoryKind) => History {
     const bucketMs = resolution === "raw" ? RAW_STEP_MS : resolution === "1m" ? MINUTE_MS : HOUR_MS;
     let pointsFor: (kind: HistoryKind) => HistoryPoints;
+    let rounded: <T>(value: T) => T;
     if (resolution === "raw") {
-      const rows = this.ctx.storage.sql.exec<{ payload: string; delta: string; at_ms: number }>("SELECT payload, delta, at_ms FROM samples WHERE host_id = ? AND at_ms >= ? AND at_ms <= ? ORDER BY at_ms ASC, mono_ms ASC", hostId, fromMs, toMs).toArray();
-      const raw: RawRow[] = rows.map(row => ({ sample: JSON.parse(row.payload) as Sample, delta: parseDelta(row.delta) }));
-      pointsFor = kind => rawPoints(raw, kind);
+      const rows = this.rawRowsBetween(hostId, fromMs, toMs, now).map(row => row.points);
+      pointsFor = kind => pointsFromRows(rows, kind);
+      rounded = value => value;
     } else {
       const rows = this.ctx.storage.sql.exec<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs).toArray();
       const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
       pointsFor = kind => rollupPoints(payloads, kind);
+      rounded = compact;
     }
-    const byKind = new Map<HistoryKind, History>();
-    for (const kind of HISTORY_KINDS) {
+    const built = new Map<HistoryKind, History>();
+    return kind => {
+      const existing = built.get(kind);
+      if (existing !== undefined) return existing;
       const points = pointsFor(kind);
+      let history: History;
       if (kind === "summary") {
         const sampled = downsample(points as Parameters<typeof downsample>[0]);
-        byKind.set(kind, compact({ hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items }) as History);
-        continue;
+        history = rounded({ hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * sampled.stride, points: sampled.items }) as History;
+      } else {
+        const series = points as { id: string; name?: string; points: unknown[] }[];
+        const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
+        const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
+        history = rounded({
+          hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
+          series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
+        }) as History;
       }
-      const series = points as { id: string; name?: string; points: unknown[] }[];
-      const longest = series.reduce((maximum, entry) => Math.max(maximum, entry.points.length), 0);
-      const stride = Math.max(1, Math.ceil(longest / MAX_POINTS));
-      byKind.set(kind, compact({
-        hostId, ...range, kind, fromMs, toMs, resolution, stepMs: bucketMs * stride,
-        series: series.map(entry => ({ ...entry, points: entry.points.filter((_, index) => index % stride === 0) }))
-      }) as History);
-    }
-    return byKind;
+      built.set(kind, history);
+      return history;
+    };
   }
 
   private projectRegistry(): ProjectConfig[] | Response {
@@ -588,6 +671,7 @@ export class Installation extends DurableObject<Env> {
         if (next !== undefined) {
           const nextDelta = computeDelta(entry.sample, JSON.parse(next.payload) as Sample, next.mono_ms - entry.mono);
           this.ctx.storage.sql.exec("UPDATE samples SET elapsed_ms = ?, delta = ? WHERE host_id = ? AND boot_id = ? AND seq = ?", next.mono_ms - entry.mono, JSON.stringify(nextDelta), parsed.hostId, parsed.bootId, next.seq);
+          this.rawRows.delete(parsed.hostId);
           affectedMinutes.push(Math.floor(next.at_ms / MINUTE_MS) * MINUTE_MS);
         }
         accepted += 1;
@@ -598,7 +682,6 @@ export class Installation extends DurableObject<Env> {
       }
       if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(parsed.system));
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
-      this.invalidateHistory();
     });
 
     if (accepted === 0 && duplicates === 0) {

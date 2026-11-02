@@ -266,6 +266,43 @@ describe("history", () => {
 });
 
 describe("history reads", () => {
+  describe("after an earlier read", () => {
+    const full = JSON.parse(files["batch-full.json"]!) as { samples: unknown[] };
+    async function send(token: string, hostId: string, samples: unknown[]): Promise<void> {
+      const body = { ...JSON.parse(files["batch-full.json"]!), hostId, samples };
+      const response = await SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      expect(response.status).toBe(200);
+    }
+    async function everyKind(hostId: string): Promise<unknown> {
+      const response = await historySearch(hostId, "range=1h&kinds=summary,disks,nets,filesystems,block");
+      expect(response.status).toBe(200);
+      const body = await response.json() as { histories: Record<string, Record<string, unknown>> };
+      return Object.fromEntries(Object.entries(body.histories).map(([kind, value]) => [kind, { ...value, hostId: undefined }]));
+    }
+    async function readBetween(first: unknown[], second: unknown[]): Promise<{ primed: unknown; fresh: unknown }> {
+      const primed = await createHost();
+      await send(primed.token, primed.hostId, first);
+      await everyKind(primed.hostId);
+      await send(primed.token, primed.hostId, second);
+      const fresh = await createHost();
+      await send(fresh.token, fresh.hostId, first);
+      await send(fresh.token, fresh.hostId, second);
+      return { primed: await everyKind(primed.hostId), fresh: await everyKind(fresh.hostId) };
+    }
+
+    it("serves a later sample exactly as a host never read before", async () => {
+      const { primed, fresh } = await readBetween([full.samples[0]], [full.samples[1]]);
+      expect((primed as { summary: { points: unknown[] } }).summary.points).toHaveLength(2);
+      expect(primed).toEqual(fresh);
+    });
+
+    it("serves a late sample and the delta it rewrites exactly as a host never read before", async () => {
+      const { primed, fresh } = await readBetween([full.samples[1]], [full.samples[0]]);
+      expect((primed as { summary: { points: unknown[] } }).summary.points).toHaveLength(2);
+      expect(primed).toEqual(fresh);
+    });
+  });
+
   it("returns history that includes a later batch", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
