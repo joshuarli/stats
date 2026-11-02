@@ -41,24 +41,28 @@ Stop it with SIGTERM; the supervisor and service scripts stop the child and
 keep the configuration. Revoke the host credential before removing the binary,
 configuration, and token.
 
-## Install on macOS
+## Install on macOS or Alpine
 
-The macOS agent runs as a launchd user agent under your own account, with no
-root. From a Mac with this repository and `cf access login
-https://stats.17166969.xyz` done, point it at the target:
+With this repository and `cf access login https://stats.17166969.xyz` done,
+point it at the host:
 
 ```sh
 make add-host NAME=m1-max SSH=josh@m1-max
 ```
 
-The target creates the host when the name is new, builds the native binary,
-installs `~/.local/bin/stats` and the config and token under
-`~/.config/stats`, loads the launchd agent, and waits for the first upload.
-Set `SSH=local`, or omit `SSH`, to set up the Mac running the command.
-Rerunning it updates only what changed and keeps the existing host and token.
+The target detects the remote OS. On macOS it builds the native binary and
+installs a launchd user agent under the login account, with no root. On Alpine
+it builds the static musl binary and installs an OpenRC service that runs as
+the `stats` user, using passwordless `doas` or `sudo`. Either way it creates
+the host when the name is new, rotates the token when the server knows the host
+but the target has no config, installs the binary, config, token, and service
+unit, and waits for the first upload. Set `SSH=local`, or omit `SSH`, to set up
+the machine running the command. Rerunning it updates only what changed and
+keeps the existing host and token.
 
-To install by hand, build it natively with `cargo build --release --manifest-path
-agent/Cargo.toml`, provision the host, then:
+To install the macOS agent by hand, build it natively with
+`cargo build --release --manifest-path agent/Cargo.toml`, provision the host,
+then:
 
 ```sh
 install -d -m 0700 ~/.local/bin ~/.config/stats

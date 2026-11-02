@@ -31,13 +31,17 @@ make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
 ```
 
-`make add-host NAME=<label> SSH=<user@host>` sets up a macOS host end to end.
-It creates the host when the label is new, rotates the token when the server
-has the host but the target has no local config, builds the native binary,
-installs the launchd agent under the login user, and waits for a fresh
-receipt. It needs `cf access login https://<host>` and SSH access to the
-target; `SSH=local` installs on the Mac running the command. A rerun updates
-only the binary, config, or plist that changed.
+`make add-host NAME=<label> SSH=<user@host>` provisions a host end to end. On
+macOS it builds the native binary and installs a launchd user agent under the
+login account. On Alpine it builds the static musl binary and installs the
+OpenRC service as the `stats` user, using passwordless `doas` or `sudo`. In
+both cases it creates the host when the label is new, rotates the token when
+the server has the host but the target has no config, installs the binary,
+config, token, and service unit, and waits for a fresh receipt. It needs
+`cf access login https://<host>` and SSH access to the target; `SSH=local`
+installs on the machine running the command. A rerun updates only the binary,
+config, or service unit that changed. A Linux host also needs an entry in
+`deploy/hosts.json` to receive `make deploy-hosts` updates.
 
 `make deploy` runs `fixtures`, `worker-test`, and `agent-test` in order,
 deploys the bundle those tests built with

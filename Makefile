@@ -36,8 +36,18 @@ agent-build-macos: work-ready
 add-host-check:
 	@test -n '$(NAME)' || { echo 'usage: make add-host NAME=<label> [SSH=<user@host>|local]' >&2; exit 2; }
 
-add-host: add-host-check agent-build-macos
-	deploy/add-macos-host.sh '$(NAME)' '$(SSH)'
+add-host: add-host-check
+	@set -eu; \
+	if [ '$(SSH)' = local ]; then os=$$(uname -s); else \
+	  os=$$(ssh $${SSH_OPTS:--o BatchMode=yes -o ConnectTimeout=10} -- '$(SSH)' uname -s); \
+	fi; \
+	case "$$os" in \
+	  Darwin) build=agent-build-macos ;; \
+	  Linux) build=agent-build ;; \
+	  *) echo "add-host: $(SSH) reported '$$os'; expected Darwin or Linux" >&2; exit 1 ;; \
+	esac; \
+	$(MAKE) --no-print-directory "$$build"; \
+	deploy/add-host.sh '$(NAME)' '$(SSH)'
 
 cloudflare-test: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry typecheck
