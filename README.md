@@ -70,6 +70,13 @@ interfaces default to Ethernet-type `en*` ports, and filesystems to writable
 local volumes that Finder shows plus the `/System/Volumes/Data` volume. The
 binary links only system libraries and frameworks.
 
+On macOS the agent also reports GPU busy time and GPU energy from IOReport, a
+private library it opens at runtime, and whole-system power from the battery's
+power telemetry, which updates about once a minute. Either group is reported
+unavailable when its source is missing, for example system power on a Mac
+without a battery. CPU, DRAM, and Neural Engine energy are not reported: their
+IOReport counters do not advance for an unprivileged process.
+
 ## Configuration
 
 The config and the token file must be regular, owner-only files (no group or
