@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compact, rawPoints, rollupFromRaw, rollupPoints, type DiskPoint, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
+import { combineRollups, compact, rawPoints, rollupFromRaw, rollupPoints, type DiskPoint, type NetPoint, type RawRow, type RollupPayload, type SummaryPoint } from "../src/aggregate";
 import { computeDelta } from "../src/delta";
 import type { Disk, Net, Sample } from "../src/protocol";
 
@@ -178,5 +178,77 @@ describe("memory pressure level", () => {
   it("is absent when the host does not report it", () => {
     expect((rawPoints([row(1)], "summary") as SummaryPoint[])[0]!.mem).not.toHaveProperty("pressure");
     expect((rollupPoints([rollupFromRaw([row(1)], 0, 60_000)!], "summary") as SummaryPoint[])[0]!.mem).not.toHaveProperty("pressure");
+  });
+});
+
+describe("gpu and power", () => {
+  const sample = (monoMs: number, extra: Pick<Sample, "gpu" | "power">): Sample => ({ seq: String(monoMs / 1000), atMs: String(monoMs), monoMs: String(monoMs), cpuCount: 8, ...extra });
+  const first = sample(0, { gpu: { active: "1000", total: "5000" }, power: { gpuNj: "2000000000", systemMwSum: "300000", systemReadings: "10" } });
+  const second = sample(15_000, { gpu: { active: "1750", total: "6000" }, power: { gpuNj: "11700000000", systemMwSum: "314800", systemReadings: "11" } });
+  const third = sample(30_000, { gpu: { active: "2000", total: "7000" }, power: { gpuNj: "13700000000", systemMwSum: "314800", systemReadings: "11" } });
+  const rows = (): RawRow[] => [
+    { sample: second, delta: computeDelta(first, second, 15_000) },
+    { sample: third, delta: computeDelta(second, third, 15_000) }
+  ];
+
+  it("computes busy percent and watts per sample, leaving system watts out when no reading arrived", () => {
+    const points = rawPoints(rows(), "summary") as SummaryPoint[];
+    expect(points[0]!.gpu!.busyPct).toBeCloseTo(75, 9);
+    expect(points[0]!.power!.gpuWatts).toBeCloseTo(9_700_000_000 / 15_000 / 1e6, 9);
+    expect(points[0]!.power!.systemWatts).toBeCloseTo(14.8, 9);
+    expect(points[1]!.gpu!.busyPct).toBeCloseTo(25, 9);
+    expect(points[1]!.power!.gpuWatts).toBeCloseTo(2_000_000_000 / 15_000 / 1e6, 9);
+    expect(points[1]!.power).not.toHaveProperty("systemWatts");
+  });
+
+  it("sums deltas in rollups so system watts is the mean of the readings that arrived", () => {
+    const payload = rollupFromRaw(rows(), 0, 60_000)!;
+    const [point] = rollupPoints([payload], "summary") as SummaryPoint[];
+    expect(point!.gpu!.busyPct).toBeCloseTo(50, 9);
+    expect(point!.power!.gpuWatts).toBeCloseTo(11_700_000_000 / 30_000 / 1e6, 9);
+    expect(point!.power!.systemWatts).toBeCloseTo(14.8, 9);
+
+    const [merged] = rollupPoints([combineRollups([payload, payload], 0, 120_000)!], "summary") as SummaryPoint[];
+    expect(merged!.gpu!.busyPct).toBeCloseTo(50, 9);
+    expect(merged!.power!.gpuWatts).toBeCloseTo(11_700_000_000 / 30_000 / 1e6, 9);
+    expect(merged!.power!.systemWatts).toBeCloseTo(14.8, 9);
+  });
+
+  it("gives no system watts for a bucket where readings did not advance", () => {
+    const quiet: RawRow[] = [{ sample: third, delta: computeDelta(second, third, 15_000) }];
+    const [point] = rollupPoints([rollupFromRaw(quiet, 0, 60_000)!], "summary") as SummaryPoint[];
+    expect(point!.power).toEqual({ gpuWatts: expect.any(Number) });
+  });
+
+  it("leaves everything absent when a sample lacks the groups, a counter regressed, or the total did not advance", () => {
+    const bare = sample(15_000, {});
+    const none: RawRow[] = [{ sample: bare, delta: computeDelta(first, bare, 15_000) }];
+    const [raw] = rawPoints(none, "summary") as SummaryPoint[];
+    expect(raw).not.toHaveProperty("gpu");
+    expect(raw).not.toHaveProperty("power");
+    const [rolled] = rollupPoints([rollupFromRaw(none, 0, 60_000)!], "summary") as SummaryPoint[];
+    expect(rolled).not.toHaveProperty("gpu");
+    expect(rolled).not.toHaveProperty("power");
+
+    const reset = sample(15_000, { gpu: { active: "10", total: "20" }, power: { gpuNj: "5", systemMwSum: "1", systemReadings: "1" } });
+    const delta = computeDelta(first, reset, 15_000);
+    expect(delta.gpu).toBeUndefined();
+    expect(delta.power).toBeUndefined();
+
+    const stalled = sample(15_000, { gpu: { active: "1000", total: "5000" } });
+    const [flat] = rawPoints([{ sample: stalled, delta: computeDelta(first, stalled, 15_000) }], "summary") as SummaryPoint[];
+    expect(flat).not.toHaveProperty("gpu");
+  });
+
+  it("keeps a working system reading when only the gpu energy counter regressed", () => {
+    const mixed = sample(15_000, { power: { gpuNj: "1", systemMwSum: "314800", systemReadings: "11" } });
+    expect(computeDelta(first, mixed, 15_000).power).toEqual({ systemMwSum: "14800", systemReadings: "1" });
+  });
+
+  it("decodes rollup payloads stored before gpu and power existed", () => {
+    const stored = JSON.parse(JSON.stringify(rollupFromRaw([{ sample: first, delta: { intervalMs: 15_000, disks: {}, nets: {} } }], 0, 60_000))) as RollupPayload;
+    const [point] = rollupPoints([stored], "summary") as SummaryPoint[];
+    expect(point).not.toHaveProperty("gpu");
+    expect(point).not.toHaveProperty("power");
   });
 });

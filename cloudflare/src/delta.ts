@@ -1,4 +1,4 @@
-import type { Cpu, Disk, Net, Sample } from "./protocol";
+import type { Cpu, Disk, Gpu, Net, Power, Sample } from "./protocol";
 
 export interface SwapDelta {
   readonly swapIn: string;
@@ -9,6 +9,8 @@ export interface Delta {
   readonly intervalMs: number;
   readonly cpu?: Cpu;
   readonly swap?: SwapDelta;
+  readonly gpu?: Gpu;
+  readonly power?: Power;
   readonly disks: Record<string, Disk>;
   readonly nets: Record<string, Net>;
 }
@@ -40,6 +42,24 @@ function swapDelta(previous: Sample, current: Sample): SwapDelta | null {
   return swapIn === null || swapOut === null ? null : { swapIn, swapOut };
 }
 
+function gpuDelta(previous: Gpu | undefined, current: Gpu | undefined): Gpu | null {
+  if (previous === undefined || current === undefined) return null;
+  const active = difference(current.active, previous.active);
+  const total = difference(current.total, previous.total);
+  return active === null || total === null ? null : { active, total };
+}
+
+function powerDelta(previous: Power | undefined, current: Power | undefined): Power | null {
+  if (previous === undefined || current === undefined) return null;
+  const gpuNj = previous.gpuNj === undefined || current.gpuNj === undefined ? null : difference(current.gpuNj, previous.gpuNj);
+  const hasSystem = previous.systemMwSum !== undefined && previous.systemReadings !== undefined && current.systemMwSum !== undefined && current.systemReadings !== undefined;
+  const systemMwSum = hasSystem ? difference(current.systemMwSum!, previous.systemMwSum!) : null;
+  const systemReadings = hasSystem ? difference(current.systemReadings!, previous.systemReadings!) : null;
+  const system = systemMwSum !== null && systemReadings !== null;
+  if (gpuNj === null && !system) return null;
+  return { ...(gpuNj === null ? {} : { gpuNj }), ...(system ? { systemMwSum, systemReadings } : {}) };
+}
+
 const CPU_OPTIONAL_FIELDS = ["iowait", "steal"] as const;
 export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
 export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
@@ -61,6 +81,8 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
   if (previous === undefined || elapsedMs <= 0) return EMPTY;
   const cpu = previous.cpu !== undefined && current.cpu !== undefined ? cpuDelta(previous.cpu, current.cpu) : null;
   const swap = swapDelta(previous, current);
+  const gpu = gpuDelta(previous.gpu, current.gpu);
+  const power = powerDelta(previous.power, current.power);
   const disks: Record<string, Disk> = {};
   if (previous.disks !== undefined && current.disks !== undefined) {
     const before = new Map(previous.disks.map(disk => [disk.id, disk]));
@@ -83,7 +105,7 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
       nets[net.id] = { id: net.id, ...values } as Net;
     }
   }
-  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), disks, nets };
+  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), ...(gpu === null ? {} : { gpu }), ...(power === null ? {} : { power }), disks, nets };
 }
 
 export function parseDelta(text: string): Delta {
@@ -93,6 +115,8 @@ export function parseDelta(text: string): Delta {
       intervalMs: typeof value.intervalMs === "number" && Number.isFinite(value.intervalMs) && value.intervalMs > 0 ? value.intervalMs : 0,
       ...(value.cpu === undefined ? {} : { cpu: value.cpu }),
       ...(value.swap === undefined ? {} : { swap: value.swap }),
+      ...(value.gpu === undefined ? {} : { gpu: value.gpu }),
+      ...(value.power === undefined ? {} : { power: value.power }),
       disks: value.disks ?? {},
       nets: value.nets ?? {}
     };

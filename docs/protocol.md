@@ -50,7 +50,7 @@ or an empty string.
 | `seq` | yes | decimal string, at most 2^53-1; `floor(monoMs / 1000)` |
 | `atMs` | yes | epoch milliseconds, at most 2^53-1 |
 | `monoMs` | yes | monotonic milliseconds since boot, at most 2^53-1 |
-| `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`; at most 8, unique |
+| `unavailable` | no | array of `cpu`, `load`, `mem`, `uptime`, `disks`, `nets`, `psi`, `filesystems`, `gpu`, `power`; at most 10, unique |
 | `cpu` | no | `user`, `system`, `idle`, `total`, and optionally `iowait` and `steal`, each a u64 string |
 | `load` | no | `one`, `five`, `fifteen`, each a fixed 3-decimal string |
 | `mem` | no | `total`, `available`, `swapTotal`, `swapFree`, each a byte string; optionally `swapIn` and `swapOut` together, cumulative bytes paged in from and out to swap since boot (`pswpin` and `pswpout` from `/proc/vmstat` times the page size), each a u64 string; optionally `pressure`, the kernel memory pressure level `normal`, `warn`, or `critical` (macOS `kern.memorystatus_vm_pressure_level`) |
@@ -61,6 +61,8 @@ or an empty string.
 | `psi` | no | optional `cpu`, `memory`, `io`; each has `some10`, `some60`, `some300` (fixed 2-decimal percent) and `total` (microseconds); each may also have all four of `full10`, `full60`, `full300`, `fullTotal` |
 | `filesystems` | no | 0–16 objects: `id` (mount path), `type` (allow-list enum), `total`, `available` |
 | `block` | no | `buckets` (exactly 16 u64 strings), `count`, `totalUs`, `minUs`, `maxUs` |
+| `gpu` | no | `active` and `total`, both required u64 strings: cumulative GPU residency in 24 MHz ticks, `active` outside the off state and `total` across all states |
+| `power` | no | at least one of `gpuNj`, cumulative GPU energy in nanojoules, or `systemMwSum` and `systemReadings` together, a running sum of whole-system power readings in milliwatts and the count of readings; each a u64 string |
 
 A listed `unavailable` group must not also be present. A sample with no metric
 group is invalid. Unknown fields at any level are invalid. Device ids and
@@ -122,6 +124,13 @@ credentials, token hashes, or request bodies.
   monotonic interval. A sample without the pair, or a regressed counter, has no
   swap rate for that interval; the pair is absent when `/proc/vmstat` cannot be
   read, never zero.
+- GPU busy percent is the `active` delta divided by the `total` delta times
+  100. GPU watts are the `gpuNj` delta divided by the monotonic interval in
+  milliseconds and by 1e6. System watts are the `systemMwSum` delta divided by
+  the `systemReadings` delta and by 1000; the source publishes about once a
+  minute, so an interval in which `systemReadings` did not advance has no
+  system watts, never zero. Rollups sum the deltas, so a bucket's system watts
+  is the mean of the readings that arrived in it.
 - Disk and network rates are deltas divided by the monotonic interval. Disk
   bytes use 512-byte sectors. `ioMs / interval` is busy time and may exceed
   100% when the device has concurrent I/O.

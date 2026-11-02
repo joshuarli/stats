@@ -89,6 +89,17 @@ export interface Block {
   readonly maxUs: string;
 }
 
+export interface Gpu {
+  readonly active: string;
+  readonly total: string;
+}
+
+export interface Power {
+  readonly gpuNj?: string;
+  readonly systemMwSum?: string;
+  readonly systemReadings?: string;
+}
+
 export interface Sample {
   readonly seq: string;
   readonly atMs: string;
@@ -104,6 +115,8 @@ export interface Sample {
   readonly psi?: Psi;
   readonly filesystems?: readonly FileSystem[];
   readonly block?: Block;
+  readonly gpu?: Gpu;
+  readonly power?: Power;
 }
 
 export interface CpuInfo {
@@ -131,8 +144,8 @@ export type BatchResult =
   | { readonly ok: true; readonly hostId: string; readonly bootId: string; readonly system?: SystemInfo; readonly samples: readonly SampleResult[] }
   | { readonly ok: false; readonly code: RejectCode; readonly message: string };
 
-const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block"] as const;
-const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems"] as const;
+const SAMPLE_KEYS = ["seq", "atMs", "monoMs", "unavailable", "cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"] as const;
+const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power"] as const;
 const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"] as const;
 const HOST = /^h_[0-9a-f]{32}$/u;
 const BOOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
@@ -216,6 +229,11 @@ function parseMem(value: unknown): boolean {
   return activity.length === 0 || (activity.length === 2 && activity.every(key => decimal(value[key])));
 }
 
+function parsePower(value: unknown): boolean {
+  if (!subset(value, ["gpuNj", "systemMwSum", "systemReadings"]) || Object.keys(value).length === 0) return false;
+  return Object.values(value).every(entry => decimal(entry)) && ("systemMwSum" in value) === ("systemReadings" in value);
+}
+
 function parsePsiGroup(value: unknown): PsiGroup | null {
   if (!subset(value, ["some10", "some60", "some300", "total", "full10", "full60", "full300", "fullTotal"])) return null;
   if (!["some10", "some60", "some300", "total"].every(key => key in value)) return null;
@@ -264,14 +282,14 @@ export function parseSample(value: unknown): SampleResult {
   if (!safeDecimal(value.atMs) || !safeDecimal(value.monoMs)) return fail("timestamp or monotonic clock is not bounded");
   const unavailable = value.unavailable;
   if (unavailable !== undefined) {
-    if (!Array.isArray(unavailable) || unavailable.length > 8) return fail("unavailable must be a bounded array");
+    if (!Array.isArray(unavailable) || unavailable.length > UNAVAILABLE_GROUPS.length) return fail("unavailable must be a bounded array");
     const seen = new Set<string>();
     for (const group of unavailable) {
       if (typeof group !== "string" || !(UNAVAILABLE_GROUPS as readonly string[]).includes(group) || seen.has(group)) return fail("unavailable contains an unknown or repeated group");
       seen.add(group);
     }
   }
-  const metrics = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block"].filter(key => value[key] !== undefined);
+  const metrics = ["cpu", "load", "mem", "uptimeMs", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"].filter(key => value[key] !== undefined);
   if (metrics.length === 0) return fail("sample has no metric group");
   if (value.unavailable !== undefined) {
     for (const group of value.unavailable as string[]) {
@@ -303,6 +321,8 @@ export function parseSample(value: unknown): SampleResult {
     if (filesystems === null || !filesystems.every(filesystem => exact(filesystem, ["id", "type", "total", "available"]) && typeof filesystem.id === "string" && filesystem.id.startsWith("/") && filesystem.id.length <= 255 && !filesystem.id.includes("\0") && typeof filesystem.type === "string" && (FS_TYPES as readonly string[]).includes(filesystem.type) && decimal(filesystem.total) && decimal(filesystem.available))) return fail("filesystems");
   }
   if (value.block !== undefined && parseBlock(value.block) === null) return fail("block");
+  if (value.gpu !== undefined && !(exact(value.gpu, ["active", "total"]) && decimal(value.gpu.active) && decimal(value.gpu.total))) return fail("gpu");
+  if (value.power !== undefined && !parsePower(value.power)) return fail("power");
   return { ok: true, sample: value as unknown as Sample };
 }
 
