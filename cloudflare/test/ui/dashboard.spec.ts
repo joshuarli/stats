@@ -425,6 +425,28 @@ test("an unknown project id shows a not-found state", async ({ page }) => {
   await expect(page.getByText("Project not found")).toBeVisible();
 });
 
+test("the project page refreshes on the collector cadence, not every live tick", async ({ page }) => {
+  await page.clock.install();
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  const projectHistory = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history")).length;
+  const initial = projectHistory();
+  expect(initial).toBeGreaterThan(0);
+
+  await page.clock.runFor(30_000);
+  await page.waitForTimeout(100);
+  expect(projectHistory()).toBe(initial);
+
+  await page.clock.runFor(5 * 60_000);
+  await expect.poll(() => projectHistory()).toBeGreaterThan(initial);
+
+  const beforeManual = projectHistory();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() => projectHistory()).toBeGreaterThan(beforeManual);
+});
+
 test("the project page shows its summary and rows of aligned chart cards", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff");

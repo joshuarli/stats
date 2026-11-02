@@ -5,7 +5,7 @@ import { getProjectCollector, getProjectMetrics, type Project } from "../api";
 import { errorMessage } from "../format";
 import { collectorStatus } from "../status";
 import { loadProjects, loadQuery } from "../queries";
-import { useTelemetry } from "../state";
+import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
 import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { StatusStrip } from "./host/Status";
@@ -20,10 +20,11 @@ import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();
-  const { tick } = useTelemetry();
+  const { tick, manualTick } = useTelemetry();
+  const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   const project = createMemo(() => projects().find(candidate => candidate.id === (params.projectId ?? "")));
-  createEffect(() => tick(), () => { void refresh(projects); }, { defer: true });
+  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); }, { defer: true });
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
@@ -46,7 +47,8 @@ export function ProjectPage(): JSX.Element {
 }
 
 function ProjectView(props: { readonly project: Project }): JSX.Element {
-  const { range, view, now, tick } = useTelemetry();
+  const { range, view, now, tick, manualTick } = useTelemetry();
+  const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const id = () => props.project.id;
   const worker = createMemo(() => loadQuery(signal => getProjectMetrics(id(), range(), "worker", signal)));
@@ -69,7 +71,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       setRefreshError(errorMessage(error));
     }
   };
-  createEffect(() => tick(), () => { void doRefresh(); }, { defer: true });
+  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void doRefresh(); }, { defer: true });
 
   const data = createMemo((): ProjectData => ({
     worker: worker(),

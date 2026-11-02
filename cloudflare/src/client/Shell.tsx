@@ -28,7 +28,7 @@ export function Shell(props: ParentProps): JSX.Element {
   onSettled(() => {
     const clock = window.setInterval(() => setNow(Date.now()), 10_000);
     const live = window.setInterval(() => {
-      if (!document.hidden && views.live() && views.view() === null) views.requestRefresh();
+      if (!document.hidden && views.live() && views.view() === null) views.autoRefresh();
     }, LIVE_INTERVAL_MS);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;

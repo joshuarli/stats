@@ -5,7 +5,7 @@ import { age, bytes, count, errorMessage, percent, rate } from "../format";
 import { cpuUsed, latestPoint, loadOne, memoryFree, memoryTotal, memoryUsed, psiCpu, sparkPoints, sumLatest } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { collectorStatus, statusFor, type HostStatus } from "../status";
-import { useTelemetry } from "../state";
+import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
 import type { Host, Project } from "../api";
 import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
@@ -129,9 +129,10 @@ export function FleetPage(): JSX.Element {
 }
 
 function ProjectsSection(): JSX.Element {
-  const { now, tick } = useTelemetry();
+  const { now, tick, manualTick } = useTelemetry();
+  const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
-  createEffect(() => tick(), () => { void refresh(projects); }, { defer: true });
+  createEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); }, { defer: true });
   return (
     <Show when={projects().length > 0}>
       <Widget
