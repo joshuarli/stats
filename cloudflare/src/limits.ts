@@ -4,6 +4,7 @@ export const DAY_MS = 24 * HOUR_MS;
 
 export const RAW_STEP_MS = 15_000;
 export const RAW_RETENTION_MS = 2 * DAY_MS;
+export const RAW_HISTORY_SPAN_MS = 12 * HOUR_MS;
 export const MINUTE_RETENTION_MS = 7 * DAY_MS;
 export const HOUR_RETENTION_MS = 90 * DAY_MS;
 

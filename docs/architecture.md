@@ -131,10 +131,13 @@ less than 80% of its span covered by usable intervals is marked partial.
 A Durable Object alarm deletes expired rows in batches of 1000 per tier. It
 never repairs or invents data.
 
-History picks raw when the window starts within 48 hours, one-minute rollups
-within 7 days, and hourly rollups beyond, so a zoomed window reads finer data
-than the preset range it came from. Results are downsampled to at most 900
-points and carry a `stepMs`, with fractions rounded to three decimals.
+History picks raw when the window starts within 48 hours and spans at most 12
+hours, one-minute rollups within 7 days, and hourly rollups beyond, so a zoomed
+window reads finer data than the preset range it came from. Windows longer than
+12 hours use one-minute rollups even inside the raw retention, because raw
+sampling would be downsampled to about the same resolution after the 900-point
+cap. Results are downsampled to at most 900 points and carry a `stepMs`, with
+fractions rounded to three decimals.
 
 A preset range ends at the current 15-second raw step, and the Durable Object
 keeps the last four windows it built, each for every history kind. The

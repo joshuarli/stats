@@ -130,6 +130,13 @@ describe("history", () => {
     expect(weekBody.points[0]!.coverageMs).toBe(15_000);
     expect(weekBody.points[0]!.partial).toBe(true);
 
+    const sixHours = await history(host.hostId, "6h", "summary");
+    expect((await sixHours.json() as { resolution: string }).resolution).toBe("raw");
+    const day = await history(host.hostId, "24h", "summary");
+    const dayBody = await day.json() as { resolution: string; stepMs: number };
+    expect(dayBody.resolution).toBe("1m");
+    expect(dayBody.stepMs).toBe(60_000);
+
     const quarter = await history(host.hostId, "90d", "summary");
     const quarterBody = await quarter.json() as { resolution: string; stepMs: number };
     expect(quarterBody.resolution).toBe("1h");

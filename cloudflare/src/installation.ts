@@ -3,7 +3,7 @@ import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHas
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValue, rangeKey, rawPoints, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "./aggregate";
-import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
+import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
 import { projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
@@ -331,7 +331,7 @@ export class Installation extends DurableObject<Env> {
     const toMs = "range" in query ? at : query.toMs;
     const fromMs = "range" in query ? at - RANGE_MS[query.range] : query.fromMs;
     const range = "range" in query ? { range: query.range } : {};
-    const rawRange = fromMs >= now - RAW_RETENTION_MS;
+    const rawRange = fromMs >= now - RAW_RETENTION_MS && toMs - fromMs <= RAW_HISTORY_SPAN_MS;
     const resolution: "raw" | "1m" | "1h" = rawRange ? "raw" : fromMs >= now - MINUTE_RETENTION_MS ? "1m" : "1h";
     const key = `${hostId}|${resolution}|${fromMs}|${toMs}`;
     let byKind = this.historyCache.get(key);
