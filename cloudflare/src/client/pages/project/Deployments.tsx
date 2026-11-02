@@ -100,7 +100,7 @@ export function ProjectDeployments(props: { readonly projectId: string; readonly
             <>
               <p class="panel-label">Before: {new Date(value().before.fromMs).toLocaleString()} – {new Date(value().before.toMs).toLocaleString()} ({display(value().beforeInvocations)} invocations). After: {new Date(value().after.fromMs).toLocaleString()} – {new Date(value().after.toMs).toLocaleString()} ({display(value().afterInvocations)} invocations).</p>
               <Show when={value().reasons.length > 0}><p class="deployment-notice" role="status">No verdict: {value().reasons.join(" ")}</p></Show>
-              <div class="deployment-table" tabIndex={0} role="region" aria-label="Deployment metric comparison">
+              <div class="deployment-table" role="region" aria-label="Deployment metric comparison">
                 <table>
                   <thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th><th>Signal</th></tr></thead>
                   <tbody><For each={value().metrics}>{metric => <tr><th scope="row">{metric.label}</th><td>{display(metric.before, metric.unit)}</td><td>{display(metric.after, metric.unit)}</td><td>{change(metric)}</td><td>{metric.verdict.replaceAll("-", " ")}</td></tr>}</For></tbody>
