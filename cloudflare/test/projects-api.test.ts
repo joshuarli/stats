@@ -15,8 +15,8 @@ function installation() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
 }
 
-async function get(path: string): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
+  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken(), ...headers } });
 }
 
 async function history(range: string, kind: string): Promise<{ stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] }> {
@@ -134,6 +134,24 @@ describe("project history", () => {
     for (const query of ["range=1h&kinds=worker,hosts", "range=1h&kind=worker&kinds=worker", "range=1h&kinds="]) {
       expect((await get(`/projects/stuff/history?${query}`)).status, query).toBe(400);
     }
+  });
+
+  it("answers with 304 until a collector run changes the project version", async () => {
+    await record(metricRun(NOW - BUCKET, []));
+    const path = "/projects/stuff/history?range=1h&kinds=worker,collector";
+    const first = await get(path);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).not.toBeNull();
+
+    const unchanged = await get(path, { "If-None-Match": etag! });
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+
+    await record(metricRun(NOW - 2 * BUCKET, []));
+    const changed = await get(path, { "If-None-Match": etag! });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
   it("adds sums and takes maxes when 5 minute buckets share a wider bucket", async () => {

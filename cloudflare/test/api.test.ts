@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiFailure, getHosts } from "../src/client/api";
+import { ApiFailure, getHosts, getSummary } from "../src/client/api";
 
 const signal = new AbortController().signal;
 
@@ -24,5 +24,26 @@ describe("dashboard decoding", () => {
       expect(((error as ApiFailure).cause as Error).message, name).toBe(message);
     }
     expect(log).toHaveBeenCalledTimes(cases.length);
+  });
+});
+
+describe("conditional history reads", () => {
+  it("reuses the cached body when the server answers 304", async () => {
+    const hostId = "h_0123456789abcdef0123456789abcdef";
+    const summary = { hostId, range: "1h", kind: "summary", fromMs: 0, toMs: 60_000, resolution: "raw", stepMs: 15_000, points: [] };
+    const seen: Headers[] = [];
+    let calls = 0;
+    vi.stubGlobal("fetch", async (_input: unknown, init?: RequestInit) => {
+      calls += 1;
+      seen.push(new Headers(init?.headers));
+      return calls === 1
+        ? new Response(JSON.stringify(summary), { headers: { "Content-Type": "application/json", ETag: '"v1"' } })
+        : new Response(null, { status: 304 });
+    });
+
+    const first = await getSummary(hostId, { range: "1h" }, signal);
+    const second = await getSummary(hostId, { range: "1h" }, signal);
+    expect(second).toEqual(first);
+    expect(seen[1]?.get("if-none-match")).toBe('"v1"');
   });
 });

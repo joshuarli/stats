@@ -14,7 +14,7 @@ function schemaVersion(state: DurableObjectState): number {
 describe("schema migrations", () => {
   it("starts a fresh object at the current version", async () => {
     const version = await runInDurableObject(stub("migration-fresh"), async (_instance, state) => schemaVersion(state));
-    expect(version).toBe(6);
+    expect(version).toBe(7);
   });
 
   it("adds host system details to an object already at the previous version without touching its hosts", async () => {
@@ -23,8 +23,9 @@ describe("schema migrations", () => {
       state.storage.sql.exec("DROP TABLE host_system");
       state.storage.sql.exec("UPDATE schema_version SET version = 2");
       migrate(state.storage);
-      expect(schemaVersion(state)).toBe(6);
+      expect(schemaVersion(state)).toBe(7);
       expect(state.storage.sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
+      expect(state.storage.sql.exec("SELECT version FROM host_history_versions").toArray()).toEqual([{ version: 0 }]);
       expect(state.storage.sql.exec("SELECT count(*) AS total FROM host_system").one().total).toBe(0);
     });
   });
@@ -39,7 +40,7 @@ describe("schema migrations", () => {
       sql.exec("DROP TABLE collector_runs");
       sql.exec("UPDATE schema_version SET version = 3");
       migrate(state.storage);
-      expect(schemaVersion(state)).toBe(6);
+      expect(schemaVersion(state)).toBe(7);
       expect(sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
       expect(sql.exec("SELECT count(*) AS total FROM samples").one().total).toBe(1);
       const tables = sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('project_samples', 'project_hours', 'collector_runs')").toArray().map(row => row.name).sort();
@@ -99,7 +100,7 @@ describe("schema migrations", () => {
       state.storage.sql.exec("DROP INDEX samples_by_received");
       state.storage.sql.exec("UPDATE schema_version SET version = 0");
       migrate(state.storage);
-      expect(schemaVersion(state)).toBe(6);
+      expect(schemaVersion(state)).toBe(7);
       const objects = state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE name IN ('rollups', 'samples_by_received', 'rollups_by_expiry')").toArray().map(row => row.name).sort();
       expect(objects).toEqual(["rollups", "rollups_by_expiry", "samples_by_received"]);
     });

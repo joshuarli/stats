@@ -122,6 +122,10 @@ export function summarizeCollector(sql: SqlStorage, now: number): CollectorSumma
   };
 }
 
+export function latestCollectorRunId(sql: SqlStorage): number | null {
+  return sql.exec<{ id: number }>("SELECT id FROM collector_runs ORDER BY id DESC LIMIT 1").toArray()[0]?.id ?? null;
+}
+
 export function readCollectorHistory(sql: SqlStorage, project: ProjectConfig, range: RangeKey, now: number): CollectorHistory {
   const fromMs = now - RANGE_MS[range];
   const runs = sql

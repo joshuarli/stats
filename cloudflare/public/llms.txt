@@ -17,7 +17,7 @@ A missing or invalid token answers 401. Errors are `{"error":{"code","message"}}
     GET /api/v1/projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|probes|collector
     GET /api/v1/projects/:id/history?range=1h&kinds=worker,r2,collector
 
-`/projects` lists each project with its Worker, buckets, probes, and `collector.lastRunAtMs`, `lastSuccessAtMs`, `lastError`, `stale`. Project ids today: stuff, usr-memories, stats. `kinds` replaces `kind` and returns the selected histories under `histories`.
+`/projects` lists each project with its Worker, buckets, probes, and `collector.lastRunAtMs`, `lastSuccessAtMs`, `lastError`, `stale`. Project ids today: stuff, usr-memories, stats. `kinds` replaces `kind` and returns the selected histories under `histories`. History responses carry `ETag`; send `If-None-Match` to receive `304` when no collector run has changed the data.
 
 A response for any kind except `collector` is:
 
@@ -50,7 +50,7 @@ Reading them:
     GET /api/v1/hosts/:hostId/history?from=<epoch ms>&to=<epoch ms>&kind=...
     GET /api/v1/hosts/:hostId/history?range=1h&kinds=summary,disks,nets
 
-`from` and `to` replace `range` and may span at most 90 days. History is downsampled to at most 900 points and carries `stepMs`. `latest` and `system` answer 404 until the host has reported. `kinds` replaces `kind` and returns the selected histories under `histories`.
+`from` and `to` replace `range` and may span at most 90 days. History is downsampled to at most 900 points and carries `stepMs`. `latest` and `system` answer 404 until the host has reported. `kinds` replaces `kind` and returns the selected histories under `histories`. History responses carry `ETag`; send `If-None-Match` to receive `304` when the source data has not changed.
 
 Data rules: u64 counters and timings arrive as decimal strings. A missing value is absent or `unavailable`, never zero. Rates are computed from monotonic-clock deltas within one boot, and a counter regression is a gap, never a negative rate.
 

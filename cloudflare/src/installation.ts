@@ -6,7 +6,7 @@ import { combineRollups, compact, downsample, historyQuery, kindValue, kindsValu
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, HISTORY_KINDS, type HistoryKind, type RangeKey } from "./limits";
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
-import { projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
+import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 
 export const ONLINE_WINDOW_MS = 45_000;
@@ -108,6 +108,10 @@ const HOST_SYSTEM = `CREATE TABLE IF NOT EXISTS host_system (
   reported_at_ms INTEGER NOT NULL,
   payload TEXT NOT NULL
 ) STRICT`;
+const HOST_HISTORY_VERSIONS = `CREATE TABLE IF NOT EXISTS host_history_versions (
+  host_id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL
+) STRICT`;
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
 
 const WEIGHTED_HISTORY_ENDS_MS = 1793565600000;
@@ -133,7 +137,8 @@ const MIGRATIONS: readonly Migration[] = [
   { version: 3, statements: [HOST_SYSTEM] },
   { version: 4, statements: PROJECT_STATEMENTS },
   { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY },
-  { version: 6, statements: FORGET_UNCORRECTED_RUNS }
+  { version: 6, statements: FORGET_UNCORRECTED_RUNS },
+  { version: 7, statements: [HOST_HISTORY_VERSIONS, "INSERT OR IGNORE INTO host_history_versions (host_id, version) SELECT host_id, 0 FROM hosts"] }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
@@ -160,6 +165,24 @@ export function migrate(storage: DurableObjectStorage): void {
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return Response.json(body, { status, headers });
+}
+
+function etagMatches(request: Request, etag: string): boolean {
+  const header = request.headers.get("if-none-match");
+  if (header === null) return false;
+  return header.split(",").some(value => value.trim() === etag || value.trim() === "*");
+}
+
+function notModified(etag: string): Response {
+  return new Response(null, { status: 304, headers: { ETag: etag } });
+}
+
+function historyEtag(scope: string, version: number | null, window: string, kinds: string): string {
+  return `"${scope}:${version ?? "none"}:${window}:${kinds}"`;
+}
+
+function historyWindowKey(query: HistoryQuery): string {
+  return "range" in query ? `range=${query.range}` : `from=${query.fromMs}&to=${query.toMs}`;
 }
 
 function failure(code: ErrorCode, message: string, status: number, headers: Record<string, string> = {}): Response {
@@ -231,6 +254,10 @@ export class Installation extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<HostRow>("SELECT * FROM hosts WHERE host_id = ?", hostId).toArray()[0];
   }
 
+  private historyVersion(hostId: string): number {
+    return this.ctx.storage.sql.exec<{ version: number }>("SELECT version FROM host_history_versions WHERE host_id = ?", hostId).toArray()[0]?.version ?? 0;
+  }
+
   async createHost(name: string): Promise<AdminResult<{ hostId: string; name: string; token: string }>> {
     const trimmed = name.trim();
     if (!validName(trimmed)) return { ok: false, status: 400, code: "invalid_request", message: "host name must be 1-64 printable characters" };
@@ -263,6 +290,7 @@ export class Installation extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM samples WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM rollups WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM host_system WHERE host_id = ?", hostId);
+      this.ctx.storage.sql.exec("DELETE FROM host_history_versions WHERE host_id = ?", hostId);
       this.ctx.storage.sql.exec("DELETE FROM hosts WHERE host_id = ?", hostId);
       this.invalidateHistory();
     });
@@ -406,7 +434,7 @@ export class Installation extends DurableObject<Env> {
     return json(projects.map(project => ({ ...project, collector })));
   }
 
-  private projectHistory(projectId: string, params: URLSearchParams): Response {
+  private projectHistory(projectId: string, params: URLSearchParams, request: Request): Response {
     const projects = this.projectRegistry();
     if (projects instanceof Response) return projects;
     const project = projects.find(candidate => candidate.id === projectId);
@@ -417,15 +445,21 @@ export class Installation extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     const kindsParam = params.get("kinds");
     const kindParam = params.get("kind");
+    const version = latestCollectorRunId(sql);
+    const windowKey = `range=${key}`;
     if (kindsParam !== null) {
       if (kindParam !== null) return failure("invalid_request", "kind and kinds cannot be combined", 400);
       const kinds = projectKindsValue(kindsParam);
       if (kinds === null) return failure("invalid_request", "kinds must be supported project kinds", 400);
-      return json(readProjectHistories(sql, project, key, kinds, this.now()));
+      const etag = historyEtag(`project:${project.id}`, version, windowKey, kinds.join("+"));
+      if (etagMatches(request, etag)) return notModified(etag);
+      return json(readProjectHistories(sql, project, key, kinds, this.now()), 200, { ETag: etag });
     }
     const kind = projectKind(kindParam);
     if (kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
-    return json(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now()));
+    const etag = historyEtag(`project:${project.id}`, version, windowKey, kind);
+    if (etagMatches(request, etag)) return notModified(etag);
+    return json(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now()), 200, { ETag: etag });
   }
 
   private async ensureAlarm(now: number): Promise<void> {
@@ -453,7 +487,10 @@ export class Installation extends DurableObject<Env> {
       const hour = this.ctx.storage.sql.exec("DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS).rowsWritten;
       const projectRows = purgeExpired(this.ctx.storage.sql, now);
       const project = Math.max(projectRows.samples, projectRows.hours);
-      if (raw + minute + hour > 0) this.invalidateHistory();
+      if (raw + minute + hour > 0) {
+        this.ctx.storage.sql.exec("UPDATE host_history_versions SET version = version + 1");
+        this.invalidateHistory();
+      }
       await this.ctx.storage.setAlarm(now + retentionDelayMs({ raw, minute, hour, project }));
     } catch (error) {
       console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
@@ -555,7 +592,10 @@ export class Installation extends DurableObject<Env> {
         }
         accepted += 1;
       }
-      if (accepted + duplicates > 0) this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
+      if (accepted + duplicates > 0) {
+        this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
+        this.ctx.storage.sql.exec("INSERT INTO host_history_versions (host_id, version) VALUES (?, 1) ON CONFLICT(host_id) DO UPDATE SET version = version + 1", parsed.hostId);
+      }
       if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(parsed.system));
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
       this.invalidateHistory();
@@ -589,23 +629,29 @@ export class Installation extends DurableObject<Env> {
         const url = new URL(request.url);
         const query = historyQuery(url.searchParams);
         if (query === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
+        const found = this.host(history[1]!);
+        if (found === undefined) return failure("not_found", "host not found", 404);
         const kindsParam = url.searchParams.get("kinds");
         const kindParam = url.searchParams.get("kind");
         if (kindsParam !== null) {
           if (kindParam !== null) return failure("invalid_request", "kind and kinds cannot be combined", 400);
           const kinds = kindsValue(kindsParam);
           if (kinds === null) return failure("invalid_request", "kinds must be supported history kinds", 400);
+          const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(found.host_id), historyWindowKey(query), kinds.join("+"));
+          if (etagMatches(request, etag)) return notModified(etag);
           const result = await this.histories(history[1]!, query, kinds);
-          return result === null ? failure("not_found", "host not found", 404) : json(result);
+          return result === null ? failure("not_found", "host not found", 404) : json(result, 200, { ETag: etag });
         }
         const kind = kindParam === null ? "summary" : kindValue(kindParam);
         if (kind === null) return failure("invalid_request", "range, from and to, or kind is not supported", 400);
+        const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(found.host_id), historyWindowKey(query), kind);
+        if (etagMatches(request, etag)) return notModified(etag);
         const result = await this.history(history[1]!, query, kind);
-        return result === null ? failure("not_found", "host not found", 404) : json(result);
+        return result === null ? failure("not_found", "host not found", 404) : json(result, 200, { ETag: etag });
       }
       if (path === "/projects" && request.method === "GET") return this.projectList();
       const projectHistory = /^\/projects\/([a-z][a-z0-9-]{0,31})\/history$/u.exec(path);
-      if (projectHistory !== null && request.method === "GET") return this.projectHistory(projectHistory[1]!, new URL(request.url).searchParams);
+      if (projectHistory !== null && request.method === "GET") return this.projectHistory(projectHistory[1]!, new URL(request.url).searchParams, request);
       if (path === "/admin/hosts" && request.method === "POST") {
         let body: unknown;
         try {

@@ -148,6 +148,11 @@ purge, and an alarm that deleted rows discard them; an alarm that deleted
 nothing keeps them. Summary points carry `cpuCount` and `uptimeMs`; the
 dashboard reads a fall in uptime as a reboot.
 
+History responses carry an `ETag` derived from the last host ingest or the last
+collector run, plus the requested window and kinds. The dashboard sends
+`If-None-Match` and reuses its cached body on `304`, so a poll that finds no new
+source data returns before building history.
+
 One object per installation keeps exactly-once storage and rollups in one
 transactional store. Revisit it on measured per-object contention or the
 Durable Object storage ceiling.

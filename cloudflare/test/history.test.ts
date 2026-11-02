@@ -44,8 +44,8 @@ async function history(hostId: string, range: string, kind: string): Promise<Res
   return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?range=${range}&kind=${kind}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
 }
 
-async function historySearch(hostId: string, search: string): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?${search}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+async function historySearch(hostId: string, search: string, headers: Record<string, string> = {}): Promise<Response> {
+  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?${search}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken(), ...headers } });
 }
 
 describe("history query", () => {
@@ -182,6 +182,27 @@ describe("history", () => {
       expect((await historySearch(host.hostId, search)).status, search).toBe(400);
     }
     expect((await historySearch("h_0123456789abcdef0123456789abcdef", "range=1h&kinds=summary")).status).toBe(404);
+  });
+
+  it("answers with 304 until ingest changes the history version", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    const first = await historySearch(host.hostId, "range=1h&kinds=summary,disks");
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).not.toBeNull();
+
+    const unchanged = await historySearch(host.hostId, "range=1h&kinds=summary,disks", { "If-None-Match": etag! });
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe("");
+
+    const otherWindow = await historySearch(host.hostId, "range=6h&kinds=summary,disks", { "If-None-Match": etag! });
+    expect(otherWindow.status).toBe(200);
+
+    expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
+    const changed = await historySearch(host.hostId, "range=1h&kinds=summary,disks", { "If-None-Match": etag! });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
   it("repairs a late sample in the rolled bucket", async () => {
