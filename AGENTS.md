@@ -43,6 +43,7 @@ go under `.work/tmp`.
 | Release build, deployment, verified environments | `docs/operations.md` |
 | Toolchain pins and dependency decisions | `docs/dependencies.md` |
 | Benchmark method and results | `bench/README.md` |
+| Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Open work | `TODO.md` |
