@@ -114,6 +114,8 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
 `CREATE TABLE IF NOT EXISTS` in `installation.ts`:
 
 - `hosts`: credentials, revocation, last receipt, and the rate-limit window.
+- `host_history_versions`: a per-host version advanced by ingest and retention,
+  used for history ETags.
 - `host_system`: the latest `system` object per host and when it arrived.
 - `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
@@ -195,10 +197,11 @@ only under Durable Objects. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with a fixed detail,
 writes one `collector_failed` log line, and rethrows so the cron shows it.
 
-**Storage** (schema version 6; version 5 dropped Worker, route, R2 operation, and D1
+**Storage** (schema version 7; version 5 dropped Worker, route, R2 operation, and D1
 history before 2026-11-01 20:40 UTC, which was weighted by a mismatched
-`sampleInterval`, and version 6 dropped the collector runs before 22:10 UTC the
-same day so those buckets read as unknown instead of zero):
+`sampleInterval`, version 6 dropped the collector runs before 22:10 UTC the
+same day so those buckets read as unknown instead of zero, and version 7 added
+per-host history versions for ETags):
 
 - `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
   7 days.
