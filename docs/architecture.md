@@ -142,14 +142,18 @@ sampling would be downsampled to about the same resolution after the 900-point
 cap. Results are downsampled to at most 900 points and carry a `stepMs`, with
 fractions rounded to three decimals.
 
-A preset range ends at the current 15-second raw step, and the Durable Object
-keeps the last four windows it built, each for every history kind. The
-dashboard asks for all five kinds in one batched history request on each
-refresh, and for a second window for the yesterday comparison every five
-minutes, so one read and parse of a window serves all of its kinds. Ingest, a
-purge, and an alarm that deleted rows discard them; an alarm that deleted
-nothing keeps them. Summary points carry `cpuCount` and `uptimeMs`; the
-dashboard reads a fall in uptime as a reboot.
+A preset range ends at the current 15-second raw step. While the Durable
+Object stays alive it keeps each host's raw rows as computed chart points,
+parsing a sample once and afterwards reading only rows past the highest
+`rowid` it has seen, at most 16,000 rows across hosts with the least recently
+read host dropped first. A late sample, which rewrites the next sample's delta,
+drops its host's rows; a purge and an alarm that deleted rows drop all of
+them, so the next read parses its window again. On top of that it keeps the
+last four windows it served, keyed by the host's history version, and builds a
+window's kinds as they are asked for. The dashboard asks for all five kinds in
+one batched history request on each refresh, and for a second window for the
+yesterday comparison every five minutes. Summary points carry `cpuCount` and
+`uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 History responses carry an `ETag` derived from the last host ingest or the last
 collector run, plus the requested window and kinds. The dashboard sends

@@ -19,15 +19,6 @@ Next: 43
 - **Fix with:** make-it-fast
 - **Effort:** S
 
-### STA-32 · P3 · Dashboard history reads cost 35 to 55 ms of CPU each
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/installation.ts:327`
-- **Problem:** In `events.durableObjectsInvocations` the HTTP calls with about 88 KB responses took 52 and 55 ms of CPU on 2026-11-01 (a third took 34 ms at 83 KB), against a 5.3 ms average for all HTTP calls. `buildHistory` parses the payload and delta JSON of every raw sample in the window on a cache miss, and the four-window `historyCache` is lost whenever the object is evicted. A 20 s CPU profile of the object on 2026-11-02, under back-to-back uncached 12 h raw `summary` reads, put 71% of samples in `buildHistory`: `JSON.parse` of payloads and deltas 36% (`parseDelta` alone 16%), garbage collection 27%, SQL row materialization (`toArray`) 10%, `compact`/`roundNumbers` 9%, and point extraction for all five kinds about 11%. Parsing and the garbage it creates dominate.
-- **Recommendation:** Stop parsing every raw sample per read. Read the 1m rollups for windows that do not need 15 s steps, or keep the parsed window across requests only while the object is alive and say so. A single-kind request also builds all five kinds; build only the requested kind if the dashboard does not fetch the others for the same window. Re-profile the same load to confirm.
-- **Fix with:** make-it-fast
-- **Effort:** M
-
 ### STA-33 · P3 · Ingest CPU tail of 35 to 47 ms is unexplained
 
 - **Area:** Performance
