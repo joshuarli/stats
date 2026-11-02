@@ -32,6 +32,11 @@ function nets(range: string, empty = false) {
   return { hostId, range, kind: "nets", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "eth0", points: Array.from({ length: 6 }, (_, index) => ({ atMs: now - (6 - index) * 15_000, rxBytesPerSec: 200_000 + index * 1000, txBytesPerSec: 100_000, rxPacketsPerSec: 100, txPacketsPerSec: 80, rxDropsPerSec: 0, txDropsPerSec: 0, rxErrorsPerSec: 0, txErrorsPerSec: 0 })) }] };
 }
 
+function manyNets(range: string) {
+  const ids = ["eth0", ...Array.from({ length: 12 }, (_, index) => `veth${index.toString(16).padStart(7, "0")}`), "veth-drops"];
+  return { hostId, range, kind: "nets", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: ids.map((id, device) => ({ id, points: Array.from({ length: 6 }, (_, index) => ({ atMs: now - (6 - index) * 15_000, rxBytesPerSec: device === 0 ? 2_000_000 : device === ids.length - 1 ? 0 : 1_000 * (ids.length - device), txBytesPerSec: 100, rxPacketsPerSec: 100, txPacketsPerSec: 80, rxDropsPerSec: device === ids.length - 1 ? 1 : 0, txDropsPerSec: 0, rxErrorsPerSec: 0, txErrorsPerSec: 0 })) })) };
+}
+
 function filesystems(range: string, empty = false) {
   return { hostId, range, kind: "filesystems", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "/", points: [{ atMs: now - 15_000, total: 100_000_000_000, available: 40_000_000_000 }, { atMs: now, total: 100_000_000_000, available: 39_000_000_000 }] }] };
 }
@@ -181,7 +186,7 @@ function deploymentComparison(window: "1h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -211,7 +216,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const empty = options.empty === true;
     const historyBody = (kind: string): unknown => {
       if (kind === "disks") return disks(range, empty);
-      if (kind === "nets") return nets(range, empty);
+      if (kind === "nets") return options.manyNets === true ? manyNets(range) : nets(range, empty);
       if (kind === "filesystems") return filesystems(range, empty);
       if (kind === "block") return block(range, empty);
       const body = summary(range, empty, options.accelerator === true);
@@ -293,6 +298,24 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(page.getByRole("heading", { name: "Power" })).toHaveCount(0);
   await expect(page.getByText("GPU busy")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("host.png"), fullPage: true });
+});
+
+test("the network table collapses churn behind a show-all control", async ({ page }) => {
+  await mock(page, { manyNets: true });
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  const table = page.getByRole("table", { name: "Network activity" });
+  await expect(table).toContainText("eth0");
+  await expect(table).toContainText("veth-drops");
+  await expect(table.locator("tbody tr")).toHaveCount(8);
+  const more = page.getByRole("button", { name: "Show all 14 interfaces" });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
+  await expect(table.locator("tbody tr")).toHaveCount(14);
+  const fewer = page.getByRole("button", { name: "Show fewer interfaces" });
+  await expect(fewer).toHaveAttribute("aria-expanded", "true");
+  await fewer.click();
+  await expect(table.locator("tbody tr")).toHaveCount(8);
 });
 
 test("a host that reports gpu and power shows GPU busy beside CPU and a Power widget", async ({ page }) => {

@@ -392,6 +392,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .panel-label { font-size: 11.5px; color: var(--muted); margin: 10px 0 0 2px; }
 .panel-label:first-child { margin-top: 2px; }
 .flush-table { margin: 12px -14px -12px; border-top: 1px solid var(--line); }
+.table-more { display: flex; padding: 8px 14px; border-top: 1px solid var(--line); }
 .capacity-with-state { display: flex; align-items: center; gap: 10px; }
 .legend-swatch.unplotted { opacity: .25; }
 @media (max-width: 960px) {
