@@ -60,9 +60,11 @@ Set `tokenFile` in `agent.json` to the absolute path of `~/.config/stats/token`.
 Logs go to `~/Library/Logs/stats.log`. Stop it with
 `launchctl bootout "gui/$(id -u)/xyz.17166969.stats"`.
 
-macOS has no pressure stall information and its disk statistics need IOKit,
-so `psi` and `disks` are reported as unavailable. It has no I/O wait, steal
-time, or interface transmit drops, so those fields are absent. Network
+macOS has no pressure stall information, so `psi` is reported as
+unavailable. It has no I/O wait, steal time, interface transmit drops, or disk
+busy time, so those fields are absent and the dashboard hides disk busy time
+for the host. Disks are the physical devices IOKit reports, without disk
+images. Network
 interfaces default to Ethernet-type `en*` ports, and filesystems to writable
 local volumes that Finder shows plus the `/System/Volumes/Data` volume. The
 binary links only system libraries and frameworks.

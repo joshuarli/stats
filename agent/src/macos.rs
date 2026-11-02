@@ -5,6 +5,8 @@ use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod iokit;
+
 const MAX_DEVICES: usize = 16;
 const DATA_VOLUME: &str = "/System/Volumes/Data";
 const IFT_ETHER: u8 = 0x06;
@@ -376,7 +378,10 @@ pub fn sample(scope: CollectionScope) -> Option<Sample> {
         None => sample.mark_unavailable(Unavailable::Uptime),
     }
     sample.cpu_count = cpu_count();
-    sample.mark_unavailable(Unavailable::Disks);
+    match iokit::read_disks(MAX_DEVICES) {
+        Some(disks) => sample.disks = Some(disks),
+        None => sample.mark_unavailable(Unavailable::Disks),
+    }
     sample.mark_unavailable(Unavailable::Psi);
     match read_nets(scope.virtual_interfaces) {
         Some(nets) => sample.nets = Some(nets),
