@@ -42,7 +42,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         stepMs={props.data.worker.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
-      <PanelLabel>5xx share. Buckets under 100 invocations are not scored</PanelLabel>
+      <PanelLabel>5xx share (100+ invocations)</PanelLabel>
       <PanelChart
         label="Worker 5xx share"
         area
@@ -71,7 +71,7 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
         stepMs={props.data.worker.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
-      <PanelLabel>Approximate maximum CPU time in a bucket</PanelLabel>
+      <PanelLabel>Max CPU time</PanelLabel>
       <PanelChart
         label="Worker maximum CPU time"
         series={[{ label: "maximum", color: "violet", scored: false, track: metricTrack(props.data.worker, "worker.cpuMsMax") }]}

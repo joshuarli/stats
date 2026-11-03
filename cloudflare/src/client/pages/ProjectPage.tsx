@@ -109,13 +109,14 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
   const moreSections = (): SectionLink[] => [
+    { label: "Deployments", anchor: "deployments" },
     { label: "Cost", anchor: "cost" },
     { label: "Routes", anchor: "routes" },
     ...(hasDatabases() ? [{ label: "D1", anchor: "d1" }] : []),
-    ...(hasNamespaces() ? [{ label: "Durable Objects", anchor: "durable-objects" }] : []),
-    { label: "Deployments", anchor: "deployments" }
+    ...(hasNamespaces() ? [{ label: "Durable Objects", anchor: "durable-objects" }] : [])
   ];
-  const deployments = createProjectDeployments(id, () => `${projectTick()}:${manualTick()}`);
+  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`);
+  const deploymentsSettled = () => deployments.history() !== null || deployments.historyError() !== null;
 
   return (
     <DeploymentEvents value={deployments.events}>
@@ -140,7 +141,9 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
           >
             <StatusStrip cells={cells()} label="Project summary" class="project" />
             <SectionBar cells={cells()} more={moreSections()} />
+            <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
             <section class="charts project" aria-label="Charts">
+              <DeploymentsWidget deployments={deployments} />
               <RequestsWidget data={data()} />
               <CostWidget data={data()} view={view()} />
               <StatusWidget data={data()} />
@@ -152,8 +155,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
               {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
               <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
-              <DeploymentsWidget deployments={deployments} />
             </section>
+            </Show>
           </Show>
         </Loading>
       </Errored>

@@ -59,7 +59,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Average CPU time. Buckets under 100 invocations are not shown</PanelLabel>
+          <PanelLabel>Average CPU time (100+ invocations)</PanelLabel>
           <PanelChart
             label="Durable Object average CPU time"
             area
@@ -70,7 +70,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Approximate maximum CPU time in a bucket</PanelLabel>
+          <PanelLabel>Max CPU time</PanelLabel>
           <PanelChart
             label="Durable Object maximum CPU time"
             timeAxis={false}

@@ -229,7 +229,7 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
           { id: "r2-other", label: "R2 failures", anchor: "r2-operations", limits: LIMITS.r2OtherPercent, points: otherShare(data), format: percent },
           { id: "r2-storage", label: "R2 storage", anchor: "r2-storage", limits: undefined, points: bucketGauge(data, "storageBytes"), format: bytes }
         ]),
-    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: collectedAgo, detail: `longest gap ${minutes(Math.round(Math.max(0, ...data.silence.values.map(value => value ?? 0))))} · stale after ${LIMITS.collectorStaleMinutes.elevated} min` }
+    { id: "collector", label: "Collector", anchor: "collector", limits: LIMITS.collectorStaleMinutes, points: data.silence, format: collectedAgo, detail: `longest gap ${minutes(Math.round(Math.max(0, ...data.silence.values.map(value => value ?? 0))))}` }
   ];
   const ups = probeUp(data);
   if (ups.length > 0) {

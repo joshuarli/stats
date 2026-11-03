@@ -172,8 +172,8 @@ function deploymentHistory() {
   };
 }
 
-function deploymentComparison(window: "1h" | "24h") {
-  const duration = window === "24h" ? 86_400_000 : 3_600_000;
+function deploymentComparison(window: "1h" | "6h" | "24h") {
+  const duration = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 }[window];
   const end = Math.floor(DEPLOYED_AT / 300_000) * 300_000;
   const start = end + 600_000;
   return {
@@ -204,7 +204,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       return fulfillHistory(route, body(kind));
     }
     if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: deploymentHistory() });
-    if (url.pathname === `/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison`) return route.fulfill({ json: deploymentComparison(url.searchParams.get("window") === "24h" ? "24h" : "1h") });
+    if (url.pathname === `/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison`) return route.fulfill({ json: deploymentComparison(({ "6h": "6h", "24h": "24h" } as const)[url.searchParams.get("window") ?? ""] ?? "1h") });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces, databases) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
@@ -512,9 +512,23 @@ test("the project page compares a deployment's before and after windows", async 
   await expect(deployment.getByRole("button", { name: /v42/u })).toHaveAttribute("aria-current", "true");
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
-  await page.getByRole("group", { name: "Before / after window" }).getByRole("button", { name: "24 hours each" }).click();
+  await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(page.getByText("Another deployment overlaps the comparison windows.")).toBeVisible();
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("confounded");
+});
+
+test("the deployment comparison window follows the time range", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff");
+  const row = page.getByRole("region", { name: "Deployment metric comparison" }).getByRole("row", { name: /Worker CPU/u });
+  await expect(row).toContainText("improved");
+  await expect(page.locator("#deployments")).toContainText("1h each side");
+  await page.getByRole("button", { name: "6h", exact: true }).click();
+  await expect(page.locator("#deployments")).toContainText("6h each side");
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  await expect(page.locator("#deployments")).toContainText("24h each side");
+  expect(requests.some(request => request.includes("/comparison?window=6h"))).toBe(true);
+  expect(requests.some(request => request.includes("/comparison?window=24h"))).toBe(true);
 });
 
 test("the deployment table stays in place while the next comparison loads", async ({ page }) => {
@@ -529,7 +543,7 @@ test("the deployment table stays in place while the next comparison loads", asyn
   const row = page.getByRole("region", { name: "Deployment metric comparison" }).getByRole("row", { name: /Worker CPU/u });
   await expect(row).toContainText("improved");
   const detail = page.locator(".deployment-detail");
-  await page.getByRole("group", { name: "Before / after window" }).getByRole("button", { name: "24 hours each" }).click();
+  await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(detail).toHaveAttribute("aria-busy", "true");
   await expect(row).toContainText("improved");
   release();
@@ -596,7 +610,7 @@ test("the project page shows its summary and rows of aligned chart cards", async
   }
   await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
   await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
-  const cards = page.locator(".charts > .widget");
+  const cards = page.locator(".charts > .widget:not(.wide)");
   await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(cards.nth(1).getByRole("heading", { name: "Estimated cost" })).toBeVisible();
   const rects = await cards.evaluateAll(elements => elements.filter(element => !element.classList.contains("wide")).map(element => {

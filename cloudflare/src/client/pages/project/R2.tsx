@@ -24,7 +24,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         stepMs={props.data.r2.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.r2)}
       />
-      <PanelLabel>Failure share. Buckets under 100 operations are not scored</PanelLabel>
+      <PanelLabel>Failure share (100+ operations)</PanelLabel>
       <PanelChart
         label="R2 failure share"
         area

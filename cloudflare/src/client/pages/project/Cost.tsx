@@ -39,7 +39,7 @@ export function CostWidget(props: { readonly data: ProjectData; readonly view: T
           </tbody>
         </table>
       </div>
-      <PanelLabel>List cost per bucket, by component</PanelLabel>
+      <PanelLabel>Cost per bucket</PanelLabel>
       <PanelChart
         label="Estimated cost per bucket"
         timeAxis={false}

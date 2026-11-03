@@ -24,7 +24,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
               min={0}
               stepMs={history().stepMs}
             />
-            <PanelLabel>Rows written per bucket</PanelLabel>
+            <PanelLabel>Rows written</PanelLabel>
             <PanelChart
               label="D1 rows written"
               area
@@ -35,7 +35,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
               stepMs={history().stepMs}
               provisionalFromMs={provisionalFromMs(history())}
             />
-            <PanelLabel>Rows read and queries per bucket</PanelLabel>
+            <PanelLabel>Rows read and queries</PanelLabel>
             <PanelChart
               label="D1 rows read and queries"
               series={[
@@ -51,7 +51,7 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
         )}
       </Show>
       <Show when={statements().length > 0} fallback={<PanelLabel>No statement data was collected in this range</PanelLabel>}>
-        <PanelLabel>Costliest statements at list price</PanelLabel>
+        <PanelLabel>Costliest statements</PanelLabel>
         <div class="table-scroll flush-table">
           <table class="data-table compact" aria-label="D1 cost by statement">
             <thead>

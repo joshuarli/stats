@@ -19,27 +19,11 @@ export function CollectorWidget(props: { readonly data: ProjectData; readonly co
         limits={LIMITS.collectorStaleMinutes}
         min={0}
       />
-      <div class="sysinfo" role="group" aria-label="Collector details">
-        <div class="sysinfo-fact">
-          <span class="sysinfo-label">Last success</span>
-          <span class="sysinfo-value">{props.collector.lastSuccessAtMs === null ? "never" : age(props.collector.lastSuccessAtMs, props.now)}</span>
-          <Show when={props.collector.lastSuccessAtMs !== null}>
-            <span class="sysinfo-detail">{dateTime(props.collector.lastSuccessAtMs ?? undefined)}</span>
-          </Show>
-        </div>
-        <Show when={props.collector.lastError !== null}>
-          <div class="sysinfo-fact">
-            <span class="sysinfo-label">Last run failed</span>
-            <span class="sysinfo-value">{props.collector.lastError}</span>
-          </div>
-        </Show>
-        <Show when={props.rowsRead !== undefined}>
-          <div class="sysinfo-fact">
-            <span class="sysinfo-label">Rows read by the last run</span>
-            <span class="sysinfo-value">{count(props.rowsRead)}</span>
-          </div>
-        </Show>
-      </div>
+      <p class="collector-line">
+        <span title={dateTime(props.collector.lastSuccessAtMs ?? undefined)}>Last success {props.collector.lastSuccessAtMs === null ? "never" : age(props.collector.lastSuccessAtMs, props.now)}</span>
+        <Show when={props.rowsRead !== undefined}><span>{count(props.rowsRead)} rows read</span></Show>
+        <Show when={props.collector.lastError !== null}><span class="collector-error">Last run failed: {props.collector.lastError}</span></Show>
+      </p>
     </Widget>
   );
 }

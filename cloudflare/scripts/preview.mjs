@@ -159,7 +159,7 @@ function deploymentHistory(projectId) {
 function deploymentComparison(projectId, id, window) {
   const deployment = deploymentHistory(projectId).deployments.find(entry => entry.id === id);
   if (deployment === undefined) return undefined;
-  const duration = window === "24h" ? day : hour;
+  const duration = { "1h": hour, "6h": 6 * hour, "24h": day }[window];
   const end = Math.floor(deployment.atMs / bucketMs) * bucketMs;
   const start = end + 2 * bucketMs;
   const metric = (key, label, unit, before, after, verdict) => {
@@ -200,7 +200,7 @@ const server = createServer(async (request, response) => {
     if (deployed !== null) {
       if (!projectsById.has(deployed[1])) return json(response, { error: { code: "not_found", message: "unknown project" } }, 404);
       if (deployed[2] === undefined) return json(response, deploymentHistory(deployed[1]));
-      const comparison = deploymentComparison(deployed[1], deployed[2], url.searchParams.get("window") === "24h" ? "24h" : "1h");
+      const comparison = deploymentComparison(deployed[1], deployed[2], url.searchParams.get("window") ?? "1h");
       return comparison === undefined ? json(response, { error: { code: "not_found", message: "unknown deployment" } }, 404) : json(response, comparison);
     }
     const host = /^\/api\/v1\/hosts\/([^/]+)\/(system|history)$/u.exec(path);

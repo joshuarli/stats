@@ -2,8 +2,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
-import { useTelemetry } from "../../state";
-import { Badge, Skeleton, Widget, type Tone } from "../../components/ui";
+import { useTelemetry, type Range } from "../../state";
+import { Skeleton, Widget } from "../../components/ui";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
@@ -18,28 +18,36 @@ async function read<T>(path: string, signal: AbortSignal, decode: (value: unknow
   catch (cause) { throw new ApiFailure(0, "Invalid deployment history response", cause); }
 }
 
-function display(value: number | null, unit = ""): string {
+function figure(value: number | null, unit = ""): string {
   if (value === null) return "—";
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: unit === "USD" ? 6 : 3 })}${unit === "USD" ? " USD" : unit === "%" ? "%" : unit ? ` ${unit}` : ""}`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: unit === "USD" ? 6 : 3 });
+}
+
+function suffix(unit: string): string {
+  return unit === "%" ? "%" : unit === "" ? "" : ` ${unit}`;
 }
 
 function signed(value: number, text: string): string {
   return value > 0 ? `+${text}` : text;
 }
 
-function change(metric: MetricComparison): { readonly amount: string; readonly share: string } {
-  if (metric.delta === null) return { amount: "—", share: "" };
-  if (metric.unit === "%") return { amount: `${signed(metric.delta, display(metric.delta))} pp`, share: "" };
-  const share = metric.deltaPercent === null ? "" : signed(metric.deltaPercent, `${metric.deltaPercent.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`);
-  return { amount: signed(metric.delta, display(metric.delta, metric.unit)), share };
+function movement(metric: MetricComparison): string {
+  return `${figure(metric.before, metric.unit)} → ${figure(metric.after, metric.unit)}${suffix(metric.unit)}`;
 }
 
-const VERDICT_TONE: Record<MetricComparison["verdict"], Tone> = {
-  improved: "ok",
-  regressed: "bad",
-  unchanged: "neutral",
-  "insufficient-data": "neutral",
-  confounded: "warn"
+function delta(metric: MetricComparison): string {
+  if (metric.delta === null) return "";
+  if (metric.unit === "%") return `${signed(metric.delta, figure(metric.delta))} pp`;
+  if (metric.deltaPercent === null) return `${signed(metric.delta, figure(metric.delta, metric.unit))}${suffix(metric.unit)}`;
+  return `${signed(metric.deltaPercent, metric.deltaPercent.toLocaleString(undefined, { maximumFractionDigits: 1 }))}%`;
+}
+
+const VERDICT_CLASS: Record<MetricComparison["verdict"], string> = {
+  improved: "improved",
+  regressed: "regressed",
+  unchanged: "quiet",
+  "insufficient-data": "quiet",
+  confounded: "quiet"
 };
 
 const RANGE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -51,10 +59,12 @@ function span(bounds: { readonly fromMs: number; readonly toMs: number }): strin
 
 export type ProjectDeployments = ReturnType<typeof createProjectDeployments>;
 
-export function createProjectDeployments(projectId: () => string, refreshKey: () => string) {
+const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "90d": "24h" };
+
+export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string) {
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
-  const [window, setWindow] = createSignal<ComparisonWindow>("1h");
+  const window = createMemo(() => WINDOW_FOR_RANGE[range()]);
   const [comparison, setComparison] = createSignal<DeploymentComparison | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [comparisonError, setComparisonError] = createSignal<string | null>(null);
@@ -107,16 +117,15 @@ export function createProjectDeployments(projectId: () => string, refreshKey: ()
     return null;
   };
 
-  return { history, selected, setSelected, window, setWindow, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
+  return { history, selected, setSelected, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
 }
 
 function ComparisonTable(props: { readonly comparison: DeploymentComparison }): JSX.Element {
+  const windows = () => `Before ${span(props.comparison.before)}\nAfter ${span(props.comparison.after)}`;
+  const caveats = () => props.comparison.warnings.length;
   return (
     <>
-      <p class="deployment-windows">
-        <span><b>Before</b> {span(props.comparison.before)} · {count(props.comparison.beforeInvocations ?? undefined)} invocations</span>
-        <span><b>After</b> {span(props.comparison.after)} · {count(props.comparison.afterInvocations ?? undefined)} invocations</span>
-      </p>
+      <p class="deployment-windows" title={windows()}>{props.comparison.window} each side · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</p>
       <Show when={props.comparison.reasons.length > 0}>
         <div class="notice notice-warn deployment-reasons" role="status">
           <span><b>No verdict</b><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></span>
@@ -124,25 +133,26 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
       </Show>
       <div class="table-scroll" role="region" aria-label="Deployment metric comparison">
         <table class="data-table compact deployment-table">
-          <thead><tr><th>Metric</th><th class="numeric">Before</th><th class="numeric">After</th><th class="numeric">Change</th><th>Signal</th></tr></thead>
+          <thead><tr><th>Metric</th><th class="numeric">Before → after</th></tr></thead>
           <tbody>
-            <For each={props.comparison.metrics}>{metric => {
-              const delta = () => change(metric);
-              return (
-                <tr>
-                  <th scope="row">{metric.label}</th>
-                  <td class="numeric">{display(metric.before, metric.unit)}</td>
-                  <td class="numeric">{display(metric.after, metric.unit)}</td>
-                  <td class="numeric">{delta().amount}<span class="cell-note deployment-share">{delta().share}</span></td>
-                  <td><Badge tone={VERDICT_TONE[metric.verdict]}>{metric.verdict.replaceAll("-", " ")}</Badge></td>
-                </tr>
-              );
-            }}</For>
+            <For each={props.comparison.metrics}>{metric => (
+              <tr>
+                <th scope="row">{metric.label}</th>
+                <td class="numeric" title={metric.verdict.replaceAll("-", " ")}>
+                  {movement(metric)}
+                  <Show when={delta(metric)}>{text => <span class={`deployment-delta ${VERDICT_CLASS[metric.verdict]}`}>({text()})</span>}</Show>
+                  <span class="sr-only">, {metric.verdict.replaceAll("-", " ")}</span>
+                </td>
+              </tr>
+            )}</For>
           </tbody>
         </table>
       </div>
-      <Show when={props.comparison.warnings.length > 0}>
-        <ul class="deployment-warnings"><For each={props.comparison.warnings}>{warning => <li>{warning}</li>}</For></ul>
+      <Show when={caveats() > 0}>
+        <details class="deployment-warnings">
+          <summary>{caveats()} {caveats() === 1 ? "caveat" : "caveats"}</summary>
+          <ul><For each={props.comparison.warnings}>{warning => <li>{warning}</li>}</For></ul>
+        </details>
       </Show>
     </>
   );
@@ -150,11 +160,11 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
 
 export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments }): JSX.Element {
   const { now } = useTelemetry();
-  const { history, selected, setSelected, window, setWindow, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
+  const { history, selected, setSelected, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
   const summary = () => {
     const value = history();
     if (value?.sync?.lastSuccessAtMs == null) return undefined;
-    return `checked ${age(value.sync.lastSuccessAtMs, now())} · ${value.deployments.length} retained`;
+    return `checked ${age(value.sync.lastSuccessAtMs, now())}`;
   };
   const notice = () => historyError() ?? problem();
   return (
@@ -169,7 +179,7 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
           <ul class="deployment-list" aria-label="Deployment">
             <For each={history()?.deployments ?? []}>{deployment => (
               <li>
-                <button type="button" class="deployment-item" aria-current={selected() === deployment.id ? "true" : "false"} onClick={() => setSelected(deployment.id)}>
+                <button type="button" class="deployment-item" title={deployment.message ?? undefined} aria-current={selected() === deployment.id ? "true" : "false"} onClick={() => setSelected(deployment.id)}>
                   <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
                   <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
                 </button>
@@ -181,14 +191,9 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
               <Show when={current()}>{deployment => (
                 <div class="deployment-title">
                   <b>{title(deployment())}</b>
-                  <span class="cell-note" title={deployment().id}>{MOMENT.format(deployment().atMs)} · {deployment().source} · {deployment().id.slice(0, 8)}</span>
-                  <Show when={deployment().message}>{message => <p class="deployment-message">{message()}</p>}</Show>
+                  <span class="cell-note" title={`${deployment().id}${deployment().message === null ? "" : `\n${deployment().message}`}`}>{RANGE.format(deployment().atMs)} · {deployment().source}</span>
                 </div>
               )}</Show>
-              <div class="segmented" role="group" aria-label="Before / after window">
-                <button class="segment" type="button" aria-pressed={window() === "1h" ? "true" : "false"} aria-label="1 hour each" onClick={() => setWindow("1h")}>1h</button>
-                <button class="segment" type="button" aria-pressed={window() === "24h" ? "true" : "false"} aria-label="24 hours each" onClick={() => setWindow("24h")}>24h</button>
-              </div>
             </div>
             <Show when={comparisonError()}>{message => <div class="notice notice-warn" role="alert"><span>{message()}</span></div>}</Show>
             <Show when={comparison()} fallback={comparisonError() === null ? <Skeleton rows={6} /> : <p class="panel-label">Comparison unavailable.</p>}>{value => (
