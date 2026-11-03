@@ -128,12 +128,81 @@ function json(response, body, status = 200) {
   response.end(JSON.stringify(body));
 }
 
+const bucketMs = 300_000;
+const uuid = index => `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
+const deploymentSpecs = [
+  { hoursAgo: 3, version: "v58", message: "cache the registry index", source: "wrangler" },
+  { hoursAgo: 31, version: "v57", message: "fix pypi simple index redirect", source: "wrangler" },
+  { hoursAgo: 80, version: "v56", message: null, source: "dash" },
+  { hoursAgo: 151, version: "v55", message: "rollback to v53", source: "wrangler" }
+];
+
+function deploymentHistory(projectId) {
+  const deployments = deploymentSpecs.map((spec, index) => ({
+    id: uuid(0x100 + index),
+    atMs: Math.floor((previewNow - spec.hoursAgo * hour) / bucketMs) * bucketMs + 60_000,
+    source: spec.source,
+    message: spec.message,
+    versions: [{ id: uuid(0x200 + index), percentage: 100 }],
+    deferred: false
+  }));
+  return {
+    projectId,
+    worker: projectId,
+    enabled: true,
+    sync: { lastAttemptAtMs: previewNow - 60_000, lastSuccessAtMs: previewNow - 60_000, error: null, truncated: false },
+    deployments,
+    versions: deploymentSpecs.map((spec, index) => ({ id: uuid(0x200 + index), tag: spec.version, message: spec.message }))
+  };
+}
+
+function deploymentComparison(projectId, id, window) {
+  const deployment = deploymentHistory(projectId).deployments.find(entry => entry.id === id);
+  if (deployment === undefined) return undefined;
+  const duration = window === "24h" ? day : hour;
+  const end = Math.floor(deployment.atMs / bucketMs) * bucketMs;
+  const start = end + 2 * bucketMs;
+  const metric = (key, label, unit, before, after, verdict) => {
+    const delta = before === null || after === null ? null : after - before;
+    return { metric: key, label, unit, before, after, delta, deltaPercent: delta === null || before === 0 ? null : delta / before * 100, verdict };
+  };
+  return {
+    deploymentId: id,
+    window,
+    before: { fromMs: end - duration, toMs: end },
+    after: { fromMs: start, toMs: start + duration },
+    readyAtMs: start + duration + 2_700_000,
+    beforeInvocations: 12_410,
+    afterInvocations: 11_982,
+    reasons: [],
+    warnings: ["Traffic volume changed by more than 2x; compare workload and cache behavior.", "Heuristic signals, not significance tests or proof of causation. Top-route coverage is incomplete; cache, background jobs and traffic can change."],
+    metrics: [
+      metric("worker.cpu", "Worker CPU / invocation", "ms", 2.04, 1.52, "improved"),
+      metric("worker.errors", "Worker 5xx share (1,000+ invocations)", "%", 0.12, 0.11, "unchanged"),
+      metric("r2.stuff-mycrates", "R2 stuff-mycrates operations / Worker invocation", "ops", 0.84, 0.31, "improved"),
+      metric("r2.stuff-mynpm", "R2 stuff-mynpm operations / Worker invocation", "ops", 0.22, 0.2, "unchanged"),
+      metric("r2.stuff-mypypi", "R2 stuff-mypypi operations / Worker invocation", "ops", 0.06, 0.09, "regressed"),
+      metric("probe.crates.ms", "Probe crates mean edge response time", "ms", 142.5, 96.25, "improved"),
+      metric("probe.crates.failure", "Probe crates failure share", "%", 0, 0, "unchanged"),
+      metric("probe.pypi.ms", "Probe pypi mean edge response time", "ms", null, 188, "insufficient-data"),
+      metric("cost", "Estimated list-price cost / 1,000 invocations", "USD", 0.0000941, 0.0000718, "improved")
+    ]
+  };
+}
+
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     const path = decodeURIComponent(url.pathname);
     if (path === "/api/v1/hosts") return json(response, { hosts });
     if (path === "/api/v1/projects") return json(response, projects);
+    const deployed = /^\/api\/v1\/projects\/([^/]+)\/deployments(?:\/([^/]+)\/comparison)?$/u.exec(path);
+    if (deployed !== null) {
+      if (!projectsById.has(deployed[1])) return json(response, { error: { code: "not_found", message: "unknown project" } }, 404);
+      if (deployed[2] === undefined) return json(response, deploymentHistory(deployed[1]));
+      const comparison = deploymentComparison(deployed[1], deployed[2], url.searchParams.get("window") === "24h" ? "24h" : "1h");
+      return comparison === undefined ? json(response, { error: { code: "not_found", message: "unknown deployment" } }, 404) : json(response, comparison);
+    }
     const host = /^\/api\/v1\/hosts\/([^/]+)\/(system|history)$/u.exec(path);
     if (host !== null) {
       const capture = hostsById.get(decodeURIComponent(host[1]));
