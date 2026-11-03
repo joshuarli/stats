@@ -110,14 +110,14 @@ export function Widget(props: ParentProps<{
           </div>
           <div class="widget-meta">
             {props.meta}
-            <Show when={props.id !== undefined}>
-              <button class="icon-button collapse" type="button" aria-label={`${collapsed() ? "Show" : "Hide"} ${props.title}`} aria-expanded={collapsed() ? "false" : "true"} onClick={toggleCollapsed}>
-                <Icon name={collapsed() ? "chevronRight" : "sortDown"} size={14} />
-              </button>
-            </Show>
             <Show when={props.expandable === true}>
               <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} disabled={collapsed()} onClick={() => setExpanded(value => !value)}>
                 <Icon name="expand" size={12} />
+              </button>
+            </Show>
+            <Show when={props.id !== undefined}>
+              <button class="icon-button collapse" type="button" aria-label={`${collapsed() ? "Show" : "Hide"} ${props.title}`} aria-expanded={collapsed() ? "false" : "true"} onClick={toggleCollapsed}>
+                <Icon name={collapsed() ? "chevronRight" : "sortDown"} size={14} />
               </button>
             </Show>
           </div>
