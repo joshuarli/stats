@@ -930,3 +930,72 @@ test("each page names itself once and the breadcrumb only appears below the flee
   await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("combobox", { name: "Switch host" })).toBeVisible();
 });
+
+const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1] }> = [
+  { name: "host", path: `/#/host/${hostId}`, options: { accelerator: true } },
+  { name: "project", path: "/#/project/stuff", options: { probes: true, durableObjects: true, d1: true } }
+];
+
+async function openPage(page: Page, path: string, options: Parameters<typeof mock>[1]): Promise<void> {
+  await mock(page, options);
+  await page.goto(path);
+  await expect(page.locator(".charts > .widget").first()).toBeVisible();
+  await expect(page.locator(".chart-empty, .skeleton")).toHaveCount(0);
+}
+
+for (const { name, path, options } of FULL_PAGES) {
+  test(`the ${name} page keeps every widget's collapse control on the same right inset`, async ({ page }) => {
+    await openPage(page, path, options);
+    const insets = await page.locator(".widget").evaluateAll(widgets => widgets.map(widget => {
+      const button = widget.querySelector(".collapse")?.getBoundingClientRect();
+      return button === undefined ? null : Math.round((widget.getBoundingClientRect().right - button.right) * 10) / 10;
+    }));
+    expect(new Set(insets.filter(inset => inset !== null)).size).toBe(1);
+  });
+
+  test(`the ${name} page does not scroll sideways at any supported width`, async ({ page }) => {
+    await mock(page, options);
+    for (const width of [320, 390, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(path);
+      await expect(page.locator(".charts > .widget").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${width}px`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test(`collapsing a widget on the ${name} page moves none of its header controls and centers its title`, async ({ page }) => {
+    await openPage(page, path, options);
+    const headerBoxes = () => page.locator(".widget[id]").evaluateAll(widgets => widgets.map(widget => {
+      const box = (selector: string) => {
+        const rect = widget.querySelector(selector)?.getBoundingClientRect();
+        return rect === undefined ? null : { x: rect.x - widget.getBoundingClientRect().x, y: rect.y - widget.getBoundingClientRect().y, height: rect.height };
+      };
+      return { id: widget.id, title: box("h2"), expand: box(".expand"), collapse: box(".collapse") };
+    }));
+    const before = await headerBoxes();
+    const ids = before.map(entry => entry.id);
+    for (const id of ids) await page.locator(`#${id} .collapse`).click();
+    const after = await headerBoxes();
+    expect(after).toEqual(before);
+    const margins = await page.locator(".widget.collapsed").evaluateAll(widgets => widgets.map(widget => {
+      const widgetRect = widget.getBoundingClientRect();
+      const title = widget.querySelector("h2")?.getBoundingClientRect();
+      return title === undefined ? null : Math.abs((title.top - widgetRect.top) - (widgetRect.bottom - title.bottom));
+    }));
+    expect(margins.length).toBe(ids.length);
+    for (const margin of margins) expect(margin).toBeLessThanOrEqual(1);
+  });
+}
+
+test("no element id repeats on a page and no widget id repeats across pages, because collapse state is stored by id", async ({ page }) => {
+  const widgetIds: string[] = [];
+  for (const { path, options } of FULL_PAGES) {
+    await page.goto("about:blank");
+    await openPage(page, path, options);
+    const ids = await page.locator("[id]").evaluateAll(elements => elements.map(element => element.id));
+    expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+    widgetIds.push(...await page.locator(".widget[id]").evaluateAll(widgets => widgets.map(widget => widget.id)));
+    await page.unrouteAll({ behavior: "wait" });
+  }
+  expect(widgetIds.filter((id, index) => widgetIds.indexOf(id) !== index)).toEqual([]);
+});
