@@ -86,7 +86,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 @media (max-width: 640px) {
   .table-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
   .search { width: 100%; max-width: none; min-height: var(--control-touch); padding: 0 var(--space-md); border-radius: var(--radius-md); box-shadow: var(--outline); }
-  .search input { font-size: 16px; }
+  .search input { font-size: 16px; } /* iOS Safari zooms the page when a focused input is under 16px. */
   .pagination { flex-wrap: wrap; justify-content: center; gap: var(--space-sm); }
   .pagination-actions { width: 100%; justify-content: space-between; }
   .pagination .btn-icon { width: var(--control-touch); min-height: var(--control-touch); }
