@@ -1,15 +1,20 @@
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { HEALTH_LABEL } from "../../health";
 import { LimitGauge } from "../../components/LimitGauge";
 import { Sparkline } from "../../components/Sparkline";
 import { HealthMark, jumpTo, MetricValue } from "../../components/ui";
+import { useTelemetry } from "../../state";
 import type { MonitorCell } from "./monitors";
 
 export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string; readonly class?: string }): JSX.Element {
+  const { range, setRange } = useTelemetry();
+  const present = () => props.cells.filter(cell => cell.value !== undefined);
+  const absent = () => props.cells.filter(cell => cell.value === undefined);
+  const columns = () => present().length + (absent().length > 0 ? 1 : 0);
   return (
-    <section class={props.class === undefined ? "status-strip" : `status-strip ${props.class}`} style={`--cells:${props.cells.length}`} aria-label={props.label ?? "Host summary"}>
-      <For each={props.cells}>
+    <section class={props.class === undefined ? "status-strip" : `status-strip ${props.class}`} style={`--cells:${columns()}`} aria-label={props.label ?? "Host summary"}>
+      <For each={present()}>
         {(cell) => {
           const health = () => cell.state;
           const stateNote = () => {
@@ -33,6 +38,17 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
           );
         }}
       </For>
+      <Show when={absent().length > 0}>
+        <div class="strip-cell strip-absent">
+          <span class="tile-label">No data in this range</span>
+          <span class="strip-absent-links">
+            <For each={absent()}>{(cell) => <button class="link" type="button" onClick={() => jumpTo(cell.anchor)}>{cell.label}</button>}</For>
+          </span>
+          <Show when={range() === "1h" || range() === "6h"}>
+            <button class="btn btn-small strip-absent-action" type="button" onClick={() => setRange("24h")}>Show 24h</button>
+          </Show>
+        </div>
+      </Show>
     </section>
   );
 }

@@ -41,7 +41,7 @@ export function SectionBar(props: { readonly cells: readonly MonitorCell[]; read
         <div class="section-bar-items">
           <For each={props.cells}>
             {(cell) => (
-              <button class="section-link" type="button" onClick={() => jumpTo(cell.anchor)}>
+              <button class={cell.value === undefined ? "section-link quiet" : "section-link"} type="button" onClick={() => jumpTo(cell.anchor)}>
                 {cell.label}
                 <HealthMark health={cell.state} showOk />
               </button>

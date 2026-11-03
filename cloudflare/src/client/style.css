@@ -509,3 +509,10 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .charts .data-table.compact td { height: 30px; }
 .charts .data-table.compact :is(th, td):first-child { white-space: normal; overflow-wrap: anywhere; }
 .charts .data-table.compact th:not(:first-child), .charts .data-table.compact td:not(:first-child) { padding-right: 10px; }
+.strip-absent { cursor: default; gap: 6px; padding-bottom: 12px; justify-content: flex-start; background: color-mix(in srgb, var(--hover) 55%, var(--surface)); }
+.strip-absent:hover { background: color-mix(in srgb, var(--hover) 55%, var(--surface)); }
+.strip-absent-links { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--text-2); }
+.link { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link:hover { color: var(--text); }
+.strip-absent-action { align-self: flex-start; margin-top: 4px; }
+.section-link.quiet { color: var(--muted); }

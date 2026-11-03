@@ -141,6 +141,12 @@ test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
   await page.waitForLoadState("networkidle");
   await page.mouse.move(0, 0);
+  const strip = page.getByRole("region", { name: "Project summary" });
+  const absent = strip.locator(".strip-absent");
+  await expect(absent).toContainText("No data in this range");
+  for (const label of ["Worker 5xx", "CPU time", "R2 failures", "R2 storage"]) await expect(absent.getByRole("button", { name: label, exact: true })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^Requests: / })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /^Worker 5xx: / })).toHaveCount(0);
   const regions = [
     ["tiles", page.getByRole("region", { name: "Project summary" })] as const,
     ["charts", page.getByRole("region", { name: "Charts" })] as const
@@ -148,4 +154,14 @@ test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   for (const [file, region] of regions) {
     await expect(region).toHaveScreenshot(`stuff-1h-${file}.webp`);
   }
+});
+
+test("the project summary offers a longer range when cells have no data", async ({ page }) => {
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
+  await page.goto("/#/project/stuff");
+  const absent = page.getByRole("region", { name: "Project summary" }).locator(".strip-absent");
+  await expect(absent).toContainText("No data in this range");
+  await absent.getByRole("button", { name: "Show 24h" }).click();
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(absent.getByRole("button", { name: "Show 24h" })).toHaveCount(0);
 });
