@@ -17,6 +17,65 @@ export interface WindowStats {
   readonly last: number;
 }
 
+export interface SparkGeometry {
+  readonly paths: readonly string[];
+  readonly area: string | undefined;
+  readonly dot: { readonly x: number; readonly y: number } | undefined;
+}
+
+const SPARK_WIDTH = 160;
+const SPARK_BOTTOM = 36;
+const SPARK_HEIGHT = 30;
+const SPARK_FLOOR = 40;
+
+export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined, window: TimeWindow | undefined, zeroBased: boolean): SparkGeometry | null {
+  const values = tracks.flatMap(track => track.filter((value): value is number => value !== null && Number.isFinite(value)));
+  if (values.length === 0) return null;
+  const low = zeroBased ? Math.min(0, ...values) : Math.min(...values);
+  const high = Math.max(...values);
+  const span = high - low || 1;
+  const fromMs = window?.fromMs ?? times?.[0];
+  const toMs = window?.toMs ?? times?.at(-1);
+  const timed = times !== undefined && fromMs !== undefined && toMs !== undefined && toMs > fromMs;
+  const x = (track: Cells, index: number): number | undefined => {
+    if (!timed) {
+      const length = Math.max(...tracks.map(entry => entry.length));
+      return length <= 1 ? 0 : (index / (length - 1)) * SPARK_WIDTH;
+    }
+    const time = times[index];
+    if (time === undefined) return undefined;
+    return Math.min(SPARK_WIDTH, Math.max(0, ((time - fromMs) / (toMs - fromMs)) * SPARK_WIDTH));
+  };
+  const paths: string[] = [];
+  let area: string | undefined;
+  let dot: { readonly x: number; readonly y: number } | undefined;
+  tracks.forEach((track, position) => {
+    const segments: { readonly x: number; readonly y: number }[][] = [];
+    let segment: { readonly x: number; readonly y: number }[] = [];
+    track.forEach((value, index) => {
+      const pointX = x(track, index);
+      if (value === null || !Number.isFinite(value) || pointX === undefined) {
+        if (segment.length > 0) segments.push(segment);
+        segment = [];
+        return;
+      }
+      const point = { x: pointX, y: SPARK_BOTTOM - ((value - low) / span) * SPARK_HEIGHT };
+      segment.push(point);
+      if (position === 0) dot = point;
+    });
+    if (segment.length > 0) segments.push(segment);
+    paths.push(segments.map(entry => entry.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ")).filter(path => path !== "").join(" "));
+    if (position === 0) {
+      area = segments.map(entry => {
+        const first = entry[0]!;
+        const last = entry.at(-1)!;
+        return `M${first.x.toFixed(2)},${SPARK_FLOOR} L${entry.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" L")} L${last.x.toFixed(2)},${SPARK_FLOOR} Z`;
+      }).join(" ");
+    }
+  });
+  return { paths, area, dot };
+}
+
 interface Grid {
   readonly times: Times;
   readonly dense: boolean;
@@ -90,6 +149,19 @@ function alignedByTime(tracks: readonly Track[]): AlignedSeries {
 
 export function alignTracks(tracks: readonly Track[], stepMs?: number): AlignedSeries {
   return stepMs !== undefined && stepMs > 0 ? alignedOnGrid(tracks, stepMs) : alignedByTime(tracks);
+}
+
+export function worstTrack(tracks: readonly Track[], stepMs: number): Track {
+  const aligned = alignTracks(tracks, stepMs);
+  const values = aligned.times.map((_, index) => {
+    let worst: number | null = null;
+    for (const column of aligned.columns) {
+      const value = column[index];
+      if (value !== null && value !== undefined && (worst === null || value > worst)) worst = value;
+    }
+    return worst;
+  });
+  return { times: aligned.times, values };
 }
 
 export function sumTracks(tracks: readonly Track[]): Track {

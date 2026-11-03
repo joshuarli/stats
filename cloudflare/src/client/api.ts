@@ -299,5 +299,5 @@ export function getHostHistories(hostId: string, query: HistoryQuery, signal: Ab
 }
 
 export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
-  return getHistory(`${historyUrl(hostId, query)}&kinds=summary,disks,nets`, decodeFleetHistories, fleetCache, signal);
+  return getHistory(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems`, decodeFleetHistories, fleetCache, signal);
 }

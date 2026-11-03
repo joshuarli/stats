@@ -114,8 +114,8 @@ describe("project API", () => {
 
 describe("project history", () => {
   it("picks the smallest bucket width that gives at most 900 points", () => {
-    const widths = RANGES.map((range) => bucketWidthMs({ "1h": HOUR_MS, "6h": 6 * HOUR_MS, "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS, "90d": 90 * 24 * HOUR_MS }[range]));
-    expect(widths).toEqual([BUCKET, BUCKET, BUCKET, 15 * 60_000, 3 * HOUR_MS]);
+    const widths = RANGES.map((range) => bucketWidthMs({ "1h": HOUR_MS, "6h": 6 * HOUR_MS, "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS, "30d": 30 * 24 * HOUR_MS }[range]));
+    expect(widths).toEqual([BUCKET, BUCKET, BUCKET, 15 * 60_000, HOUR_MS]);
   });
 
   it("returns several kinds in one response", async () => {
@@ -189,8 +189,8 @@ describe("project history", () => {
     expect(seriesOf(body, "probe.npm.up")[indexOf(body, start)]).toBe(0);
   });
 
-  it("starts the 7 day and 90 day views at the first bucket that retention left whole", async () => {
-    for (const [range, stepMs, retentionMs] of [["7d", 15 * 60_000, 7 * 24 * HOUR_MS], ["90d", 3 * HOUR_MS, 90 * 24 * HOUR_MS]] as const) {
+  it("starts the 7 day and 30 day views at the first bucket that retention left whole", async () => {
+    for (const [range, stepMs, retentionMs] of [["7d", 15 * 60_000, 7 * 24 * HOUR_MS], ["30d", HOUR_MS, 30 * 24 * HOUR_MS]] as const) {
       const body = await history(range, "worker");
       expect(body.stepMs).toBe(stepMs);
       expect(body.fromMs % stepMs).toBe(0);
@@ -201,15 +201,15 @@ describe("project history", () => {
     expect(hour.fromMs).toBeLessThanOrEqual(NOW - HOUR_MS);
   });
 
-  it("serves 90 days from hourly rows in three hour buckets", async () => {
-    const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / (3 * HOUR_MS)) * 3 * HOUR_MS;
+  it("serves 30 days from hourly rows in one hour buckets", async () => {
+    const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / HOUR_MS) * HOUR_MS;
     await record(metricRun(NOW - BUCKET, [
       { metric: "worker.invocations", bucketMs: hour, value: 10 },
-      { metric: "worker.invocations", bucketMs: hour + HOUR_MS + BUCKET, value: 20 },
+      { metric: "worker.invocations", bucketMs: hour + BUCKET, value: 20 },
       { metric: "worker.invocations", bucketMs: hour + 3 * HOUR_MS, value: 40 },
     ]));
-    const body = await history("90d", "worker");
-    expect(body.stepMs).toBe(3 * HOUR_MS);
+    const body = await history("30d", "worker");
+    expect(body.stepMs).toBe(HOUR_MS);
     expect(body.series[0]?.values.length).toBeLessThanOrEqual(900);
     expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBe(30);
     expect(seriesOf(body, "worker.invocations")[indexOf(body, hour + 3 * HOUR_MS)]).toBe(40);

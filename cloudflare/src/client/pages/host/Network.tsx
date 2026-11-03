@@ -108,7 +108,7 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
                           <td>{rate(at("txBytesPerSec"))}</td>
                           <td>{drops() === undefined ? "unavailable" : perSecond(drops())}<HealthMark health={health(drops())} /></td>
                           <td>{errors() === undefined ? "unavailable" : perSecond(errors())}<HealthMark health={health(errors())} /></td>
-                          <td><Sparkline values={entry.table.cells("rxBytesPerSec").slice(range()[0], range()[1] + 1)} label={`${entry.id} receive rate`} /></td>
+                          <td><Sparkline series={[{ values: entry.table.cells("rxBytesPerSec").slice(range()[0], range()[1] + 1) }]} times={entry.table.times.slice(range()[0], range()[1] + 1)} label={`${entry.id} receive rate`} /></td>
                         </tr>
                       );
                     }}

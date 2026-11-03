@@ -26,7 +26,7 @@ if get "/api/v1/hosts/$host_id/system" > "$out/system.json.tmp" 2>/dev/null; the
   system=true
 fi
 rm -f "$out/system.json.tmp"
-for range in 1h 6h 24h 7d 90d; do
+for range in 1h 6h 24h 7d 30d; do
   for kind in summary disks nets filesystems block; do
     node "$here/api.mjs" "/hosts/$host_id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done

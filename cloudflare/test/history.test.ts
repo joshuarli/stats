@@ -43,10 +43,10 @@ describe("history query", () => {
   });
 
   it("rejects ambiguous, partial, or unbounded windows", () => {
-    for (const search of ["from=1000", "to=2000", "range=1h&from=1000&to=2000", "from=2000&to=1000", "from=1000&to=1000", "from=abc&to=2000", "from=1.5&to=2000", "from=-1&to=2000", `from=0&to=${90 * 24 * 60 * 60 * 1000 + 1}`, "range=2h"]) {
+    for (const search of ["from=1000", "to=2000", "range=1h&from=1000&to=2000", "from=2000&to=1000", "from=1000&to=1000", "from=abc&to=2000", "from=1.5&to=2000", "from=-1&to=2000", `from=0&to=${30 * 24 * 60 * 60 * 1000 + 1}`, "range=2h"]) {
       expect(parse(search), search).toBeNull();
     }
-    expect(parse(`from=0&to=${90 * 24 * 60 * 60 * 1000}`)).not.toBeNull();
+    expect(parse(`from=0&to=${30 * 24 * 60 * 60 * 1000}`)).not.toBeNull();
   });
 });
 
@@ -96,7 +96,7 @@ describe("history", () => {
     expect(body.points[1]!.coverageMs).toBe(15_000);
     expect(body.points[1]!.cpu?.user).toBe(9.609);
 
-    for (const range of ["1h", "6h", "24h", "7d", "90d"]) {
+    for (const range of ["1h", "6h", "24h", "7d", "30d"]) {
       expect((await history(host.hostId, range, "summary")).status, range).toBe(200);
     }
     const seriesIds: Record<string, string[]> = { disks: ["259:0", "8:0"], nets: ["eth0", "tailscale0"], filesystems: ["/", "/var"] };
@@ -123,10 +123,10 @@ describe("history", () => {
     expect(dayBody.resolution).toBe("1m");
     expect(dayBody.stepMs).toBe(60_000);
 
-    const quarter = await history(host.hostId, "90d", "summary");
-    const quarterBody = await frame(quarter) as { resolution: string; stepMs: number };
-    expect(quarterBody.resolution).toBe("1h");
-    expect(quarterBody.stepMs).toBe(3_600_000);
+    const month = await history(host.hostId, "30d", "summary");
+    const monthBody = await frame(month) as { resolution: string; stepMs: number };
+    expect(monthBody.resolution).toBe("1h");
+    expect(monthBody.stepMs).toBe(3_600_000);
 
     const block = await history(host.hostId, "1h", "block");
     const blockBody = await frame(block) as { resolution: string; series: { points: { count: number; p50Us: number; p95Us: number; p99Us: number; maxUs: number }[] }[] };

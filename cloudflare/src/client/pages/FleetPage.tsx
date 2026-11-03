@@ -2,8 +2,8 @@ import { createMemo, createSignal, Errored, For, isPending, latest, Loading, ref
 import type { JSX } from "@solidjs/web";
 import { LIMITS } from "../health";
 import { age, bytes, count, errorMessage, percent, rate } from "../format";
-import { sumTracks } from "../chart-data";
-import { addCells, cpuUsed, lastCell, memoryUsed, sumLatest } from "../metrics";
+import { sumTracks, worstTrack } from "../chart-data";
+import { addCells, cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { collectorStatus, statusFor, type HostStatus } from "../status";
 import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
@@ -273,10 +273,10 @@ function FleetDashboard(props: {
                   {header("name", "Host")}
                   <th scope="col">CPU</th>
                   <th scope="col">Memory</th>
-                  <th scope="col" class="numeric">Load 1m</th>
+                  <th scope="col">Load 1m / 5m / 15m</th>
+                  <th scope="col">Disk space</th>
                   <th scope="col">Disk read / write</th>
                   <th scope="col">Network in / out</th>
-                  <th scope="col" class="numeric">PSI some10</th>
                 </tr>
               </thead>
               <tbody>
@@ -295,10 +295,12 @@ function FleetDashboard(props: {
 
 function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }): JSX.Element {
   const table = () => props.row.summary;
+  const timeWindow = createMemo(() => ({ fromMs: props.row.fromMs, toMs: props.row.toMs }));
   const status = createMemo(() => hostStatus(props.row.host));
   const info = createMemo(() => props.row.system?.system);
   const cpuTrend = createMemo(() => cpuUsed(table()));
   const memoryTrend = createMemo(() => memoryUsed(table()));
+  const loadTrend = createMemo(() => [table().cells("load.one"), table().cells("load.five"), table().cells("load.fifteen")]);
   const cpu = createMemo(() => lastCell(cpuTrend()));
   const memory = createMemo(() => lastCell(memoryTrend()));
   const free = createMemo(() => lastCell(table().cells("mem.available")));
@@ -308,8 +310,19 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
   const diskWrite = createMemo(() => sumLatest(props.row.disks, entry => entry.table.cells("writeBytesPerSec")));
   const netIn = createMemo(() => sumLatest(props.row.nets, entry => entry.table.cells("rxBytesPerSec")));
   const netOut = createMemo(() => sumLatest(props.row.nets, entry => entry.table.cells("txBytesPerSec")));
-  const diskTrend = createMemo(() => sumTracks(props.row.disks.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("readBytesPerSec"), entry.table.cells("writeBytesPerSec")) }))).values);
-  const netTrend = createMemo(() => sumTracks(props.row.nets.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("rxBytesPerSec"), entry.table.cells("txBytesPerSec")) }))).values);
+  const diskTrend = createMemo(() => sumTracks(props.row.disks.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("readBytesPerSec"), entry.table.cells("writeBytesPerSec")) }))));
+  const netTrend = createMemo(() => sumTracks(props.row.nets.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("rxBytesPerSec"), entry.table.cells("txBytesPerSec")) }))));
+  const diskSpaceTrend = createMemo(() => worstTrack(props.row.filesystems.map(entry => ({ times: entry.table.times, values: usedShare(entry.table) })), props.row.filesystemStepMs));
+  const diskSpace = createMemo(() => lastValue(diskSpaceTrend().values));
+  const diskSpaceMount = createMemo(() => {
+    let worst: { readonly id: string; readonly used: number } | undefined;
+    for (const entry of props.row.filesystems) {
+      const used = lastValue(usedShare(entry.table));
+      if (used === undefined) continue;
+      if (worst === undefined || used > worst.used) worst = { id: entry.id, used };
+    }
+    return worst;
+  });
   const cpuNote = createMemo(() => {
     const cores = info()?.cpu.cores ?? cpuCount();
     const threads = info()?.cpu.threads;
@@ -351,7 +364,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
         <div class="cpu-cell">
           <span class="metric-value-small">{percent(cpu())}</span>
           <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
-          <Sparkline values={cpuTrend()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
+          <Sparkline series={[{ values: cpuTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
         </div>
       </td>
       <td>
@@ -359,25 +372,49 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(memory())}</span>
             <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
-            <Sparkline values={memoryTrend()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
+            <Sparkline series={[{ values: memoryTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
           </div>
           <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>
       </td>
-      <td class="numeric"><span class="metric-value-small">{count(lastCell(table().cells("load.one")))}</span></td>
+      <td>
+        <div class="cpu-cell">
+          <span><span class="cell-strong">{count(lastCell(table().cells("load.one")))}</span><span class="cell-note"> / {count(lastCell(table().cells("load.five")))} / {count(lastCell(table().cells("load.fifteen")))}</span></span>
+          <Sparkline
+            series={[
+              { values: loadTrend()[0]!, class: "viz-ramp-5" },
+              { values: loadTrend()[1]!, class: "viz-ramp-3" },
+              { values: loadTrend()[2]!, class: "viz-ramp-1" }
+            ]}
+            times={table().times}
+            window={timeWindow()}
+            label={`${props.row.host.name} load trend`}
+            class="spark-inline"
+          />
+        </div>
+      </td>
+      <td>
+        <div class="cell-stack">
+          <div class="cpu-cell">
+            <span class="metric-value-small">{percent(diskSpace())}</span>
+            <Meter value={diskSpace()} warn={LIMITS.filesystemUsedPercent.elevated} bad={LIMITS.filesystemUsedPercent.critical} />
+            <Sparkline series={[{ values: diskSpaceTrend().values }]} times={diskSpaceTrend().times} window={timeWindow()} label={`${props.row.host.name} disk space trend`} class="spark-inline" />
+          </div>
+          <span class="cell-note">{diskSpaceMount()?.id ?? "unavailable"}</span>
+        </div>
+      </td>
       <td>
         <div class="cpu-cell">
           <span><span class="cell-strong">{rate(diskRead())}</span><span class="cell-note"> / {rate(diskWrite())}</span></span>
-          <Sparkline values={diskTrend()} label={`${props.row.host.name} disk throughput trend`} class="spark-inline" />
+          <Sparkline series={[{ values: diskTrend().values }]} times={diskTrend().times} window={timeWindow()} label={`${props.row.host.name} disk throughput trend`} class="spark-inline" />
         </div>
       </td>
       <td>
         <div class="cpu-cell">
           <span><span class="cell-strong">{rate(netIn())}</span><span class="cell-note"> / {rate(netOut())}</span></span>
-          <Sparkline values={netTrend()} label={`${props.row.host.name} network throughput trend`} class="spark-inline" />
+          <Sparkline series={[{ values: netTrend().values }]} times={netTrend().times} window={timeWindow()} label={`${props.row.host.name} network throughput trend`} class="spark-inline" />
         </div>
       </td>
-      <td class="numeric"><span class="metric-value-small">{percent(lastCell(table().cells("psi.cpu.some10")))}</span></td>
     </tr>
   );
 }

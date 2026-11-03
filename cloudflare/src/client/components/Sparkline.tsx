@@ -1,22 +1,25 @@
-import { createMemo, createUniqueId } from "solid-js";
+import { createMemo, createUniqueId, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Health } from "../health";
-import type { Cells } from "../columns";
+import type { Cells, Times } from "../columns";
+import { sparkGeometry, type TimeWindow } from "../chart-data";
 
-export function Sparkline(props: { readonly values: Cells; readonly label: string; readonly zeroBased?: boolean | undefined; readonly health?: Health | undefined; readonly class?: string | undefined }): JSX.Element {
+export interface SparkTrack {
+  readonly values: Cells;
+  readonly class?: string | undefined;
+}
+
+export function Sparkline(props: {
+  readonly series: readonly SparkTrack[];
+  readonly label: string;
+  readonly zeroBased?: boolean | undefined;
+  readonly health?: Health | undefined;
+  readonly class?: string | undefined;
+  readonly times?: Times | undefined;
+  readonly window?: TimeWindow | undefined;
+}): JSX.Element {
   const id = createUniqueId();
-  const geometry = createMemo(() => {
-    const values = props.values.filter((value): value is number => value !== null && Number.isFinite(value));
-    if (values.length === 0) return null;
-    const low = props.zeroBased === true ? Math.min(0, ...values) : Math.min(...values);
-    const high = Math.max(...values);
-    const span = high - low || 1;
-    const path = values.map((value, index) => `${index === 0 ? "M" : "L"}${((index / Math.max(1, values.length - 1)) * 160).toFixed(2)},${(36 - ((value - low) / span) * 30).toFixed(2)}`).join(" ");
-    const area = `${path} L160,40 L0,40 Z`;
-    const last = values.at(-1);
-    const lastY = last === undefined ? 36 : 36 - ((last - low) / span) * 30;
-    return { path, area, lastY };
-  });
+  const geometry = createMemo(() => sparkGeometry(props.series.map(track => track.values), props.times, props.window, props.zeroBased === true));
   return (
     <svg class={`sparkline${props.health === undefined || props.health === "ok" ? "" : ` health-${props.health}`}${props.class === undefined ? "" : ` ${props.class}`}`} viewBox="0 0 160 40" role="img" aria-label={props.label} preserveAspectRatio="none">
       <defs>
@@ -27,9 +30,15 @@ export function Sparkline(props: { readonly values: Cells; readonly label: strin
       </defs>
       {geometry() === null ? null : (
         <>
-          <path class="spark-area" d={geometry()!.area} fill={`url(#spark-${id})`} />
-          <path class="spark-line" d={geometry()!.path} />
-          <circle class="spark-dot" cx="160" cy={geometry()!.lastY.toFixed(2)} r="2.2" />
+          <Show when={geometry()!.area}>
+            {(area) => <path class="spark-area" d={area()} fill={`url(#spark-${id})`} />}
+          </Show>
+          <For each={props.series}>
+            {(track, position) => <path class={`spark-line${track.class === undefined ? "" : ` ${track.class}`}`} d={geometry()!.paths[position()] ?? ""} />}
+          </For>
+          <Show when={geometry()!.dot}>
+            {(dot) => <circle class="spark-dot" cx={dot().x.toFixed(2)} cy={dot().y.toFixed(2)} r="2.2" />}
+          </Show>
         </>
       )}
     </svg>

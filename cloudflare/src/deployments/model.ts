@@ -35,7 +35,7 @@ export interface DeploymentHistory {
   readonly versions: readonly VersionMetadata[];
 }
 
-export const DEPLOYMENT_RETENTION_MS = 90 * 86_400_000;
+export const DEPLOYMENT_RETENTION_MS = 30 * 86_400_000;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function record(value: unknown): Record<string, unknown> {

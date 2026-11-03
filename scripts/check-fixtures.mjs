@@ -94,7 +94,7 @@ const samplesPerDay = 86_400 / sampleIntervalSeconds;
 const requestsPerDay = samplesPerDay / samplesPerRequest;
 const rawHours = 48;
 const minuteDays = 7;
-const hourDays = 90;
+const hourDays = 30;
 const rawRows = samplesPerDay * (rawHours / 24);
 const minuteRows = (86_400 / 60) * minuteDays;
 const hourRows = 24 * hourDays;
@@ -105,7 +105,7 @@ const rollupBytes = (minuteRows + hourRows) * sampleBytes * rollupFactor;
 console.log(`fixtures: ${manifest.fixtures.length} checked`);
 console.log(`wire sample: ${sampleBytes} bytes (batch-full is ${wireBytes} bytes for ${samplesPerRequest})`);
 console.log("");
-console.log("hosts | ingress/day | requests/day | raw GB (48h) | rollup GB (7d+90d) | rows");
+console.log("hosts | ingress/day | requests/day | raw GB (48h) | rollup GB (7d+30d) | rows");
 for (const hosts of [1, 10, 100]) {
   const ingress = (samplesPerDay * sampleBytes * hosts) / 1_000_000;
   const requests = requestsPerDay * hosts;

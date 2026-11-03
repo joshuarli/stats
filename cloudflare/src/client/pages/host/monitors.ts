@@ -1,10 +1,10 @@
-import { alignTracks, sumTracks, windowIndexes, windowTracks, type TimeWindow } from "../../chart-data";
+import { sumTracks, windowIndexes, windowTracks, worstTrack, type TimeWindow } from "../../chart-data";
 import type { Cells, Track } from "../../columns";
 import { count, percent, rate } from "../../format";
 import type { DeviceHistory, SummaryHistory } from "../../history";
 import { LIMITS, loadLimits, type Health, type Limits } from "../../health";
 import { monitorState } from "../../monitoring";
-import { cpuUsed, memoryUsed, netFaults, usedShare } from "../../metrics";
+import { cpuUsed, lastValue, memoryUsed, netFaults, usedShare } from "../../metrics";
 import { perSecond } from "./shared";
 
 export interface HostData {
@@ -24,27 +24,6 @@ export interface MonitorCell {
   readonly value: number | undefined;
   readonly detail: string;
   readonly limits: Limits | undefined;
-}
-
-export function worstOf(tracks: readonly Track[], stepMs: number): Track {
-  const aligned = alignTracks(tracks, stepMs);
-  const values = aligned.times.map((_, index) => {
-    let worst: number | null = null;
-    for (const column of aligned.columns) {
-      const value = column[index];
-      if (value !== null && value !== undefined && (worst === null || value > worst)) worst = value;
-    }
-    return worst;
-  });
-  return { times: aligned.times, values };
-}
-
-export function lastValue(cells: Cells): number | undefined {
-  for (let index = cells.length - 1; index >= 0; index -= 1) {
-    const value = cells[index];
-    if (value !== null && value !== undefined && Number.isFinite(value)) return value;
-  }
-  return undefined;
 }
 
 export function rangeText(cells: Cells, format: (value: number | undefined) => string): string {
@@ -107,7 +86,7 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
     { id: "network", label: "Net faults", anchor: "network", limits: LIMITS.netFaultsPerSec, series: [faults], stepMs: data.nets.stepMs, format: perSecond }
   ];
   return specs.map(spec => {
-    const spark = spec.series.length === 1 ? spec.series[0]!.values : worstOf(spec.series, spec.stepMs).values;
+    const spark = spec.series.length === 1 ? spec.series[0]!.values : worstTrack(spec.series, spec.stepMs).values;
     const state = monitorState({ limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
     return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format), limits: spec.limits };
   });

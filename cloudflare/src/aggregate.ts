@@ -164,7 +164,7 @@ export function historyQuery(params: URLSearchParams): HistoryQuery | null {
   if (range !== null || from === null || to === null || !/^[0-9]{1,15}$/u.test(from) || !/^[0-9]{1,15}$/u.test(to)) return null;
   const fromMs = Number(from);
   const toMs = Number(to);
-  return fromMs < toMs && toMs - fromMs <= RANGE_MS["90d"] ? { fromMs, toMs } : null;
+  return fromMs < toMs && toMs - fromMs <= RANGE_MS["30d"] ? { fromMs, toMs } : null;
 }
 
 export function kindValue(value: string | null): HistoryKind | null {

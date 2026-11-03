@@ -26,6 +26,14 @@ export function lastCell(cells: Cells): number | undefined {
   return cells[cells.length - 1] ?? undefined;
 }
 
+export function lastValue(cells: Cells): number | undefined {
+  for (let index = cells.length - 1; index >= 0; index -= 1) {
+    const value = cells[index];
+    if (value !== null && value !== undefined && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
 export function sumLatest<T>(series: readonly T[], cells: (entry: T) => Cells): number | undefined {
   let total = 0;
   let present = 0;

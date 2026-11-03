@@ -42,7 +42,7 @@ export interface HostHistories {
   readonly block: DeviceHistory<"block">;
 }
 
-export type FleetHistories = Pick<HostHistories, "summary" | "disks" | "nets">;
+export type FleetHistories = Pick<HostHistories, "summary" | "disks" | "nets" | "filesystems">;
 
 export interface MetricHistory {
   readonly projectId: string;
@@ -155,7 +155,12 @@ export function decodeSummary(root: HistoryView): SummaryHistory {
 
 export function decodeFleetHistories(root: HistoryView): FleetHistories {
   const bundle = bundled(root);
-  return { summary: summaryFrom(entry(bundle, "summary")), disks: devicesFrom(entry(bundle, "disks"), "disks"), nets: devicesFrom(entry(bundle, "nets"), "nets") };
+  return {
+    summary: summaryFrom(entry(bundle, "summary")),
+    disks: devicesFrom(entry(bundle, "disks"), "disks"),
+    nets: devicesFrom(entry(bundle, "nets"), "nets"),
+    filesystems: devicesFrom(entry(bundle, "filesystems"), "filesystems")
+  };
 }
 
 export function decodeHostHistories(root: HistoryView): HostHistories {

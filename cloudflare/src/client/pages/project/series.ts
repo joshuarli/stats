@@ -7,7 +7,8 @@ import { monitorState } from "../../monitoring";
 import { addAll, holdLast, ratio, scaled } from "./math";
 import { LIST_PRICE_PER_MILLION } from "../../pricing";
 import { PROJECT_SETTLE_MS } from "../../../limits";
-import { lastValue, rangeText, type MonitorCell } from "../host/monitors";
+import { lastValue } from "../../metrics";
+import { rangeText, type MonitorCell } from "../host/monitors";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;

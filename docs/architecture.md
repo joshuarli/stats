@@ -68,12 +68,12 @@ Routes under `/api/v1/` (handled in `installation.ts`):
 
 - `GET /hosts`, `GET /hosts/:hostId/latest`, `GET /hosts/:hostId/system`
   (404 until the agent has reported).
-- `GET /hosts/:hostId/history?range=1h|6h|24h|7d|90d&kind=summary|disks|nets|filesystems|block`.
-  Pass `from` and `to` (epoch milliseconds, at most 90 days apart) instead of
+- `GET /hosts/:hostId/history?range=1h|6h|24h|7d|30d&kind=summary|disks|nets|filesystems|block`.
+  Pass `from` and `to` (epoch milliseconds, at most 30 days apart) instead of
   `range` for an explicit window; the response then omits `range`. Pass
   `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
   as a bundle.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|90d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
   Pass `kinds=worker,r2,collector` instead of `kind` to receive several
   kinds at once as a bundle (see [Cloudflare projects](#cloudflare-projects)).
   Both history routes answer in the [history frame](#history-frames); every
@@ -122,7 +122,7 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
 - `host_system`: the latest `system` object per host and when it arrived.
 - `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
-  7 days and hourly buckets for 90 days.
+  7 days and hourly buckets for 30 days.
 
 Rollups store counter delta sums with the interval each device covered and
 gauge sums with counts; they never average counters. A device rate divides by
@@ -268,7 +268,7 @@ per-host history versions for ETags):
 
 - `project_samples(project, metric, bucket_ms, value)`: five-minute buckets for
   7 days.
-- `project_hours(project, metric, hour_ms, value)`: hourly buckets for 90 days,
+- `project_hours(project, metric, hour_ms, value)`: hourly buckets for 30 days,
   rebuilt for each hour a changed value falls in; sums add, maxima take the
   maximum, and probe availability takes the minimum so an outage stays visible
   in wide buckets.

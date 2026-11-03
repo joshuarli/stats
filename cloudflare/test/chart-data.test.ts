@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTracks, duration, panWindow, sumTracks, windowIndexes, windowStats, windowTracks } from "../src/client/chart-data";
+import { alignTracks, duration, panWindow, sparkGeometry, sumTracks, windowIndexes, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
 
 describe("chart data", () => {
   it("keeps a missing value as a gap instead of interpolating or zeroing it", () => {
@@ -62,6 +62,26 @@ describe("chart data", () => {
     const aligned = alignTracks([{ times: [15_000, 15_001, 30_000], values: [1, 2, 3] }], 15_000);
     expect(aligned.times).toEqual([15_000, 30_000]);
     expect(aligned.columns).toEqual([[2, 3]]);
+  });
+
+  it("keeps a stale sparkline inside its sample window instead of stretching it to the edge", () => {
+    const geometry = sparkGeometry([[1, 2]], [0, 15_000], { fromMs: 0, toMs: 60_000 }, false);
+    expect(geometry?.paths).toEqual(["M0.00,36.00 L40.00,6.00"]);
+    expect(geometry?.area).toBe("M0.00,40 L0.00,36.00 L40.00,6.00 L40.00,40 Z");
+    expect(geometry?.dot).toEqual({ x: 40, y: 6 });
+  });
+
+  it("breaks a sparkline path at a missing value", () => {
+    const geometry = sparkGeometry([[1, null, 3]], [0, 15_000, 30_000], { fromMs: 0, toMs: 30_000 }, false);
+    expect(geometry?.paths).toEqual(["M0.00,36.00 M160.00,6.00"]);
+  });
+
+  it("finds the worst value across tracks on one sparkline axis", () => {
+    const worst = worstTrack([
+      { times: [0, 15_000], values: [1, 5] },
+      { times: [0, 15_000], values: [3, 2] }
+    ], 15_000);
+    expect(worst).toEqual({ times: [0, 15_000], values: [3, 5] });
   });
 
   it("computes window statistics over present values only", () => {

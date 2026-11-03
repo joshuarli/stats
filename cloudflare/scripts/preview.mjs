@@ -76,7 +76,7 @@ async function captureFile(capture, name) {
 async function closest(capture, kind, range) {
   const wanted = await captureFile(capture, `${kind}-${range}.json`);
   if (wanted !== undefined) return wanted;
-  for (const fallback of ["1h", "6h", "24h", "7d", "90d"]) {
+  for (const fallback of ["1h", "6h", "24h", "7d", "30d"]) {
     const found = await captureFile(capture, `${kind}-${fallback}.json`);
     if (found !== undefined) return found;
   }
@@ -88,7 +88,7 @@ function rangeForSpan(span) {
   if (span <= 6 * hour) return "6h";
   if (span <= day) return "24h";
   if (span <= 7 * day) return "7d";
-  return "90d";
+  return "30d";
 }
 
 function emptyHistory(base, fromMs, toMs) {

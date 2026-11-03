@@ -6,10 +6,10 @@ const now = Date.now();
 
 function summary(range: string, empty = false, accelerator = false) {
   const length = empty ? 0 : 12;
-  const step = range === "90d" ? 3_600_000 : range === "7d" ? 60_000 : 15_000;
+  const step = range === "30d" ? 3_600_000 : range === "7d" ? 60_000 : 15_000;
   return {
     hostId, range, kind: "summary", fromMs: now - step * length, toMs: now,
-    resolution: range === "90d" ? "1h" : range === "7d" ? "1m" : "raw", stepMs: step,
+    resolution: range === "30d" ? "1h" : range === "7d" ? "1m" : "raw", stepMs: step,
     points: Array.from({ length }, (_, index) => ({
       atMs: now - (length - index) * step,
       coverageMs: step,
@@ -191,7 +191,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -230,6 +230,9 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       if (from !== null && to !== null) {
         return { ...body, fromMs: Number(from), toMs: Number(to), points: body.points.slice(0, 4).map((point, index) => ({ ...point, atMs: Number(to) - (4 - index) * 15_000 })) };
       }
+      if (options.staleGap === true && !empty) {
+        return { ...body, fromMs: now - 3_600_000, toMs: now, points: body.points.map((point, index) => ({ ...point, atMs: now - 3_600_000 + (index + 1) * 15_000 })) };
+      }
       return body;
     };
     if (kinds !== null) {
@@ -249,8 +252,13 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(fleetTable).toContainText("AMD Ryzen 9 9950X 16-Core Processor");
   await expect(fleetTable).toContainText("16 cores · 32 threads");
   await expect(fleetTable).toContainText("Alpine Linux edge");
+  await expect(fleetTable).toContainText("Load 1m / 5m / 15m");
+  await expect(fleetTable).toContainText("Disk space");
+  await expect(fleetTable).not.toContainText("PSI some10");
   await expect(page.getByRole("img", { name: "alpha CPU trend" })).toBeVisible();
   await expect(page.getByRole("img", { name: "alpha memory trend" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "alpha load trend" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "alpha disk space trend" })).toBeVisible();
   await expect(page.getByRole("img", { name: "alpha disk throughput trend" })).toBeVisible();
   await expect(page.getByRole("img", { name: "alpha network throughput trend" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("fleet.png"), fullPage: true });
@@ -281,7 +289,7 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   const load = await page.evaluate(() => Math.round(performance.getEntriesByType("navigation")[0]?.duration ?? 0));
   console.log(`dashboard load ${load} ms`);
 
-  for (const range of ["6h", "24h", "7d", "90d"]) {
+  for (const range of ["6h", "24h", "7d", "30d"]) {
     await page.getByRole("button", { name: range }).click();
     await expect(page.getByRole("button", { name: range })).toHaveAttribute("aria-pressed", "true");
     expect(requests.some(request => request.includes(`range=${range}`))).toBe(true);
@@ -339,6 +347,7 @@ test("the host page reads every history kind in one request", async ({ page }) =
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "CPU" })).toBeVisible();
   const hostHistory = () => requests.filter(request => request.startsWith(`/api/v1/hosts/${hostId}/history`));
+  await expect.poll(() => requests.some(request => request.includes("range=1h&kinds=summary,disks,nets,filesystems"))).toBe(true);
   await expect.poll(() => hostHistory().some(request => request.includes("range=1h&kinds=summary,disks,nets,filesystems,block"))).toBe(true);
   expect(hostHistory().filter(request => request.includes("range=1h&kind="))).toHaveLength(0);
 });
@@ -359,6 +368,16 @@ test("a bad period is marked on the strip and explained on chart hover", async (
   await expect(episode).toContainText("ongoing");
   await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
   await expect(page.locator(".chart-tip-episode")).toHaveCount(0);
+});
+
+test("an offline host leaves its mini graphs short of the right edge", async ({ page }) => {
+  await mock(page, { online: false, staleGap: true });
+  await page.goto("/");
+  const line = page.getByRole("img", { name: "alpha CPU trend" }).locator(".spark-line");
+  await expect(line).toBeVisible();
+  const xs = [...((await line.getAttribute("d")) ?? "").matchAll(/[ML]([\d.]+),/gu)].map(match => Number(match[1]));
+  expect(xs.length).toBeGreaterThan(0);
+  expect(Math.max(...xs)).toBeLessThan(40);
 });
 
 test("missing and stale data never become zero", async ({ page }) => {

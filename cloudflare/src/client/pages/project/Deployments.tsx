@@ -60,7 +60,7 @@ function span(bounds: { readonly fromMs: number; readonly toMs: number }): strin
 
 export type ProjectDeployments = ReturnType<typeof createProjectDeployments>;
 
-const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "90d": "24h" };
+const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "30d": "24h" };
 
 export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string) {
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);

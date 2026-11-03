@@ -10,7 +10,7 @@ export const rangeLabels: Record<Range, string> = {
   "6h": "Past 6 hours",
   "24h": "Past 24 hours",
   "7d": "Past 7 days",
-  "90d": "Past 90 days"
+  "30d": "Past 30 days"
 };
 export const rangeMs = RANGE_MS;
 export const LIVE_INTERVAL_MS = 15_000;

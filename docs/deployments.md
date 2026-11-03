@@ -29,7 +29,7 @@ implemented but has **not been deployed or verified against production**.
    events even when the rollback reuses an old version. Confirm markers on the
    project's charts, then select an event in the Deployments panel. The before/after
    windows follow the dashboard time range: one hour, six hours or 24 hours
-   each, and 24 hours for the 7 day and 90 day ranges because five-minute
+   each, and 24 hours for the 7 day and 30 day ranges because five-minute
    metrics are kept for seven days.
 5. Allow collection to establish the baseline and post-deploy window. A one-hour
    comparison is not ready until the full hour, one complete five-minute warm-up
@@ -56,7 +56,7 @@ The collector uses only GETs to the fixed `api.cloudflare.com` origin. It does
 not deploy, roll back, create releases or change bindings. Redirects are rejected,
 responses are capped at 512 KiB and each project's entire poll has a 20-second
 deadline. Two projects run concurrently. A poll reads up to three pages of 100
-deployments in the trailing 90 days, with an upper timestamp bound to reduce
+deployments in the trailing 30 days, with an upper timestamp bound to reduce
 pagination races. An exhausted budget or non-advancing pagination marks history
 truncated and withholds comparisons. The API may expose less historical data;
 backfill is bounded best effort, not an audit-log completeness guarantee.
@@ -78,8 +78,8 @@ host implementation is not replaced. Additive
 database without changing existing host schema versions:
 
 - `project_deployments`: deduplicated by project, Worker and deployment id;
-  90-day retention and at most 1,000 events per project/Worker.
-- `project_deployment_versions`: bounded version enrichment cache, 90 days and
+  30-day retention and at most 1,000 events per project/Worker.
+- `project_deployment_versions`: bounded version enrichment cache, 30 days and
   at most 2,000 entries per project/Worker.
 - `project_deployment_sync`: attempt/success timestamps, error and truncation.
 - `project_deployment_coverage`: merged intervals proving that the metrics
