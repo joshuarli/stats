@@ -27,9 +27,16 @@ export function Sparkline(props: {
           <stop offset="0%" class="spark-fill-start" />
           <stop offset="100%" class="spark-fill-end" />
         </linearGradient>
+        <pattern id={`spark-gap-${id}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect class="spark-gap-fill" width="6" height="6" />
+          <line class="spark-gap-line" x1="0" y1="0" x2="0" y2="6" />
+        </pattern>
       </defs>
       {geometry() === null ? null : (
         <>
+          <For each={geometry()!.gaps}>
+            {(gap) => <rect class="spark-gap" x={gap.x0.toFixed(2)} y="0" width={Math.max(0, gap.x1 - gap.x0).toFixed(2)} height="40" fill={`url(#spark-gap-${id})`} />}
+          </For>
           <Show when={geometry()!.area}>
             {(area) => <path class="spark-area" d={area()} fill={`url(#spark-${id})`} />}
           </Show>

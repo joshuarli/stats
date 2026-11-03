@@ -69,11 +69,19 @@ describe("chart data", () => {
     expect(geometry?.paths).toEqual(["M0.00,36.00 L40.00,6.00"]);
     expect(geometry?.area).toBe("M0.00,40 L0.00,36.00 L40.00,6.00 L40.00,40 Z");
     expect(geometry?.dot).toEqual({ x: 40, y: 6 });
+    expect(geometry?.gaps).toEqual([{ x0: 40, x1: 160 }]);
   });
 
   it("breaks a sparkline path at a missing value", () => {
     const geometry = sparkGeometry([[1, null, 3]], [0, 15_000, 30_000], { fromMs: 0, toMs: 30_000 }, false);
     expect(geometry?.paths).toEqual(["M0.00,36.00 M160.00,6.00"]);
+    expect(geometry?.gaps).toEqual([]);
+  });
+
+  it("hatches the whole sparkline when no value is present", () => {
+    const geometry = sparkGeometry([[null, null]], [0, 15_000], { fromMs: 0, toMs: 30_000 }, false);
+    expect(geometry?.paths).toEqual([]);
+    expect(geometry?.gaps).toEqual([{ x0: 0, x1: 160 }]);
   });
 
   it("finds the worst value across tracks on one sparkline axis", () => {

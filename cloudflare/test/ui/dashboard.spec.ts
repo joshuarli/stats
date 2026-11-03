@@ -373,11 +373,14 @@ test("a bad period is marked on the strip and explained on chart hover", async (
 test("an offline host leaves its mini graphs short of the right edge", async ({ page }) => {
   await mock(page, { online: false, staleGap: true });
   await page.goto("/");
-  const line = page.getByRole("img", { name: "alpha CPU trend" }).locator(".spark-line");
+  const spark = page.getByRole("img", { name: "alpha CPU trend" });
+  const line = spark.locator(".spark-line");
   await expect(line).toBeVisible();
   const xs = [...((await line.getAttribute("d")) ?? "").matchAll(/[ML]([\d.]+),/gu)].map(match => Number(match[1]));
   expect(xs.length).toBeGreaterThan(0);
   expect(Math.max(...xs)).toBeLessThan(40);
+  const gaps = await spark.locator(".spark-gap").evaluateAll(nodes => nodes.map(node => Number(node.getAttribute("width"))));
+  expect(Math.max(...gaps)).toBeGreaterThan(100);
 });
 
 test("missing and stale data never become zero", async ({ page }) => {
@@ -469,6 +472,17 @@ test("legend rows isolate and restore series", async ({ page }) => {
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "false");
   await userRow.locator("td").nth(3).click();
   await expect(cpuLegend.getByRole("button", { name: "Show only system" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the fleet fits desktop viewports without horizontal scrolling", async ({ page }) => {
+  await mock(page);
+  for (const width of [1280, 1024, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" })).toBeVisible();
+    const region = page.getByRole("region", { name: "Fleet hosts table" });
+    expect(await region.evaluate(element => element.scrollWidth - element.clientWidth), `${width}px`).toBeLessThanOrEqual(1);
+  }
 });
 
 test("mobile pages confine dense data to local scroll areas", { tag: "@mobile-only" }, async ({ page }, testInfo) => {

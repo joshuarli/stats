@@ -17,10 +17,16 @@ export interface WindowStats {
   readonly last: number;
 }
 
+export interface SparkGap {
+  readonly x0: number;
+  readonly x1: number;
+}
+
 export interface SparkGeometry {
   readonly paths: readonly string[];
   readonly area: string | undefined;
   readonly dot: { readonly x: number; readonly y: number } | undefined;
+  readonly gaps: readonly SparkGap[];
 }
 
 const SPARK_WIDTH = 160;
@@ -29,23 +35,35 @@ const SPARK_HEIGHT = 30;
 const SPARK_FLOOR = 40;
 
 export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined, window: TimeWindow | undefined, zeroBased: boolean): SparkGeometry | null {
-  const values = tracks.flatMap(track => track.filter((value): value is number => value !== null && Number.isFinite(value)));
-  if (values.length === 0) return null;
-  const low = zeroBased ? Math.min(0, ...values) : Math.min(...values);
-  const high = Math.max(...values);
-  const span = high - low || 1;
+  const length = Math.max(0, ...tracks.map(track => track.length));
+  if (length === 0) return null;
   const fromMs = window?.fromMs ?? times?.[0];
   const toMs = window?.toMs ?? times?.at(-1);
   const timed = times !== undefined && fromMs !== undefined && toMs !== undefined && toMs > fromMs;
-  const x = (track: Cells, index: number): number | undefined => {
-    if (!timed) {
-      const length = Math.max(...tracks.map(entry => entry.length));
-      return length <= 1 ? 0 : (index / (length - 1)) * SPARK_WIDTH;
-    }
+  const x = (index: number): number | undefined => {
+    if (!timed) return length <= 1 ? 0 : (index / (length - 1)) * SPARK_WIDTH;
     const time = times[index];
     if (time === undefined) return undefined;
     return Math.min(SPARK_WIDTH, Math.max(0, ((time - fromMs) / (toMs - fromMs)) * SPARK_WIDTH));
   };
+  const present = (index: number): boolean => tracks.some(track => {
+    const value = track[index];
+    return value !== null && value !== undefined && Number.isFinite(value);
+  });
+  const presentX = Array.from({ length }, (_, index) => (present(index) ? x(index) : undefined)).filter((value): value is number => value !== undefined);
+  const gaps: SparkGap[] = [];
+  const first = presentX[0];
+  const last = presentX.at(-1);
+  if (first === undefined || last === undefined) gaps.push({ x0: 0, x1: SPARK_WIDTH });
+  else {
+    if (first > 0.5) gaps.push({ x0: 0, x1: first });
+    if (last < SPARK_WIDTH - 0.5) gaps.push({ x0: last, x1: SPARK_WIDTH });
+  }
+  const values = tracks.flatMap(track => track.filter((value): value is number => value !== null && Number.isFinite(value)));
+  if (values.length === 0) return { paths: [], area: undefined, dot: undefined, gaps };
+  const low = zeroBased ? Math.min(0, ...values) : Math.min(...values);
+  const high = Math.max(...values);
+  const span = high - low || 1;
   const paths: string[] = [];
   let area: string | undefined;
   let dot: { readonly x: number; readonly y: number } | undefined;
@@ -53,7 +71,7 @@ export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined
     const segments: { readonly x: number; readonly y: number }[][] = [];
     let segment: { readonly x: number; readonly y: number }[] = [];
     track.forEach((value, index) => {
-      const pointX = x(track, index);
+      const pointX = x(index);
       if (value === null || !Number.isFinite(value) || pointX === undefined) {
         if (segment.length > 0) segments.push(segment);
         segment = [];
@@ -73,7 +91,7 @@ export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined
       }).join(" ");
     }
   });
-  return { paths, area, dot };
+  return { paths, area, dot, gaps };
 }
 
 interface Grid {
