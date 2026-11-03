@@ -477,5 +477,6 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 }
 .chart-legend td { white-space: nowrap; }
 .charts > .widget > .widget-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.charts > .widget .chart { min-height: auto; }
 .charts > .widget .chart-plot { flex: 1 1 176px; height: auto; min-height: 176px; overflow: hidden; }
 .charts > .widget .chart-plot.compact { flex-basis: 112px; min-height: 112px; }
