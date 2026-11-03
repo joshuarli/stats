@@ -27,8 +27,10 @@ implemented but has **not been deployed or verified against production**.
    when available; version enrichment is best effort and permission-dependent.
 4. Make a normal deploy and a rollback. Both must produce separate timeline
    events even when the rollback reuses an old version. Confirm markers on the
-   project's charts, then select an event in the Deployments panel and choose
-   equal one-hour or 24-hour before/after windows.
+   project's charts, then select an event in the Deployments panel. The before/after
+   windows follow the dashboard time range: one hour, six hours or 24 hours
+   each, and 24 hours for the 7 day and 90 day ranges because five-minute
+   metrics are kept for seven days.
 5. Allow collection to establish the baseline and post-deploy window. A one-hour
    comparison is not ready until the full hour, one complete five-minute warm-up
    bucket, any partial deployment bucket, and the existing 45-minute analytics
@@ -99,7 +101,7 @@ Both routes use the existing Access boundary and no-store responses:
 
 ```text
 GET /api/v1/projects/:id/deployments
-GET /api/v1/projects/:id/deployments/:deploymentId/comparison?window=1h|24h
+GET /api/v1/projects/:id/deployments/:deploymentId/comparison?window=1h|6h|24h
 ```
 
 The history response includes `enabled`, `sync`, `deployments` and `versions`.

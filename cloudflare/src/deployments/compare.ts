@@ -2,8 +2,11 @@ import { LIST_PRICE_PER_MILLION } from "../client/pricing.ts";
 import { singleVersion, type Deployment } from "./model.ts";
 
 export const DEPLOYMENT_BUCKET_MS = 300_000;
-export const COMPARISON_WINDOWS = { "1h": 3_600_000, "24h": 86_400_000 } as const;
+export const COMPARISON_WINDOWS = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000 } as const;
 export type ComparisonWindow = keyof typeof COMPARISON_WINDOWS;
+export function isComparisonWindow(value: string): value is ComparisonWindow {
+  return Object.hasOwn(COMPARISON_WINDOWS, value);
+}
 export type MetricRow = { readonly metric: string; readonly bucket_ms: number; readonly value: number };
 export interface WindowBounds { readonly fromMs: number; readonly toMs: number }
 export type Verdict = "improved" | "regressed" | "unchanged" | "insufficient-data" | "confounded";

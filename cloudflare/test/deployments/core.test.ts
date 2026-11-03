@@ -85,6 +85,7 @@ await test("version metadata projects only id, tag and message", () => {
 });
 await test("windows exclude straddling and warm-up buckets", () => {
   assert.deepEqual(comparisonBounds(AT + 1234, "1h"), { before: { fromMs: AT - H, toMs: AT }, after: { fromMs: AT + 2 * B, toMs: AT + 2 * B + H } });
+  assert.deepEqual(comparisonBounds(AT + 1234, "6h"), { before: { fromMs: AT - 6 * H, toMs: AT }, after: { fromMs: AT + 2 * B, toMs: AT + 2 * B + 6 * H } });
 });
 await test("CPU improvements and cost use ratios of sums", () => {
   const result = comparison();

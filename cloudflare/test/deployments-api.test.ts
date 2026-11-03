@@ -37,6 +37,7 @@ describe("deployment API", () => {
     expect((await get("?range=1h")).status).toBe(400);
     expect((await get(`/${ID}/comparison?window=1h&window=24h`)).status).toBe(400);
     expect((await get(`/${ID}/comparison?window=7d`)).status).toBe(400);
+    expect((await get(`/${ID}/comparison?window=toString`)).status).toBe(400);
     expect((await SELF.fetch("https://example.com/api/v1/projects/missing/deployments", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } })).status).toBe(404);
   });
   it("records through the binding, lists events and withholds unproven comparisons", async () => {
@@ -47,6 +48,7 @@ describe("deployment API", () => {
     expect(history.deployments).toHaveLength(1);
     const response = await get(`/${ID}/comparison?window=1h`);
     expect(response.status).toBe(200);
+    expect((await get(`/${ID}/comparison?window=6h`)).status).toBe(200);
     const comparison = await response.json() as DeploymentComparison;
     expect(comparison.deploymentId).toBe(ID);
     expect(comparison.reasons.some(reason => reason.includes("No proof"))).toBe(true);

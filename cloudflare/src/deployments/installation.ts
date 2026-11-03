@@ -3,7 +3,7 @@ import { PROJECT_SETTLE_MS } from "../limits";
 import { windowStartMs } from "../projects/collector";
 import type { CollectorRun } from "../projects/store";
 import { parseProjects } from "../projects/config";
-import { compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, type ComparisonWindow, type MetricRow } from "./compare.ts";
+import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "./compare.ts";
 import { deploymentsEnabled, type DeploymentPoll } from "./collector.ts";
 import { UUID, type DeploymentHistory } from "./model.ts";
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "./store.ts";
@@ -84,10 +84,10 @@ export class Installation extends HostInstallation {
     const windows = url.searchParams.getAll("window");
     if (windows.length > 1 || [...url.searchParams.keys()].some(key => key !== "window")) return failure(400, "invalid comparison window");
     const window = windows[0] ?? "1h";
-    if (window !== "1h" && window !== "24h") return failure(400, "window must be 1h or 24h");
+    if (!isComparisonWindow(window)) return failure(400, `window must be one of ${Object.keys(COMPARISON_WINDOWS).join(", ")}`);
     const deployment = deployments.find(item => item.id === match[2]?.toLowerCase());
     if (deployment === undefined) return failure(404, "deployment not found");
-    const bounds = comparisonBounds(deployment.atMs, window as ComparisonWindow);
+    const bounds = comparisonBounds(deployment.atMs, window);
     // Only additive metrics used by the comparator; never query text supplied by a user.
     const rows = sql.exec<MetricRow>(
       "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND (metric IN ('worker.invocations', 'worker.cpuMsSum', 'worker.status.5xx', 'do.invocations', 'do.cpuMsSum', 'do.wallMsSum', 'd1.queries', 'd1.rowsRead', 'd1.rowsWritten') OR metric LIKE 'route.%.invocations' OR metric LIKE 'r2.%.ops.%' OR metric LIKE 'probe.%.up' OR metric LIKE 'probe.%.ms')",
