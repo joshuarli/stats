@@ -81,6 +81,8 @@ export function Widget(props: ParentProps<{
   readonly id?: string | undefined;
 }>): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
+  const [slotHeight, setSlotHeight] = createSignal(0);
+  let section: HTMLElement | undefined;
   createEffect(expanded, open => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -97,13 +99,20 @@ export function Widget(props: ParentProps<{
     if (id === undefined) return;
     storeCollapsed(collapsed() ? new Set([...collapsedWidgets()].filter(entry => entry !== id)) : new Set([...collapsedWidgets(), id]));
   };
+  const toggleExpanded = () => {
+    if (!expanded()) setSlotHeight(section?.getBoundingClientRect().height ?? 0);
+    setExpanded(value => !value);
+  };
   const classes = () => ["widget", props.class, expanded() ? "expanded" : undefined, collapsed() ? "collapsed" : undefined].filter(Boolean).join(" ");
   return (
     <>
       <Show when={expanded()}>
         <button class="veil" type="button" aria-label="Close expanded chart" tabindex="-1" onClick={() => setExpanded(false)} />
       </Show>
-      <section class={classes()} id={props.id}>
+      <Show when={expanded()}>
+        <div class={props.class === undefined ? "widget-slot" : `widget-slot ${props.class}`} style={`height:${slotHeight()}px`} aria-hidden="true" />
+      </Show>
+      <section class={classes()} id={props.id} ref={(element) => { section = element; }}>
         <header class="widget-head">
           <div class="widget-title">
             <h2>{props.title}</h2>
@@ -111,7 +120,7 @@ export function Widget(props: ParentProps<{
           <div class="widget-meta">
             {props.meta}
             <Show when={props.expandable === true}>
-              <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} disabled={collapsed()} onClick={() => setExpanded(value => !value)}>
+              <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} disabled={collapsed()} onClick={toggleExpanded}>
                 <Icon name="expand" size={12} />
               </button>
             </Show>

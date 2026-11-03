@@ -931,9 +931,9 @@ test("each page names itself once and the breadcrumb only appears below the flee
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("combobox", { name: "Switch host" })).toBeVisible();
 });
 
-const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1] }> = [
-  { name: "host", path: `/#/host/${hostId}`, options: { accelerator: true } },
-  { name: "project", path: "/#/project/stuff", options: { probes: true, durableObjects: true, d1: true } }
+const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1]; readonly expandable: string }> = [
+  { name: "host", path: `/#/host/${hostId}`, options: { accelerator: true }, expandable: "memory" },
+  { name: "project", path: "/#/project/stuff", options: { probes: true, durableObjects: true, d1: true }, expandable: "requests" }
 ];
 
 async function openPage(page: Page, path: string, options: Parameters<typeof mock>[1]): Promise<void> {
@@ -943,7 +943,7 @@ async function openPage(page: Page, path: string, options: Parameters<typeof moc
   await expect(page.locator(".chart-empty, .skeleton")).toHaveCount(0);
 }
 
-for (const { name, path, options } of FULL_PAGES) {
+for (const { name, path, options, expandable } of FULL_PAGES) {
   test(`the ${name} page keeps every widget's collapse control on the same right inset`, async ({ page }) => {
     await openPage(page, path, options);
     const insets = await page.locator(".widget").evaluateAll(widgets => widgets.map(widget => {
@@ -961,6 +961,21 @@ for (const { name, path, options } of FULL_PAGES) {
       await expect(page.locator(".charts > .widget").first()).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${width}px`).toBeLessThanOrEqual(1);
     }
+  });
+
+  test(`expanding a widget on the ${name} page leaves every other widget where it was`, async ({ page }) => {
+    await openPage(page, path, options);
+    const positions = () => page.locator(`.charts > .widget:not(#${expandable})`).evaluateAll(widgets => widgets.map(entry => {
+      const rect = entry.getBoundingClientRect();
+      return { id: entry.id, x: Math.round(rect.x), y: Math.round(rect.y + window.scrollY), width: Math.round(rect.width) };
+    }));
+    const before = await positions();
+    await page.locator(`#${expandable} .expand`).click();
+    await expect(page.locator(`#${expandable}.expanded`)).toBeVisible();
+    expect(await positions()).toEqual(before);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(`#${expandable}.expanded`)).toHaveCount(0);
+    expect(await positions()).toEqual(before);
   });
 
   test(`collapsing a widget on the ${name} page moves none of its header controls and centers its title`, async ({ page }) => {
