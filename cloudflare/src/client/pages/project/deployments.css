@@ -25,14 +25,14 @@
 .deployment-delta.improved { color: color-mix(in srgb, var(--good) 72%, #000); }
 .deployment-delta.regressed { color: var(--critical); }
 .deployment-table { table-layout: auto; }
-.charts.project .deployment-table th[scope="row"] { font: inherit; text-align: left; color: var(--text); white-space: nowrap; overflow-wrap: normal; padding: 0 14px 0 0; border-bottom: 1px solid var(--line); height: 32px; }
+.charts .deployment-table th[scope="row"] { font: inherit; text-align: left; color: var(--text); white-space: nowrap; overflow-wrap: normal; padding: 0 14px 0 0; border-bottom: 1px solid var(--line); height: 32px; }
 .deployment-table th:first-child, .deployment-table td:first-child { padding-left: 0; }
 .deployment-table td { height: 32px; }
-.charts.project .deployment-table tbody tr:last-child th { border-bottom: 0; }
+.charts .deployment-table tbody tr:last-child th { border-bottom: 0; }
 .deployment-table thead th.numeric { text-align: right; }
 .deployment-table td.numeric { white-space: nowrap; }
 @media (max-width: 760px) {
-  .charts.project .deployment-table th[scope="row"] { white-space: normal; min-width: 11rem; }
+  .charts .deployment-table th[scope="row"] { white-space: normal; min-width: 11rem; }
   .deployments-layout { grid-template-columns: minmax(0, 1fr); height: auto; }
   .deployment-detail { min-height: 360px; }
   .deployment-list { max-height: 188px; border-right: 0; border-bottom: 1px solid var(--line); }

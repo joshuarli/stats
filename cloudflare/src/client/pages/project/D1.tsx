@@ -18,7 +18,6 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
           <>
             <PanelChart
               label="D1 database size"
-              timeAxis={false}
               series={props.data.databases.map((id, index) => ({ label: id.slice(0, 8), color: seriesColor(index), scored: false, track: holdLast(metricTrack(history(), `d1.${id}.storageBytes`)) }))}
               format={bytes}
               min={0}
@@ -28,7 +27,6 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
             <PanelChart
               label="D1 rows written"
               area
-              timeAxis={false}
               series={[{ label: "rows written", color: "critical", scored: false, track: metricTrack(history(), "d1.rowsWritten") }]}
               format={count}
               min={0}

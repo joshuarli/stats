@@ -10,6 +10,7 @@ import { statusFor } from "../status";
 import { useTelemetry } from "../state";
 import { OsLogo } from "../components/OsLogo";
 import { PageHeader } from "../components/PageHeader";
+import { SectionBar, type SectionLink } from "../components/SectionBar";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";
 import { CpuWidget, LoadWidget, PressureNotice } from "./host/Compute";
@@ -77,6 +78,10 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   };
   createUpdateEffect(() => tick(), () => { void doRefresh(); });
 
+  const moreSections = (): SectionLink[] => [
+    ...(reportsPower(table()) ? [{ label: "Power", anchor: "power" }] : []),
+    ...(reportsBlock() ? [{ label: "Block latency", anchor: "block" }, { label: "Block completions", anchor: "block-completions" }] : [])
+  ];
   const cells = createMemo(() => buildCells({ summary: summary(), disks: disks(), nets: nets(), filesystems: filesystems() }, view()));
 
   return (
@@ -118,12 +123,13 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} />
+            <StatusStrip cells={cells()} class="dense" />
+            <SectionBar cells={cells()} more={moreSections()} />
             <Show when={table().cells("partial").some(value => value === 1)}>
               <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
             </Show>
             <PressureNotice table={table()} />
-            <section class="charts" aria-label="Charts">
+            <section class="charts host" aria-label="Charts">
               <CpuWidget table={table()} stepMs={summary().stepMs} events={events()} />
               <LoadWidget table={table()} stepMs={summary().stepMs} events={events()} />
               <MemoryWidget table={table()} stepMs={summary().stepMs} events={events()} />

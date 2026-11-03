@@ -45,7 +45,7 @@ export function BlockWidget(props: { readonly series: readonly BlockSeries[]; re
 export function BlockCompletionsWidget(props: { readonly series: readonly BlockSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const table = createMemo(() => props.series.at(0)?.table);
   return (
-    <Widget title="Block completions" expandable>
+    <Widget id="block-completions" title="Block completions" expandable>
       {(table()?.rows ?? 0) === 0 ? (
         <EmptyState title="No block latency samples in this range." icon="disk" />
       ) : (

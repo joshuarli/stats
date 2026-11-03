@@ -30,7 +30,6 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
     <Widget id="status" title="Response status" expandable>
       <PanelChart
         label="Worker status mix"
-        timeAxis={false}
         series={STATUS_CLASSES.map(statusClass => ({
           label: statusClass,
           color: STATUS_COLORS[statusClass],
@@ -63,7 +62,6 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
       <PanelChart
         label="Worker average CPU time"
         area
-        timeAxis={false}
         series={[{ label: "average", color: "blue", graded: true, track: cpuAverage(props.data) }]}
         format={milliseconds}
         limits={LIMITS.workerCpuMs}

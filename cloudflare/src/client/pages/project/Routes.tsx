@@ -49,7 +49,6 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
         <>
           <PanelChart
             label="Durable Object invocations"
-            timeAxis={false}
             series={[
               { label: "invocations", color: "blue", scored: false, track: metricTrack(history()!, "do.invocations") },
               { label: "errors", color: "critical", scored: false, track: metricTrack(history()!, "do.errors") }
@@ -63,7 +62,6 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
           <PanelChart
             label="Durable Object average CPU time"
             area
-            timeAxis={false}
             series={[{ label: "average", color: "blue", scored: false, track: durableObjectCpuAverage(history()!) }]}
             format={milliseconds}
             min={0}
@@ -73,7 +71,6 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
           <PanelLabel>Max CPU time</PanelLabel>
           <PanelChart
             label="Durable Object maximum CPU time"
-            timeAxis={false}
             series={[{ label: "maximum", color: "violet", scored: false, track: metricTrack(history()!, "do.cpuMsMax") }]}
             format={milliseconds}
             min={0}

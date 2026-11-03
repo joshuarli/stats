@@ -594,7 +594,7 @@ test("the project page refreshes on the collector cadence, not every live tick",
   await expect.poll(() => projectHistory()).toBeGreaterThan(beforeManual);
 });
 
-test("the project page shows its summary and rows of aligned chart cards", async ({ page }, testInfo) => {
+test("the project page shows its summary and balanced columns of chart cards", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
@@ -613,14 +613,19 @@ test("the project page shows its summary and rows of aligned chart cards", async
   const cards = page.locator(".charts > .widget:not(.wide)");
   await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(cards.nth(1).getByRole("heading", { name: "Estimated cost" })).toBeVisible();
-  const rects = await cards.evaluateAll(elements => elements.filter(element => !element.classList.contains("wide")).map(element => {
+  const rects = await cards.evaluateAll(elements => elements.map(element => {
     const box = element.getBoundingClientRect();
-    return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+    return { left: Math.round(box.left), top: Math.round(box.top), bottom: Math.round(box.bottom) };
   }));
-  const rows = new Map<number, number[]>();
-  for (const { top, bottom } of rects) rows.set(top, [...(rows.get(top) ?? []), bottom]);
-  for (const bottoms of rows.values()) expect(new Set(bottoms).size).toBe(1);
-  expect(Math.max(...[...rows.values()].map(bottoms => bottoms.length))).toBe(3);
+  const columns = new Map<number, { top: number; bottom: number }[]>();
+  for (const { left, top, bottom } of rects) columns.set(left, [...(columns.get(left) ?? []), { top, bottom }]);
+  expect(columns.size).toBe(3);
+  for (const stack of columns.values()) {
+    for (let index = 1; index < stack.length; index += 1) expect(stack[index]!.top).toBeGreaterThanOrEqual(stack[index - 1]!.bottom);
+  }
+  const ends = [...columns.values()].map(stack => Math.max(...stack.map(card => card.bottom)));
+  const tallest = Math.max(...rects.map(card => card.bottom - card.top));
+  expect(Math.max(...ends) - Math.min(...ends)).toBeLessThanOrEqual(tallest);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
   await page.getByRole("button", { name: "24h", exact: true }).click();

@@ -42,7 +42,6 @@ export function CostWidget(props: { readonly data: ProjectData; readonly view: T
       <PanelLabel>Cost per bucket</PanelLabel>
       <PanelChart
         label="Estimated cost per bucket"
-        timeAxis={false}
         series={parts().map((part, index) => ({ label: part.label, color: seriesColor(index), scored: false, track: part.points }))}
         format={dollars}
         min={0}

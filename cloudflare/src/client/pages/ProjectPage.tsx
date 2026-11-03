@@ -139,10 +139,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} label="Project summary" class="project" />
+            <StatusStrip cells={cells()} label="Project summary" class="dense" />
             <SectionBar cells={cells()} more={moreSections()} />
             <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
-            <section class="charts project" aria-label="Charts">
+            <section class="charts" aria-label="Charts">
               <DeploymentsWidget deployments={deployments} />
               <RequestsWidget data={data()} />
               <CostWidget data={data()} view={view()} />

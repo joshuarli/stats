@@ -15,7 +15,6 @@ export function ProbesWidget(props: { readonly data: ProjectData }): JSX.Element
         <>
           <PanelChart
             label="Endpoint availability"
-            timeAxis={false}
             series={props.data.probeNames.map((name, index) => ({ label: name, color: seriesColor(index), track: metricTrack(history()!, `probe.${name}.up`) }))}
             format={endpointText}
             limits={LIMITS.probeUp}

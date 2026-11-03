@@ -13,7 +13,6 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
     <Widget id="r2-operations" title="R2 operations" expandable>
       <PanelChart
         label="R2 operations by outcome"
-        timeAxis={false}
         series={[
           { label: "success", color: "blue", scored: false, track: bucketOutcome(props.data, "success") },
           { label: "user error", color: "ghost", scored: false, track: bucketOutcome(props.data, "userError") },
@@ -44,7 +43,6 @@ export function StorageWidget(props: { readonly data: ProjectData }): JSX.Elemen
     <Widget id="r2-storage" title="R2 storage" expandable>
       <PanelChart
         label="R2 stored bytes"
-        timeAxis={false}
         series={props.data.buckets.map((bucket, index) => ({ label: bucket, color: seriesColor(index), scored: false, track: holdLast(metricTrack(props.data.r2, r2Metric(bucket, "storageBytes"))) }))}
         format={bytes}
         min={0}
