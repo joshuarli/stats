@@ -11,9 +11,9 @@ function scrollTo(anchor: string): void {
   requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }));
 }
 
-export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string }): JSX.Element {
+export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string; readonly class?: string }): JSX.Element {
   return (
-    <section class="status-strip" style={`--cells:${props.cells.length}`} aria-label={props.label ?? "Host summary"}>
+    <section class={props.class === undefined ? "status-strip" : `status-strip ${props.class}`} style={`--cells:${props.cells.length}`} aria-label={props.label ?? "Host summary"}>
       <For each={props.cells}>
         {(cell) => {
           const health = () => cell.state;

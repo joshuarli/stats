@@ -489,3 +489,20 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .charts > .widget .chart { min-height: auto; }
 .charts > .widget .chart-plot { flex: 1 1 176px; height: auto; min-height: 176px; overflow: hidden; }
 .charts > .widget .chart-plot.compact { flex-basis: 112px; min-height: 112px; }
+
+.charts.project { grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 10px; margin-bottom: 10px; }
+.charts.project > .widget.wide { grid-column: 1 / -1; }
+.charts.project > .widget .widget-head { padding-top: 10px; min-height: 32px; }
+.charts.project > .widget .chart { flex: 1 1 auto; }
+.charts.project > .widget .chart-plot, .charts.project > .widget .chart-plot.compact { flex: 1 1 136px; height: auto; min-height: 0; max-height: 340px; }
+.charts.project > .widget > .widget-body > .chart:has(> .chart-empty) { flex: 0 0 auto; }
+.charts.project > .widget .chart:has(> .chart-empty) .chart-plot.compact { flex: 0 0 auto; height: 44px; max-height: none; }
+.charts.project > .widget.expanded > .widget-body .chart .chart-plot.compact { flex: 1 1 auto; height: auto; max-height: none; min-height: 176px; }
+.charts.project .chart-empty { place-items: center start; padding-left: 4px; font-size: var(--fs-meta); }
+.charts.project .data-table.compact td { height: 30px; }
+.charts.project .data-table.compact :is(th, td):first-child { white-space: normal; overflow-wrap: anywhere; }
+.charts.project .data-table.compact th:not(:first-child), .charts.project .data-table.compact td:not(:first-child) { padding-right: 10px; }
+.status-strip.project .strip-cell { gap: 4px; padding-top: 10px; }
+.status-strip.project .tile-value { font-size: clamp(22px, 2vw, 28px); margin-top: 2px; }
+.status-strip.project .tile-spark { margin-top: auto; padding-top: 6px; height: 42px; }
+.page-header .page-sub { flex: 1; min-width: 0; font-size: var(--fs-meta); }

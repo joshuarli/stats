@@ -508,13 +508,33 @@ test("the project page compares a deployment's before and after windows", async 
   await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  const deployment = page.getByRole("combobox", { name: "Deployment", exact: true });
-  await expect(deployment).toContainText("v42 100%");
+  const deployment = page.getByRole("list", { name: "Deployment", exact: true });
+  await expect(deployment.getByRole("button", { name: /v42/u })).toHaveAttribute("aria-current", "true");
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
-  await page.getByRole("combobox", { name: "Before / after window" }).selectOption("24h");
-  await expect(page.getByText("No verdict: Another deployment overlaps")).toBeVisible();
+  await page.getByRole("group", { name: "Before / after window" }).getByRole("button", { name: "24 hours each" }).click();
+  await expect(page.getByText("Another deployment overlaps the comparison windows.")).toBeVisible();
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("confounded");
+});
+
+test("the deployment table stays in place while the next comparison loads", async ({ page }) => {
+  await mock(page);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(/\/comparison\?window=24h/u, async route => {
+    await gate;
+    await route.fallback();
+  });
+  await page.goto("/#/project/stuff");
+  const row = page.getByRole("region", { name: "Deployment metric comparison" }).getByRole("row", { name: /Worker CPU/u });
+  await expect(row).toContainText("improved");
+  const detail = page.locator(".deployment-detail");
+  await page.getByRole("group", { name: "Before / after window" }).getByRole("button", { name: "24 hours each" }).click();
+  await expect(detail).toHaveAttribute("aria-busy", "true");
+  await expect(row).toContainText("improved");
+  release();
+  await expect(row).toContainText("confounded");
+  await expect(detail).toHaveAttribute("aria-busy", "false");
 });
 
 test("an unknown project id shows a not-found state", async ({ page }) => {
@@ -564,8 +584,14 @@ test("the project page shows its summary and rows of aligned chart cards", async
   const cards = page.locator(".charts > .widget");
   await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(cards.nth(1).getByRole("heading", { name: "Estimated cost" })).toBeVisible();
-  const tops = await cards.evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
-  for (let index = 0; index + 1 < tops.length; index += 2) expect(tops[index]).toBe(tops[index + 1]);
+  const rects = await cards.evaluateAll(elements => elements.filter(element => !element.classList.contains("wide")).map(element => {
+    const box = element.getBoundingClientRect();
+    return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+  }));
+  const rows = new Map<number, number[]>();
+  for (const { top, bottom } of rects) rows.set(top, [...(rows.get(top) ?? []), bottom]);
+  for (const bottoms of rows.values()) expect(new Set(bottoms).size).toBe(1);
+  expect(Math.max(...[...rows.values()].map(bottoms => bottoms.length))).toBe(3);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
   await page.getByRole("button", { name: "24h", exact: true }).click();

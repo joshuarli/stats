@@ -96,6 +96,14 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     silence: silenceMinutes(collector(), now(), props.project.collector.lastSuccessAtMs)
   }));
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
+  const collectorNote = () => {
+    switch (status().label) {
+      case "collecting": return undefined;
+      case "waiting": return "The collector has not run yet, so there is no data.";
+      case "failing": return "The last collection failed. Charts show what was collected before it.";
+      case "stale": return "The collector has not succeeded recently, so the newest buckets may be missing.";
+    }
+  };
   const cells = createMemo(() => buildProjectCells(data(), view()));
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
@@ -106,18 +114,11 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <PageHeader
         title={props.project.name}
         titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-      />
+      >
+        <Show when={collectorNote()}>{(note) => <span class="page-sub">{note()}</span>}</Show>
+      </PageHeader>
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
-      </Show>
-      <Show when={status().label !== "collecting"}>
-        <Notice tone="warn">
-          {status().label === "waiting"
-            ? "The collector has not run yet, so there is no data."
-            : status().label === "failing"
-              ? "The last collection failed. Charts show what was collected before it."
-              : "The collector has not succeeded recently, so the newest buckets may be missing."}
-        </Notice>
       </Show>
       <Errored fallback={(error) => <ErrorState error={error()} compact />}>
         <Loading fallback={<Skeleton rows={4} chart />}>
@@ -129,8 +130,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} label="Project summary" />
-            <section class="charts" aria-label="Charts">
+            <StatusStrip cells={cells()} label="Project summary" class="project" />
+            <section class="charts project" aria-label="Charts">
               <RequestsWidget data={data()} />
               <CostWidget data={data()} view={view()} />
               <StatusWidget data={data()} />
