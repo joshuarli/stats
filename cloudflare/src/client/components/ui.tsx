@@ -67,6 +67,11 @@ export function revealWidget(id: string): void {
   storeCollapsed(new Set([...collapsedWidgets()].filter(entry => entry !== id)));
 }
 
+export function jumpTo(anchor: string): void {
+  revealWidget(anchor);
+  requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+}
+
 export function Widget(props: ParentProps<{
   readonly title: string;
   readonly meta?: JSX.Element | undefined;

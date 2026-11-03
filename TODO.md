@@ -37,12 +37,12 @@ Next: 43
 - **Fix with:** none
 - **Effort:** S
 
-### STA-35 · P3 · Long dashboard pages have no section navigation and unbalanced columns
+### STA-35 · P3 · The host page has no section navigation
 
 - **Area:** Navigability
-- **Where:** `cloudflare/src/client/pages/HostPage.tsx`, `cloudflare/src/client/pages/ProjectPage.tsx`, `cloudflare/src/client/style.css:370`
-- **Problem:** Widgets now collapse, but the host page is still CPU, Memory, Network and a table in one stack, and the project page has two columns of different length. The only way to jump is a summary tile, which is not visible after scrolling.
-- **Recommendation:** Add a sticky section bar built from the same cells and anchors as the strip, with its status dots, and balance the project columns by widget height.
+- **Where:** `cloudflare/src/client/pages/HostPage.tsx`, `cloudflare/src/client/components/SectionBar.tsx`, `cloudflare/src/client/style.css`
+- **Problem:** The project page now has a sticky section bar built from its summary cells, and its anchor jumps clear the topbar. The host page is still CPU, Memory, Network and a table in one stack whose only jump is a summary tile that scrolls out of view, and its desktop anchor jumps land under the sticky topbar because only the mobile breakpoints set a `scroll-margin-top`.
+- **Recommendation:** Render `SectionBar` on the host page from its cells, add the sections that have no cell, and give `.charts .widget[id]` a `--topbar-h` based `scroll-margin-top` so the replay goldens still hide the bar.
 - **Fix with:** none
 - **Effort:** S
 

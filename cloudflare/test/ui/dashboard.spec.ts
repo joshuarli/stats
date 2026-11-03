@@ -537,6 +537,21 @@ test("the deployment table stays in place while the next comparison loads", asyn
   await expect(detail).toHaveAttribute("aria-busy", "false");
 });
 
+test("a section bar appears below the summary and jumps to a card without hiding it", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  const bar = page.getByRole("navigation", { name: "Sections" });
+  await expect(bar).toBeHidden();
+  await page.mouse.wheel(0, 400);
+  await expect(bar).toBeVisible();
+  await bar.getByRole("button", { name: "Deployments" }).click();
+  const card = page.locator("#deployments");
+  const barBottom = async () => (await bar.boundingBox())!.y + (await bar.boundingBox())!.height;
+  await expect.poll(async () => (await card.boundingBox())!.y >= (await barBottom()) - 1).toBe(true);
+  await expect(card.getByRole("heading", { name: "Deployments" })).toBeInViewport();
+});
+
 test("an unknown project id shows a not-found state", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/other");

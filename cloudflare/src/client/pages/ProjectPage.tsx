@@ -8,6 +8,7 @@ import { createUpdateEffect } from "../effect";
 import { loadProjects, loadQuery } from "../queries";
 import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
 import { PageHeader } from "../components/PageHeader";
+import { SectionBar, type SectionLink } from "../components/SectionBar";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
@@ -107,6 +108,13 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const cells = createMemo(() => buildProjectCells(data(), view()));
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
+  const moreSections = (): SectionLink[] => [
+    { label: "Cost", anchor: "cost" },
+    { label: "Routes", anchor: "routes" },
+    ...(hasDatabases() ? [{ label: "D1", anchor: "d1" }] : []),
+    ...(hasNamespaces() ? [{ label: "Durable Objects", anchor: "durable-objects" }] : []),
+    { label: "Deployments", anchor: "deployments" }
+  ];
   const deployments = createProjectDeployments(id, () => `${projectTick()}:${manualTick()}`);
 
   return (
@@ -131,6 +139,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
             }
           >
             <StatusStrip cells={cells()} label="Project summary" class="project" />
+            <SectionBar cells={cells()} more={moreSections()} />
             <section class="charts project" aria-label="Charts">
               <RequestsWidget data={data()} />
               <CostWidget data={data()} view={view()} />

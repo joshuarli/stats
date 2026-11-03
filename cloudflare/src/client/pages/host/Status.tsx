@@ -3,13 +3,8 @@ import type { JSX } from "@solidjs/web";
 import { HEALTH_LABEL } from "../../health";
 import { LimitGauge } from "../../components/LimitGauge";
 import { Sparkline } from "../../components/Sparkline";
-import { HealthMark, MetricValue, revealWidget } from "../../components/ui";
+import { HealthMark, jumpTo, MetricValue } from "../../components/ui";
 import type { MonitorCell } from "./monitors";
-
-function scrollTo(anchor: string): void {
-  revealWidget(anchor);
-  requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }));
-}
 
 export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string; readonly class?: string }): JSX.Element {
   return (
@@ -26,7 +21,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
             <button
               class={`strip-cell${health() === "elevated" || health() === "critical" ? ` is-${health()}` : ""}`}
               type="button"
-              onClick={() => scrollTo(cell.anchor)}
+              onClick={() => jumpTo(cell.anchor)}
               aria-label={`${cell.label}: ${cell.format(cell.value)}.${stateNote()} Jump to chart.`}
             >
               <span class="tile-label"><span>{cell.label}</span><HealthMark health={health()} showOk labelled /></span>

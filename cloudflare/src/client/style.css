@@ -506,3 +506,14 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .status-strip.project .tile-value { font-size: clamp(22px, 2vw, 28px); margin-top: 2px; }
 .status-strip.project .tile-spark { margin-top: auto; padding-top: 6px; height: 42px; }
 .page-header .page-sub { flex: 1; min-width: 0; font-size: var(--fs-meta); }
+
+.section-sentinel { height: 0; }
+.section-bar { position: fixed; top: var(--topbar-h, 48px); left: 0; right: 0; z-index: 19; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); visibility: hidden; opacity: 0; transform: translateY(-100%); transition: transform 140ms ease, opacity 140ms ease, visibility 0s 140ms; }
+.section-bar.visible { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+.section-bar-items { display: flex; align-items: center; gap: 2px; max-width: 1480px; margin: 0 auto; padding: 4px 20px; overflow-x: auto; scrollbar-width: none; }
+.section-bar-items::-webkit-scrollbar { display: none; }
+.section-link { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.section-link:hover { background: var(--hover); color: var(--text); }
+.section-divider { width: 1px; height: 14px; margin: 0 6px; background: var(--line-strong); flex: none; }
+.charts.project > .widget[id] { scroll-margin-top: calc(var(--topbar-h, 48px) + 44px); }
+@media (max-width: 375px) { .section-bar-items { padding-inline: 12px; } }
