@@ -161,14 +161,19 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
 
 const DEPLOYMENT_ID = "0b7f4c3e-1d2a-4b5c-8d9e-0f1a2b3c4d5e";
 const DEPLOYED_VERSION = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d";
+const EARLIER_DEPLOYMENT_ID = "1c8a5d4f-2e3b-4c6d-9e0f-1a2b3c4d5e6f";
+const EARLIER_VERSION = "8a7b6c5d-4e3f-4a2b-8c1d-0e9f8a7b6c5d";
 const DEPLOYED_AT = Math.floor((now - 2 * 86_400_000) / 300_000) * 300_000 + 60_000;
 
 function deploymentHistory() {
   return {
     projectId: "stuff", worker: "stuff", enabled: true,
     sync: { lastAttemptAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, error: null, truncated: false },
-    deployments: [{ id: DEPLOYMENT_ID, atMs: DEPLOYED_AT, source: "wrangler", message: "ship cache", versions: [{ id: DEPLOYED_VERSION, percentage: 100 }], deferred: false }],
-    versions: [{ id: DEPLOYED_VERSION, tag: "v42", message: null }]
+    deployments: [
+      { id: DEPLOYMENT_ID, atMs: DEPLOYED_AT, source: "wrangler", message: "ship cache", versions: [{ id: DEPLOYED_VERSION, percentage: 100 }], deferred: false },
+      { id: EARLIER_DEPLOYMENT_ID, atMs: DEPLOYED_AT - 86_400_000, source: "wrangler", message: null, versions: [{ id: EARLIER_VERSION, percentage: 100 }], deferred: false }
+    ],
+    versions: [{ id: DEPLOYED_VERSION, tag: "v42", message: null }, { id: EARLIER_VERSION, tag: "v41", message: null }]
   };
 }
 
@@ -508,8 +513,8 @@ test("the project page compares a deployment's before and after windows", async 
   await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  const deployment = page.getByRole("list", { name: "Deployment", exact: true });
-  await expect(deployment.getByRole("button", { name: /v42/u })).toHaveAttribute("aria-current", "true");
+  const deployment = page.getByRole("listbox", { name: "Deployment", exact: true });
+  await expect(deployment.getByRole("option", { name: /v42/u })).toHaveAttribute("aria-selected", "true");
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
   await page.getByRole("button", { name: "24h", exact: true }).click();
@@ -529,6 +534,54 @@ test("the deployment comparison window follows the time range", async ({ page })
   await expect(page.locator("#deployments")).toContainText("24h each side");
   expect(requests.some(request => request.includes("/comparison?window=6h"))).toBe(true);
   expect(requests.some(request => request.includes("/comparison?window=24h"))).toBe(true);
+});
+
+test("the range and the selected deployment live in the URL", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff?range=24h");
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#deployments")).toContainText("24h each side");
+  await page.getByRole("button", { name: "6h", exact: true }).click();
+  await expect(page).toHaveURL(/#\/project\/stuff\?range=6h$/u);
+  await page.getByRole("button", { name: "1h", exact: true }).click();
+  await expect(page).toHaveURL(/#\/project\/stuff$/u);
+
+  await page.goto(`/#/project/stuff?deployment=${EARLIER_DEPLOYMENT_ID}`);
+  await page.reload();
+  const options = page.getByRole("listbox", { name: "Deployment" });
+  await expect(options.getByRole("option", { name: /v41/u })).toHaveAttribute("aria-selected", "true");
+  await options.getByRole("option", { name: /v42/u }).click();
+  await expect(page).toHaveURL(new RegExp(`deployment=${DEPLOYMENT_ID}$`, "u"));
+});
+
+test("arrow keys move through the deployment list", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  const options = page.getByRole("listbox", { name: "Deployment" });
+  const latest = options.getByRole("option", { name: /v42/u });
+  const earlier = options.getByRole("option", { name: /v41/u });
+  await expect(latest).toHaveAttribute("aria-selected", "true");
+  await latest.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(earlier).toHaveAttribute("aria-selected", "true");
+  await expect(earlier).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(earlier).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(latest).toBeFocused();
+  await expect(latest).toHaveAttribute("aria-selected", "true");
+});
+
+test("the section bar marks the card you are reading", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  const bar = page.getByRole("navigation", { name: "Sections" });
+  await page.mouse.wheel(0, 400);
+  await expect(bar).toBeVisible();
+  await bar.getByRole("button", { name: "Cost" }).click();
+  await expect(bar.getByRole("button", { name: "Cost" })).toHaveAttribute("aria-current", "location");
+  await expect(bar.locator('[aria-current="location"]')).toHaveCount(1);
 });
 
 test("the deployment table stays in place while the next comparison loads", async ({ page }) => {

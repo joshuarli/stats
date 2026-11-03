@@ -6,8 +6,10 @@ import { Icon } from "./components/Icon";
 import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
 import { createUpdateEffect } from "./effect";
-import { createViewState, LIVE_INTERVAL_MS, TelemetryContext, useTelemetry, type Range } from "./state";
+import { createViewState, LIVE_INTERVAL_MS, ranges, TelemetryContext, useTelemetry, type Range } from "./state";
+import { readParam, writeParam } from "./urlState";
 
+const DEFAULT_RANGE: Range = "1h";
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
 const PROJECT_PATH = /^\/project\/([a-z][a-z0-9-]{0,31})$/u;
 
@@ -16,7 +18,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 export function Shell(props: ParentProps): JSX.Element {
-  const [range, setRange] = createSignal<Range>("1h");
+  const [range, setRange] = createSignal<Range>(ranges.find(candidate => candidate === readParam("range")) ?? DEFAULT_RANGE);
   const [now, setNow] = createSignal(Date.now());
   const hosts = createMemo(loadHosts);
   const views = createViewState(range, now);
@@ -52,7 +54,11 @@ export function Shell(props: ParentProps): JSX.Element {
   });
 
   createUpdateEffect(() => range(), () => views.resetZoom());
-  createUpdateEffect(() => location.pathname, () => views.resetZoom());
+  createUpdateEffect(() => location.pathname, () => {
+    views.resetZoom();
+    writeParam("deployment", null);
+  });
+  createUpdateEffect(() => `${range()}:${location.pathname}`, () => writeParam("range", range() === DEFAULT_RANGE ? null : range()));
 
   const refreshHosts = async () => {
     await refresh(hosts);

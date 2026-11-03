@@ -1,10 +1,10 @@
 .deployments-layout { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); margin: 4px -14px -12px; border-top: 1px solid var(--line); height: 420px; }
 .widget.expanded .deployments-layout { height: auto; flex: 1; min-height: 0; }
-.deployment-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-right: 1px solid var(--line); }
-.deployment-list li + li { border-top: 1px solid var(--line); }
+.deployment-list { overflow-y: auto; border-right: 1px solid var(--line); }
+.deployment-item + .deployment-item { border-top: 1px solid var(--line); }
 .deployment-item { display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 8px 14px; text-align: left; box-shadow: inset 2px 0 transparent; }
 .deployment-item:hover { background: var(--hover); }
-.deployment-item[aria-current="true"] { background: var(--hover); box-shadow: inset 2px 0 var(--accent); }
+.deployment-item[aria-selected="true"] { background: var(--hover); box-shadow: inset 2px 0 var(--accent); }
 .deployment-item-head { display: flex; justify-content: space-between; gap: 12px; }
 .deployment-item-head b { font-weight: 500; overflow-wrap: anywhere; }
 .deployment-item-head span { color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }

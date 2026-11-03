@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
 import { useTelemetry, type Range } from "../../state";
+import { readParam, writeParam } from "../../urlState";
 import { Skeleton, Widget } from "../../components/ui";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
@@ -78,7 +79,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
       if (controller.signal.aborted) return;
       setHistory(value);
       setHistoryError(null);
-      setSelected(current => value.deployments.some(deployment => deployment.id === current) ? current : value.deployments[0]?.id ?? "");
+      setSelected(current => value.deployments.some(deployment => deployment.id === current) ? current : value.deployments.find(deployment => deployment.id === readParam("deployment"))?.id ?? value.deployments[0]?.id ?? "");
     }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Deployment history unavailable"); });
   });
 
@@ -117,7 +118,12 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     return null;
   };
 
-  return { history, selected, setSelected, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
+  const select = (id: string) => {
+    setSelected(id);
+    writeParam("deployment", id);
+  };
+
+  return { history, selected, select, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
 }
 
 function ComparisonTable(props: { readonly comparison: DeploymentComparison }): JSX.Element {
@@ -160,7 +166,17 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
 
 export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments }): JSX.Element {
   const { now } = useTelemetry();
-  const { history, selected, setSelected, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
+  const { history, selected, select, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
+  const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
+    const items = history()?.deployments ?? [];
+    const index = items.findIndex(deployment => deployment.id === selected());
+    const target = event.key === "ArrowDown" ? index + 1 : event.key === "ArrowUp" ? index - 1 : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : null;
+    const next = target === null ? undefined : items[Math.min(items.length - 1, Math.max(0, target))];
+    if (next === undefined) return;
+    event.preventDefault();
+    select(next.id);
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(".deployment-item")[items.indexOf(next)]?.focus();
+  };
   const summary = () => {
     const value = history();
     if (value?.sync?.lastSuccessAtMs == null) return undefined;
@@ -176,16 +192,14 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
       </Show>
       <Show when={(history()?.deployments.length ?? 0) > 0}>
         <div class="deployments-layout">
-          <ul class="deployment-list" aria-label="Deployment">
+          <div class="deployment-list" role="listbox" tabindex="-1" aria-label="Deployment" onKeyDown={moveSelection}>
             <For each={history()?.deployments ?? []}>{deployment => (
-              <li>
-                <button type="button" class="deployment-item" title={deployment.message ?? undefined} aria-current={selected() === deployment.id ? "true" : "false"} onClick={() => setSelected(deployment.id)}>
-                  <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
-                  <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
-                </button>
-              </li>
+              <button type="button" role="option" class="deployment-item" title={deployment.message ?? undefined} tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => select(deployment.id)}>
+                <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
+                <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
+              </button>
             )}</For>
-          </ul>
+          </div>
           <div class="deployment-detail" aria-busy={stale() ? "true" : "false"}>
             <div class="deployment-head">
               <Show when={current()}>{deployment => (
