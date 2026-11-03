@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import type { HostSystem } from "../../api";
 import { bytes } from "../../format";
 import { duration } from "../../health";
+import { OsLogo } from "../../components/OsLogo";
 import { HoverCard } from "../../components/ui";
 
 function ghz(mhz: number): string {
@@ -28,7 +29,7 @@ export function SystemInfo(props: { readonly system: HostSystem | null; readonly
     return [
       { label: "CPU", value: system.cpu.model ?? "unknown model", detail: topology.join(" · ") },
       { label: "Memory", value: bytes(props.memoryBytes()), detail: undefined },
-      { label: "OS", value: system.os ?? "unknown", detail: `kernel ${system.kernel} · ${system.arch}` },
+      { label: "OS", value: <span class="system-os"><OsLogo os={system.os} size={12} />{system.os ?? "unknown"}</span>, detail: `kernel ${system.kernel} · ${system.arch}` },
       { label: "Hostname", value: system.hostname, detail: `agent ${system.agent}` },
       { label: "Uptime", value: uptime === undefined ? "—" : duration(uptime), detail: undefined }
     ];

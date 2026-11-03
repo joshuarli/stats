@@ -8,6 +8,7 @@ import { createUpdateEffect } from "../effect";
 import { loadQuery } from "../queries";
 import { statusFor } from "../status";
 import { useTelemetry } from "../state";
+import { OsLogo } from "../components/OsLogo";
 import { PageHeader } from "../components/PageHeader";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";
@@ -82,6 +83,15 @@ function HostView(props: { readonly host: Host }): JSX.Element {
     <>
       <PageHeader
         title={props.host.name}
+        mark={
+          <Errored fallback={null}>
+            <Loading fallback={null}>
+              <Show when={system()?.system.os}>
+                {(os) => <OsLogo os={os()} size={17} tile labelled />}
+              </Show>
+            </Loading>
+          </Errored>
+        }
         titleExtra={
           <>
             <Badge tone={status().tone} dot>{status().label}</Badge>

@@ -11,7 +11,9 @@ import type { Host, Project } from "../api";
 import { PageHeader } from "../components/PageHeader";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
+import { OsLogo } from "../components/OsLogo";
 import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, StateCell, Widget } from "../components/ui";
+import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
 
 const PAGE_SIZE = 10;
@@ -322,7 +324,14 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
     <tr>
       <td>
         <EntityCell
-          marker={<span class={`status-dot tone-${status().tone}`} role="img" aria-label={status().label} title={status().label} />}
+          marker={
+            <span class="host-mark">
+              <Show when={osFamily(info()?.os)} fallback={<span class="host-mark-empty"><Icon name="host" size={13} /></span>}>
+                <OsLogo os={info()?.os} size={14} tile />
+              </Show>
+              <span class={`status-dot marker-status tone-${status().tone}`} role="img" aria-label={status().label} title={status().label} />
+            </span>
+          }
           name={props.row.host.name}
           href={`#/host/${props.row.host.hostId}`}
           id={props.row.host.hostId}

@@ -90,6 +90,14 @@ kbd {
 }
 
 .icon { flex: none; display: block; }
+.os-logo { display: inline-flex; align-items: center; justify-content: center; flex: none; vertical-align: middle; }
+.os-logo svg { display: block; }
+.os-logo-tile { width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 20%, transparent), 0 1px 2px rgb(28 28 26 / 5%); }
+.page-mark { display: inline-flex; flex: none; }
+.host-mark { position: relative; display: inline-flex; flex: none; margin-top: -2px; }
+.host-mark .os-logo-tile, .host-mark-empty { width: 24px; height: 24px; border-radius: 6px; }
+.host-mark-empty { display: grid; place-items: center; color: var(--muted); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); }
+.marker-status { position: absolute; right: -2px; bottom: -2px; box-shadow: 0 0 0 2px var(--surface); }
 @keyframes pulse { 50% { opacity: .35; } }
 
 .boot { min-height: 60vh; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
@@ -166,6 +174,7 @@ kbd {
 .system-facts dt { color: var(--muted); }
 .system-facts dd { display: flex; flex-direction: column; gap: 1px; margin: 0; color: var(--text); overflow-wrap: anywhere; }
 .system-facts dd span { color: var(--muted); }
+.system-facts dd > .system-os { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .tag { font: 11.5px var(--mono); color: var(--text-2); padding: 1px 8px; border-radius: 5px; background: var(--hover); }
 .tag span { color: var(--muted); margin-right: 5px; }
