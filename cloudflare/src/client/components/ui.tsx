@@ -167,23 +167,6 @@ export function MetricValue(props: { readonly text: string }): JSX.Element {
   return match === null ? props.text : <>{match[1]}<span class="tile-unit">{match[2]}</span></>;
 }
 
-export function Tile(props: {
-  readonly label: string;
-  readonly value: string;
-  readonly detail?: string | undefined;
-  readonly spark?: JSX.Element | undefined;
-  readonly health?: Health | undefined;
-}): JSX.Element {
-  return (
-    <article class="tile">
-      <div class="tile-label"><span>{props.label}</span><HealthMark health={props.health} /></div>
-      <div class="tile-value"><MetricValue text={props.value} /></div>
-      {props.detail === undefined ? null : <div class="tile-detail">{props.detail}</div>}
-      {props.spark === undefined ? null : <div class="tile-spark">{props.spark}</div>}
-    </article>
-  );
-}
-
 export function EmptyState(props: { readonly title: string; readonly detail?: string | undefined; readonly icon?: IconName | undefined; readonly action?: JSX.Element | undefined }): JSX.Element {
   return (
     <div class="empty-state">
@@ -204,7 +187,7 @@ export function ErrorState(props: { readonly error: unknown; readonly retry?: ((
         <p class="error-detail">{errorMessage(props.error)}</p>
       </div>
       {props.retry === undefined ? null : (
-        <button class="btn btn-secondary btn-small" type="button" onClick={props.retry}>
+        <button class="btn btn-small" type="button" onClick={props.retry}>
           Retry
         </button>
       )}
@@ -240,7 +223,7 @@ export function Pagination(props: {
 }): JSX.Element {
   return (
     <div class="pagination">
-      <span class="pagination-label">
+      <span>
         Showing <strong>{props.from}</strong>–<strong>{props.to}</strong> of <strong>{props.total}</strong>
       </span>
       <div class="pagination-actions">
@@ -253,7 +236,7 @@ export function Pagination(props: {
         >
           <Icon name="chevronLeft" size={14} />
         </button>
-        <span class="pagination-page">
+        <span>
           Page {props.page} of {props.pages}
         </span>
         <button

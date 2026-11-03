@@ -1,0 +1,35 @@
+.widget { display: flex; flex-direction: column; min-width: 0; background: var(--surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-card); }
+.widget-pending { opacity: .75; }
+.widget-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); min-height: var(--head-height); padding: var(--space-sm) var(--inset); }
+.widget-title { display: flex; align-items: center; min-width: 0; flex: 1; }
+.widget-title h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.01em; white-space: nowrap; flex: none; }
+.widget-meta { display: flex; align-items: center; gap: var(--space-sm); color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
+.widget-body { min-width: 0; padding: 0 var(--inset) var(--inset); }
+.widget-body.flush { padding: 0; }
+
+@media (hover: hover) {
+  .widget:not(:hover, :focus-within, .expanded) .expand { opacity: 0; }
+}
+
+.charts { columns: 400px; column-gap: var(--gap); }
+.charts.host { columns: 520px; }
+.charts > .widget { break-inside: avoid; margin-bottom: var(--gap); scroll-margin-top: calc(var(--topbar-h, var(--topbar-height)) + var(--section-bar-height) + var(--gap)); }
+.charts > .widget.wide { column-span: all; }
+.charts > .notice { column-span: all; margin-top: var(--gap); }
+
+.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
+
+.widget.expanded { position: fixed; inset: 56px 6vw 40px; z-index: var(--z-modal); margin: 0; box-shadow: var(--shadow-modal); }
+.widget.expanded > .widget-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.veil { position: fixed; inset: 0; z-index: var(--z-veil); background: rgb(20 20 18 / 28%); backdrop-filter: blur(2px); }
+
+@media (max-width: 1000px) {
+  .chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .widget.expanded { inset: var(--space-sm); }
+}
+
+@media (max-width: 375px) {
+  .widget-head { flex-wrap: wrap; gap: var(--space-sm); }
+  .widget-title h2 { white-space: normal; overflow-wrap: anywhere; }
+  .widget-meta { flex-wrap: wrap; white-space: normal; }
+}

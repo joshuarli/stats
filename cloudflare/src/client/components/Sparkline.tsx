@@ -38,7 +38,7 @@ export function Sparkline(props: {
             {(gap) => <rect class="spark-gap" x={gap.x0.toFixed(2)} y="0" width={Math.max(0, gap.x1 - gap.x0).toFixed(2)} height="40" fill={`url(#spark-gap-${id})`} />}
           </For>
           <Show when={geometry()!.area}>
-            {(area) => <path class="spark-area" d={area()} fill={`url(#spark-${id})`} />}
+            {(area) => <path d={area()} fill={`url(#spark-${id})`} />}
           </Show>
           <For each={props.series}>
             {(track, position) => <path class={`spark-line${track.class === undefined ? "" : ` ${track.class}`}`} d={geometry()!.paths[position()] ?? ""} />}

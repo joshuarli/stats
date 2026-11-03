@@ -635,7 +635,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                   onMouseLeave={() => focusSeries(null)}
                 >
                   <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
-                  <span class="inline-label">{entry.label}</span>
+                  <span>{entry.label}</span>
                   {sharedValue() === undefined ? <b>{format(shown())}</b> : null}
                   {entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}
                 </button>

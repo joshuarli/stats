@@ -1,0 +1,15 @@
+.content { display: flex; flex-direction: column; gap: var(--gap); max-width: var(--page-width); margin: 0 auto; padding: var(--space-2xl) var(--space-xl) var(--space-4xl); }
+
+.page-header { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm) var(--space-md); margin-bottom: var(--space-xs); }
+.page-header h1 { margin: 0; font-size: var(--fs-page); font-weight: 600; letter-spacing: -.025em; line-height: 1.2; }
+.page-sub { flex: 1; min-width: 0; color: var(--muted); font-size: var(--fs-meta); }
+.page-mark { display: inline-flex; flex: none; }
+
+@media (max-width: 640px) {
+  .page-header h1 { min-width: 0; overflow-wrap: anywhere; }
+  .page-header > .hover-card { margin-left: auto; }
+}
+
+@media (max-width: 375px) {
+  .content { padding: var(--space-lg) var(--space-md) var(--space-3xl); }
+}

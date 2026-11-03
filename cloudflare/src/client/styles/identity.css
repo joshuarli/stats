@@ -1,0 +1,7 @@
+.os-logo { display: inline-flex; align-items: center; justify-content: center; flex: none; vertical-align: middle; }
+.os-logo svg { display: block; }
+.os-logo-tile { width: 30px; height: 30px; border-radius: var(--radius-lg); background: color-mix(in srgb, currentColor 8%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 20%, transparent), 0 1px 2px rgb(28 28 26 / 5%); }
+.host-mark { position: relative; display: inline-flex; flex: none; margin-top: calc(-1 * var(--space-2xs)); }
+.host-mark .os-logo-tile, .host-mark-empty { width: var(--control); height: var(--control); border-radius: var(--radius-md); }
+.host-mark-empty { display: grid; place-items: center; color: var(--muted); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); }
+.marker-status { position: absolute; right: calc(-1 * var(--space-2xs)); bottom: calc(-1 * var(--space-2xs)); box-shadow: 0 0 0 2px var(--surface); }

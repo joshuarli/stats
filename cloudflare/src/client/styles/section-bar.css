@@ -1,0 +1,14 @@
+.section-sentinel { height: 0; margin-bottom: calc(-1 * var(--gap)); }
+.section-bar { position: fixed; top: var(--topbar-h, var(--topbar-height)); left: 0; right: 0; z-index: var(--z-section-bar); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); visibility: hidden; opacity: 0; transform: translateY(-100%); transition: transform 140ms ease, opacity 140ms ease, visibility 0s 140ms; }
+.section-bar.visible { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+.section-bar-items { display: flex; align-items: center; gap: var(--space-2xs); max-width: var(--page-width); margin: 0 auto; padding: var(--space-xs) var(--space-xl); overflow-x: auto; scrollbar-width: none; }
+.section-bar-items::-webkit-scrollbar { display: none; }
+.section-link { display: inline-flex; align-items: center; gap: var(--space-sm); min-height: var(--control); padding: 0 var(--space-sm); border-radius: var(--radius-md); font-size: var(--fs-meta); color: var(--text-2); white-space: nowrap; }
+.section-link:hover { background: var(--hover); color: var(--text); }
+.section-link.quiet { color: var(--muted); }
+.section-link[aria-current="location"] { background: var(--hover); color: var(--text); box-shadow: inset 0 -2px var(--accent); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.section-divider { width: 1px; height: 14px; margin: 0 var(--space-sm); background: var(--line-strong); flex: none; }
+
+@media (max-width: 375px) {
+  .section-bar-items { padding-inline: var(--space-md); }
+}

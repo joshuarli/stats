@@ -15,7 +15,7 @@ export function BlockWidget(props: { readonly series: readonly BlockSeries[]; re
     <Widget
       id="block"
       title="Block latency"
-      meta={rows() === 0 ? undefined : <span class="widget-latest">{count(lastAt("count"))} completions · p50 {microseconds(lastAt("p50Us"))}</span>}
+      meta={rows() === 0 ? undefined : <span>{count(lastAt("count"))} completions · p50 {microseconds(lastAt("p50Us"))}</span>}
       expandable
     >
       {rows() === 0 ? (

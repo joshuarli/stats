@@ -1,6 +1,6 @@
 import { render } from "@solidjs/web";
 import { App } from "./App";
-import "./style.css";
+import "./styles/index.css";
 
 const root = document.getElementById("app");
 if (root === null) throw new Error("The dashboard root element is missing.");
