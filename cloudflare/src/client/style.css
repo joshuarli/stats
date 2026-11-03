@@ -516,3 +516,4 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .link:hover { color: var(--text); }
 .strip-absent-action { align-self: flex-start; margin-top: 4px; }
 .section-link.quiet { color: var(--muted); }
+.inline-shared { font-weight: 500; color: var(--text); }

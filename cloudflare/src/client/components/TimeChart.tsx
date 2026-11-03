@@ -104,8 +104,19 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     const limits = props.limits;
     return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
   };
+  const shownText = (position: number): string => {
+    const index = cursor();
+    return format(index === null ? settledValue(position) : aligned().columns[position]?.[index] ?? undefined);
+  };
+  const sharedValue = (): string | undefined => {
+    const total = series().length;
+    if (total < 2) return undefined;
+    const first = shownText(0);
+    for (let position = 1; position < total; position += 1) if (shownText(position) !== first) return undefined;
+    return first;
+  };
 
-  const mirrored = createMemo(() => series().some(entry => entry.mirror === true));
+  const mirrored =createMemo(() => series().some(entry => entry.mirror === true));
   const data = (): uPlot.AlignedData => {
     const columns = aligned().columns.map((column, position) => (series()[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]));
     return [aligned().times.map(time => time / 1000), ...columns];
@@ -599,12 +610,13 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                 >
                   <span class={`legend-swatch ${colorClass(entry.color)}${entry.dashed === true ? " dashed" : ""}`} />
                   <span class="inline-label">{entry.label}</span>
-                  <b>{format(shown())}</b>
+                  {sharedValue() === undefined ? <b>{format(shown())}</b> : null}
                   {entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}
                 </button>
               );
             }}
           </For>
+          {sharedValue() === undefined ? null : <b class="inline-shared">{sharedValue()}</b>}
         </div>
       </Show>
       <Show when={props.legend === true && hasData()}>

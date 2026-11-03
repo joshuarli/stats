@@ -1,7 +1,7 @@
 import { For } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
-import { count, dollars } from "../../format";
+import { count, dollars, dollarsPrecise } from "../../format";
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart, seriesColor } from "../host/shared";
 import { costParts, totalIn, type ProjectData } from "./series";
@@ -43,7 +43,7 @@ export function CostWidget(props: { readonly data: ProjectData; readonly view: T
       <PanelChart
         label="Estimated cost per bucket"
         series={parts().map((part, index) => ({ label: part.label, color: seriesColor(index), scored: false, track: part.points }))}
-        format={dollars}
+        format={dollarsPrecise}
         min={0}
         stepMs={props.data.worker.stepMs}
       />
