@@ -26,7 +26,11 @@ export interface ChartSeries {
 export interface ChartEvent {
   readonly atMs: number;
   readonly label: string;
+  readonly onSelect?: (() => void) | undefined;
 }
+
+const EVENT_HIT_PX = 6;
+const CLICK_SLOP_PX = 4;
 
 export interface TimeChartProps {
   readonly label: string;
@@ -103,6 +107,19 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
   const healthAt = (value: number | null | undefined): Health | undefined => {
     const limits = props.limits;
     return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
+  };
+  const eventNear = (chart: uPlot, left: number): ChartEvent | undefined => {
+    let nearest: ChartEvent | undefined;
+    let nearestDistance = EVENT_HIT_PX + 1;
+    for (const event of props.events ?? []) {
+      if (event.onSelect === undefined) continue;
+      const distance = Math.abs(chart.valToPos(event.atMs / 1000, "x") - left);
+      if (distance < nearestDistance) {
+        nearest = event;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
   };
   const shownText = (position: number): string => {
     const index = cursor();
@@ -466,9 +483,18 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           tooltip.className = "chart-tip";
           tooltip.hidden = true;
           chart.over.appendChild(tooltip);
+          let pressedAt: number | null = null;
+          chart.over.addEventListener("pointerdown", (event) => { pressedAt = event.clientX; });
+          chart.over.addEventListener("pointerup", (event) => {
+            const start = pressedAt;
+            pressedAt = null;
+            if (start === null || Math.abs(event.clientX - start) > CLICK_SLOP_PX) return;
+            eventNear(chart, event.clientX - chart.over.getBoundingClientRect().left)?.onSelect?.();
+          });
         }],
         setCursor: [chart => {
           setCursor(chart.cursor.idx ?? null);
+          chart.over.style.cursor = eventNear(chart, chart.cursor.left ?? -1) === undefined ? "" : "pointer";
           showTooltip(chart);
         }],
         setScale: [(chart, key) => {

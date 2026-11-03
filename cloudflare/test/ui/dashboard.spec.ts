@@ -584,6 +584,37 @@ test("the section bar marks the card you are reading", async ({ page }) => {
   await expect(bar.locator('[aria-current="location"]')).toHaveCount(1);
 });
 
+test("clicking a deploy marker on a chart selects that deployment", async ({ page }) => {
+  await mock(page);
+  const recent = deploymentHistory();
+  recent.deployments[0]!.atMs = now - 15 * 60_000;
+  recent.deployments[1]!.atMs = now - 45 * 60_000;
+  await page.route("**/api/v1/projects/stuff/deployments", route => route.fulfill({ json: recent }));
+  await page.goto("/#/project/stuff");
+  const options = page.getByRole("listbox", { name: "Deployment" });
+  await expect(options.getByRole("option", { name: /v42/u })).toHaveAttribute("aria-selected", "true");
+  const plot = page.locator(".chart", { has: page.getByRole("img", { name: /Worker invocations;/u }) }).locator(".u-over");
+  await plot.scrollIntoViewIfNeeded();
+  const box = await plot.boundingBox();
+  if (box === null) throw new Error("chart plot has no box");
+  const pointerAt: number[] = [];
+  for (let x = 2; x < box.width; x += 2) {
+    await page.mouse.move(box.x + x, box.y + box.height / 2);
+    if (await plot.evaluate(element => (element as HTMLElement).style.cursor === "pointer")) pointerAt.push(x);
+  }
+  expect(pointerAt.length).toBeGreaterThan(0);
+  await page.mouse.click(box.x + pointerAt[0]! + 1, box.y + box.height / 2);
+  await expect(options.getByRole("option", { name: /v41/u })).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(new RegExp(`deployment=${EARLIER_DEPLOYMENT_ID}$`, "u"));
+});
+
+test("a project without deployment tracking says so", async ({ page }) => {
+  await mock(page);
+  await page.route("**/api/v1/projects/stuff/deployments", route => route.fulfill({ json: { projectId: "stuff", worker: "stuff", enabled: false, sync: null, deployments: [], versions: [] } }));
+  await page.goto("/#/project/stuff");
+  await expect(page.locator("#deployments")).toContainText("Deployment tracking is disabled");
+});
+
 test("the deployment table stays in place while the next comparison loads", async ({ page }) => {
   await mock(page);
   let release!: () => void;

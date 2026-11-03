@@ -32,8 +32,13 @@
 .deployment-table thead th.numeric { text-align: right; }
 .deployment-table td.numeric { white-space: nowrap; }
 @media (max-width: 760px) {
-  .charts .deployment-table th[scope="row"] { white-space: normal; min-width: 11rem; }
+  .deployment-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .deployment-table, .deployment-table tbody, .deployment-table tr { display: block; }
+  .charts .deployment-table th[scope="row"] { display: block; white-space: normal; min-width: 0; height: auto; padding: 8px 0 0; border-bottom: 0; }
+  .charts .deployment-table td.numeric { display: block; height: auto; padding: 0 0 8px; text-align: left; white-space: normal; }
+  .deployment-table tbody tr { border-bottom: 1px solid var(--line); }
+  .deployment-table tbody tr:last-child { border-bottom: 0; }
   .deployments-layout { grid-template-columns: minmax(0, 1fr); height: auto; }
-  .deployment-detail { min-height: 360px; }
+  .deployment-detail { min-height: 0; overflow: visible; }
   .deployment-list { max-height: 188px; border-right: 0; border-bottom: 1px solid var(--line); }
 }

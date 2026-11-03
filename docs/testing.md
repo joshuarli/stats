@@ -20,11 +20,17 @@ Linux before changing them.
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
 `cloudflare/test/ui/captures/` with the clock frozen at the capture time. It
 compares the host summary and charts on each captured host page, and the same
-two regions on the `stuff` project page. Baselines live beside the spec as
-WebP files, and `make dashboard-test` rejects tracked PNGs.
+two regions on the `stuff` project page, plus its Deployments card at the 1h and
+6h ranges. Baselines live beside the spec as WebP files, and `make
+dashboard-test` rejects tracked PNGs. The replay hides the section bar and
+zeroes the card scroll offset, because Playwright's scroll-into-view would
+otherwise leave a card shorter than the viewport partly off-screen and
+unpainted.
 
 Recapture fixture data with `cloudflare/scripts/capture-host.sh` or
-`cloudflare/scripts/capture-project.sh` against the deployed service.
+`cloudflare/scripts/capture-project.sh` against the deployed service. The
+`stuff` deployment files (`deployments.json` and `comparison-1h|6h|24h.json`)
+are hand-built, not captured, and both the replay and `make preview` serve them.
 
 A one-device-pixel raster shift can fail a golden even when the content and
 layout are unchanged. Playwright pads a size mismatch before counting pixels

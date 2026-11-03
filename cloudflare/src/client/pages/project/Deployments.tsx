@@ -4,7 +4,7 @@ import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
 import { useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { Skeleton, Widget } from "../../components/ui";
+import { jumpTo, Skeleton, Widget } from "../../components/ui";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
@@ -101,7 +101,19 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   const tag = (id: string) => versions().get(id)?.tag ?? id.slice(0, 8);
   const name = (deployment: Deployment) => deployment.versions.map(version => `${tag(version.id)} ${version.percentage}%`).join(" / ");
   const title = (deployment: Deployment) => deployment.versions.map(version => deployment.versions.length === 1 ? tag(version.id) : `${tag(version.id)} ${version.percentage}%`).join(" / ");
-  const events = createMemo(() => (history()?.deployments ?? []).map(deployment => ({ atMs: deployment.atMs, label: `deploy ${name(deployment)}` })));
+  const select = (id: string) => {
+    setSelected(id);
+    writeParam("deployment", id);
+  };
+
+  const events = createMemo(() => (history()?.deployments ?? []).map(deployment => ({
+    atMs: deployment.atMs,
+    label: `deploy ${name(deployment)}`,
+    onSelect: () => {
+      select(deployment.id);
+      jumpTo("deployments");
+    }
+  })));
   const current = createMemo(() => history()?.deployments.find(deployment => deployment.id === selected()));
   const stale = () => {
     const value = comparison();
@@ -116,11 +128,6 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     if (value.sync.truncated) return "Deployment backfill reached its limit; comparisons are withheld.";
     if (value.sync.lastSuccessAtMs === null || Date.now() - value.sync.lastSuccessAtMs > 15 * 60_000) return "Deployment history is stale; comparisons may be withheld.";
     return null;
-  };
-
-  const select = (id: string) => {
-    setSelected(id);
-    writeParam("deployment", id);
   };
 
   return { history, selected, select, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };

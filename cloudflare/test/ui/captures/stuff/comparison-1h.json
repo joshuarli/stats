@@ -1,0 +1,112 @@
+{
+  "deploymentId": "00000000-0000-4000-8000-000000000100",
+  "window": "1h",
+  "before": {
+    "fromMs": 1793649600000,
+    "toMs": 1793653200000
+  },
+  "after": {
+    "fromMs": 1793653800000,
+    "toMs": 1793657400000
+  },
+  "readyAtMs": 1793660100000,
+  "beforeInvocations": 12410,
+  "afterInvocations": 11982,
+  "reasons": [],
+  "warnings": [
+    "Traffic volume changed by more than 2x; compare workload and cache behavior.",
+    "Heuristic signals, not significance tests or proof of causation. Top-route coverage is incomplete; cache, background jobs and traffic can change."
+  ],
+  "metrics": [
+    {
+      "metric": "worker.cpu",
+      "label": "Worker CPU / invocation",
+      "unit": "ms",
+      "before": 2.04,
+      "after": 1.52,
+      "delta": -0.52,
+      "deltaPercent": -25.49019607843137,
+      "verdict": "improved"
+    },
+    {
+      "metric": "worker.errors",
+      "label": "Worker 5xx share (1,000+ invocations)",
+      "unit": "%",
+      "before": 0.12,
+      "after": 0.11,
+      "delta": -0.009999999999999995,
+      "deltaPercent": -8.33333333333333,
+      "verdict": "unchanged"
+    },
+    {
+      "metric": "r2.stuff-mycrates",
+      "label": "R2 stuff-mycrates operations / Worker invocation",
+      "unit": "ops",
+      "before": 0.84,
+      "after": 0.31,
+      "delta": -0.53,
+      "deltaPercent": -63.0952380952381,
+      "verdict": "improved"
+    },
+    {
+      "metric": "r2.stuff-mynpm",
+      "label": "R2 stuff-mynpm operations / Worker invocation",
+      "unit": "ops",
+      "before": 0.22,
+      "after": 0.2,
+      "delta": -0.01999999999999999,
+      "deltaPercent": -9.090909090909086,
+      "verdict": "unchanged"
+    },
+    {
+      "metric": "r2.stuff-mypypi",
+      "label": "R2 stuff-mypypi operations / Worker invocation",
+      "unit": "ops",
+      "before": 0.06,
+      "after": 0.09,
+      "delta": 0.03,
+      "deltaPercent": 50.0,
+      "verdict": "regressed"
+    },
+    {
+      "metric": "probe.crates.ms",
+      "label": "Probe crates mean edge response time",
+      "unit": "ms",
+      "before": 142.5,
+      "after": 96.25,
+      "delta": -46.25,
+      "deltaPercent": -32.45614035087719,
+      "verdict": "improved"
+    },
+    {
+      "metric": "probe.crates.failure",
+      "label": "Probe crates failure share",
+      "unit": "%",
+      "before": 0,
+      "after": 0,
+      "delta": 0,
+      "deltaPercent": null,
+      "verdict": "unchanged"
+    },
+    {
+      "metric": "probe.pypi.ms",
+      "label": "Probe pypi mean edge response time",
+      "unit": "ms",
+      "before": null,
+      "after": 188,
+      "delta": null,
+      "deltaPercent": null,
+      "verdict": "insufficient-data"
+    },
+    {
+      "metric": "cost",
+      "label": "Estimated list-price cost / 1,000 invocations",
+      "unit": "USD",
+      "before": 9.41e-05,
+      "after": 7.18e-05,
+      "delta": -2.23e-05,
+      "deltaPercent": -23.69819341126461,
+      "verdict": "improved"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "projectId": "stuff",
+  "worker": "stuff",
+  "enabled": true,
+  "sync": {
+    "lastAttemptAtMs": 1793664002000,
+    "lastSuccessAtMs": 1793664002000,
+    "error": null,
+    "truncated": false
+  },
+  "deployments": [
+    {
+      "id": "00000000-0000-4000-8000-000000000100",
+      "atMs": 1793653260000,
+      "source": "wrangler",
+      "message": "cache the registry index",
+      "versions": [
+        {
+          "id": "00000000-0000-4000-8000-000000000200",
+          "percentage": 100
+        }
+      ],
+      "deferred": false
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000101",
+      "atMs": 1793552460000,
+      "source": "wrangler",
+      "message": "fix pypi simple index redirect",
+      "versions": [
+        {
+          "id": "00000000-0000-4000-8000-000000000201",
+          "percentage": 100
+        }
+      ],
+      "deferred": false
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000102",
+      "atMs": 1793376060000,
+      "source": "dash",
+      "message": null,
+      "versions": [
+        {
+          "id": "00000000-0000-4000-8000-000000000202",
+          "percentage": 100
+        }
+      ],
+      "deferred": false
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000103",
+      "atMs": 1793120460000,
+      "source": "wrangler",
+      "message": "rollback to v53",
+      "versions": [
+        {
+          "id": "00000000-0000-4000-8000-000000000203",
+          "percentage": 100
+        }
+      ],
+      "deferred": false
+    }
+  ],
+  "versions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000200",
+      "tag": "v58",
+      "message": "cache the registry index"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000201",
+      "tag": "v57",
+      "message": "fix pypi simple index redirect"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000202",
+      "tag": "v56",
+      "message": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000203",
+      "tag": "v55",
+      "message": "rollback to v53"
+    }
+  ]
+}

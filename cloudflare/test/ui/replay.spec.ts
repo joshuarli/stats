@@ -50,7 +50,7 @@ async function freeze(page: Page, capturedAtMs: number): Promise<void> {
   await page.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const style = document.createElement("style");
-      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; } .section-bar { display: none !important; }";
+      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; } .section-bar { display: none !important; } .charts > .widget[id] { scroll-margin-top: 0 !important; }";
       document.head.appendChild(style);
     });
   });
@@ -95,7 +95,13 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
-    if (url.pathname === `/api/v1/projects/${name}/deployments`) return route.fulfill({ json: { projectId: name, worker: name, enabled: false, sync: null, deployments: [], versions: [] } });
+    if (url.pathname === `/api/v1/projects/${name}/deployments`) return route.fulfill({ path: captureFile(name, "deployments.json"), contentType: "application/json" });
+    const deploymentsPrefix = `/api/v1/projects/${name}/deployments/`;
+    if (url.pathname.startsWith(deploymentsPrefix) && url.pathname.endsWith("/comparison")) {
+      const deploymentId = url.pathname.slice(deploymentsPrefix.length, url.pathname.length - "/comparison".length);
+      const comparison = readCapture(name, `comparison-${url.searchParams.get("window") ?? "1h"}.json`) as object;
+      return route.fulfill({ json: { ...comparison, deploymentId } });
+    }
     const kinds = url.searchParams.get("kinds");
     if (kinds !== null) {
       const histories = Object.fromEntries(kinds.split(",").map(kind => [kind, capturedKind(name, "1h", kind)]));
@@ -165,3 +171,18 @@ test("the project summary offers a longer range when cells have no data", async 
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(absent.getByRole("button", { name: "Show 24h" })).toHaveCount(0);
 });
+
+for (const range of ["1h", "6h"]) {
+  test(`stuff deployments card, ${range}`, { tag: "@mobile" }, async ({ page }) => {
+    await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
+    await page.goto("/#/project/stuff");
+    await expect(page.getByRole("heading", { name: "Deployments" })).toBeVisible();
+    if (range !== "1h") await page.getByRole("button", { name: range, exact: true }).click();
+    const card = page.locator("#deployments");
+    await expect(card).toContainText(`${range} each side`);
+    await expect(card.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
+    await page.waitForLoadState("networkidle");
+    await page.mouse.move(0, 0);
+    await expect(card).toHaveScreenshot(`stuff-deployments-${range}.webp`);
+  });
+}
