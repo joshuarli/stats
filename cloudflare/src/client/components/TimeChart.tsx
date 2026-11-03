@@ -51,6 +51,7 @@ const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
 const TIME_LABEL_OVERHANG = 16;
 const CLEARED_SELECT = { left: 0, top: 0, width: 0, height: 0 } as const;
+const SMOOTH_PATHS = uPlot.paths.spline?.();
 
 const colorVariable = (color: number | VizColor): string => (typeof color === "number" ? `--s${color}` : `--viz-${color}`);
 const colorClass = (color: number | VizColor): string => (typeof color === "number" ? `series-${color}` : `viz-${color}`);
@@ -433,6 +434,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
             show: !hidden().has(entry.label),
             stroke: entry.graded === true && props.limits !== undefined ? (chart: uPlot) => gradedStroke(chart, color) : color,
             width: entry.graded === true ? 2 : series().some(other => other.graded === true) ? 1.1 : 1.5,
+            ...(SMOOTH_PATHS === undefined ? {} : { paths: SMOOTH_PATHS }),
             spanGaps: entry.joinGaps === true,
             points: { show: false },
             ...(entry.dashed === true ? { dash: [4, 3] } : {}),

@@ -210,13 +210,13 @@ kbd {
 .chart { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; overflow-x: clip; }
 .chart-plot { height: 176px; position: relative; cursor: crosshair; user-select: none; outline-offset: 2px; }
 .chart-plot.compact { height: 112px; }
-.chart-inline-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 0 0; font-size: 12px; color: var(--text-2); }
+.chart-inline-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 2px 0 0; font-size: 12px; color: var(--text-2); position: relative; z-index: 1; }
 .inline-key { display: inline-flex; align-items: center; gap: 6px; padding: 1px 4px; margin-left: -4px; border-radius: 4px; }
 .inline-key:hover { background: var(--hover); }
 .inline-key.off { opacity: .38; }
 .inline-key b { font-weight: 500; color: var(--text); }
 .widget.expanded .chart-plot { height: auto; flex: 1; min-height: 0; }
-.chart-empty { position: absolute; inset: 0 0 auto; height: 176px; display: grid; place-items: center; color: var(--muted); background: var(--surface); }
+.chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); background: var(--surface); }
 .chart-plot .uplot { font-family: var(--font); }
 .u-hz .u-cursor-x { border-right: 1px solid var(--muted); opacity: .45; }
 .u-select { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 1px 0 var(--accent), inset -1px 0 var(--accent); }

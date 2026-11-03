@@ -23,7 +23,7 @@ rm -rf "$out"
 mkdir -p "$out"
 printf '%s' "$projects" | jaq -c . > "$out/projects.json"
 for range in $ranges; do
-  for kind in worker r2 probes collector; do
+  for kind in worker routes r2 probes collector; do
     node "$here/api.mjs" "/projects/$id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done
 done
