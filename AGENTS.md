@@ -47,4 +47,5 @@ go under `.work/tmp`.
 | Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
+| Observability product campaign | `docs/observability-campaign.md` |
 | Open work | `TODO.md` |
