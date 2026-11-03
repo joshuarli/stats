@@ -187,14 +187,15 @@ kbd {
 
 .widget { background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(28 28 26 / 4%), 0 8px 20px -12px rgb(28 28 26 / 10%); display: flex; flex-direction: column; min-width: 0; margin-bottom: 12px; }
 .widget-pending { opacity: .75; }
-.widget-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; padding: 12px 14px 0; }
+.widget-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 8px 14px; }
 .widget-title { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .widget-title h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.01em; white-space: nowrap; flex: none; }
 .widget-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.widget-body { padding: 6px 14px 12px; min-width: 0; }
+.widget-body { padding: 0 14px 12px; min-width: 0; }
 .widget-body.flush { padding: 0; }
-.widget .expand { opacity: 0; }
-.widget:hover .expand, .widget .expand:focus-visible, .widget.expanded .expand { opacity: 1; }
+@media (hover: hover) {
+  .widget:not(:hover, :focus-within, .expanded) .expand { opacity: 0; }
+}
 .widget.expanded { position: fixed; inset: 56px 6vw 40px; z-index: 50; margin: 0; box-shadow: 0 0 0 1px var(--line-strong), 0 30px 80px rgb(0 0 0 / 22%); }
 .widget.expanded .widget-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .veil { position: fixed; inset: 0; z-index: 40; background: rgb(20 20 18 / 28%); backdrop-filter: blur(2px); }
@@ -428,14 +429,13 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .gauge-mark { position: absolute; top: -3px; width: 3px; height: 12px; margin-left: -1.5px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 0 1.5px var(--surface); }
 .gauge-mark.health-elevated { background: var(--serious); }
 .gauge-mark.health-critical { background: var(--critical); }
-.widget.collapsed { margin-bottom: 12px; }
-.widget.collapsed .widget-head { border-bottom: 0; }
 .strip-cell .tile-spark { display: block; }
 .stack { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
 .stack > .widget, .stack > .chart-grid { margin-bottom: 0; }
 .panel-label { font-size: var(--fs-label); font-weight: 500; color: var(--muted); margin: 10px 0 0; }
 .panel-label:first-child { margin-top: 2px; }
 .flush-table { margin: 12px -14px -12px; border-top: 1px solid var(--line); }
+.widget-body > .flush-table:first-child { margin-top: 0; }
 .table-more { display: flex; padding: 8px 14px; border-top: 1px solid var(--line); }
 .capacity-with-state { display: flex; align-items: center; gap: 10px; }
 .legend-swatch.unplotted { opacity: .25; }
@@ -520,8 +520,8 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .charts > .widget { break-inside: avoid; margin-bottom: 10px; }
 .charts > .widget.wide, .charts > .notice { column-span: all; }
 .charts > .notice { margin-bottom: 10px; }
+.charts > .notice:not(:first-child) { margin-top: 10px; }
 .charts > .widget[id] { scroll-margin-top: calc(var(--topbar-h, 48px) + 44px); }
-.charts > .widget .widget-head { padding-top: 10px; min-height: 32px; }
 .charts > .widget .chart { flex: 0 0 auto; min-height: auto; }
 .charts > .widget .chart-plot { flex: 0 0 auto; height: 150px; min-height: 0; overflow: hidden; }
 .charts > .widget .chart-plot.compact { height: 136px; }

@@ -784,16 +784,17 @@ test("the newest project bucket is marked as still arriving", async ({ page }) =
 test("widgets collapse, stay collapsed after a reload, and a tile reveals the widget it jumps to", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/stuff");
-  const cpu = page.locator("#cpu");
+  const cpu = page.locator("#worker-cpu");
   await expect(cpu.getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
   await cpu.getByRole("button", { name: "Hide CPU time" }).click();
   await expect(cpu.getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
   await expect(cpu.getByRole("button", { name: "Show CPU time" })).toHaveAttribute("aria-expanded", "false");
+  await expect(cpu.getByRole("button", { name: "Expand CPU time" })).toBeDisabled();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
-  await expect(page.locator("#cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
+  await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
   await page.getByRole("region", { name: "Project summary" }).getByRole("button", { name: /^CPU time: / }).click();
-  await expect(page.locator("#cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
+  await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
 });
 
 test("configured probes surface endpoint health and a down endpoint raises an incident", async ({ page }) => {

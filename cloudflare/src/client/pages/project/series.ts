@@ -223,7 +223,7 @@ export function buildProjectCells(data: ProjectData, view: TimeWindow | null): M
   const specs: Spec[] = [
     { id: "requests", label: "Requests", anchor: "requests", limits: undefined, points: metricTrack(data.worker, "worker.invocations"), format: count, settledBeforeMs: workerSettled },
     { id: "server-errors", label: "Worker 5xx", anchor: "status", limits: LIMITS.workerServerErrorPercent, points: serverErrorShare(data), format: percent },
-    { id: "cpu-time", label: "CPU time", anchor: "cpu", limits: LIMITS.workerCpuMs, points: cpuAverage(data), format: milliseconds },
+    { id: "cpu-time", label: "CPU time", anchor: "worker-cpu", limits: LIMITS.workerCpuMs, points: cpuAverage(data), format: milliseconds },
     ...(data.buckets.length === 0
       ? []
       : [

@@ -58,7 +58,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
 
 export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Element {
   return (
-    <Widget id="cpu" title="CPU time" expandable>
+    <Widget id="worker-cpu" title="CPU time" expandable>
       <PanelChart
         label="Worker average CPU time"
         area
