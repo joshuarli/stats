@@ -31,7 +31,7 @@ already shows.
 
 | Area | Decision |
 | --- | --- |
-| Producer | Platform tail events, not an in-process export. Stats changes only its catch sites. |
+| Producer | Streaming tail events, not an in-process export. Stats changes only its catch sites, which publish the original error on a diagnostics channel. |
 | Collector | A new `stats-observe` Worker, attached to `stats` as a tail consumer, with no public route |
 | Storage | One SQLite-backed `ObservationStore` Durable Object inside `stats-observe` |
 | Retention | 7 days, checked on every read; cleanup is alarm-driven |
@@ -39,7 +39,7 @@ already shows.
 | Core | Portable TypeScript with no Cloudflare imports: model, codec, grouping, SQL |
 | Fragment encoding | Chosen by the Phase 1 benchmark: STO1 binary or strict JSON |
 | UI | The existing stats dashboard, proxied through the stats Access gate |
-| Dependencies | None in stats. At most one source-map resolver in `stats-observe`, only if Phase 0 shows it is needed |
+| Dependencies | None in stats. At most one source-map resolver in `stats-observe`, only if production stacks are not remapped |
 
 The tail design moves all telemetry work after the invocation. Stats does no
 encoding and no `waitUntil` export, and needs no service-binding call, context
@@ -60,38 +60,48 @@ Browser ─▶ stats Access gate ─▶ /api/observe/* ─▶ service binding �
 
 ## Phase 0: tail fidelity spike
 
-The design depends on runtime facts the documentation leaves open. Settle
-them before writing product code, locally in workerd first. A staging deploy,
-if one is needed, needs a yes.
+Run locally on 2026-11-03 against workerd 1.20261023.1 (Miniflare
+5.20261023.3-beta), compatibility date 2026-10-30 with `nodejs_compat`. The
+harness was a throwaway pair of Workers, a producer with a SQLite Durable
+Object and a consumer with `tail` and `tailStream` handlers, sending
+requests with fake secrets in the query string, `authorization`, `cookie`,
+and `cf-access-jwt-assertion`. Phase 2 turns each fact the design relies on
+into a test against the real collector.
 
-1. Do local workerd and the vitest pool deliver classic and streaming tail
-   events to a consumer configured through `tailConsumers`?
-2. Are `Installation` invocations (fetch, RPC, alarm) tailed with
-   `durableObjectId`, and do streaming events give the Worker stage and the
-   Durable Object stage one `traceId` with correct parent spans?
-3. Does a caught error passed to `console.error` arrive with its stack, either
-   in `logs[].errorInfo` or `exceptions[]`? Are tail stacks source-mapped when
-   maps are uploaded? The docs say uncaught stacks are remapped for Tail
-   Workers but `error.stack` inside the Worker is not.
-4. Do platform spans include the per-statement SQLite spans that Workers
-   traces show, and do they need `observability.traces` sampling to be on?
-5. Is `ctx.tracing.enterSpan`, which appears only in the experimental types,
-   available at the current compatibility date, and do its spans and
-   attributes reach the streaming tail?
-6. Does `diagnostics_channel` publish reach `diagnosticsChannelEvents` without
-   counting as Workers Logs ingestion? If so, it carries structured app events
-   off the logs budget.
-7. Which request headers reach tail events? The collector must drop all of
-   them; this checks whether anything sensitive arrives at all.
-8. What does a tail consumer cost per event: CPU per classic and per streaming
-   invocation, and how many events does one stats request produce?
+Decision: streaming tail. It is the only path that links stages into one
+trace and carries SQL spans; it also carries every exception and log the
+classic path does.
 
-Exit: a short findings section in this doc for each question, with the
-command or test that showed the answer, and a classic-or-streaming decision.
-If streaming is unavailable or cannot link stages, use classic tail for
-issues and per-invocation facts, and take traces from the streaming path
-later. If neither delivers stacks for caught errors, the fallback below
-replaces the producer side only.
+| Question | Local answer |
+| --- | --- |
+| Tails delivered locally? | Yes, classic and streaming, to one consumer. |
+| Durable Object invocations? | Yes: fetch, RPC, and alarm, each with `durableObjectId` and `entrypoint`. One Worker request that calls the object by fetch and by RPC yields three invocations. |
+| Stages linked? | Streaming only. All three share one `traceId`, and each object onset's parent is the caller's `fetch` or `jsRpcCall` span. Classic events have no trace identity. An alarm is its own root, unlinked from the request that set it. |
+| Caught errors? | `console.error(error)` yields `errorInfo` with name, message, and frames in both paths, from the Worker, the object, and `scheduled`. A fixed JSON log line yields no `errorInfo`. |
+| Uncaught errors? | `exceptions[]` with stack. An object's uncaught error also appears on the calling Worker, with the same name and message and no stack, so the collector attributes it to the stage that has the stack and counts it once. |
+| SQL spans? | One `durable_object_storage_exec` span per statement with `db.query.text`, the binding count, `rows_read`, and `rows_written`. Bound values never appear. |
+| `ctx.tracing.enterSpan`? | Available with no extra flag; its span, parent, and attributes reach the stream. |
+| Diagnostics channel? | `diagnosticsChannelEvents` in both paths. A published `Error` arrives with name, message, and stack. |
+| Headers? | Classic replaces `authorization`, `cookie`, and `cf-access-jwt-assertion` with `REDACTED`. **Streaming onsets carry them in plaintext**, with TLS handshake secrets and client geolocation in `cfJson`. Both keep the query string. |
+| Consumer failure? | A consumer that throws or sleeps 3 s leaves producer responses and timing unchanged. |
+| Event volume | Three stream events per SQL statement (open, attributes, close) plus about five per invocation. The `/ok` request produced 39 events across its three invocations. |
+
+Not answerable locally, because `cpuTime` and `wallTime` read 0 and nothing
+is sampled or source-mapped. These need one staging Worker with a streaming
+tail consumer, which needs a yes:
+
+1. Do streaming tail spans follow `observability.traces.headSamplingRate`
+   (0.1 on stats)? If they do, full capture means raising the rate, and
+   from 2026-12-01 traces count against the account's shared ingestion
+   allowance.
+2. Are streaming onset headers unredacted in production too?
+3. Are stacks in `exceptions[]` and `errorInfo` source-mapped when maps are
+   uploaded? This decides Phase 4.
+4. Do diagnostics channel events count as Workers Logs ingestion?
+5. What do `cpuTime` and `wallTime` report, and what does the consumer cost
+   per stats invocation?
+6. Does deploying stats with a tail consumer that does not exist fail, which
+   fixes the rollout order?
 
 ## Phase 1: core
 
@@ -104,7 +114,8 @@ pattern. Lint bans `cloudflare:*` imports there.
   version ID, outcome, cpu and wall ms, timestamps), spans, and exceptions,
   with the limits below as types and one constants module.
 - **Fragment encoding:** benchmark strict JSON, tuple JSON, and an STO1
-  draft on fragments built from Phase 0's captured tail events. Measure
+  draft on fragments reduced from streaming events of the real stats Worker,
+  captured in a local run and redacted. Measure
   encoded bytes, encode and validated decode CPU, and SQLite blob size. Pick
   STO1 only if it is materially smaller or cheaper, and write its byte layout
   and hand-authored fixtures under `fixtures/observe/v1/` before freezing it.
@@ -143,12 +154,19 @@ and decoder rejection of a truncation at every byte of a small fixture.
 - Cleanup: the store's alarm deletes expired rows in bounded batches and
   reschedules itself. The existing `*/5` stats cron gains no work; a
   `stats-observe` cron of its own checks that the alarm is set.
-- Stats: add `tailConsumers` and a service binding to `stats-observe` in
-  `cloudflare.config.ts`. At each catch site that discards an error
-  (`installation.ts`, `deployments/installation.ts`, both collectors, and the
-  scheduled handler in `index.ts`), report the original error through the
-  channel Phase 0 chose. Responses, status codes, and the existing fixed log
-  lines stay as they are.
+- Stats: add a streaming entry to `tailConsumers` and a service binding to
+  `stats-observe` in `cloudflare.config.ts`. At each catch site that discards
+  an error (`installation.ts`, `deployments/installation.ts`, both
+  collectors, and the scheduled handler in `index.ts`), publish
+  `{ operation, error }` on one diagnostics channel, where `operation` comes
+  from a closed set and doubles as the explicit grouping code. Responses,
+  status codes, and the existing fixed log lines stay as they are. Named
+  application spans use `ctx.tracing.enterSpan` only where a platform span
+  is missing, such as history construction.
+- Reduction: the collector turns a stream into one fragment, keeping span
+  names, parentage, outcomes, SQL text and row counts, and exceptions. It
+  keeps the method, route template, and status from the onset and drops
+  headers, `cfJson`, the query string, and `url.full`.
 - Exclusions, in one tested policy in the collector: `/health`, static
   assets, `/api/observe/*`, and unauthenticated or unmatched requests.
 
@@ -156,7 +174,7 @@ Exit: in a local workerd test with both Workers, a real stats ingest, a
 dashboard read, a scheduled run, and a deliberately failing fixture route
 (present only in the test config) each produce the expected stored
 invocations. The failure is grouped into one issue linked to its trace.
-Polling `/api/observe/*` 100 times stores nothing. Removing or crashing
+Polling `/api/observe/*` 100 times stores nothing. A request carrying fake secrets in every header and the query string leaves none of them in any row, blob, or API response. Removing or crashing
 `stats-observe` leaves every stats response byte-identical.
 
 ## Phase 3: dashboard
@@ -177,7 +195,7 @@ fixed GET queries and one same-origin POST (resolve and reopen) to
 Exit: `make dashboard-test` passes with new goldens for desktop and mobile,
 and a replay fixture captured from a Phase 2 run.
 
-## Phase 4: source maps (only if Phase 0 says tail stacks are not remapped)
+## Phase 4: source maps (only if production tail stacks are not remapped)
 
 Build private source maps, register them with `stats-observe` through an
 Access-gated upload in stats, and resolve frames there with one small pinned
@@ -230,8 +248,10 @@ Durable Object requests a month, against 50M and 1M included on Workers Paid.
 - `stats-observe` has no tail consumer, no public route, and no binding to
   `Installation`.
 - Headers, query strings, bodies, tokens, Access assertions, and SQL
-  parameters are never stored. A secret-bearing fixture checks packets,
-  rows, and API responses.
+  parameters are never stored. Streaming tail events hand `stats-observe`
+  host tokens and Access assertions in plaintext, so it never logs a raw
+  event, runs with its own Workers logs off, and reduces each event before
+  it reaches the store.
 - No row older than 7 days is readable, whether or not cleanup has run. Live
   retention is not erasure from Durable Object point-in-time recovery, which
   keeps 30 days.
@@ -240,8 +260,9 @@ Durable Object requests a month, against 50M and 1M included on Workers Paid.
 
 ## Fallback: in-process producer
 
-Use this only if Phase 0 shows tail events cannot carry caught errors or
-link stages. A dependency-free module in stats records named operations and
+Locally, tail events carry caught errors and link stages, so this is held
+back for one case: production streaming spans follow head sampling and full
+trace sampling costs more than this. A dependency-free module in stats records named operations and
 caught errors per invocation and exports one fragment through a service
 binding in `waitUntil`, with a 2 s deadline, one attempt, a bounded number
 of concurrent exports, and no retry. The core, store, and UI are unchanged.
@@ -255,4 +276,6 @@ campaign. Request-rate and CPU charts stay on the project page.
 
 ## State
 
-Not started. Baseline: `8043bd0`.
+Baseline: `8043bd0`. Phase 0 is done locally; the six production questions
+wait on a yes for a staging Worker. Phase 1 needs none of them and can
+start.
