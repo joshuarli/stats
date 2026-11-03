@@ -42,6 +42,7 @@ go under `.work/tmp`.
 | Components, routes, auth, storage, rollups | `docs/architecture.md` |
 | Release build, deployment, verified environments | `docs/operations.md` |
 | Toolchain pins and dependency decisions | `docs/dependencies.md` |
+| Test commands, screenshot goldens, and image comparison | `docs/testing.md` |
 | Benchmark method and results | `bench/README.md` |
 | Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
