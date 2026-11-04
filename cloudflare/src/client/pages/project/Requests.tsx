@@ -2,12 +2,12 @@ import { createMemo, For, Show, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { age, axisTime, count, percent } from "../../format";
 import { useTelemetry } from "../../state";
-import { Skeleton, Widget } from "../../components/ui";
+import { Segmented, Skeleton, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
 import { duration, TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
-import { HealthMeta, MOMENT, RouteLabel, Segmented, type Observability } from "./Observe";
+import { HealthMeta, MOMENT, RouteLabel, type Observability } from "./Observe";
 
 function statusTone(trace: TraceSummary): string {
   if (trace.failed) return "tone-bad";

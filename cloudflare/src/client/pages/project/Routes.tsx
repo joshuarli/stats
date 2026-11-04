@@ -1,41 +1,45 @@
-import { For, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
 import { count, milliseconds, percent } from "../../format";
 import { Widget } from "../../components/ui";
+import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
+import { stack } from "../../waterfall";
 import { PanelLabel, PanelChart } from "../host/shared";
 import { durableObjectCpuAverage, durableObjectWallAverage, provisionalFromMs, routeRows, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
 
 export function RoutesWidget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
-  const rows = () => routeRows(props.data.routes, props.view);
+  const rows = createMemo(() => routeRows(props.data.routes, props.view));
+  const totalCpu = () => rows().reduce((sum, row) => sum + row.cpuMs, 0);
+  const invocations = () => rows().reduce((sum, row) => sum + row.invocations, 0);
+  const waterfallRows = createMemo((): WaterfallRow[] => {
+    const extents = stack(rows().map(row => row.cpuMs));
+    return rows().map((row, index) => ({
+      id: row.route,
+      label: row.route,
+      tag: index === 0 && rows().length > 1 && totalCpu() > 0 ? "TOP" : undefined,
+      from: extents[index]?.from ?? 0,
+      to: extents[index]?.to ?? 0,
+      color: 0,
+      values: [percent(row.cpuShare), milliseconds(row.averageMs), count(row.invocations)]
+    }));
+  });
   return (
-    <Widget id="routes" title="CPU by route" expandable>
+    <Widget id="routes" class="wide" title="CPU by route" bodyClass={rows().length > 0 ? "flush wf-body" : undefined} expandable>
       <Show when={rows().length > 0} fallback={<PanelLabel>No route data was collected in this range</PanelLabel>}>
-        <div class="table-scroll flush-table">
-          <table class="data-table compact" aria-label="CPU time by route">
-            <thead>
-              <tr>
-                <th>Route</th>
-                <th class="numeric">CPU share</th>
-                <th class="numeric">Average</th>
-                <th class="numeric">Invocations</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={rows()}>
-                {(row) => (
-                  <tr>
-                    <td>{row.route}</td>
-                    <td class="numeric">{percent(row.cpuShare)}</td>
-                    <td class="numeric">{milliseconds(row.averageMs)}</td>
-                    <td class="numeric">{count(row.invocations)}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
+        <WaterfallSummary stats={[
+          { label: "Total CPU", value: milliseconds(totalCpu()) },
+          { label: "Invocations", value: count(invocations()) },
+          { label: "Hottest route", value: rows()[0]?.route ?? "—", note: percent(rows()[0]?.cpuShare) }
+        ]} />
+        <Waterfall
+          label="CPU time by route"
+          stepLabel="Route"
+          columns={["Share", "Average", "Invocations"]}
+          axis={{ from: 0, to: totalCpu() > 0 ? totalCpu() : 1, format: milliseconds }}
+          rows={waterfallRows()}
+        />
       </Show>
     </Widget>
   );

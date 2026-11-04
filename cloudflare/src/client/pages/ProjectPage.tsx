@@ -163,13 +163,13 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                 <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
                 <section class="charts" aria-label="Charts">
                   <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : id => <RolloutImpactPanel deploymentId={id} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
-                  <RequestsWidget data={data()} />
                   <CostWidget data={data()} view={view()} />
+                  {observed ? null : <RoutesWidget data={data()} view={view()} />}
+                  <RequestsWidget data={data()} />
                   <StatusWidget data={data()} />
                   {hasBuckets() ? <OperationsWidget data={data()} /> : null}
                   <CpuTimeWidget data={data()} />
                   {hasBuckets() ? <StorageWidget data={data()} /> : null}
-                  {observed ? null : <RoutesWidget data={data()} view={view()} />}
                   {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
                   {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
                   {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}

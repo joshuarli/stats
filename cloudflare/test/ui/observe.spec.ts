@@ -184,7 +184,8 @@ test("an occurrence opens its trace in a modal that survives a reload", async ({
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
   await expect(dialog.locator(".trace-head")).toContainText("scheduled */5 * * * *");
-  await expect(dialog.locator(".tl-slice.failed")).toHaveCount(1);
+  await expect(dialog.locator(".wf tr.failed")).toHaveCount(1);
+  await expect(dialog.locator(".wf-callout")).toContainText("Error");
   await expect(dialog.getByRole("region", { name: "Current selection" })).toContainText("deployments.poll");
   await page.reload();
   await expect(page.getByRole("dialog", { name: "Trace" }).locator(".trace-head")).toContainText("scheduled */5 * * * *");
@@ -212,15 +213,17 @@ test("the timeline zooms with W, fits the selection with F, and steps with arrow
     const text = await timeline.locator(".tl-span").textContent() ?? "";
     return Number.parseFloat(text) * (text.includes(" s ") ? 1000 : 1);
   };
-  await timeline.locator(".tl-slice").first().focus();
+  await timeline.locator(".wf-toggle").first().focus();
   const fitted = await span();
   await page.keyboard.press("w");
   expect(await span()).toBeLessThan(fitted);
-  await page.keyboard.press("ArrowRight");
-  await expect(timeline.getByRole("region", { name: "Current selection" })).toContainText("Installation.knownDeploymentVersions");
+  await page.keyboard.press("ArrowDown");
+  const stepped = timeline.getByRole("row", { name: /Installation\.knownDeploymentVersions/u });
+  await expect(stepped.locator(".wf-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(timeline.getByRole("region", { name: "Current selection" })).toBeVisible();
   await page.keyboard.press("f");
   expect(await span()).toBeLessThan(100);
-  await expect(timeline.locator(".tl-slice.selected .tl-slice-label")).toBeVisible();
+  await expect(stepped.locator(".wf-fill")).toBeVisible();
 });
 
 test("an unavailable collector is reported instead of an empty dataset", async ({ page }) => {
@@ -260,7 +263,7 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await page.goto(`/#/project/stats?range=24h&route=${encodeURIComponent(HISTORY_ROUTE)}&band=slow&deployment=${SCENARIO_ROLLOUTS.v14}`);
   const explorer = page.locator("#route-explorer");
   await expect(explorer.locator(".hot-summary")).toBeVisible();
-  await expect(explorer.locator(".tl-slice").first()).toBeVisible();
+  await expect(explorer.locator(".wf-fill").first()).toBeVisible();
   await expect(page.locator("#deployments .impact-summary")).toBeVisible();
   await expect(page.locator("#issues .issue-facts")).toBeVisible();
   await expect(explorer).toHaveScreenshot("stats-route-explorer.webp");
@@ -268,7 +271,7 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await expect(page.locator("#issues")).toHaveScreenshot("stats-issues.webp");
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
-  await expect(dialog.locator(".tl-slice").first()).toBeVisible();
+  await expect(dialog.locator(".wf-fill").first()).toBeVisible();
   await expect(dialog.locator(".modal-body")).toHaveScreenshot("stats-trace-modal.webp");
 });
 

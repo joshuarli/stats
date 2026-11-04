@@ -4,7 +4,7 @@ import { ApiFailure } from "../../api";
 import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { Skeleton, Widget } from "../../components/ui";
+import { Segmented, Skeleton, Widget } from "../../components/ui";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssue, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
 import { Modal } from "../../components/Modal";
 import type { Exploration, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../../../observe/core/store";
@@ -228,16 +228,6 @@ export function HealthMeta(props: { readonly health: ObserveHealth | null }): JS
         <span class="observe-health-text">{health().newestAtMs === null ? "nothing received yet" : `last event ${age(health().newestAtMs, now())}`}</span>
       </span>
     )}</Show>
-  );
-}
-
-export function Segmented<T extends string>(props: { readonly label: string; readonly value: T; readonly options: readonly [T, string][]; readonly onChange: (value: T) => void }): JSX.Element {
-  return (
-    <div class="segmented" role="group" aria-label={props.label}>
-      <For each={props.options}>{([value, label]) => (
-        <button type="button" class="segment" aria-pressed={props.value === value ? "true" : "false"} onClick={() => props.onChange(value)}>{label}</button>
-      )}</For>
-    </div>
   );
 }
 

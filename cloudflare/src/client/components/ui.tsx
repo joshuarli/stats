@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createUniqueId, Show, type ParentProps } from "solid-js";
+import { createEffect, createSignal, createUniqueId, For, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
@@ -218,6 +218,16 @@ export function Notice(props: { readonly tone?: "info" | "warn" | undefined; rea
     <div class={`notice notice-${props.tone ?? "info"}`}>
       <Icon name={props.tone === "warn" ? "alert" : "info"} size={15} />
       <span>{props.children}</span>
+    </div>
+  );
+}
+
+export function Segmented<T extends string>(props: { readonly label: string; readonly value: T; readonly options: readonly [T, string][]; readonly onChange: (value: T) => void }): JSX.Element {
+  return (
+    <div class="segmented" role="group" aria-label={props.label}>
+      <For each={props.options}>{([value, label]) => (
+        <button type="button" class="segment" aria-pressed={props.value === value ? "true" : "false"} onClick={() => props.onChange(value)}>{label}</button>
+      )}</For>
     </div>
   );
 }

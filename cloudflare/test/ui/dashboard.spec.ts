@@ -738,7 +738,7 @@ test("the project page shows its summary and balanced columns of chart cards", a
   await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
   const cards = page.locator(".charts > .widget:not(.wide)");
   await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
-  await expect(cards.nth(1).getByRole("heading", { name: "Estimated cost" })).toBeVisible();
+  await expect(cards.nth(1).getByRole("heading", { name: "Response status" })).toBeVisible();
   const rects = await cards.evaluateAll(elements => elements.map(element => {
     const box = element.getBoundingClientRect();
     return { left: Math.round(box.left), top: Math.round(box.top), bottom: Math.round(box.bottom) };
@@ -861,7 +861,12 @@ test("D1 ranks statements by list cost and the cost estimate adds D1 to the Work
   const cost = page.locator("#cost").getByRole("table", { name: "Estimated cost by component" });
   await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("$1.20");
   await expect(cost.getByRole("row", { name: /D1 rows read/u })).toContainText("$0.60");
-  await expect(cost.getByRole("row", { name: /^Total/u })).toContainText("$1.80");
+  await expect(page.locator("#cost .wf-stat").filter({ hasText: "Total cost" })).toContainText("$1.80");
+  await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("TOP");
+  await expect(cost.getByText("TOP")).toHaveCount(1);
+  await page.locator("#cost").getByRole("button", { name: "Over time" }).click();
+  await expect(page.locator("#cost").getByRole("img", { name: /Estimated cost per bucket;/u })).toBeVisible();
+  await expect(cost).toHaveCount(0);
   await expect(page.locator("#d1").getByRole("img", { name: /D1 database size;/u })).toBeVisible();
   expect(requests.some(request => request.includes("kinds=") && request.includes("d1-statements"))).toBe(true);
 });
