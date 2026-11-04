@@ -45,7 +45,7 @@ export function ProjectPage(): JSX.Element {
               icon="host"
               title="Project not found"
               detail="The project id is not in this installation's configuration."
-              action={<a class="btn" href="#/">Back to fleet</a>}
+              action={<a class="btn" href="#/projects">Back to projects</a>}
             />
           }
         >

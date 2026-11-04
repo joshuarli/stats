@@ -13,9 +13,11 @@
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
-.topbar-start { display: flex; align-items: center; gap: var(--space-xl); min-width: 0; }
-.brand { font-weight: 600; letter-spacing: -.01em; display: flex; align-items: center; gap: var(--space-sm); }
-.brand::before { content: ""; width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--text); }
+.topbar-start { display: flex; align-items: center; gap: var(--space-lg); min-width: 0; }
+.primary-nav { display: flex; align-items: center; gap: var(--space-2xs); }
+.primary-nav a { display: inline-flex; align-items: center; min-height: var(--control-sm); padding: 0 var(--space-sm); border-radius: var(--radius-md); color: var(--muted); font-weight: 500; }
+.primary-nav a:hover { color: var(--text); background: var(--hover); }
+.primary-nav a[aria-current="page"] { color: var(--text); background: var(--hover); }
 .breadcrumb { display: flex; align-items: center; gap: var(--space-sm); color: var(--muted); min-width: 0; }
 .breadcrumb a:hover { color: var(--text); }
 .host-switcher { color: var(--text); font-weight: 500; cursor: pointer; padding: var(--space-xs); border-radius: var(--radius-md); max-width: 220px; }

@@ -41,7 +41,7 @@ export function HostPage(): JSX.Element {
               icon="host"
               title="Host not found"
               detail="The host id is not in this installation, or the directory changed."
-              action={<a class="btn" href="#/">Back to fleet</a>}
+              action={<a class="btn" href="#/">Back to hosts</a>}
             />
           }
         >

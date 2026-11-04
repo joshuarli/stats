@@ -394,10 +394,9 @@ chart arrays only for the columns a view reads. `state.ts` owns the range, zoom
 stack, and live-refresh state; `chart-data.ts` aligns series onto a shared time
 grid, passing through series that already share a gap-free axis. Host and fleet data refresh every 15 seconds;
 project data and the project list refresh every five minutes to match the
-collector cron, while the manual Refresh button is immediate. Routes are the
-fleet page, `#/host/:hostId`, and `#/project/:projectId`; the fleet page lists
-projects under the hosts. The browser never sees a host token or an operator
-secret.
+collector cron, while the manual Refresh button is immediate. Routes are `/`
+for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
+browser never sees a host token or an operator secret.
 
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its

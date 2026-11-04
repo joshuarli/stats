@@ -2,7 +2,6 @@ import { createMemo, createSignal, Errored, For, Loading, onSettled, refresh, Sh
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
-import { Icon } from "./components/Icon";
 import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
 import { createUpdateEffect } from "./effect";
@@ -13,6 +12,14 @@ import { readParam, writeParam } from "./urlState";
 const DEFAULT_RANGE: Range = "1h";
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
 const PROJECT_PATH = /^\/project\/([a-z][a-z0-9-]{0,31})$/u;
+
+function isHostsPath(path: string): boolean {
+  return path === "/" || path.startsWith("/host/");
+}
+
+function isProjectsPath(path: string): boolean {
+  return path === "/projects" || PROJECT_PATH.test(path);
+}
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName));
@@ -84,7 +91,10 @@ export function Shell(props: ParentProps): JSX.Element {
     <TelemetryContext value={{ range, query, setRange, showWindow, now, hosts, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
-          <a class="brand" href="#/" aria-label="Stats home">stats</a>
+          <nav class="primary-nav" aria-label="Primary">
+            <a href="#/" aria-current={isHostsPath(location.pathname) ? "page" : "false"}>Hosts</a>
+            <a href="#/projects" aria-current={isProjectsPath(location.pathname) ? "page" : "false"}>Projects</a>
+          </nav>
           <Breadcrumb />
         </div>
         <TimeBar />
@@ -97,24 +107,17 @@ export function Shell(props: ParentProps): JSX.Element {
 function Breadcrumb(): JSX.Element {
   const location = useLocation();
   const host = () => HOST_PATH.exec(location.pathname)?.[1];
-  const project = () => PROJECT_PATH.exec(location.pathname)?.[1];
   return (
-    <Show when={host() !== undefined || project() !== undefined}>
-      <nav class="breadcrumb" aria-label="Breadcrumb">
-        <a href="#/">Fleet</a>
-        <Show when={host()}>
-          {(current) => (
-            <>
-              <Icon name="chevronRight" size={12} />
-              <Errored fallback={null}>
-                <Loading fallback={null}>
-                  <HostSwitcher current={current()} />
-                </Loading>
-              </Errored>
-            </>
-          )}
-        </Show>
-      </nav>
+    <Show when={host()}>
+      {(current) => (
+        <div class="breadcrumb">
+          <Errored fallback={null}>
+            <Loading fallback={null}>
+              <HostSwitcher current={current()} />
+            </Loading>
+          </Errored>
+        </div>
+      )}
     </Show>
   );
 }

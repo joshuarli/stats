@@ -10,7 +10,7 @@ export function NotFoundPage(): JSX.Element {
         icon="search"
         title="Nothing lives at this address."
         detail="Use the fleet overview to choose a host or refresh the dashboard."
-        action={<a class="btn" href="#/">Back to fleet</a>}
+        action={<a class="btn" href="#/">Back to hosts</a>}
       />
     </>
   );

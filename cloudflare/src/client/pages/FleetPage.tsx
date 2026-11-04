@@ -4,15 +4,14 @@ import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
 import { alignTracks, sumTracks, worstTrack } from "../chart-data";
 import { cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
-import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
-import { collectorStatus, statusFor, type HostStatus } from "../status";
-import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
-import type { Host, Project } from "../api";
-import { PageHeader } from "../components/PageHeader";
+import { loadFleetRows, type FleetRow } from "../queries";
+import { statusFor, type HostStatus } from "../status";
+import { useTelemetry } from "../state";
+import type { Host } from "../api";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
 import { OsLogo } from "../components/OsLogo";
-import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, StateCell, Widget } from "../components/ui";
+import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, Widget } from "../components/ui";
 import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
 
@@ -97,7 +96,6 @@ export function FleetPage(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Fleet" />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
@@ -123,64 +121,7 @@ export function FleetPage(): JSX.Element {
           />
         </Loading>
       </Errored>
-      <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} compact />}>
-        <Loading fallback={<Widget title="Projects"><Skeleton rows={2} /></Widget>}>
-          <ProjectsSection />
-        </Loading>
-      </Errored>
     </>
-  );
-}
-
-function ProjectsSection(): JSX.Element {
-  const { now, tick, manualTick } = useTelemetry();
-  const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const projects = createMemo(loadProjects);
-  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
-  return (
-    <Show when={projects().length > 0}>
-      <Widget
-        id="projects"
-        title="Projects"
-        class={isPending(projects) ? "widget-pending" : undefined}
-        bodyClass="flush"
-      >
-        <div class="table-scroll projects-table-scroll" role="region" aria-label="Projects table">
-          <table class="data-table" aria-label="Projects">
-            <thead>
-              <tr>
-                <th scope="col">Project</th>
-                <th scope="col">Worker</th>
-                <th scope="col" class="numeric">R2 buckets</th>
-                <th scope="col">Collector</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={projects()}>{(project) => <ProjectRow project={project} now={now()} />}</For>
-            </tbody>
-          </table>
-        </div>
-      </Widget>
-    </Show>
-  );
-}
-
-function ProjectRow(props: { readonly project: Project; readonly now: number }): JSX.Element {
-  const status = createMemo(() => collectorStatus(props.project.collector, props.now));
-  return (
-    <tr>
-      <td>
-        <EntityCell
-          marker={<span class={`status-dot tone-${status().tone}`} aria-hidden="true" />}
-          name={props.project.name}
-          href={`#/project/${props.project.id}`}
-          id={props.project.id}
-        />
-      </td>
-      <td><span class="cell-strong">{props.project.worker}</span></td>
-      <td class="numeric"><span class="metric-value-small">{count(props.project.buckets.length)}</span></td>
-      <td><StateCell tone={status().tone} label={status().label} note={age(props.project.collector.lastSuccessAtMs, props.now)} /></td>
-    </tr>
   );
 }
 

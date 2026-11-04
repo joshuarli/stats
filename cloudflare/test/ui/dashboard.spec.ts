@@ -541,25 +541,22 @@ test("mobile pages confine dense data to local scroll areas", { tag: "@mobile-on
   await page.screenshot({ path: testInfo.outputPath("mobile.png"), fullPage: true });
 });
 
-test("the fleet lists projects and each row opens its page", async ({ page }) => {
+test("the projects page lists projects and each row opens its page", async ({ page }) => {
   await mock(page);
-  await page.goto("/");
+  await page.goto("/#/projects");
   const table = page.getByRole("table", { name: "Projects" });
   await expect(table).toContainText("stuff");
   await expect(table).toContainText("3");
   await expect(table).toContainText("collecting");
-  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
-  const hostsBox = await page.getByRole("table", { name: "Fleet hosts" }).boundingBox();
-  const projectsBox = await table.boundingBox();
-  expect(projectsBox!.y).toBeGreaterThan(hostsBox!.y);
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toHaveCount(0);
   await table.getByRole("link", { name: "stuff" }).click();
   await expect(page).toHaveURL(/#\/project\/stuff$/u);
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
 });
 
-test("a stale collector is flagged on the fleet and the project page", async ({ page }) => {
+test("a stale collector is flagged on the projects page and the project page", async ({ page }) => {
   await mock(page, { collector: "stale" });
-  await page.goto("/");
+  await page.goto("/#/projects");
   await expect(page.getByRole("table", { name: "Projects" })).toContainText("stale");
   await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
@@ -939,7 +936,7 @@ test("project charts follow a refresh, not just the first load", async ({ page }
 
 test("a status pill keeps its place and background when hovered", async ({ page }) => {
   await mock(page);
-  await page.goto("/");
+  await page.goto("/#/projects");
   const table = page.getByRole("table", { name: "Projects" });
   const cell = table.locator(".state-cell").first();
   const before = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
@@ -952,23 +949,34 @@ test("a status pill keeps its place and background when hovered", async ({ page 
   expect(Math.abs((pill!.y + pill!.height / 2) - (name!.y + name!.height / 2))).toBeLessThan(14);
 });
 
-test("each page names itself once and the breadcrumb only appears below the fleet", async ({ page }) => {
+test("primary navigation reaches hosts and projects and the host switcher follows the route", async ({ page }) => {
   await mock(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Fleet", level: 1 })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  await expect(nav.getByRole("link", { name: "Hosts" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Projects" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Fleet", level: 1 })).toHaveCount(0);
+  await expect(page.locator(".breadcrumb")).toHaveCount(0);
   await expect(page.getByText(/^\d+ hosts?$/u)).toHaveCount(0);
   await expect(page.getByText(/^\d+ projects?$/u)).toHaveCount(0);
 
-  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
-  const crumb = page.getByRole("navigation", { name: "Breadcrumb" });
-  await expect(crumb).toHaveText("Fleet");
-  await expect(crumb.getByRole("link", { name: "Fleet" })).toBeVisible();
+  await nav.getByRole("link", { name: "Projects" }).click();
+  await expect(page).toHaveURL(/#\/projects$/u);
+  await expect(nav.getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("table", { name: "Projects" })).toBeVisible();
+  await expect(page.locator(".breadcrumb")).toHaveCount(0);
 
-  await page.goto("/");
+  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
+  await expect(nav.getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".breadcrumb")).toHaveCount(0);
+
+  await nav.getByRole("link", { name: "Hosts" }).click();
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("combobox", { name: "Switch host" })).toBeVisible();
+  await expect(page.locator(".breadcrumb").getByRole("combobox", { name: "Switch host" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Hosts" })).toHaveAttribute("aria-current", "page");
 });
 
 const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1]; readonly expandable: string }> = [
