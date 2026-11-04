@@ -1,0 +1,258 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "atMs": "1793510407000",
+      "block": {
+        "buckets": [
+          "2",
+          "36",
+          "22",
+          "24",
+          "27",
+          "38",
+          "24",
+          "36",
+          "33",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        "count": "242",
+        "totalUs": "435600",
+        "minUs": "120",
+        "maxUs": "48000"
+      },
+      "cpu": {
+        "idle": "90005516",
+        "iowait": "100048",
+        "steal": "2",
+        "system": "2000049",
+        "total": "93105650",
+        "user": "1000035"
+      },
+      "cpuCount": 8,
+      "disks": [
+        {
+          "id": "259:0",
+          "ioMs": "50466",
+          "name": "nvme0n1",
+          "readSectors": "4000496",
+          "reads": "500031",
+          "writeSectors": "2007320",
+          "writes": "250305"
+        },
+        {
+          "id": "8:0",
+          "ioMs": "100232",
+          "name": "sda",
+          "readSectors": "8001760",
+          "reads": "1000110",
+          "writeSectors": "4006984",
+          "writes": "500291"
+        }
+      ],
+      "filesystems": [
+        {
+          "available": "26843348992",
+          "id": "/var",
+          "total": "53687091200",
+          "type": "xfs"
+        },
+        {
+          "available": "53686947840",
+          "id": "/",
+          "total": "107374182400",
+          "type": "ext4"
+        }
+      ],
+      "load": {
+        "one": "2.085",
+        "five": "0.120",
+        "fifteen": "0.200"
+      },
+      "mem": {
+        "available": "4288626963",
+        "swapFree": "2147483648",
+        "swapIn": "4100096",
+        "swapOut": "8196096",
+        "swapTotal": "2147483648",
+        "total": "8589934592"
+      },
+      "monoMs": "900007000",
+      "nets": [
+        {
+          "id": "tailscale0",
+          "rxBytes": "226054800",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "226172",
+          "txBytes": "181122800",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "114104"
+        },
+        {
+          "id": "eth0",
+          "rxBytes": "900709200",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "900788",
+          "txBytes": "720772100",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "451103"
+        }
+      ],
+      "psi": {
+        "cpu": {
+          "some10": "3.91",
+          "some300": "0.40",
+          "some60": "0.80",
+          "total": "129382"
+        },
+        "io": {
+          "full10": "1.00",
+          "full300": "0.20",
+          "full60": "0.50",
+          "fullTotal": "1997",
+          "some10": "3.51",
+          "some300": "0.60",
+          "some60": "1.20",
+          "total": "39517"
+        },
+        "memory": {
+          "full10": "0.00",
+          "full300": "0.00",
+          "full60": "0.00",
+          "fullTotal": "1163",
+          "some10": "0.61",
+          "some300": "0.02",
+          "some60": "0.05",
+          "total": "5218"
+        }
+      },
+      "seq": "900007",
+      "uptimeMs": "900007000"
+    },
+    {
+      "atMs": "1793510415000",
+      "cpu": {
+        "idle": "90013500",
+        "iowait": "100100",
+        "steal": "10",
+        "system": "2000500",
+        "total": "93115610",
+        "user": "1001500"
+      },
+      "cpuCount": 8,
+      "disks": [
+        {
+          "id": "8:0",
+          "ioMs": "100010",
+          "name": "sda",
+          "readSectors": "8000800",
+          "reads": "1000100",
+          "writeSectors": "4000400",
+          "writes": "500050"
+        },
+        {
+          "id": "259:0",
+          "ioMs": "50005",
+          "name": "nvme0n1",
+          "readSectors": "4000400",
+          "reads": "500050",
+          "writeSectors": "2000200",
+          "writes": "250025"
+        }
+      ],
+      "filesystems": [
+        {
+          "available": "53686042624",
+          "id": "/",
+          "total": "107374182400",
+          "type": "ext4"
+        },
+        {
+          "available": "26843545600",
+          "id": "/var",
+          "total": "53687091200",
+          "type": "xfs"
+        }
+      ],
+      "load": {
+        "fifteen": "0.310",
+        "five": "0.200",
+        "one": "0.120"
+      },
+      "mem": {
+        "available": "4293918720",
+        "swapFree": "2146959360",
+        "swapIn": "4104192",
+        "swapOut": "8196096",
+        "swapTotal": "2147483648",
+        "total": "8589934592"
+      },
+      "monoMs": "900015000",
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "900050000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "900050",
+          "txBytes": "720040000",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "450025"
+        },
+        {
+          "id": "tailscale0",
+          "rxBytes": "225012500",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "rxPackets": "225012",
+          "txBytes": "180010000",
+          "txDrops": "1",
+          "txErrors": "0",
+          "txPackets": "112506"
+        }
+      ],
+      "psi": {
+        "cpu": {
+          "some10": "1.25",
+          "some300": "0.40",
+          "some60": "0.80",
+          "total": "138456"
+        },
+        "io": {
+          "full10": "1.00",
+          "full300": "0.20",
+          "full60": "0.50",
+          "fullTotal": "1734",
+          "some10": "2.50",
+          "some300": "0.60",
+          "some60": "1.20",
+          "total": "54567"
+        },
+        "memory": {
+          "full10": "0.00",
+          "full300": "0.00",
+          "full60": "0.00",
+          "fullTotal": "0",
+          "some10": "0.10",
+          "some300": "0.02",
+          "some60": "0.05",
+          "total": "3345"
+        }
+      },
+      "seq": "900015",
+      "uptimeMs": "900015000"
+    }
+  ]
+}

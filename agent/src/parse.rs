@@ -1,4 +1,4 @@
-use crate::model::{Cpu, CpuInfo, Disk, FileSystem, Mem, Psi, PsiGroup, SwapActivity};
+use crate::model::{Cpu, CpuInfo, Disk, DiskId, FileSystem, FileSystemType, Hundredths, Mem, Psi, PsiFull, PsiGroup, SwapActivity, Thousandths, FILESYSTEM_TYPES};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 fn parse_u64(text: &str) -> Option<u64> {
@@ -11,12 +11,11 @@ fn parse_u64(text: &str) -> Option<u64> {
     text.parse::<u64>().ok()
 }
 
-pub fn fixed3(raw: u64) -> String {
-    let milli = raw.saturating_mul(1000).saturating_add(32_768) / 65_536;
-    format!("{}.{:03}", milli / 1000, milli % 1000)
+pub fn fixed3(raw: u64) -> Thousandths {
+    Thousandths(raw.saturating_mul(1000).saturating_add(32_768) / 65_536)
 }
 
-fn fixed2(text: &str) -> Option<String> {
+fn fixed2(text: &str) -> Option<Hundredths> {
     let (whole, fraction) = text.split_once('.')?;
     if whole.is_empty() || whole.len() > 3 || !whole.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
@@ -24,7 +23,9 @@ fn fixed2(text: &str) -> Option<String> {
     if fraction.len() != 2 || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    Some(text.to_owned())
+    let whole: u64 = whole.parse().ok()?;
+    let fraction: u64 = fraction.parse().ok()?;
+    Some(Hundredths(whole * 100 + fraction))
 }
 
 pub fn parse_cpu(bytes: &[u8]) -> Option<Cpu> {
@@ -51,12 +52,12 @@ pub fn parse_cpu(bytes: &[u8]) -> Option<Cpu> {
         .checked_add(iowait)?
         .checked_add(steal)?;
     Some(Cpu {
-        user: user_all.to_string(),
-        system: system_all.to_string(),
-        idle: idle.to_string(),
-        iowait: Some(iowait.to_string()),
-        steal: Some(steal.to_string()),
-        total: total.to_string(),
+        user: user_all,
+        system: system_all,
+        idle,
+        iowait: Some(iowait),
+        steal: Some(steal),
+        total,
     })
 }
 
@@ -72,10 +73,10 @@ pub fn parse_meminfo(bytes: &[u8]) -> Option<Mem> {
     }
     let kib = |key: &str| values.get(key).copied().and_then(|value| value.checked_mul(1024));
     Some(Mem {
-        total: kib("MemTotal")?.to_string(),
-        available: kib("MemAvailable")?.to_string(),
-        swap_total: kib("SwapTotal")?.to_string(),
-        swap_free: kib("SwapFree")?.to_string(),
+        total: kib("MemTotal")?,
+        available: kib("MemAvailable")?,
+        swap_total: kib("SwapTotal")?,
+        swap_free: kib("SwapFree")?,
         swap_activity: None,
         pressure: None,
     })
@@ -157,8 +158,8 @@ pub fn parse_vmstat_swap(bytes: &[u8], page_size: u64) -> Option<SwapActivity> {
         }
     }
     Some(SwapActivity {
-        swap_in: swapped_in?.checked_mul(page_size)?.to_string(),
-        swap_out: swapped_out?.checked_mul(page_size)?.to_string(),
+        swap_in: swapped_in?.checked_mul(page_size)?,
+        swap_out: swapped_out?.checked_mul(page_size)?,
     })
 }
 
@@ -172,9 +173,7 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
         }
         let Some(major) = parse_u64(fields[0]) else { continue };
         let Some(minor) = parse_u64(fields[1]) else { continue };
-        if major > 4_095 || minor > 1_048_575 {
-            continue;
-        }
+        let Some(id) = DiskId::new(major, minor) else { continue };
         let name = fields[2];
         if !whole.contains(name) {
             continue;
@@ -184,17 +183,16 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
         let Some(writes) = parse_u64(fields[7]) else { continue };
         let Some(write_sectors) = parse_u64(fields[9]) else { continue };
         let Some(io_ms) = parse_u64(fields[12]) else { continue };
-        let id = format!("{major}:{minor}");
         devices.insert(
-            id.clone(),
+            id.to_string(),
             Disk {
                 id,
                 name: name.to_owned(),
-                reads: reads.to_string(),
-                read_sectors: read_sectors.to_string(),
-                writes: writes.to_string(),
-                write_sectors: write_sectors.to_string(),
-                io_ms: Some(io_ms.to_string()),
+                reads,
+                read_sectors,
+                writes,
+                write_sectors,
+                io_ms: Some(io_ms),
             },
         );
     }
@@ -220,7 +218,7 @@ pub fn parse_pressure(bytes: &[u8]) -> Option<PsiGroup> {
                 "avg10" => avg10 = Some(fixed2(value)?),
                 "avg60" => avg60 = Some(fixed2(value)?),
                 "avg300" => avg300 = Some(fixed2(value)?),
-                "total" => total = Some(parse_u64(value)?.to_string()),
+                "total" => total = Some(parse_u64(value)?),
                 _ => return None,
             }
         }
@@ -229,10 +227,7 @@ pub fn parse_pressure(bytes: &[u8]) -> Option<PsiGroup> {
             some60: avg60?,
             some300: avg300?,
             total: total?,
-            full10: None,
-            full60: None,
-            full300: None,
-            full_total: None,
+            full: None,
         };
         match kind {
             "some" => some = Some(group),
@@ -241,12 +236,7 @@ pub fn parse_pressure(bytes: &[u8]) -> Option<PsiGroup> {
         }
     }
     let mut group = some?;
-    if let Some(full) = full {
-        group.full10 = Some(full.some10);
-        group.full60 = Some(full.some60);
-        group.full300 = Some(full.some300);
-        group.full_total = Some(full.total);
-    }
+    group.full = full.map(|full| PsiFull { avg10: full.some10, avg60: full.some60, avg300: full.some300, total: full.total });
     Some(group)
 }
 
@@ -281,8 +271,6 @@ fn unescape_mount(value: &str) -> String {
     output
 }
 
-pub const FILESYSTEM_TYPES: [&str; 13] = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"];
-
 const VIRTUAL_FILESYSTEM_TYPES: [&str; 2] = ["tmpfs", "overlay"];
 
 pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)> {
@@ -315,15 +303,16 @@ pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)
         .collect()
 }
 
-pub fn statfs_facts(total_blocks: u64, block_size: u64, available_blocks: u64) -> Option<(String, String)> {
+pub fn statfs_facts(total_blocks: u64, block_size: u64, available_blocks: u64) -> Option<(u64, u64)> {
     let total = total_blocks.checked_mul(block_size)?;
     let available = available_blocks.checked_mul(block_size)?;
-    Some((total.to_string(), available.to_string()))
+    Some((total, available))
 }
 
-pub fn file_systems(mounts: Vec<(String, String)>, mut facts: impl FnMut(&str) -> Option<(String, String)>) -> Vec<FileSystem> {
+pub fn file_systems(mounts: Vec<(String, String)>, mut facts: impl FnMut(&str) -> Option<(u64, u64)>) -> Vec<FileSystem> {
     let mut filesystems = Vec::new();
     for (mount, fs_type) in mounts {
+        let Some(fs_type) = FileSystemType::from_name(&fs_type) else { continue };
         if let Some((total, available)) = facts(&mount) {
             filesystems.push(FileSystem {
                 id: mount,
@@ -343,24 +332,19 @@ mod tests {
     #[test]
     fn parses_cpu_deltas_and_adjusted_components() {
         let cpu = parse_cpu(b"cpu  100 20 30 400 5 6 7 8 9 10\ncpu0 1 2 3 4\n").unwrap();
-        assert_eq!(cpu.user, "120");
-        assert_eq!(cpu.system, "43");
-        assert_eq!(cpu.idle, "400");
-        assert_eq!(cpu.iowait.as_deref(), Some("5"));
-        assert_eq!(cpu.steal.as_deref(), Some("8"));
-        assert_eq!(cpu.total, "576");
+        assert_eq!(cpu, Cpu { user: 120, system: 43, idle: 400, iowait: Some(5), steal: Some(8), total: 576 });
     }
 
     #[test]
     fn synthetic_cpu_sequence_totals_are_additive() {
         let first = parse_cpu(b"cpu 1000 100 2000 50000 200 10 20 30\n").unwrap();
         let second = parse_cpu(b"cpu 2500 150 2500 63500 300 15 25 40\n").unwrap();
-        assert_eq!(second.user.parse::<u64>().unwrap() - first.user.parse::<u64>().unwrap(), 1550);
-        assert_eq!(second.system.parse::<u64>().unwrap() - first.system.parse::<u64>().unwrap(), 510);
-        assert_eq!(second.idle.parse::<u64>().unwrap() - first.idle.parse::<u64>().unwrap(), 13500);
-        assert_eq!(second.iowait.as_deref().unwrap().parse::<u64>().unwrap() - first.iowait.as_deref().unwrap().parse::<u64>().unwrap(), 100);
-        assert_eq!(second.steal.as_deref().unwrap().parse::<u64>().unwrap() - first.steal.as_deref().unwrap().parse::<u64>().unwrap(), 10);
-        assert_eq!(second.total.parse::<u64>().unwrap() - first.total.parse::<u64>().unwrap(), 15670);
+        assert_eq!(second.user - first.user, 1550);
+        assert_eq!(second.system - first.system, 510);
+        assert_eq!(second.idle - first.idle, 13500);
+        assert_eq!(second.iowait.unwrap() - first.iowait.unwrap(), 100);
+        assert_eq!(second.steal.unwrap() - first.steal.unwrap(), 10);
+        assert_eq!(second.total - first.total, 15670);
     }
 
     #[test]
@@ -374,10 +358,7 @@ mod tests {
     #[test]
     fn parses_meminfo_available_not_free() {
         let mem = parse_meminfo(b"MemTotal: 1000 kB\nMemFree: 10 kB\nMemAvailable: 600 kB\nSwapTotal: 200 kB\nSwapFree: 50 kB\n").unwrap();
-        assert_eq!(mem.total, "1024000");
-        assert_eq!(mem.available, "614400");
-        assert_eq!(mem.swap_total, "204800");
-        assert_eq!(mem.swap_free, "51200");
+        assert_eq!((mem.total, mem.available, mem.swap_total, mem.swap_free), (1_024_000, 614_400, 204_800, 51_200));
     }
 
     #[test]
@@ -391,10 +372,10 @@ mod tests {
         let text = b"   8       0 sda 10 2 80 1 5 1 40 2 0 7 3 0 0 0 0 0 0\n   8       1 sda1 9 2 70 1 4 1 30 2 0 6 2 0 0 0 0 0 0\n 253       0 dm-0 3 0 24 1 2 0 16 1 0 1 1 0 0 0 0 0 0\n";
         let disks = parse_diskstats(text, &whole).unwrap();
         assert_eq!(disks.len(), 2);
-        assert_eq!(disks[0].id, "253:0");
-        assert_eq!(disks[0].read_sectors, "24");
-        assert_eq!(disks[1].id, "8:0");
-        assert_eq!(disks[1].io_ms.as_deref(), Some("7"));
+        assert_eq!(disks[0].id, DiskId { major: 253, minor: 0 });
+        assert_eq!(disks[0].read_sectors, 24);
+        assert_eq!(disks[1].id, DiskId { major: 8, minor: 0 });
+        assert_eq!(disks[1].io_ms, Some(7));
     }
 
     #[test]
@@ -410,16 +391,15 @@ mod tests {
         let text = b"4096 0 sda 1 0 1 0 1 0 1 0 0 0 0 0\n8 1048576 sdb 1 0 1 0 1 0 1 0 0 0 0 0\n8 1048575 sdc 1 0 1 0 1 0 1 0 0 0 0 0\n";
         let disks = parse_diskstats(text, &whole).unwrap();
         assert_eq!(disks.len(), 1);
-        assert_eq!(disks[0].id, "8:1048575");
+        assert_eq!(disks[0].id, DiskId { major: 8, minor: 1_048_575 });
     }
 
     #[test]
     fn parses_pressure_some_and_full() {
         let group = parse_pressure(b"some avg10=1.25 avg60=0.80 avg300=0.40 total=12345\nfull avg10=0.10 avg60=0.05 avg300=0.02 total=99\n").unwrap();
-        assert_eq!(group.some10, "1.25");
-        assert_eq!(group.total, "12345");
-        assert_eq!(group.full10.as_deref(), Some("0.10"));
-        assert_eq!(group.full_total.as_deref(), Some("99"));
+        assert_eq!(group.some10, Hundredths(125));
+        assert_eq!(group.total, 12345);
+        assert_eq!(group.full, Some(PsiFull { avg10: Hundredths(10), avg60: Hundredths(5), avg300: Hundredths(2), total: 99 }));
     }
 
     #[test]
@@ -431,7 +411,7 @@ mod tests {
     #[test]
     fn swap_activity_is_pages_times_page_size_and_needs_both_counters() {
         let activity = parse_vmstat_swap(b"nr_free_pages 5\npswpin 10\npswpout 3\npgfault 9\n", 4096).unwrap();
-        assert_eq!((activity.swap_in.as_str(), activity.swap_out.as_str()), ("40960", "12288"));
+        assert_eq!((activity.swap_in, activity.swap_out), (40960, 12288));
         assert!(parse_vmstat_swap(b"pswpin 10\n", 4096).is_none());
         assert!(parse_vmstat_swap(b"pswpin 10\npswpout x\n", 4096).is_none());
         assert!(parse_vmstat_swap(b"pswpin 18446744073709551615\npswpout 1\n", 4096).is_none());
@@ -489,10 +469,11 @@ mod tests {
 
     #[test]
     fn fixed_values_are_stable() {
-        assert_eq!(fixed3(0), "0.000");
-        assert_eq!(fixed3(32_768), "0.500");
-        assert_eq!(fixed3(65_536), "1.000");
-        assert_eq!(fixed2("100.00").as_deref(), Some("100.00"));
+        assert_eq!(fixed3(0), Thousandths(0));
+        assert_eq!(fixed3(32_768), Thousandths(500));
+        assert_eq!(fixed3(65_536), Thousandths(1000));
+        assert_eq!(fixed2("100.00"), Some(Hundredths(10_000)));
+        assert_eq!(fixed2("0.07"), Some(Hundredths(7)));
         assert!(fixed2("100").is_none());
         assert!(fixed2("1.234").is_none());
     }
@@ -514,7 +495,7 @@ mod tests {
     fn filesystems_skip_statfs_failures() {
         let mounts = vec![("/".to_owned(), "ext4".to_owned()), ("/gone".to_owned(), "xfs".to_owned())];
         let filesystems = file_systems(mounts, |mount| {
-            if mount == "/" { Some(("100".to_owned(), "50".to_owned())) } else { None }
+            if mount == "/" { Some((100, 50)) } else { None }
         });
         assert_eq!(filesystems.len(), 1);
         assert_eq!(filesystems[0].id, "/");

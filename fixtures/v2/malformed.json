@@ -1,0 +1,323 @@
+{
+  "about": "Malformed and batch-invalid frames, hand-authored. Each must be rejected whole with the stated code before anything is written; see docs/protocol.md Validation.",
+  "cases": [
+    {
+      "name": "legacy-json-body",
+      "code": "invalid_frame",
+      "why": "a v1 JSON batch is not an STB2 frame",
+      "hex": "7b2276223a312c22686f73744964223a22685f3031323334353637383961626364656630313233343536373839616263646566222c22626f6f744964223a2233663261396331652d386237642d346336612d396535662d316132623363346435653666222c2273616d706c6573223a5b5d7d"
+    },
+    {
+      "name": "empty-body",
+      "code": "invalid_frame",
+      "why": "no bytes at all",
+      "hex": ""
+    },
+    {
+      "name": "wrong-magic",
+      "code": "invalid_frame",
+      "why": "magic STC1 is the history envelope, not an ingest frame",
+      "hex": "5354433102000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "version-1",
+      "code": "unknown_version",
+      "why": "version byte 1",
+      "hex": "5354423201000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "version-3",
+      "code": "unknown_version",
+      "why": "version byte 3",
+      "hex": "5354423203000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "header-truncated",
+      "code": "invalid_frame",
+      "why": "frame ends inside the boot id",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a"
+    },
+    {
+      "name": "reserved-flag",
+      "code": "invalid_frame",
+      "why": "flag bit 1 is reserved",
+      "hex": "5354423202020123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "zero-samples",
+      "code": "invalid_batch",
+      "why": "sample count 0",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f00"
+    },
+    {
+      "name": "seventeen-samples",
+      "code": "invalid_batch",
+      "why": "sample count 17",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f1101e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e8070100000102030601e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "count-exceeds-records",
+      "code": "invalid_frame",
+      "why": "count 2 with one record",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "trailing-byte",
+      "code": "invalid_frame",
+      "why": "a byte after the last sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8070100000102030600"
+    },
+    {
+      "name": "record-truncated",
+      "code": "invalid_frame",
+      "why": "the last counter is cut off",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807010000010203"
+    },
+    {
+      "name": "noncanonical-varint",
+      "code": "invalid_frame",
+      "why": "idle encoded as 83 00 instead of 03",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8070100000102830006"
+    },
+    {
+      "name": "overlong-varint",
+      "code": "invalid_frame",
+      "why": "eleven-byte varint",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f018080808080808080808001e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "varint-above-u64",
+      "code": "invalid_frame",
+      "why": "tenth byte 02 encodes 2^64",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f01ffffffffffffffffff02e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "present-reserved-bit",
+      "code": "invalid_frame",
+      "why": "present mask bit 12",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078120000001020306"
+    },
+    {
+      "name": "unavailable-reserved-bit",
+      "code": "invalid_frame",
+      "why": "cpuCount cannot be unavailable",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701100001020306"
+    },
+    {
+      "name": "present-and-unavailable",
+      "code": "invalid_frame",
+      "why": "cpu is both present and unavailable",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701010001020306"
+    },
+    {
+      "name": "cpu-head-reserved-bit",
+      "code": "invalid_frame",
+      "why": "cpu head bit 3",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000801020306"
+    },
+    {
+      "name": "delta-without-predecessor",
+      "code": "invalid_frame",
+      "why": "the first sample's cpu is marked DELTA",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80701000401020306"
+    },
+    {
+      "name": "delta-shape-mismatch",
+      "code": "invalid_frame",
+      "why": "DELTA after a predecessor without iowait",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e8070100000102030602d0cfb3ac9934d00f0100050101010101"
+    },
+    {
+      "name": "delta-overflow",
+      "code": "invalid_frame",
+      "why": "u64::MAX plus a delta of 1",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e807010000ffffffffffffffffff0102030402d0cfb3ac9934d00f01000401000000"
+    },
+    {
+      "name": "mem-pressure-level",
+      "code": "invalid_frame",
+      "why": "pressure level 3",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8070400020101010103"
+    },
+    {
+      "name": "mem-swap-delta-without-swap",
+      "code": "invalid_frame",
+      "why": "mem head DELTA without SWAP",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80704000401010101"
+    },
+    {
+      "name": "uptime-head-reserved",
+      "code": "invalid_frame",
+      "why": "uptime head bit 1",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80708000201"
+    },
+    {
+      "name": "device-count-17",
+      "code": "invalid_frame",
+      "why": "seventeen interfaces in one sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80740001100026e30000001020304050600026e31000001020304050600026e32000001020304050600026e33000001020304050600026e34000001020304050600026e35000001020304050600026e36000001020304050600026e37000001020304050600026e38000001020304050600026e39000001020304050600036e3130000001020304050600036e3131000001020304050600036e3132000001020304050600036e3133000001020304050600036e3134000001020304050600036e3135000001020304050600036e31360000010203040506"
+    },
+    {
+      "name": "dictionary-reference-out-of-range",
+      "code": "invalid_frame",
+      "why": "interface ref 2 with one entry",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8074000020004657468300000010203040506020000010203040506"
+    },
+    {
+      "name": "dictionary-duplicate-entry",
+      "code": "invalid_frame",
+      "why": "interface eth0 defined twice",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e807400001000465746830000001020304050602d0cfb3ac9934d00f4000010004657468300000010203040506"
+    },
+    {
+      "name": "device-repeated-in-sample",
+      "code": "invalid_frame",
+      "why": "disk 8:0 twice in one sample under two names",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807200002000800037364610001020304000800037364620001020304"
+    },
+    {
+      "name": "interface-repeated-in-sample",
+      "code": "invalid_frame",
+      "why": "eth0 referenced twice in one sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8074000020004657468300000010203040506010000010203040506"
+    },
+    {
+      "name": "filesystem-type-unknown",
+      "code": "invalid_frame",
+      "why": "type index 13",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078002000100012f0d0101"
+    },
+    {
+      "name": "psi-empty-mask",
+      "code": "invalid_frame",
+      "why": "psi with no resource",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780010000"
+    },
+    {
+      "name": "psi-reserved-bit",
+      "code": "invalid_frame",
+      "why": "psi mask bit 3",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780010008"
+    },
+    {
+      "name": "power-without-reading",
+      "code": "invalid_frame",
+      "why": "power head with neither GPU_NJ nor SYSTEM",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780100000"
+    },
+    {
+      "name": "gpu-head-reserved",
+      "code": "invalid_frame",
+      "why": "gpu head bit 1",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807800800020102"
+    },
+    {
+      "name": "string-too-long",
+      "code": "invalid_frame",
+      "why": "a 16-byte interface name",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80740000100106162636465666768696a6b6c6d6e6f700000010203040506"
+    },
+    {
+      "name": "string-empty",
+      "code": "invalid_frame",
+      "why": "a zero-length interface name",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80740000100000000010203040506"
+    },
+    {
+      "name": "string-length-beyond-frame",
+      "code": "invalid_frame",
+      "why": "path length 200 with 3 bytes left",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078002000100c8012f6162"
+    },
+    {
+      "name": "string-length-huge",
+      "code": "invalid_frame",
+      "why": "path length 2^40 is refused before any allocation",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780020001008080808080202f"
+    },
+    {
+      "name": "invalid-utf8",
+      "code": "invalid_frame",
+      "why": "path bytes 2f ff",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078002000100022fff020101"
+    },
+    {
+      "name": "overlong-utf8",
+      "code": "invalid_frame",
+      "why": "path with an overlong encoding of '/'",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078002000100032fc0af020101"
+    },
+    {
+      "name": "disk-major-out-of-range",
+      "code": "invalid_batch",
+      "why": "major 4096",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80720000100802000037364610001020304"
+    },
+    {
+      "name": "disk-minor-out-of-range",
+      "code": "invalid_batch",
+      "why": "minor 1048576",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8072000010008808040037364610001020304"
+    },
+    {
+      "name": "disk-name-invalid",
+      "code": "invalid_batch",
+      "why": "name with a slash",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8072000010008000473642f610001020304"
+    },
+    {
+      "name": "interface-name-invalid",
+      "code": "invalid_batch",
+      "why": "interface name with a space",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807400001000565746820300000010203040506"
+    },
+    {
+      "name": "filesystem-path-relative",
+      "code": "invalid_batch",
+      "why": "path without a leading slash",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780020001000464617461020101"
+    },
+    {
+      "name": "filesystem-path-nul",
+      "code": "invalid_batch",
+      "why": "path containing U+0000",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078002000100042f610062020101"
+    },
+    {
+      "name": "system-mask-reserved",
+      "code": "invalid_frame",
+      "why": "system mask bit 5",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f012005302e312e300168016b01610101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-threads-zero",
+      "code": "invalid_batch",
+      "why": "threads 0",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010005302e312e300168016b01610001e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-threads-high",
+      "code": "invalid_batch",
+      "why": "threads 4097",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010005302e312e300168016b0161812001e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-agent-too-long",
+      "code": "invalid_batch",
+      "why": "agent version of 33 characters",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0100213131313131313131313131313131313131313131313131313131313131313131310168016b01610101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-control-character",
+      "code": "invalid_batch",
+      "why": "hostname with a tab",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010005302e312e3003610962016b01610101e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-cores-zero",
+      "code": "invalid_batch",
+      "why": "cores 0",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010405302e312e300168016b0161010001e8c7b3ac9934e80701000001020306"
+    }
+  ]
+}

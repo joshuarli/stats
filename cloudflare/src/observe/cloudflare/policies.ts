@@ -1,5 +1,6 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
+import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
 export interface ServicePolicy {
   readonly workerRoute: (path: string) => string | null;
@@ -21,7 +22,7 @@ function statsTemplate(path: string): string {
 }
 
 function statsWorkerRoute(path: string): string | null {
-  if (path === "/ingest/v1/batches") return path;
+  if (path === INGEST_PATH || RETIRED_INGEST_PATHS.has(path)) return path;
   if (path.startsWith("/api/v1/")) return `/api/v1${statsTemplate(path.slice("/api/v1".length))}`;
   return null;
 }

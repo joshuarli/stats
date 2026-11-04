@@ -123,7 +123,7 @@ fn gpu_from_states(states: &[(String, u64)]) -> Option<Gpu> {
     let idle = states.iter().find(|(name, _)| name == GPU_IDLE_STATE)?.1;
     let total = states.iter().try_fold(0u64, |sum, (_, residency)| sum.checked_add(*residency))?;
     let active = total.checked_sub(idle)?;
-    Some(Gpu { active: active.to_string(), total: total.to_string() })
+    Some(Gpu { active, total })
 }
 
 fn energy_nanojoules(value: i64, unit: &str) -> Option<u64> {
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn gpu_activity_is_every_state_but_off() {
         let gpu = gpu_from_states(&states(&[("OFF", 283), ("P1", 76), ("P2", 1)])).unwrap();
-        assert_eq!((gpu.active.as_str(), gpu.total.as_str()), ("77", "360"));
+        assert_eq!((gpu.active, gpu.total), (77, 360));
     }
 
     #[test]

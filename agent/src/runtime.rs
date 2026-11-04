@@ -1,10 +1,11 @@
 use crate::backoff::Backoff;
 use crate::block;
 use crate::config::{load_token_file, AgentConfig, ConfigError};
-use crate::model::Sample;
+use crate::model::{BootId, Sample};
 use crate::queue::Queue;
 use crate::sample_once;
 use crate::transport::{HttpTransport, SendOutcome, TransportError};
+use crate::wire::{EncodeError, EncodedBatch};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +26,7 @@ pub enum RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BootIdentity => formatter.write_str("could not read a valid Linux boot id"),
+            Self::BootIdentity => formatter.write_str("could not read a valid boot id"),
             Self::Transport(error) => write!(formatter, "{error}"),
         }
     }
@@ -40,12 +41,10 @@ impl From<TransportError> for RuntimeError {
 }
 
 pub trait BatchSender: Send + Sync {
-    fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError>;
-    fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        self.send(boot_id, samples)
-    }
-    fn fits(&self, _boot_id: &str, _samples: &[Sample]) -> bool {
-        true
+    fn prepare(&self, boot_id: &BootId, samples: &[Sample]) -> Result<EncodedBatch, EncodeError>;
+    fn deliver(&self, batch: &EncodedBatch) -> Result<SendOutcome, TransportError>;
+    fn deliver_final(&self, batch: &EncodedBatch) -> Result<SendOutcome, TransportError> {
+        self.deliver(batch)
     }
     fn replace_token(&self, _token: String) -> bool {
         false
@@ -53,16 +52,16 @@ pub trait BatchSender: Send + Sync {
 }
 
 impl BatchSender for HttpTransport {
-    fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        HttpTransport::send(self, boot_id, samples)
+    fn prepare(&self, boot_id: &BootId, samples: &[Sample]) -> Result<EncodedBatch, EncodeError> {
+        HttpTransport::prepare(self, boot_id, samples)
     }
 
-    fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        HttpTransport::send_final(self, boot_id, samples)
+    fn deliver(&self, batch: &EncodedBatch) -> Result<SendOutcome, TransportError> {
+        HttpTransport::deliver(self, batch)
     }
 
-    fn fits(&self, boot_id: &str, samples: &[Sample]) -> bool {
-        HttpTransport::fits(self, boot_id, samples)
+    fn deliver_final(&self, batch: &EncodedBatch) -> Result<SendOutcome, TransportError> {
+        HttpTransport::deliver_final(self, batch)
     }
 
     fn replace_token(&self, token: String) -> bool {
@@ -123,11 +122,17 @@ impl FailureLog {
     }
 }
 
-pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff) -> FlushOutcome {
+pub fn flush_once(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &BootId, backoff: &mut Backoff) -> FlushOutcome {
     flush_batch(queue, sender, boot_id, backoff, false)
 }
 
-fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &str, backoff: &mut Backoff, final_flush: bool) -> FlushOutcome {
+fn requeue(queue: &Arc<Mutex<Queue>>, samples: Vec<Sample>) {
+    if !samples.is_empty() {
+        queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(samples);
+    }
+}
+
+fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &BootId, backoff: &mut Backoff, final_flush: bool) -> FlushOutcome {
     let (mut batch, pending) = {
         let mut queue = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let limit = if queue.len() > 2 { 16 } else { 2 };
@@ -137,14 +142,15 @@ fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &st
     if batch.is_empty() {
         return FlushOutcome::default();
     }
-    while batch.len() > 1 && !sender.fits(boot_id, &batch) {
-        if let Some(sample) = batch.pop() {
-            queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(vec![sample]);
-        } else {
-            break;
+    let encoded = match sender.prepare(boot_id, &batch) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            requeue(queue, batch.split_off(1));
+            return FlushOutcome { sent: None, retry: None, dropped: 1, failure: Some(TransportError::Permanent(error.to_string())) };
         }
-    }
-    let result = if final_flush { sender.send_final(boot_id, &batch) } else { sender.send(boot_id, &batch) };
+    };
+    requeue(queue, batch.split_off(encoded.samples()));
+    let result = if final_flush { sender.deliver_final(&encoded) } else { sender.deliver(&encoded) };
     match result {
         Ok(outcome) => {
             if pending == 0 {
@@ -157,11 +163,11 @@ fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &st
                 TransportError::RateLimited(retry_after) => Some(backoff.delay(*retry_after)),
                 TransportError::Retryable(_) => Some(backoff.delay(None)),
                 TransportError::Credential(_) => Some(backoff.delay(Some(CREDENTIAL_RETRY))),
-                TransportError::Permanent(_) => None,
+                TransportError::Permanent(_) | TransportError::Protocol(_) => None,
             };
             let dropped = if retry.is_none() { batch.len() as u64 } else { 0 };
             if retry.is_some() {
-                queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).requeue_front(batch);
+                requeue(queue, batch);
             }
             FlushOutcome { sent: None, retry, dropped, failure: Some(error) }
         }
@@ -188,7 +194,7 @@ fn sleep_interruptible(duration: Duration, stop: &AtomicBool) -> bool {
     }
 }
 
-fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: String, interval: Duration, token_file: PathBuf, stop: &'static AtomicBool) -> RunReport {
+fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: BootId, interval: Duration, token_file: PathBuf, stop: &'static AtomicBool) -> RunReport {
     let mut report = RunReport::default();
     let mut failure_log = FailureLog::default();
     let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), std::process::id() as u64 ^ 0x9e37_79b9);
@@ -289,15 +295,12 @@ fn sample_with_block(config: &AgentConfig, snapshots: &mut block::SnapshotReader
 }
 
 pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeError> {
-    let boot_id = crate::boot_identity().ok_or(RuntimeError::BootIdentity)?;
-    let transport = HttpTransport::new(&config.endpoint, &config.host_id, &token, Duration::from_millis(config.request_timeout_ms))?;
-    let transport = match crate::system_info() {
-        Some(info) => transport.announcing(info),
-        None => {
-            eprintln!("stats: system information is unavailable; the host page will not show it");
-            transport
-        }
-    };
+    let boot_id: BootId = crate::boot_identity().and_then(|text| text.parse().ok()).ok_or(RuntimeError::BootIdentity)?;
+    let mut transport = HttpTransport::new(&config.endpoint, &config.host_id, &token, Duration::from_millis(config.request_timeout_ms))?;
+    match crate::system_info().ok_or_else(|| "system information is unavailable".to_owned()).and_then(|info| transport.announce(info)) {
+        Ok(()) => {}
+        Err(error) => eprintln!("stats: {error}; the host page will not show it"),
+    }
     let sender: Arc<dyn BatchSender> = Arc::new(transport);
     let queue = Arc::new(Mutex::new(Queue::new(config.max_queue_samples)));
     let stop = &STOP;
@@ -306,7 +309,6 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
     let uploader = {
         let queue = Arc::clone(&queue);
         let sender = Arc::clone(&sender);
-        let boot_id = boot_id.clone();
         let interval = Duration::from_millis(config.upload_interval_ms);
         let token_file = config.token_file.clone();
         thread::spawn(move || upload_loop(queue, sender, boot_id, interval, token_file, stop))
@@ -348,13 +350,14 @@ mod tests {
     struct FakeSender {
         results: Mutex<Vec<Result<SendOutcome, TransportError>>>,
         batches: Mutex<Vec<usize>>,
+        sent: Mutex<Vec<Vec<u64>>>,
         tokens: Mutex<Vec<String>>,
         fit: usize,
     }
 
     impl FakeSender {
         fn new(results: Vec<Result<SendOutcome, TransportError>>) -> Self {
-            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()), tokens: Mutex::new(Vec::new()), fit: 16 }
+            Self { results: Mutex::new(results), batches: Mutex::new(Vec::new()), sent: Mutex::new(Vec::new()), tokens: Mutex::new(Vec::new()), fit: 16 }
         }
 
         fn limited(results: Vec<Result<SendOutcome, TransportError>>, fit: usize) -> Self {
@@ -363,16 +366,15 @@ mod tests {
     }
 
     impl BatchSender for FakeSender {
-        fn send(&self, _boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-            self.batches.lock().unwrap().push(samples.len());
-            if samples.len() > self.fit {
-                return Err(TransportError::Permanent("batch is over the cap".to_owned()));
-            }
-            self.results.lock().unwrap().remove(0)
+        fn prepare(&self, boot_id: &BootId, samples: &[Sample]) -> Result<EncodedBatch, EncodeError> {
+            let host = "h_0123456789abcdef0123456789abcdef".parse().unwrap();
+            crate::wire::encode_batch(&host, boot_id, None, &samples[..samples.len().min(self.fit)], crate::wire::MAX_BODY)
         }
 
-        fn fits(&self, _boot_id: &str, samples: &[Sample]) -> bool {
-            samples.len() <= self.fit
+        fn deliver(&self, batch: &EncodedBatch) -> Result<SendOutcome, TransportError> {
+            self.batches.lock().unwrap().push(batch.samples());
+            self.sent.lock().unwrap().push(batch.seqs.clone());
+            self.results.lock().unwrap().remove(0)
         }
 
         fn replace_token(&self, token: String) -> bool {
@@ -384,9 +386,17 @@ mod tests {
     fn queue(samples: usize) -> Arc<Mutex<Queue>> {
         let mut value = Queue::new(16);
         for index in 0..samples {
-            value.push(Sample::empty(index as u64, index as u64, index as u64));
+            value.push(sample(index as u64));
         }
         Arc::new(Mutex::new(value))
+    }
+
+    fn sample(seq: u64) -> Sample {
+        Sample { uptime_ms: Some(seq * 1000), ..Sample::empty(seq, seq, seq * 1000) }
+    }
+
+    fn boot() -> BootId {
+        "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f".parse().unwrap()
     }
 
     fn write_token(path: &Path, token: &str) {
@@ -400,10 +410,10 @@ mod tests {
         let queue = queue(2);
         let sender = FakeSender::new(vec![Err(TransportError::Retryable("offline".into())), Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
-        let first = flush_once(&queue, &sender, "boot", &mut backoff);
+        let first = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert!(first.retry.is_some());
         assert_eq!(queue.lock().unwrap().len(), 2);
-        let second = flush_once(&queue, &sender, "boot", &mut backoff);
+        let second = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(second.sent, Some(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
         assert!(queue.lock().unwrap().is_empty());
     }
@@ -413,7 +423,7 @@ mod tests {
         let queue = queue(2);
         let sender = FakeSender::new(vec![Err(TransportError::Permanent("bad request".into()))]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
-        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(outcome.dropped, 2);
         assert!(queue.lock().unwrap().is_empty());
     }
@@ -423,12 +433,12 @@ mod tests {
         let backlog = queue(10);
         let sender = FakeSender::new(vec![Ok(SendOutcome { accepted: 10, duplicates: 0, rejected: 0 })]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
-        flush_once(&backlog, &sender, "boot", &mut backoff);
+        flush_once(&backlog, &sender, &boot(), &mut backoff);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [10]);
 
         let normal = queue(2);
         let sender = FakeSender::new(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]);
-        flush_once(&normal, &sender, "boot", &mut backoff);
+        flush_once(&normal, &sender, &boot(), &mut backoff);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
     }
 
@@ -437,12 +447,53 @@ mod tests {
         let queue = queue(5);
         let sender = FakeSender::limited(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })], 2);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
-        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(outcome.sent, Some(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
         assert_eq!(outcome.dropped, 0);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
-        let remaining: Vec<String> = queue.lock().unwrap().take_batch(10).iter().map(|sample| sample.seq.clone()).collect();
-        assert_eq!(remaining, ["2", "3", "4"]);
+        let remaining: Vec<u64> = queue.lock().unwrap().take_batch(10).iter().map(|sample| sample.seq).collect();
+        assert_eq!(remaining, [2, 3, 4]);
+    }
+
+    #[test]
+    fn a_retried_cut_batch_keeps_queue_order_and_reencodes_from_absolute_bases() {
+        let queue = queue(5);
+        let sender = FakeSender::limited(vec![Err(TransportError::Retryable("offline".into())), Ok(SendOutcome { accepted: 3, duplicates: 0, rejected: 0 }), Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })], 3);
+        let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
+        assert!(flush_once(&queue, &sender, &boot(), &mut backoff).retry.is_some());
+        assert_eq!(queue.lock().unwrap().len(), 5);
+        flush_once(&queue, &sender, &boot(), &mut backoff);
+        flush_once(&queue, &sender, &boot(), &mut backoff);
+        assert_eq!(sender.sent.lock().unwrap().as_slice(), [vec![0, 1, 2], vec![0, 1, 2], vec![3, 4]]);
+        assert!(queue.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unencodable_sample_is_dropped_alone_and_never_retried() {
+        let mut value = Queue::new(16);
+        let mut bad = sample(0);
+        bad.unavailable.push(crate::model::Unavailable::Uptime);
+        value.push(bad);
+        value.push(sample(1));
+        let queue = Arc::new(Mutex::new(value));
+        let sender = FakeSender::new(vec![Ok(SendOutcome { accepted: 1, duplicates: 0, rejected: 0 })]);
+        let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
+        let first = flush_once(&queue, &sender, &boot(), &mut backoff);
+        assert_eq!((first.dropped, first.retry), (1, None));
+        assert!(matches!(first.failure, Some(TransportError::Permanent(_))));
+        assert!(sender.sent.lock().unwrap().is_empty());
+        flush_once(&queue, &sender, &boot(), &mut backoff);
+        assert_eq!(sender.sent.lock().unwrap().as_slice(), [vec![1]]);
+    }
+
+    #[test]
+    fn protocol_failures_drop_the_batch_without_retrying() {
+        let queue = queue(2);
+        let sender = FakeSender::new(vec![Err(TransportError::Protocol("server returned 410".into()))]);
+        let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
+        let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
+        assert_eq!((outcome.dropped, outcome.retry), (2, None));
+        assert!(queue.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -450,7 +501,7 @@ mod tests {
         let queue = queue(2);
         let sender = FakeSender::new(vec![Err(TransportError::RateLimited(Some(Duration::from_secs(3))))]);
         let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
-        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(outcome.retry, Some(Duration::from_secs(3)));
         assert_eq!(queue.lock().unwrap().len(), 2);
     }
@@ -460,7 +511,7 @@ mod tests {
         let queue = queue(2);
         let sender = FakeSender::new(vec![Err(TransportError::Credential("server returned 401".into()))]);
         let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
-        let outcome = flush_once(&queue, &sender, "boot", &mut backoff);
+        let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(outcome.retry, Some(Duration::from_secs(60)));
         assert_eq!(outcome.dropped, 0);
         assert!(matches!(outcome.failure, Some(TransportError::Credential(_))));
@@ -512,7 +563,7 @@ mod tests {
         let queue = queue(2);
         let sender = Arc::new(FakeSender::new(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]));
         let stop: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(true)));
-        let report = upload_loop(Arc::clone(&queue), sender.clone(), "boot".to_owned(), Duration::from_secs(3_600), PathBuf::from("/nonexistent"), stop);
+        let report = upload_loop(Arc::clone(&queue), sender.clone(), boot(), Duration::from_secs(3_600), PathBuf::from("/nonexistent"), stop);
         assert_eq!(report.accepted, 2);
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
         assert!(queue.lock().unwrap().is_empty());

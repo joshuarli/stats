@@ -1,0 +1,220 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "100",
+          "readSectors": "1600",
+          "writes": "200",
+          "writeSectors": "4800",
+          "ioMs": "300"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "50",
+          "readSectors": "800",
+          "writes": "100",
+          "writeSectors": "2400",
+          "ioMs": "150"
+        }
+      ],
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "900000",
+          "rxPackets": "1000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "700000",
+          "txPackets": "1000",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "500"
+        },
+        {
+          "id": "/data",
+          "type": "xfs",
+          "total": "107374182400",
+          "available": "700"
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "60",
+          "readSectors": "960",
+          "writes": "120",
+          "writeSectors": "2880",
+          "ioMs": "180"
+        }
+      ],
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "990000",
+          "rxPackets": "1100",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "770000",
+          "txPackets": "1100",
+          "txErrors": "0",
+          "txDrops": "0"
+        },
+        {
+          "id": "wg0",
+          "rxBytes": "900",
+          "rxPackets": "1",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "700",
+          "txPackets": "1",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "400"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sdb",
+          "reads": "5",
+          "readSectors": "80",
+          "writes": "10",
+          "writeSectors": "240",
+          "ioMs": "15"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "70",
+          "readSectors": "1120",
+          "writes": "140",
+          "writeSectors": "3360",
+          "ioMs": "210"
+        }
+      ],
+      "nets": [
+        {
+          "id": "wg0",
+          "rxBytes": "1800",
+          "rxPackets": "2",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "1400",
+          "txPackets": "2",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "300"
+        },
+        {
+          "id": "/data",
+          "type": "btrfs",
+          "total": "107374182400",
+          "available": "900"
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "atMs": "1793510344000",
+      "monoMs": "4000",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sdb",
+          "reads": "6",
+          "readSectors": "96",
+          "writes": "12",
+          "writeSectors": "288"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "80",
+          "readSectors": "1280",
+          "writes": "160",
+          "writeSectors": "3840",
+          "ioMs": "240"
+        }
+      ],
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "1080000",
+          "rxPackets": "1200",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "840000",
+          "txPackets": "1200",
+          "txErrors": "0",
+          "txDrops": "0"
+        },
+        {
+          "id": "wg0",
+          "rxBytes": "2700",
+          "rxPackets": "3",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "2100",
+          "txPackets": "3",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/data",
+          "type": "btrfs",
+          "total": "107374182400",
+          "available": "800"
+        },
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "200"
+        }
+      ]
+    }
+  ]
+}

@@ -1,14 +1,14 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { canonicalJson } from "../cloudflare/src/protocol.ts";
+import { computeDelta } from "../cloudflare/src/delta.ts";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const fixtureDir = join(root, "fixtures", "v1");
-const hostPattern = /^h_[0-9a-f]{32}$/u;
-const bootPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-const decimal = /^(0|[1-9][0-9]{0,19})$/u;
-const metricGroups = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"];
-const unavailableGroups = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power"];
+const fixtureDir = join(root, "fixtures", "v2");
+const failures = [];
+const fail = message => failures.push(message);
 
 function source(relative) {
   return readFileSync(join(root, relative), "utf8");
@@ -26,95 +26,108 @@ function numberList(text, pattern, label) {
   return match[1].split(",").map(value => Number(value.trim().replaceAll("_", "")));
 }
 
+function json(relative) {
+  return JSON.parse(readFileSync(join(fixtureDir, relative), "utf8"));
+}
+
+function size(relative) {
+  return statSync(join(fixtureDir, relative)).size;
+}
+
+execFileSync(process.execPath, [join(root, "scripts", "fixture-sources.mjs"), "--check"], { stdio: "inherit" });
+
 const errorCodes = new Set(quotedList(source("cloudflare/src/codes.ts"), /export const ERROR_CODES = \[([\s\S]*?)\] as const;/u, "ERROR_CODES"));
-const serverFilesystems = quotedList(source("cloudflare/src/protocol.ts"), /const FS_TYPES = \[([^\]]+)\] as const;/u, "protocol FS_TYPES");
-const agentFilesystems = quotedList(source("agent/src/parse.rs"), /pub const FILESYSTEM_TYPES: \[&str; [0-9]+\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
+const serverFilesystems = quotedList(source("cloudflare/src/protocol.ts"), /export const FS_TYPES = \[([^\]]+)\] as const;/u, "protocol FS_TYPES");
+const agentFilesystems = quotedList(source("agent/src/model.rs"), /pub const FILESYSTEM_TYPES: \[&str; [0-9]+\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
 const serverBounds = numberList(source("cloudflare/src/limits.ts"), /export const BLOCK_BOUNDS_US = \[([^\]]+)\] as const;/u, "BLOCK_BOUNDS_US");
 const collectorBounds = [...source("bpf/biolatency-collector.bt").matchAll(/\$latency_us <= ([0-9_]+)/gu)].map(entry => Number(entry[1].replaceAll("_", "")));
 const blockBuckets = Number(/export const BLOCK_BUCKETS = ([0-9]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1]);
-const agentBuckets = Number(/pub const BUCKETS: usize = ([0-9]+);/u.exec(source("agent/src/block.rs"))?.[1]);
-const manifest = JSON.parse(readFileSync(join(fixtureDir, "manifest.json"), "utf8"));
-const failures = [];
-const fail = message => failures.push(message);
-const listed = new Set(manifest.fixtures.map(entry => entry.file));
-
-if (JSON.stringify(serverFilesystems) !== JSON.stringify(agentFilesystems)) {
-  fail(`filesystem allow-list differs: server ${serverFilesystems.join(",")}; agent ${agentFilesystems.join(",")}`);
-}
-if (JSON.stringify(serverBounds) !== JSON.stringify(collectorBounds)) {
-  fail(`block bucket bounds differ: server ${serverBounds.join(",")}; collector ${collectorBounds.join(",")}`);
-}
-if (blockBuckets !== serverBounds.length + 1 || blockBuckets !== agentBuckets) {
-  fail(`block bucket count differs: limits ${blockBuckets}; bounds ${serverBounds.length + 1}; agent ${agentBuckets}`);
+const agentBuckets = Number(/pub const BLOCK_BUCKETS: usize = ([0-9]+);/u.exec(source("agent/src/model.rs"))?.[1]);
+const serverCap = Number(/export const MAX_BODY_BYTES = ([0-9_]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1].replaceAll("_", ""));
+const agentCap = Number(/pub const MAX_BODY: usize = ([0-9_]+);/u.exec(source("agent/src/wire.rs"))?.[1].replaceAll("_", ""));
+for (const [label, server, agent] of [["request media type", /INGEST_MEDIA_TYPE = "([^"]+)"/u.exec(source("cloudflare/src/ingest/http.ts"))?.[1], /REQUEST_MEDIA_TYPE: &str = "([^"]+)"/u.exec(source("agent/src/wire.rs"))?.[1]], ["ack media type", /ACK_MEDIA_TYPE = "([^"]+)"/u.exec(source("cloudflare/src/ingest/ack.ts"))?.[1], /ACK_MEDIA_TYPE: &str = "([^"]+)"/u.exec(source("agent/src/wire.rs"))?.[1]], ["ingest path", /INGEST_PATH = "([^"]+)"/u.exec(source("cloudflare/src/ingest/http.ts"))?.[1], /INGEST_PATH: &str = "([^"]+)"/u.exec(source("agent/src/transport.rs"))?.[1]]]) {
+  if (server === undefined || server !== agent) fail(`${label} differs: server ${server}; agent ${agent}`);
 }
 
-for (const name of readdirSync(fixtureDir)) {
-  if (name !== "manifest.json" && !listed.has(name)) fail(`${name}: not listed in manifest`);
-}
-for (const entry of manifest.fixtures) {
-  const path = join(fixtureDir, entry.file);
-  let text;
-  try { text = readFileSync(path, "utf8"); } catch { fail(`${entry.file}: missing`); continue; }
-  const bytes = Buffer.byteLength(text);
-  if (entry.expect === "reject" && entry.code === "too_large") {
-    if (bytes <= 65_536) fail(`${entry.file}: expected oversized body, got ${bytes}`);
-  } else if (bytes > 65_536) fail(`${entry.file}: ${bytes} bytes exceeds the batch cap`);
-  let value;
-  try { value = JSON.parse(text); } catch (cause) { fail(`${entry.file}: invalid JSON: ${cause.message}`); continue; }
-  if (entry.expect === "reject" && !errorCodes.has(entry.code ?? "")) fail(`${entry.file}: unknown expected code ${entry.code}`);
-  if (entry.expect === "accept") {
-    if (value.v !== 1) fail(`${entry.file}: v must be 1`);
-    if (!hostPattern.test(value.hostId ?? "")) fail(`${entry.file}: hostId`);
-    if (!bootPattern.test(value.bootId ?? "")) fail(`${entry.file}: bootId`);
-    if (!Array.isArray(value.samples) || value.samples.length < 1 || value.samples.length > 16) fail(`${entry.file}: samples count`);
-    for (const [index, sample] of (value.samples ?? []).entries()) {
-      for (const key of ["seq", "atMs", "monoMs"]) if (!decimal.test(sample[key] ?? "")) fail(`${entry.file}[${index}]: ${key}`);
-      const groups = metricGroups.filter(key => sample[key] !== undefined);
-      if (groups.length === 0) fail(`${entry.file}[${index}]: no metric group`);
-      for (const key of sample.unavailable ?? []) {
-        if (!unavailableGroups.includes(key)) fail(`${entry.file}[${index}]: unknown unavailable group ${key}`);
-        if (groups.includes(key === "uptime" ? "uptimeMs" : key)) fail(`${entry.file}[${index}]: ${key} is both present and unavailable`);
-      }
-      if ((sample.unavailable ?? []).length > unavailableGroups.length) fail(`${entry.file}[${index}]: too many unavailable groups`);
-    }
+if (JSON.stringify(serverFilesystems) !== JSON.stringify(agentFilesystems)) fail(`filesystem type list differs: server ${serverFilesystems.join(",")}; agent ${agentFilesystems.join(",")}`);
+if (JSON.stringify(serverBounds) !== JSON.stringify(collectorBounds)) fail(`block bucket bounds differ: server ${serverBounds.join(",")}; collector ${collectorBounds.join(",")}`);
+if (blockBuckets !== serverBounds.length + 1 || blockBuckets !== agentBuckets) fail(`block bucket count differs: limits ${blockBuckets}; bounds ${serverBounds.length + 1}; agent ${agentBuckets}`);
+if (serverCap !== agentCap) fail(`body cap differs: server ${serverCap}; agent ${agentCap}`);
+
+const manifest = json("manifest.json");
+const expectedFrames = new Set();
+for (const entry of manifest.batches) {
+  const batch = json(entry.source);
+  if (!Array.isArray(batch.samples) || batch.samples.length < 1 || batch.samples.length > 16) fail(`${entry.name}: sample count`);
+  if (entry.samples.length !== batch.samples.length || !entry.samples.every(outcome => outcome === "accept" || outcome === "invalid_sample")) fail(`${entry.name}: per-sample outcomes`);
+  for (const frame of [entry.frame, entry.frame.replace(/\.stb2$/u, ".absolute.stb2")]) {
+    expectedFrames.add(frame.slice("frames/".length));
+    try { if (size(frame) > serverCap) fail(`${frame}: exceeds the body cap`); } catch { fail(`${frame}: missing; run make fixtures-write`); }
   }
+  if (entry.budget !== undefined && size(entry.frame) > entry.budget) fail(`${entry.name}: ${size(entry.frame)} bytes exceeds its ${entry.budget} byte budget`);
 }
+for (const name of readdirSync(join(fixtureDir, "frames"))) {
+  if (name.endsWith(".stb2") && !expectedFrames.has(name)) fail(`frames/${name}: not listed in the manifest`);
+}
+const acks = json("acks.json").cases;
+const ackFrames = new Set(acks.filter(entry => entry.frame !== undefined).map(entry => entry.frame.slice("frames/acks/".length)));
+for (const name of readdirSync(join(fixtureDir, "frames", "acks"))) if (!ackFrames.has(name)) fail(`frames/acks/${name}: not listed in acks.json`);
+for (const entry of json("malformed.json").cases) {
+  if (!errorCodes.has(entry.code)) fail(`${entry.name}: unknown expected code ${entry.code}`);
+  if (entry.hex.length / 2 > serverCap) fail(`${entry.name}: larger than the body cap`);
+}
+for (const vector of json("annotated.json").vectors) if (!manifest.batches.some(entry => entry.name === vector.batch)) fail(`${vector.name}: unknown batch ${vector.batch}`);
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(failure);
   process.exit(1);
 }
 
-const full = JSON.parse(readFileSync(join(fixtureDir, "batch-full.json"), "utf8"));
-const wireBytes = Buffer.byteLength(JSON.stringify(full));
-const samplesPerRequest = full.samples.length;
-const sampleBytes = Math.ceil(wireBytes / samplesPerRequest);
+const workload = name => manifest.batches.find(entry => entry.workload === name);
+const legacyBytes = batch => Buffer.byteLength(JSON.stringify({ v: 1, ...batch }));
+const storedBytes = batch => batch.samples.reduce((total, sample, index) => {
+  const previous = batch.samples[index - 1];
+  const elapsed = previous === undefined ? 0 : Number(sample.monoMs) - Number(previous.monoMs);
+  return total + Buffer.byteLength(canonicalJson(sample)) + Buffer.byteLength(JSON.stringify(computeDelta(previous, sample, elapsed)));
+}, 0);
+
+console.log(`fixtures: ${manifest.batches.length} batches, ${json("malformed.json").cases.length} malformed frames, ${acks.length} acknowledgments, ${json("annotated.json").vectors.length} annotated vectors checked`);
+console.log("");
+console.log("request bodies (golden frames; HTTP headers excluded):");
+console.log("workload             | samples | v1 JSON | STB2 absolute | STB2 | vs JSON | budget");
+for (const name of ["linux-normal", "macos-normal", "linux-single", "macos-single", "system", "linux-normal-system", "linux-backlog-16", "macos-backlog-16", "high-cardinality-16", "device-union", "missing-groups", "counter-reset", "large-counters"]) {
+  const entry = workload(name);
+  if (entry === undefined) continue;
+  const batch = json(entry.source);
+  const legacy = legacyBytes(batch);
+  const frame = size(entry.frame);
+  const absolute = size(entry.frame.replace(/\.stb2$/u, ".absolute.stb2"));
+  console.log(`${name.padEnd(20)} | ${String(batch.samples.length).padStart(7)} | ${String(legacy).padStart(7)} | ${String(absolute).padStart(13)} | ${String(frame).padStart(4)} | ${`${(100 * (frame / legacy - 1)).toFixed(1)}%`.padStart(7)} | ${entry.budget ?? "-"}`);
+}
+
+const normal = json(workload("linux-normal").source);
+const frameBytes = size(workload("linux-normal").frame);
 const sampleIntervalSeconds = 15;
+const samplesPerRequest = normal.samples.length;
 const samplesPerDay = 86_400 / sampleIntervalSeconds;
 const requestsPerDay = samplesPerDay / samplesPerRequest;
-const rawHours = 48;
-const minuteDays = 7;
-const hourDays = 30;
-const rawRows = samplesPerDay * (rawHours / 24);
-const minuteRows = (86_400 / 60) * minuteDays;
-const hourRows = 24 * hourDays;
+const rawRows = samplesPerDay * 2;
+const minuteRows = (86_400 / 60) * 7;
+const hourRows = 24 * 30;
+const storedPerSample = storedBytes(normal) / samplesPerRequest;
 const rollupFactor = 0.5;
-const rawBytes = rawRows * sampleBytes;
-const rollupBytes = (minuteRows + hourRows) * sampleBytes * rollupFactor;
-
-console.log(`fixtures: ${manifest.fixtures.length} checked`);
-console.log(`wire sample: ${sampleBytes} bytes (batch-full is ${wireBytes} bytes for ${samplesPerRequest})`);
 console.log("");
-console.log("hosts | ingress/day | requests/day | raw GB (48h) | rollup GB (7d+30d) | rows");
+console.log(`cadence: one sample every ${sampleIntervalSeconds} s, ${samplesPerRequest} per upload, so ${samplesPerDay} samples and ${requestsPerDay} ingest requests per host per day (unchanged by the wire format)`);
+console.log(`rows per host (from retention): ${rawRows} raw (48 h), ${minuteRows} one-minute (7 d), ${hourRows} hourly (30 d); rows written per day: ${samplesPerDay} raw inserts plus rollup upserts`);
+console.log(`measured stored raw row payload: ${storedPerSample.toFixed(0)} bytes per sample (canonical JSON payload + delta JSON, linux-normal; unchanged by this protocol)`);
+console.log("");
+console.log("hosts | ingress/day (STB2 bodies) | ingress/day (v1 JSON, for comparison) | requests/day | raw stored GB (48 h, measured row JSON) | rollup GB (estimate: 0.5 x row JSON) | rows");
 for (const hosts of [1, 10, 100]) {
-  const ingress = (samplesPerDay * sampleBytes * hosts) / 1_000_000;
-  const requests = requestsPerDay * hosts;
-  const raw = (rawBytes * hosts) / 1_000_000_000;
-  const rollups = (rollupBytes * hosts) / 1_000_000_000;
-  const rows = (rawRows + minuteRows + hourRows) * hosts;
-  console.log(`${String(hosts).padStart(5)} | ${ingress.toFixed(1).padStart(11)} MB | ${String(requests).padStart(12)} | ${raw.toFixed(2).padStart(12)} | ${rollups.toFixed(2).padStart(18)} | ${rows}`);
+  const ingress = (requestsPerDay * frameBytes * hosts) / 1_000_000;
+  const legacyIngress = (requestsPerDay * legacyBytes(normal) * hosts) / 1_000_000;
+  const raw = (rawRows * storedPerSample * hosts) / 1_000_000_000;
+  const rollups = ((minuteRows + hourRows) * storedPerSample * rollupFactor * hosts) / 1_000_000_000;
+  console.log(`${String(hosts).padStart(5)} | ${`${ingress.toFixed(2)} MB`.padStart(25)} | ${`${legacyIngress.toFixed(2)} MB`.padStart(38)} | ${String(requestsPerDay * hosts).padStart(12)} | ${raw.toFixed(3).padStart(39)} | ${rollups.toFixed(3).padStart(36)} | ${(rawRows + minuteRows + hourRows) * hosts}`);
 }
 console.log("");
-console.log(`per host/day: ${samplesPerDay} samples, ${requestsPerDay} ingest requests, ${rawRows} raw rows, ${minuteRows} minute rows, ${hourRows} hourly rows`);
-console.log(`storage assumption: ${rawHours}h raw, ${minuteDays}d one-minute, ${hourDays}d hourly; rollup payload = ${rollupFactor} × sample bytes`);
-console.log("account limits, Access, billing, and Durable Object ceiling are verified only in a real deployment; see Needs environment.");
+console.log("Ingress counts request bodies only. Storage, rows, and request counts do not depend on the wire format. Account limits, Access, billing, and the Durable Object ceiling are verified only in a real deployment.");

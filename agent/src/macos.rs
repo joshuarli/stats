@@ -1,6 +1,6 @@
 use crate::CollectionScope;
-use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, MemoryPressure, Net, Power, Sample, SwapActivity, SystemInfo, Unavailable};
-use crate::parse::{clean_text, file_systems, statfs_facts, FILESYSTEM_TYPES};
+use crate::model::{sequence_for, Cpu, CpuInfo, FileSystem, Load, Mem, MemoryPressure, Net, Power, Sample, SwapActivity, SystemInfo, Thousandths, Unavailable, FILESYSTEM_TYPES};
+use crate::parse::{clean_text, file_systems, statfs_facts};
 use std::ffi::{CStr, CString};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -87,7 +87,7 @@ fn cpu_from_ticks(per_cpu: &[[u32; 4]]) -> Option<Cpu> {
         idle = idle.checked_add(u64::from(ticks[libc::CPU_STATE_IDLE as usize]))?;
     }
     let total = user.checked_add(system)?.checked_add(idle)?;
-    Some(Cpu { user: user.to_string(), system: system.to_string(), idle: idle.to_string(), iowait: None, steal: None, total: total.to_string() })
+    Some(Cpu { user, system, idle, iowait: None, steal: None, total })
 }
 
 fn read_cpu() -> Option<Cpu> {
@@ -114,16 +114,26 @@ fn read_cpu() -> Option<Cpu> {
     cpu_from_ticks(&per_cpu)
 }
 
-fn fixed3(value: f64) -> Option<String> {
-    (value.is_finite() && (0.0..1_000_000.0).contains(&value)).then(|| format!("{value:.3}"))
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct KernelLoad {
+    averages: [u32; 3],
+    scale: libc::c_long,
+}
+
+fn thousandths(average: u32, scale: u64) -> Option<Thousandths> {
+    let value = u64::from(average).checked_mul(1000)?.checked_add(scale / 2)? / scale;
+    (value < 1_000_000_000).then_some(Thousandths(value))
+}
+
+fn load_from(kernel: KernelLoad) -> Option<Load> {
+    let scale = u64::try_from(kernel.scale).ok().filter(|scale| *scale > 0)?;
+    let [one, five, fifteen] = kernel.averages;
+    Some(Load { one: thousandths(one, scale)?, five: thousandths(five, scale)?, fifteen: thousandths(fifteen, scale)? })
 }
 
 fn read_load() -> Option<Load> {
-    let mut values = [0f64; 3];
-    if unsafe { libc::getloadavg(values.as_mut_ptr(), 3) } != 3 {
-        return None;
-    }
-    Some(Load { one: fixed3(values[0])?, five: fixed3(values[1])?, fifteen: fixed3(values[2])? })
+    load_from(sysctl_value("vm.loadavg")?)
 }
 
 struct PageCounts {
@@ -164,22 +174,22 @@ fn read_mem() -> Option<Mem> {
     };
     let swap: libc::xsw_usage = sysctl_value("vm.swapusage")?;
     Some(Mem {
-        total: total.to_string(),
-        available: available_bytes(total, &pages, page_size).to_string(),
-        swap_total: swap.xsu_total.to_string(),
-        swap_free: swap.xsu_avail.to_string(),
+        total,
+        available: available_bytes(total, &pages, page_size),
+        swap_total: swap.xsu_total,
+        swap_free: swap.xsu_avail,
         swap_activity: Some(SwapActivity {
-            swap_in: stats.swapins.checked_mul(page_size)?.to_string(),
-            swap_out: stats.swapouts.checked_mul(page_size)?.to_string(),
+            swap_in: stats.swapins.checked_mul(page_size)?,
+            swap_out: stats.swapouts.checked_mul(page_size)?,
         }),
         pressure: sysctl_value::<i32>("kern.memorystatus_vm_pressure_level").and_then(memory_pressure),
     })
 }
 
-fn read_uptime_ms(now_ms: u64) -> Option<String> {
+fn read_uptime_ms(now_ms: u64) -> Option<u64> {
     let boot: libc::timeval = sysctl_value("kern.boottime")?;
     let boot_ms = u64::try_from(boot.tv_sec).ok()?.checked_mul(1000)?.checked_add(u64::try_from(boot.tv_usec).ok()? / 1000)?;
-    Some(now_ms.checked_sub(boot_ms)?.to_string())
+    now_ms.checked_sub(boot_ms)
 }
 
 fn cpu_count() -> Option<u16> {
@@ -255,14 +265,14 @@ fn read_nets(include_virtual: bool) -> Option<Vec<Net>> {
             .filter_map(|name| interfaces.iter().find(|interface| &interface.name == name))
             .map(|interface| Net {
                 id: interface.name.clone(),
-                rx_bytes: interface.rx_bytes.to_string(),
-                rx_packets: interface.rx_packets.to_string(),
-                rx_drops: interface.rx_drops.to_string(),
-                rx_errors: interface.rx_errors.to_string(),
-                tx_bytes: interface.tx_bytes.to_string(),
-                tx_packets: interface.tx_packets.to_string(),
+                rx_bytes: interface.rx_bytes,
+                rx_packets: interface.rx_packets,
+                rx_drops: interface.rx_drops,
+                rx_errors: interface.rx_errors,
+                tx_bytes: interface.tx_bytes,
+                tx_packets: interface.tx_packets,
                 tx_drops: None,
-                tx_errors: interface.tx_errors.to_string(),
+                tx_errors: interface.tx_errors,
             })
             .collect(),
     )
@@ -400,7 +410,7 @@ pub fn sample(scope: CollectionScope) -> Option<Sample> {
         Some(reading) => sample.gpu = Some(reading),
         None => sample.mark_unavailable(Unavailable::Gpu),
     }
-    let power = Power { gpu_nj: gpu.energy_nj.map(|value| value.to_string()), system: iokit::read_system_power() };
+    let power = Power { gpu_nj: gpu.energy_nj, system: iokit::read_system_power() };
     if power.gpu_nj.is_none() && power.system.is_none() {
         sample.mark_unavailable(Unavailable::Power);
     } else {
@@ -463,11 +473,18 @@ mod tests {
     #[test]
     fn cpu_ticks_fold_nice_into_user_and_report_no_iowait_or_steal() {
         let cpu = cpu_from_ticks(&[[10, 5, 70, 2], [u32::MAX, 0, 0, 0]]).unwrap();
-        assert_eq!(cpu.user, (12 + u64::from(u32::MAX)).to_string());
-        assert_eq!(cpu.system, "5");
-        assert_eq!(cpu.idle, "70");
-        assert_eq!(cpu.total, (87 + u64::from(u32::MAX)).to_string());
+        assert_eq!(cpu.user, 12 + u64::from(u32::MAX));
+        assert_eq!(cpu.system, 5);
+        assert_eq!(cpu.idle, 70);
+        assert_eq!(cpu.total, 87 + u64::from(u32::MAX));
         assert_eq!((cpu.iowait, cpu.steal), (None, None));
+    }
+
+    #[test]
+    fn kernel_load_averages_become_rounded_thousandths_without_floating_point() {
+        let load = load_from(KernelLoad { averages: [2048, 1024, 3], scale: 2048 }).unwrap();
+        assert_eq!((load.one, load.five, load.fifteen), (Thousandths(1000), Thousandths(500), Thousandths(1)));
+        assert!(load_from(KernelLoad { averages: [0; 3], scale: 0 }).is_none());
     }
 
     #[test]

@@ -104,7 +104,7 @@ fn boot_id() -> Option<String> {
 
 struct SystemFacts {
     load: Load,
-    uptime_ms: String,
+    uptime_ms: u64,
     cpu_count: Option<u16>,
 }
 
@@ -122,7 +122,7 @@ fn system_facts() -> Option<SystemFacts> {
             five: fixed3(info.loads[1]),
             fifteen: fixed3(info.loads[2]),
         },
-        uptime_ms: uptime.checked_mul(1000)?.to_string(),
+        uptime_ms: uptime.checked_mul(1000)?,
         cpu_count,
     })
 }
@@ -162,14 +162,14 @@ fn read_nets(include_virtual: bool) -> Option<Vec<Net>> {
         let Some(tx_errors) = counter("tx_errors") else { continue };
         nets.push(Net {
             id: name,
-            rx_bytes: rx_bytes.to_string(),
-            rx_packets: rx_packets.to_string(),
-            rx_drops: rx_drops.to_string(),
-            rx_errors: rx_errors.to_string(),
-            tx_bytes: tx_bytes.to_string(),
-            tx_packets: tx_packets.to_string(),
-            tx_drops: Some(tx_drops.to_string()),
-            tx_errors: tx_errors.to_string(),
+            rx_bytes,
+            rx_packets,
+            rx_drops,
+            rx_errors,
+            tx_bytes,
+            tx_packets,
+            tx_drops: Some(tx_drops),
+            tx_errors,
         });
         if nets.len() == 16 {
             break;
@@ -178,7 +178,7 @@ fn read_nets(include_virtual: bool) -> Option<Vec<Net>> {
     Some(nets)
 }
 
-fn statfs(mount: &str) -> Option<(String, String)> {
+fn statfs(mount: &str) -> Option<(u64, u64)> {
     let path = CString::new(mount.as_bytes()).ok()?;
     let mut value: libc::statfs = unsafe { std::mem::zeroed() };
     if unsafe { libc::statfs(path.as_ptr(), &mut value) } != 0 {

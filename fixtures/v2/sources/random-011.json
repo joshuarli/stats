@@ -1,0 +1,964 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1545",
+      "atMs": "1793506857309",
+      "monoMs": "1545162",
+      "cpu": {
+        "user": "87989698014",
+        "system": "495137457785",
+        "idle": "461768224847",
+        "iowait": "196278851003",
+        "steal": "414475507581",
+        "total": "656498558764"
+      },
+      "uptimeMs": "1545162",
+      "cpuCount": 40,
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "634057394892",
+          "rxPackets": "934262852995",
+          "rxDrops": "29303222904557678",
+          "rxErrors": "0",
+          "txBytes": "546741972808",
+          "txPackets": "551964218812",
+          "txErrors": "0",
+          "txDrops": "49589987429"
+        },
+        {
+          "id": "tailscale0",
+          "rxBytes": "1082329824794",
+          "rxPackets": "406880820972752467",
+          "rxDrops": "461168709085",
+          "rxErrors": "0",
+          "txBytes": "610004862580",
+          "txPackets": "176112353615",
+          "txErrors": "0",
+          "txDrops": "137966001248"
+        },
+        {
+          "id": "docker0",
+          "rxBytes": "1030576751437",
+          "rxPackets": "451763194231",
+          "rxDrops": "478132491276",
+          "rxErrors": "0",
+          "txBytes": "9449131747",
+          "txPackets": "448756333710",
+          "txErrors": "0",
+          "txDrops": "598702939140"
+        },
+        {
+          "id": "veth1a",
+          "rxBytes": "615374158406",
+          "rxPackets": "1057035732938",
+          "rxDrops": "630225883352",
+          "rxErrors": "0",
+          "txBytes": "716596822385",
+          "txPackets": "781244919727",
+          "txErrors": "0",
+          "txDrops": "1068821061907"
+        }
+      ],
+      "disks": [
+        {
+          "id": "8:16",
+          "name": "sdb",
+          "reads": "541378850406",
+          "readSectors": "789573635020",
+          "writes": "609053832841",
+          "writeSectors": "897888797353",
+          "ioMs": "476107944734"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "769948662276",
+          "readSectors": "545425576495",
+          "writes": "930803113097429415",
+          "writeSectors": "1096819367103"
+        }
+      ],
+      "block": {
+        "buckets": [
+          "1",
+          "5",
+          "3",
+          "4",
+          "5",
+          "0",
+          "0",
+          "4",
+          "2",
+          "4",
+          "7",
+          "4",
+          "3",
+          "5",
+          "3",
+          "9"
+        ],
+        "count": "59",
+        "totalUs": "53100",
+        "minUs": "50",
+        "maxUs": "5000"
+      },
+      "gpu": {
+        "active": "489913350748",
+        "total": "348786324625"
+      },
+      "power": {
+        "gpuNj": "181180827814"
+      }
+    },
+    {
+      "seq": "1560",
+      "atMs": "1793506846698",
+      "monoMs": "1560795",
+      "cpu": {
+        "user": "87989701708",
+        "system": "495137461846",
+        "idle": "461768225346",
+        "iowait": "196278854723",
+        "steal": "414475508659",
+        "total": "656498559328"
+      },
+      "load": {
+        "one": "6.214",
+        "five": "56.542",
+        "fifteen": "40.895"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "9927233504",
+        "swapTotal": "0",
+        "swapFree": "0"
+      },
+      "uptimeMs": "1560795",
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "634057399272",
+          "rxPackets": "934262853275",
+          "rxDrops": "29303222904560317",
+          "rxErrors": "0",
+          "txBytes": "546741976649",
+          "txPackets": "551964220075",
+          "txErrors": "0"
+        },
+        {
+          "id": "eth1",
+          "rxBytes": "152708578617",
+          "rxPackets": "1019234901656",
+          "rxDrops": "508652247022",
+          "rxErrors": "0",
+          "txBytes": "216376459395072441",
+          "txPackets": "1030247578664",
+          "txErrors": "0",
+          "txDrops": "1077130410925756500"
+        },
+        {
+          "id": "tailscale0",
+          "rxBytes": "1082329826151",
+          "rxPackets": "406880820972752782",
+          "rxDrops": "461168711294",
+          "rxErrors": "0",
+          "txBytes": "610004864487",
+          "txPackets": "176112354315",
+          "txErrors": "0",
+          "txDrops": "137966001906"
+        }
+      ],
+      "psi": {
+        "cpu": {
+          "some10": "99.30",
+          "some60": "34.81",
+          "some300": "56.91",
+          "total": "597682917079"
+        },
+        "memory": {
+          "some10": "47.45",
+          "some60": "40.69",
+          "some300": "12.74",
+          "total": "597682918264"
+        },
+        "io": {
+          "some10": "9.22",
+          "some60": "74.12",
+          "some300": "15.97",
+          "total": "597682919329",
+          "full10": "0.00",
+          "full60": "0.78",
+          "full300": "0.01",
+          "fullTotal": "660806911793"
+        }
+      },
+      "filesystems": [
+        {
+          "id": "/var/lib/docker",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "131057379"
+        }
+      ],
+      "power": {
+        "gpuNj": "181180832373",
+        "systemMwSum": "146962791548",
+        "systemReadings": "782533481550"
+      }
+    },
+    {
+      "seq": "1576",
+      "atMs": "1793506813755",
+      "monoMs": "1576726",
+      "cpu": {
+        "user": "87989705282",
+        "system": "495137465364",
+        "idle": "461768225592",
+        "total": "656498559939"
+      },
+      "load": {
+        "one": "48.416",
+        "five": "27.510",
+        "fifteen": "60.745"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "2103908580",
+        "swapTotal": "0",
+        "swapFree": "0",
+        "swapIn": "194484099748991596",
+        "swapOut": "276969646516"
+      },
+      "uptimeMs": "1576726",
+      "nets": [
+        {
+          "id": "docker0",
+          "rxBytes": "1030576754166",
+          "rxPackets": "451763196435",
+          "rxDrops": "478132494634",
+          "rxErrors": "0",
+          "txBytes": "9449134389",
+          "txPackets": "448756334660",
+          "txErrors": "0",
+          "txDrops": "598702940539"
+        },
+        {
+          "id": "br-1",
+          "rxBytes": "345904171423109458",
+          "rxPackets": "460495771217693477",
+          "rxDrops": "493158485311",
+          "rxErrors": "0",
+          "txBytes": "65138107861",
+          "txPackets": "459799724982",
+          "txErrors": "0",
+          "txDrops": "702206009577310006"
+        },
+        {
+          "id": "veth2b",
+          "rxBytes": "607530029012",
+          "rxPackets": "689470000952",
+          "rxDrops": "189327490609578633",
+          "rxErrors": "0",
+          "txBytes": "239165455880",
+          "txPackets": "150762481579462742",
+          "txErrors": "0",
+          "txDrops": "23481419069"
+        }
+      ],
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "415420922961",
+          "readSectors": "953796843720",
+          "writes": "383693109259",
+          "writeSectors": "35822514125",
+          "ioMs": "434627858477"
+        },
+        {
+          "id": "8:16",
+          "name": "sdb",
+          "reads": "541378851961",
+          "readSectors": "789573638121",
+          "writes": "609053836106",
+          "writeSectors": "897888800671",
+          "ioMs": "476107948249"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "769948664594",
+          "readSectors": "545425578519",
+          "writes": "930803113097431522",
+          "writeSectors": "1096819371931",
+          "ioMs": "732185601784155232"
+        },
+        {
+          "id": "253:1",
+          "name": "dm-1",
+          "reads": "139340962902",
+          "readSectors": "886788643798",
+          "writes": "1057193039609",
+          "writeSectors": "243037312118690107",
+          "ioMs": "565613817917"
+        }
+      ],
+      "psi": {
+        "memory": {
+          "some10": "55.53",
+          "some60": "35.28",
+          "some300": "35.00",
+          "total": "110469790547576094",
+          "full10": "0.00",
+          "full60": "0.29",
+          "full300": "0.01",
+          "fullTotal": "671404434643"
+        },
+        "io": {
+          "some10": "62.52",
+          "some60": "75.92",
+          "some300": "93.11",
+          "total": "110469790547577054",
+          "full10": "0.00",
+          "full60": "0.11",
+          "full300": "0.01",
+          "fullTotal": "671404438142"
+        }
+      },
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "195919214"
+        },
+        {
+          "id": "/var/lib/docker",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "233354645"
+        },
+        {
+          "id": "/mnt/media disk",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "90811541"
+        }
+      ],
+      "block": {
+        "buckets": [
+          "3",
+          "5",
+          "3",
+          "9",
+          "7",
+          "7",
+          "2",
+          "6",
+          "4",
+          "8",
+          "3",
+          "7",
+          "1",
+          "2",
+          "9",
+          "2"
+        ],
+        "count": "78",
+        "totalUs": "70200",
+        "minUs": "50",
+        "maxUs": "5000"
+      },
+      "gpu": {
+        "active": "489913355069",
+        "total": "348786328965"
+      },
+      "power": {
+        "gpuNj": "181180833116"
+      }
+    },
+    {
+      "seq": "1591",
+      "atMs": "1793506882880",
+      "monoMs": "1591703",
+      "cpu": {
+        "user": "67",
+        "system": "52",
+        "idle": "21",
+        "total": "96"
+      },
+      "load": {
+        "one": "7.456",
+        "five": "20.997",
+        "fifteen": "19.869"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "13864943116",
+        "swapTotal": "0",
+        "swapFree": "0",
+        "pressure": "normal"
+      },
+      "uptimeMs": "1591703",
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "14",
+          "rxPackets": "23",
+          "rxDrops": "29303222904563332",
+          "rxErrors": "0",
+          "txBytes": "79",
+          "txPackets": "31",
+          "txErrors": "0",
+          "txDrops": "49589987701"
+        },
+        {
+          "id": "eth1",
+          "rxBytes": "33",
+          "rxPackets": "83",
+          "rxDrops": "508652251487",
+          "rxErrors": "0",
+          "txBytes": "28",
+          "txPackets": "43",
+          "txErrors": "0",
+          "txDrops": "1077130410925758493"
+        },
+        {
+          "id": "docker0",
+          "rxBytes": "40",
+          "rxPackets": "72",
+          "rxDrops": "478132495171",
+          "rxErrors": "0",
+          "txBytes": "32",
+          "txPackets": "22",
+          "txErrors": "0"
+        },
+        {
+          "id": "veth1a",
+          "rxBytes": "16",
+          "rxPackets": "1",
+          "rxDrops": "630225886235",
+          "rxErrors": "0",
+          "txBytes": "22",
+          "txPackets": "0",
+          "txErrors": "0"
+        }
+      ],
+      "disks": [
+        {
+          "id": "8:16",
+          "name": "sdz",
+          "reads": "4",
+          "readSectors": "0",
+          "writes": "93",
+          "writeSectors": "86",
+          "ioMs": "64"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "60",
+          "readSectors": "77",
+          "writes": "26",
+          "writeSectors": "4",
+          "ioMs": "11"
+        },
+        {
+          "id": "253:1",
+          "name": "dm-1",
+          "reads": "27",
+          "readSectors": "40",
+          "writes": "28",
+          "writeSectors": "12"
+        }
+      ],
+      "psi": {
+        "io": {
+          "some10": "51.75",
+          "some60": "66.54",
+          "some300": "1.74",
+          "total": "39"
+        }
+      }
+    },
+    {
+      "seq": "1606",
+      "atMs": "1793506933432",
+      "monoMs": "1606130",
+      "cpu": {
+        "user": "449",
+        "system": "1687",
+        "idle": "2464",
+        "iowait": "196278858509",
+        "steal": "414475513518",
+        "total": "2193"
+      },
+      "load": {
+        "one": "7.833",
+        "five": "44.464",
+        "fifteen": "27.917"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "2084242672",
+        "swapTotal": "0",
+        "swapFree": "0",
+        "swapIn": "194484099748994415",
+        "swapOut": "276969647505"
+      },
+      "uptimeMs": "1606130",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "415420925794",
+          "readSectors": "953796844162",
+          "writes": "383693111829",
+          "writeSectors": "35822517152",
+          "ioMs": "434627860915"
+        },
+        {
+          "id": "8:16",
+          "name": "sdb",
+          "reads": "2407",
+          "readSectors": "4697",
+          "writes": "794",
+          "writeSectors": "3740",
+          "ioMs": "3816"
+        },
+        {
+          "id": "253:1",
+          "name": "dm-1",
+          "reads": "3043",
+          "readSectors": "3769",
+          "writes": "2573",
+          "writeSectors": "3473",
+          "ioMs": "565613819411"
+        }
+      ],
+      "psi": {
+        "memory": {
+          "some10": "66.11",
+          "some60": "57.69",
+          "some300": "65.52",
+          "total": "110469790547581173",
+          "full10": "0.00",
+          "full60": "0.74",
+          "full300": "0.01",
+          "fullTotal": "671404442028"
+        },
+        "io": {
+          "some10": "58.16",
+          "some60": "18.45",
+          "some300": "15.56",
+          "total": "110469790547583869",
+          "full10": "0.00",
+          "full60": "0.44",
+          "full300": "0.01",
+          "fullTotal": "671404444068"
+        }
+      },
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "117940322"
+        },
+        {
+          "id": "/home",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "32722362"
+        }
+      ],
+      "unavailable": [
+        "nets"
+      ]
+    },
+    {
+      "seq": "1620",
+      "atMs": "1793506887229",
+      "monoMs": "1620497",
+      "cpu": {
+        "user": "2847",
+        "system": "6265",
+        "idle": "4952",
+        "iowait": "196278858914",
+        "steal": "414475516770",
+        "total": "4555"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "2849399368",
+        "swapTotal": "0",
+        "swapFree": "0"
+      },
+      "uptimeMs": "1620497",
+      "cpuCount": 20,
+      "nets": [
+        {
+          "id": "wlan0",
+          "rxBytes": "935679503177",
+          "rxPackets": "1062612460843",
+          "rxDrops": "102307355437",
+          "rxErrors": "0",
+          "txBytes": "753420113287",
+          "txPackets": "617427213164",
+          "txErrors": "0",
+          "txDrops": "91095653381"
+        }
+      ],
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "4730",
+          "readSectors": "3785",
+          "writes": "3748",
+          "writeSectors": "4373",
+          "ioMs": "1339"
+        },
+        {
+          "id": "253:1",
+          "name": "dm-1",
+          "reads": "6387",
+          "readSectors": "5143",
+          "writes": "4889",
+          "writeSectors": "6848",
+          "ioMs": "565613823944"
+        }
+      ],
+      "psi": {
+        "cpu": {
+          "some10": "66.60",
+          "some60": "67.64",
+          "some300": "64.67",
+          "total": "4813",
+          "full10": "0.00",
+          "full60": "0.14",
+          "full300": "0.01",
+          "fullTotal": "660806916790"
+        },
+        "io": {
+          "some10": "29.36",
+          "some60": "72.31",
+          "some300": "68.72",
+          "total": "9568",
+          "full10": "0.00",
+          "full60": "0.31",
+          "full300": "0.01",
+          "fullTotal": "660806917236"
+        }
+      },
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "400593545"
+        },
+        {
+          "id": "/home",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "686886952"
+        }
+      ],
+      "power": {
+        "gpuNj": "181180833838"
+      }
+    },
+    {
+      "seq": "1635",
+      "atMs": "1793506846101",
+      "monoMs": "1635216",
+      "cpu": {
+        "user": "3438",
+        "system": "9161",
+        "idle": "9306",
+        "total": "9447"
+      },
+      "load": {
+        "one": "53.072",
+        "five": "32.185",
+        "fifteen": "29.831"
+      },
+      "uptimeMs": "1635216",
+      "nets": [
+        {
+          "id": "eth1",
+          "rxBytes": "589",
+          "rxPackets": "2411",
+          "rxDrops": "508652255993",
+          "rxErrors": "0",
+          "txBytes": "2859",
+          "txPackets": "3187",
+          "txErrors": "0"
+        },
+        {
+          "id": "wlan0",
+          "rxBytes": "935679505962",
+          "rxPackets": "1062612461067",
+          "rxDrops": "102307358078",
+          "rxErrors": "0",
+          "txBytes": "753420114150",
+          "txPackets": "617427214242",
+          "txErrors": "0",
+          "txDrops": "91095656578"
+        },
+        {
+          "id": "tailscale0",
+          "rxBytes": "1082329828420",
+          "rxPackets": "406880820972753612",
+          "rxDrops": "461168711328",
+          "rxErrors": "0",
+          "txBytes": "610004866063",
+          "txPackets": "176112354987",
+          "txErrors": "0",
+          "txDrops": "137966005796"
+        },
+        {
+          "id": "veth2b",
+          "rxBytes": "607530031952",
+          "rxPackets": "689470001368",
+          "rxDrops": "189327490609581894",
+          "rxErrors": "0",
+          "txBytes": "239165456198",
+          "txPackets": "150762481579463931",
+          "txErrors": "0",
+          "txDrops": "23481421348"
+        }
+      ],
+      "disks": [
+        {
+          "id": "8:16",
+          "name": "sdz",
+          "reads": "3100",
+          "readSectors": "5226",
+          "writes": "5762",
+          "writeSectors": "4773",
+          "ioMs": "8030"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "8247",
+          "readSectors": "7121",
+          "writes": "7761",
+          "writeSectors": "8161"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "712479663"
+        },
+        {
+          "id": "/home",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "256727255"
+        },
+        {
+          "id": "/mnt/media disk",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "483398109"
+        }
+      ],
+      "gpu": {
+        "active": "489913359513",
+        "total": "348786331145"
+      },
+      "power": {
+        "gpuNj": "181180834615"
+      }
+    },
+    {
+      "seq": "1651",
+      "atMs": "1793506931870",
+      "monoMs": "1651056",
+      "cpu": {
+        "user": "7498",
+        "system": "13406",
+        "idle": "9627",
+        "total": "9503"
+      },
+      "load": {
+        "one": "61.764",
+        "five": "14.795",
+        "fifteen": "0.037"
+      },
+      "uptimeMs": "1651056",
+      "cpuCount": 37,
+      "nets": [
+        {
+          "id": "eth0",
+          "rxBytes": "1112",
+          "rxPackets": "3544",
+          "rxDrops": "29303222904563483",
+          "rxErrors": "0",
+          "txBytes": "4221",
+          "txPackets": "3028",
+          "txErrors": "0",
+          "txDrops": "49589990648"
+        },
+        {
+          "id": "docker0",
+          "rxBytes": "2190",
+          "rxPackets": "4273",
+          "rxDrops": "478132499817",
+          "rxErrors": "0",
+          "txBytes": "2443",
+          "txPackets": "4756",
+          "txErrors": "0",
+          "txDrops": "598702940854"
+        },
+        {
+          "id": "veth2b",
+          "rxBytes": "607530032752",
+          "rxPackets": "689470003315",
+          "rxDrops": "189327490609585535",
+          "rxErrors": "0",
+          "txBytes": "239165457526",
+          "txPackets": "150762481579465130",
+          "txErrors": "0",
+          "txDrops": "23481424714"
+        }
+      ],
+      "psi": {
+        "memory": {
+          "some10": "91.53",
+          "some60": "17.23",
+          "some300": "23.35",
+          "total": "13196",
+          "full10": "0.00",
+          "full60": "0.98",
+          "full300": "0.01",
+          "fullTotal": "660806921576"
+        }
+      },
+      "filesystems": [
+        {
+          "id": "/var/lib/docker",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "419099075"
+        }
+      ]
+    },
+    {
+      "seq": "1665",
+      "atMs": "1793506914629",
+      "monoMs": "1665681",
+      "cpu": {
+        "user": "8602",
+        "system": "17516",
+        "idle": "10786",
+        "total": "9967"
+      },
+      "load": {
+        "one": "32.030",
+        "five": "8.606",
+        "fifteen": "42.697"
+      },
+      "mem": {
+        "total": "17179869184",
+        "available": "13852508416",
+        "swapTotal": "0",
+        "swapFree": "0"
+      },
+      "nets": [
+        {
+          "id": "eth1",
+          "rxBytes": "2010",
+          "rxPackets": "5649",
+          "rxDrops": "508652258064",
+          "rxErrors": "0",
+          "txBytes": "5043",
+          "txPackets": "7354",
+          "txErrors": "0",
+          "txDrops": "1077130410925762567"
+        },
+        {
+          "id": "wlan0",
+          "rxBytes": "935679508911",
+          "rxPackets": "1062612463295",
+          "rxDrops": "102307359095",
+          "rxErrors": "0",
+          "txBytes": "753420114841",
+          "txPackets": "617427218939",
+          "txErrors": "0",
+          "txDrops": "91095658117"
+        },
+        {
+          "id": "docker0",
+          "rxBytes": "6143",
+          "rxPackets": "7234",
+          "rxDrops": "478132504154",
+          "rxErrors": "0",
+          "txBytes": "3874",
+          "txPackets": "7389",
+          "txErrors": "0"
+        },
+        {
+          "id": "veth2b",
+          "rxBytes": "607530035730",
+          "rxPackets": "689470006849",
+          "rxDrops": "189327490609586718",
+          "rxErrors": "0",
+          "txBytes": "239165460732",
+          "txPackets": "150762481579466949",
+          "txErrors": "0",
+          "txDrops": "23481427044"
+        }
+      ],
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "415420929163",
+          "readSectors": "953796845611",
+          "writes": "383693114262",
+          "writeSectors": "35822518663"
+        },
+        {
+          "id": "8:16",
+          "name": "sdb",
+          "reads": "7228",
+          "readSectors": "7592",
+          "writes": "7384",
+          "writeSectors": "6484",
+          "ioMs": "8641"
+        },
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "10853",
+          "readSectors": "7507",
+          "writes": "8250",
+          "writeSectors": "10871",
+          "ioMs": "2771"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/mnt/media disk",
+          "type": "ext4",
+          "total": "107374182400",
+          "available": "939114891"
+        }
+      ],
+      "gpu": {
+        "active": "489913359589",
+        "total": "348786334275"
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
-export async function readLimitedText(request: Request, limit: number): Promise<string | null> {
+export async function readLimitedBytes(request: Request, limit: number): Promise<Uint8Array | null> {
   const declared = request.headers.get("content-length");
   if (declared !== null && Number(declared) > limit) return null;
-  if (request.body === null) return "";
+  if (request.body === null) return new Uint8Array(0);
   // SAFETY: Workers' Request.body getReader() erases the chunk type; HTTP body chunks are Uint8Array.
   const reader = request.body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
   const chunks: Uint8Array[] = [];
@@ -17,11 +17,17 @@ export async function readLimitedText(request: Request, limit: number): Promise<
     }
     chunks.push(chunk);
   }
+  if (chunks.length === 1) return chunks[0]!;
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.length;
   }
-  return new TextDecoder().decode(bytes);
+  return bytes;
+}
+
+export async function readLimitedText(request: Request, limit: number): Promise<string | null> {
+  const bytes = await readLimitedBytes(request, limit);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
 }

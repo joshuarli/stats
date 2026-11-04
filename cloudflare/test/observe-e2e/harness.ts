@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { accessToken } from "../access-token.ts";
+import { encodeFrame, type SourceBatch } from "../support/stb2.ts";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
 const STATS_BUNDLE = join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js");
 const OBSERVE_BUNDLE = join(ROOT, "observe-worker/.cloudflare/output/v0/workers/default/bundle/index.js");
 const WRANGLER_TEST = readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8");
 export const VARS = (JSON.parse(WRANGLER_TEST) as { vars: Record<string, string> }).vars;
-export const BATCH = JSON.parse(readFileSync(join(ROOT, "../fixtures/v1/batch-full.json"), "utf8")) as Record<string, unknown>;
+export const BATCH = JSON.parse(readFileSync(join(ROOT, "../fixtures/v2/sources/linux-normal.json"), "utf8")) as SourceBatch;
 export const ORIGIN = "https://stats.example";
 export const HOST_NAME = "host-name-QXZ";
 export const SECRET_QUERY = "SECRET_IN_QUERY_7d1f";
@@ -118,11 +119,11 @@ export async function createHost(harness: Harness, name = HOST_NAME): Promise<{ 
   return await response.json() as { hostId: string; token: string };
 }
 
-export async function ingest(harness: Harness, host: { hostId: string; token: string }, batch: Record<string, unknown> = BATCH): Promise<Response> {
-  return harness.stats(`/ingest/v1/batches?token=${SECRET_QUERY}`, {
+export async function ingest(harness: Harness, host: { hostId: string; token: string }, batch: SourceBatch = BATCH): Promise<Response> {
+  return harness.stats(`/ingest/v2/batches?token=${SECRET_QUERY}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${host.token}`, "Content-Type": "application/json", Cookie: "CF_Authorization=SECRET_COOKIE" },
-    body: JSON.stringify({ ...batch, hostId: host.hostId })
+    headers: { Authorization: `Bearer ${host.token}`, "Content-Type": "application/vnd.stats.ingest.v2", Cookie: "CF_Authorization=SECRET_COOKIE" },
+    body: encodeFrame({ ...batch, hostId: host.hostId })
   });
 }
 

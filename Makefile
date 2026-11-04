@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write smoke-local agent-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -22,6 +22,12 @@ node-ready:
 	test "$$(pnpm --version)" = 12.15.0 || { echo 'pnpm 12.15.0 is required' >&2; exit 1; }
 
 fixtures: node-ready
+	node scripts/check-fixtures.mjs
+
+fixtures-write: work-ready node-ready
+	node scripts/fixture-sources.mjs --write
+	cd agent && STATS_WRITE_FIXTURES=1 TMPDIR='$(CURDIR)/.work/tmp' cargo test --test conformance the_encoder_reproduces_every_golden_frame_from_its_semantic_source
+	cd cloudflare && STATS_WRITE_FIXTURES=1 node --experimental-strip-types --test test/ingest/acks.test.ts
 	node scripts/check-fixtures.mjs
 
 agent-test: work-ready
@@ -131,6 +137,13 @@ deploy-threadripper: deploy-host-threadripper
 smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
+smoke-local: work-ready node-ready worker-bundle
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-worker.mjs ../deploy/deployed-smoke.sh
+
+agent-e2e: work-ready node-ready worker-bundle
+	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo build
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' pnpm run test:agent-e2e
+
 release: agent-build
 
-check: fixtures agent-test release cloudflare-test dashboard-test lint
+check: fixtures agent-test release cloudflare-test agent-e2e smoke-local dashboard-test lint

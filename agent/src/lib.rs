@@ -6,6 +6,7 @@ pub mod parse;
 pub mod queue;
 pub mod runtime;
 pub mod transport;
+pub mod wire;
 
 use model::{Sample, SystemInfo};
 

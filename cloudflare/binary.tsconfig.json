@@ -1,8 +1,19 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"],
-    "lib": ["ES2022", "DOM"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ]
   },
-  "include": ["src/binary/**/*.ts", "test/binary/**/*.ts", "test/support/**/*.ts"]
+  "include": [
+    "src/binary/**/*.ts",
+    "test/binary/**/*.ts",
+    "test/support/**/*.ts",
+    "src/ingest/**/*.ts",
+    "test/ingest/**/*.ts"
+  ]
 }

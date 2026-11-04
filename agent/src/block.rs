@@ -1,11 +1,10 @@
-use crate::model::Block;
+use crate::model::{Block, BLOCK_BUCKETS};
 use deser::Deserialize;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-pub const BUCKETS: usize = 16;
 const SNAPSHOT_LIMIT: usize = 4_096;
 const MAX_AGE: Duration = Duration::from_secs(30);
 
@@ -31,15 +30,15 @@ fn decimal(value: &str) -> Option<u64> {
 }
 
 fn snapshot_block(snapshot: Snapshot) -> Option<Block> {
-    if snapshot.v != 1 || snapshot.buckets.len() != BUCKETS {
+    if snapshot.v != 1 || snapshot.buckets.len() != BLOCK_BUCKETS {
         return None;
     }
-    let mut buckets = Vec::with_capacity(BUCKETS);
+    let mut buckets = [0_u64; BLOCK_BUCKETS];
     let mut sum = 0_u64;
-    for value in snapshot.buckets {
-        let count = decimal(&value)?;
+    for (slot, value) in buckets.iter_mut().zip(&snapshot.buckets) {
+        let count = decimal(value)?;
         sum = sum.checked_add(count)?;
-        buckets.push(count.to_string());
+        *slot = count;
     }
     let count = decimal(&snapshot.count)?;
     let total_us = decimal(&snapshot.total_us)?;
@@ -55,13 +54,7 @@ fn snapshot_block(snapshot: Snapshot) -> Option<Block> {
     } else if min_us > max_us || max_us > total_us {
         return None;
     }
-    Some(Block {
-        buckets,
-        count: count.to_string(),
-        total_us: total_us.to_string(),
-        min_us: min_us.to_string(),
-        max_us: max_us.to_string(),
-    })
+    Some(Block { buckets, count, total_us, min_us, max_us })
 }
 
 fn read_snapshot(path: &Path) -> Option<(Block, SystemTime)> {
@@ -123,7 +116,7 @@ mod tests {
     }
 
     fn buckets(first: &str) -> Vec<&str> {
-        let mut values = vec!["0"; BUCKETS];
+        let mut values = vec!["0"; BLOCK_BUCKETS];
         values[0] = first;
         values
     }
@@ -131,9 +124,7 @@ mod tests {
     #[test]
     fn accepts_a_consistent_snapshot() {
         let block = parse(value(buckets("3"), "3", "900", "100", "400")).unwrap();
-        assert_eq!(block.count, "3");
-        assert_eq!(block.total_us, "900");
-        assert_eq!(block.buckets[0], "3");
+        assert_eq!((block.count, block.total_us, block.buckets[0]), (3, 900, 3));
     }
 
     #[test]

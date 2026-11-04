@@ -6,9 +6,10 @@ import { historyQuery } from "../src/aggregate";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { accessToken } from "./access-token";
 import { readFrame as frame } from "./support/history";
+import { fixtureText, frame as encode, frameFor, post, source } from "./ingest-worker";
+import type { SourceBatch } from "./support/stb2";
 
 const now = 1_793_510_415_000;
-const files: Record<string, string> = JSON.parse(env.FIXTURES ?? "{}");
 
 function stub() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
@@ -21,8 +22,7 @@ async function createHost(): Promise<{ hostId: string; token: string }> {
 }
 
 async function ingest(token: string, name: string, hostId: string): Promise<Response> {
-  const body = { ...JSON.parse(files[name]!), hostId };
-  return SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return post(token, frameFor(name, hostId));
 }
 
 async function history(hostId: string, range: string, kind: string): Promise<Response> {
@@ -53,7 +53,7 @@ describe("history query", () => {
 describe("history", () => {
   it("serves an explicit window at the finest tier that still holds it", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const preset = await frame(await history(host.hostId, "1h", "summary")) as { points: { atMs: number }[] };
     const [first, second] = preset.points;
     expect(preset.points.length).toBe(2);
@@ -86,7 +86,7 @@ describe("history", () => {
 
   it("returns bounded raw and rolled history", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const summary = await history(host.hostId, "1h", "summary");
     expect(summary.status).toBe(200);
     const body = await frame(summary) as { resolution: string; points: { atMs: number; coverageMs: number; cpu?: { user: number } }[] };
@@ -147,7 +147,7 @@ describe("history", () => {
 
   it("returns several history kinds in one response", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const response = await historySearch(host.hostId, "range=1h&kinds=summary,disks,nets,filesystems,block");
     expect(response.status).toBe(200);
     const body = await frame(response) as { hostId: string; histories: Record<string, { kind: string; points?: unknown[]; series?: { points: unknown[] }[] }> };
@@ -169,7 +169,7 @@ describe("history", () => {
 
   it("answers with 304 until ingest changes the history version", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const first = await historySearch(host.hostId, "range=1h&kinds=summary,disks");
     expect(first.status).toBe(200);
     const etag = first.headers.get("etag");
@@ -185,7 +185,7 @@ describe("history", () => {
     const otherWindow = await historySearch(host.hostId, "range=6h&kinds=summary,disks", { "If-None-Match": etag! });
     expect(otherWindow.status).toBe(200);
 
-    expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "reboot-after", host.hostId)).status).toBe(200);
     const changed = await historySearch(host.hostId, "range=1h&kinds=summary,disks", { "If-None-Match": etag! });
     expect(changed.status).toBe(200);
     expect(changed.headers.get("etag")).not.toBe(etag);
@@ -193,7 +193,7 @@ describe("history", () => {
 
   it("sends history as a frame, compressed to what the client accepts, with every security header", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const accepted: [string | null, string | null][] = [
       [null, null], ["identity", null], ["gzip", "gzip"], ["br, gzip", "br"], ["gzip, deflate, br", "br"],
       ["br;q=0, gzip", "gzip"], ["gzip;q=0, br;q=0.5", "br"], ["br;q=0, gzip;q=0", null], ["*", "br"], ["deflate", null]
@@ -214,7 +214,7 @@ describe("history", () => {
 
   it("revalidates with Vary and leaves errors as uncompressed JSON", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const first = await historySearch(host.hostId, "range=1h&kind=summary", { "Accept-Encoding": "br" });
     const etag = first.headers.get("etag")!;
     expect(etag.endsWith(':stc1"')).toBe(true);
@@ -239,8 +239,8 @@ describe("history", () => {
 
   it("repairs a late sample in the rolled bucket", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
-    expect((await ingest(host.token, "out-of-order-late.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "out-of-order-late", host.hostId)).status).toBe(200);
     const response = await history(host.hostId, "7d", "summary");
     const body = await frame(response) as { points: { coverageMs: number }[] };
     expect(body.points[0]!.coverageMs).toBe(15_000);
@@ -285,7 +285,7 @@ describe("history", () => {
 
   it("expires raw and rolled rows on the alarm", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => {
       state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES (?, ?, 'old', ?, ?, 1, 0, '{}', '{}')", host.hostId, "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f", now - 49 * 60 * 60 * 1000, now - 49 * 60 * 60 * 1000);
       state.storage.sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, 0, 1, '{}')", host.hostId, now - 8 * 24 * 60 * 60 * 1000);
@@ -299,10 +299,10 @@ describe("history", () => {
 
 describe("history reads", () => {
   describe("after an earlier read", () => {
-    const full = JSON.parse(files["batch-full.json"]!) as { samples: unknown[] };
-    async function send(token: string, hostId: string, samples: unknown[]): Promise<void> {
-      const body = { ...JSON.parse(files["batch-full.json"]!), hostId, samples };
-      const response = await SELF.fetch("https://example.com/ingest/v1/batches", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const full = source("linux-normal");
+    type Samples = SourceBatch["samples"];
+    async function send(token: string, hostId: string, samples: Samples): Promise<void> {
+      const response = await post(token, encode({ ...source("linux-normal"), hostId, samples }));
       expect(response.status).toBe(200);
     }
     async function everyKind(hostId: string): Promise<unknown> {
@@ -311,7 +311,7 @@ describe("history reads", () => {
       const body = await frame(response) as { histories: Record<string, Record<string, unknown>> };
       return Object.fromEntries(Object.entries(body.histories).map(([kind, value]) => [kind, { ...value, hostId: undefined }]));
     }
-    async function readBetween(first: unknown[], second: unknown[]): Promise<{ primed: unknown; fresh: unknown }> {
+    async function readBetween(first: Samples, second: Samples): Promise<{ primed: unknown; fresh: unknown }> {
       const primed = await createHost();
       await send(primed.token, primed.hostId, first);
       await everyKind(primed.hostId);
@@ -323,13 +323,13 @@ describe("history reads", () => {
     }
 
     it("serves a later sample exactly as a host never read before", async () => {
-      const { primed, fresh } = await readBetween([full.samples[0]], [full.samples[1]]);
+      const { primed, fresh } = await readBetween([full.samples[0]!], [full.samples[1]!]);
       expect((primed as { summary: { points: unknown[] } }).summary.points).toHaveLength(2);
       expect(primed).toEqual(fresh);
     });
 
     it("serves a late sample and the delta it rewrites exactly as a host never read before", async () => {
-      const { primed, fresh } = await readBetween([full.samples[1]], [full.samples[0]]);
+      const { primed, fresh } = await readBetween([full.samples[1]!], [full.samples[0]!]);
       expect((primed as { summary: { points: unknown[] } }).summary.points).toHaveLength(2);
       expect(primed).toEqual(fresh);
     });
@@ -337,10 +337,10 @@ describe("history reads", () => {
 
   it("returns history that includes a later batch", async () => {
     const host = await createHost();
-    expect((await ingest(host.token, "batch-full.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
     const before = (await frame(await history(host.hostId, "1h", "summary"))) as { points: { atMs: number }[] };
     expect(before.points.map(point => point.atMs)).toEqual([now - 15_000, now]);
-    expect((await ingest(host.token, "reboot-after.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "reboot-after", host.hostId)).status).toBe(200);
     const after = (await frame(await history(host.hostId, "1h", "summary"))) as { points: { atMs: number }[] };
     expect(after.points.map(point => point.atMs)).toEqual([now - 15_000, now, now]);
   });
@@ -354,14 +354,14 @@ describe("system details", () => {
   it("keeps what the agent last reported, serves it behind Access, and drops it with the host", async () => {
     const host = await createHost();
     expect((await system(host.hostId)).status).toBe(404);
-    expect((await ingest(host.token, "batch-system.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "system", host.hostId)).status).toBe(200);
     const body = await (await system(host.hostId)).json() as { hostId: string; reportedAtMs: number; system: { hostname: string; cpu: { threads: number; cores: number } } };
     expect(body.hostId).toBe(host.hostId);
     expect(body.reportedAtMs).toBe(now);
     expect(body.system.hostname).toBe("threadripper");
     expect(body.system.cpu).toMatchObject({ threads: 32, cores: 16 });
 
-    expect((await ingest(host.token, "batch-minimal.json", host.hostId)).status).toBe(200);
+    expect((await ingest(host.token, "minimal", host.hostId)).status).toBe(200);
     expect((await system(host.hostId)).status).toBe(200);
 
     expect((await SELF.fetch(`https://example.com/api/v1/hosts/${host.hostId}/system`)).status).toBe(401);
@@ -371,7 +371,10 @@ describe("system details", () => {
 
   it("rejects a batch whose system details are malformed", async () => {
     const host = await createHost();
-    const response = await ingest(host.token, "invalid-system.json", host.hostId);
+    const malformed = (JSON.parse(fixtureText("malformed.json")) as { cases: { name: string; hex: string }[] }).cases.find(entry => entry.name === "system-threads-zero")!;
+    const bytes = Uint8Array.from({ length: malformed.hex.length / 2 }, (_, index) => Number.parseInt(malformed.hex.slice(index * 2, index * 2 + 2), 16));
+    bytes.set(Uint8Array.from({ length: 16 }, (_, index) => Number.parseInt(host.hostId.slice(2 + index * 2, 4 + index * 2), 16)), 6);
+    const response = await post(host.token, bytes);
     expect(response.status).toBe(400);
     expect((await system(host.hostId)).status).toBe(404);
   });

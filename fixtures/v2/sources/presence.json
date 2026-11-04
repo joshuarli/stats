@@ -1,0 +1,103 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "unavailable": [
+        "nets"
+      ],
+      "disks": [],
+      "filesystems": [],
+      "uptimeMs": "1000"
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "unavailable": [
+        "disks",
+        "psi"
+      ],
+      "uptimeMs": "2000",
+      "nets": []
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "uptimeMs": "3000",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "10",
+          "readSectors": "160",
+          "writes": "20",
+          "writeSectors": "480",
+          "ioMs": "30"
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "atMs": "1793510344000",
+      "monoMs": "4000",
+      "unavailable": [
+        "cpu",
+        "load",
+        "mem",
+        "uptime",
+        "disks",
+        "nets",
+        "psi",
+        "filesystems",
+        "gpu",
+        "power"
+      ],
+      "block": {
+        "buckets": [
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        "count": "0",
+        "totalUs": "0",
+        "minUs": "0",
+        "maxUs": "0"
+      }
+    },
+    {
+      "seq": "5",
+      "atMs": "1793510345000",
+      "monoMs": "5000",
+      "uptimeMs": "5000",
+      "disks": [
+        {
+          "id": "8:0",
+          "name": "sda",
+          "reads": "11",
+          "readSectors": "176",
+          "writes": "22",
+          "writeSectors": "528",
+          "ioMs": "33"
+        }
+      ]
+    }
+  ]
+}

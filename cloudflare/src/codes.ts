@@ -1,6 +1,6 @@
 export const ERROR_CODES = [
   "invalid_request",
-  "invalid_json",
+  "invalid_frame",
   "unknown_version",
   "invalid_batch",
   "invalid_sample",
@@ -11,10 +11,8 @@ export const ERROR_CODES = [
   "too_old",
   "conflict",
   "not_found",
+  "gone",
   "internal"
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
-
-export const REJECT_CODES = ["too_large", "invalid_json", "unknown_version", "invalid_batch", "invalid_sample"] as const;
-export type RejectCode = (typeof REJECT_CODES)[number];

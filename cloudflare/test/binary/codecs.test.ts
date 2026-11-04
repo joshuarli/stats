@@ -169,9 +169,9 @@ for (const kind of ["sample", "delta", "rollup"] as const) await test(`storage e
   }
   assert.equal(({} as { polluted?: unknown }).polluted, undefined);
 });
-const fixtureFiles = readdirSync(join(root, "fixtures/v1")).filter(name => /^batch-.*\.json$/u.test(name) || name === "u64-boundaries.json");
+const fixtureFiles = readdirSync(join(root, "fixtures/v2/sources")).filter(name => /^(linux|macos)-normal\.json$|^minimal\.json$|^system\.json$|^u64-boundaries\.json$/u.test(name));
 for (const filename of fixtureFiles) await test(`raw sample fixture: ${filename}`, () => {
-  const batch = JSON.parse(readFileSync(join(root, "fixtures/v1", filename), "utf8")) as { samples: unknown[] };
+  const batch = JSON.parse(readFileSync(join(root, "fixtures/v2/sources", filename), "utf8")) as { samples: unknown[] };
   for (const sample of batch.samples) assert.deepEqual(decodeStored("sample", encodeStored("sample", sample)), sample);
 });
 await test("storage encoding is deterministic regardless of object key insertion order", () => {

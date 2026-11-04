@@ -69,7 +69,7 @@ mod tests {
         assert_eq!(queue.len(), 2);
         assert_eq!(queue.dropped(), 1);
         let batch = queue.take_batch(10);
-        assert_eq!(batch.iter().map(|sample| sample.seq.as_str()).collect::<Vec<_>>(), ["2", "3"]);
+        assert_eq!(batch.iter().map(|sample| sample.seq).collect::<Vec<_>>(), [2, 3]);
     }
 
     #[test]
@@ -84,7 +84,7 @@ mod tests {
         assert_eq!(queue.len(), 3);
         assert_eq!(queue.dropped(), 1);
         let batch = queue.take_batch(10);
-        assert_eq!(batch.iter().map(|sample| sample.seq.as_str()).collect::<Vec<_>>(), ["1", "2", "3"]);
+        assert_eq!(batch.iter().map(|sample| sample.seq).collect::<Vec<_>>(), [1, 2, 3]);
     }
 
     #[test]

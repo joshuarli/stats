@@ -1,4 +1,4 @@
-use crate::model::{Disk, SystemPower};
+use crate::model::{Disk, DiskId, SystemPower};
 use super::cf::{dictionary_value, number, string, CfRef, Owned};
 use std::ffi::{c_char, c_void, CStr};
 
@@ -8,8 +8,6 @@ const MAIN_PORT_DEFAULT: libc::mach_port_t = 0;
 const SERVICE_PLANE: &CStr = c"IOService";
 const VIRTUAL_INTERCONNECT: &str = "Virtual Interface";
 const SECTOR_BYTES: u64 = 512;
-const MAX_MAJOR: u64 = 4095;
-const MAX_MINOR: u64 = 1_048_575;
 
 #[link(name = "IOKit", kind = "framework")]
 unsafe extern "C" {
@@ -67,16 +65,16 @@ fn valid_disk_name(name: &str) -> bool {
 }
 
 fn disk_from(name: String, major: u64, minor: u64, counters: Counters) -> Option<Disk> {
-    if major > MAX_MAJOR || minor > MAX_MINOR || !valid_disk_name(&name) {
+    if !valid_disk_name(&name) {
         return None;
     }
     Some(Disk {
-        id: format!("{major}:{minor}"),
+        id: DiskId::new(major, minor)?,
         name,
-        reads: counters.reads.to_string(),
-        read_sectors: (counters.read_bytes / SECTOR_BYTES).to_string(),
-        writes: counters.writes.to_string(),
-        write_sectors: (counters.write_bytes / SECTOR_BYTES).to_string(),
+        reads: counters.reads,
+        read_sectors: counters.read_bytes / SECTOR_BYTES,
+        writes: counters.writes,
+        write_sectors: counters.write_bytes / SECTOR_BYTES,
         io_ms: None,
     })
 }
@@ -119,7 +117,7 @@ pub fn read_system_power() -> Option<SystemPower> {
     let telemetry = battery.property("PowerTelemetryData")?;
     let milliwatt_sum = dictionary_value(telemetry.0, "AccumulatedSystemLoad").and_then(number)?;
     let readings = dictionary_value(telemetry.0, "SystemLoadAccumulatorCount").and_then(number)?;
-    Some(SystemPower { milliwatt_sum: milliwatt_sum.to_string(), readings: readings.to_string() })
+    Some(SystemPower { milliwatt_sum, readings })
 }
 
 pub fn read_disks(limit: usize) -> Option<Vec<Disk>> {
@@ -152,7 +150,7 @@ mod tests {
     #[test]
     fn bytes_become_whole_sectors_and_busy_time_stays_absent() {
         let disk = disk_from("disk0".into(), 1, 0, COUNTERS).unwrap();
-        assert_eq!((disk.id.as_str(), disk.read_sectors.as_str(), disk.write_sectors.as_str()), ("1:0", "8", "1"));
+        assert_eq!((disk.id.to_string(), disk.read_sectors, disk.write_sectors), ("1:0".to_owned(), 8, 1));
         assert_eq!(disk.io_ms, None);
     }
 

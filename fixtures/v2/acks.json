@@ -1,0 +1,259 @@
+{
+  "about": "Success acknowledgments. Frames are written by the Worker's encoder (cloudflare/test/ingest/acks.test.ts) and decoded by the agent (agent/tests/conformance.rs); hex cases are hand-written malformed bodies with the agent's expected error.",
+  "cases": [
+    {
+      "name": "all-accepted",
+      "sent": [
+        "900000",
+        "900015"
+      ],
+      "ack": {
+        "accepted": 2,
+        "duplicates": 0,
+        "rejected": []
+      },
+      "frame": "frames/acks/all-accepted.sta2"
+    },
+    {
+      "name": "all-duplicates",
+      "sent": [
+        "900000",
+        "900015"
+      ],
+      "ack": {
+        "accepted": 0,
+        "duplicates": 2,
+        "rejected": []
+      },
+      "frame": "frames/acks/all-duplicates.sta2"
+    },
+    {
+      "name": "partial",
+      "sent": [
+        "1",
+        "2",
+        "9007199254740992",
+        "4"
+      ],
+      "ack": {
+        "accepted": 2,
+        "duplicates": 0,
+        "rejected": [
+          {
+            "seq": "1",
+            "code": "invalid_sample"
+          },
+          {
+            "seq": "9007199254740992",
+            "code": "invalid_sample"
+          }
+        ]
+      },
+      "frame": "frames/acks/partial.sta2"
+    },
+    {
+      "name": "every-code",
+      "sent": [
+        "10",
+        "11",
+        "12",
+        "13"
+      ],
+      "ack": {
+        "accepted": 0,
+        "duplicates": 1,
+        "rejected": [
+          {
+            "seq": "10",
+            "code": "invalid_sample"
+          },
+          {
+            "seq": "11",
+            "code": "too_old"
+          },
+          {
+            "seq": "12",
+            "code": "conflict"
+          }
+        ]
+      },
+      "frame": "frames/acks/every-code.sta2"
+    },
+    {
+      "name": "u64-max-seq",
+      "sent": [
+        "18446744073709551615",
+        "1"
+      ],
+      "ack": {
+        "accepted": 1,
+        "duplicates": 0,
+        "rejected": [
+          {
+            "seq": "18446744073709551615",
+            "code": "invalid_sample"
+          }
+        ]
+      },
+      "frame": "frames/acks/u64-max-seq.sta2"
+    },
+    {
+      "name": "sixteen",
+      "sent": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ],
+      "ack": {
+        "accepted": 8,
+        "duplicates": 4,
+        "rejected": [
+          {
+            "seq": "12",
+            "code": "conflict"
+          },
+          {
+            "seq": "13",
+            "code": "conflict"
+          },
+          {
+            "seq": "14",
+            "code": "conflict"
+          },
+          {
+            "seq": "15",
+            "code": "conflict"
+          }
+        ]
+      },
+      "frame": "frames/acks/sixteen.sta2"
+    },
+    {
+      "name": "json-body",
+      "sent": [
+        "1"
+      ],
+      "hex": "7b2276223a312c226163636570746564223a312c226475706c696361746573223a302c2272656a6563746564223a5b5d7d",
+      "error": "magic"
+    },
+    {
+      "name": "version-1",
+      "sent": [
+        "1"
+      ],
+      "hex": "535441320101000000",
+      "error": "version"
+    },
+    {
+      "name": "truncated",
+      "sent": [
+        "1"
+      ],
+      "hex": "535441320201",
+      "error": "truncated"
+    },
+    {
+      "name": "trailing",
+      "sent": [
+        "1"
+      ],
+      "hex": "535441320201000000",
+      "error": "trailing bytes"
+    },
+    {
+      "name": "overcount",
+      "sent": [
+        "1"
+      ],
+      "hex": "5354413202020000",
+      "error": "counts do not cover the batch"
+    },
+    {
+      "name": "undercount",
+      "sent": [
+        "1",
+        "2"
+      ],
+      "hex": "5354413202010000",
+      "error": "counts do not cover the batch"
+    },
+    {
+      "name": "unknown-seq",
+      "sent": [
+        "1"
+      ],
+      "hex": "53544132020000010201",
+      "error": "rejection names a sample the batch did not carry"
+    },
+    {
+      "name": "seq-named-twice",
+      "sent": [
+        "1",
+        "2"
+      ],
+      "hex": "535441320200000201010101",
+      "error": "rejection names a sample the batch did not carry"
+    },
+    {
+      "name": "unknown-code",
+      "sent": [
+        "1"
+      ],
+      "hex": "53544132020000010104",
+      "error": "unknown rejection code"
+    },
+    {
+      "name": "code-zero",
+      "sent": [
+        "1"
+      ],
+      "hex": "53544132020000010100",
+      "error": "unknown rejection code"
+    },
+    {
+      "name": "noncanonical",
+      "sent": [
+        "1"
+      ],
+      "hex": "535441320281000000",
+      "error": "non-canonical varint"
+    },
+    {
+      "name": "too-many-rejections",
+      "sent": [
+        "1"
+      ],
+      "hex": "535441320200001101",
+      "error": "too many rejections"
+    },
+    {
+      "name": "count-overflow",
+      "sent": [
+        "1"
+      ],
+      "hex": "5354413202ffffffffffffffffff01ffffffffffffffffff0100",
+      "error": "counts overflow"
+    },
+    {
+      "name": "oversized",
+      "sent": [
+        "1"
+      ],
+      "hex": "5354413202010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "error": "body exceeds its bound"
+    }
+  ]
+}

@@ -36,14 +36,14 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     await harness.scheduled().catch(() => undefined);
     await until(() => workerTraces(harness), items => {
       const labels = new Set(items.map(item => item.label));
-      return ["POST /ingest/v1/batches", "GET /api/v1/hosts", "POST /api/v1/admin/hosts", "scheduled */5 * * * *"].every(label => labels.has(label))
-        && items.every(item => item.label !== "POST /ingest/v1/batches" || item.objectInvocations >= 1);
+      return ["POST /ingest/v2/batches", "GET /api/v1/hosts", "POST /api/v1/admin/hosts", "scheduled */5 * * * *"].every(label => labels.has(label))
+        && items.every(item => item.label !== "POST /ingest/v2/batches" || item.objectInvocations >= 1);
     }, "the requests' traces");
     await until(async () => (await harness.observe("/issues") as Page<IssueSummary>).items, items => items.some(issue => issue.operation === "deployments.poll"), "the poll failure issue");
 
     const traces = (await (await harness.stats("/api/observe/stats/traces", { headers: await accessHeaders() })).json()) as Page<TraceSummary>;
     const byLabel = new Map(traces.items.map(trace => [trace.label, trace]));
-    const ingestTrace = byLabel.get("POST /ingest/v1/batches");
+    const ingestTrace = byLabel.get("POST /ingest/v2/batches");
     assert.ok(ingestTrace?.traceId, `labels: ${[...byLabel.keys()].join(", ")}`);
     assert.equal(ingestTrace.objectInvocations, 1);
     assert.ok(byLabel.has("GET /api/v1/hosts"));
@@ -53,7 +53,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
 
     const detail = (await (await harness.stats(`/api/observe/stats/traces/${ingestTrace.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;
     assert.equal(detail.rootPresent, true);
-    assert.deepEqual(detail.invocations.map(invocation => invocation.label), ["POST /ingest/v1/batches", "Installation POST /ingest"]);
+    assert.deepEqual(detail.invocations.map(invocation => invocation.label), ["POST /ingest/v2/batches", "Installation POST /ingest"]);
 
     const issues = (await (await harness.stats("/api/observe/stats/issues", { headers: await accessHeaders() })).json()) as Page<IssueSummary>;
     const poll = issues.items.find(issue => issue.operation === "deployments.poll");
@@ -78,7 +78,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     await harness.stop();
     const stored = storedText(harness.persist);
     assert.ok(stored.length > 0, `no observation store under ${harness.persist}: ${listing(harness.persist).join(", ")}`);
-    assert.ok(stored.includes("POST /ingest/v1/batches") && stored.includes("deployments.poll"), "the scan reads the stored invocations and occurrences");
+    assert.ok(stored.includes("POST /ingest/v2/batches") && stored.includes("deployments.poll"), "the scan reads the stored invocations and occurrences");
     for (const secret of [host.token, SECRET_QUERY, "SECRET_COOKIE", "SECRET_DEPLOY_TOKEN", "REDACTED", "cf-access-jwt-assertion", HOST_NAME]) {
       assert.ok(!stored.includes(secret), `stored telemetry contains ${secret}`);
     }

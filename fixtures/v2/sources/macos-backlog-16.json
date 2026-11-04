@@ -1,0 +1,1110 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "86400",
+      "atMs": "1793510400000",
+      "monoMs": "86400000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1200000",
+        "system": "300000",
+        "idle": "8500000",
+        "total": "10000000"
+      },
+      "load": {
+        "one": "2.150",
+        "five": "1.980",
+        "fifteen": "1.700"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17179869184",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "4096",
+        "swapOut": "8192",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86400000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "900000000",
+          "rxPackets": "700000",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "120000000",
+          "txPackets": "300000",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "512000000000"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849297",
+          "readSectors": "9270382600",
+          "writes": "370009905",
+          "writeSectors": "14625095624"
+        }
+      ],
+      "gpu": {
+        "active": "12345678901",
+        "total": "98765432100"
+      },
+      "power": {
+        "gpuNj": "40000000000",
+        "systemMwSum": "3600000",
+        "systemReadings": "120"
+      }
+    },
+    {
+      "seq": "86415",
+      "atMs": "1793510415000",
+      "monoMs": "86415000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1200826",
+        "system": "300729",
+        "idle": "8516445",
+        "total": "10018000"
+      },
+      "load": {
+        "one": "2.401",
+        "five": "2.150",
+        "fifteen": "1.980"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17191075201",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "8192",
+        "swapOut": "24576",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86415000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "901291500",
+          "rxPackets": "701435",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "121169700",
+          "txPackets": "301671",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999791104"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849351",
+          "readSectors": "9270383464",
+          "writes": "370010226",
+          "writeSectors": "14625103328"
+        }
+      ],
+      "gpu": {
+        "active": "12638732903",
+        "total": "99125432100"
+      },
+      "power": {
+        "gpuNj": "40799302566",
+        "systemMwSum": "3600000",
+        "systemReadings": "120"
+      }
+    },
+    {
+      "seq": "86430",
+      "atMs": "1793510430000",
+      "monoMs": "86430000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1201860",
+        "system": "301511",
+        "idle": "8532629",
+        "total": "10036000"
+      },
+      "load": {
+        "one": "1.177",
+        "five": "2.401",
+        "fifteen": "2.150"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17184639052",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "12288",
+        "swapOut": "40960",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86430000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "902495700",
+          "rxPackets": "702773",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "122098600",
+          "txPackets": "302998",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999680512"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849446",
+          "readSectors": "9270384984",
+          "writes": "370010599",
+          "writeSectors": "14625112280"
+        }
+      ],
+      "gpu": {
+        "active": "12817831972",
+        "total": "99485432100"
+      },
+      "power": {
+        "gpuNj": "43930294220",
+        "systemMwSum": "3600000",
+        "systemReadings": "120"
+      }
+    },
+    {
+      "seq": "86445",
+      "atMs": "1793510445000",
+      "monoMs": "86445000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1204499",
+        "system": "301839",
+        "idle": "8547662",
+        "total": "10054000"
+      },
+      "load": {
+        "one": "1.587",
+        "five": "1.177",
+        "fifteen": "2.401"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17174440808",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "16384",
+        "swapOut": "53248",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86445000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "905529600",
+          "rxPackets": "706144",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "123384500",
+          "txPackets": "304835",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999463424"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849520",
+          "readSectors": "9270386168",
+          "writes": "370010980",
+          "writeSectors": "14625121424"
+        }
+      ],
+      "gpu": {
+        "active": "12876581271",
+        "total": "99845432100"
+      },
+      "power": {
+        "gpuNj": "45191811833",
+        "systemMwSum": "3628748",
+        "systemReadings": "121"
+      }
+    },
+    {
+      "seq": "86460",
+      "atMs": "1793510460000",
+      "monoMs": "86460000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1206231",
+        "system": "302264",
+        "idle": "8563505",
+        "total": "10072000"
+      },
+      "load": {
+        "one": "2.193",
+        "five": "1.587",
+        "fifteen": "1.177"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17185989998",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "24576",
+        "swapOut": "53248",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86460000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "907155900",
+          "rxPackets": "707951",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "125369000",
+          "txPackets": "307670",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999459328"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849703",
+          "readSectors": "9270389096",
+          "writes": "370011185",
+          "writeSectors": "14625126344"
+        }
+      ],
+      "gpu": {
+        "active": "13137573997",
+        "total": "100205432100"
+      },
+      "power": {
+        "gpuNj": "47152568342",
+        "systemMwSum": "3628748",
+        "systemReadings": "121"
+      }
+    },
+    {
+      "seq": "86475",
+      "atMs": "1793510475000",
+      "monoMs": "86475000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1207966",
+        "system": "302326",
+        "idle": "8579708",
+        "total": "10090000"
+      },
+      "load": {
+        "one": "2.051",
+        "five": "2.193",
+        "fifteen": "1.587"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17188667899",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "28672",
+        "swapOut": "65536",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86475000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "908094600",
+          "rxPackets": "708994",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "127126700",
+          "txPackets": "310181",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999295488"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849769",
+          "readSectors": "9270390152",
+          "writes": "370011499",
+          "writeSectors": "14625133880"
+        }
+      ],
+      "gpu": {
+        "active": "13304198321",
+        "total": "100565432100"
+      },
+      "power": {
+        "gpuNj": "47555026748",
+        "systemMwSum": "3628748",
+        "systemReadings": "121"
+      }
+    },
+    {
+      "seq": "86490",
+      "atMs": "1793510490000",
+      "monoMs": "86490000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1207988",
+        "system": "302723",
+        "idle": "8597289",
+        "total": "10108000"
+      },
+      "load": {
+        "one": "1.887",
+        "five": "2.051",
+        "fifteen": "2.193"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17216496442",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "28672",
+        "swapOut": "73728",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86490000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "908108100",
+          "rxPackets": "709009",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "127290500",
+          "txPackets": "310415",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999238144"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849824",
+          "readSectors": "9270391032",
+          "writes": "370011705",
+          "writeSectors": "14625138824"
+        }
+      ],
+      "gpu": {
+        "active": "13401579203",
+        "total": "100925432100"
+      },
+      "power": {
+        "gpuNj": "50542064700",
+        "systemMwSum": "3628748",
+        "systemReadings": "121"
+      }
+    },
+    {
+      "seq": "86505",
+      "atMs": "1793510505000",
+      "monoMs": "86505000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1209894",
+        "system": "303450",
+        "idle": "8612656",
+        "total": "10126000"
+      },
+      "load": {
+        "one": "0.956",
+        "five": "1.887",
+        "fifteen": "2.051"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17227729809",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "36864",
+        "swapOut": "81920",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86505000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "910236600",
+          "rxPackets": "711374",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "127602000",
+          "txPackets": "310860",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511999168512"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849879",
+          "readSectors": "9270391912",
+          "writes": "370011908",
+          "writeSectors": "14625143696"
+        }
+      ],
+      "gpu": {
+        "active": "13742773923",
+        "total": "101285432100"
+      },
+      "power": {
+        "gpuNj": "52389289601",
+        "systemMwSum": "3657068",
+        "systemReadings": "122"
+      }
+    },
+    {
+      "seq": "86520",
+      "atMs": "1793510520000",
+      "monoMs": "86520000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1210624",
+        "system": "304137",
+        "idle": "8629239",
+        "total": "10144000"
+      },
+      "load": {
+        "one": "3.227",
+        "five": "0.956",
+        "fifteen": "1.887"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17252117544",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "40960",
+        "swapOut": "98304",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86520000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "911851200",
+          "rxPackets": "713168",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "127875000",
+          "txPackets": "311250",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998996480"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119849970",
+          "readSectors": "9270393368",
+          "writes": "370012180",
+          "writeSectors": "14625150224"
+        }
+      ],
+      "gpu": {
+        "active": "13857486363",
+        "total": "101645432100"
+      },
+      "power": {
+        "gpuNj": "53588411610",
+        "systemMwSum": "3657068",
+        "systemReadings": "122"
+      }
+    },
+    {
+      "seq": "86535",
+      "atMs": "1793510535000",
+      "monoMs": "86535000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1212223",
+        "system": "304442",
+        "idle": "8645335",
+        "total": "10162000"
+      },
+      "load": {
+        "one": "1.405",
+        "five": "3.227",
+        "fifteen": "0.956"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17228466276",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "40960",
+        "swapOut": "102400",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86535000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "915275700",
+          "rxPackets": "716973",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "129431100",
+          "txPackets": "313473",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998844928"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850026",
+          "readSectors": "9270394264",
+          "writes": "370012255",
+          "writeSectors": "14625152024"
+        }
+      ],
+      "gpu": {
+        "active": "13999587750",
+        "total": "102005432100"
+      },
+      "power": {
+        "gpuNj": "55050300255",
+        "systemMwSum": "3657068",
+        "systemReadings": "122"
+      }
+    },
+    {
+      "seq": "86550",
+      "atMs": "1793510550000",
+      "monoMs": "86550000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1213997",
+        "system": "304525",
+        "idle": "8661478",
+        "total": "10180000"
+      },
+      "load": {
+        "one": "2.461",
+        "five": "1.405",
+        "fifteen": "3.227"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17224665535",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "40960",
+        "swapOut": "110592",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86550000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "916394400",
+          "rxPackets": "718216",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "131095000",
+          "txPackets": "315850",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998627840"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850131",
+          "readSectors": "9270395944",
+          "writes": "370012631",
+          "writeSectors": "14625161048"
+        }
+      ],
+      "gpu": {
+        "active": "14205993101",
+        "total": "102365432100"
+      },
+      "power": {
+        "gpuNj": "56167741467",
+        "systemMwSum": "3657068",
+        "systemReadings": "122"
+      }
+    },
+    {
+      "seq": "86565",
+      "atMs": "1793510565000",
+      "monoMs": "86565000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1216933",
+        "system": "304788",
+        "idle": "8676279",
+        "total": "10198000"
+      },
+      "load": {
+        "one": "2.840",
+        "five": "2.461",
+        "fifteen": "1.405"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17254771517",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "45056",
+        "swapOut": "114688",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86565000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "919377000",
+          "rxPackets": "721530",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "132770100",
+          "txPackets": "318243",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998529536"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850277",
+          "readSectors": "9270398280",
+          "writes": "370012653",
+          "writeSectors": "14625161576"
+        }
+      ],
+      "gpu": {
+        "active": "14243358764",
+        "total": "102725432100"
+      },
+      "power": {
+        "gpuNj": "60100740522",
+        "systemMwSum": "3682907",
+        "systemReadings": "123"
+      }
+    },
+    {
+      "seq": "86580",
+      "atMs": "1793510580000",
+      "monoMs": "86580000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1217347",
+        "system": "305045",
+        "idle": "8693608",
+        "total": "10216000"
+      },
+      "load": {
+        "one": "2.871",
+        "five": "2.840",
+        "fifteen": "2.461"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17261931047",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "49152",
+        "swapOut": "118784",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86580000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "922722300",
+          "rxPackets": "725247",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "132824700",
+          "txPackets": "318321",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998418944"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850429",
+          "readSectors": "9270400712",
+          "writes": "370012807",
+          "writeSectors": "14625165272"
+        }
+      ],
+      "gpu": {
+        "active": "14475474816",
+        "total": "103085432100"
+      },
+      "power": {
+        "gpuNj": "63282993968",
+        "systemMwSum": "3682907",
+        "systemReadings": "123"
+      }
+    },
+    {
+      "seq": "86595",
+      "atMs": "1793510595000",
+      "monoMs": "86595000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1219606",
+        "system": "305392",
+        "idle": "8709002",
+        "total": "10234000"
+      },
+      "load": {
+        "one": "2.338",
+        "five": "2.871",
+        "fifteen": "2.840"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17238969367",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "49152",
+        "swapOut": "126976",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86595000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "925244100",
+          "rxPackets": "728049",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "133182400",
+          "txPackets": "318832",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998300160"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850586",
+          "readSectors": "9270403224",
+          "writes": "370012934",
+          "writeSectors": "14625168320"
+        }
+      ],
+      "gpu": {
+        "active": "14651718329",
+        "total": "103445432100"
+      },
+      "power": {
+        "gpuNj": "66797049387",
+        "systemMwSum": "3682907",
+        "systemReadings": "123"
+      }
+    },
+    {
+      "seq": "86610",
+      "atMs": "1793510610000",
+      "monoMs": "86610000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1219985",
+        "system": "305741",
+        "idle": "8726274",
+        "total": "10252000"
+      },
+      "load": {
+        "one": "1.383",
+        "five": "2.338",
+        "fifteen": "2.871"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17251270655",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "53248",
+        "swapOut": "143360",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86610000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "925998300",
+          "rxPackets": "728887",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "133603800",
+          "txPackets": "319434",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511998062592"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850678",
+          "readSectors": "9270404696",
+          "writes": "370013284",
+          "writeSectors": "14625176720"
+        }
+      ],
+      "gpu": {
+        "active": "14837644503",
+        "total": "103805432100"
+      },
+      "power": {
+        "gpuNj": "67278914117",
+        "systemMwSum": "3682907",
+        "systemReadings": "123"
+      }
+    },
+    {
+      "seq": "86625",
+      "atMs": "1793510625000",
+      "monoMs": "86625000",
+      "unavailable": [
+        "psi"
+      ],
+      "cpu": {
+        "user": "1221382",
+        "system": "306449",
+        "idle": "8742169",
+        "total": "10270000"
+      },
+      "load": {
+        "one": "0.204",
+        "five": "1.383",
+        "fifteen": "2.338"
+      },
+      "mem": {
+        "total": "34359738368",
+        "available": "17225149281",
+        "swapTotal": "2147483648",
+        "swapFree": "1073741824",
+        "swapIn": "53248",
+        "swapOut": "151552",
+        "pressure": "normal"
+      },
+      "uptimeMs": "86625000",
+      "cpuCount": 12,
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "926052300",
+          "rxPackets": "728947",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "133715100",
+          "txPackets": "319593",
+          "txErrors": "0"
+        }
+      ],
+      "filesystems": [
+        {
+          "id": "/System/Volumes/Data",
+          "type": "apfs",
+          "total": "994662584320",
+          "available": "511997882368"
+        }
+      ],
+      "disks": [
+        {
+          "id": "1:0",
+          "name": "disk0",
+          "reads": "119850777",
+          "readSectors": "9270406280",
+          "writes": "370013553",
+          "writeSectors": "14625183176"
+        }
+      ],
+      "gpu": {
+        "active": "14933870458",
+        "total": "104165432100"
+      },
+      "power": {
+        "gpuNj": "68104271794",
+        "systemMwSum": "3711232",
+        "systemReadings": "124"
+      }
+    }
+  ]
+}

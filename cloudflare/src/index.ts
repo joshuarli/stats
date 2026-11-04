@@ -9,6 +9,7 @@ import { runCollector } from "./projects/collector";
 import { markInvocation } from "./observe/cloudflare/mark";
 import { reportError } from "./observe/producer/report";
 import { readLimitedText } from "./body";
+import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "./ingest/http.ts";
 import { isObservedService } from "./observe/services";
 import { MAX_ARTIFACT_BYTES } from "./observe/core/limits";
 import { rolloutsFromDeployments } from "./observe/cloudflare/rollouts";
@@ -110,17 +111,25 @@ export default {
     const path = new URL(request.url).pathname;
     if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
     if (path.startsWith(`${OBSERVE_PREFIX}/`)) return observe(request, env, path);
-    if (path === "/ingest/v1/batches") {
-      if (request.method === "POST") {
-        if (bearerToken(request.headers.get("authorization")) === null) {
-          logIngestRejection("unauthorized");
-          return error(401, "unauthorized", "a host bearer token is required");
-        }
-        const declared = request.headers.get("content-length");
-        if (declared !== null && Number(declared) > MAX_BODY_BYTES) {
-          logIngestRejection("too_large");
-          return error(413, "too_large", "batch exceeds the body cap");
-        }
+    if (RETIRED_INGEST_PATHS.has(path)) {
+      logIngestRejection("gone");
+      return error(410, "gone", "this ingest protocol was removed; upgrade the agent to one that posts to /ingest/v2/batches");
+    }
+    if (path === INGEST_PATH) {
+      if (request.method !== "POST") return error(405, "invalid_request", "POST required");
+      if (bearerToken(request.headers.get("authorization")) === null) {
+        logIngestRejection("unauthorized");
+        return error(401, "unauthorized", "a host bearer token is required");
+      }
+      const media = mediaProblem(request.headers);
+      if (media !== null) {
+        logIngestRejection("invalid_request");
+        return error(415, "invalid_request", media);
+      }
+      const declared = request.headers.get("content-length");
+      if (declared !== null && Number(declared) > MAX_BODY_BYTES) {
+        logIngestRejection("too_large");
+        return error(413, "too_large", "batch exceeds the body cap");
       }
       const stub = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
       return secure(await stub.fetch(internal(request, "/ingest")));

@@ -1,0 +1,140 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "cpu": {
+        "user": "10",
+        "system": "5",
+        "idle": "80",
+        "total": "95"
+      },
+      "mem": {
+        "total": "100",
+        "available": "50",
+        "swapTotal": "10",
+        "swapFree": "10"
+      },
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "9000",
+          "rxPackets": "10",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "7000",
+          "txPackets": "10",
+          "txErrors": "0"
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "cpu": {
+        "user": "11",
+        "system": "5",
+        "idle": "81",
+        "iowait": "1",
+        "steal": "0",
+        "total": "98"
+      },
+      "mem": {
+        "total": "100",
+        "available": "40",
+        "swapTotal": "10",
+        "swapFree": "9",
+        "swapIn": "4096",
+        "swapOut": "8192",
+        "pressure": "warn"
+      },
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "9900",
+          "rxPackets": "11",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "7700",
+          "txPackets": "11",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "cpu": {
+        "user": "12",
+        "system": "6",
+        "idle": "82",
+        "iowait": "1",
+        "steal": "0",
+        "total": "101"
+      },
+      "mem": {
+        "total": "100",
+        "available": "30",
+        "swapTotal": "10",
+        "swapFree": "8",
+        "swapIn": "8192",
+        "swapOut": "8192",
+        "pressure": "critical"
+      },
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "10800",
+          "rxPackets": "12",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "8400",
+          "txPackets": "12",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "atMs": "1793510344000",
+      "monoMs": "4000",
+      "cpu": {
+        "user": "13",
+        "system": "6",
+        "idle": "83",
+        "iowait": "1",
+        "steal": "0",
+        "total": "103"
+      },
+      "mem": {
+        "total": "100",
+        "available": "30",
+        "swapTotal": "10",
+        "swapFree": "8",
+        "swapIn": "0",
+        "swapOut": "8192",
+        "pressure": "normal"
+      },
+      "nets": [
+        {
+          "id": "en0",
+          "rxBytes": "11700",
+          "rxPackets": "13",
+          "rxDrops": "0",
+          "rxErrors": "0",
+          "txBytes": "9100",
+          "txPackets": "13",
+          "txErrors": "0",
+          "txDrops": "0"
+        }
+      ]
+    }
+  ]
+}

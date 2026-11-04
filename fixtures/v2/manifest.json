@@ -1,0 +1,492 @@
+{
+  "version": 2,
+  "batches": [
+    {
+      "name": "minimal",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "workload": "minimal",
+      "source": "sources/minimal.json",
+      "frame": "frames/minimal.stb2"
+    },
+    {
+      "name": "linux-normal",
+      "label": "fixture-derived",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "budget": 520,
+      "workload": "linux-normal",
+      "source": "sources/linux-normal.json",
+      "frame": "frames/linux-normal.stb2"
+    },
+    {
+      "name": "macos-normal",
+      "label": "fixture-derived",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "budget": 370,
+      "workload": "macos-normal",
+      "source": "sources/macos-normal.json",
+      "frame": "frames/macos-normal.stb2"
+    },
+    {
+      "name": "linux-single",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "budget": 345,
+      "workload": "linux-single",
+      "source": "sources/linux-single.json",
+      "frame": "frames/linux-single.stb2"
+    },
+    {
+      "name": "macos-single",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "budget": 240,
+      "workload": "macos-single",
+      "source": "sources/macos-single.json",
+      "frame": "frames/macos-single.stb2"
+    },
+    {
+      "name": "system",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "budget": 190,
+      "workload": "system",
+      "source": "sources/system.json",
+      "frame": "frames/system.stb2"
+    },
+    {
+      "name": "linux-normal-system",
+      "label": "fixture-derived",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "budget": 630,
+      "workload": "linux-normal-system",
+      "source": "sources/linux-normal-system.json",
+      "frame": "frames/linux-normal-system.stb2"
+    },
+    {
+      "name": "linux-backlog-16",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "budget": 3570,
+      "workload": "linux-backlog-16",
+      "source": "sources/linux-backlog-16.json",
+      "frame": "frames/linux-backlog-16.stb2"
+    },
+    {
+      "name": "macos-backlog-16",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "budget": 2210,
+      "workload": "macos-backlog-16",
+      "source": "sources/macos-backlog-16.json",
+      "frame": "frames/macos-backlog-16.stb2"
+    },
+    {
+      "name": "u64-boundaries",
+      "label": "boundary",
+      "samples": [
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "workload": "large-counters",
+      "source": "sources/u64-boundaries.json",
+      "frame": "frames/u64-boundaries.stb2"
+    },
+    {
+      "name": "fixed-point-boundaries",
+      "label": "boundary",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/fixed-point-boundaries.json",
+      "frame": "frames/fixed-point-boundaries.stb2"
+    },
+    {
+      "name": "zero-values",
+      "label": "boundary",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/zero-values.json",
+      "frame": "frames/zero-values.stb2"
+    },
+    {
+      "name": "counter-reset",
+      "label": "fixture-derived",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "workload": "counter-reset",
+      "source": "sources/counter-reset.json",
+      "frame": "frames/counter-reset.stb2"
+    },
+    {
+      "name": "clock-jump",
+      "label": "fixture-derived",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/clock-jump.json",
+      "frame": "frames/clock-jump.stb2"
+    },
+    {
+      "name": "reboot-before",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "source": "sources/reboot-before.json",
+      "frame": "frames/reboot-before.stb2"
+    },
+    {
+      "name": "reboot-after",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "source": "sources/reboot-after.json",
+      "frame": "frames/reboot-after.stb2"
+    },
+    {
+      "name": "out-of-order-late",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "source": "sources/out-of-order-late.json",
+      "frame": "frames/out-of-order-late.stb2"
+    },
+    {
+      "name": "out-of-order-within-batch",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/out-of-order-within-batch.json",
+      "frame": "frames/out-of-order-within-batch.stb2"
+    },
+    {
+      "name": "presence",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "workload": "missing-groups",
+      "source": "sources/presence.json",
+      "frame": "frames/presence.stb2"
+    },
+    {
+      "name": "device-churn",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/device-churn.json",
+      "frame": "frames/device-churn.stb2"
+    },
+    {
+      "name": "device-union",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "workload": "device-union",
+      "source": "sources/device-union.json",
+      "frame": "frames/device-union.stb2"
+    },
+    {
+      "name": "high-cardinality-16",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "budget": 14400,
+      "workload": "high-cardinality-16",
+      "source": "sources/high-cardinality-16.json",
+      "frame": "frames/high-cardinality-16.stb2"
+    },
+    {
+      "name": "block-histogram",
+      "label": "boundary",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample"
+      ],
+      "source": "sources/block-histogram.json",
+      "frame": "frames/block-histogram.stb2"
+    },
+    {
+      "name": "gpu-power",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/gpu-power.json",
+      "frame": "frames/gpu-power.stb2"
+    },
+    {
+      "name": "swap-and-optional-counters",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/swap-and-optional-counters.json",
+      "frame": "frames/swap-and-optional-counters.stb2"
+    },
+    {
+      "name": "partial-acceptance",
+      "label": "synthetic",
+      "samples": [
+        "invalid_sample",
+        "accept",
+        "invalid_sample",
+        "accept"
+      ],
+      "source": "sources/partial-acceptance.json",
+      "frame": "frames/partial-acceptance.stb2"
+    },
+    {
+      "name": "semantic-rejects",
+      "label": "boundary",
+      "samples": [
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample",
+        "invalid_sample"
+      ],
+      "source": "sources/semantic-rejects.json",
+      "frame": "frames/semantic-rejects.stb2"
+    },
+    {
+      "name": "rebatch-second-alone",
+      "label": "fixture-derived",
+      "samples": [
+        "accept"
+      ],
+      "source": "sources/rebatch-second-alone.json",
+      "frame": "frames/rebatch-second-alone.stb2"
+    },
+    {
+      "name": "rebatch-second-after-other",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/rebatch-second-after-other.json",
+      "frame": "frames/rebatch-second-after-other.stb2"
+    },
+    {
+      "name": "rebatch-other-dictionary-order",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/rebatch-other-dictionary-order.json",
+      "frame": "frames/rebatch-other-dictionary-order.stb2"
+    },
+    {
+      "name": "conflict",
+      "label": "synthetic",
+      "samples": [
+        "accept"
+      ],
+      "source": "sources/conflict.json",
+      "frame": "frames/conflict.stb2"
+    },
+    {
+      "name": "random-011",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-011.json",
+      "frame": "frames/random-011.stb2"
+    },
+    {
+      "name": "random-023",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-023.json",
+      "frame": "frames/random-023.stb2"
+    },
+    {
+      "name": "random-047",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-047.json",
+      "frame": "frames/random-047.stb2"
+    },
+    {
+      "name": "random-089",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-089.json",
+      "frame": "frames/random-089.stb2"
+    },
+    {
+      "name": "random-131",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-131.json",
+      "frame": "frames/random-131.stb2"
+    },
+    {
+      "name": "random-257",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/random-257.json",
+      "frame": "frames/random-257.stb2"
+    }
+  ]
+}

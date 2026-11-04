@@ -1,6 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
-import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
+import { canonicalJson, type Sample, type SystemInfo } from "./protocol";
+import { decodeFrame } from "./ingest/frame.ts";
+import { validateSample, normalizeSystem } from "./ingest/sample.ts";
+import { ACK_MEDIA_TYPE, encodeAck, type SampleRejection } from "./ingest/ack.ts";
+import { mediaProblem } from "./ingest/http.ts";
 import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
 import { HISTORY_CONTENT_TYPE } from "./binary/history";
@@ -10,7 +14,7 @@ import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
 import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
-import { readLimitedText } from "./body";
+import { readLimitedBytes } from "./body";
 import { reportError } from "./observe/producer/report";
 
 export const ONLINE_WINDOW_MS = 45_000;
@@ -550,12 +554,13 @@ export class Installation extends DurableObject<Env> {
 
   async ingest(request: Request): Promise<Response> {
     if (request.method !== "POST") return this.reject("invalid_request", "POST required", 405);
-    const contentType = request.headers.get("content-type") ?? "";
-    if (!contentType.toLowerCase().startsWith("application/json")) return this.reject("invalid_request", "application/json required", 415);
-    const text = await readLimitedText(request, MAX_BODY_BYTES);
-    if (text === null) return this.reject("too_large", "batch exceeds the body cap", 413);
-    const parsed = parseBatch(text);
-    if (!parsed.ok) return this.reject(parsed.code, parsed.message, parsed.code === "too_large" ? 413 : 400);
+    const media = mediaProblem(request.headers);
+    if (media !== null) return this.reject("invalid_request", media, 415);
+    const body = await readLimitedBytes(request, MAX_BODY_BYTES);
+    if (body === null) return this.reject("too_large", "batch exceeds the body cap", 413);
+    const decoded = decodeFrame(body);
+    if (!decoded.ok) return this.reject(decoded.code, decoded.message, 400);
+    const parsed = decoded.batch;
     const token = bearerToken(request.headers.get("authorization"));
     if (token === null) return this.reject("unauthorized", "a host bearer token is required", 401);
     const hash = await tokenHash(token);
@@ -582,19 +587,19 @@ export class Installation extends DurableObject<Env> {
     if (rejectedCredential) return this.reject("unauthorized", "host credential rejected", 401, parsed.hostId);
     if (limited) return this.reject("rate_limited", "host request rate exceeded", 429, parsed.hostId, { "Retry-After": "60" });
 
-    const rejected: { seq: string; code: ErrorCode }[] = [];
+    const rejected: { seq: string; code: SampleRejection }[] = [];
     const affectedMinutes: number[] = [];
     let accepted = 0;
     let duplicates = 0;
     this.ctx.storage.transactionSync(() => {
       const valid: { sample: Sample; seq: string; at: number; mono: number }[] = [];
-      for (const result of parsed.samples) {
+      for (const result of parsed.samples.map(validateSample)) {
         if (!result.ok) {
-          if (result.seq !== undefined) rejected.push({ seq: result.seq, code: "invalid_sample" });
+          rejected.push({ seq: result.seq, code: "invalid_sample" });
           continue;
         }
-        const at = Number(result.sample.atMs);
-        const mono = Number(result.sample.monoMs);
+        const at = result.atMs;
+        const mono = result.monoMs;
         if (at > now + 300_000) {
           rejected.push({ seq: result.sample.seq, code: "invalid_sample" });
           continue;
@@ -636,7 +641,7 @@ export class Installation extends DurableObject<Env> {
         this.ctx.storage.sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
         this.ctx.storage.sql.exec("INSERT INTO host_history_versions (host_id, version) VALUES (?, 1) ON CONFLICT(host_id) DO UPDATE SET version = version + 1", parsed.hostId);
       }
-      if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(parsed.system));
+      if (accepted + duplicates > 0 && parsed.system !== undefined) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(normalizeSystem(parsed.system)));
       if (affectedMinutes.length > 0) this.rebuildRollups(parsed.hostId, affectedMinutes);
     });
 
@@ -645,7 +650,7 @@ export class Installation extends DurableObject<Env> {
       return this.reject(code, "no samples were accepted", 400, parsed.hostId, {}, { rejected });
     }
     await this.ensureAlarm(now);
-    return json({ v: 1, accepted, duplicates, rejected });
+    return new Response(encodeAck({ accepted, duplicates, rejected: rejected.map(entry => ({ seq: BigInt(entry.seq), code: entry.code })) }), { headers: { "Content-Type": ACK_MEDIA_TYPE } });
   }
 
   override async fetch(request: Request): Promise<Response> {

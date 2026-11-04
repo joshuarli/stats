@@ -1,0 +1,45 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "30",
+      "atMs": "1793510370000",
+      "monoMs": "30000",
+      "cpu": {
+        "user": "3000",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "3100"
+      }
+    },
+    {
+      "seq": "10",
+      "atMs": "1793510350000",
+      "monoMs": "10000",
+      "cpu": {
+        "user": "1000",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "1100"
+      }
+    },
+    {
+      "seq": "20",
+      "atMs": "1793510360000",
+      "monoMs": "20000",
+      "cpu": {
+        "user": "2000",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "2100"
+      }
+    }
+  ]
+}

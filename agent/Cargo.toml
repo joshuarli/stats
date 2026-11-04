@@ -16,8 +16,10 @@ path = "src/main.rs"
 libc = "0.2.191"
 deser = { version = "0.10.2", features = ["derive"] }
 deser-json = "0.10.2"
-deser-value = "0.10.2"
 h12tiny-client-sync = { version = "0.7.0", registry = "mycrates", features = ["tls"] }
+
+[dev-dependencies]
+deser-value = "0.10.2"
 
 [profile.release]
 strip = true
