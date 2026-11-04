@@ -1,0 +1,466 @@
+import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS } from "./limits.ts";
+import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, Stage } from "./model.ts";
+import { formatFrames, readFrames, type StackFrame } from "./stack.ts";
+import { representativeFrame } from "./grouping.ts";
+
+export type SqlValue = string | number | null;
+
+export interface SqlDatabase {
+  rows<T>(query: string, ...params: SqlValue[]): T[];
+  run(query: string, ...params: SqlValue[]): void;
+  transaction<T>(fn: () => T): T;
+}
+
+export type IssueState = "open" | "resolved";
+
+export interface IngestResult {
+  accepted: number;
+  duplicate: number;
+  conflict: number;
+  expired: number;
+  future: number;
+  rejected: number;
+  issueCapacity: number;
+}
+
+export interface CleanupResult {
+  readonly deleted: number;
+  readonly evicted: number;
+  readonly more: boolean;
+}
+
+export interface Page<T> {
+  readonly items: readonly T[];
+  readonly next: string | null;
+}
+
+export interface IssueSummary {
+  readonly fingerprint: string;
+  readonly name: string;
+  readonly operation: string | null;
+  readonly frame: string | null;
+  readonly state: IssueState;
+  readonly occurrences: number;
+  readonly firstAtMs: number;
+  readonly lastAtMs: number;
+  readonly lastVersion: string | null;
+  readonly versions: number;
+}
+
+export interface Occurrence {
+  readonly id: number;
+  readonly invocationKey: string;
+  readonly traceId: string | null;
+  readonly atMs: number;
+  readonly version: string | null;
+  readonly source: PreparedError["source"];
+  readonly operation: string | null;
+  readonly name: string;
+  readonly message: string | null;
+  readonly frames: readonly StackFrame[];
+}
+
+export interface InvocationSummary {
+  readonly key: string;
+  readonly traceId: string | null;
+  readonly stage: Stage;
+  readonly kind: InvocationKind;
+  readonly label: string;
+  readonly objectId: string | null;
+  readonly status: number | null;
+  readonly outcome: string;
+  readonly failed: boolean;
+  readonly cpuMs: number;
+  readonly wallMs: number;
+  readonly atMs: number;
+  readonly version: string | null;
+  readonly errorCount: number;
+}
+
+export interface TraceSummary extends InvocationSummary {
+  readonly objectInvocations: number;
+  readonly objectCpuMs: number;
+}
+
+export interface TraceDetail {
+  readonly traceId: string;
+  readonly rootPresent: boolean;
+  readonly truncated: boolean;
+  readonly invocations: readonly InvocationSummary[];
+  readonly occurrences: readonly Occurrence[];
+}
+
+export interface TraceFilter {
+  readonly label?: string;
+  readonly version?: string;
+  readonly failed?: boolean;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface Health {
+  readonly newestAtMs: number | null;
+  readonly oldestAtMs: number | null;
+  readonly liveInvocations: number;
+  readonly cleanupBacklog: number;
+  readonly cleanupLagMs: number;
+  readonly openIssues: number;
+  readonly duplicate: number;
+  readonly conflict: number;
+  readonly expired: number;
+  readonly future: number;
+  readonly rejected: number;
+  readonly issueCapacity: number;
+  readonly evicted: number;
+}
+
+const STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS observe_invocations (
+    key TEXT PRIMARY KEY,
+    digest TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    event_at INTEGER NOT NULL,
+    trace_id TEXT,
+    stage TEXT NOT NULL CHECK (stage IN ('worker', 'object')),
+    kind TEXT NOT NULL CHECK (kind IN ('fetch', 'rpc', 'alarm', 'scheduled')),
+    label TEXT NOT NULL,
+    object_id TEXT,
+    version TEXT,
+    status INTEGER,
+    outcome TEXT NOT NULL,
+    failed INTEGER NOT NULL CHECK (failed IN (0, 1)),
+    cpu_ms INTEGER NOT NULL,
+    wall_ms INTEGER NOT NULL,
+    error_count INTEGER NOT NULL
+  ) WITHOUT ROWID`,
+  "CREATE INDEX IF NOT EXISTS observe_invocations_time ON observe_invocations (observed_at)",
+  "CREATE INDEX IF NOT EXISTS observe_invocations_trace ON observe_invocations (trace_id) WHERE trace_id IS NOT NULL",
+  `CREATE TABLE IF NOT EXISTS observe_occurrences (
+    id INTEGER PRIMARY KEY,
+    invocation_key TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    trace_id TEXT,
+    version TEXT,
+    has_stack INTEGER NOT NULL CHECK (has_stack IN (0, 1)),
+    propagated INTEGER NOT NULL CHECK (propagated IN (0, 1)),
+    source TEXT NOT NULL CHECK (source IN ('uncaught', 'caught')),
+    operation TEXT,
+    name TEXT NOT NULL,
+    message TEXT,
+    frames TEXT NOT NULL,
+    UNIQUE (invocation_key, ordinal)
+  )`,
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_issue ON observe_occurrences (fingerprint, observed_at)",
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_time ON observe_occurrences (observed_at)",
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_trace ON observe_occurrences (trace_id) WHERE trace_id IS NOT NULL",
+  `CREATE TABLE IF NOT EXISTS observe_issues (
+    fingerprint TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    operation TEXT,
+    frame TEXT,
+    state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+    state_at INTEGER NOT NULL
+  ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_health (
+    bucket_at INTEGER PRIMARY KEY,
+    duplicate INTEGER NOT NULL,
+    conflict INTEGER NOT NULL,
+    expired INTEGER NOT NULL,
+    future INTEGER NOT NULL,
+    rejected INTEGER NOT NULL,
+    issue_capacity INTEGER NOT NULL,
+    evicted INTEGER NOT NULL
+  )`
+];
+
+export function initializeStore(db: SqlDatabase): void {
+  db.transaction(() => { for (const statement of STATEMENTS) db.run(statement); });
+}
+
+export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number): IngestResult {
+  const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
+  const cutoff = nowMs - RETENTION_MS;
+  db.transaction(() => {
+    for (const preparation of preparations) {
+      if (!preparation.ok) { result.rejected++; continue; }
+      const invocation = preparation.invocation;
+      const observedAt = Math.min(invocation.eventAtMs, nowMs);
+      if (invocation.eventAtMs > nowMs + MAX_FUTURE_SKEW_MS) { result.future++; continue; }
+      if (observedAt <= cutoff) { result.expired++; continue; }
+      const existing = db.rows<{ digest: string }>("SELECT digest FROM observe_invocations WHERE key = ?", invocation.key)[0];
+      if (existing !== undefined) {
+        if (existing.digest === invocation.digest) result.duplicate++;
+        else result.conflict++;
+        continue;
+      }
+      insertInvocation(db, invocation, observedAt);
+      for (const error of invocation.errors) {
+        if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) result.issueCapacity++;
+      }
+      result.accepted++;
+    }
+    recordHealth(db, nowMs, { ...result, evicted: 0 });
+  });
+  return result;
+}
+
+function isFailed(invocation: PreparedInvocation): boolean {
+  return invocation.outcome !== "ok" || (invocation.status !== null && invocation.status >= 500) || invocation.errorCount > 0;
+}
+
+function insertInvocation(db: SqlDatabase, invocation: PreparedInvocation, observedAt: number): void {
+  db.run(
+    "INSERT INTO observe_invocations (key, digest, observed_at, event_at, trace_id, stage, kind, label, object_id, version, status, outcome, failed, cpu_ms, wall_ms, error_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    invocation.key, invocation.digest, observedAt, invocation.eventAtMs, invocation.trace?.traceId ?? null, invocation.stage, invocation.kind, invocation.label,
+    invocation.objectId, invocation.version, invocation.status, invocation.outcome, isFailed(invocation) ? 1 : 0, invocation.cpuMs, invocation.wallMs, invocation.errorCount
+  );
+}
+
+function insertOccurrence(db: SqlDatabase, invocation: PreparedInvocation, error: PreparedError, observedAt: number, cutoff: number): boolean {
+  const traceId = invocation.trace?.traceId ?? null;
+  const hasStack = error.frames.length > 0;
+  const sameError = "trace_id = ? AND name = ? AND message IS ? AND observed_at > ?";
+  const propagated = traceId !== null && !hasStack
+    && db.rows<{ one: number }>(`SELECT 1 AS one FROM observe_occurrences WHERE ${sameError} AND has_stack = 1 LIMIT 1`, traceId, error.name, error.message, cutoff).length > 0;
+  db.run(
+    "INSERT INTO observe_occurrences (invocation_key, ordinal, fingerprint, observed_at, trace_id, version, has_stack, propagated, source, operation, name, message, frames) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    invocation.key, error.ordinal, error.fingerprint, observedAt, traceId, invocation.version, hasStack ? 1 : 0, propagated ? 1 : 0,
+    error.source, error.operation, error.name, error.message, formatFrames(error.frames)
+  );
+  if (traceId !== null && hasStack) {
+    db.run(`UPDATE observe_occurrences SET propagated = 1 WHERE ${sameError} AND has_stack = 0 AND propagated = 0`, traceId, error.name, error.message, cutoff);
+  }
+  if (propagated) return true;
+  return upsertIssue(db, error, observedAt);
+}
+
+function upsertIssue(db: SqlDatabase, error: PreparedError, observedAt: number): boolean {
+  const issue = db.rows<{ state: IssueState; state_at: number }>("SELECT state, state_at FROM observe_issues WHERE fingerprint = ?", error.fingerprint)[0];
+  if (issue === undefined) {
+    const count = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]?.n ?? 0;
+    if (count >= MAX_ISSUES) return false;
+    db.run("INSERT INTO observe_issues (fingerprint, name, operation, frame, state, state_at) VALUES (?, ?, ?, ?, 'open', ?)", error.fingerprint, error.name, error.operation, representativeFrame(error.frames), observedAt);
+    return true;
+  }
+  if (issue.state === "resolved" && observedAt > issue.state_at) {
+    db.run("UPDATE observe_issues SET state = 'open', state_at = ? WHERE fingerprint = ?", observedAt, error.fingerprint);
+  }
+  return true;
+}
+
+function recordHealth(db: SqlDatabase, nowMs: number, counts: Omit<IngestResult, "accepted"> & { evicted: number }): void {
+  const values = [counts.duplicate, counts.conflict, counts.expired, counts.future, counts.rejected, counts.issueCapacity, counts.evicted];
+  if (values.every(value => value === 0)) return;
+  db.run(
+    `INSERT INTO observe_health (bucket_at, duplicate, conflict, expired, future, rejected, issue_capacity, evicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (bucket_at) DO UPDATE SET duplicate = duplicate + excluded.duplicate, conflict = conflict + excluded.conflict,
+       expired = expired + excluded.expired, future = future + excluded.future, rejected = rejected + excluded.rejected,
+       issue_capacity = issue_capacity + excluded.issue_capacity, evicted = evicted + excluded.evicted`,
+    nowMs - (nowMs % HEALTH_BUCKET_MS), ...values
+  );
+}
+
+export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
+  const cutoff = nowMs - RETENTION_MS;
+  return db.transaction(() => {
+    const expiredInvocations = count(db, "SELECT COUNT(*) AS n FROM observe_invocations WHERE observed_at <= ?", cutoff);
+    const expiredOccurrences = count(db, "SELECT COUNT(*) AS n FROM observe_occurrences WHERE observed_at <= ?", cutoff);
+    db.run("DELETE FROM observe_invocations WHERE key IN (SELECT key FROM observe_invocations WHERE observed_at <= ? ORDER BY observed_at LIMIT ?)", cutoff, CLEANUP_BATCH);
+    db.run("DELETE FROM observe_occurrences WHERE id IN (SELECT id FROM observe_occurrences WHERE observed_at <= ? ORDER BY observed_at LIMIT ?)", cutoff, CLEANUP_BATCH);
+    db.run("DELETE FROM observe_issues WHERE NOT EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = observe_issues.fingerprint AND o.observed_at > ?)", cutoff);
+    db.run("DELETE FROM observe_health WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
+    const evicted = evict(db);
+    recordHealth(db, nowMs, { duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted });
+    const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
+    return { deleted, evicted, more: expiredInvocations > CLEANUP_BATCH || expiredOccurrences > CLEANUP_BATCH };
+  });
+}
+
+function evict(db: SqlDatabase): number {
+  const invocationExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_invocations") - MAX_RETAINED_INVOCATIONS, CLEANUP_BATCH);
+  if (invocationExcess > 0) db.run("DELETE FROM observe_invocations WHERE key IN (SELECT key FROM observe_invocations WHERE failed = 0 ORDER BY observed_at LIMIT ?)", invocationExcess);
+  const occurrenceExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_occurrences") - MAX_RETAINED_OCCURRENCES, CLEANUP_BATCH);
+  if (occurrenceExcess > 0) db.run("DELETE FROM observe_occurrences WHERE id IN (SELECT id FROM observe_occurrences ORDER BY observed_at LIMIT ?)", occurrenceExcess);
+  return Math.max(invocationExcess, 0) + Math.max(occurrenceExcess, 0);
+}
+
+export function nextCleanupAt(db: SqlDatabase, nowMs: number, cleaned: CleanupResult): number | null {
+  if (cleaned.more) return nowMs;
+  const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences)")[0]?.at ?? null;
+  if (oldest === null) return null;
+  return Math.max(oldest + RETENTION_MS, nowMs + CLEANUP_INTERVAL_MS);
+}
+
+function count(db: SqlDatabase, query: string, ...params: SqlValue[]): number {
+  return db.rows<{ n: number }>(query, ...params)[0]?.n ?? 0;
+}
+
+const KEYSET = /^(\d{1,16})\.([0-9a-f]{1,64})$/u;
+
+function parseCursor(cursor: string | undefined): { at: number; key: string } | null {
+  if (cursor === undefined) return null;
+  const match = KEYSET.exec(cursor);
+  if (match === null) throw new RangeError("invalid cursor");
+  return { at: Number(match[1]), key: match[2] ?? "" };
+}
+
+function pageSize(limit: number | undefined): number {
+  if (limit === undefined) return MAX_PAGE_SIZE;
+  if (!Number.isInteger(limit) || limit < 1) throw new RangeError("invalid page size");
+  return Math.min(limit, MAX_PAGE_SIZE);
+}
+
+function page<T>(rows: readonly T[], size: number, cursorOf: (row: T) => string): Page<T> {
+  const items = rows.slice(0, size);
+  const last = items.at(-1);
+  return { items, next: rows.length > size && last !== undefined ? cursorOf(last) : null };
+}
+
+interface IssueRow {
+  fingerprint: string; name: string; operation: string | null; frame: string | null; state: IssueState;
+  occurrences: number; first_at: number; last_at: number; last_version: string | null; versions: number;
+}
+
+export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
+  const cutoff = nowMs - RETENTION_MS;
+  const size = pageSize(filter.limit);
+  const cursor = parseCursor(filter.cursor);
+  const rows = db.rows<IssueRow>(
+    `SELECT i.fingerprint, i.name, i.operation, i.frame, i.state, COUNT(*) AS occurrences, MIN(o.observed_at) AS first_at, MAX(o.observed_at) AS last_at,
+       COUNT(DISTINCT o.version) AS versions,
+       (SELECT l.version FROM observe_occurrences l WHERE l.fingerprint = i.fingerprint AND l.propagated = 0 AND l.observed_at > ? ORDER BY l.observed_at DESC, l.id DESC LIMIT 1) AS last_version
+     FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
+     WHERE (? IS NULL OR i.state = ?)
+     GROUP BY i.fingerprint
+     HAVING ? IS NULL OR MAX(o.observed_at) < ? OR (MAX(o.observed_at) = ? AND i.fingerprint < ?)
+     ORDER BY last_at DESC, i.fingerprint DESC LIMIT ?`,
+    cutoff, cutoff, filter.state ?? null, filter.state ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
+  );
+  const issues = rows.map(row => ({
+    fingerprint: row.fingerprint, name: row.name, operation: row.operation, frame: row.frame, state: row.state,
+    occurrences: row.occurrences, firstAtMs: row.first_at, lastAtMs: row.last_at, lastVersion: row.last_version, versions: row.versions
+  }));
+  return page(issues, size, issue => `${issue.lastAtMs}.${issue.fingerprint}`);
+}
+
+interface OccurrenceRow {
+  id: number; invocation_key: string; trace_id: string | null; observed_at: number; version: string | null;
+  source: PreparedError["source"]; operation: string | null; name: string; message: string | null; frames: string;
+}
+
+const OCCURRENCE_COLUMNS = "id, invocation_key, trace_id, observed_at, version, source, operation, name, message, frames";
+
+function occurrence(row: OccurrenceRow): Occurrence {
+  return {
+    id: row.id, invocationKey: row.invocation_key, traceId: row.trace_id, atMs: row.observed_at, version: row.version,
+    source: row.source, operation: row.operation, name: row.name, message: row.message, frames: readFrames(row.frames)
+  };
+}
+
+export function issueOccurrences(db: SqlDatabase, nowMs: number, fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number } = {}): Page<Occurrence> {
+  const size = pageSize(filter.limit);
+  const cursor = parseCursor(filter.cursor);
+  const rows = db.rows<OccurrenceRow>(
+    `SELECT ${OCCURRENCE_COLUMNS} FROM observe_occurrences
+     WHERE fingerprint = ? AND propagated = 0 AND observed_at > ? AND (? IS NULL OR observed_at < ? OR (observed_at = ? AND id < ?))
+     ORDER BY observed_at DESC, id DESC LIMIT ?`,
+    fingerprint, nowMs - RETENTION_MS, cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor === null ? null : Number.parseInt(cursor.key, 16), size + 1
+  );
+  return page(rows.map(occurrence), size, item => `${item.atMs}.${item.id.toString(16)}`);
+}
+
+export function setIssueState(db: SqlDatabase, nowMs: number, fingerprint: string, state: IssueState): boolean {
+  return db.transaction(() => {
+    const visible = db.rows<{ one: number }>(
+      "SELECT 1 AS one FROM observe_issues i WHERE i.fingerprint = ? AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)",
+      fingerprint, nowMs - RETENTION_MS
+    ).length > 0;
+    if (visible) db.run("UPDATE observe_issues SET state = ?, state_at = ? WHERE fingerprint = ?", state, nowMs, fingerprint);
+    return visible;
+  });
+}
+
+interface InvocationRow {
+  key: string; trace_id: string | null; stage: Stage; kind: InvocationKind; label: string; object_id: string | null; status: number | null;
+  outcome: string; failed: number; cpu_ms: number; wall_ms: number; event_at: number; version: string | null; error_count: number;
+}
+
+const INVOCATION_COLUMNS = "key, trace_id, stage, kind, label, object_id, status, outcome, failed, cpu_ms, wall_ms, event_at, version, error_count";
+
+function invocationSummary(row: InvocationRow): InvocationSummary {
+  return {
+    key: row.key, traceId: row.trace_id, stage: row.stage, kind: row.kind, label: row.label, objectId: row.object_id, status: row.status,
+    outcome: row.outcome, failed: row.failed === 1, cpuMs: row.cpu_ms, wallMs: row.wall_ms, atMs: row.event_at, version: row.version, errorCount: row.error_count
+  };
+}
+
+export function listTraces(db: SqlDatabase, nowMs: number, filter: TraceFilter = {}): Page<TraceSummary> {
+  const cutoff = nowMs - RETENTION_MS;
+  const size = pageSize(filter.limit);
+  const cursor = parseCursor(filter.cursor);
+  const failed = filter.failed === undefined ? null : filter.failed ? 1 : 0;
+  const rows = db.rows<InvocationRow & { observed_at: number; object_invocations: number; object_cpu_ms: number | null }>(
+    `SELECT ${INVOCATION_COLUMNS}, observed_at,
+       (SELECT COUNT(*) FROM observe_invocations c WHERE c.trace_id = r.trace_id AND c.stage = 'object' AND c.observed_at > ?) AS object_invocations,
+       (SELECT SUM(c.cpu_ms) FROM observe_invocations c WHERE c.trace_id = r.trace_id AND c.stage = 'object' AND c.observed_at > ?) AS object_cpu_ms
+     FROM observe_invocations r
+     WHERE stage = 'worker' AND observed_at > ? AND (? IS NULL OR label = ?) AND (? IS NULL OR version = ?) AND (? IS NULL OR failed = ?)
+       AND (? IS NULL OR observed_at < ? OR (observed_at = ? AND key < ?))
+     ORDER BY observed_at DESC, key DESC LIMIT ?`,
+    cutoff, cutoff, cutoff, filter.label ?? null, filter.label ?? null, filter.version ?? null, filter.version ?? null, failed, failed,
+    cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
+  );
+  const traces = rows.map(row => ({ ...invocationSummary(row), observedAt: row.observed_at, objectInvocations: row.object_invocations, objectCpuMs: row.object_cpu_ms ?? 0 }));
+  const result = page(traces, size, trace => `${trace.observedAt}.${trace.key}`);
+  return { items: result.items.map(({ observedAt: _observedAt, ...trace }) => trace), next: result.next };
+}
+
+const TRACE_ID = /^[0-9a-f]{32}$/u;
+
+export function readTrace(db: SqlDatabase, nowMs: number, traceId: string): TraceDetail | null {
+  if (!TRACE_ID.test(traceId)) throw new RangeError("invalid trace id");
+  const cutoff = nowMs - RETENTION_MS;
+  const rows = db.rows<InvocationRow>(
+    `SELECT ${INVOCATION_COLUMNS} FROM observe_invocations WHERE trace_id = ? AND observed_at > ? ORDER BY event_at, key LIMIT ?`,
+    traceId, cutoff, MAX_TRACE_INVOCATIONS + 1
+  );
+  if (rows.length === 0) return null;
+  const invocations = rows.slice(0, MAX_TRACE_INVOCATIONS).map(invocationSummary);
+  const occurrences = db.rows<OccurrenceRow>(
+    `SELECT ${OCCURRENCE_COLUMNS} FROM observe_occurrences WHERE trace_id = ? AND observed_at > ? AND propagated = 0 ORDER BY observed_at, id`,
+    traceId, cutoff
+  ).map(occurrence);
+  return { traceId, rootPresent: invocations.some(invocation => invocation.stage === "worker"), truncated: rows.length > MAX_TRACE_INVOCATIONS, invocations, occurrences };
+}
+
+export function health(db: SqlDatabase, nowMs: number): Health {
+  const cutoff = nowMs - RETENTION_MS;
+  const live = db.rows<{ n: number; oldest: number | null; newest: number | null }>(
+    "SELECT COUNT(*) AS n, MIN(observed_at) AS oldest, MAX(observed_at) AS newest FROM observe_invocations WHERE observed_at > ?", cutoff
+  )[0];
+  const backlog = db.rows<{ n: number; oldest: number | null }>("SELECT COUNT(*) AS n, MIN(observed_at) AS oldest FROM observe_invocations WHERE observed_at <= ?", cutoff)[0];
+  const counters = db.rows<Record<"duplicate" | "conflict" | "expired" | "future" | "rejected" | "issue_capacity" | "evicted", number | null>>(
+    `SELECT SUM(duplicate) AS duplicate, SUM(conflict) AS conflict, SUM(expired) AS expired, SUM(future) AS future, SUM(rejected) AS rejected,
+       SUM(issue_capacity) AS issue_capacity, SUM(evicted) AS evicted FROM observe_health WHERE bucket_at + ? > ?`,
+    HEALTH_BUCKET_MS, cutoff
+  )[0];
+  const openIssues = count(db, `SELECT COUNT(*) AS n FROM observe_issues i WHERE i.state = 'open' AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)`, cutoff);
+  const oldestExpired = backlog?.oldest ?? null;
+  return {
+    newestAtMs: live?.newest ?? null,
+    oldestAtMs: live?.oldest ?? null,
+    liveInvocations: live?.n ?? 0,
+    cleanupBacklog: backlog?.n ?? 0,
+    cleanupLagMs: oldestExpired === null ? 0 : nowMs - (oldestExpired + RETENTION_MS),
+    openIssues,
+    duplicate: counters?.duplicate ?? 0,
+    conflict: counters?.conflict ?? 0,
+    expired: counters?.expired ?? 0,
+    future: counters?.future ?? 0,
+    rejected: counters?.rejected ?? 0,
+    issueCapacity: counters?.issue_capacity ?? 0,
+    evicted: counters?.evicted ?? 0
+  };
+}

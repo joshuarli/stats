@@ -1,10 +1,15 @@
 # Tracing and profiling
 
 Stats diagnoses its own performance with Cloudflare's built-in Workers traces
-and production CPU profiles. It does not run an APM SDK, store traces, or
-receive OpenTelemetry data. Cloudflare's tools have been enough for every
+and production CPU profiles. It does not run an APM SDK or receive
+OpenTelemetry data. Cloudflare's tools have been enough for every performance
 question asked so far, and the heavier options all add cost to the Worker that
 is being measured.
+
+The one exception is the error-tracking product prototyped in
+`docs/observability-campaign.md`. It keeps 7 days of per-invocation records
+and grouped errors in a separate tail-consumer Worker, and is built around the
+objections below rather than against them.
 
 ## What we use
 
@@ -44,6 +49,17 @@ find that out.
   OpenTelemetry, traces, and per-process profiling as non-goals for stats
   itself. Turning on Cloudflare's tracing stores nothing in stats, so it stays
   within them.
+
+How the observability campaign meets these objections:
+
+- It never times CPU work. CPU and wall time come from the platform's tail
+  events, one figure per invocation.
+- The only work on the measured Worker is one in-process diagnostics publish
+  per invocation and one per caught error. Encoding, storage, and queries run
+  in `stats-observe`, after the invocation.
+- It does not copy spans. Per-statement SQL detail stays in Workers traces.
+- Diagnostics publishes did not reach Workers Logs in a 2026-11-03 probe, so
+  they stay off the shared ingestion allowance.
 
 ## Limits to keep in mind
 

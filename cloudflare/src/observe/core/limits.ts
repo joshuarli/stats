@@ -1,0 +1,19 @@
+export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+export const MAX_ERRORS_PER_INVOCATION = 4;
+export const MAX_FRAMES_PER_ERROR = 32;
+export const MAX_STACK_BYTES = 4096;
+export const MAX_MESSAGE_BYTES = 512;
+export const MAX_NAME_BYTES = 128;
+export const MAX_LABEL_BYTES = 128;
+export const GROUPING_FRAMES = 5;
+
+export const MAX_RETAINED_INVOCATIONS = 200_000;
+export const MAX_ISSUES = 1_000;
+export const MAX_TRACE_INVOCATIONS = 16;
+export const MAX_PAGE_SIZE = 100;
+export const CLEANUP_BATCH = 1_000;
+export const HEALTH_BUCKET_MS = 60 * 60 * 1000;
+export const MAX_RETAINED_OCCURRENCES = 20_000;
+export const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;

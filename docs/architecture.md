@@ -377,6 +377,7 @@ built client from the captured API fixtures with a frozen clock.
 ## Non-goals
 
 Per-process profiling, continuous event streaming, eBPF-only observability,
-OpenTelemetry, PromQL, Grafana, logs or traces, alert routing, arbitrary
+OpenTelemetry, PromQL, Grafana, log search, traces beyond the 7-day
+per-invocation records of `docs/observability-campaign.md`, alert routing, arbitrary
 queries or unbounded ranges, cgroup or guest semantics beyond the observed
 host, and multi-tenant SaaS.

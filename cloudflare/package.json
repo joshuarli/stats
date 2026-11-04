@@ -7,15 +7,17 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:deployments && vite build && vitest run",
+    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:deployments && pnpm run test:observe && vite build && vitest run",
     "test:ui": "playwright test",
-    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments",
+    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments && pnpm run typecheck:observe",
     "lint": "oxlint --type-aware src test vite.config.ts playwright.config.ts",
     "build": "vite build",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
     "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
     "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.ts",
-    "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast"
+    "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast",
+    "test:observe": "node --experimental-strip-types --test test/observe/*.test.ts",
+    "typecheck:observe": "tsrs -p observe.tsconfig.json --noEmit --fast"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",

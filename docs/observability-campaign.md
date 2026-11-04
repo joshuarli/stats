@@ -40,7 +40,7 @@ Workers traces.
 | Retention | 7 days, checked on every read; cleanup is alarm-driven |
 | Capture | Every tailed `stats` invocation, minus the excluded routes |
 | Core | Portable TypeScript with no Cloudflare imports: model, codec, grouping, SQL |
-| Fragment encoding | Chosen by the Phase 1 benchmark: STO1 binary or strict JSON |
+| Encoding | None. A classic tail item reduces to indexed columns and error rows, so there is no per-invocation blob to encode |
 | UI | The existing stats dashboard, proxied through the stats Access gate |
 | Dependencies | None in stats. One source-map resolver in `stats-observe`, in Phase 4 |
 
@@ -97,23 +97,15 @@ the bundle.
 Portable modules under `cloudflare/src/observe/core/`, typechecked by their
 own `observe.tsconfig.json` without Workers types and tested with
 `node --test` and `node:sqlite`, following the `binary` and `deployments`
-pattern. Lint bans `cloudflare:*` imports there.
+pattern. That typecheck has no Workers types, so a `cloudflare:*` import or a Workers global fails it.
 
 - **Model:** an invocation (invocation key, trace and span IDs when
   published, kind, entrypoint and RPC method or route template, version ID,
   outcome, CPU and wall ms, event time) and its exceptions, with the limits
   below as types and one constants module. A trace is the set of stored
   invocations sharing a trace ID; its root is the stateless invocation.
-- **Fragment encoding:** benchmark strict JSON, tuple JSON, and an STO1
-  draft on fragments reduced from tail events of the real stats Worker,
-  captured in a local run and redacted. Measure encoded bytes, encode and
-  validated decode CPU, and SQLite blob size. Pick STO1 only if it is
-  materially smaller or cheaper, and write its byte layout and hand-authored
-  fixtures under `fixtures/observe/v1/` before freezing it. Whichever wins is
-  decoded with full bounds checks and rejects trailing bytes, unknown
-  versions, and bad references.
-- **Store:** one `invocations` row per invocation holding indexed summary
-  columns and the fragment blob, an `occurrences` row per exception, and an
+- **Store:** one `invocations` row per invocation holding its summary
+  columns, an `occurrences` row per exception, and an
   `issues` row per fingerprint holding only open or resolved state. Classic
   events have no invocation ID, so the key is the published span ID, which
   is unique per invocation, or for an invocation that published none, a hash
@@ -137,7 +129,8 @@ caveats.
 
 Exit: core tests pass, including replay idempotence, expiry boundaries at 7
 days minus 1 ms, at 7 days, and at 7 days plus 1 ms with cleanup not yet run,
-and decoder rejection of a truncation at every byte of a small fixture.
+rejection of malformed collector input with a named reason, and a 14-day
+steady state at the measured volume.
 
 ## Phase 2: collector and stats wiring
 
@@ -226,7 +219,7 @@ live invocations at 7 days.
 | Stats CPU per request | One publish per invocation; no other change outside catch paths | Project page CPU before and after Phase 5 |
 | Stats bundle | Under 1 KiB gzip added | `make worker-bundle` size before and after |
 | Rows written per invocation, including index entries and its later delete | 6 or fewer | Store test reading the cursor's `rowsWritten` |
-| Stored bytes per successful invocation | Under 512 bytes | Phase 1 benchmark on captured events |
+| Stored bytes per successful invocation | Under 512 bytes; 351 measured with both index entries | 70k synthetic rows in `node:sqlite` |
 | Collector CPU per tail call | Under 1 ms; the probe measured about 0.08 ms | Tail `cpuTime` once deployed |
 | `ObservationStore` requests | One per tail call | Collector test |
 | Live store size at steady state | Flat after 7 simulated days | Fake-clock test running 14 days of the measured volume |
@@ -242,7 +235,8 @@ Durable Object requests a month, against 50M and 1M included on Workers Paid.
 | Invocations per trace shown | 16 |
 | Exceptions per invocation | 4, with 32 frames and 4 KiB of stack each |
 | Exception message | 512 bytes; redacted unless it comes from a known error class |
-| Invocations retained | 200,000, oldest successful detail evicted first |
+| Invocations retained | 200,000, oldest successful evicted first |
+| Occurrences retained | 20,000, oldest evicted first |
 | Issues retained | 1,000 |
 | Query page size | 100 |
 
@@ -270,4 +264,10 @@ charts stay on the project page.
 
 ## State
 
-Baseline: `8043bd0`. Phase 0 is done. Phase 1 is next.
+Baseline: `8043bd0`. Phases 0 and 1 are done. Phase 2 is next.
+
+Phase 1 dropped the STO1 codec and the fragment benchmark: with classic tail
+there is no per-invocation payload beyond columns, so a codec would encode
+nothing. A future producer outside Cloudflare would bring its own protocol
+decision. The core lives in `cloudflare/src/observe/core/` and is checked by
+`pnpm run typecheck:observe` and `pnpm run test:observe`.
