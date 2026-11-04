@@ -584,7 +584,7 @@ test("the range and the selected deployment live in the URL", async ({ page }) =
   const options = page.getByRole("listbox", { name: "Deployment" });
   await expect(options.getByRole("option", { name: /v41/u })).toHaveAttribute("aria-selected", "true");
   await options.getByRole("option", { name: /v42/u }).click();
-  await expect(page).toHaveURL(new RegExp(`deployment=${DEPLOYMENT_ID}$`, "u"));
+  await expect(page).toHaveURL(new RegExp(`deployment=${DEPLOYMENT_ID}(&|$)`, "u"));
 });
 
 test("arrow keys move through the deployment list", async ({ page }) => {
@@ -676,11 +676,11 @@ test("a section bar appears below the summary and jumps to a card without hiding
   await expect(bar).toBeHidden();
   await page.mouse.wheel(0, 400);
   await expect(bar).toBeVisible();
-  await bar.getByRole("button", { name: "Deployments" }).click();
+  await bar.getByRole("button", { name: "Deployment" }).click();
   const card = page.locator("#deployments");
   const barBottom = async () => (await bar.boundingBox())!.y + (await bar.boundingBox())!.height;
   await expect.poll(async () => (await card.boundingBox())!.y >= (await barBottom()) - 1).toBe(true);
-  await expect(card.getByRole("heading", { name: "Deployments" })).toBeInViewport();
+  await expect(card.getByRole("heading", { name: "Deployment" })).toBeInViewport();
 });
 
 test("an unknown project id shows a not-found state", async ({ page }) => {
@@ -736,7 +736,7 @@ test("the project page shows its summary and balanced columns of chart cards", a
   }));
   const columns = new Map<number, { top: number; bottom: number }[]>();
   for (const { left, top, bottom } of rects) columns.set(left, [...(columns.get(left) ?? []), { top, bottom }]);
-  expect(columns.size).toBe(3);
+  expect(columns.size).toBe(2);
   for (const stack of columns.values()) {
     for (let index = 1; index < stack.length; index += 1) expect(stack[index]!.top).toBeGreaterThanOrEqual(stack[index - 1]!.bottom);
   }

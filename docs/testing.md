@@ -39,7 +39,7 @@ resolved parser bug, and makes host history reads CPU-hot, and a poll
 failure carried across every version. The spec and `make preview` answer
 `/api/observe/*` from it through the real API handler;
 `PREVIEW_OBSERVE=capture make preview` serves the production capture. Its WebP goldens
-(`observe.spec.ts-snapshots/`) cover the route explorer, the Deployments card
+(`observe.spec.ts-snapshots/`) cover the route explorer, the Deployment card
 with v1.4.0's impact, the Errors card, and the trace modal on desktop and
 mobile; they come from the scenario, so they change only when the scenario
 or the design does. Local workerd sets no
@@ -54,7 +54,7 @@ saves the production observe responses, which `make preview` serves from
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
 `cloudflare/test/ui/captures/` with the clock frozen at the capture time. It
 compares the host summary and charts on each captured host page, and the same
-two regions on the `stuff` project page, plus its Deployments card at the 1h and
+two regions on the `stuff` project page, plus its Deployment card at the 1h and
 6h ranges. Baselines live beside the spec as WebP files, and `make
 dashboard-test` rejects tracked PNGs. The replay hides the section bar and
 zeroes the card scroll offset, because Playwright's scroll-into-view would

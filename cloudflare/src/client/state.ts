@@ -40,9 +40,14 @@ export interface TelemetryState extends ViewState {
   readonly range: Accessor<Range>;
   readonly query: Accessor<HistoryQuery>;
   readonly setRange: Setter<Range>;
+  readonly showWindow: (window: TimeWindow) => boolean;
   readonly now: Accessor<number>;
   readonly hosts: Accessor<readonly Host[]>;
   readonly refreshHosts: () => Promise<void>;
+}
+
+export function smallestRangeCovering(fromMs: number, now: number): Range {
+  return ranges.find(candidate => rangeMs[candidate] >= now - fromMs) ?? ranges[ranges.length - 1]!;
 }
 
 export function minimumZoomMs(fromMs: number, now: number): number {

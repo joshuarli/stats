@@ -125,6 +125,26 @@ test("the canary is where the parser bug first appeared", async ({ page }) => {
   await expect(impact.getByRole("button", { name: /TypeError/u })).toBeVisible();
 });
 
+test("choosing a deployment in the rail zooms every chart to its rollout and widens the range to reach it", async ({ page }) => {
+  await setup(page);
+  await page.goto("/#/project/stats?range=24h");
+  await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);
+  await page.getByRole("option", { name: /v1\.3\.0 canary/u }).click();
+  await expect(page).toHaveURL(/range=7d/u);
+  await expect(page.getByRole("option", { name: /v1\.3\.0 canary/u })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
+  await page.locator("#deployments").getByRole("button", { name: "Show full range" }).click();
+  await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);
+  await expect(page.locator("#deployments").getByRole("button", { name: "Zoom charts to this rollout" })).toBeVisible();
+});
+
+test("a deployment link opens already zoomed to that rollout", async ({ page }) => {
+  await setup(page);
+  await page.goto(`/#/project/stats?range=24h&deployment=${SCENARIO_ROLLOUTS.v13}`);
+  await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
+  await expect(page).toHaveURL(/range=7d/u);
+});
+
 test("a deploy marker opens that deployment in a modal, and its issues open on top with a way back", async ({ page }) => {
   await setup(page);
   await page.goto(`/#/project/stats?range=24h&route=${encodeURIComponent(HISTORY_ROUTE)}`);

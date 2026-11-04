@@ -2,11 +2,12 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
-import { useTelemetry, type Range } from "../../state";
+import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
 import { jumpTo, Skeleton, Widget } from "../../components/ui";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
+import { rolloutWindow } from "./rollout";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
 import "./deployments.css";
 
@@ -70,16 +71,23 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [comparisonError, setComparisonError] = createSignal<string | null>(null);
   let loadedProject = "";
+  let linkPending = true;
+  const { now, showWindow } = useTelemetry();
 
   createEffect(() => ({ project: projectId(), tick: refreshKey() }), ({ project }) => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; }
+    if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; linkPending = true; }
     void read("Deployment history", `/api/v1/projects/${encodeURIComponent(project)}/deployments`, controller.signal, value => decodeDeploymentHistory(value, project)).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);
       setHistoryError(null);
       setSelected(current => value.deployments.some(deployment => deployment.id === current) ? current : value.deployments.find(deployment => deployment.id === readParam("deployment"))?.id ?? value.deployments[0]?.id ?? "");
+      if (linkPending) {
+        linkPending = false;
+        const linked = readParam("deployment");
+        if (linked !== null && value.deployments.some(deployment => deployment.id === linked)) focusOn(value.deployments, linked);
+      }
     }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Deployment history unavailable"); });
   });
 
@@ -106,13 +114,21 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     writeParam("deployment", id);
   };
 
+  const focusOn = (deployments: readonly Deployment[], id: string) => {
+    const target = deployments.find(deployment => deployment.id === id);
+    if (target === undefined) return;
+    select(id);
+    showWindow(rolloutWindow(deployments, target, now(), minimumZoomMs(target.atMs, now())));
+  };
+  const focus = (id: string) => focusOn(history()?.deployments ?? [], id);
+
   const events = createMemo(() => (history()?.deployments ?? []).map(deployment => ({
     id: deployment.id,
     atMs: deployment.atMs,
     label: `deploy ${name(deployment)}`,
     short: title(deployment),
     onSelect: () => {
-      select(deployment.id);
+      focus(deployment.id);
       jumpTo("deployments");
     }
   })));
@@ -132,7 +148,9 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     return null;
   };
 
-  return { history, selected, select, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
+  const listed = () => (history()?.deployments.length ?? 0) > 0;
+
+  return { history, listed, selected, select, focus, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
 }
 
 function ComparisonTable(props: { readonly comparison: DeploymentComparison }): JSX.Element {
@@ -173,9 +191,9 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
   );
 }
 
-export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments; readonly impact?: ((deploymentId: string) => JSX.Element) | undefined }): JSX.Element {
+export function DeploymentRail(props: { readonly deployments: ProjectDeployments }): JSX.Element {
   const { now } = useTelemetry();
-  const { history, selected, select, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
+  const { history, selected, select, focus, title } = props.deployments;
   const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
     const items = history()?.deployments ?? [];
     const index = items.findIndex(deployment => deployment.id === selected());
@@ -186,43 +204,60 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
     select(next.id);
     event.currentTarget.querySelectorAll<HTMLButtonElement>(".deployment-item")[items.indexOf(next)]?.focus();
   };
-  const summary = () => {
+  const checked = () => {
     const value = history();
-    if (value?.sync?.lastSuccessAtMs == null) return undefined;
-    return `checked ${age(value.sync.lastSuccessAtMs, now())}`;
+    return value?.sync?.lastSuccessAtMs == null ? undefined : `checked ${age(value.sync.lastSuccessAtMs, now())}`;
   };
+  return (
+    <aside class="deployment-rail" aria-label="Deployments">
+      <div class="deployment-rail-head"><h2>Deployments</h2><span>{checked()}</span></div>
+      <div class="deployment-list" role="listbox" tabindex="-1" aria-label="Deployment" onKeyDown={moveSelection}>
+        <For each={history()?.deployments ?? []}>{deployment => (
+          <button type="button" role="option" class="deployment-item" title={deployment.message ?? undefined} tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => focus(deployment.id)}>
+            <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
+            <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
+          </button>
+        )}</For>
+      </div>
+    </aside>
+  );
+}
+
+export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments; readonly impact?: ((deploymentId: string) => JSX.Element) | undefined }): JSX.Element {
+  const { view, resetZoom } = useTelemetry();
+  const { history, listed, focus, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
   const notice = () => historyError() ?? problem();
   return (
-    <Widget id="deployments" class="wide" title="Deployments" meta={<span>{summary()}</span>} expandable>
+    <Widget id="deployments" class="wide" title="Deployment" expandable>
       <Show when={notice()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
       <Show when={history() === null && historyError() === null}><Skeleton rows={4} /></Show>
       <Show when={history()?.enabled === true && history()?.deployments.length === 0 && historyError() === null}>
         <p class="panel-label">No deployments have been recorded for this Worker yet.</p>
       </Show>
-      <Show when={(history()?.deployments.length ?? 0) > 0}>
-        <div class="deployments-layout">
-          <div class="deployment-list" role="listbox" tabindex="-1" aria-label="Deployment" onKeyDown={moveSelection}>
-            <For each={history()?.deployments ?? []}>{deployment => (
-              <button type="button" role="option" class="deployment-item" title={deployment.message ?? undefined} tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => select(deployment.id)}>
-                <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
-                <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
-              </button>
-            )}</For>
+      <Show when={listed()}>
+        <div class="deployment-detail" aria-busy={stale() ? "true" : "false"}>
+          <div class="deployment-head">
+            <Show when={current()}>{deployment => (
+              <div class="deployment-title">
+                <b>{title(deployment())}</b>
+                <span class="cell-note" title={`${deployment().id}${deployment().message === null ? "" : `\n${deployment().message}`}`}>{RANGE.format(deployment().atMs)} · {deployment().source}</span>
+                <Show
+                  when={view() === null}
+                  fallback={<button class="btn btn-small deployment-scope" type="button" onClick={resetZoom}>Show full range</button>}
+                >
+                  <button class="btn btn-small deployment-scope" type="button" onClick={() => focus(deployment().id)}>Zoom charts to this rollout</button>
+                </Show>
+              </div>
+            )}</Show>
           </div>
-          <div class="deployment-detail" aria-busy={stale() ? "true" : "false"}>
-            <div class="deployment-head">
-              <Show when={current()}>{deployment => (
-                <div class="deployment-title">
-                  <b>{title(deployment())}</b>
-                  <span class="cell-note" title={`${deployment().id}${deployment().message === null ? "" : `\n${deployment().message}`}`}>{RANGE.format(deployment().atMs)} · {deployment().source}</span>
-                </div>
+          <div class="deployment-panels">
+            <div class="deployment-panel">
+              <Show when={comparisonError()}>{message => <div class="notice notice-warn" role="alert"><span>{message()}</span></div>}</Show>
+              <Show when={comparison()} fallback={comparisonError() === null ? <Skeleton rows={6} /> : <p class="panel-label">Comparison unavailable.</p>}>{value => (
+                <div class={stale() ? "deployment-comparison pending" : "deployment-comparison"}><ComparisonTable comparison={value()} /></div>
               )}</Show>
             </div>
-            <Show when={comparisonError()}>{message => <div class="notice notice-warn" role="alert"><span>{message()}</span></div>}</Show>
-            <Show when={comparison()} fallback={comparisonError() === null ? <Skeleton rows={6} /> : <p class="panel-label">Comparison unavailable.</p>}>{value => (
-              <div class={stale() ? "deployment-comparison pending" : "deployment-comparison"}><ComparisonTable comparison={value()} /></div>
-            )}</Show>
-            <Show when={props.impact !== undefined && current()}>{deployment => props.impact?.(deployment().id)}</Show>
+            <Show when={props.impact !== undefined && current()}>{deployment => <div class="deployment-panel">{props.impact?.(deployment().id)}</div>}</Show>
           </div>
         </div>
       </Show>

@@ -6,7 +6,8 @@ import { Icon } from "./components/Icon";
 import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
 import { createUpdateEffect } from "./effect";
-import { createViewState, LIVE_INTERVAL_MS, ranges, TelemetryContext, useTelemetry, type Range } from "./state";
+import type { TimeWindow } from "./chart-data";
+import { createViewState, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
 import { readParam, writeParam } from "./urlState";
 
 const DEFAULT_RANGE: Range = "1h";
@@ -32,7 +33,7 @@ export function Shell(props: ParentProps): JSX.Element {
       if (!document.hidden && views.live() && views.view() === null) views.autoRefresh();
     }, LIVE_INTERVAL_MS);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || document.querySelector("dialog[open]") !== null) return;
       if (event.key === "z") views.zoomOut();
       else if (event.key === "l") views.toggleLive();
       else if (event.key === "[") views.pan(-1);
@@ -53,7 +54,22 @@ export function Shell(props: ParentProps): JSX.Element {
     };
   });
 
-  createUpdateEffect(() => range(), () => views.resetZoom());
+  let keepZoomOnRangeChange = false;
+  createUpdateEffect(() => range(), () => {
+    if (keepZoomOnRangeChange) keepZoomOnRangeChange = false;
+    else views.resetZoom();
+  });
+  const showWindow = (window: TimeWindow): boolean => {
+    const current = now();
+    const fromMs = Math.max(window.fromMs, current - rangeMs[ranges[ranges.length - 1]!]);
+    const covering = smallestRangeCovering(fromMs, current);
+    if (rangeMs[covering] > rangeMs[range()]) {
+      keepZoomOnRangeChange = true;
+      setRange(covering);
+    }
+    views.resetZoom();
+    return views.zoomTo({ fromMs, toMs: window.toMs });
+  };
   createUpdateEffect(() => location.pathname, () => {
     views.resetZoom();
     writeParam("deployment", null);
@@ -65,7 +81,7 @@ export function Shell(props: ParentProps): JSX.Element {
   };
 
   return (
-    <TelemetryContext value={{ range, query, setRange, now, hosts, refreshHosts, ...views }}>
+    <TelemetryContext value={{ range, query, setRange, showWindow, now, hosts, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
           <a class="brand" href="#/" aria-label="Stats home">stats</a>

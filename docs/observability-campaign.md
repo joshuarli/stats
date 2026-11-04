@@ -222,7 +222,7 @@ the `deployments.forward` operation and never affects the poll. The browser
 proxy accepts only the issue-state POST, so rollouts cannot be written from
 the dashboard.
 
-The UI adds, for the selected deployment in the Deployments card, its new
+The UI adds, for the selected deployment in the Deployment card, its new
 issue groups, regressions, and failure rate before and after, linking to
 the issues, and gives each issue an "introduced in" version with a filter.
 

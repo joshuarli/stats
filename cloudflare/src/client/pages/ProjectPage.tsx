@@ -14,7 +14,7 @@ import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { CostWidget } from "./project/Cost";
 import { D1Widget } from "./project/D1";
-import { createProjectDeployments, DeploymentsWidget } from "./project/Deployments";
+import { createProjectDeployments, DeploymentRail, DeploymentsWidget } from "./project/Deployments";
 import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
@@ -124,7 +124,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const observe = observed ? createObservability(() => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow) : null;
   const moreSections = (): SectionLink[] => [
     ...(observed ? [{ label: "Routes", anchor: "route-explorer" }, { label: "Errors", anchor: "issues" }] : []),
-    { label: "Deployments", anchor: "deployments" },
+    { label: "Deployment", anchor: "deployments" },
     { label: "Cost", anchor: "cost" },
     ...(observed ? [] : [{ label: "Routes", anchor: "routes" }]),
     ...(hasDatabases() ? [{ label: "D1", anchor: "d1" }] : []),
@@ -144,44 +144,49 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
-      <Errored fallback={(error) => <ErrorState error={error()} compact />}>
-        <Loading fallback={<Skeleton rows={4} chart />}>
-          <Show
-            when={hasData()}
-            fallback={
-              <Widget title="Data">
-                <EmptyState title="No data was collected in this range." detail="Missing data is shown as a gap, never as zero." icon="activity" />
-              </Widget>
-            }
-          >
-            <StatusStrip cells={cells()} label="Project summary" class="dense" />
-            <SectionBar cells={cells()} more={moreSections()} />
-            <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
-            <section class="charts" aria-label="Charts">
-              <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : id => <RolloutImpactPanel deploymentId={id} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
-              <RequestsWidget data={data()} />
-              <CostWidget data={data()} view={view()} />
-              <StatusWidget data={data()} />
-              {hasBuckets() ? <OperationsWidget data={data()} /> : null}
-              <CpuTimeWidget data={data()} />
-              {hasBuckets() ? <StorageWidget data={data()} /> : null}
-              {observed ? null : <RoutesWidget data={data()} view={view()} />}
-              {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
-              {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
-              {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
-              <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
+      <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
+        <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
+        <div class="project-main">
+          <Errored fallback={(error) => <ErrorState error={error()} compact />}>
+            <Loading fallback={<Skeleton rows={4} chart />}>
+              <Show
+                when={hasData()}
+                fallback={
+                  <Widget title="Data">
+                    <EmptyState title="No data was collected in this range." detail="Missing data is shown as a gap, never as zero." icon="activity" />
+                  </Widget>
+                }
+              >
+                <StatusStrip cells={cells()} label="Project summary" class="dense" />
+                <SectionBar cells={cells()} more={moreSections()} />
+                <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
+                <section class="charts" aria-label="Charts">
+                  <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : id => <RolloutImpactPanel deploymentId={id} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
+                  <RequestsWidget data={data()} />
+                  <CostWidget data={data()} view={view()} />
+                  <StatusWidget data={data()} />
+                  {hasBuckets() ? <OperationsWidget data={data()} /> : null}
+                  <CpuTimeWidget data={data()} />
+                  {hasBuckets() ? <StorageWidget data={data()} /> : null}
+                  {observed ? null : <RoutesWidget data={data()} view={view()} />}
+                  {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
+                  {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
+                  {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
+                  <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={rowsRead()} />
+                </section>
+                </Show>
+              </Show>
+            </Loading>
+          </Errored>
+          <Show when={observe}>{state => (
+            <section class="charts observe-section" aria-label="Errors and traces">
+              <RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} />
+              <IssuesWidget observe={state()} />
+              <ObserveModal observe={state()} refreshKey={`${projectTick()}:${manualTick()}`} />
             </section>
-            </Show>
-          </Show>
-        </Loading>
-      </Errored>
-      <Show when={observe}>{state => (
-        <section class="charts observe-section" aria-label="Errors and traces">
-          <RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} />
-          <IssuesWidget observe={state()} />
-          <ObserveModal observe={state()} refreshKey={`${projectTick()}:${manualTick()}`} />
-        </section>
-      )}</Show>
+          )}</Show>
+        </div>
+      </div>
     </DeploymentEvents>
   );
 }

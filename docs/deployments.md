@@ -108,9 +108,21 @@ The history response includes `enabled`, `sync`, `deployments` and `versions`.
 Comparison responses include exact half-open before/after bounds, readiness time,
 invocation counts (null when unavailable), blocking reasons, warnings and metric
 values/deltas. Read-only routes reject writes and invalid/duplicate parameters.
-Chart annotations use the existing event mechanism; choose the deployment in the
-panel to inspect it. Requests are cancelled on project/selection changes, and
-panel loading/errors do not block the other project charts.
+Chart annotations use the existing event mechanism. Lines closer than three
+pixels merge into one counted marker, and a label is drawn only where it fits
+before the next line, so a wide range shows bare lines (hover lists the
+deployments under them) instead of overprinted text.
+
+The deployments list is a rail beside the project page. Choosing a deployment
+there, or its marker on a chart, selects it and zooms every chart to its
+rollout: from the deployment until the next one replaced it (until now for the
+newest), padded on both sides by a quarter of that span, between ten minutes
+and six hours. If the rollout starts before the loaded range, the range widens
+to the smallest standard one that reaches it; it never narrows. Project history
+is served only for trailing ranges, so a rollout older than a week is plotted at
+that range's hourly resolution. A `deployment` link zooms on load; a plain page
+load does not. Requests are cancelled on project/selection changes, and panel
+loading/errors do not block the other project charts.
 
 Comparisons use five-minute additive data, never downsampled chart values, average
 of averages, approximate maxima or manufactured percentiles. The deployment's
