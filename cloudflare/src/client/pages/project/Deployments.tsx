@@ -171,7 +171,7 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
   );
 }
 
-export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments }): JSX.Element {
+export function DeploymentsWidget(props: { readonly deployments: ProjectDeployments; readonly impact?: ((deploymentId: string) => JSX.Element) | undefined }): JSX.Element {
   const { now } = useTelemetry();
   const { history, selected, select, comparison, stale, historyError, comparisonError, title, current, problem } = props.deployments;
   const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
@@ -220,6 +220,7 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
             <Show when={comparison()} fallback={comparisonError() === null ? <Skeleton rows={6} /> : <p class="panel-label">Comparison unavailable.</p>}>{value => (
               <div class={stale() ? "deployment-comparison pending" : "deployment-comparison"}><ComparisonTable comparison={value()} /></div>
             )}</Show>
+            <Show when={props.impact !== undefined && current()}>{deployment => props.impact?.(deployment().id)}</Show>
           </div>
         </div>
       </Show>

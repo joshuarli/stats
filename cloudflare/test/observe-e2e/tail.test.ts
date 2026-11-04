@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { accessHeaders, createHost, HOST_NAME, ingest, SECRET_QUERY, start, until, workerTraces, ORIGIN, type Collector, type IssueSummary, type Page, type TraceDetail, type TraceSummary } from "./harness.ts";
+import { accessHeaders, createHost, HOST_NAME, ingest, SECRET_QUERY, start, until, VARS, workerTraces, ORIGIN, type Collector, type IssueSummary, type Page, type TraceDetail, type TraceSummary } from "./harness.ts";
 
 function listing(root: string): string[] {
   return readdirSync(root, { recursive: true }).map(String);
@@ -132,7 +132,7 @@ const DEPLOYED_VERSION = "2221f9c2-9bd2-4011-bebb-52133d498752";
 const STATS_PROJECT = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
 
 await test("a polled Cloudflare deployment reaches the store as a rollout, readable only through Access", async () => {
-  const atMs = Number(JSON.parse(readFileSync(join(import.meta.dirname, "../../wrangler.test.jsonc"), "utf8")).vars.TEST_NOW_MS) - 3_600_000;
+  const atMs = Number(VARS["TEST_NOW_MS"]) - 3_600_000;
   const cloudflare = (request: Request): Response => {
     const path = new URL(request.url).pathname;
     if (path.endsWith("/deployments")) {

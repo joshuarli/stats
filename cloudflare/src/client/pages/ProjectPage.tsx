@@ -22,7 +22,7 @@ import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
 import { metricTrack } from "../history";
 import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
-import { createObservability, IssuesWidget, TracesWidget } from "./project/Observe";
+import { createObservability, IssuesWidget, RolloutImpactPanel, TracesWidget } from "./project/Observe";
 import { OBSERVED_PROJECT } from "../../observe/channel";
 
 export function ProjectPage(): JSX.Element {
@@ -148,7 +148,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
             <SectionBar cells={cells()} more={moreSections()} />
             <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
             <section class="charts" aria-label="Charts">
-              <DeploymentsWidget deployments={deployments} />
+              <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : id => <RolloutImpactPanel deploymentId={id} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
               <RequestsWidget data={data()} />
               <CostWidget data={data()} view={view()} />
               <StatusWidget data={data()} />

@@ -11,6 +11,9 @@ export const TRACE_SCHEDULED = "9b1c7d3e5f6a7b8c9d0e1f2a3b4c5d6e";
 export const ISSUE_POLL = "a".repeat(64);
 export const ISSUE_REQUEST = "b".repeat(64);
 export const ISSUE_RESOLVED = "c".repeat(64);
+export const DEPLOYMENT_ID = "0b5b2c1e-0f0a-4c4a-9d8e-1a2b3c4d5e6f";
+export const UNRECORDED_DEPLOYMENT_ID = "1c6c3d2f-1a1b-4d5b-8e9f-2b3c4d5e6f70";
+export const NEW_VERSION = VERSION;
 
 interface Invocation {
   key: string; traceId: string | null; stage: "worker" | "object"; kind: "fetch" | "rpc" | "alarm" | "scheduled"; label: string; objectId: string | null;
@@ -76,9 +79,9 @@ export function observeFixture(now: number) {
   }
 
   const issues = [
-    { fingerprint: ISSUE_POLL, name: "Error", operation: "deployments.poll", frame: "request (src/deployments/collector.ts:58)", state: "open", occurrences: 2016, firstAtMs: now - 7 * 24 * 60 * M + 3 * M, lastAtMs: scheduledRoot.atMs + 1490, lastVersion: VERSION, versions: 2 },
-    { fingerprint: ISSUE_REQUEST, name: "RangeError", operation: "installation.request", frame: "rebuildHour (src/installation.ts:419)", state: "open", occurrences: 3, firstAtMs: now - 26 * 60 * M, lastAtMs: requestOccurrence.atMs, lastVersion: PREVIOUS, versions: 1 },
-    { fingerprint: ISSUE_RESOLVED, name: "TypeError", operation: null, frame: "parseProjects (src/projects/config.ts:41)", state: "resolved", occurrences: 1, firstAtMs: now - 3 * 24 * 60 * M, lastAtMs: now - 3 * 24 * 60 * M, lastVersion: PREVIOUS, versions: 1 }
+    { fingerprint: ISSUE_POLL, name: "Error", operation: "deployments.poll", frame: "request (src/deployments/collector.ts:58)", state: "open", occurrences: 2016, firstAtMs: now - 7 * 24 * 60 * M + 3 * M, lastAtMs: scheduledRoot.atMs + 1490, lastVersion: VERSION, versions: 2, firstVersion: PREVIOUS, firstVersionLabel: "v1.3.0" },
+    { fingerprint: ISSUE_REQUEST, name: "RangeError", operation: "installation.request", frame: "rebuildHour (src/installation.ts:419)", state: "open", occurrences: 3, firstAtMs: now - 26 * 60 * M, lastAtMs: requestOccurrence.atMs, lastVersion: VERSION, versions: 1, firstVersion: VERSION, firstVersionLabel: "v1.4.0" },
+    { fingerprint: ISSUE_RESOLVED, name: "TypeError", operation: null, frame: "parseProjects (src/projects/config.ts:41)", state: "resolved", occurrences: 1, firstAtMs: now - 3 * 24 * 60 * M, lastAtMs: now - 3 * 24 * 60 * M, lastVersion: PREVIOUS, versions: 1, firstVersion: PREVIOUS, firstVersionLabel: "v1.3.0" }
   ];
   const occurrences: Record<string, unknown[]> = {
     [ISSUE_POLL]: Array.from({ length: 12 }, (_, index) => ({ ...pollOccurrence, id: 9001 - index, atMs: pollOccurrence.atMs - index * 5 * M, traceId: index === 0 ? TRACE_SCHEDULED : `${"9b1c".repeat(7)}${String(index).padStart(4, "0")}`, version: index < 9 ? VERSION : PREVIOUS })),
@@ -86,7 +89,22 @@ export function observeFixture(now: number) {
     [ISSUE_RESOLVED]: [{ ...requestOccurrence, id: 7001, name: "TypeError", operation: null, source: "uncaught", atMs: now - 3 * 24 * 60 * M, frames: [{ fn: "parseProjects", file: "src/projects/config.ts", line: 41, column: 13 }] }]
   };
   const health = { newestAtMs: now - 38 * S, oldestAtMs: now - 7 * 24 * 60 * M + 2 * M, liveInvocations: 71_284, cleanupBacklog: 0, cleanupLagMs: 0, openIssues: 2, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted: 0, databaseBytes: 25_034_752 };
-  return { traces, details, issues, occurrences, health };
+  const deploymentAt = now - 30 * M;
+  const impact = {
+    rolloutId: DEPLOYMENT_ID, atMs: deploymentAt, previousRolloutId: UNRECORDED_DEPLOYMENT_ID, introduced: [VERSION], state: "measured", baselineMs: 55 * 60 * M,
+    newIssues: [{ fingerprint: ISSUE_REQUEST, name: "RangeError", operation: "installation.request", frame: "rebuildHour (src/installation.ts:419)", occurrences: 3, firstAtMs: now - 26 * M }],
+    regressions: [],
+    versions: [{ version: PREVIOUS, label: "v1.3.0", introduced: false, requests: 4000, failed: 12 }, { version: VERSION, label: "v1.4.0", introduced: true, requests: 900, failed: 9 }]
+  };
+  const deployments = {
+    projectId: "stats", worker: "stats", enabled: true, sync: { lastAttemptAtMs: now - 2 * M, lastSuccessAtMs: now - 2 * M, error: null, truncated: false },
+    deployments: [
+      { id: DEPLOYMENT_ID, atMs: deploymentAt, source: "wrangler", message: "rollouts", deferred: false, versions: [{ id: VERSION, percentage: 100 }] },
+      { id: UNRECORDED_DEPLOYMENT_ID, atMs: now - 2 * 24 * 60 * M, source: "wrangler", message: "previous", deferred: false, versions: [{ id: PREVIOUS, percentage: 100 }] }
+    ],
+    versions: [{ id: VERSION, tag: "v1.4.0", message: null }, { id: PREVIOUS, tag: "v1.3.0", message: null }]
+  };
+  return { traces, details, issues, occurrences, health, impact, deployments };
 }
 
 export async function mockObserve(page: Page, now: number, options: { readonly failing?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: { path: string; body: unknown }[] }> {
@@ -119,8 +137,11 @@ export async function mockObserve(page: Page, now: number, options: { readonly f
     }
     if (path === "/issues") {
       const wanted = url.searchParams.get("state") ?? "open";
-      return route.fulfill({ json: { items: fixture.issues.map(issue => ({ ...issue, state: states.get(issue.fingerprint) })).filter(issue => issue.state === wanted), next: null } });
+      const introducedIn = url.searchParams.get("introducedIn");
+      return route.fulfill({ json: { items: fixture.issues.map(issue => ({ ...issue, state: states.get(issue.fingerprint) })).filter(issue => issue.state === wanted && (introducedIn === null || issue.firstVersion === introducedIn)), next: null } });
     }
+    if (path === `/rollouts/${DEPLOYMENT_ID}/impact`) return route.fulfill({ json: fixture.impact });
+    if (path.startsWith("/rollouts/")) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "rollout not recorded" } } });
     const occurrences = /^\/issues\/([0-9a-f]{64})\/occurrences$/u.exec(path);
     if (occurrences !== null) return route.fulfill({ json: { items: fixture.occurrences[occurrences[1]!] ?? [], next: null } });
     return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "unknown observe route" } } });
