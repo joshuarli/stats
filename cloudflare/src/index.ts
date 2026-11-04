@@ -9,6 +9,9 @@ import { runCollector } from "./projects/collector";
 import { markInvocation } from "./observe/mark";
 import { reportError } from "./observe/report";
 import { readLimitedText } from "./body";
+import { OBSERVED_PROJECT } from "./observe/channel";
+import { rolloutsFromDeployments } from "./observe/rollouts";
+import { decodeDeploymentHistory } from "./deployments/decode";
 
 export { Installation };
 
@@ -72,11 +75,25 @@ async function observe(request: Request, env: Env, path: string): Promise<Respon
   const url = new URL(request.url);
   const target = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
   if (request.method === "GET") return secure(await env.OBSERVE.fetch(target));
-  if (request.method !== "POST") return error(405, "invalid_request", "method not allowed");
+  if (request.method !== "POST" || !/^\/api\/observe\/issues\/[0-9a-f]{64}\/state$/u.test(path)) return error(405, "invalid_request", "method not allowed");
   if (request.headers.get("Origin") !== url.origin) return error(403, "forbidden", "cross-origin request");
   const body = await readLimitedText(request, MAX_OBSERVE_BODY_BYTES);
   if (body === null) return error(413, "too_large", "body exceeds the cap");
   return secure(await env.OBSERVE.fetch(target, { method: "POST", headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
+}
+
+async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>): Promise<void> {
+  try {
+    if (!parseProjects(env.PROJECTS).some(project => project.id === OBSERVED_PROJECT)) return;
+    const response = await store.fetch(`https://installation/projects/${OBSERVED_PROJECT}/deployments`);
+    if (!response.ok) throw new Error(`deployment history unavailable (${response.status})`);
+    const history = decodeDeploymentHistory(await response.json(), OBSERVED_PROJECT);
+    if (!history.enabled || history.deployments.length === 0) return;
+    const sent = await env.OBSERVE.fetch("https://observe/rollouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rolloutsFromDeployments(history)) });
+    if (!sent.ok) throw new Error(`rollout forward rejected (${sent.status})`);
+  } catch (error) {
+    reportError("deployments.forward", error);
+  }
 }
 
 export default {
@@ -132,6 +149,7 @@ export default {
           reportError("deployments.collect", error);
           console.error(JSON.stringify({ event: "deployment_collection_failed" }));
         }
+        await forwardRollouts(env, store);
       })()
     ]);
     if (metrics.status === "rejected") throw metrics.reason;

@@ -1,4 +1,4 @@
-import type { Health, InvocationSummary, IssueState, IssueSummary, Occurrence, Page, TraceDetail, TraceSummary } from "./core/store.ts";
+import type { Health, ImpactState, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "./core/store.ts";
 import type { StackFrame } from "./core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "./core/model.ts";
 
@@ -80,7 +80,7 @@ function invocation(value: unknown): InvocationSummary {
     cpuMs: integer(fields["cpuMs"], "cpu"),
     wallMs: integer(fields["wallMs"], "wall"),
     atMs: integer(fields["atMs"], "time"),
-    version: nullableText(fields["version"], "version", 36),
+    version: nullableText(fields["version"], "version", 64),
     errorCount: integer(fields["errorCount"], "error count")
   };
 }
@@ -92,7 +92,7 @@ function occurrence(value: unknown): Occurrence {
     invocationKey: text(fields["invocationKey"], "occurrence invocation", 64),
     traceId: nullableText(fields["traceId"], "occurrence trace", 32),
     atMs: integer(fields["atMs"], "occurrence time"),
-    version: nullableText(fields["version"], "occurrence version", 36),
+    version: nullableText(fields["version"], "occurrence version", 64),
     source: oneOf(fields["source"], SOURCES, "occurrence source"),
     operation: nullableText(fields["operation"], "occurrence operation", 64),
     name: text(fields["name"], "occurrence name", 128),
@@ -132,8 +132,10 @@ export function decodeIssues(value: unknown): Page<IssueSummary> {
       occurrences: integer(fields["occurrences"], "occurrences"),
       firstAtMs: integer(fields["firstAtMs"], "first seen"),
       lastAtMs: integer(fields["lastAtMs"], "last seen"),
-      lastVersion: nullableText(fields["lastVersion"], "last version", 36),
-      versions: integer(fields["versions"], "versions")
+      lastVersion: nullableText(fields["lastVersion"], "last version", 64),
+      versions: integer(fields["versions"], "versions"),
+      firstVersion: nullableText(fields["firstVersion"], "first version", 64),
+      firstVersionLabel: nullableText(fields["firstVersionLabel"], "first version label", 128)
     };
   }, "issues");
 }
@@ -160,5 +162,46 @@ export function decodeHealth(value: unknown): ObserveHealth {
     issueCapacity: counter("issueCapacity"),
     evicted: counter("evicted"),
     databaseBytes: counter("databaseBytes")
+  };
+}
+
+const IMPACT_STATES: readonly ImpactState[] = ["measured", "expired"];
+
+function issueRef(value: unknown): IssueRef {
+  const fields = record(value, "issue reference");
+  return {
+    fingerprint: text(fields["fingerprint"], "fingerprint", 64),
+    name: text(fields["name"], "issue name", 128),
+    operation: nullableText(fields["operation"], "issue operation", 64),
+    frame: nullableText(fields["frame"], "issue frame", 1024),
+    occurrences: integer(fields["occurrences"], "occurrences"),
+    firstAtMs: integer(fields["firstAtMs"], "first seen")
+  };
+}
+
+function versionStats(value: unknown): VersionStats {
+  const fields = record(value, "version stats");
+  return {
+    version: text(fields["version"], "version", 64),
+    label: nullableText(fields["label"], "version label", 128),
+    introduced: bool(fields["introduced"], "introduced"),
+    requests: integer(fields["requests"], "requests"),
+    failed: integer(fields["failed"], "failed")
+  };
+}
+
+export function decodeImpact(value: unknown, rolloutId: string): RolloutImpact {
+  const fields = record(value, "rollout impact");
+  if (fields["rolloutId"] !== rolloutId) fail("rollout id mismatch");
+  return {
+    rolloutId,
+    atMs: integer(fields["atMs"], "rollout time"),
+    previousRolloutId: nullableText(fields["previousRolloutId"], "previous rollout", 64),
+    introduced: list(fields["introduced"], 4, item => text(item, "introduced version", 64), "introduced"),
+    state: oneOf(fields["state"], IMPACT_STATES, "impact state"),
+    baselineMs: integer(fields["baselineMs"], "baseline"),
+    newIssues: list(fields["newIssues"], 50, issueRef, "new issues"),
+    regressions: list(fields["regressions"], 50, issueRef, "regressions"),
+    versions: list(fields["versions"], 8, versionStats, "versions")
   };
 }

@@ -31,7 +31,10 @@ export interface Harness {
   dispose(): Promise<void>;
 }
 
-export async function start(collector: Collector, bindings: Record<string, string> = {}): Promise<Harness> {
+export type Outbound = (request: Request) => Response | Promise<Response>;
+const UNAVAILABLE: Outbound = () => new Response("upstream unavailable", { status: 503 });
+
+export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE): Promise<Harness> {
   const persist = mkdtempSync(join(tmpdir(), "observe-e2e-"));
   const statsWorker = {
     name: "stats",
@@ -40,7 +43,7 @@ export async function start(collector: Collector, bindings: Record<string, strin
     ...COMPAT,
     bindings: { ...VARS, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN", ...bindings },
     durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } },
-    outboundService: () => new Response("upstream unavailable", { status: 503 }),
+    outboundService: outbound,
     ...(collector === "absent" ? {} : { serviceBindings: { OBSERVE: "stats-observe" }, tails: ["stats-observe"] })
   };
   const observeWorker = collector === "crashing"

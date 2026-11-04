@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { accessHeaders, createHost, HOST_NAME, ingest, SECRET_QUERY, start, until, workerTraces, ORIGIN, type Collector, type IssueSummary, type Page, type TraceDetail, type TraceSummary } from "./harness.ts";
@@ -125,4 +125,38 @@ await test("a crashing or missing collector leaves stats responses unchanged", a
   const attached = await transcript("attached");
   assert.deepEqual(await transcript("crashing"), attached);
   assert.deepEqual(await transcript("absent"), attached);
+});
+
+const DEPLOYMENT = "0b5b2c1e-0f0a-4c4a-9d8e-1a2b3c4d5e6f";
+const DEPLOYED_VERSION = "2221f9c2-9bd2-4011-bebb-52133d498752";
+const STATS_PROJECT = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+
+await test("a polled Cloudflare deployment reaches the store as a rollout, readable only through Access", async () => {
+  const atMs = Number(JSON.parse(readFileSync(join(import.meta.dirname, "../../wrangler.test.jsonc"), "utf8")).vars.TEST_NOW_MS) - 3_600_000;
+  const cloudflare = (request: Request): Response => {
+    const path = new URL(request.url).pathname;
+    if (path.endsWith("/deployments")) {
+      return Response.json({ success: true, result: { deployments: [{ id: DEPLOYMENT, created_on: new Date(atMs).toISOString(), source: "wrangler", strategy: "percentage", versions: [{ version_id: DEPLOYED_VERSION, percentage: 100 }], annotations: { "workers/message": "e2e deploy" } }] }, result_info: { total_pages: 1 } });
+    }
+    if (path.endsWith(`/versions/${DEPLOYED_VERSION}`)) return Response.json({ success: true, result: { id: DEPLOYED_VERSION, annotations: { "workers/tag": "v9.9.9" } } });
+    return new Response("not found", { status: 404 });
+  };
+  const harness = await start("attached", { PROJECTS: JSON.stringify([STATS_PROJECT]) }, cloudflare);
+  try {
+    await harness.scheduled().catch(() => undefined);
+    const impact = await until(() => harness.observe(`/rollouts/${DEPLOYMENT}/impact`) as Promise<{ rolloutId?: string }>, value => value.rolloutId === DEPLOYMENT, "the forwarded rollout");
+    assert.deepEqual(impact, {
+      rolloutId: DEPLOYMENT, atMs, previousRolloutId: null, introduced: [DEPLOYED_VERSION], state: "measured", baselineMs: 0, newIssues: [], regressions: [],
+      versions: [{ version: DEPLOYED_VERSION, label: "v9.9.9", introduced: true, requests: 0, failed: 0 }]
+    });
+    assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`)).status, 401);
+    assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`, { headers: await accessHeaders() })).status, 200);
+    const forged = await harness.stats("/api/observe/rollouts", { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ rollouts: [], versions: [] }) });
+    assert.equal(forged.status, 405);
+    await harness.scheduled().catch(() => undefined);
+    const issues = await harness.observe("/issues?state=open") as Page<IssueSummary>;
+    assert.ok(!issues.items.some(issue => issue.operation === "deployments.forward"), "a repeated forward is an idempotent no-op, not an error");
+  } finally {
+    await harness.dispose();
+  }
 });

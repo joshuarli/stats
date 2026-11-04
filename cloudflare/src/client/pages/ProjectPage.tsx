@@ -23,8 +23,7 @@ import { metricTrack } from "../history";
 import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 import { createObservability, IssuesWidget, TracesWidget } from "./project/Observe";
-
-const OBSERVED_PROJECT = "stats";
+import { OBSERVED_PROJECT } from "../../observe/channel";
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();

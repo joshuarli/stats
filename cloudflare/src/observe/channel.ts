@@ -1,4 +1,5 @@
 export const OBSERVE_CHANNEL = "stats.observe";
+export const OBSERVED_PROJECT = "stats";
 
 export const OPERATIONS = [
   "installation.request",
@@ -10,7 +11,8 @@ export const OPERATIONS = [
   "deployments.version",
   "deployments.coverage",
   "deployments.retention",
-  "deployments.api"
+  "deployments.api",
+  "deployments.forward"
 ] as const;
 
 export type Operation = typeof OPERATIONS[number];

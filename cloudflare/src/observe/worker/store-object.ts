@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Preparation } from "../core/model.ts";
+import { prepareRollout, prepareVersionLabel, type ObservedRollout, type Preparation, type VersionLabel } from "../core/model.ts";
 import {
-  cleanup, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, setIssueState,
-  type Health, type IngestResult, type IssueState, type IssueSummary, type Occurrence, type Page, type SqlDatabase, type SqlValue, type TraceDetail, type TraceFilter, type TraceSummary
+  cleanup, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState,
+  type Health, type IngestResult, type RolloutImpact, type RolloutResult, type IssueState, type IssueSummary, type Occurrence, type Page, type SqlDatabase, type SqlValue, type TraceDetail, type TraceFilter, type TraceSummary
 } from "../core/store.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 
@@ -55,7 +55,17 @@ export class ObservationStore extends DurableObject<ObserveEnv> {
     if (await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now());
   }
 
-  async issues(filter: { readonly state?: IssueState; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>> {
+  async rollouts(rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]): Promise<RolloutResult> {
+    const prepared = await Promise.all(rollouts.map(prepareRollout));
+    const validLabels = labels.flatMap(label => { const value = prepareVersionLabel(label); return value === null ? [] : [value]; });
+    return recordRollouts(this.db, prepared, validLabels, Date.now());
+  }
+
+  async impact(rolloutId: string): Promise<RolloutImpact | null> {
+    return rolloutImpact(this.db, Date.now(), rolloutId);
+  }
+
+  async issues(filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>> {
     return listIssues(this.db, Date.now(), filter);
   }
 
