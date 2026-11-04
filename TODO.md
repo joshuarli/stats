@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 44
+Next: 45
+
+### STA-44 · P3 · One observed invocation was dropped as a key conflict
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/core/store.ts:339`, `cloudflare/src/observe/core/model.ts:100`
+- **Problem:** On 2026-11-04 `stats-observe` health reported `conflict: 1` against 8,388 stored invocations: an event arrived with the key of a stored invocation but different content, and the store kept the first and dropped the second. The key is the published span ID, or for an invocation without one, a hash of version, object, kind, label, and event millisecond. Every stats entry point publishes a mark, so a missing span is unexpected. Unproven: whether the platform reused a span ID, an invocation ran without an active span and collided with a same-millisecond twin, or classic tail redelivered an event with changed content.
+- **Recommendation:** Have the store count conflicts by whether the key came from a span or the fallback hash, then read the split after a week. If fallback collisions dominate, add a field that separates same-millisecond invocations to the key; if span reuse does, key on trace and span together.
+- **Fix with:** root-cause
+- **Effort:** S
 
 ### STA-43 · P3 · Retention alarm test flakes when workerd fires the alarm itself
 

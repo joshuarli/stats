@@ -373,8 +373,11 @@ charts stay on the project page.
 
 Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done and deployed (3b as
 `daf404d3` and `a9204e03` on 2026-11-04). Phase 4 is deployed (`3fce93e0` and `dec5e1f4` on 2026-11-04), and the
-first map registered for `dec5e1f4`; no caught error has occurred in
-production since, so live resolution is not yet observed. Deploy-time
+first map registered for `dec5e1f4`. Live resolution was confirmed on the
+first production error, an `AnalyticsSQLAPIError` caught in the collector
+cron at 2026-11-04 11:30 UTC on `0b502df4`: all four frames resolved to
+`src/projects/collector.ts` and `src/index.ts` lines that match the deployed
+source. Deploy-time
 registration needs `cf access login`. Phase 3c is built as `pnpm observe` and was checked read-only against
 production. The CI rollout write path stays deferred to a write token on a
 future public receiver, since the Cloudflare adapter already records every
@@ -399,6 +402,12 @@ baseline.
 `stats-observe` and `stats` are deployed (`dc8c3793`, `2221f9c2`), and
 production capture started on 2026-11-04. Phase 5 closed the same day on
 13 h 43 min of capture instead of a full day, with no measurable CPU change.
+At close the store held 8,388 invocations in a 4.9 MB database, including
+the registered maps, with no rejections, evictions, or cleanup lag and one
+conflict (STA-44). The observe code in the stats bundle measured 525 bytes
+gzip for the producer modules and 967 bytes with the `/api/observe` proxy and
+the rollout forwarder, attributed through the source map; the one-line call
+sites are not counted, so the 1 KiB budget is met with little room.
 
 Phase 1 dropped the STO1 codec and the fragment benchmark: with classic tail
 there is no per-invocation payload beyond columns, so a codec would encode
