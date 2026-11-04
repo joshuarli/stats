@@ -4,10 +4,8 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
 import { encodeHistory } from "../test/support/history.ts";
-import { buildScenario } from "../test/ui/observe-scenario.ts";
+import { buildScenario, scenarioStore as scenarioStoreFor } from "../test/ui/observe-scenario.ts";
 import { handleApi } from "../src/observe/worker/api.ts";
-import { health, issueOccurrences, listIssues, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState } from "../src/observe/core/store.ts";
-import { prepareRollout, prepareVersionLabel } from "../src/observe/core/model.ts";
 
 const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
 const assets = join(cloudflare, ".cloudflare", "output", "v0", "workers", "default", "assets");
@@ -138,16 +136,7 @@ function json(response, body, status = 200) {
 const observeSource = process.env.PREVIEW_OBSERVE ?? "scenario";
 if (!["scenario", "capture"].includes(observeSource)) throw new Error("PREVIEW_OBSERVE must be scenario or capture");
 const scenario = observeSource === "scenario" ? await buildScenario(previewNow) : undefined;
-const scenarioStore = scenario === undefined ? undefined : {
-  issues: async filter => listIssues(scenario.db, previewNow, filter),
-  occurrences: async (fingerprint, filter) => issueOccurrences(scenario.db, previewNow, fingerprint, filter),
-  setIssueState: async (fingerprint, state) => setIssueState(scenario.db, previewNow, fingerprint, state),
-  traces: async filter => listTraces(scenario.db, previewNow, filter),
-  trace: async traceId => readTrace(scenario.db, previewNow, traceId),
-  health: async () => ({ ...health(scenario.db, previewNow), databaseBytes: 0 }),
-  rollouts: async (rollouts, labels) => recordRollouts(scenario.db, await Promise.all(rollouts.map(prepareRollout)), labels.flatMap(label => prepareVersionLabel(label) ?? []), previewNow),
-  impact: async rolloutId => rolloutImpact(scenario.db, previewNow, rolloutId)
-};
+const scenarioStore = scenario === undefined ? undefined : scenarioStoreFor(scenario, previewNow);
 
 async function readBody(request) {
   const chunks = [];

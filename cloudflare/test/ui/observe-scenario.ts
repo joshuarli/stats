@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
-import { prepareInvocation, prepareRollout, type ObservedError, type ObservedInvocation, type Preparation, type PreparedInvocation } from "../../src/observe/core/model.ts";
-import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase, type SqlValue } from "../../src/observe/core/store.ts";
+import { prepareInvocation, prepareRollout, prepareVersionLabel, type ObservedError, type ObservedInvocation, type ObservedRollout, type Preparation, type PreparedInvocation, type VersionLabel } from "../../src/observe/core/model.ts";
+import { explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState, type IssueState, type SqlDatabase, type SqlValue, type TraceFilter } from "../../src/observe/core/store.ts";
+import { handleApi } from "../../src/observe/worker/api.ts";
 import type { DeploymentHistory } from "../../src/deployments/model.ts";
 
 const S = 1000;
@@ -8,6 +9,13 @@ const M = 60 * S;
 const H = 60 * M;
 const D = 24 * H;
 const OBJECT = "a3f9c1e2b4d6f8a0c2e4f6a8b0d2f4e6a8c0e2f4a6b8d0f2e4a6c8e0f2a4b6c8";
+
+export const SCENARIO_ROLLOUTS = {
+  v12: "0a1b2c3d-1111-4a5b-8c6d-000000000012",
+  canary: "0a1b2c3d-1111-4a5b-8c6d-000000000013",
+  v13: "0a1b2c3d-1111-4a5b-8c6d-000000000113",
+  v14: "0a1b2c3d-1111-4a5b-8c6d-000000000014"
+} as const;
 
 export const SCENARIO_VERSIONS = [
   { id: "5d1e2f3a-4b5c-4d6e-8f70-81a2b3c4d5e6", tag: "v1.2.0", message: "Batch ingest validation" },
@@ -20,10 +28,10 @@ interface Rollout { readonly id: string; readonly at: number; readonly message: 
 
 function rollouts(now: number): Rollout[] {
   return [
-    { id: "0a1b2c3d-1111-4a5b-8c6d-000000000012", at: now - 6.5 * D, message: V12.message, shares: [{ version: V12.id, percent: 100 }] },
-    { id: "0a1b2c3d-1111-4a5b-8c6d-000000000013", at: now - 3 * D, message: "v1.3.0 canary", shares: [{ version: V12.id, percent: 90 }, { version: V13.id, percent: 10 }] },
-    { id: "0a1b2c3d-1111-4a5b-8c6d-000000000113", at: now - 2.8 * D, message: V13.message, shares: [{ version: V13.id, percent: 100 }] },
-    { id: "0a1b2c3d-1111-4a5b-8c6d-000000000014", at: now - 9 * H, message: V14.message, shares: [{ version: V14.id, percent: 100 }] }
+    { id: SCENARIO_ROLLOUTS.v12, at: now - 6.5 * D, message: V12.message, shares: [{ version: V12.id, percent: 100 }] },
+    { id: SCENARIO_ROLLOUTS.canary, at: now - 3 * D, message: "v1.3.0 canary", shares: [{ version: V12.id, percent: 90 }, { version: V13.id, percent: 10 }] },
+    { id: SCENARIO_ROLLOUTS.v13, at: now - 2.8 * D, message: V13.message, shares: [{ version: V13.id, percent: 100 }] },
+    { id: SCENARIO_ROLLOUTS.v14, at: now - 9 * H, message: V14.message, shares: [{ version: V14.id, percent: 100 }] }
   ];
 }
 
@@ -81,8 +89,7 @@ export async function buildScenario(now: number): Promise<Scenario> {
   recordRollouts(db, await Promise.all(plan.map(rollout => prepareRollout({ id: rollout.id, atMs: rollout.at, source: "wrangler", message: rollout.message, shares: rollout.shares }))),
     SCENARIO_VERSIONS.map(version => ({ version: version.id, label: version.tag, message: version.message })), now);
 
-  let serial = 0;
-  const id = (width: number) => (++serial).toString(16).padStart(width, "0");
+  const id = (width: number) => Array.from({ length: width }, () => Math.floor(next() * 16).toString(16)).join("");
   const pending: Preparation[] = [];
   const plain = (fields: Omit<ObservedInvocation, "errors" | "trace" | "objectId"> & { trace: string; objectId?: string }): Preparation => {
     const span = id(16);
@@ -168,4 +175,23 @@ export async function buildScenario(now: number): Promise<Scenario> {
     versions: SCENARIO_VERSIONS.map(version => ({ id: version.id, tag: version.tag, message: version.message }))
   };
   return { db, deployments, invocations };
+}
+
+export function scenarioStore(scenario: Scenario, now: number) {
+  return {
+    issues: async (filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }) => listIssues(scenario.db, now, filter),
+    occurrences: async (fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }) => issueOccurrences(scenario.db, now, fingerprint, filter),
+    setIssueState: async (fingerprint: string, state: IssueState) => setIssueState(scenario.db, now, fingerprint, state),
+    traces: async (filter: TraceFilter) => listTraces(scenario.db, now, filter),
+    trace: async (traceId: string) => readTrace(scenario.db, now, traceId),
+    health: async () => ({ ...health(scenario.db, now), databaseBytes: 0 }),
+    rollouts: async (rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]) =>
+      recordRollouts(scenario.db, await Promise.all(rollouts.map(prepareRollout)), labels.flatMap(label => prepareVersionLabel(label) ?? []), now),
+    impact: async (rolloutId: string) => rolloutImpact(scenario.db, now, rolloutId),
+    explore: async (filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }) => explore(scenario.db, now, filter)
+  };
+}
+
+export async function answer(scenario: Scenario, now: number, request: Request): Promise<Response> {
+  return handleApi(request, scenarioStore(scenario, now));
 }

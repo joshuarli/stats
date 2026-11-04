@@ -341,9 +341,15 @@ charts stay on the project page.
 
 ## State
 
-Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done. Phase 3 has a working
-UI with behavior tests; its WebP goldens wait for review of the production
-capture. Phase 3c is designed, not built. None of 3b is deployed.
+Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done and deployed (3b as
+`daf404d3` and `a9204e03` on 2026-11-04). Phase 3c is designed, not built.
+
+The dashboard was reworked into one route explorer on the stats page:
+routes ranked by exact trace CPU with p50, p95, and p99, a latency heatmap
+with the p95 line and deploy markers, a p95 view that says where slow calls
+spend their time, and the trace waterfall, all following the page's time
+range. It replaces the sampled CPU-by-route card for the observed project.
+WebP goldens wait for review of the design on the fault-injection scenario.
 
 Tail delivery was checked on 2026-11-04: between 01:11 and 01:43 UTC the
 hosts made 127 uploads (counted from stored samples) and the store held 127

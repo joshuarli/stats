@@ -28,9 +28,15 @@ unchanged. `TEST_NOW_MS` pins the stats clock in the past, so
 `Installation`'s retention alarm fires repeatedly there; the test waits for
 the invocations it caused rather than for quiet.
 
-`cloudflare/test/ui/observe.spec.ts` drives the Errors and Traces cards and
-the deployment impact panel on the `stats` project page against the
-synthetic collector responses in `observe-fixture.ts`. Local workerd sets no
+`cloudflare/test/ui/observe.spec.ts` drives the route explorer, the Errors
+card, and the deployment impact panel on the `stats` project page.
+`observe-scenario.ts` builds a deterministic seven-day stats workload
+through the real core store with injected faults: a canary that introduces
+a parser bug, a v1.4.0 deploy that adds an ingest error, regresses the
+resolved parser bug, and makes host history reads CPU-hot, and a poll
+failure carried across every version. The spec and `make preview` answer
+`/api/observe/*` from it through the real API handler;
+`PREVIEW_OBSERVE=capture make preview` serves the production capture. Local workerd sets no
 script version, so the two-Worker test proves that a polled deployment is
 forwarded and stored, while version attribution is covered by the core
 tests. `cloudflare/scripts/capture-project.sh stats` also

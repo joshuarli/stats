@@ -1,0 +1,168 @@
+import { createMemo, For, Show, useContext } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { age, axisTime, count, percent } from "../../format";
+import { useTelemetry } from "../../state";
+import { Skeleton, Widget } from "../../components/ui";
+import { DeploymentEvents } from "../../components/DeploymentEvents";
+import type { RouteStats, TraceSummary } from "../../../observe/core/store";
+import { duration, TraceTimeline } from "./TraceTimeline";
+import { LatencyHeatmap } from "./Heatmap";
+import { HealthMeta, MOMENT, Segmented, type Observability } from "./Observe";
+
+function RouteLabel(props: { readonly label: string }): JSX.Element {
+  const parts = () => {
+    const match = /^([A-Z]+) (\/.*)$/u.exec(props.label);
+    return match === null ? { method: null, path: props.label } : { method: match[1]!, path: match[2]! };
+  };
+  return (
+    <b class="route-label">
+      <Show when={parts().method}>{method => <span class="route-method">{method()}</span>}</Show>
+      <For each={parts().path.split("/")}>{(segment, index) => <>{index() > 0 ? <>/<wbr /></> : null}{segment}</>}</For>
+    </b>
+  );
+}
+
+function statusTone(trace: TraceSummary): string {
+  if (trace.failed) return "tone-bad";
+  if (trace.status !== null && trace.status >= 400) return "tone-warn";
+  return "tone-ok";
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)] ?? 0;
+}
+
+function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly selected: string | null; readonly onSelect: (route: string | null) => void }): JSX.Element {
+  const totalCpu = createMemo(() => Math.max(1, props.routes.reduce((sum, route) => sum + route.cpuMs, 0)));
+  const totals = createMemo(() => ({ requests: props.routes.reduce((sum, route) => sum + route.requests, 0), failed: props.routes.reduce((sum, route) => sum + route.failed, 0) }));
+  return (
+    <div class="table-scroll route-table-scroll" role="region" aria-label="Routes">
+      <table class="data-table compact route-table">
+        <thead>
+          <tr>
+            <th>Route</th>
+            <th class="numeric">Requests</th>
+            <th class="numeric">Failed</th>
+            <th class="cpu-col">CPU share</th>
+            <th class="numeric">p50</th>
+            <th class="numeric">p95</th>
+            <th class="numeric">p99</th>
+            <th class="numeric">p95 CPU</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class={props.selected === null ? "selected" : undefined}>
+            <td><button type="button" class="route-pick" aria-pressed={props.selected === null ? "true" : "false"} onClick={() => props.onSelect(null)}><b>All routes</b></button></td>
+            <td class="numeric">{count(totals().requests)}</td>
+            <td class="numeric">{totals().requests === 0 ? "—" : percent((totals().failed / totals().requests) * 100)}</td>
+            <td />
+            <td /><td /><td /><td />
+          </tr>
+          <For each={props.routes}>{route => (
+            <tr class={props.selected === route.label ? "selected" : undefined}>
+              <td><button type="button" class="route-pick" aria-pressed={props.selected === route.label ? "true" : "false"} onClick={() => props.onSelect(props.selected === route.label ? null : route.label)}><RouteLabel label={route.label} /></button></td>
+              <td class="numeric">{count(route.requests)}</td>
+              <td class={route.failed > 0 ? "numeric failed-cell" : "numeric"}>{route.failed === 0 ? "0" : percent((route.failed / route.requests) * 100)}</td>
+              <td class="cpu-col"><span class="share"><span class="share-bar" style={`width:${(route.cpuMs / totalCpu()) * 100}%`} /><span class="share-text">{percent((route.cpuMs / totalCpu()) * 100)}</span></span></td>
+              <td class="numeric">{duration(route.p50WallMs)}</td>
+              <td class="numeric strong">{duration(route.p95WallMs)}</td>
+              <td class="numeric">{duration(route.p99WallMs)}</td>
+              <td class="numeric">{duration(route.p95CpuMs)}</td>
+            </tr>
+          )}</For>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function RequestExplorerWidget(props: { readonly observe: Observability; readonly windowLabel: string }): JSX.Element {
+  const { now } = useTelemetry();
+  const o = props.observe;
+  const events = useContext(DeploymentEvents);
+  const items = () => o.traces()?.items ?? [];
+  const exploration = () => o.exploration();
+  const selectedRoute = createMemo(() => exploration()?.routes.find(route => route.label === exploration()?.route) ?? null);
+  const maxWall = createMemo(() => Math.max(1, ...items().map(item => item.wallMs)));
+  const band = () => o.band();
+  const comparison = createMemo(() => {
+    const current = band();
+    const route = selectedRoute();
+    if (current === null || items().length === 0) return null;
+    const cpu = items().map(item => item.cpuMs + item.objectCpuMs);
+    const objectShare = items().reduce((sum, item) => sum + item.objectCpuMs, 0) / Math.max(1, cpu.reduce((sum, value) => sum + value, 0));
+    return { calls: items().length, wall: median(items().map(item => item.wallMs)), cpu: median(cpu), objectShare, typical: route === null ? null : { wall: route.p50WallMs, cpu: route.p50CpuMs } };
+  });
+  const bandLabel = () => {
+    const current = band();
+    if (current === null) return null;
+    if (current.kind === "slow") return selectedRoute() === null ? "Slowest calls" : `Calls at or above p95 (${duration(selectedRoute()!.p95WallMs)})`;
+    return `${axisTime(current.fromMs, (exploration()?.toMs ?? now()) - (exploration()?.fromMs ?? 0))} · ${duration(current.minWallMs)}–${current.maxWallMs === null ? "more" : duration(current.maxWallMs)}`;
+  };
+  const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
+    const list = items().filter(item => item.traceId !== null);
+    const index = list.findIndex(item => item.traceId === o.traceId());
+    const target = event.key === "ArrowDown" ? index + 1 : event.key === "ArrowUp" ? index - 1 : event.key === "Home" ? 0 : event.key === "End" ? list.length - 1 : null;
+    const next = target === null ? undefined : list[Math.min(list.length - 1, Math.max(0, target))];
+    if (next?.traceId == null) return;
+    event.preventDefault();
+    o.selectTrace(next.traceId);
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(".trace-row")[list.indexOf(next)]?.focus();
+  };
+  return (
+    <Widget id="route-explorer" class="wide observe" title="Requests by route" meta={<><span class="observe-window">{props.windowLabel}</span><HealthMeta health={o.health()} /></>} expandable>
+      <Show when={o.error()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={exploration()} fallback={o.error() === null ? <Skeleton rows={6} chart /> : null}>{value => (
+        <Show when={value().routes.length > 0} fallback={<p class="panel-label observe-empty">No requests were observed in this window.</p>}>
+          <RouteTable routes={value().routes} selected={value().route} onSelect={o.filterRoute} />
+          <div class="explore-head">
+            <h3 class="observe-subhead">Latency · {value().route ?? "all routes"}</h3>
+            <div class="explore-actions">
+              <Segmented label="Trace outcome" value={o.traceFilter()} options={[["all", "All"], ["failed", "Failed"]]} onChange={o.filterTraces} />
+              <Segmented label="Calls" value={band() === null ? "recent" : band()!.kind === "slow" ? "slow" : "cell"} options={[["recent", "Recent"], ["slow", value().route === null ? "Slowest" : "≥ p95"], ...(band()?.kind === "cell" ? [["cell", "Selected"] as ["cell", string]] : [])]} onChange={choice => { if (choice === "recent") o.chooseBand(null); else if (choice === "slow") o.chooseBand({ kind: "slow" }); }} />
+            </div>
+          </div>
+          <LatencyHeatmap heatmap={value().heatmap} toMs={value().toMs} band={band()} events={events()} onSelect={o.chooseBand} />
+          <Show when={comparison()}>{summary => (
+            <p class="hot-summary">
+              <b>{bandLabel()}</b>: {count(summary().calls)} {summary().calls === 1 ? "call" : "calls"}, median {duration(summary().wall)} wall and {duration(summary().cpu)} CPU, {Math.round(summary().objectShare * 100)}% of it in the Durable Object
+              <Show when={summary().typical}>{typical => <span class="cell-note"> · typical call {duration(typical().wall)} wall, {duration(typical().cpu)} CPU</span>}</Show>
+            </p>
+          )}</Show>
+          <div class="trace-layout">
+            <div class="trace-list" role="listbox" tabindex="-1" aria-label="Traces" onKeyDown={moveSelection}>
+              <div class="trace-list-head" aria-hidden="true"><span /><span>{band() === null ? "Recent" : "Slowest first"}</span><span>Duration</span><span class="numeric">CPU</span><span class="numeric">When</span></div>
+              <Show when={items().length > 0} fallback={<p class="panel-label observe-empty trace-empty">No calls match.</p>}>
+                <For each={items()}>{item => (
+                  <button type="button" role="option" class="trace-row" disabled={item.traceId === null} title={item.traceId === null ? "This invocation published no trace context" : MOMENT.format(item.atMs)} tabindex={o.traceId() === item.traceId ? 0 : -1} aria-selected={o.traceId() === item.traceId ? "true" : "false"} onClick={() => { if (item.traceId !== null) o.selectTrace(item.traceId); }}>
+                    <span class={`status-dot ${statusTone(item)}`} aria-label={item.failed ? "failed" : "ok"} />
+                    <span class="trace-route"><RouteLabel label={item.label} /><span class="cell-note">{item.status === null ? item.outcome : item.status}{item.objectInvocations > 0 ? ` · ${item.objectInvocations} DO` : ""}</span></span>
+                    <span class="trace-span"><span class="trace-span-bar" style={`width:${Math.max(1.5, (item.wallMs / maxWall()) * 100)}%`} /><span class="trace-span-text">{duration(item.wallMs)}</span></span>
+                    <span class="numeric cell-note">{duration(item.cpuMs + item.objectCpuMs)}</span>
+                    <span class="numeric cell-note">{age(item.atMs, now())}</span>
+                  </button>
+                )}</For>
+              </Show>
+            </div>
+            <div class="trace-detail">
+              <Show when={o.traceError()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
+              <Show when={o.trace()} fallback={o.traceError() === null && items().length > 0 ? <Skeleton rows={6} /> : null}>{detail => (
+                <>
+                  <div class="trace-head">
+                    <b>{detail().invocations.find(invocation => invocation.stage === "worker")?.label ?? "Root not received"}</b>
+                    <span class="cell-note mono">{detail().traceId}</span>
+                  </div>
+                  <Show when={!detail().rootPresent}><div class="notice notice-warn" role="status"><span>The Worker invocation that started this trace was not received, so it is incomplete.</span></div></Show>
+                  <Show when={detail().truncated}><div class="notice notice-warn" role="status"><span>Only the first 16 invocations are shown.</span></div></Show>
+                  <TraceTimeline detail={detail()} selected={o.slice()} onSelect={o.setSlice} />
+                  <p class="observe-footnote">Wall and CPU time are measured by the platform per invocation. CPU is a total for the invocation; where in the slice it was spent is not recorded.</p>
+                </>
+              )}</Show>
+            </div>
+          </div>
+        </Show>
+      )}</Show>
+    </Widget>
+  );
+}

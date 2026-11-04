@@ -22,7 +22,10 @@ import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
 import { metricTrack } from "../history";
 import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
-import { createObservability, IssuesWidget, RolloutImpactPanel, TracesWidget } from "./project/Observe";
+import { createObservability, IssuesWidget, RolloutImpactPanel } from "./project/Observe";
+import { RequestExplorerWidget } from "./project/Requests";
+import { rangeMs } from "../state";
+import { RETENTION_MS } from "../../observe/core/limits";
 import { OBSERVED_PROJECT } from "../../observe/channel";
 
 export function ProjectPage(): JSX.Element {
@@ -111,12 +114,19 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
   const observed = props.project.id === OBSERVED_PROJECT;
-  const observe = observed ? createObservability(() => `${projectTick()}:${manualTick()}`) : null;
+  const observeWindow = () => {
+    const zoomed = view();
+    if (zoomed !== null) return zoomed;
+    const end = now();
+    return { fromMs: end - Math.min(rangeMs[range()], RETENTION_MS), toMs: end };
+  };
+  const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
+  const observe = observed ? createObservability(() => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow) : null;
   const moreSections = (): SectionLink[] => [
-    ...(observed ? [{ label: "Errors", anchor: "issues" }, { label: "Traces", anchor: "traces" }] : []),
+    ...(observed ? [{ label: "Routes", anchor: "route-explorer" }, { label: "Errors", anchor: "issues" }] : []),
     { label: "Deployments", anchor: "deployments" },
     { label: "Cost", anchor: "cost" },
-    { label: "Routes", anchor: "routes" },
+    ...(observed ? [] : [{ label: "Routes", anchor: "routes" }]),
     ...(hasDatabases() ? [{ label: "D1", anchor: "d1" }] : []),
     ...(hasNamespaces() ? [{ label: "Durable Objects", anchor: "durable-objects" }] : [])
   ];
@@ -155,7 +165,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               {hasBuckets() ? <OperationsWidget data={data()} /> : null}
               <CpuTimeWidget data={data()} />
               {hasBuckets() ? <StorageWidget data={data()} /> : null}
-              <RoutesWidget data={data()} view={view()} />
+              {observed ? null : <RoutesWidget data={data()} view={view()} />}
               {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
               {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
               {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
@@ -167,8 +177,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       </Errored>
       <Show when={observe}>{state => (
         <section class="charts observe-section" aria-label="Errors and traces">
+          <RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} />
           <IssuesWidget observe={state()} />
-          <TracesWidget observe={state()} />
         </section>
       )}</Show>
     </DeploymentEvents>
