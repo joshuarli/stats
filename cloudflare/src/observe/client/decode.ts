@@ -1,5 +1,5 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { Exploration, Health, Heatmap, ImpactState, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { Exploration, Health, Heatmap, ImpactState, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
 
@@ -281,6 +281,15 @@ function routeStats(value: unknown): RouteStats {
   };
 }
 
+function objectMethodStats(value: unknown): ObjectMethodStats {
+  const fields = record(value, "object method stats");
+  const ms = (key: string) => integer(fields[key], key);
+  return {
+    label: text(fields["label"], "object method label", 128),
+    requests: ms("requests"), failed: ms("failed"), cpuMs: ms("cpuMs"), wallMs: ms("wallMs"), p50WallMs: ms("p50WallMs"), p95WallMs: ms("p95WallMs")
+  };
+}
+
 function heatmap(value: unknown): Heatmap {
   const fields = record(value, "heatmap");
   const edges = list(fields["edges"], 16, item => integer(item, "edge"), "edges");
@@ -301,6 +310,7 @@ export function decodeExploration(value: unknown): Exploration {
     toMs: integer(fields["toMs"], "to"),
     route: nullableText(fields["route"], "route", 128),
     routes: list(fields["routes"], 64, routeStats, "routes"),
+    objects: list(fields["objects"], 64, objectMethodStats, "object methods"),
     heatmap: heatmap(fields["heatmap"])
   };
 }

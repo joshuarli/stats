@@ -180,6 +180,16 @@ export interface RouteStats {
   readonly p95CpuMs: number;
 }
 
+export interface ObjectMethodStats {
+  readonly label: string;
+  readonly requests: number;
+  readonly failed: number;
+  readonly cpuMs: number;
+  readonly wallMs: number;
+  readonly p50WallMs: number;
+  readonly p95WallMs: number;
+}
+
 export interface Heatmap {
   readonly fromMs: number;
   readonly bucketMs: number;
@@ -194,6 +204,7 @@ export interface Exploration {
   readonly toMs: number;
   readonly route: string | null;
   readonly routes: readonly RouteStats[];
+  readonly objects: readonly ObjectMethodStats[];
   readonly heatmap: Heatmap;
 }
 
@@ -866,6 +877,20 @@ export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromM
       p50WallMs: percentile(walls, 0.5), p95WallMs: percentile(walls, 0.95), p99WallMs: percentile(walls, 0.99), p50CpuMs: percentile(cpus, 0.5), p95CpuMs: percentile(cpus, 0.95)
     };
   }).sort((a, b) => b.cpuMs - a.cpuMs || a.label.localeCompare(b.label));
+  const objectRows = db.rows<{ label: string; wall_ms: number; failed: number; cpu_ms: number }>(
+    "SELECT label, wall_ms, failed, cpu_ms FROM observe_invocations WHERE stage = 'object' AND observed_at > ? AND observed_at >= ? AND observed_at <= ?",
+    cutoff, fromMs, toMs
+  );
+  const byMethod = new Map<string, typeof objectRows>();
+  for (const row of objectRows) byMethod.set(row.label, [...byMethod.get(row.label) ?? [], row]);
+  const objects = [...byMethod].map(([label, entries]) => {
+    const walls = entries.map(entry => entry.wall_ms).sort((a, b) => a - b);
+    return {
+      label, requests: entries.length, failed: entries.reduce((sum, entry) => sum + entry.failed, 0),
+      cpuMs: entries.reduce((sum, entry) => sum + entry.cpu_ms, 0), wallMs: walls.reduce((sum, wall) => sum + wall, 0),
+      p50WallMs: percentile(walls, 0.5), p95WallMs: percentile(walls, 0.95)
+    };
+  }).sort((a, b) => b.wallMs - a.wallMs || a.label.localeCompare(b.label));
   const route = filter.route !== undefined && byRoute.has(filter.route) ? filter.route : null;
   const selected = route === null ? rows : byRoute.get(route) ?? [];
   const bucketMs = Math.max(1, Math.ceil((toMs - fromMs) / HEATMAP_BUCKETS));
@@ -881,7 +906,7 @@ export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromM
     walls[bucket]!.push(row.wall_ms);
   }
   const p95WallMs = walls.map(values => values.length < MIN_PERCENTILE_SAMPLES ? null : percentile(values.sort((a, b) => a - b), 0.95));
-  return { fromMs, toMs, route, routes, heatmap: { fromMs, bucketMs, edges: DURATION_EDGES, cells, failed, p95WallMs } };
+  return { fromMs, toMs, route, routes, objects, heatmap: { fromMs, bucketMs, edges: DURATION_EDGES, cells, failed, p95WallMs } };
 }
 
 const TRACE_ID = /^[0-9a-f]{32}$/u;

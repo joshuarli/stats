@@ -434,6 +434,22 @@ await test("exploring a window ranks routes by trace CPU with wall-time percenti
   assert.throws(() => explore(db, T0 + H, { fromMs: T0 + H, toMs: T0 }), RangeError);
 });
 
+await test("exploring a window totals Durable Object wall time per method for duration cost", async () => {
+  const db = database();
+  const batch: ObservedInvocation[] = [];
+  for (let n = 0; n < 4; n++) batch.push(object(n, { label: "Installation.ingest", eventAtMs: T0 + n * M, wallMs: 10 * (n + 1), cpuMs: 2 }));
+  batch.push(object(4, { label: "Installation GET /hosts/:host/history", eventAtMs: T0 + 5 * M, wallMs: 300, cpuMs: 90, outcome: "exception" }));
+  batch.push(object(5, { label: "Installation.ingest", eventAtMs: T0 + 2 * H, wallMs: 1000, cpuMs: 1 }));
+  ingest(db, await prepare(...batch), T0 + 3 * H);
+  const result = explore(db, T0 + 3 * H, { fromMs: T0, toMs: T0 + H });
+  assert.deepEqual(result.objects.map(method => [method.label, method.requests, method.failed, method.wallMs, method.cpuMs]), [
+    ["Installation GET /hosts/:host/history", 1, 1, 300, 90],
+    ["Installation.ingest", 4, 0, 100, 8]
+  ]);
+  assert.deepEqual([result.objects[1]!.p50WallMs, result.objects[1]!.p95WallMs], [20, 40]);
+  assert.deepEqual(result.routes, []);
+});
+
 await test("the slowest calls in a duration band page deterministically", async () => {
   const db = database();
   ingest(db, await prepare(...Array.from({ length: 9 }, (_, n) => worker(n, { eventAtMs: T0 + n, wallMs: n % 3 === 0 ? 500 : 50 + n }))), T0 + H);
