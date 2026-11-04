@@ -25,13 +25,13 @@ fixtures: node-ready
 	node scripts/check-fixtures.mjs
 
 agent-test: work-ready
-	TMPDIR='$(CURDIR)/.work/tmp' cargo test --manifest-path agent/Cargo.toml --all-targets
+	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo test --all-targets
 
 agent-build: work-ready
 	TMPDIR='$(CURDIR)/.work/tmp' agent/scripts/build-static.sh
 
 agent-build-macos: work-ready
-	TMPDIR='$(CURDIR)/.work/tmp' cargo build --release --manifest-path agent/Cargo.toml
+	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo build --release
 
 add-host-check:
 	@test -n '$(NAME)' || { echo 'usage: make add-host NAME=<label> [SSH=<user@host>|local]' >&2; exit 2; }
