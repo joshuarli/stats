@@ -4,6 +4,7 @@ import type { InvocationSummary, Occurrence, TraceDetail } from "../../../observ
 import { isInApp } from "../../../observe/core/stack";
 import { Icon } from "../../components/Icon";
 import { Badge } from "../../components/ui";
+import { Info } from "../../components/Info";
 import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
 
 const MIN_VIEW_MS = 0.5;
@@ -231,7 +232,7 @@ export function ErrorFrames(props: { readonly occurrence: Pick<Occurrence, "name
         <Show when={props.occurrence.operation}>{operation => <span class="op-tag">{operation()}</span>}</Show>
         <span class="cell-note">{props.occurrence.source}</span>
       </div>
-      <p class={props.occurrence.message === null ? "frames-message withheld" : "frames-message"}>{props.occurrence.message ?? "Message withheld: only listed error types keep their text."}</p>
+      <p class={props.occurrence.message === null ? "frames-message withheld" : "frames-message"}>{props.occurrence.message ?? <>Message withheld <Info title="Withheld message">Only listed error types keep their text.</Info></>}</p>
       <ol class="frames-list">
         <For each={props.occurrence.frames}>{frame => {
           const shown = () => frame.original ?? frame;
@@ -259,11 +260,11 @@ export function TraceView(props: { readonly detail: TraceDetail; readonly select
         <b>{props.detail.invocations.find(invocation => invocation.stage === "worker")?.label ?? "Root not received"}</b>
         <span class="cell-note mono">{props.detail.traceId}</span>
         <Badge tone={failed() ? "bad" : "ok"} dot>{failed() ? "Failed" : "OK"}</Badge>
+        <Info title="Timing">Wall and CPU time are measured by the platform per invocation. CPU is a total for the invocation; where in the slice it was spent is not recorded.</Info>
       </div>
       <Show when={!props.detail.rootPresent}><div class="notice notice-warn" role="status"><span>The Worker invocation that started this trace was not received, so it is incomplete.</span></div></Show>
       <Show when={props.detail.truncated}><div class="notice notice-warn" role="status"><span>Only the first 16 invocations are shown.</span></div></Show>
       <TraceTimeline detail={props.detail} selected={props.selected} onSelect={props.onSelect} />
-      <p class="observe-footnote">Wall and CPU time are measured by the platform per invocation. CPU is a total for the invocation; where in the slice it was spent is not recorded.</p>
     </>
   );
 }

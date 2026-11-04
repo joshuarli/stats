@@ -1,1 +1,1 @@
-{"projectId":"stats","range":"1h","kind":"probes","fromMs":1793751900000,"toMs":1793755632188,"stepMs":300000,"series":[{"metric":"probe.health.up","values":[1,1,1,1,1,1,1,1,1,1,1,1,1]},{"metric":"probe.health.ms","values":[35,65,152,71,50,85,63,45,48,78,141,56,72]}]}
+{"projectId":"stats","range":"1h","kind":"probes","fromMs":1793828700000,"toMs":1793832355839,"stepMs":300000,"series":[{"metric":"probe.health.up","values":[1,1,1,1,1,1,null,1,1,1,1,1,1]},{"metric":"probe.health.ms","values":[48,78,33,56,65,44,null,81,51,12,86,52,50]}]}

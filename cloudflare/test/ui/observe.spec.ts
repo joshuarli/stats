@@ -136,9 +136,9 @@ test("choosing a deployment in the rail zooms every chart to its rollout and wid
   await setup(page);
   await page.goto("/#/project/stats?range=24h");
   await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);
-  await page.getByRole("option", { name: /v1\.3\.0 canary/u }).click();
+  await page.getByRole("option", { name: /v1\.3\.0 10%/u }).click();
   await expect(page).toHaveURL(/range=7d/u);
-  await expect(page.getByRole("option", { name: /v1\.3\.0 canary/u })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("option", { name: /v1\.3\.0 10%/u })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
   await page.locator("#deployments").getByRole("button", { name: "Show full range" }).click();
   await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);

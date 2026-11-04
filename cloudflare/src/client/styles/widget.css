@@ -35,6 +35,7 @@
   .widget-meta { flex-wrap: wrap; white-space: normal; }
 }
 
+.modal.compact { width: min(440px, 94vw); }
 .modal { width: min(1120px, 94vw); max-height: 88vh; padding: 0; border: 0; border-radius: var(--radius-xl); background: var(--surface); color: var(--text); box-shadow: var(--shadow-modal); overflow: hidden; }
 .modal[open] { display: flex; flex-direction: column; }
 .modal::backdrop { background: rgb(20 20 18 / 28%); backdrop-filter: blur(2px); }

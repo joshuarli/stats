@@ -4,7 +4,7 @@ import type { HostSystem } from "../../api";
 import { bytes } from "../../format";
 import { duration } from "../../health";
 import { OsLogo } from "../../components/OsLogo";
-import { HoverCard } from "../../components/ui";
+import { Info } from "../../components/Info";
 
 function ghz(mhz: number): string {
   return `${(mhz / 1000).toFixed(2)} GHz`;
@@ -35,12 +35,12 @@ export function SystemInfo(props: { readonly system: HostSystem | null; readonly
     ];
   };
   return (
-    <HoverCard label="Host information">
+    <Info title="Host information">
       <Show
         when={props.system}
-        fallback={<p class="hover-card-empty">This host has not reported system details. The agent sends them with its first upload after an update.</p>}
+        fallback={<p>This host has not reported system details. The agent sends them with its first upload after an update.</p>}
       >
-        <dl class="system-facts">
+        <dl class="fact-list">
           <For each={facts()}>
             {(fact) => (
               <>
@@ -54,6 +54,6 @@ export function SystemInfo(props: { readonly system: HostSystem | null; readonly
           </For>
         </dl>
       </Show>
-    </HoverCard>
+    </Info>
   );
 }

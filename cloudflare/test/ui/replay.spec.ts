@@ -124,8 +124,9 @@ for (const capture of hostCaptures()) {
       await page.waitForLoadState("networkidle");
       await page.mouse.move(0, 0);
       if (!capture.system) {
-        await page.getByRole("button", { name: "Host information" }).click();
-        await expect(page.getByRole("tooltip", { name: "Host information" })).toContainText("This host has not reported system details.");
+        await page.getByRole("button", { name: "About Host information" }).click();
+        await expect(page.getByRole("dialog", { name: "Host information" })).toContainText("This host has not reported system details.");
+        await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
         await page.mouse.move(0, 0);
       }
       const regions = [
@@ -150,9 +151,9 @@ test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   const strip = page.getByRole("region", { name: "Project summary" });
   const absent = strip.locator(".strip-absent");
   await expect(absent).toContainText("No data in this range");
-  for (const label of ["Worker 5xx", "CPU time", "R2 failures", "R2 storage"]) await expect(absent.getByRole("button", { name: label, exact: true })).toBeVisible();
+  await expect(absent.getByRole("button", { name: "R2 storage", exact: true })).toBeVisible();
   await expect(strip.getByRole("button", { name: /^Requests: / })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^Worker 5xx: / })).toHaveCount(0);
+  await expect(strip.getByRole("button", { name: /^Worker 5xx: 0%/ })).toBeVisible();
   const regions = [
     ["tiles", page.getByRole("region", { name: "Project summary" })] as const,
     ["charts", page.getByRole("region", { name: "Charts" })] as const

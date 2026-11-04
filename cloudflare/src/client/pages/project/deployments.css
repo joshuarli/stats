@@ -16,7 +16,6 @@
 .deployment-item-head { display: flex; justify-content: space-between; gap: var(--space-md); }
 .deployment-item-head b { font-weight: 500; overflow-wrap: anywhere; }
 .deployment-item-head span { color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
-.deployment-item-note { color: var(--text-2); font-size: var(--fs-meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deployment-detail { min-width: 0; padding: var(--space-md) var(--inset); }
 .deployment-head { margin-bottom: var(--space-xs); }
 .deployment-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-md); min-width: 0; }

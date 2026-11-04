@@ -7,6 +7,7 @@ import { readParam, writeParam } from "../../urlState";
 import { Segmented, Skeleton, Widget } from "../../components/ui";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssue, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
 import { Modal } from "../../components/Modal";
+import { Info, Term } from "../../components/Info";
 import type { Exploration, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../../../observe/core/store";
 import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";
@@ -223,9 +224,9 @@ export function HealthMeta(props: { readonly health: ObserveHealth | null }): JS
   const { now } = useTelemetry();
   return (
     <Show when={props.health}>{health => (
-      <span class="observe-health" title={`${count(health().liveInvocations)} invocations retained · ${bytes(health().databaseBytes)} on disk · cleanup lag ${duration(health().cleanupLagMs)}`}>
+      <span class="observe-health">
         <span class={`status-dot ${health().newestAtMs !== null && now() - health().newestAtMs! < 10 * 60_000 ? "tone-ok" : "tone-warn"}`} />
-        <span class="observe-health-text">{health().newestAtMs === null ? "nothing received yet" : `last event ${age(health().newestAtMs, now())}`}</span>
+        <span class="observe-health-text"><Term hint={`${count(health().liveInvocations)} invocations retained · ${bytes(health().databaseBytes)} on disk · cleanup lag ${duration(health().cleanupLagMs)}`}>{health().newestAtMs === null ? "nothing received yet" : `last event ${age(health().newestAtMs, now())}`}</Term></span>
       </span>
     )}</Show>
   );
@@ -249,9 +250,9 @@ export function IssueDetail(props: { readonly issue: IssueSummary; readonly occu
       </div>
       <dl class="issue-facts">
         <div><dt>Occurrences</dt><dd>{count(issue().occurrences)}</dd></div>
-        <div><dt>First seen</dt><dd title="Within the retained 7 days, not proof it never happened earlier">{age(issue().firstAtMs, now())}</dd></div>
+        <div><dt><Term hint="The earliest retained occurrence. Retention is 7 days, so this is not proof the issue never happened earlier.">First seen</Term></dt><dd>{age(issue().firstAtMs, now())}</dd></div>
         <div><dt>Last seen</dt><dd>{age(issue().lastAtMs, now())}</dd></div>
-        <div><dt>Introduced in</dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
+        <div><dt><Term hint="The version of the earliest retained occurrence. Unknown when that occurrence recorded no version.">Introduced in</Term></dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
       </dl>
       <Show when={representative()} fallback={<Skeleton rows={4} />}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
       <h3 class="observe-subhead">Occurrences</h3>
@@ -367,7 +368,7 @@ function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
   const shown = () => [...shifts()].sort((a, b) => Number(b.exceedsTwoStdErr) - Number(a.exceedsTwoStdErr)).slice(0, IMPACT_CPU_ROWS);
   return (
     <Show when={shifts().length > 0}>
-      <h3 class="observe-subhead impact-cpu-head">CPU by route</h3>
+      <h3 class="observe-subhead impact-cpu-head">CPU by route <Info title="CPU by route">Mean CPU from every stored invocation, recorded in whole milliseconds. A change is colored only when it exceeds twice its combined standard error. The pnpm observe deployment command lists every route.</Info></h3>
       <div class="table-scroll" role="region" aria-label="CPU by route">
         <table class="data-table compact impact-cpu">
           <thead>
@@ -388,7 +389,7 @@ function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
           </tbody>
         </table>
       </div>
-      <p class="observe-footnote">Mean CPU from every stored invocation, recorded in whole milliseconds. A change is colored only when it exceeds twice its combined standard error.{shifts().length > shown().length ? ` ${shown().length} of ${shifts().length} routes, changes beyond that first; pnpm observe deployment lists all.` : ""}</p>
+      <Show when={shifts().length > shown().length}><p class="observe-footnote">Showing {shown().length} of {shifts().length} routes; significant changes first.</p></Show>
     </Show>
   );
 }
@@ -406,11 +407,11 @@ function baseline(ms: number): string {
   return `${(hours / 24).toFixed(1)} days`;
 }
 
-function IssueLinks(props: { readonly title: string; readonly issues: readonly IssueRef[]; readonly onOpen: (fingerprint: string) => void }): JSX.Element {
+function IssueLinks(props: { readonly title: string; readonly hint: string; readonly issues: readonly IssueRef[]; readonly onOpen: (fingerprint: string) => void }): JSX.Element {
   return (
     <Show when={props.issues.length > 0}>
       <div class="impact-issues">
-        <span class="impact-issues-title">{props.title}</span>
+        <span class="impact-issues-title"><Term hint={props.hint}>{props.title}</Term></span>
         <For each={props.issues}>{issue => (
           <button type="button" class="impact-issue" onClick={() => props.onOpen(issue.fingerprint)}>
             <b>{issue.name}</b>
@@ -460,12 +461,10 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
             <p class="impact-summary">{summary(value())}</p>
             <Show when={value().state === "measured" && value().introduced.length > 0}>
               <p class="impact-rate">
-                Failed requests {before().text} → <b>{after().text}</b>
-                <span class="cell-note"> · {count(before().requests)} → {count(after().requests)} requests · compared with {baseline(value().baselineMs)} of earlier data</span>
+                <Term hint={`${count(before().requests)} requests on earlier versions and ${count(after().requests)} on versions this deployment introduced. Compared with ${baseline(value().baselineMs)} of earlier data.`}>Failed requests</Term> {before().text} → <b>{after().text}</b>
               </p>
-              <IssueLinks title="New" issues={value().newIssues} onOpen={props.observe.openIssue} />
-              <IssueLinks title="Regressed" issues={value().regressions} onOpen={props.observe.openIssue} />
-              <p class="observe-footnote">An issue counts as new when every retained occurrence ran on a version this deployment introduced. That says where it appeared, not that the deployment caused it.</p>
+              <IssueLinks title="New" hint="An issue counts as new when every retained occurrence ran on a version this deployment introduced. That says where it appeared, not that the deployment caused it." issues={value().newIssues} onOpen={props.observe.openIssue} />
+              <IssueLinks title="Regressed" hint="An issue that was resolved before this deployment and has occurred again since, on a version it introduced." issues={value().regressions} onOpen={props.observe.openIssue} />
               <ImpactCpu impact={value()} />
             </Show>
           </>

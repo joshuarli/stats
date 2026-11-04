@@ -1,4 +1,4 @@
-import { createEffect, createSignal, createUniqueId, For, Show, type ParentProps } from "solid-js";
+import { createEffect, createSignal, For, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
@@ -152,20 +152,6 @@ export function HealthMark(props: { readonly health: Health | undefined | (() =>
         </Show>
       )}
     </Show>
-  );
-}
-
-export function HoverCard(props: { readonly label: string; readonly children: JSX.Element; readonly align?: "start" | "end" | undefined }): JSX.Element {
-  const id = createUniqueId();
-  return (
-    <span class="hover-card">
-      <button class="icon-button" type="button" aria-label={props.label} aria-describedby={id}>
-        <Icon name="info" size={14} />
-      </button>
-      <div id={id} class={props.align === "end" ? "hover-card-panel align-end" : "hover-card-panel"} role="tooltip" aria-label={props.label}>
-        {props.children}
-      </div>
-    </span>
   );
 }
 

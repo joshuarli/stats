@@ -3,8 +3,8 @@
   "worker": "stuff",
   "enabled": true,
   "sync": {
-    "lastAttemptAtMs": 1793664002000,
-    "lastSuccessAtMs": 1793664002000,
+    "lastAttemptAtMs": 1793832400000,
+    "lastSuccessAtMs": 1793832400000,
     "error": null,
     "truncated": false
   },

@@ -281,8 +281,8 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
 
   await fleetTable.getByRole("link", { name: "alpha" }).click();
   await expect(page.getByRole("heading", { name: "alpha" })).toBeVisible();
-  await page.getByRole("button", { name: "Host information" }).hover();
-  const system = page.getByRole("tooltip", { name: "Host information" });
+  await page.getByRole("button", { name: "About Host information" }).click();
+  const system = page.getByRole("dialog", { name: "Host information" });
   await expect(system).toContainText("AMD Ryzen 9 9950X 16-Core Processor");
   await expect(system).toContainText("16 cores · 32 threads · 1 socket · up to 5.76 GHz");
   await expect(system).toContainText("Alpine Linux edge");
@@ -290,7 +290,8 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(system).toContainText("alpha-box");
   await expect(system).toContainText("8 GiB");
   await expect(system).toContainText("Uptime");
-  await page.mouse.move(0, 0);
+  await page.keyboard.press("Escape");
+  await expect(system).toHaveCount(0);
   await expect(page.getByLabel("Host metadata")).toHaveCount(0);
   const cpuCell = page.getByRole("button", { name: /^CPU: .*Jump to chart/ });
   await expect(cpuCell).toHaveClass(/is-critical/);
@@ -414,8 +415,8 @@ test("missing and stale data never become zero", async ({ page }) => {
   await expect(page.getByRole("table", { name: "Fleet hosts" }).locator(".status-dot").first()).toHaveAttribute("title", "stale");
   await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
   await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
-  await page.getByRole("button", { name: "Host information" }).click();
-  await expect(page.getByRole("tooltip", { name: "Host information" })).toContainText("This host has not reported system details.");
+  await page.getByRole("button", { name: "About Host information" }).click();
+  await expect(page.getByRole("dialog", { name: "Host information" })).toContainText("This host has not reported system details.");
 });
 
 test("host summary rebuilds after an empty range becomes populated", async ({ page }) => {
@@ -561,7 +562,8 @@ test("a stale collector is flagged on the projects page and the project page", a
   await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".page-header")).toContainText("stale");
-  await expect(page.getByText("The collector has not succeeded recently")).toBeVisible();
+  await page.getByRole("button", { name: "About Collector status" }).click();
+  await expect(page.getByRole("dialog", { name: "Collector status" })).toContainText("The collector has not succeeded recently");
 });
 
 test("the project page compares a deployment's before and after windows", async ({ page }) => {

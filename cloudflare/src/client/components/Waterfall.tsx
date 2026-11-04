@@ -18,7 +18,7 @@ export interface WaterfallRow {
 }
 
 export interface SummaryStat {
-  readonly label: string;
+  readonly label: JSX.Element;
   readonly value: string;
   readonly note?: string | undefined;
 }

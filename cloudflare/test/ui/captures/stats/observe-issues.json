@@ -1,1 +1,1 @@
-{"items":[],"next":null}
+{"items":[{"fingerprint":"caed85afb51b1b37531652803b1e0cfad12de3874ed65710498c9518e341e23a","name":"AnalyticsSQLAPIError","operation":null,"frame":"run (src/projects/collector.ts:58)","state":"open","occurrences":2,"firstAtMs":1793791848800,"lastAtMs":1793830549165,"lastVersion":"2f38a11c-a42e-4cb4-8101-2cfe16c4d865","versions":2,"firstVersion":"0b502df4-3b9d-4d02-a0e3-6b14fd359828","firstVersionLabel":null}],"next":null}

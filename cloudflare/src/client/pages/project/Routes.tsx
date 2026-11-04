@@ -2,7 +2,9 @@ import { createMemo, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
 import { count, milliseconds, percent } from "../../format";
+import { MIN_SCORED_EVENTS } from "../../health";
 import { Widget } from "../../components/ui";
+import { Term } from "../../components/Info";
 import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
 import { stack } from "../../waterfall";
 import { PanelLabel, PanelChart } from "../host/shared";
@@ -62,7 +64,7 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Average CPU time (100+ invocations)</PanelLabel>
+          <PanelLabel><Term hint={`Mean CPU per invocation. Withheld for buckets with fewer than ${MIN_SCORED_EVENTS} invocations, so one slow call cannot read as an average.`}>Average CPU time</Term></PanelLabel>
           <PanelChart
             label="Durable Object average CPU time"
             area

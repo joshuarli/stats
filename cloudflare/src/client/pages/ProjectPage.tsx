@@ -8,6 +8,7 @@ import { createUpdateEffect } from "../effect";
 import { loadProjects, loadQuery } from "../queries";
 import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
 import { PageHeader } from "../components/PageHeader";
+import { Info } from "../components/Info";
 import { SectionBar, type SectionLink } from "../components/SectionBar";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { StatusStrip } from "./host/Status";
@@ -138,10 +139,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     <DeploymentEvents value={deployments.events}>
       <PageHeader
         title={props.project.name}
-        titleExtra={<Badge tone={status().tone} dot>{status().label}</Badge>}
-      >
-        <Show when={collectorNote()}>{(note) => <span class="page-sub">{note()}</span>}</Show>
-      </PageHeader>
+        titleExtra={<><Badge tone={status().tone} dot>{status().label}</Badge><Show when={collectorNote()}>{(note) => <Info title="Collector status">{note()}</Info>}</Show></>}
+      />
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>

@@ -5,6 +5,7 @@ import { age, count } from "../../format";
 import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
 import { jumpTo, Skeleton, Widget } from "../../components/ui";
+import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
 import { rolloutWindow } from "./rollout";
@@ -154,11 +155,11 @@ export function createProjectDeployments(projectId: () => string, range: () => R
 }
 
 function ComparisonTable(props: { readonly comparison: DeploymentComparison }): JSX.Element {
-  const windows = () => `Before ${span(props.comparison.before)}\nAfter ${span(props.comparison.after)}`;
+  const windows = () => `Before ${span(props.comparison.before)}. After ${span(props.comparison.after)}. The bucket the deployment landed in and the bucket after it are excluded.`;
   const caveats = () => props.comparison.warnings.length;
   return (
     <>
-      <p class="deployment-windows" title={windows()}>{props.comparison.window} each side · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</p>
+      <p class="deployment-windows"><Term hint={windows()}>{`${props.comparison.window} each side`}</Term> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</p>
       <Show when={props.comparison.reasons.length > 0}>
         <div class="notice notice-warn deployment-reasons" role="status">
           <span><b>No verdict</b><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></span>
@@ -213,9 +214,8 @@ export function DeploymentRail(props: { readonly deployments: ProjectDeployments
       <div class="deployment-rail-head"><h2>Deployments</h2><span>{checked()}</span></div>
       <div class="deployment-list" role="listbox" tabindex="-1" aria-label="Deployment" onKeyDown={moveSelection}>
         <For each={history()?.deployments ?? []}>{deployment => (
-          <button type="button" role="option" class="deployment-item" title={deployment.message ?? undefined} tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => focus(deployment.id)}>
+          <button type="button" role="option" class="deployment-item" tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => focus(deployment.id)}>
             <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
-            <span class="deployment-item-note">{deployment.message ?? "No message"}</span>
           </button>
         )}</For>
       </div>
@@ -240,7 +240,15 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
             <Show when={current()}>{deployment => (
               <div class="deployment-title">
                 <b>{title(deployment())}</b>
-                <span class="cell-note" title={`${deployment().id}${deployment().message === null ? "" : `\n${deployment().message}`}`}>{RANGE.format(deployment().atMs)} · {deployment().source}</span>
+                <span class="cell-note">{RANGE.format(deployment().atMs)} · {deployment().source}</span>
+                <Info title="Deployment details">
+                  <dl class="fact-list">
+                    <dt>Deployed</dt><dd>{MOMENT.format(deployment().atMs)}</dd>
+                    <dt>Source</dt><dd>{deployment().source}</dd>
+                    <dt>Message</dt><dd>{deployment().message ?? "None recorded"}</dd>
+                    <dt>ID</dt><dd class="mono">{deployment().id}</dd>
+                  </dl>
+                </Info>
                 <Show
                   when={view() === null}
                   fallback={<button class="btn btn-small deployment-scope" type="button" onClick={resetZoom}>Show full range</button>}

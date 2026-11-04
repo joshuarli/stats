@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
 import { count, dollars, dollarsPrecise } from "../../format";
 import { Segmented, Widget } from "../../components/ui";
+import { Term } from "../../components/Info";
 import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
 import { stack } from "../../waterfall";
 import { PanelLabel, PanelChart, seriesColor, SERIES_COLORS } from "../host/shared";
@@ -53,7 +54,7 @@ export function CostWidget(props: { readonly data: ProjectData; readonly view: T
         }
       >
         <WaterfallSummary stats={[
-          { label: "Total cost", value: dollars(total()), note: "list price" },
+          { label: <Term hint="Usage times Cloudflare's list price. Not an invoice: included allowances and discounts are not applied.">Total cost</Term>, value: dollars(total()) },
           { label: "Worker requests", value: count(rows()[0]?.usage) },
           { label: "Most expensive", value: top()?.label ?? "—", note: top() === undefined ? undefined : dollars(top()!.cost) }
         ]} />

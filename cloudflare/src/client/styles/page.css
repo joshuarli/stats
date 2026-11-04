@@ -7,7 +7,7 @@
 
 @media (max-width: 640px) {
   .page-header h1 { min-width: 0; overflow-wrap: anywhere; }
-  .page-header > .hover-card { margin-left: auto; }
+  .page-header > .info-button { margin-left: auto; }
 }
 
 @media (max-width: 375px) {

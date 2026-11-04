@@ -1,1 +1,1 @@
-{"hostId":"h_480dcd1a4914e5bcc9b0147c974d7880","reportedAtMs":1793662782115,"system":{"agent":"0.1.0","arch":"arm64","cpu":{"cores":18,"model":"Apple M5 Max","sockets":1,"threads":18},"hostname":"sentry","kernel":"27.0.0","os":"macOS 27.0.1"}}
+{"hostId":"h_480dcd1a4914e5bcc9b0147c974d7880","reportedAtMs":1793830761383,"system":{"agent":"0.1.0","arch":"arm64","cpu":{"cores":18,"model":"Apple M5 Max","sockets":1,"threads":18},"hostname":"sentry","kernel":"27.0.0","os":"macOS 27.0.1"}}

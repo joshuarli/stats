@@ -1,9 +1,10 @@
 import type { JSX } from "@solidjs/web";
 import { bytes, count, percent } from "../../format";
-import { LIMITS } from "../../health";
+import { LIMITS, MIN_SCORED_EVENTS } from "../../health";
 import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 
 import { Widget } from "../../components/ui";
+import { Term } from "../../components/Info";
 import { holdLast } from "./math";
 import { bucketOutcome, otherShare, provisionalFromMs, r2Metric, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
@@ -23,7 +24,7 @@ export function OperationsWidget(props: { readonly data: ProjectData }): JSX.Ele
         stepMs={props.data.r2.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.r2)}
       />
-      <PanelLabel>Failure share (100+ operations)</PanelLabel>
+      <PanelLabel><Term hint={`Other failures as a share of all R2 operations. Withheld for buckets with fewer than ${MIN_SCORED_EVENTS} operations, so a few failures cannot read as a rate.`}>Failure share</Term></PanelLabel>
       <PanelChart
         label="R2 failure share"
         area

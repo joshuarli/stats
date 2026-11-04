@@ -1,8 +1,9 @@
 import type { JSX } from "@solidjs/web";
 import { count, milliseconds, percent } from "../../format";
-import { LIMITS } from "../../health";
+import { LIMITS, MIN_SCORED_EVENTS } from "../../health";
 
 import { Widget } from "../../components/ui";
+import { Term } from "../../components/Info";
 import { PanelLabel, PanelChart } from "../host/shared";
 import { cpuAverage, provisionalFromMs, serverErrorShare, STATUS_CLASSES, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
@@ -41,7 +42,7 @@ export function StatusWidget(props: { readonly data: ProjectData }): JSX.Element
         stepMs={props.data.worker.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
-      <PanelLabel>5xx share (100+ invocations)</PanelLabel>
+      <PanelLabel><Term hint={`5xx responses as a share of invocations. Withheld for buckets with fewer than ${MIN_SCORED_EVENTS} invocations, so a few errors cannot read as a rate.`}>5xx share</Term></PanelLabel>
       <PanelChart
         label="Worker 5xx share"
         area

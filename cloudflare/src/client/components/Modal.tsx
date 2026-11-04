@@ -5,6 +5,7 @@ import { Icon } from "./Icon";
 export function Modal(props: ParentProps<{
   readonly title: JSX.Element;
   readonly label: string;
+  readonly size?: "wide" | "compact" | undefined;
   readonly onClose: () => void;
   readonly onBack?: (() => void) | undefined;
   readonly backLabel?: string | undefined;
@@ -18,7 +19,7 @@ export function Modal(props: ParentProps<{
   };
   return (
     <dialog
-      class="modal"
+      class={props.size === "compact" ? "modal compact" : "modal"}
       aria-label={props.label}
       ref={open}
       closedby="any"
