@@ -263,9 +263,13 @@ export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
   return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
 }
 
+function windowParams(query: HistoryQuery): string {
+  return "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
+}
+
 export function getProjectHistories(
   projectId: string,
-  range: RangeKey,
+  query: HistoryQuery,
   options: { readonly durableObjects: boolean; readonly d1: boolean; readonly probes: boolean },
   signal: AbortSignal
 ): Promise<ProjectHistories> {
@@ -273,7 +277,7 @@ export function getProjectHistories(
   if (options.durableObjects) kinds.push("durable-objects");
   if (options.d1) kinds.push("d1", "d1-statements");
   if (options.probes) kinds.push("probes");
-  return getHistory(`/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${range}&kinds=${kinds.join(",")}`, decodeProjectHistories, projectCache, signal);
+  return getHistory(`/api/v1/projects/${encodeURIComponent(projectId)}/history?${windowParams(query)}&kinds=${kinds.join(",")}`, decodeProjectHistories, projectCache, signal);
 }
 
 export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {
@@ -286,8 +290,7 @@ export async function getSystem(hostId: string, signal: AbortSignal): Promise<Ho
 }
 
 function historyUrl(hostId: string, query: HistoryQuery): string {
-  const window = "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
-  return `${hostPath(hostId, "/history")}?${window}`;
+  return `${hostPath(hostId, "/history")}?${windowParams(query)}`;
 }
 
 export function getSummary(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<SummaryHistory> {

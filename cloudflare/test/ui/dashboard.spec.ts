@@ -587,6 +587,15 @@ test("the range and the selected deployment live in the URL", async ({ page }) =
   await expect(page).toHaveURL(new RegExp(`deployment=${DEPLOYMENT_ID}(&|$)`, "u"));
 });
 
+test("choosing a deployment fetches project history for its rollout window, not a longer trailing range", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff?range=1h");
+  const options = page.getByRole("listbox", { name: "Deployment" });
+  await options.getByRole("option", { name: /v41/u }).click();
+  await expect.poll(() => requests.some(request => /\/projects\/stuff\/history\?from=\d+&to=\d+&kinds=.*worker/u.test(request))).toBe(true);
+  expect(requests.some(request => request.includes("/projects/stuff/history?range=7d") || request.includes("/projects/stuff/history?range=30d"))).toBe(false);
+});
+
 test("arrow keys move through the deployment list", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/stuff");

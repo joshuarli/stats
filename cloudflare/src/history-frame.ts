@@ -187,7 +187,7 @@ function projectNode(tables: Tables, history: ProjectHistory) {
     }
     return { name: entry.metric, type: "f64", values, validity: found === rows ? null : validity };
   });
-  return { form: "metrics", metadata: { projectId, range, kind, fromMs, toMs, stepMs }, table: tables.add({ rows, columns }) };
+  return { form: "metrics", metadata: { projectId, ...(range === undefined ? {} : { range }), kind, fromMs, toMs, stepMs }, table: tables.add({ rows, columns }) };
 }
 
 export function encodeProjectHistory(history: ProjectHistory): Uint8Array<ArrayBuffer> {

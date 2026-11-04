@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "./auth";
 import { canonicalJson, parseBatch, type Sample, type SystemInfo } from "./protocol";
 import { computeDelta, parseDelta } from "./delta";
-import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rangeKey, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
+import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";
 import { HISTORY_CONTENT_TYPE } from "./binary/history";
 import { encodeHostBundle, encodeHostHistory, encodeProjectBundle, encodeProjectHistory, hostHistoryColumns, type HostHistory, type HostHistoryColumns } from "./history-frame";
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "./limits";
@@ -477,28 +477,28 @@ export class Installation extends DurableObject<Env> {
     if (projects instanceof Response) return projects;
     const project = projects.find(candidate => candidate.id === projectId);
     if (project === undefined) return failure("not_found", "project not found", 404);
-    const range = params.get("range");
-    const key = range === null ? null : rangeKey(range);
-    if (key === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
+    const query = params.has("range") || params.has("from") || params.has("to") ? historyQuery(params) : null;
+    const now = this.now();
+    if (query === null || ("fromMs" in query && query.fromMs >= now)) return failure("invalid_request", "a range or a from and to window, and a kind, are required and must be supported", 400);
     const sql = this.ctx.storage.sql;
     const kindsParam = params.get("kinds");
     const kindParam = params.get("kind");
     const version = latestCollectorRunId(sql);
-    const windowKey = `range=${key}`;
+    const windowKey = historyWindowKey(query);
     if (kindsParam !== null) {
       if (kindParam !== null) return failure("invalid_request", "kind and kinds cannot be combined", 400);
       const kinds = projectKindsValue(kindsParam);
       if (kinds === null) return failure("invalid_request", "kinds must be supported project kinds", 400);
       const etag = historyEtag(`project:${project.id}`, version, windowKey, kinds.join("+"));
       if (etagMatches(request, etag)) return notModified(etag);
-      const { histories } = readProjectHistories(sql, project, key, kinds, this.now());
+      const { histories } = readProjectHistories(sql, project, query, kinds, now);
       return frameResponse(encodeProjectBundle(project.id, kinds.map(kind => histories[kind]!)), etag);
     }
     const kind = projectKind(kindParam);
-    if (kind === null) return failure("invalid_request", "range and kind are required and must be supported", 400);
+    if (kind === null) return failure("invalid_request", "a range or a from and to window, and a kind, are required and must be supported", 400);
     const etag = historyEtag(`project:${project.id}`, version, windowKey, kind);
     if (etagMatches(request, etag)) return notModified(etag);
-    return frameResponse(encodeProjectHistory(kind === "collector" ? readCollectorHistory(sql, project, key, this.now()) : readMetricHistory(sql, project, key, kind, this.now())), etag);
+    return frameResponse(encodeProjectHistory(kind === "collector" ? readCollectorHistory(sql, project, query, now) : readMetricHistory(sql, project, query, kind, now)), etag);
   }
 
   private async ensureAlarm(now: number): Promise<void> {

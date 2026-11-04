@@ -215,6 +215,62 @@ describe("project history", () => {
     expect(seriesOf(body, "worker.invocations")[indexOf(body, hour + 3 * HOUR_MS)]).toBe(40);
   });
 
+  it("serves an explicit window in fine buckets, with no range in its frame", async () => {
+    const fromMs = OLD_BUCKET - HOUR_MS;
+    const toMs = OLD_BUCKET + HOUR_MS;
+    await record(metricRun(NOW - BUCKET, [
+      { metric: "worker.invocations", bucketMs: OLD_BUCKET, value: 7 },
+      { metric: "worker.invocations", bucketMs: toMs + 6 * HOUR_MS, value: 99 },
+    ]));
+    const response = await get(`/projects/stuff/history?from=${fromMs}&to=${toMs}&kind=worker`);
+    expect(response.status).toBe(200);
+    const body = await readFrame(response) as { stepMs: number; fromMs: number; toMs: number; series: { metric: string; values: (number | null)[] }[] };
+    expect("range" in body).toBe(false);
+    expect(body.stepMs).toBe(BUCKET);
+    expect(body.fromMs).toBe(fromMs);
+    expect(body.toMs).toBe(toMs);
+    expect(body.series[0]?.values).toHaveLength((toMs - fromMs) / BUCKET + 1);
+    expect(seriesOf(body, "worker.invocations")[indexOf(body, OLD_BUCKET)]).toBe(7);
+    expect(seriesOf(body, "worker.invocations").filter((value) => value === 99)).toEqual([]);
+  });
+
+  it("serves a window older than the fine samples from hourly rows", async () => {
+    const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / HOUR_MS) * HOUR_MS;
+    await record(metricRun(NOW - BUCKET, [
+      { metric: "worker.invocations", bucketMs: hour, value: 10 },
+      { metric: "worker.invocations", bucketMs: hour + BUCKET, value: 20 },
+    ]));
+    const response = await get(`/projects/stuff/history?from=${hour - 2 * HOUR_MS}&to=${hour + 4 * HOUR_MS}&kind=worker`);
+    expect(response.status).toBe(200);
+    const body = await readFrame(response) as { stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] };
+    expect(body.stepMs).toBe(HOUR_MS);
+    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBe(30);
+  });
+
+  it("returns only the collector runs inside an explicit window", async () => {
+    await record(metricRun(NOW - 3 * HOUR_MS, []), metricRun(NOW - HOUR_MS, []));
+    const response = await get(`/projects/stuff/history?from=${NOW - 4 * HOUR_MS}&to=${NOW - 2 * HOUR_MS}&kinds=worker,collector`);
+    expect(response.status).toBe(200);
+    const body = await readFrame(response) as { histories: { collector: { runs: { atMs: number }[] } } };
+    expect(body.histories.collector.runs.map((run) => run.atMs)).toEqual([NOW - 3 * HOUR_MS]);
+  });
+
+  it("rejects a window that is incomplete, inverted, mixed with a range, in the future, or longer than 30 days", async () => {
+    const from = NOW - 2 * HOUR_MS;
+    const to = NOW - HOUR_MS;
+    const queries = [
+      `from=${from}&kind=worker`,
+      `to=${to}&kind=worker`,
+      `from=${to}&to=${from}&kind=worker`,
+      `from=${from}&to=${from}&kind=worker`,
+      `range=1h&from=${from}&to=${to}&kind=worker`,
+      `from=${NOW + HOUR_MS}&to=${NOW + 2 * HOUR_MS}&kind=worker`,
+      `from=${NOW - 31 * 24 * HOUR_MS}&to=${NOW}&kind=worker`,
+      `from=abc&to=${to}&kind=worker`,
+    ];
+    for (const query of queries) expect((await get(`/projects/stuff/history?${query}`)).status, query).toBe(400);
+  });
+
   it("fills a settled counter bucket with zero when a later successful run covered it", async () => {
     await record(
       metricRun(OLD_BUCKET + HOUR_MS, [{ metric: "worker.invocations", bucketMs: OLD_BUCKET, value: 5 }]),

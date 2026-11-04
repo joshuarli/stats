@@ -1,3 +1,4 @@
+import type { HistoryQuery } from "../aggregate.ts";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGE_MS, type RangeKey } from "../limits.ts";
 import { windowStartMs } from "./collector.ts";
 import type { ProjectConfig } from "./config.ts";
@@ -35,7 +36,7 @@ interface CollectorSummary {
 
 interface MetricHistory {
   readonly projectId: string;
-  readonly range: RangeKey;
+  readonly range?: RangeKey;
   readonly kind: MetricKind;
   readonly fromMs: number;
   readonly toMs: number;
@@ -45,7 +46,7 @@ interface MetricHistory {
 
 interface CollectorHistory {
   readonly projectId: string;
-  readonly range: RangeKey;
+  readonly range?: RangeKey;
   readonly kind: "collector";
   readonly fromMs: number;
   readonly toMs: number;
@@ -126,53 +127,66 @@ export function latestCollectorRunId(sql: SqlStorage): number | null {
   return sql.exec<{ id: number }>("SELECT id FROM collector_runs ORDER BY id DESC LIMIT 1").toArray()[0]?.id ?? null;
 }
 
-export function readCollectorHistory(sql: SqlStorage, project: ProjectConfig, range: RangeKey, now: number): CollectorHistory {
-  const fromMs = now - RANGE_MS[range];
+function boundsOf(query: HistoryQuery, now: number): { readonly fromMs: number; readonly toMs: number } {
+  return "range" in query ? { fromMs: now - RANGE_MS[query.range], toMs: now } : { fromMs: query.fromMs, toMs: Math.min(query.toMs, now) };
+}
+
+function rangeOf(query: HistoryQuery): { readonly range?: RangeKey } {
+  return "range" in query ? { range: query.range } : {};
+}
+
+export function readCollectorHistory(sql: SqlStorage, project: ProjectConfig, query: HistoryQuery, now: number): CollectorHistory {
+  const { fromMs, toMs } = boundsOf(query, now);
+  const untilMs = "range" in query ? Number.MAX_SAFE_INTEGER : toMs;
   const runs = sql
     .exec<{ at_ms: number; ok: number; detail: string; rows_read: number; duration_ms: number }>(
-      "SELECT at_ms, ok, detail, rows_read, duration_ms FROM collector_runs WHERE at_ms >= ? ORDER BY id",
+      "SELECT at_ms, ok, detail, rows_read, duration_ms FROM collector_runs WHERE at_ms >= ? AND at_ms <= ? ORDER BY id",
       fromMs,
+      untilMs,
     )
     .toArray()
     .map((row) => ({ atMs: row.at_ms, ok: row.ok === 1, detail: row.detail, rowsRead: row.rows_read, durationMs: row.duration_ms }));
-  return { projectId: project.id, range, kind: "collector", fromMs, toMs: now, runs };
+  return { projectId: project.id, ...rangeOf(query), kind: "collector", fromMs, toMs, runs };
 }
 
 interface MetricWindow {
   readonly stepMs: number;
   readonly fromMs: number;
+  readonly toMs: number;
   readonly count: number;
 }
 
-function metricWindow(range: RangeKey, now: number): MetricWindow {
-  const stepMs = bucketWidthMs(RANGE_MS[range]);
+function metricWindow(query: HistoryQuery, now: number): MetricWindow {
+  const { fromMs: wantedMs, toMs } = boundsOf(query, now);
+  const widest = bucketWidthMs(toMs - wantedMs);
+  const stepMs = !("range" in query) && widest < HOUR_MS && wantedMs < now - PROJECT_SAMPLE_RETENTION_MS ? HOUR_MS : widest;
   const retentionMs = stepMs < HOUR_MS ? PROJECT_SAMPLE_RETENTION_MS : PROJECT_HOUR_RETENTION_MS;
-  const floored = Math.floor((now - RANGE_MS[range]) / stepMs) * stepMs;
+  const floored = Math.floor(wantedMs / stepMs) * stepMs;
   const fromMs = floored < now - retentionMs ? floored + stepMs : floored;
-  const count = Math.floor((now - fromMs) / stepMs) + 1;
-  return { stepMs, fromMs, count };
+  const count = Math.max(0, Math.floor((toMs - fromMs) / stepMs) + 1);
+  return { stepMs, fromMs, toMs, count };
 }
 
 export function readProjectHistories(
   sql: SqlStorage,
   project: ProjectConfig,
-  range: RangeKey,
+  query: HistoryQuery,
   kinds: readonly ProjectKind[],
   now: number,
 ): ProjectHistoryBundle {
   const metricKinds = kinds.filter((kind): kind is MetricKind => kind !== "collector");
   const metrics = new Map<MetricKind, MetricHistory>();
   if (metricKinds.length > 0) {
-    const window = metricWindow(range, now);
-    const grouped = readGrouped(sql, project.id, metricKinds, window.stepMs, window.fromMs);
+    const window = metricWindow(query, now);
+    const grouped = readGrouped(sql, project.id, metricKinds, window.stepMs, window.fromMs, window.toMs);
     const fillable = fillableBuckets(sql, window.fromMs, now);
     for (const kind of metricKinds) {
-      metrics.set(kind, buildMetricHistory(project, range, kind, grouped.get(kind) ?? new Map(), fillable, window, now));
+      metrics.set(kind, buildMetricHistory(project, query, kind, grouped.get(kind) ?? new Map(), fillable, window));
     }
   }
   const histories: Partial<Record<ProjectKind, ProjectHistory>> = {};
   for (const kind of kinds) {
-    if (kind === "collector") histories.collector = readCollectorHistory(sql, project, range, now);
+    if (kind === "collector") histories.collector = readCollectorHistory(sql, project, query, now);
     else histories[kind] = metrics.get(kind)!;
   }
   return { projectId: project.id, histories };
@@ -181,21 +195,20 @@ export function readProjectHistories(
 export function readMetricHistory(
   sql: SqlStorage,
   project: ProjectConfig,
-  range: RangeKey,
+  query: HistoryQuery,
   kind: MetricKind,
   now: number,
 ): MetricHistory {
-  return readProjectHistories(sql, project, range, [kind], now).histories[kind] as MetricHistory;
+  return readProjectHistories(sql, project, query, [kind], now).histories[kind] as MetricHistory;
 }
 
 function buildMetricHistory(
   project: ProjectConfig,
-  range: RangeKey,
+  query: HistoryQuery,
   kind: MetricKind,
   rows: Grouped,
   fillable: (startMs: number, endMs: number) => boolean,
   window: MetricWindow,
-  now: number,
 ): MetricHistory {
   const metrics = kind === "routes" ? routeMetrics(rows) : kind === "d1-statements" ? statementMetrics(rows) : expectedMetrics(project, kind);
   const series = metrics.map((metric) => {
@@ -215,7 +228,7 @@ function buildMetricHistory(
     }
     return { metric, values };
   });
-  return { projectId: project.id, range, kind, fromMs: window.fromMs, toMs: now, stepMs: window.stepMs, series };
+  return { projectId: project.id, ...rangeOf(query), kind, fromMs: window.fromMs, toMs: window.toMs, stepMs: window.stepMs, series };
 }
 
 type Folded = { sum: number; max: number; min: number };
@@ -271,19 +284,21 @@ function readGrouped(
   kinds: readonly MetricKind[],
   stepMs: number,
   fromMs: number,
+  toMs: number,
 ): ReadonlyMap<MetricKind, Grouped> {
   const prefixes = kinds.map((kind) => KIND_PREFIX[kind]);
   const conditions = prefixes.map(() => "(metric >= ? AND metric < ?)").join(" OR ");
   const [table, column] = stepMs < HOUR_MS ? ["project_samples", "bucket_ms"] : ["project_hours", "hour_ms"];
   const cursor = sql.exec<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
     `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value
-     FROM ${table} WHERE project = ? AND (${conditions}) AND ${column} >= ?
+     FROM ${table} WHERE project = ? AND (${conditions}) AND ${column} >= ? AND ${column} <= ?
      GROUP BY metric, at`,
     stepMs,
     stepMs,
     project,
     ...prefixes.flatMap((prefix) => [prefix, `${prefix}\uffff`]),
     fromMs,
+    toMs,
   );
   const grouped = new Map<MetricKind, Map<string, Map<number, Folded>>>();
   for (const row of cursor) {

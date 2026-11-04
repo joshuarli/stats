@@ -117,10 +117,12 @@ The deployments list is a rail beside the project page. Choosing a deployment
 there, or its marker on a chart, selects it and zooms every chart to its
 rollout: from the deployment until the next one replaced it (until now for the
 newest), padded on both sides by a quarter of that span, between ten minutes
-and six hours. If the rollout starts before the loaded range, the range widens
-to the smallest standard one that reaches it; it never narrows. Project history
-is served only for trailing ranges, so a rollout older than a week is plotted at
-that range's hourly resolution. A `deployment` link zooms on load; a plain page
+and six hours. The project's history is then fetched for exactly that window, so
+a rollout gets the finest buckets the retention still holds (five-minute buckets
+for a rollout within the last seven days, hourly rows before that). If the
+rollout starts before the selected range, the range widens to the smallest
+standard one that reaches it, so panning stays inside it; it never narrows.
+A `deployment` link zooms on load; a plain page
 load does not. Requests are cancelled on project/selection changes, and panel
 loading/errors do not block the other project charts.
 

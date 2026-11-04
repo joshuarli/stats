@@ -93,7 +93,7 @@ Routes under `/api/v1/` (handled in `installation.ts`):
   `range` for an explicit window; the response then omits `range`. Pass
   `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
   as a bundle.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`.
+- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`. `from=<ms>&to=<ms>` replaces `range` (both, `from` before now, at most 30 days apart); a windowed frame carries no `range`. The bucket width is the smallest that gives at most 900 points for the span, except that a window starting before the fine samples' 7-day retention is served from hourly rows.
   Pass `kinds=worker,r2,collector` instead of `kind` to receive several
   kinds at once as a bundle (see [Cloudflare projects](#cloudflare-projects)).
   Both history routes answer in the [history frame](#history-frames); every

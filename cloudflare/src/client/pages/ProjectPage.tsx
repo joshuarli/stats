@@ -57,14 +57,14 @@ export function ProjectPage(): JSX.Element {
 }
 
 function ProjectView(props: { readonly project: Project }): JSX.Element {
-  const { range, view, now, tick, manualTick } = useTelemetry();
+  const { range, query, view, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const id = () => props.project.id;
   const hasBuckets = () => props.project.buckets.length > 0;
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
   const hasDatabases = () => props.project.d1Databases.length > 0;
-  const histories = createMemo(() => loadQuery(signal => getProjectHistories(id(), range(), {
+  const histories = createMemo(() => loadQuery(signal => getProjectHistories(id(), query(), {
     durableObjects: hasNamespaces(),
     d1: hasDatabases(),
     probes: props.project.probes.length > 0

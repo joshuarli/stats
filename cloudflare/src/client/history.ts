@@ -46,7 +46,7 @@ export type FleetHistories = Pick<HostHistories, "summary" | "disks" | "nets" | 
 
 export interface MetricHistory {
   readonly projectId: string;
-  readonly range: RangeKey;
+  readonly range?: RangeKey;
   readonly kind: ProjectMetricKind;
   readonly fromMs: number;
   readonly toMs: number;
@@ -64,7 +64,7 @@ export interface CollectorRun {
 
 export interface CollectorHistory {
   readonly projectId: string;
-  readonly range: RangeKey;
+  readonly range?: RangeKey;
   readonly fromMs: number;
   readonly toMs: number;
   readonly runs: readonly CollectorRun[];
@@ -179,7 +179,7 @@ function metricsFrom(history: SingleView, kind: ProjectMetricKind): MetricHistor
   const stepMs = finite(metadata.stepMs);
   return {
     projectId: text(metadata.projectId),
-    range: rangeOf(metadata.range),
+    ...(metadata.range === undefined ? {} : { range: rangeOf(metadata.range) }),
     kind,
     fromMs,
     toMs: finite(metadata.toMs),
@@ -194,7 +194,7 @@ function collectorFrom(history: SingleView): CollectorHistory {
   if (!Array.isArray(value.runs)) throw new Error("expected collector runs");
   return {
     projectId: text(value.projectId),
-    range: rangeOf(value.range),
+    ...(value.range === undefined ? {} : { range: rangeOf(value.range) }),
     fromMs: finite(value.fromMs),
     toMs: finite(value.toMs),
     runs: value.runs.map((item: unknown) => {
