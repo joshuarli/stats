@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 46
+Next: 47
+
+### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
+
+- **Area:** Ingest
+- **Where:** `cloudflare/src/installation.ts`, `docs/binary-ingest.md`
+- **Problem:** A misbehaving host token can make the server store about 143 KB of canonical JSON per v2 request, against about 64 KB under v1. Rows per request and request rate are unchanged, and the real agent stores the same bytes as before.
+- **Recommendation:** Decide whether to reject a batch whose decoded canonical JSON would exceed the old 64 KB bound, or accept the documented limit. If capped, add a conformance fixture and a Worker test for the boundary.
+- **Fix with:** none
+- **Effort:** S
 
 ### STA-45 · P3 · Report each deployment's observed impact without being asked
 

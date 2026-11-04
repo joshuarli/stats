@@ -138,6 +138,16 @@ node cloudflare/scripts/api.mjs /hosts | jaq -r '.hosts[] | [.hostId, .name] | @
    host still returns the points from before the cutover
    (`node cloudflare/scripts/api.mjs '/hosts/<id>/history?range=7d&kinds=summary'`).
 
+### Cutover record
+
+2026-11-04: deployed `stats` version
+`2f38a11c-a42e-4cb4-8101-2cfe16c4d865` and `stats-observe` version
+`eff00be4-1139-4790-9dc5-54487d41285e`, replacing `stats` version
+`3a4ea033-34f4-492c-99a7-7899874fd227`. Updated `threadripper` (x86_64,
+`deploy/hosts.json`), `sentry` (macOS arm64, local), and `m1-max` (macOS
+arm64, `make add-host`). All three reported fresh receipts, and 24-hour,
+7-day, and 30-day history still returned points from before the cutover.
+
 ### Rolling back the cutover
 
 Roll back the server and the agents together; there is no protocol
