@@ -263,17 +263,25 @@ agents now and as the reference producer for non-Cloudflare services later.
 - **Tests:** commands against a local Node HTTP server serving recorded
   responses, including malformed and 503 cases and the exit codes.
 
-## Phase 4: source maps
+## Phase 4: source maps (done)
 
-Caught-error stacks point into the bundle, so issue pages need maps to show
-original files and lines. At deploy, register the bundle's map with
-`stats-observe` under the new version ID through an Access-gated upload in
-stats, and resolve frames there with one small pinned resolver such as
-`@jridgewell/trace-mapping`, measured for size. Uncaught stacks arrive
-already mapped and are stored as they are. A missing map leaves the frame
-generated and marked unmapped; grouping does not depend on it. Exit: a
-bundled throwing fixture resolves to its original file and line, and a map
-registered under the wrong version is rejected.
+Caught-error stacks point into the bundle, so frames are resolved when they
+are read. A map is stored per version and bundle file, immutable: the same
+content again is a no-op and different content is a conflict, so a map can
+never be swapped under a version. `make worker-deploy` parses the version
+ID from `cf deploy` and registers the map from the same build through
+`pnpm observe sourcemap`, which goes through the stats Access gate as a
+same-origin PUT capped at 1.5 MiB; `make observe-sourcemap VERSION=...`
+repeats it. Resolution happens on read, so errors that arrived before their
+map resolve once it is registered. Uncaught stacks arrive already mapped by
+the platform and stay as they are. A frame without a map keeps its bundle
+position and is marked unmapped; grouping uses function names and does not
+depend on maps. The newest 12 maps are kept.
+
+Limits: a map uploaded under the wrong version cannot be detected, only
+prevented; the Makefile pairs the map and the version from one deploy. A map
+larger than 1.5 MiB is rejected rather than chunked; the stats map is
+370 KB.
 
 ## Phase 5: rollout (owner-run)
 
@@ -343,7 +351,7 @@ charts stay on the project page.
 ## State
 
 Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done and deployed (3b as
-`daf404d3` and `a9204e03` on 2026-11-04). Phase 3c is built as `pnpm observe` and was checked read-only against
+`daf404d3` and `a9204e03` on 2026-11-04). Phase 4 is done locally; its deploy-time registration needs `cf access login`. Phase 3c is built as `pnpm observe` and was checked read-only against
 production. The CI rollout write path stays deferred to a write token on a
 future public receiver, since the Cloudflare adapter already records every
 stats deployment.

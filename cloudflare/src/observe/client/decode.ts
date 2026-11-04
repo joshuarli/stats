@@ -1,5 +1,5 @@
 import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
-import type { StackFrame } from "../core/stack.ts";
+import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
 
 export interface ObserveHealth extends Health {
@@ -60,9 +60,18 @@ const KINDS: readonly InvocationKind[] = ["fetch", "rpc", "alarm", "scheduled"];
 const SOURCES: readonly ErrorSource[] = ["uncaught", "caught"];
 const STATES: readonly IssueState[] = ["open", "resolved"];
 
-function frame(value: unknown): StackFrame {
+function original(value: unknown): OriginalPosition | null {
+  if (value === null) return null;
+  const fields = record(value, "original position");
+  return { fn: nullableText(fields["fn"], "original function", 512), file: text(fields["file"], "original file", 512), line: integer(fields["line"], "original line"), column: integer(fields["column"], "original column") };
+}
+
+function frame(value: unknown): SymbolicatedFrame {
   const fields = record(value, "frame");
-  return { fn: nullableText(fields["fn"], "frame function", 512), file: text(fields["file"], "frame file", 512), line: integer(fields["line"], "frame line"), column: integer(fields["column"], "frame column") };
+  return {
+    fn: nullableText(fields["fn"], "frame function", 512), file: text(fields["file"], "frame file", 512), line: integer(fields["line"], "frame line"), column: integer(fields["column"], "frame column"),
+    original: original(fields["original"] ?? null)
+  };
 }
 
 function invocation(value: unknown): InvocationSummary {

@@ -206,3 +206,4 @@
 .legend-p95 { width: 16px; border-top: 1.5px dashed var(--serious); }
 .legend-ramp { width: 48px; height: 8px; border-radius: 1px; background: linear-gradient(90deg, var(--viz-ramp-1), var(--viz-ramp-3), var(--viz-ramp-5)); }
 .legend-failed { width: 8px; height: 6px; border-radius: 1px; background: var(--critical); }
+.frame-unmapped { margin-left: var(--space-sm); padding: 0 var(--space-xs); border-radius: var(--radius-sm); box-shadow: var(--outline); color: var(--muted); font: var(--fs-glyph)/14px var(--font); text-transform: uppercase; letter-spacing: .04em; }

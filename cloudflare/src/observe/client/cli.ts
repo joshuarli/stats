@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces } from "./decode.ts";
 import type { InvocationSummary, IssueState } from "../core/store.ts";
@@ -14,6 +16,8 @@ commands:
   issue <fingerprint>             an issue's stack and recent occurrences
   resolve <fingerprint> | reopen <fingerprint>
   deployment <rollout id>         new issues, regressions, and failure rates
+  sourcemap <version> <map path> [--file NAME]
+                                  register a bundle's source map for a version
 
 options:
   --base URL   observe API base (or OBSERVE_URL), e.g. https://stats.example/api/observe
@@ -24,7 +28,7 @@ OBSERVE_AUTH_HEADER. Credentials are never read from arguments.`;
 
 const WINDOWS: Record<string, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000, "7d": 604_800_000 };
 
-export const EXIT = { ok: 0, usage: 1, unavailable: 2, notFound: 3 } as const;
+export const EXIT = { ok: 0, usage: 1, unavailable: 2, notFound: 3, conflict: 4 } as const;
 
 class Exit extends Error {
   readonly code: number;
@@ -56,6 +60,7 @@ async function call<T>(context: Context, path: string, decode: (value: unknown) 
   try { response = await fetch(`${context.base}${path}`, { ...init, headers: { ...context.headers, ...init.headers as Record<string, string> } }); }
   catch { throw new Exit(EXIT.unavailable, `could not reach ${context.base}`); }
   if (response.status === 404) throw new Exit(EXIT.notFound, "not found or expired");
+  if (response.status === 409) throw new Exit(EXIT.conflict, "a different map is already registered for this version and file");
   if (response.status === 400) throw new Exit(EXIT.usage, `rejected: ${await response.text()}`);
   if (!response.ok) throw new Exit(EXIT.unavailable, `collector unavailable (${response.status})`);
   if (response.status === 204) return decode(null);
@@ -157,6 +162,20 @@ async function run(command: string, positional: readonly string[], values: Recor
         ...(impact.newIssues.length + impact.regressions.length === 0 ? ["no new or regressed issues"] : [])
       ]);
     }
+    case "sourcemap": {
+      const version = argument("version", /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u);
+      const path = positional[1];
+      if (path === undefined) throw new Exit(EXIT.usage, "sourcemap needs the path of a .map file");
+      const file = string("file") ?? basename(path).replace(/\.map$/u, "");
+      let map: string;
+      try { map = readFileSync(path, "utf8"); } catch { throw new Exit(EXIT.usage, `cannot read ${path}`); }
+      const result = await call(context, `/artifacts/${encodeURIComponent(version)}/${encodeURIComponent(file)}`, value => {
+        const fields = value as { result?: unknown };
+        if (fields.result !== "accepted" && fields.result !== "duplicate") throw new Error("invalid artifact response");
+        return fields.result;
+      }, { method: "PUT", headers: { "Content-Type": "application/json", Origin: new URL(context.base).origin }, body: map });
+      return print({ version, file, result }, () => [`${file} for ${version}: ${result}`]);
+    }
     default:
       throw new Exit(EXIT.usage, USAGE);
   }
@@ -167,7 +186,7 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv, out:
     const { values, positionals } = parseArgs({
       args: [...argv],
       allowPositionals: true,
-      options: { base: { type: "string" }, json: { type: "boolean" }, window: { type: "string" }, route: { type: "string" }, failed: { type: "boolean" }, slowest: { type: "boolean" }, state: { type: "string" }, "introduced-in": { type: "string" } }
+      options: { base: { type: "string" }, json: { type: "boolean" }, file: { type: "string" }, window: { type: "string" }, route: { type: "string" }, failed: { type: "boolean" }, slowest: { type: "boolean" }, state: { type: "string" }, "introduced-in": { type: "string" } }
     });
     const [command, ...rest] = positionals;
     if (command === undefined) throw new Exit(EXIT.usage, USAGE);

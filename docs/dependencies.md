@@ -51,3 +51,16 @@ pool cannot do. It imports `miniflare` directly, pinned to
 `5.20261023.3-beta`, the version `@cloudflare/vitest-plugin` already
 installs. The pin adds no package to the tree, and nothing ships with it.
 Upgrade it together with the plugin.
+
+## Source-map resolver in `stats-observe`
+
+`@jridgewell/trace-mapping` 0.3.31 resolves caught-error frames to original
+files and lines in `cloudflare/src/observe/core/symbolicate.ts`. It is MIT,
+pure JavaScript with two small dependencies (`@jridgewell/sourcemap-codec`
+and `@jridgewell/resolve-uri`), already in the tree through Vite, and the
+resolver that Node and most JavaScript tooling use; a hand-written VLQ
+decoder would be more code to own for no gain. Only `stats-observe`
+bundles it: measured on 2026-11-04 it grew that Worker from 14.8 to 20.5 KB
+gzipped, and the `stats` Worker and the dashboard do not include it.
+`@jridgewell/sourcemap-codec` is a direct dev dependency at the same
+version so tests can build small maps.

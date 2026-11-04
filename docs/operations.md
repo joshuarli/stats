@@ -56,6 +56,10 @@ then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
 
+`make worker-deploy` then registers the new stats version's source map with
+`stats-observe` (`make observe-sourcemap VERSION=...` repeats it), which needs
+an Access session from `cf access login https://$STATS_DOMAIN`.
+
 `make worker-deploy` deploys `stats-observe` first (`make observe-deploy`),
 because Cloudflare rejects a `stats` deploy whose tail consumer does not
 exist (`[10203]`). For the same reason, stopping collection means removing

@@ -331,12 +331,19 @@ export function ErrorFrames(props: { readonly occurrence: Pick<Occurrence, "name
       </div>
       <p class={props.occurrence.message === null ? "frames-message withheld" : "frames-message"}>{props.occurrence.message ?? "Message withheld: only listed error types keep their text."}</p>
       <ol class="frames-list">
-        <For each={props.occurrence.frames}>{frame => (
-          <li class={isInApp(frame) ? "in-app" : undefined}>
-            <span class="frame-fn">{frame.fn ?? "anonymous"}</span>
-            <span class="frame-loc">{frame.file}:{frame.line}:{frame.column}</span>
-          </li>
-        )}</For>
+        <For each={props.occurrence.frames}>{frame => {
+          const shown = () => frame.original ?? frame;
+          const generated = `${frame.file}:${frame.line}:${frame.column}`;
+          return (
+            <li class={isInApp(shown()) ? "in-app" : undefined} title={frame.original === null ? undefined : `bundle ${generated}`}>
+              <span class="frame-fn">{shown().fn ?? frame.fn ?? "anonymous"}</span>
+              <span class="frame-loc">
+                {shown().file}:{shown().line}:{shown().column}
+                <Show when={frame.original === null && isInApp(frame)}><span class="frame-unmapped" title="No source map is registered for this version">unmapped</span></Show>
+              </span>
+            </li>
+          );
+        }}</For>
       </ol>
     </div>
   );

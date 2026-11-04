@@ -151,6 +151,12 @@ await test("a polled Cloudflare deployment reaches the store as a rollout, reada
     });
     assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`)).status, 401);
     assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`, { headers: await accessHeaders() })).status, 200);
+    const map = JSON.stringify({ version: 3, sources: ["../src/index.ts"], names: [], mappings: "AAAA" });
+    const upload = async (origin: string) => harness.stats(`/api/observe/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", headers: await accessHeaders({ Origin: origin, "Content-Type": "application/json" }), body: map });
+    assert.equal((await upload("https://evil.example")).status, 403);
+    assert.equal((await upload(ORIGIN)).status, 201);
+    assert.equal((await upload(ORIGIN)).status, 200);
+    assert.equal((await harness.stats(`/api/observe/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", body: map })).status, 401);
     const forged = await harness.stats("/api/observe/rollouts", { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ rollouts: [], versions: [] }) });
     assert.equal(forged.status, 405);
     await harness.scheduled().catch(() => undefined);

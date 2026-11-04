@@ -1,7 +1,7 @@
 import type { IssueState, TraceFilter } from "../core/store.ts";
 import type { ObserveService } from "../core/service.ts";
-import { MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH } from "../core/limits.ts";
-import { VERSION, type ObservedRollout, type VersionLabel } from "../core/model.ts";
+import { MAX_ARTIFACT_BYTES, MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH } from "../core/limits.ts";
+import { ARTIFACT_FILE, VERSION, type ObservedRollout, type VersionLabel } from "../core/model.ts";
 import { readLimitedText } from "../../body.ts";
 
 
@@ -171,6 +171,18 @@ export async function handleApi(request: Request, store: ObserveService): Promis
   const url = new URL(request.url);
   const path = url.pathname;
   try {
+    const artifact = /^\/artifacts\/([^/]+)\/([^/]+)$/u.exec(path);
+    if (artifact !== null) {
+      if (request.method !== "PUT") return failure(405, "invalid_request", "method not allowed");
+      if (!VERSION.test(artifact[1]!) || !ARTIFACT_FILE.test(artifact[2]!)) throw new BadRequest("invalid version or file name");
+      params(url, []);
+      const map = await readLimitedText(request, MAX_ARTIFACT_BYTES);
+      if (map === null) return failure(413, "too_large", `source map exceeds ${MAX_ARTIFACT_BYTES} bytes`);
+      const outcome = await store.artifact({ version: artifact[1]!, file: artifact[2]!, map });
+      if ("problem" in outcome) throw new BadRequest(outcome.problem);
+      if (outcome.result === "conflict") return failure(409, "conflict", "a different map is already registered for this version and file");
+      return json({ result: outcome.result }, outcome.result === "accepted" ? 201 : 200);
+    }
     if (request.method === "POST" && path === "/rollouts") {
       params(url, []);
       const { rollouts, labels } = await readRollouts(request);

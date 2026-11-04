@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import type { ObservedRollout, Preparation, VersionLabel } from "../core/model.ts";
+import type { Artifact, ObservedRollout, Preparation, VersionLabel } from "../core/model.ts";
 import { initializeStore, type Exploration, type IngestResult, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type SqlDatabase, type SqlValue, type TraceDetail, type TraceFilter, type TraceSummary } from "../core/store.ts";
-import { createObserveService, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
+import { createObserveService, type ArtifactOutcome, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 
 export interface ObserveEnv {
@@ -57,4 +57,5 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   async traces(filter: TraceFilter): Promise<Page<TraceSummary>> { return this.service.traces(filter); }
   async trace(traceId: string): Promise<TraceDetail | null> { return this.service.trace(traceId); }
   async health(): Promise<ServiceHealth> { return this.service.health(); }
+  async artifact(artifact: Artifact): Promise<ArtifactOutcome> { return this.service.artifact(artifact); }
 }

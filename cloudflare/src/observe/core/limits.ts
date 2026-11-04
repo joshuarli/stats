@@ -19,3 +19,5 @@ export const MAX_RETAINED_OCCURRENCES = 20_000;
 export const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 export const ROLLOUT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_ROLLOUTS_PER_BATCH = 300;
+export const MAX_ARTIFACT_BYTES = 1_572_864;
+export const MAX_ARTIFACTS = 12;

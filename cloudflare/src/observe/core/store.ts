@@ -1,6 +1,6 @@
-import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS } from "./limits.ts";
+import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS } from "./limits.ts";
 import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, RolloutPreparation, Stage, VersionLabel } from "./model.ts";
-import { formatFrames, readFrames, type StackFrame } from "./stack.ts";
+import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 
 export type SqlValue = string | number | null;
@@ -98,8 +98,10 @@ export interface Occurrence {
   readonly operation: string | null;
   readonly name: string;
   readonly message: string | null;
-  readonly frames: readonly StackFrame[];
+  readonly frames: readonly SymbolicatedFrame[];
 }
+
+export type ArtifactResult = "accepted" | "duplicate" | "conflict";
 
 export interface InvocationSummary {
   readonly key: string;
@@ -264,6 +266,14 @@ const STATEMENTS = [
     message TEXT,
     updated_at INTEGER NOT NULL
   ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_artifacts (
+    version TEXT NOT NULL,
+    file TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    map TEXT NOT NULL,
+    uploaded_at INTEGER NOT NULL,
+    PRIMARY KEY (version, file)
+  )`,
   `CREATE TABLE IF NOT EXISTS observe_health (
     bucket_at INTEGER PRIMARY KEY,
     duplicate INTEGER NOT NULL,
@@ -417,6 +427,7 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
     db.run(`DELETE FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline})`, rolloutCutoff, rolloutCutoff);
     db.run("DELETE FROM observe_version_labels WHERE updated_at <= ? AND version NOT IN (SELECT version FROM observe_rollout_shares)", rolloutCutoff);
+    db.run("DELETE FROM observe_artifacts WHERE rowid NOT IN (SELECT rowid FROM observe_artifacts ORDER BY uploaded_at DESC, version DESC, file DESC LIMIT ?)", MAX_ARTIFACTS);
     const evicted = evict(db);
     recordHealth(db, nowMs, { duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted });
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
@@ -495,6 +506,27 @@ export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly st
   return page(issues, size, issue => `${issue.lastAtMs}.${issue.fingerprint}`);
 }
 
+export function recordArtifact(db: SqlDatabase, artifact: { readonly version: string; readonly file: string; readonly map: string; readonly digest: string }, nowMs: number): ArtifactResult {
+  return db.transaction(() => {
+    const existing = db.rows<{ digest: string }>("SELECT digest FROM observe_artifacts WHERE version = ? AND file = ?", artifact.version, artifact.file)[0];
+    if (existing !== undefined) return existing.digest === artifact.digest ? "duplicate" : "conflict";
+    db.run("INSERT INTO observe_artifacts (version, file, digest, map, uploaded_at) VALUES (?, ?, ?, ?, ?)", artifact.version, artifact.file, artifact.digest, artifact.map, nowMs);
+    return "accepted";
+  });
+}
+
+export function readArtifact(db: SqlDatabase, version: string, file: string): string | null {
+  return db.rows<{ map: string }>("SELECT map FROM observe_artifacts WHERE version = ? AND file = ?", version, file)[0]?.map ?? null;
+}
+
+export function latestFrames(db: SqlDatabase, nowMs: number, fingerprint: string): { readonly version: string | null; readonly frames: readonly StackFrame[] } | null {
+  const row = db.rows<{ version: string | null; frames: string }>(
+    "SELECT version, frames FROM observe_occurrences WHERE fingerprint = ? AND propagated = 0 AND observed_at > ? ORDER BY observed_at DESC, id DESC LIMIT 1",
+    fingerprint, nowMs - RETENTION_MS
+  )[0];
+  return row === undefined ? null : { version: row.version, frames: readFrames(row.frames) };
+}
+
 export function readIssue(db: SqlDatabase, nowMs: number, fingerprint: string): IssueSummary | null {
   return listIssues(db, nowMs, { fingerprint, limit: 1 }).items[0] ?? null;
 }
@@ -571,7 +603,7 @@ const OCCURRENCE_COLUMNS = "id, invocation_key, trace_id, observed_at, version, 
 function occurrence(row: OccurrenceRow): Occurrence {
   return {
     id: row.id, invocationKey: row.invocation_key, traceId: row.trace_id, atMs: row.observed_at, version: row.version,
-    source: row.source, operation: row.operation, name: row.name, message: row.message, frames: readFrames(row.frames)
+    source: row.source, operation: row.operation, name: row.name, message: row.message, frames: readFrames(row.frames).map(frame => ({ ...frame, original: null }))
   };
 }
 

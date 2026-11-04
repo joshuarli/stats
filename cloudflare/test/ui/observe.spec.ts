@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
-import { answer, buildScenario, scenarioComparison, SCENARIO_ROLLOUTS, SCENARIO_VERSIONS, type Scenario } from "./observe-scenario";
+import { answer, buildScenario, scenarioComparison, scenarioStore, SCENARIO_ROLLOUTS, SCENARIO_VERSIONS, type Scenario } from "./observe-scenario";
 
 const now = Date.UTC(2026, 10, 4, 2, 0);
 const collector = { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false };
@@ -234,5 +234,22 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
   await expect(dialog.locator(".tl-slice").first()).toBeVisible();
-  await expect(dialog).toHaveScreenshot("stats-trace-modal.webp");
+  await expect(dialog.locator(".modal-body")).toHaveScreenshot("stats-trace-modal.webp");
+});
+
+test("frames show their original source, and frames from a version without a map say so", async ({ page }) => {
+  await setup(page);
+  const scenario = await (shared ??= buildScenario(now));
+  const api = scenarioStore(scenario, now);
+  const poll = (await api.issues({})).items.find(issue => issue.operation === "deployments.poll")!;
+  const old = (await api.occurrences(poll.fingerprint, { limit: 100 })).items.find(item => item.version === SCENARIO_VERSIONS[0].id && item.traceId !== null)!;
+  await page.goto(`/#/project/stats?range=24h&modal=issue:${poll.fingerprint}`);
+  const issue = page.getByRole("dialog", { name: "Issue" });
+  await expect(issue.locator(".frames-list li").first()).toContainText("src/deployments/collector.ts:58");
+  await expect(issue.locator(".frames-list li").first()).toHaveAttribute("title", /^bundle index\.js:\d+:\d+$/u);
+  await page.goto(`/#/project/stats?range=24h&modal=trace:${old.traceId}`);
+  await page.reload();
+  const trace = page.getByRole("dialog", { name: "Trace" });
+  await expect(trace.locator(".frames-list li").first()).toContainText("index.js:3121");
+  await expect(trace.locator(".frame-unmapped").first()).toBeVisible();
 });

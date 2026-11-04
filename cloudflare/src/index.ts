@@ -10,6 +10,7 @@ import { markInvocation } from "./observe/cloudflare/mark";
 import { reportError } from "./observe/producer/report";
 import { readLimitedText } from "./body";
 import { OBSERVED_PROJECT } from "./observe/producer/channel";
+import { MAX_ARTIFACT_BYTES } from "./observe/core/limits";
 import { rolloutsFromDeployments } from "./observe/cloudflare/rollouts";
 import { decodeDeploymentHistory } from "./deployments/decode";
 
@@ -75,11 +76,14 @@ async function observe(request: Request, env: Env, path: string): Promise<Respon
   const url = new URL(request.url);
   const target = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
   if (request.method === "GET") return secure(await env.OBSERVE.fetch(target));
-  if (request.method !== "POST" || !/^\/api\/observe\/issues\/[0-9a-f]{64}\/state$/u.test(path)) return error(405, "invalid_request", "method not allowed");
+  const write = request.method === "POST" && /^\/api\/observe\/issues\/[0-9a-f]{64}\/state$/u.test(path) ? MAX_OBSERVE_BODY_BYTES
+    : request.method === "PUT" && /^\/api\/observe\/artifacts\/[^/]+\/[^/]+$/u.test(path) ? MAX_ARTIFACT_BYTES
+    : null;
+  if (write === null) return error(405, "invalid_request", "method not allowed");
   if (request.headers.get("Origin") !== url.origin) return error(403, "forbidden", "cross-origin request");
-  const body = await readLimitedText(request, MAX_OBSERVE_BODY_BYTES);
+  const body = await readLimitedText(request, write);
   if (body === null) return error(413, "too_large", "body exceeds the cap");
-  return secure(await env.OBSERVE.fetch(target, { method: "POST", headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
+  return secure(await env.OBSERVE.fetch(target, { method: request.method, headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
 }
 
 async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>): Promise<void> {

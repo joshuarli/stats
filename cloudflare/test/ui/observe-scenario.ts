@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type ObservedError, type ObservedInvocation, type Preparation, type PreparedInvocation } from "../../src/observe/core/model.ts";
 import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase, type SqlValue } from "../../src/observe/core/store.ts";
 import { createObserveService, type ObserveService } from "../../src/observe/core/service.ts";
+import { encode, type SourceMapSegment } from "@jridgewell/sourcemap-codec";
 import { handleApi } from "../../src/observe/http/api.ts";
 import type { DeploymentHistory } from "../../src/deployments/model.ts";
 
@@ -53,13 +54,35 @@ function lognormal(next: () => number, median: number, sigma: number): number {
 }
 
 function stack(version: string, frames: readonly (readonly [string, number])[]): string {
-  const shift = version === V14.id ? 37 : version === V13.id ? 12 : 0;
+  const shift = shiftFor(version);
   return frames.map(([fn, line]) => `    at ${fn} (index.js:${line + shift}:${(line * 7) % 40 + 3})`).join("\n");
 }
 
 const REBUILD = [["rebuildHour", 2410], ["rebuildRollups", 2431], ["ingest", 2687], ["Installation.fetch", 2752]] as const;
 const PARSE = [["parseProjects", 1188], ["projectRegistry", 2511], ["projectList", 2520], ["Installation.fetch", 2752]] as const;
 const POLL = [["request", 3121], ["collectProject", 3150], ["collectDeployments", 3204], ["scheduled", 3388]] as const;
+const ORIGINS: Record<string, readonly [string, number]> = {
+  rebuildHour: ["src/installation.ts", 419], rebuildRollups: ["src/installation.ts", 427], ingest: ["src/installation.ts", 642], "Installation.fetch": ["src/installation.ts", 680],
+  parseProjects: ["src/projects/config.ts", 41], projectRegistry: ["src/installation.ts", 487], projectList: ["src/installation.ts", 496],
+  request: ["src/deployments/collector.ts", 58], collectProject: ["src/deployments/collector.ts", 81], collectDeployments: ["src/deployments/collector.ts", 131], scheduled: ["src/index.ts", 117]
+};
+
+function shiftFor(version: string): number {
+  return version === V14.id ? 37 : version === V13.id ? 12 : 0;
+}
+
+function bundleMap(version: string): string {
+  const sources = [...new Set(Object.values(ORIGINS).map(([file]) => file))];
+  const names = Object.keys(ORIGINS);
+  const lines: SourceMapSegment[][] = [];
+  for (const [fn, line] of [...REBUILD, ...PARSE, ...POLL]) {
+    const generated = line + shiftFor(version) - 1;
+    const [file, originalLine] = ORIGINS[fn]!;
+    while (lines.length <= generated) lines.push([]);
+    lines[generated] = [[(line * 7) % 40 + 2, sources.indexOf(file), originalLine - 1, 2, names.indexOf(fn)]];
+  }
+  return JSON.stringify({ version: 3, file: "index.js", sources: sources.map(file => `../../../../../../${file}`), names, mappings: encode(lines) });
+}
 
 export interface Scenario {
   readonly db: SqlDatabase;
@@ -168,6 +191,11 @@ export async function buildScenario(now: number): Promise<Scenario> {
     }
   }
   flush(now);
+  const service = createObserveService(db, { now: () => now, databaseBytes: () => 0 });
+  for (const version of [V13, V14]) {
+    const outcome = await service.artifact({ version: version.id, file: "index.js", map: bundleMap(version.id) });
+    if (!("result" in outcome)) throw new Error(`scenario map rejected: ${outcome.problem}`);
+  }
   const invocations = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]?.n ?? 0;
   const deployments: DeploymentHistory = {
     projectId: "stats", worker: "stats", enabled: true,

@@ -7,6 +7,17 @@ export interface StackFrame {
   readonly column: number;
 }
 
+export interface OriginalPosition {
+  readonly fn: string | null;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+export interface SymbolicatedFrame extends StackFrame {
+  readonly original: OriginalPosition | null;
+}
+
 const FRAME_WITH_FUNCTION = /^\s*at (?:async )?(.+?) \((.+):(\d+):(\d+)\)$/u;
 const FRAME_WITHOUT_FUNCTION = /^\s*at (?:async )?(.+):(\d+):(\d+)$/u;
 const RUNTIME_FILE = /^(?:node:|cloudflare:|internal[/:]|native\b|<anonymous>$)/u;

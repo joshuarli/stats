@@ -1,4 +1,4 @@
-import { MAX_ERRORS_PER_INVOCATION, MAX_LABEL_BYTES, MAX_MESSAGE_BYTES, MAX_NAME_BYTES, MAX_STACK_BYTES } from "./limits.ts";
+import { MAX_ARTIFACT_BYTES, MAX_ERRORS_PER_INVOCATION, MAX_LABEL_BYTES, MAX_MESSAGE_BYTES, MAX_NAME_BYTES, MAX_STACK_BYTES } from "./limits.ts";
 import { parseStack, type StackFrame } from "./stack.ts";
 import { fingerprint, sha256Hex } from "./grouping.ts";
 
@@ -205,4 +205,27 @@ export function prepareVersionLabel(input: VersionLabel): VersionLabel | null {
   if (!VERSION.test(input.version)) return null;
   const label = input.label === null ? null : truncateUtf8(input.label, MAX_LABEL_BYTES);
   return { version: input.version, label: label === null || hasControlCharacter(label) ? null : label, message: input.message === null ? null : truncateUtf8(input.message, MAX_MESSAGE_BYTES) };
+}
+
+export interface Artifact {
+  readonly version: string;
+  readonly file: string;
+  readonly map: string;
+}
+
+export const ARTIFACT_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+
+export function artifactProblem(artifact: Artifact): string | null {
+  if (!VERSION.test(artifact.version)) return "invalid version";
+  if (!ARTIFACT_FILE.test(artifact.file)) return "invalid file name";
+  if (utf8Length(artifact.map) > MAX_ARTIFACT_BYTES) return `source map exceeds ${MAX_ARTIFACT_BYTES} bytes`;
+  let parsed: unknown;
+  try { parsed = JSON.parse(artifact.map); } catch { return "source map is not JSON"; }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return "source map is not an object";
+  const fields = parsed as Record<string, unknown>;
+  const sources = fields["sources"];
+  if (fields["version"] !== 3 || typeof fields["mappings"] !== "string" || !Array.isArray(sources) || !sources.every(source => typeof source === "string" || source === null)) {
+    return "not a version 3 source map";
+  }
+  return null;
 }

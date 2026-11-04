@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -87,8 +87,18 @@ observe-deploy: auth-ready node-ready
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
 
-worker-deploy: auth-ready worker-bundle observe-deploy
-	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
+worker-deploy: auth-ready work-ready worker-bundle observe-deploy
+	@set -eu; \
+	log='$(CURDIR)/.work/tmp/stats-deploy.log'; \
+	status=0; (cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')) > "$$log" 2>&1 || status=$$?; \
+	cat "$$log"; test "$$status" -eq 0; \
+	version=$$(sed -n 's/.*Current Version ID: \([0-9a-f-]*\).*/\1/p' "$$log" | tail -1); \
+	test -n "$$version" || { echo 'cf deploy printed no version ID, so the source map was not registered' >&2; exit 1; }; \
+	$(MAKE) observe-sourcemap VERSION="$$version"
+
+observe-sourcemap: node-ready
+	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }
+	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe' OBSERVE_AUTH_COMMAND="cf access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
 
 worker-test: cloudflare-test dashboard-test lint
 

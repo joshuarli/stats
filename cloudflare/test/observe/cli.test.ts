@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { EXIT, main } from "../../src/observe/client/cli.ts";
 import { answer, buildScenario, SCENARIO_ROLLOUTS } from "../ui/observe-scenario.ts";
 
@@ -17,7 +20,7 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   const url = new URL(request.url ?? "/", "http://observe");
   seen.push({ method: request.method ?? "GET", path: url.pathname.replace(/^\/api\/observe/u, ""), headers: request.headers, body });
   if (failing) { response.writeHead(503).end(); return; }
-  const reply = await answer(scenario, now, new Request(`https://observe${url.pathname.replace(/^\/api\/observe/u, "")}${url.search}`, { method: request.method ?? "GET", headers: { "content-type": request.headers["content-type"] ?? "" }, ...(request.method === "POST" ? { body } : {}) }));
+  const reply = await answer(scenario, now, new Request(`https://observe${url.pathname.replace(/^\/api\/observe/u, "")}${url.search}`, { method: request.method ?? "GET", headers: { "content-type": request.headers["content-type"] ?? "" }, ...(request.method === "POST" || request.method === "PUT" ? { body } : {}) }));
   response.writeHead(reply.status, { "content-type": reply.headers.get("content-type") ?? "application/json" });
   response.end(await reply.text());
 }
@@ -70,6 +73,20 @@ await test("resolving sends the state with the API's own origin", async () => {
   assert.equal(post.headers["origin"], new URL(base).origin);
   assert.equal(post.body, JSON.stringify({ state: "resolved" }));
   assert.equal((await cli("reopen", target.fingerprint)).code, EXIT.ok);
+});
+
+await test("a source map registers once per version and file, and a different map is a conflict", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "observe-cli-"));
+  const path = join(directory, "index.js.map");
+  writeFileSync(path, JSON.stringify({ version: 3, sources: ["../src/a.ts"], names: [], mappings: "AAAA" }));
+  assert.equal((await cli("sourcemap", "v9.9.9", path)).out, "index.js for v9.9.9: accepted");
+  assert.equal((await cli("sourcemap", "v9.9.9", path)).out, "index.js for v9.9.9: duplicate");
+  const put = [...seen].reverse().find(request => request.method === "PUT")!;
+  assert.equal(put.path, "/artifacts/v9.9.9/index.js");
+  assert.equal(put.headers["origin"], new URL(base).origin);
+  writeFileSync(path, JSON.stringify({ version: 3, sources: ["../src/b.ts"], names: [], mappings: "AAAA" }));
+  assert.equal((await cli("sourcemap", "v9.9.9", path)).code, EXIT.conflict);
+  rmSync(directory, { recursive: true, force: true });
 });
 
 await test("exit codes separate usage errors, missing items, and an unavailable collector", async () => {
