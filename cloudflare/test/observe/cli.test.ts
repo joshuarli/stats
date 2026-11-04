@@ -50,6 +50,7 @@ await test("a deployment reports its new issue, its regression, and failure rate
   assert.match(text.out, /^failed requests .+ -> .+$/mu);
   assert.match(text.out, /^new +RangeError \[installation\.request\]/mu);
   assert.match(text.out, /^regressed +TypeError/mu);
+  assert.match(text.out, /^cpu +worker POST \/ingest\/v1\/batches +\d+\.\d{2} -> \d+\.\d{2} ms \([+-]\d+\.\d{2} ± \d+\.\d{2}(, beyond noise)?\) +\d+ -> \d+ calls$/mu);
   const json = await cli("deployment", SCENARIO_ROLLOUTS.v14, "--json");
   assert.equal((JSON.parse(json.out) as { newIssues: unknown[] }).newIssues.length, 1);
 });

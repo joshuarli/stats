@@ -7,20 +7,7 @@ import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
 import { duration, TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
-import { HealthMeta, MOMENT, Segmented, type Observability } from "./Observe";
-
-function RouteLabel(props: { readonly label: string }): JSX.Element {
-  const parts = () => {
-    const match = /^([A-Z]+) (\/.*)$/u.exec(props.label);
-    return match === null ? { method: null, path: props.label } : { method: match[1]!, path: match[2]! };
-  };
-  return (
-    <b class="route-label">
-      <Show when={parts().method}>{method => <span class="route-method">{method()}</span>}</Show>
-      <For each={parts().path.split("/")}>{(segment, index) => <>{index() > 0 ? <>/<wbr /></> : null}{segment}</>}</For>
-    </b>
-  );
-}
+import { HealthMeta, MOMENT, RouteLabel, Segmented, type Observability } from "./Observe";
 
 function statusTone(trace: TraceSummary): string {
   if (trace.failed) return "tone-bad";

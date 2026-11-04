@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "./decode.ts";
 import type { InvocationSummary, IssueState } from "../core/store.ts";
+import { routeShift } from "./impact.ts";
 
 const USAGE = `usage: observe <command> [options]
 
@@ -66,6 +67,11 @@ async function call<T>(context: Context, path: string, decode: (value: unknown) 
   if (response.status === 204) return decode(null);
   try { return decode(await response.json()); }
   catch (error) { throw new Exit(EXIT.unavailable, error instanceof Error ? error.message : "invalid response"); }
+}
+
+function signed(value: number): string {
+  const text = Math.abs(value).toFixed(2);
+  return `${value < 0 && text !== "0.00" ? "-" : "+"}${text}`;
 }
 
 function rowsPerInvocation(writes: ObserveHealth["writes"]): string {
@@ -164,7 +170,12 @@ async function run(command: string, positional: readonly string[], values: Recor
         `failed requests ${rate(false)} -> ${rate(true)}`,
         ...impact.newIssues.map(issue => `new        ${issue.name}${issue.operation === null ? "" : ` [${issue.operation}]`} ${issue.frame ?? ""} (${issue.occurrences})`),
         ...impact.regressions.map(issue => `regressed  ${issue.name}${issue.operation === null ? "" : ` [${issue.operation}]`} ${issue.frame ?? ""} (${issue.occurrences})`),
-        ...(impact.newIssues.length + impact.regressions.length === 0 ? ["no new or regressed issues"] : [])
+        ...(impact.newIssues.length + impact.regressions.length === 0 ? ["no new or regressed issues"] : []),
+        ...table(impact.routes.map(route => routeShift(route, impact.introduced)).filter(shift => shift.before !== null && shift.after !== null).map(shift => [
+          "cpu", `${shift.stage} ${shift.label}`,
+          `${shift.before!.cpuMeanMs.toFixed(2)} -> ${shift.after!.cpuMeanMs.toFixed(2)} ms (${signed(shift.cpuChangeMs!)} ± ${shift.twoStdErrMs === null ? "?" : shift.twoStdErrMs.toFixed(2)}${shift.exceedsTwoStdErr ? ", beyond noise" : ""})`,
+          `${shift.before!.requests} -> ${shift.after!.requests} calls`
+        ]), new Set())
       ]);
     }
     case "sourcemap": {

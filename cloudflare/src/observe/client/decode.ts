@@ -1,5 +1,5 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { Exploration, Health, Heatmap, ImpactState, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
 
@@ -34,6 +34,12 @@ function integer(value: unknown, what: string): number {
 
 function nullableInteger(value: unknown, what: string): number | null {
   return value === null ? null : integer(value, what);
+}
+
+function nullableMeasure(value: unknown, what: string): number | null {
+  if (value === null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) fail(what);
+  return value;
 }
 
 function bool(value: unknown, what: string): boolean {
@@ -240,7 +246,28 @@ export function decodeImpact(value: unknown, rolloutId: string): RolloutImpact {
     baselineMs: integer(fields["baselineMs"], "baseline"),
     newIssues: list(fields["newIssues"], 50, issueRef, "new issues"),
     regressions: list(fields["regressions"], 50, issueRef, "regressions"),
-    versions: list(fields["versions"], 8, versionStats, "versions")
+    versions: list(fields["versions"], 8, versionStats, "versions"),
+    routes: list(fields["routes"], 20, routeComparison, "route comparisons")
+  };
+}
+
+function routeComparison(value: unknown): RouteComparison {
+  const fields = record(value, "route comparison");
+  return {
+    stage: oneOf(fields["stage"], STAGES, "route stage"),
+    label: text(fields["label"], "route label", 128),
+    versions: list(fields["versions"], 8, routeVersionStats, "route versions")
+  };
+}
+
+function routeVersionStats(value: unknown): RouteVersionStats {
+  const fields = record(value, "route version");
+  const measure = (key: string) => nullableMeasure(fields[key], key);
+  return {
+    version: text(fields["version"], "version", 64),
+    requests: integer(fields["requests"], "requests"),
+    cpuMeanMs: measure("cpuMeanMs"), cpuStdErrMs: measure("cpuStdErrMs"), p50CpuMs: measure("p50CpuMs"), p95CpuMs: measure("p95CpuMs"),
+    p50WallMs: measure("p50WallMs"), p95WallMs: measure("p95WallMs")
   };
 }
 

@@ -11,6 +11,7 @@ import type { Exploration, IssueRef, IssueState, IssueSummary, Occurrence, Page,
 import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";
 import { defaultSlice, duration, ErrorFrames, TraceView } from "./TraceTimeline";
+import { routeShift, type RouteShift } from "../../../observe/client/impact";
 import "./observe.css";
 
 const BASE = "/api/observe";
@@ -336,6 +337,64 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
   );
 }
 
+export function RouteLabel(props: { readonly label: string }): JSX.Element {
+  const parts = () => {
+    const match = /^([A-Z]+) (\/.*)$/u.exec(props.label);
+    return match === null ? { method: null, path: props.label } : { method: match[1]!, path: match[2]! };
+  };
+  return (
+    <b class="route-label">
+      <Show when={parts().method}>{method => <span class="route-method">{method()}</span>}</Show>
+      <For each={parts().path.split("/")}>{(segment, index) => <>{index() > 0 ? <>/<wbr /></> : null}{segment}</>}</For>
+    </b>
+  );
+}
+
+function cpuValue(ms: number): string {
+  return duration(ms).replace(/ ms$/u, "");
+}
+
+function cpuChange(shift: RouteShift): JSX.Element {
+  if (shift.cpuChangeMs === null) return <>—</>;
+  const change = shift.cpuChangeMs;
+  const text = Math.abs(change) < 0.005 ? "0 ms" : `${change > 0 ? "+" : "−"}${duration(Math.abs(change))}`;
+  const tone = !shift.exceedsTwoStdErr ? undefined : change > 0 ? "impact-cpu-worse" : "impact-cpu-better";
+  return <><b class={tone}>{text}</b><span class="impact-cpu-note cell-note">± {shift.twoStdErrMs === null ? "?" : duration(shift.twoStdErrMs)}</span></>;
+}
+
+const IMPACT_CPU_ROWS = 8;
+
+function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
+  const shifts = () => props.impact.routes.map(route => routeShift(route, props.impact.introduced)).filter(shift => shift.before !== null && shift.after !== null);
+  const shown = () => [...shifts()].sort((a, b) => Number(b.exceedsTwoStdErr) - Number(a.exceedsTwoStdErr)).slice(0, IMPACT_CPU_ROWS);
+  return (
+    <Show when={shifts().length > 0}>
+      <h3 class="observe-subhead impact-cpu-head">CPU by route</h3>
+      <div class="table-scroll" role="region" aria-label="CPU by route">
+        <table class="data-table compact impact-cpu">
+          <thead>
+            <tr>
+              <th>Route</th>
+              <th class="numeric impact-cpu-value">CPU per call</th>
+              <th class="numeric impact-cpu-change">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={shown()}>{shift => (
+              <tr>
+                <td><Show when={shift.stage === "object"}><span class="op-tag">object</span> </Show><RouteLabel label={shift.label} /><span class="impact-cpu-note cell-note">{count(shift.before!.requests)} → {count(shift.after!.requests)} calls</span></td>
+                <td class="numeric">{cpuValue(shift.before!.cpuMeanMs)} → <b>{duration(shift.after!.cpuMeanMs)}</b></td>
+                <td class="numeric">{cpuChange(shift)}</td>
+              </tr>
+            )}</For>
+          </tbody>
+        </table>
+      </div>
+      <p class="observe-footnote">Mean CPU from every stored invocation, recorded in whole milliseconds. A change is colored only when it exceeds twice its combined standard error.{shifts().length > shown().length ? ` ${shown().length} of ${shifts().length} routes, changes beyond that first; pnpm observe deployment lists all.` : ""}</p>
+    </Show>
+  );
+}
+
 function failureRate(rows: readonly VersionStats[]): { requests: number; failed: number; text: string } {
   const requests = rows.reduce((sum, row) => sum + row.requests, 0);
   const failed = rows.reduce((sum, row) => sum + row.failed, 0);
@@ -409,6 +468,7 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
               <IssueLinks title="New" issues={value().newIssues} onOpen={props.observe.openIssue} />
               <IssueLinks title="Regressed" issues={value().regressions} onOpen={props.observe.openIssue} />
               <p class="observe-footnote">An issue counts as new when every retained occurrence ran on a version this deployment introduced. That says where it appeared, not that the deployment caused it.</p>
+              <ImpactCpu impact={value()} />
             </Show>
           </>
         );

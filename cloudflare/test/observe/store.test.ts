@@ -332,6 +332,32 @@ await test("a rollout's impact separates new issue groups, carried-over issues, 
   assert.deepEqual(introducedB.map(issue => [issue.operation, issue.firstVersion, issue.firstVersionLabel]), [["deployments.poll", V2, "v2.0"]]);
 });
 
+await test("a rollout's impact compares CPU and wall time per route and stage across its versions", async () => {
+  const db = database();
+  const R2 = T0 + 2 * D;
+  recordRollouts(db, [await rollout("r1", T0 - D, [{ version: V1, percent: 100 }]), await rollout("r2", R2, [{ version: V2, percent: 100 }])], [], R2);
+  const before = [0, 0, 1, 1, 1, 0, 1, 2, 0, 1];
+  const after = [1, 1, 1, 2, 1, 1, 0, 1, 1, 2];
+  ingest(db, await prepare(
+    ...before.map((cpuMs, n) => worker(n, { version: V1, label: "POST /ingest/v1/batches", cpuMs, wallMs: 40 + n, eventAtMs: T0 + D + n })),
+    ...after.map((cpuMs, n) => worker(100 + n, { version: V2, label: "POST /ingest/v1/batches", cpuMs, wallMs: 30 + n, eventAtMs: R2 + H + n })),
+    object(200, { version: V2, cpuMs: 14, wallMs: 50, eventAtMs: R2 + H })
+  ), R2 + 2 * H);
+  const routes = rolloutImpact(db, R2 + 2 * H, "r2")!.routes;
+  const ingestRoute = routes.find(route => route.stage === "worker" && route.label === "POST /ingest/v1/batches")!;
+  const [v1, v2] = ingestRoute.versions;
+  assert.equal(v1!.version, V1);
+  assert.equal(v1!.requests, 10);
+  assert.equal(v1!.cpuMeanMs, 0.7);
+  assert.ok(Math.abs(v1!.cpuStdErrMs! - Math.sqrt(0.4556 / 10)) < 1e-3, `${v1!.cpuStdErrMs}`);
+  assert.deepEqual([v1!.p50CpuMs, v1!.p95CpuMs, v1!.p50WallMs, v1!.p95WallMs], [1, 2, 44, 49]);
+  assert.equal(v2!.version, V2);
+  assert.equal(v2!.cpuMeanMs, 1.1);
+  assert.deepEqual([v2!.p50WallMs, v2!.p95WallMs], [34, 39]);
+  const objectRoute = routes.find(route => route.stage === "object" && route.label === "Installation.ingest")!;
+  assert.deepEqual(objectRoute.versions.map(version => [version.version, version.requests, version.cpuMeanMs, version.cpuStdErrMs]), [[V1, 0, null, null], [V2, 1, 14, null]]);
+});
+
 await test("a split rollout introduces only its new version, so errors also seen on the old one are not new", async () => {
   const db = database();
   recordRollouts(db, [await rollout("r1", T0, [{ version: V1, percent: 100 }]), await rollout("r2", T0 + D, [{ version: V1, percent: 50 }, { version: V2, percent: 50 }])], [], T0 + D);

@@ -76,6 +76,23 @@ export interface VersionStats {
   readonly failed: number;
 }
 
+export interface RouteVersionStats {
+  readonly version: string;
+  readonly requests: number;
+  readonly cpuMeanMs: number | null;
+  readonly cpuStdErrMs: number | null;
+  readonly p50CpuMs: number | null;
+  readonly p95CpuMs: number | null;
+  readonly p50WallMs: number | null;
+  readonly p95WallMs: number | null;
+}
+
+export interface RouteComparison {
+  readonly stage: Stage;
+  readonly label: string;
+  readonly versions: readonly RouteVersionStats[];
+}
+
 export type ImpactState = "measured" | "expired";
 
 export interface RolloutImpact {
@@ -88,6 +105,7 @@ export interface RolloutImpact {
   readonly newIssues: readonly IssueRef[];
   readonly regressions: readonly IssueRef[];
   readonly versions: readonly VersionStats[];
+  readonly routes: readonly RouteComparison[];
 }
 
 export interface Occurrence {
@@ -626,6 +644,58 @@ function versionLabels(db: SqlDatabase, versions: readonly (string | null)[]): M
 }
 
 const IMPACT_ISSUES = 50;
+const IMPACT_ROUTES = 20;
+
+type ValueCounts = readonly (readonly [value: number, count: number])[];
+
+function weightedPercentile(sorted: ValueCounts, total: number, fraction: number): number | null {
+  if (total === 0) return null;
+  const rank = Math.min(total, Math.max(1, Math.ceil(fraction * total)));
+  let seen = 0;
+  for (const [value, count] of sorted) {
+    seen += count;
+    if (seen >= rank) return value;
+  }
+  return sorted.at(-1)?.[0] ?? null;
+}
+
+function routeVersionStats(version: string, cpu: ValueCounts, wall: ValueCounts): RouteVersionStats {
+  const requests = cpu.reduce((sum, [, count]) => sum + count, 0);
+  if (requests === 0) return { version, requests, cpuMeanMs: null, cpuStdErrMs: null, p50CpuMs: null, p95CpuMs: null, p50WallMs: null, p95WallMs: null };
+  const mean = cpu.reduce((sum, [value, count]) => sum + value * count, 0) / requests;
+  const squares = cpu.reduce((sum, [value, count]) => sum + count * (value - mean) ** 2, 0);
+  return {
+    version, requests, cpuMeanMs: mean, cpuStdErrMs: requests < 2 ? null : Math.sqrt(squares / (requests - 1) / requests),
+    p50CpuMs: weightedPercentile(cpu, requests, 0.5), p95CpuMs: weightedPercentile(cpu, requests, 0.95),
+    p50WallMs: weightedPercentile(wall, requests, 0.5), p95WallMs: weightedPercentile(wall, requests, 0.95)
+  };
+}
+
+function routeComparisons(db: SqlDatabase, cutoff: number, versions: readonly string[]): RouteComparison[] {
+  const grouped = (column: "cpu_ms" | "wall_ms") => db.rows<{ stage: Stage; label: string; version: string; value: number; n: number }>(
+    `SELECT stage, label, version, ${column} AS value, COUNT(*) AS n FROM observe_invocations
+     WHERE observed_at > ? AND version IN (SELECT value FROM json_each(?)) GROUP BY stage, label, version, ${column} ORDER BY value`,
+    cutoff, JSON.stringify(versions)
+  );
+  const collect = (rows: ReturnType<typeof grouped>) => {
+    const byRoute = new Map<string, Map<string, [number, number][]>>();
+    for (const row of rows) {
+      const route = `${row.stage}\u0000${row.label}`;
+      const perVersion = byRoute.get(route) ?? new Map<string, [number, number][]>();
+      byRoute.set(route, perVersion);
+      perVersion.set(row.version, [...perVersion.get(row.version) ?? [], [row.value, row.n]]);
+    }
+    return byRoute;
+  };
+  const cpu = collect(grouped("cpu_ms"));
+  const wall = collect(grouped("wall_ms"));
+  return [...cpu].map(([route, perVersion]) => {
+    const [stage, label] = route.split("\u0000") as [Stage, string];
+    return { stage, label, versions: versions.map(version => routeVersionStats(version, perVersion.get(version) ?? [], wall.get(route)?.get(version) ?? [])) };
+  })
+    .sort((a, b) => b.versions.reduce((sum, version) => sum + version.requests, 0) - a.versions.reduce((sum, version) => sum + version.requests, 0) || a.stage.localeCompare(b.stage) || a.label.localeCompare(b.label))
+    .slice(0, IMPACT_ROUTES);
+}
 
 export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string): RolloutImpact | null {
   const rollout = db.rows<{ id: string; at_ms: number }>("SELECT id, at_ms FROM observe_rollouts WHERE id = ?", rolloutId)[0];
@@ -677,7 +747,8 @@ export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string)
     version, label: labels.get(version) ?? null, introduced: introduced.includes(version),
     requests: counts.get(version)?.requests ?? 0, failed: counts.get(version)?.failed ?? 0
   }));
-  return { rolloutId: rollout.id, atMs: rollout.at_ms, previousRolloutId: previous?.id ?? null, introduced, state, baselineMs, newIssues, regressions, versions };
+  const routes = state === "measured" ? routeComparisons(db, cutoff, compared) : [];
+  return { rolloutId: rollout.id, atMs: rollout.at_ms, previousRolloutId: previous?.id ?? null, introduced, state, baselineMs, newIssues, regressions, versions, routes };
 }
 
 interface OccurrenceRow {

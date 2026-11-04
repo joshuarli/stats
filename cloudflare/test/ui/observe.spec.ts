@@ -104,6 +104,8 @@ test("the v1.4.0 deployment shows its new issue group, its regression, and a hig
   const impact = page.locator("#deployments").getByRole("region", { name: "Errors after this deployment" });
   await expect(impact).toContainText("1 new issue group · 1 regression");
   await expect(impact.locator(".impact-rate")).toContainText("→");
+  const slowRoute = impact.getByRole("region", { name: "CPU by route" }).getByRole("row").filter({ hasText: "/hosts/:host/history" }).filter({ hasText: "object" });
+  await expect(slowRoute.locator(".impact-cpu-worse")).toBeVisible();
   await impact.getByRole("button", { name: /RangeError/u }).click();
   const dialog = page.getByRole("dialog", { name: "Issue" });
   await expect(dialog).toContainText("RangeError");
