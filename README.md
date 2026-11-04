@@ -177,9 +177,10 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 Open the Worker's hostname and sign in through Access. The fleet page lists
 hosts with status chips (online, stale, no samples, revoked) above the table.
-A host row shows its status dot, OS, CPU model and core count, and sparklines
-for CPU, memory, disk, and network, so the state of the fleet reads without
-opening a host.
+A host row shows its status dot, OS and kernel, CPU model, cores and threads
+under CPU, disk used of total, and health-coloured sparklines for CPU, memory,
+load, and disk space, with disk read/write and network in/out drawn as mirrored
+pairs, so the state of the fleet reads without opening a host.
 
 Below the hosts, a Projects table lists each configured Cloudflare project with
 its collector state. A project page (`#/project/<id>`) shows a Worker's

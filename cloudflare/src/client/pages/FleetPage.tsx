@@ -1,9 +1,9 @@
 import { createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { LIMITS } from "../health";
-import { age, bytes, count, errorMessage, percent, rate } from "../format";
-import { sumTracks, worstTrack } from "../chart-data";
-import { addCells, cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
+import { LIMITS, loadLimits } from "../health";
+import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
+import { alignTracks, sumTracks, worstTrack } from "../chart-data";
+import { cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
 import { loadFleetRows, loadProjects, type FleetRow } from "../queries";
 import { collectorStatus, statusFor, type HostStatus } from "../status";
 import { useTelemetry, PROJECT_REFRESH_TICKS } from "../state";
@@ -310,18 +310,34 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
   const diskWrite = createMemo(() => sumLatest(props.row.disks, entry => entry.table.cells("writeBytesPerSec")));
   const netIn = createMemo(() => sumLatest(props.row.nets, entry => entry.table.cells("rxBytesPerSec")));
   const netOut = createMemo(() => sumLatest(props.row.nets, entry => entry.table.cells("txBytesPerSec")));
-  const diskTrend = createMemo(() => sumTracks(props.row.disks.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("readBytesPerSec"), entry.table.cells("writeBytesPerSec")) }))));
-  const netTrend = createMemo(() => sumTracks(props.row.nets.map(entry => ({ times: entry.table.times, values: addCells(entry.table.cells("rxBytesPerSec"), entry.table.cells("txBytesPerSec")) }))));
+  const diskTrend = createMemo(() => alignTracks([
+    sumTracks(props.row.disks.map(entry => entry.table.track("readBytesPerSec"))),
+    sumTracks(props.row.disks.map(entry => entry.table.track("writeBytesPerSec")))
+  ]));
+  const netTrend = createMemo(() => alignTracks([
+    sumTracks(props.row.nets.map(entry => entry.table.track("rxBytesPerSec"))),
+    sumTracks(props.row.nets.map(entry => entry.table.track("txBytesPerSec")))
+  ]));
   const diskSpaceTrend = createMemo(() => worstTrack(props.row.filesystems.map(entry => ({ times: entry.table.times, values: usedShare(entry.table) })), props.row.filesystemStepMs));
   const diskSpace = createMemo(() => lastValue(diskSpaceTrend().values));
-  const diskSpaceMount = createMemo(() => {
-    let worst: { readonly id: string; readonly used: number } | undefined;
+  const diskSpaceUsage = createMemo(() => {
+    let worst: { readonly share: number; readonly usedBytes: number; readonly totalBytes: number } | undefined;
     for (const entry of props.row.filesystems) {
-      const used = lastValue(usedShare(entry.table));
-      if (used === undefined) continue;
-      if (worst === undefined || used > worst.used) worst = { id: entry.id, used };
+      const shares = usedShare(entry.table);
+      for (let row = shares.length - 1; row >= 0; row -= 1) {
+        const share = shares[row];
+        const total = entry.table.at("total", row);
+        const available = entry.table.at("available", row);
+        if (!isFiniteNumber(share) || !isFiniteNumber(total) || !isFiniteNumber(available)) continue;
+        if (worst === undefined || share > worst.share) worst = { share, usedBytes: Math.max(0, total - available), totalBytes: total };
+        break;
+      }
     }
     return worst;
+  });
+  const diskSpaceNote = createMemo(() => {
+    const usage = diskSpaceUsage();
+    return usage === undefined ? "unavailable" : `${bytes(usage.usedBytes)} used of ${bytes(usage.totalBytes)}`;
   });
   const cpuNote = createMemo(() => {
     const cores = info()?.cpu.cores ?? cpuCount();
@@ -332,6 +348,12 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
     ].filter((part): part is string => part !== undefined).join(" · ");
   });
   const cpuModel = createMemo(() => info()?.cpu.model);
+  const osNote = createMemo(() => {
+    const system = info();
+    if (system === undefined) return undefined;
+    const parts = [system.os, system.kernel.length === 0 ? undefined : `kernel ${system.kernel}`].filter((part): part is string => part !== undefined);
+    return parts.length === 0 ? undefined : parts.join(" · ");
+  });
   const reporting = () => status().label === "online";
   return (
     <tr>
@@ -348,23 +370,25 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           name={props.row.host.name}
           href={`#/host/${props.row.host.hostId}`}
           id={props.row.host.hostId}
-          note={info()?.os}
+          note={osNote()}
         />
         <Show when={cpuModel()}>
           {(model) => <span class="cell-note wrap-note">{model()}</span>}
-        </Show>
-        <Show when={cpuNote()}>
-          <span class="cell-note">{cpuNote()}</span>
         </Show>
         <Show when={!reporting()}>
           <span class="cell-note">{age(props.row.host.lastReceivedAtMs, props.now)}</span>
         </Show>
       </td>
       <td>
-        <div class="cpu-cell">
-          <span class="metric-value-small">{percent(cpu())}</span>
-          <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
-          <Sparkline series={[{ values: cpuTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} CPU trend`} class="spark-inline" />
+        <div class="cell-stack">
+          <div class="cpu-cell">
+            <span class="metric-value-small">{percent(cpu())}</span>
+            <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
+            <Sparkline series={[{ values: cpuTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} CPU trend`} class="spark-inline" limits={LIMITS.cpuPercent} />
+          </div>
+          <Show when={cpuNote()}>
+            {(note) => <span class="cell-note">{note()}</span>}
+          </Show>
         </div>
       </td>
       <td>
@@ -372,7 +396,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(memory())}</span>
             <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
-            <Sparkline series={[{ values: memoryTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} memory trend`} class="spark-inline" />
+            <Sparkline series={[{ values: memoryTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} memory trend`} class="spark-inline" limits={LIMITS.memoryUsedPercent} />
           </div>
           <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>
@@ -390,6 +414,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
             window={timeWindow()}
             label={`${props.row.host.name} load trend`}
             class="spark-inline"
+            limits={loadLimits(cpuCount())}
           />
         </div>
       </td>
@@ -398,21 +423,41 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(diskSpace())}</span>
             <Meter value={diskSpace()} warn={LIMITS.filesystemUsedPercent.elevated} bad={LIMITS.filesystemUsedPercent.critical} />
-            <Sparkline series={[{ values: diskSpaceTrend().values }]} times={diskSpaceTrend().times} window={timeWindow()} label={`${props.row.host.name} disk space trend`} class="spark-inline" />
+            <Sparkline series={[{ values: diskSpaceTrend().values }]} times={diskSpaceTrend().times} window={timeWindow()} label={`${props.row.host.name} disk space trend`} class="spark-inline" limits={LIMITS.filesystemUsedPercent} />
           </div>
-          <span class="cell-note">{diskSpaceMount()?.id ?? "unavailable"}</span>
+          <span class="cell-note">{diskSpaceNote()}</span>
         </div>
       </td>
       <td>
         <div class="cpu-cell">
           <span><span class="cell-strong">{rate(diskRead())}</span><span class="cell-note"> / {rate(diskWrite())}</span></span>
-          <Sparkline series={[{ values: diskTrend().values }]} times={diskTrend().times} window={timeWindow()} label={`${props.row.host.name} disk throughput trend`} class="spark-inline" />
+          <Sparkline
+            series={[
+              { values: diskTrend().columns[0]!, class: "viz-blue" },
+              { values: diskTrend().columns[1]!, class: "viz-aqua", mirror: true }
+            ]}
+            times={diskTrend().times}
+            window={timeWindow()}
+            zeroBased
+            label={`${props.row.host.name} disk throughput trend`}
+            class="spark-inline"
+          />
         </div>
       </td>
       <td>
         <div class="cpu-cell">
           <span><span class="cell-strong">{rate(netIn())}</span><span class="cell-note"> / {rate(netOut())}</span></span>
-          <Sparkline series={[{ values: netTrend().values }]} times={netTrend().times} window={timeWindow()} label={`${props.row.host.name} network throughput trend`} class="spark-inline" />
+          <Sparkline
+            series={[
+              { values: netTrend().columns[0]!, class: "viz-blue" },
+              { values: netTrend().columns[1]!, class: "viz-aqua", mirror: true }
+            ]}
+            times={netTrend().times}
+            window={timeWindow()}
+            zeroBased
+            label={`${props.row.host.name} network throughput trend`}
+            class="spark-inline"
+          />
         </div>
       </td>
     </tr>

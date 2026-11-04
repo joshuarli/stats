@@ -100,7 +100,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
                               <HealthMark health={busy() === undefined ? undefined : healthOf(busy()!, LIMITS.diskBusyPercent) ?? undefined} />
                             </div>
                           </td>
-                          <td><Sparkline series={[{ values: entry.table.cells("busyPct").slice(range()[0], range()[1] + 1) }]} times={entry.table.times.slice(range()[0], range()[1] + 1)} label={`${entry.id} busy time`} /></td>
+                          <td><Sparkline series={[{ values: entry.table.cells("busyPct").slice(range()[0], range()[1] + 1) }]} times={entry.table.times.slice(range()[0], range()[1] + 1)} label={`${entry.id} busy time`} limits={LIMITS.diskBusyPercent} /></td>
                         </Show>
                       </tr>
                     );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTracks, duration, panWindow, sparkGeometry, sumTracks, windowIndexes, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
+import { alignTracks, duration, panWindow, sparkGeometry, sparkToneStops, sumTracks, windowIndexes, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
 
 describe("chart data", () => {
   it("keeps a missing value as a gap instead of interpolating or zeroing it", () => {
@@ -70,6 +70,24 @@ describe("chart data", () => {
     expect(geometry?.area).toBe("M0.00,40 L0.00,36.00 L40.00,6.00 L40.00,40 Z");
     expect(geometry?.dot).toEqual({ x: 40, y: 6 });
     expect(geometry?.gaps).toEqual([{ x0: 40, x1: 160 }]);
+  });
+
+  it("mirrors a second sparkline track below the shared baseline", () => {
+    const geometry = sparkGeometry([[4, 4], [-2, -2]], undefined, undefined, true, true);
+    expect(geometry?.paths).toEqual(["M0.00,6.00 L160.00,6.00", "M0.00,36.00 L160.00,36.00"]);
+    expect(geometry?.areas).toEqual([
+      "M0.00,26.00 L0.00,6.00 L160.00,6.00 L160.00,26.00 Z",
+      "M0.00,26.00 L0.00,36.00 L160.00,36.00 L160.00,26.00 Z"
+    ]);
+    expect(geometry?.area).toBe(geometry?.areas[0]);
+  });
+
+  it("maps sparkline limits onto hot line stops", () => {
+    const geometry = sparkGeometry([[0, 100]], undefined, undefined, true);
+    const stops = sparkToneStops(geometry!, { elevated: 70, critical: 90, direction: "above" });
+    expect(stops.map(stop => stop.tone)).toEqual(["critical", "critical", "elevated", "elevated", "base", "base"]);
+    expect(stops[1]!.offset).toBeCloseTo(0.225);
+    expect(stops[3]!.offset).toBeCloseTo(0.375);
   });
 
   it("breaks a sparkline path at a missing value", () => {

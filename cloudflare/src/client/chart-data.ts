@@ -1,4 +1,5 @@
 import type { Cells, Times, Track } from "./columns";
+import type { Limits } from "./health";
 
 export interface TimeWindow {
   readonly fromMs: number;
@@ -25,8 +26,18 @@ export interface SparkGap {
 export interface SparkGeometry {
   readonly paths: readonly string[];
   readonly area: string | undefined;
+  readonly areas: readonly (string | undefined)[];
   readonly dot: { readonly x: number; readonly y: number } | undefined;
   readonly gaps: readonly SparkGap[];
+  readonly low: number;
+  readonly high: number;
+}
+
+export type SparkTone = "base" | "elevated" | "critical";
+
+export interface SparkToneStop {
+  readonly offset: number;
+  readonly tone: SparkTone;
 }
 
 const SPARK_WIDTH = 160;
@@ -34,7 +45,7 @@ const SPARK_BOTTOM = 36;
 const SPARK_HEIGHT = 30;
 const SPARK_FLOOR = 40;
 
-export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined, window: TimeWindow | undefined, zeroBased: boolean): SparkGeometry | null {
+export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined, window: TimeWindow | undefined, zeroBased: boolean, mirror = false): SparkGeometry | null {
   const length = Math.max(0, ...tracks.map(track => track.length));
   if (length === 0) return null;
   const fromMs = window?.fromMs ?? times?.[0];
@@ -60,12 +71,13 @@ export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined
     if (last < SPARK_WIDTH - 0.5) gaps.push({ x0: last, x1: SPARK_WIDTH });
   }
   const values = tracks.flatMap(track => track.filter((value): value is number => value !== null && Number.isFinite(value)));
-  if (values.length === 0) return { paths: [], area: undefined, dot: undefined, gaps };
-  const low = zeroBased ? Math.min(0, ...values) : Math.min(...values);
-  const high = Math.max(...values);
+  if (values.length === 0) return { paths: [], area: undefined, areas: [], dot: undefined, gaps, low: 0, high: 0 };
+  const low = mirror || zeroBased ? Math.min(0, ...values) : Math.min(...values);
+  const high = mirror ? Math.max(0, ...values) : Math.max(...values);
   const span = high - low || 1;
+  const baseline = mirror ? (SPARK_BOTTOM - ((0 - low) / span) * SPARK_HEIGHT).toFixed(2) : `${SPARK_FLOOR}`;
   const paths: string[] = [];
-  let area: string | undefined;
+  const areas: (string | undefined)[] = tracks.map(() => undefined);
   let dot: { readonly x: number; readonly y: number } | undefined;
   tracks.forEach((track, position) => {
     const segments: { readonly x: number; readonly y: number }[][] = [];
@@ -83,15 +95,33 @@ export function sparkGeometry(tracks: readonly Cells[], times: Times | undefined
     });
     if (segment.length > 0) segments.push(segment);
     paths.push(segments.map(entry => entry.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ")).filter(path => path !== "").join(" "));
-    if (position === 0) {
-      area = segments.map(entry => {
+    if (position === 0 || mirror) {
+      areas[position] = segments.map(entry => {
         const first = entry[0]!;
         const last = entry.at(-1)!;
-        return `M${first.x.toFixed(2)},${SPARK_FLOOR} L${entry.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" L")} L${last.x.toFixed(2)},${SPARK_FLOOR} Z`;
+        return `M${first.x.toFixed(2)},${baseline} L${entry.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" L")} L${last.x.toFixed(2)},${baseline} Z`;
       }).join(" ");
     }
   });
-  return { paths, area, dot, gaps };
+  return { paths, area: areas[0], areas, dot, gaps, low, high };
+}
+
+export function sparkToneStops(geometry: SparkGeometry, limits: Limits): readonly SparkToneStop[] {
+  const span = geometry.high - geometry.low || 1;
+  const offset = (value: number) => Math.min(1, Math.max(0, (SPARK_BOTTOM - ((value - geometry.low) / span) * SPARK_HEIGHT) / SPARK_FLOOR));
+  const elevated = offset(limits.elevated);
+  const critical = offset(limits.critical);
+  return limits.direction === "above"
+    ? [
+        { offset: 0, tone: "critical" }, { offset: critical, tone: "critical" },
+        { offset: critical, tone: "elevated" }, { offset: elevated, tone: "elevated" },
+        { offset: elevated, tone: "base" }, { offset: 1, tone: "base" }
+      ]
+    : [
+        { offset: 0, tone: "base" }, { offset: elevated, tone: "base" },
+        { offset: elevated, tone: "elevated" }, { offset: critical, tone: "elevated" },
+        { offset: critical, tone: "critical" }, { offset: 1, tone: "critical" }
+      ];
 }
 
 interface Grid {
