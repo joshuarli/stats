@@ -17,3 +17,5 @@ export const CLEANUP_BATCH = 1_000;
 export const HEALTH_BUCKET_MS = 60 * 60 * 1000;
 export const MAX_RETAINED_OCCURRENCES = 20_000;
 export const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+export const ROLLOUT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const MAX_ROLLOUTS_PER_BATCH = 300;

@@ -72,7 +72,8 @@ export type Preparation = { readonly ok: true; readonly invocation: PreparedInvo
 
 const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
 const SPAN_ID = /^(?!0{16})[0-9a-f]{16}$/u;
-const VERSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+export const VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u;
+const SOURCE = /^[a-z][a-z0-9_-]{0,31}$/u;
 const OBJECT_ID = /^[0-9a-f]{64}$/u;
 const OUTCOME = /^[A-Za-z]{1,32}$/u;
 const OPERATION = /^[a-z][a-z0-9_.]{0,63}$/u;
@@ -105,7 +106,7 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
 
 function rejection(input: ObservedInvocation): Rejection | null {
   if (input.trace !== null && (!TRACE_ID.test(input.trace.traceId) || !SPAN_ID.test(input.trace.spanId))) return "invalid_trace";
-  if (input.version !== null && !VERSION_ID.test(input.version)) return "invalid_version";
+  if (input.version !== null && !VERSION.test(input.version)) return "invalid_version";
   if ((input.stage === "object") !== (input.objectId !== null) || (input.objectId !== null && !OBJECT_ID.test(input.objectId))) return "invalid_object";
   if (input.label === "" || utf8Length(input.label) > MAX_LABEL_BYTES || hasControlCharacter(input.label)) return "invalid_label";
   if (input.status !== null && !(Number.isInteger(input.status) && input.status >= 100 && input.status <= 599)) return "invalid_status";
@@ -153,4 +154,55 @@ function utf8Width(codePoint: number): number {
   if (codePoint < 0x800) return 2;
   if (codePoint < 0x10000) return 3;
   return 4;
+}
+
+export interface RolloutShare {
+  readonly version: string;
+  readonly percent: number;
+}
+
+export interface ObservedRollout {
+  readonly id: string;
+  readonly atMs: number;
+  readonly source: string;
+  readonly message: string | null;
+  readonly shares: readonly RolloutShare[];
+}
+
+export interface VersionLabel {
+  readonly version: string;
+  readonly label: string | null;
+  readonly message: string | null;
+}
+
+export interface PreparedRollout extends ObservedRollout {
+  readonly digest: string;
+}
+
+export type RolloutPreparation = { readonly ok: true; readonly rollout: PreparedRollout } | { readonly ok: false };
+
+const MAX_SHARES = 4;
+
+export async function prepareRollout(input: ObservedRollout): Promise<RolloutPreparation> {
+  const percents = input.shares.map(share => share.percent);
+  const total = percents.reduce((sum, percent) => sum + percent, 0);
+  const valid = VERSION.test(input.id) && Number.isSafeInteger(input.atMs) && input.atMs > 0 && SOURCE.test(input.source)
+    && input.shares.length > 0 && input.shares.length <= MAX_SHARES && new Set(input.shares.map(share => share.version)).size === input.shares.length
+    && input.shares.every(share => VERSION.test(share.version) && Number.isFinite(share.percent) && share.percent >= 0 && share.percent <= 100)
+    && Math.abs(total - 100) <= 0.5;
+  if (!valid) return { ok: false };
+  const rollout = {
+    id: input.id,
+    atMs: input.atMs,
+    source: input.source,
+    message: input.message === null ? null : truncateUtf8(input.message, MAX_MESSAGE_BYTES),
+    shares: [...input.shares].sort((a, b) => a.version.localeCompare(b.version)).map(share => ({ version: share.version, percent: share.percent }))
+  };
+  return { ok: true, rollout: { ...rollout, digest: await sha256Hex(JSON.stringify(rollout)) } };
+}
+
+export function prepareVersionLabel(input: VersionLabel): VersionLabel | null {
+  if (!VERSION.test(input.version)) return null;
+  const label = input.label === null ? null : truncateUtf8(input.label, MAX_LABEL_BYTES);
+  return { version: input.version, label: label === null || hasControlCharacter(label) ? null : label, message: input.message === null ? null : truncateUtf8(input.message, MAX_MESSAGE_BYTES) };
 }

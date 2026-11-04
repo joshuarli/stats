@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareInvocation, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, health, ingest, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { DatabaseSync } from "node:sqlite";
+import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
+import { cleanup, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
-import { BUNDLE_STACK, D, DO_STACK, H, T0, database, object, synthetic, traceId, worker } from "./support.ts";
+import { BUNDLE_STACK, D, DO_STACK, H, T0, database, object, synthetic, traceId, worker, wrap } from "./support.ts";
 
 const POLICY: MessagePolicy = { safeNames: new Set() };
 const NOW = T0 + 1000;
@@ -223,4 +224,100 @@ await test("fourteen days at the measured volume reach a flat steady state", () 
   assert.ok(pages.at(-1)! <= pages[7]! * 1.05, `page counts ${pages.join(",")}`);
   const final = health(db, T0 + 14 * D);
   assert.ok(final.cleanupLagMs <= H, `cleanup lag ${final.cleanupLagMs}`);
+});
+
+const V1 = "v1-3172128e";
+const V2 = "v2-2221f9c2";
+const errorB: ObservedError = { ...caught, operation: "deployments.poll", stack: "    at pollB (index.js:9:1)" };
+const errorC: ObservedError = { ...caught, operation: "collector.record", stack: "    at recordC (index.js:7:1)" };
+
+async function rollout(id: string, atMs: number, shares: { version: string; percent: number }[]) {
+  return prepareRollout({ id, atMs, source: "api", message: null, shares });
+}
+
+await test("rollouts are idempotent by id, and conflicting, malformed, or expired ones are counted", async () => {
+  const db = database();
+  const first = await rollout("r1", T0, [{ version: V1, percent: 100 }]);
+  assert.deepEqual(recordRollouts(db, [first, first], [{ version: V1, label: "v1.0", message: null }], NOW), { accepted: 1, duplicate: 1, conflict: 0, expired: 0, rejected: 0 });
+  const changed = await rollout("r1", T0, [{ version: V2, percent: 100 }]);
+  const malformed = await rollout("r2", T0, [{ version: V1, percent: 60 }, { version: V2, percent: 20 }]);
+  const old = await rollout("r3", T0 - 31 * D, [{ version: V1, percent: 100 }]);
+  assert.deepEqual(recordRollouts(db, [changed, malformed, old], [], NOW), { accepted: 0, duplicate: 0, conflict: 1, expired: 1, rejected: 1 });
+});
+
+await test("a rollout's impact separates new issue groups, carried-over issues, and regressions by version", async () => {
+  const db = database();
+  const R2 = T0 + 2 * D;
+  recordRollouts(db, [await rollout("r1", T0 - D, [{ version: V1, percent: 100 }]), await rollout("r2", R2, [{ version: V2, percent: 100 }])], [{ version: V2, label: "v2.0", message: null }], R2);
+  ingest(db, await prepare(
+    worker(1, { version: V1, eventAtMs: T0 + D, errors: [caught] }),
+    worker(2, { version: V1, eventAtMs: T0 + D + 1, errors: [errorC] })
+  ), T0 + D + 2);
+  const fingerprintC = listIssues(db, T0 + D + 2).items.find(issue => issue.operation === "collector.record")!.fingerprint;
+  setIssueState(db, T0 + D + H, fingerprintC, "resolved");
+  ingest(db, await prepare(
+    worker(3, { version: V2, eventAtMs: R2 + H, errors: [caught] }),
+    worker(4, { version: V2, eventAtMs: R2 + H + 1, status: 500, errors: [errorB] }),
+    worker(5, { version: V2, eventAtMs: R2 + H + 2, errors: [errorC] }),
+    worker(6, { version: V2, eventAtMs: R2 + H + 3 })
+  ), R2 + 2 * H);
+  const impact = rolloutImpact(db, R2 + 2 * H, "r2")!;
+  assert.equal(impact.state, "measured");
+  assert.deepEqual(impact.introduced, [V2]);
+  assert.equal(impact.previousRolloutId, "r1");
+  assert.deepEqual(impact.newIssues.map(issue => issue.operation), ["deployments.poll"]);
+  assert.deepEqual(impact.regressions.map(issue => issue.operation), ["collector.record"]);
+  assert.deepEqual(impact.versions, [
+    { version: V1, label: null, introduced: false, requests: 2, failed: 2 },
+    { version: V2, label: "v2.0", introduced: true, requests: 4, failed: 3 }
+  ]);
+  assert.equal(impact.baselineMs, D);
+  const introducedB = listIssues(db, R2 + 2 * H, { introducedIn: V2 }).items;
+  assert.deepEqual(introducedB.map(issue => [issue.operation, issue.firstVersion, issue.firstVersionLabel]), [["deployments.poll", V2, "v2.0"]]);
+});
+
+await test("a split rollout introduces only its new version, so errors also seen on the old one are not new", async () => {
+  const db = database();
+  recordRollouts(db, [await rollout("r1", T0, [{ version: V1, percent: 100 }]), await rollout("r2", T0 + D, [{ version: V1, percent: 50 }, { version: V2, percent: 50 }])], [], T0 + D);
+  ingest(db, await prepare(
+    worker(1, { version: V1, eventAtMs: T0 + D + H, errors: [errorB] }),
+    worker(2, { version: V2, eventAtMs: T0 + D + H, errors: [errorC] }),
+    worker(3, { version: V1, eventAtMs: T0 + D + H, errors: [caught] }),
+    worker(4, { version: V2, eventAtMs: T0 + D + H, errors: [caught] })
+  ), T0 + D + 2 * H);
+  const impact = rolloutImpact(db, T0 + D + 2 * H, "r2")!;
+  assert.deepEqual(impact.introduced, [V2]);
+  assert.deepEqual(impact.newIssues.map(issue => issue.operation), ["collector.record"]);
+});
+
+await test("a rollout older than the observation window reports expired instead of guessing", async () => {
+  const db = database();
+  recordRollouts(db, [await rollout("r1", T0, [{ version: V2, percent: 100 }])], [], T0);
+  ingest(db, await prepare(worker(1, { version: V2, eventAtMs: T0 + H, errors: [errorB] })), T0 + H);
+  const impact = rolloutImpact(db, T0 + RETENTION_MS + H, "r1")!;
+  assert.equal(impact.state, "expired");
+  assert.deepEqual(impact.newIssues, []);
+  assert.equal(rolloutImpact(db, NOW, "missing"), null);
+});
+
+await test("cleanup keeps 30 days of rollouts plus the newest older one as the baseline", async () => {
+  const db = database();
+  const now = T0 + 40 * D;
+  recordRollouts(db, [], [{ version: "v0", label: "gone", message: null }, { version: V2, label: "kept", message: null }], T0 + D);
+  recordRollouts(db, [await rollout("old-a", T0 + 1 * D, [{ version: V1, percent: 100 }]), await rollout("old-b", T0 + 5 * D, [{ version: V1, percent: 100 }]), await rollout("recent", T0 + 20 * D, [{ version: V2, percent: 100 }])], [], T0 + 20 * D);
+  cleanup(db, now);
+  assert.deepEqual(db.rows<{ id: string }>("SELECT id FROM observe_rollouts ORDER BY at_ms").map(row => row.id), ["old-b", "recent"]);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_rollout_shares WHERE rollout_id = 'old-a'")[0]!.n, 0);
+  assert.deepEqual(db.rows<{ version: string }>("SELECT version FROM observe_version_labels").map(row => row.version), [V2]);
+});
+
+await test("opening a store from before rollouts adds the resolution column and keeps its issues", () => {
+  const legacy = new DatabaseSync(":memory:");
+  legacy.exec("CREATE TABLE observe_issues (fingerprint TEXT PRIMARY KEY, name TEXT NOT NULL, operation TEXT, frame TEXT, state TEXT NOT NULL CHECK (state IN ('open', 'resolved')), state_at INTEGER NOT NULL) WITHOUT ROWID");
+  legacy.exec("INSERT INTO observe_issues VALUES ('f', 'Error', NULL, NULL, 'open', 1)");
+  const db = wrap(legacy);
+  initializeStore(db);
+  initializeStore(db);
+  assert.ok(db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at"));
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]!.n, 1);
 });

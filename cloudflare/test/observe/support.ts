@@ -9,7 +9,12 @@ export interface TestDatabase extends SqlDatabase {
 }
 
 export function database(): TestDatabase {
-  const db = new DatabaseSync(":memory:");
+  const store = wrap(new DatabaseSync(":memory:"));
+  initializeStore(store);
+  return store;
+}
+
+export function wrap(db: DatabaseSync): TestDatabase {
   const store: TestDatabase = {
     db,
     failOnRun: null,
@@ -32,7 +37,6 @@ export function database(): TestDatabase {
       }
     }
   };
-  initializeStore(store);
   return store;
 }
 

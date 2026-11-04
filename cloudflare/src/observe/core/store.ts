@@ -1,5 +1,5 @@
-import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS } from "./limits.ts";
-import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, Stage } from "./model.ts";
+import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS } from "./limits.ts";
+import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, RolloutPreparation, Stage, VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 
@@ -45,6 +45,47 @@ export interface IssueSummary {
   readonly lastAtMs: number;
   readonly lastVersion: string | null;
   readonly versions: number;
+  readonly firstVersion: string | null;
+  readonly firstVersionLabel: string | null;
+}
+
+export interface RolloutResult {
+  accepted: number;
+  duplicate: number;
+  conflict: number;
+  expired: number;
+  rejected: number;
+}
+
+export interface IssueRef {
+  readonly fingerprint: string;
+  readonly name: string;
+  readonly operation: string | null;
+  readonly frame: string | null;
+  readonly occurrences: number;
+  readonly firstAtMs: number;
+}
+
+export interface VersionStats {
+  readonly version: string;
+  readonly label: string | null;
+  readonly introduced: boolean;
+  readonly requests: number;
+  readonly failed: number;
+}
+
+export type ImpactState = "measured" | "expired";
+
+export interface RolloutImpact {
+  readonly rolloutId: string;
+  readonly atMs: number;
+  readonly previousRolloutId: string | null;
+  readonly introduced: readonly string[];
+  readonly state: ImpactState;
+  readonly baselineMs: number;
+  readonly newIssues: readonly IssueRef[];
+  readonly regressions: readonly IssueRef[];
+  readonly versions: readonly VersionStats[];
 }
 
 export interface Occurrence {
@@ -163,6 +204,26 @@ const STATEMENTS = [
     state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
     state_at INTEGER NOT NULL
   ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_rollouts (
+    id TEXT PRIMARY KEY,
+    digest TEXT NOT NULL,
+    at_ms INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    message TEXT
+  ) WITHOUT ROWID`,
+  "CREATE INDEX IF NOT EXISTS observe_rollouts_time ON observe_rollouts (at_ms)",
+  `CREATE TABLE IF NOT EXISTS observe_rollout_shares (
+    rollout_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    percent REAL NOT NULL,
+    PRIMARY KEY (rollout_id, version)
+  ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_version_labels (
+    version TEXT PRIMARY KEY,
+    label TEXT,
+    message TEXT,
+    updated_at INTEGER NOT NULL
+  ) WITHOUT ROWID`,
   `CREATE TABLE IF NOT EXISTS observe_health (
     bucket_at INTEGER PRIMARY KEY,
     duplicate INTEGER NOT NULL,
@@ -176,7 +237,43 @@ const STATEMENTS = [
 ];
 
 export function initializeStore(db: SqlDatabase): void {
-  db.transaction(() => { for (const statement of STATEMENTS) db.run(statement); });
+  db.transaction(() => {
+    for (const statement of STATEMENTS) db.run(statement);
+    if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
+      db.run("ALTER TABLE observe_issues ADD COLUMN resolved_at INTEGER");
+    }
+  });
+}
+
+const LABEL_REFRESH_MS = 24 * 60 * 60 * 1000;
+
+export function recordRollouts(db: SqlDatabase, preparations: readonly RolloutPreparation[], labels: readonly VersionLabel[], nowMs: number): RolloutResult {
+  const result: RolloutResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, rejected: 0 };
+  db.transaction(() => {
+    for (const preparation of preparations) {
+      if (!preparation.ok) { result.rejected++; continue; }
+      const rollout = preparation.rollout;
+      if (rollout.atMs <= nowMs - ROLLOUT_RETENTION_MS || rollout.atMs > nowMs + MAX_FUTURE_SKEW_MS) { result.expired++; continue; }
+      const existing = db.rows<{ digest: string }>("SELECT digest FROM observe_rollouts WHERE id = ?", rollout.id)[0];
+      if (existing !== undefined) {
+        if (existing.digest === rollout.digest) result.duplicate++;
+        else result.conflict++;
+        continue;
+      }
+      db.run("INSERT INTO observe_rollouts (id, digest, at_ms, source, message) VALUES (?, ?, ?, ?, ?)", rollout.id, rollout.digest, rollout.atMs, rollout.source, rollout.message);
+      for (const share of rollout.shares) db.run("INSERT INTO observe_rollout_shares (rollout_id, version, percent) VALUES (?, ?, ?)", rollout.id, share.version, share.percent);
+      result.accepted++;
+    }
+    for (const label of labels) {
+      db.run(
+        `INSERT INTO observe_version_labels (version, label, message, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (version) DO UPDATE SET label = excluded.label, message = excluded.message, updated_at = excluded.updated_at
+         WHERE label IS NOT excluded.label OR message IS NOT excluded.message OR updated_at < ?`,
+        label.version, label.label, label.message, nowMs, nowMs - LABEL_REFRESH_MS
+      );
+    }
+  });
+  return result;
 }
 
 export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number): IngestResult {
@@ -271,6 +368,11 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     db.run("DELETE FROM observe_occurrences WHERE id IN (SELECT id FROM observe_occurrences WHERE observed_at <= ? ORDER BY observed_at LIMIT ?)", cutoff, CLEANUP_BATCH);
     db.run("DELETE FROM observe_issues WHERE NOT EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = observe_issues.fingerprint AND o.observed_at > ?)", cutoff);
     db.run("DELETE FROM observe_health WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
+    const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
+    const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
+    db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
+    db.run(`DELETE FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline})`, rolloutCutoff, rolloutCutoff);
+    db.run("DELETE FROM observe_version_labels WHERE updated_at <= ? AND version NOT IN (SELECT version FROM observe_rollout_shares)", rolloutCutoff);
     const evicted = evict(db);
     recordHealth(db, nowMs, { duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted });
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
@@ -320,29 +422,94 @@ function page<T>(rows: readonly T[], size: number, cursorOf: (row: T) => string)
 
 interface IssueRow {
   fingerprint: string; name: string; operation: string | null; frame: string | null; state: IssueState;
-  occurrences: number; first_at: number; last_at: number; last_version: string | null; versions: number;
+  occurrences: number; first_at: number; last_at: number; last_version: string | null; versions: number; first_version: string | null; first_version_label: string | null;
 }
 
-export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
+export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
   const cutoff = nowMs - RETENTION_MS;
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
   const rows = db.rows<IssueRow>(
     `SELECT i.fingerprint, i.name, i.operation, i.frame, i.state, COUNT(*) AS occurrences, MIN(o.observed_at) AS first_at, MAX(o.observed_at) AS last_at,
        COUNT(DISTINCT o.version) AS versions,
-       (SELECT l.version FROM observe_occurrences l WHERE l.fingerprint = i.fingerprint AND l.propagated = 0 AND l.observed_at > ? ORDER BY l.observed_at DESC, l.id DESC LIMIT 1) AS last_version
+       (SELECT l.version FROM observe_occurrences l WHERE l.fingerprint = i.fingerprint AND l.propagated = 0 AND l.observed_at > ? ORDER BY l.observed_at DESC, l.id DESC LIMIT 1) AS last_version,
+       (SELECT f.version FROM observe_occurrences f WHERE f.fingerprint = i.fingerprint AND f.propagated = 0 AND f.observed_at > ? ORDER BY f.observed_at, f.id LIMIT 1) AS first_version
      FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
      WHERE (? IS NULL OR i.state = ?)
      GROUP BY i.fingerprint
-     HAVING ? IS NULL OR MAX(o.observed_at) < ? OR (MAX(o.observed_at) = ? AND i.fingerprint < ?)
+     HAVING (? IS NULL OR first_version = ?) AND (? IS NULL OR MAX(o.observed_at) < ? OR (MAX(o.observed_at) = ? AND i.fingerprint < ?))
      ORDER BY last_at DESC, i.fingerprint DESC LIMIT ?`,
-    cutoff, cutoff, filter.state ?? null, filter.state ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
+    cutoff, cutoff, cutoff, filter.state ?? null, filter.state ?? null, filter.introducedIn ?? null, filter.introducedIn ?? null,
+    cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
   );
+  const labels = versionLabels(db, rows.map(row => row.first_version));
   const issues = rows.map(row => ({
     fingerprint: row.fingerprint, name: row.name, operation: row.operation, frame: row.frame, state: row.state,
-    occurrences: row.occurrences, firstAtMs: row.first_at, lastAtMs: row.last_at, lastVersion: row.last_version, versions: row.versions
+    occurrences: row.occurrences, firstAtMs: row.first_at, lastAtMs: row.last_at, lastVersion: row.last_version, versions: row.versions,
+    firstVersion: row.first_version, firstVersionLabel: row.first_version === null ? null : labels.get(row.first_version) ?? null
   }));
   return page(issues, size, issue => `${issue.lastAtMs}.${issue.fingerprint}`);
+}
+
+function versionLabels(db: SqlDatabase, versions: readonly (string | null)[]): Map<string, string> {
+  const wanted = [...new Set(versions.filter((version): version is string => version !== null))];
+  if (wanted.length === 0) return new Map();
+  const rows = db.rows<{ version: string; label: string | null }>("SELECT version, label FROM observe_version_labels WHERE version IN (SELECT value FROM json_each(?))", JSON.stringify(wanted));
+  return new Map(rows.flatMap(row => row.label === null ? [] : [[row.version, row.label] as [string, string]]));
+}
+
+const IMPACT_ISSUES = 50;
+
+export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string): RolloutImpact | null {
+  const rollout = db.rows<{ id: string; at_ms: number }>("SELECT id, at_ms FROM observe_rollouts WHERE id = ?", rolloutId)[0];
+  if (rollout === undefined) return null;
+  const cutoff = nowMs - RETENTION_MS;
+  const sharesOf = (id: string) => db.rows<{ version: string }>("SELECT version FROM observe_rollout_shares WHERE rollout_id = ? AND percent > 0 ORDER BY version", id).map(row => row.version);
+  const previous = db.rows<{ id: string }>("SELECT id FROM observe_rollouts WHERE at_ms < ? OR (at_ms = ? AND id < ?) ORDER BY at_ms DESC, id DESC LIMIT 1", rollout.at_ms, rollout.at_ms, rollout.id)[0] ?? null;
+  const current = sharesOf(rollout.id);
+  const previousShares = previous === null ? [] : sharesOf(previous.id);
+  const before = new Set([
+    ...previousShares,
+    ...db.rows<{ version: string }>("SELECT DISTINCT version FROM observe_invocations WHERE observed_at > ? AND observed_at < ? AND version IS NOT NULL", cutoff, rollout.at_ms).map(row => row.version)
+  ]);
+  const introduced = current.filter(version => !before.has(version));
+  const oldest = db.rows<{ at: number | null }>("SELECT MIN(observed_at) AS at FROM observe_invocations WHERE observed_at > ?", cutoff)[0]?.at ?? null;
+  const baselineMs = oldest === null ? 0 : Math.max(0, rollout.at_ms - Math.max(cutoff, oldest));
+  const state: ImpactState = rollout.at_ms <= cutoff ? "expired" : "measured";
+  const introducedJson = JSON.stringify(introduced);
+  const issueRef = (row: { fingerprint: string; name: string; operation: string | null; frame: string | null; occurrences: number; first_at: number }): IssueRef =>
+    ({ fingerprint: row.fingerprint, name: row.name, operation: row.operation, frame: row.frame, occurrences: row.occurrences, firstAtMs: row.first_at });
+  type IssueRefRow = Parameters<typeof issueRef>[0];
+  const measured = state === "measured" && introduced.length > 0;
+  const newIssues = !measured ? [] : db.rows<IssueRefRow>(
+    `SELECT i.fingerprint, i.name, i.operation, i.frame, COUNT(*) AS occurrences, MIN(o.observed_at) AS first_at
+     FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
+     GROUP BY i.fingerprint
+     HAVING SUM(o.observed_at >= ? AND o.version IN (SELECT value FROM json_each(?))) > 0
+       AND SUM(o.observed_at < ? OR o.version IS NULL OR o.version NOT IN (SELECT value FROM json_each(?))) = 0
+     ORDER BY first_at, i.fingerprint LIMIT ?`,
+    cutoff, rollout.at_ms, introducedJson, rollout.at_ms, introducedJson, IMPACT_ISSUES
+  ).map(issueRef);
+  const regressions = !measured ? [] : db.rows<IssueRefRow>(
+    `SELECT i.fingerprint, i.name, i.operation, i.frame, COUNT(*) AS occurrences, MIN(o.observed_at) AS first_at
+     FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
+       AND o.observed_at >= ? AND o.observed_at > i.resolved_at AND o.version IN (SELECT value FROM json_each(?))
+     WHERE i.resolved_at IS NOT NULL AND i.resolved_at < ?
+     GROUP BY i.fingerprint
+     ORDER BY first_at, i.fingerprint LIMIT ?`,
+    cutoff, rollout.at_ms, introducedJson, rollout.at_ms, IMPACT_ISSUES
+  ).map(issueRef);
+  const compared = [...new Set([...previousShares, ...current])];
+  const counts = new Map(db.rows<{ version: string; requests: number; failed: number }>(
+    "SELECT version, COUNT(*) AS requests, SUM(failed) AS failed FROM observe_invocations WHERE stage = 'worker' AND observed_at > ? AND version IN (SELECT value FROM json_each(?)) GROUP BY version",
+    cutoff, JSON.stringify(compared)
+  ).map(row => [row.version, row]));
+  const labels = versionLabels(db, compared);
+  const versions = compared.map(version => ({
+    version, label: labels.get(version) ?? null, introduced: introduced.includes(version),
+    requests: counts.get(version)?.requests ?? 0, failed: counts.get(version)?.failed ?? 0
+  }));
+  return { rolloutId: rollout.id, atMs: rollout.at_ms, previousRolloutId: previous?.id ?? null, introduced, state, baselineMs, newIssues, regressions, versions };
 }
 
 interface OccurrenceRow {
@@ -377,7 +544,7 @@ export function setIssueState(db: SqlDatabase, nowMs: number, fingerprint: strin
       "SELECT 1 AS one FROM observe_issues i WHERE i.fingerprint = ? AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)",
       fingerprint, nowMs - RETENTION_MS
     ).length > 0;
-    if (visible) db.run("UPDATE observe_issues SET state = ?, state_at = ? WHERE fingerprint = ?", state, nowMs, fingerprint);
+    if (visible) db.run("UPDATE observe_issues SET state = ?, state_at = ?, resolved_at = CASE WHEN ? = 'resolved' THEN ? ELSE resolved_at END WHERE fingerprint = ?", state, nowMs, state, nowMs, fingerprint);
     return visible;
   });
 }

@@ -78,7 +78,8 @@ await test("malformed invocations are rejected with a reason", async () => {
   const cases: [Partial<Parameters<typeof worker>[1]>, string][] = [
     [{ trace: { traceId: "0".repeat(32), spanId: "1".repeat(16) } }, "invalid_trace"],
     [{ trace: { traceId: "A".repeat(32), spanId: "1".repeat(16) } }, "invalid_trace"],
-    [{ version: "worker.js" }, "invalid_version"],
+    [{ version: "worker js" }, "invalid_version"],
+    [{ version: "" }, "invalid_version"],
     [{ stage: "object" }, "invalid_object"],
     [{ objectId: "ab" }, "invalid_object"],
     [{ label: "GET /x\nInjected: 1" }, "invalid_label"],
