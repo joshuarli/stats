@@ -344,6 +344,15 @@ serves more than one service.
   milliseconds, but a mean over every stored call resolves hundredths of a
   millisecond, which a 10% log sample cannot.
 
+Deployed on 2026-11-04 as `stats-observe` `34d93dfe`, `stats` `3a4ea033`, and
+`usr-memories` `4537ae1c`. Production tail events carry the producer's script
+name, so routing held with no event dropped as unknown, and usr-memories
+invocations arrive with trace ids, so `ctx.tracing.getActiveSpan` exists
+there even though local workerd lacks it. The first production write-cost
+readings were 3.00 billed rows per successful invocation on both services,
+half the budget before cleanup, and the conflict from before reasons reads
+`unrecorded`.
+
 Exit: core tests for reasons, write cost, the migration from the old health
 table, and the per-route comparison; a workerd test where a second producer
 lands in its own store with its own operations and within the write budget;
