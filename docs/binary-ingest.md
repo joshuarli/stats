@@ -170,13 +170,17 @@ TypeScript ingest work, µs per request, median [min–max]:
 | High cardinality (16) | not sendable in one v1 request | 915.7 [871.1–969.1] |
 
 The complete server-side codec work is about 15% faster for sample batches
-and slightly slower for the tiny system-only batch. It is tens of
+and slightly slower for the tiny system-only batch. A second run at lower
+load measured 6–7% lower absolute times on both sides and the same ratios
+(Linux normal 37.5 against 32.6 µs; Linux backlog 322.6 against 269.2 µs);
+the Rust ratios repeated as well (Linux normal 691 against 7,224 ns). It is tens of
 microseconds per request either way.
 
 End to end under local workerd, mean over 300 two-sample uploads: 3.03 ms
-(STB2) against 3.11 ms (v1 JSON), median 3 ms and p90 4 ms for both. SQLite
-writes and the rollup rebuild dominate, so there is no measurable
-difference. This says nothing about production CPU billing, which was not
+(STB2) against 3.11 ms (v1 JSON) in the first run, and 1.99 ms against
+1.90 ms in a second run at lower load, with equal medians and p90 within each
+run. The order flips between runs and SQLite writes and the rollup rebuild
+dominate, so there is no measurable difference. This says nothing about production CPU billing, which was not
 measured.
 
 Artifact sizes: the static agents shrank by 98,472 bytes (x86_64 musl,

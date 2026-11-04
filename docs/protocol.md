@@ -304,7 +304,7 @@ is a `conflict`. A sample whose `monoMs` matches a stored sample of the same
 boot with a different `seq` is `invalid_sample`.
 
 The Worker rejects a request before the Durable Object sees it, in order:
-wrong path or method (405), a missing or malformed bearer credential (401),
+a method other than POST (405), a missing or malformed bearer credential (401),
 a media type other than `application/vnd.stats.ingest.v2` (415, ignoring
 parameters and case), a `Content-Encoding` other than `identity` (415), a
 declared `Content-Length` above the cap (413). Inside the object: the media
