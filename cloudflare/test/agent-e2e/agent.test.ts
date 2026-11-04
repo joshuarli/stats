@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { accessToken } from "../access-token.ts";
-import { ROOT, VARS } from "../observe-e2e/harness.ts";
 
+const ROOT = resolve(import.meta.dirname, "../..");
+const VARS = (JSON.parse(readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8")) as { vars: Record<string, string> }).vars;
 const AGENT = process.env.STATS_AGENT_BIN ?? resolve(ROOT, "../agent/target/debug/stats");
 const SCRATCH = resolve(ROOT, "../.work/tmp");
 

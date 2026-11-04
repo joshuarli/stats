@@ -15,7 +15,6 @@
     "src/observe/producer/**/*.ts",
     "test/observe/**/*.ts",
     "test/observe-e2e/**/*.ts",
-    "test/ui/observe-scenario.ts",
-    "test/agent-e2e/**/*.ts"
+    "test/ui/observe-scenario.ts"
   ]
 }
