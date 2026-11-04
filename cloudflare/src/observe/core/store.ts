@@ -477,6 +477,7 @@ export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string)
   const baselineMs = oldest === null ? 0 : Math.max(0, rollout.at_ms - Math.max(cutoff, oldest));
   const state: ImpactState = rollout.at_ms <= cutoff ? "expired" : "measured";
   const introducedJson = JSON.stringify(introduced);
+  const beforeJson = JSON.stringify([...before]);
   const issueRef = (row: { fingerprint: string; name: string; operation: string | null; frame: string | null; occurrences: number; first_at: number }): IssueRef =>
     ({ fingerprint: row.fingerprint, name: row.name, operation: row.operation, frame: row.frame, occurrences: row.occurrences, firstAtMs: row.first_at });
   type IssueRefRow = Parameters<typeof issueRef>[0];
@@ -486,9 +487,9 @@ export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string)
      FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
      GROUP BY i.fingerprint
      HAVING SUM(o.observed_at >= ? AND o.version IN (SELECT value FROM json_each(?))) > 0
-       AND SUM(o.observed_at < ? OR o.version IS NULL OR o.version NOT IN (SELECT value FROM json_each(?))) = 0
+       AND SUM(o.observed_at < ? OR o.version IS NULL OR o.version IN (SELECT value FROM json_each(?))) = 0
      ORDER BY first_at, i.fingerprint LIMIT ?`,
-    cutoff, rollout.at_ms, introducedJson, rollout.at_ms, introducedJson, IMPACT_ISSUES
+    cutoff, rollout.at_ms, introducedJson, rollout.at_ms, beforeJson, IMPACT_ISSUES
   ).map(issueRef);
   const regressions = !measured ? [] : db.rows<IssueRefRow>(
     `SELECT i.fingerprint, i.name, i.operation, i.frame, COUNT(*) AS occurrences, MIN(o.observed_at) AS first_at

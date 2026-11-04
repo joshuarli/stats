@@ -321,3 +321,12 @@ await test("opening a store from before rollouts adds the resolution column and 
   assert.ok(db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at"));
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]!.n, 1);
 });
+
+await test("an issue a rollout introduced stays new in it when it also appears on a later version", async () => {
+  const db = database();
+  const V3 = "v3-7f3a4b5c";
+  recordRollouts(db, [await rollout("r1", T0, [{ version: V1, percent: 100 }]), await rollout("r2", T0 + D, [{ version: V2, percent: 100 }]), await rollout("r3", T0 + 2 * D, [{ version: V3, percent: 100 }])], [], T0 + 2 * D);
+  ingest(db, await prepare(worker(1, { version: V1, eventAtMs: T0 + H }), worker(2, { version: V2, eventAtMs: T0 + D + H, errors: [errorB] }), worker(3, { version: V3, eventAtMs: T0 + 2 * D + H, errors: [errorB] })), T0 + 2 * D + 2 * H);
+  assert.deepEqual(rolloutImpact(db, T0 + 2 * D + 2 * H, "r2")!.newIssues.map(issue => issue.operation), ["deployments.poll"]);
+  assert.deepEqual(rolloutImpact(db, T0 + 2 * D + 2 * H, "r3")!.newIssues, []);
+});
