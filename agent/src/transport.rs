@@ -413,8 +413,9 @@ mod tests {
         let overcounted = ack(2, 0, &[]);
         let unknown_seq = ack(0, 0, &[(9, 1)]);
         let unknown_code = ack(0, 0, &[(1, 7)]);
+        let nothing_delivered = ack(0, 0, &[(1, 1)]);
         let oversized = http("200 OK", ACK_MEDIA_TYPE, &vec![0; MAX_ACK_BYTES + 1]);
-        for response in [truncated, json, overcounted, unknown_seq, unknown_code, oversized] {
+        for response in [truncated, json, overcounted, unknown_seq, unknown_code, nothing_delivered, oversized] {
             let receiver = receiver(response);
             let mut transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap();
             transport.announce(system_info()).unwrap();

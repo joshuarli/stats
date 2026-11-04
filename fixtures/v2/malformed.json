@@ -318,6 +318,12 @@
       "code": "invalid_batch",
       "why": "cores 0",
       "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010405302e312e300168016b0161010001e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "system-empty-hostname",
+      "code": "invalid_frame",
+      "why": "an empty string violates str(max) before any character bound applies",
+      "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010005302e312e3000016b01610001e8c7b3ac9934e80701000001020306"
     }
   ]
 }

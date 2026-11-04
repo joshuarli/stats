@@ -38,9 +38,9 @@ the status and `Retry-After` are authoritative.
 
 - **u8**: one byte.
 - **varint**: unsigned LEB128, low seven bits first, high bit set on every
-  byte but the last. At most 10 bytes; the 10th byte, when present, is `0x00`
-  or `0x01`. A varint is canonical: its last byte is non-zero unless the whole
-  varint is the single byte `0x00`. Every value in `0 ..= 2^64-1` is
+  byte but the last. At most 10 bytes; the 10th byte, when present, is `0x01`
+  (it carries only bit 63). A varint is canonical: its last byte is non-zero
+  unless the whole varint is the single byte `0x00`. Every value in `0 ..= 2^64-1` is
   representable exactly. Overlong, non-canonical, and over-u64 varints reject
   the frame.
 - **str(max)**: a varint byte length `L` with `1 <= L <= max`, then `L` bytes
@@ -101,7 +101,9 @@ clock. The server keeps the latest record per host and the time it arrived.
 | sockets | varint, when bit 3 | 1–256, distinct physical ids |
 | maxMhz | varint, when bit 4 | 1–100000, `cpuinfo_max_freq` |
 
-A character is a Unicode scalar value. Strings contain no control characters
+A character is a Unicode scalar value. An empty string is a `str` length
+violation and rejects the frame as `invalid_frame`; the character bounds
+apply to non-empty strings and reject as `invalid_batch`. Strings contain no control characters
 (U+0000–U+001F, U+007F–U+009F). A fact the host does not expose is absent,
 never zero or empty.
 
@@ -109,7 +111,7 @@ never zero or empty.
 
 | Field | Encoding |
 | --- | --- |
-| seq | varint, `floor(monoMs / 1000)` |
+| seq | varint; the agent sends `floor(monoMs / 1000)`, and the server does not check the relation (as in v1) |
 | atMs | varint, epoch milliseconds |
 | monoMs | varint, monotonic milliseconds since boot |
 | present | varint group mask |
@@ -284,6 +286,9 @@ written. The code is:
 - `too_large`: a body over 65,536 bytes, counted at the byte-reading boundary,
   so a streamed body without `Content-Length` is cut off at the cap.
 
+A frame with several problems is rejected with the code of the first one met
+in wire order.
+
 **Sample rejections** reject one sample with `invalid_sample`; the others in
 the batch proceed:
 
@@ -340,8 +345,9 @@ values are invalid. The body ends after the last entry.
 Every sample in the request is counted exactly once, so
 `accepted + duplicates + r` equals the request's sample count, and each
 rejected `seq` is a `seq` the request carried (as many times as it carried
-it). The agent treats a `200` with another media type, a malformed body, an
-unknown code, a count mismatch, or an unknown `seq` as a failed upload, never
+it), and `accepted + duplicates` is at least 1. The agent treats a `200` with
+another media type, a malformed body, an unknown code, a count mismatch, no
+accepted or duplicate sample, or an unknown `seq` as a failed upload, never
 as delivery.
 
 If nothing was accepted or duplicated, the response is `400` with

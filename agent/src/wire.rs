@@ -535,6 +535,9 @@ pub fn decode_ack(bytes: &[u8], sent: &[u64]) -> Result<Ack, AckError> {
     if total != sent.len() as u64 {
         return Err(AckError("counts do not cover the batch"));
     }
+    if accepted == 0 && duplicates == 0 {
+        return Err(AckError("a success acknowledgment delivered nothing"));
+    }
     let mut rejected = Vec::with_capacity(count as usize);
     for _ in 0..count {
         let seq = reader.varint()?;
@@ -678,7 +681,7 @@ mod tests {
         for (body, reason) in [
             (ack(&[3, 0, 0]), "counts do not cover the batch"),
             (ack(&[1, 0, 1, 9, 1]), "rejection names a sample the batch did not carry"),
-            (ack(&[0, 0, 2, 1, 1, 1, 1]), "rejection names a sample the batch did not carry"),
+            (ack(&[0, 0, 2, 1, 1, 2, 1]), "a success acknowledgment delivered nothing"),
             (ack(&[1, 0, 1, 2, 4]), "unknown rejection code"),
             (ack(&[2, 0, 0, 0]), "trailing bytes"),
             (ack(&[2, 0]), "truncated"),
@@ -689,6 +692,7 @@ mod tests {
         ] {
             assert_eq!(decode_ack(&body, &[1, 2]), Err(AckError(reason)), "{body:?}");
         }
-        assert_eq!(decode_ack(&ack(&[0, 0, 2, 1, 1, 1, 3]), &[1, 1]).map(|ack| ack.rejected.len()), Ok(2));
+        assert_eq!(decode_ack(&ack(&[1, 0, 2, 1, 1, 1, 3]), &[1, 1, 1]).map(|ack| ack.rejected.len()), Ok(2));
+        assert_eq!(decode_ack(&ack(&[0, 0, 2, 1, 1, 2, 3]), &[1, 2]), Err(AckError("a success acknowledgment delivered nothing")));
     }
 }

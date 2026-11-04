@@ -220,6 +220,15 @@ the agent benchmark method does not accept as evidence either way.
   sample with several unavailable groups may list them in a different order
   than an equivalent v1 row. No v1 sample can be resent under v2, so this
   cannot create a conflict.
+- **Stored bytes per request are bounded by sample count, not body size.** A
+  dictionary reference costs about 3 bytes on the wire but expands to the
+  full device record in the stored JSON, so a 9,831-byte frame of 16 samples
+  with 16 disks, interfaces, and long filesystem paths each stores about
+  143 KB of JSON. Under v1 the 64 KB body cap also bounded stored text per
+  request. Rows per request (at most 16) and requests per host per minute
+  (6) are unchanged, and the real agent's samples store the same bytes as
+  before; the larger bound matters only for a misbehaving or compromised host
+  token.
 - **Measured on fixtures, not live hosts.** The byte results use
   fixture-derived and synthetic batches; a live capture from each host
   platform would confirm the representative sizes.
