@@ -61,3 +61,18 @@ The preview serves captured fixtures without the production cache headers or
 the Worker's compression, so compare runs of the same build. The Worker serves
 hashed `/assets/*` with `private, max-age=31536000, immutable`; a reload after
 the first visit should transfer no bundle bytes.
+
+## Ingest protocol
+
+```sh
+BASELINE_WORKTREE=.work/wt/baseline make ingest-bench
+```
+
+`bench/ingest.sh` prints request and acknowledgment bytes for the fixture
+workloads (`bench/ingest-bytes.mjs`), the agent's encoder time and
+allocations (`agent/examples/ingest_bench.rs`, release), the Worker's
+complete decode-to-stored-string work against the v1 parser kept in
+`bench/legacy-v1/` (`bench/ingest-decode.ts`), and end-to-end ingest through
+the Worker and Durable Object in local workerd. With `BASELINE_WORKTREE` set
+to a checkout of a v1 commit it runs the v1 end-to-end twin there too. Method,
+results, and limits are in [`docs/binary-ingest.md`](../docs/binary-ingest.md).

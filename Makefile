@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write smoke-local agent-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local agent-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -133,6 +133,9 @@ rollback-host-%:
 	deploy/deploy-host.sh '$*' --rollback
 
 deploy-threadripper: deploy-host-threadripper
+
+ingest-bench: work-ready node-ready
+	TMPDIR='$(CURDIR)/.work/tmp' bench/ingest.sh
 
 smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh

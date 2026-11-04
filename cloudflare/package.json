@@ -11,7 +11,7 @@
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments && pnpm run typecheck:observe",
-    "lint": "oxlint --type-aware src test observe-worker vite.config.ts playwright.config.ts",
+    "lint": "oxlint --type-aware src test bench observe-worker vite.config.ts playwright.config.ts",
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",
     "observe": "node --experimental-strip-types src/observe/client/cli.ts",
