@@ -4,6 +4,10 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
 import { encodeHistory } from "../test/support/history.ts";
+import { buildScenario } from "../test/ui/observe-scenario.ts";
+import { handleApi } from "../src/observe/worker/api.ts";
+import { health, issueOccurrences, listIssues, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState } from "../src/observe/core/store.ts";
+import { prepareRollout, prepareVersionLabel } from "../src/observe/core/model.ts";
 
 const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
 const assets = join(cloudflare, ".cloudflare", "output", "v0", "workers", "default", "assets");
@@ -131,7 +135,35 @@ function json(response, body, status = 200) {
   response.end(encoded);
 }
 
+const observeSource = process.env.PREVIEW_OBSERVE ?? "scenario";
+if (!["scenario", "capture"].includes(observeSource)) throw new Error("PREVIEW_OBSERVE must be scenario or capture");
+const scenario = observeSource === "scenario" ? await buildScenario(previewNow) : undefined;
+const scenarioStore = scenario === undefined ? undefined : {
+  issues: async filter => listIssues(scenario.db, previewNow, filter),
+  occurrences: async (fingerprint, filter) => issueOccurrences(scenario.db, previewNow, fingerprint, filter),
+  setIssueState: async (fingerprint, state) => setIssueState(scenario.db, previewNow, fingerprint, state),
+  traces: async filter => listTraces(scenario.db, previewNow, filter),
+  trace: async traceId => readTrace(scenario.db, previewNow, traceId),
+  health: async () => ({ ...health(scenario.db, previewNow), databaseBytes: 0 }),
+  rollouts: async (rollouts, labels) => recordRollouts(scenario.db, await Promise.all(rollouts.map(prepareRollout)), labels.flatMap(label => prepareVersionLabel(label) ?? []), previewNow),
+  impact: async rolloutId => rolloutImpact(scenario.db, previewNow, rolloutId)
+};
+
+async function readBody(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 async function observe(request, response, route, url) {
+  if (scenarioStore !== undefined) {
+    const body = request.method === "POST" ? await readBody(request) : undefined;
+    const headers = { "content-type": request.headers["content-type"] ?? "" };
+    const answer = await handleApi(new Request(`https://observe/${route}${url.search}`, { method: request.method, headers, body }), scenarioStore);
+    const payload = Buffer.from(await answer.arrayBuffer());
+    response.writeHead(answer.status, { "Content-Type": answer.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" });
+    return response.end(payload);
+  }
   const capture = projectsById.get("stats");
   const missing = () => json(response, { error: { code: "not_found", message: "no observe capture for that request" } }, 404);
   if (capture === undefined) return missing();
@@ -159,6 +191,9 @@ const server = createServer(async (request, response) => {
     if (path === "/api/v1/hosts") return json(response, { hosts });
     if (path === "/api/v1/projects") return json(response, projects);
     const deployed = /^\/api\/v1\/projects\/([^/]+)\/deployments(?:\/([^/]+)\/comparison)?$/u.exec(path);
+    if (deployed !== null && scenario !== undefined && deployed[1] === "stats") {
+      return deployed[2] === undefined ? json(response, scenario.deployments) : json(response, { error: { code: "not_found", message: "no comparison in the scenario" } }, 404);
+    }
     if (deployed !== null) {
       const capture = projectsById.get(deployed[1]);
       const window = url.searchParams.get("window") ?? "1h";
@@ -225,6 +260,7 @@ const server = createServer(async (request, response) => {
 server.listen(port, "127.0.0.1", () => {
   const firstHost = hosts.find(host => capturesFound.some(capture => capture.hostId === host.hostId)) ?? hosts[0];
   console.log(`preview on http://127.0.0.1:${port}/ (${capturesFound.map(capture => capture.name).join(", ")} at ${new Date(previewNow).toISOString()})`);
+  console.log(scenario === undefined ? "observe: production capture" : `observe: fault-injection scenario, ${scenario.invocations} invocations (PREVIEW_OBSERVE=capture for the production capture)`);
   if (firstHost !== undefined) console.log(`host:    http://127.0.0.1:${port}/#/host/${firstHost.hostId}`);
   if (projects[0] !== undefined) console.log(`project: http://127.0.0.1:${port}/#/project/${projects[0].id}`);
 });
