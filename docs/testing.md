@@ -17,8 +17,8 @@ Linux before changing them.
 
 ## Observability tests
 
-`pnpm run test:observe` runs the portable core and the tail reducer under
-Node. `pnpm run test:observe-e2e` needs `pnpm build` and
+`pnpm run test:observe` runs the portable core, the tail reducer, and the
+`pnpm observe` CLI (against the scenario over local HTTP) under Node. `pnpm run test:observe-e2e` needs `pnpm build` and
 `pnpm run build:observe` first; it loads both bundles into Miniflare with
 `stats-observe` as the tail consumer of `stats`, drives real ingest,
 dashboard, admin, and scheduled traffic, and checks linked traces, grouped

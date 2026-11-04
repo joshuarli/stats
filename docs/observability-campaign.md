@@ -231,7 +231,7 @@ regressions, split rollouts, expired rollouts, and retention; a two-Worker
 test where a polled deployment reaches the store and its impact is read
 back; and UI tests for the impact line, badge, and filter.
 
-## Phase 3c: command-line client (designed, not built)
+## Phase 3c: command-line client
 
 A Cloudflare-agnostic CLI over the observe HTTP API, for terminals and
 agents now and as the reference producer for non-Cloudflare services later.
@@ -244,9 +244,9 @@ agents now and as the reference producer for non-Cloudflare services later.
   a command, `OBSERVE_AUTH_COMMAND` with `OBSERVE_AUTH_HEADER` (for stats,
   `cf access token <host>` into `cf-access-token`). Credentials never come
   from argv, matching the repo's token rule.
-- **Read commands:** `health`; `issues [--state] [--introduced-in]`;
+- **Read commands:** `health`; `routes [--window]`; `issues [--state] [--introduced-in]`;
   `issue <fingerprint>` with its stack and occurrences; `traces [--failed]
-  [--route]`; `trace <id>` as a text waterfall with one row per invocation
+  [--route] [--slowest] [--window]`; `trace <id>` as a text waterfall with one row per invocation
   and a proportional bar; `deployment <rollout id>` for new issues,
   regressions, and failure rates.
 - **Write commands:** `issue resolve|reopen <fingerprint>`, sending the
@@ -342,7 +342,10 @@ charts stay on the project page.
 ## State
 
 Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done and deployed (3b as
-`daf404d3` and `a9204e03` on 2026-11-04). Phase 3c is designed, not built.
+`daf404d3` and `a9204e03` on 2026-11-04). Phase 3c is built as `pnpm observe` and was checked read-only against
+production. The CI rollout write path stays deferred to a write token on a
+future public receiver, since the Cloudflare adapter already records every
+stats deployment.
 
 The dashboard was reworked into one route explorer on the stats page:
 routes ranked by exact trace CPU with p50, p95, and p99, a latency heatmap

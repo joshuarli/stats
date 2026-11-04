@@ -14,6 +14,7 @@
     "lint": "oxlint --type-aware src test observe-worker vite.config.ts playwright.config.ts",
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",
+    "observe": "node --experimental-strip-types src/observe/cli.ts",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
     "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
     "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.ts",
