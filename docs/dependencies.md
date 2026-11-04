@@ -10,11 +10,11 @@ The agent uses `deser` 0.10.2 (`deser-json`, `deser-value`) for JSON and
 TLS now runs on Graviola through `h12tiny-tls-system`. The h12tiny crates come
 from the `mycrates` registry configured in `agent/.cargo/config.toml`.
 
-`h12tiny-client-sync` 0.7.0 was published with its sibling dependencies
-pointing at crates.io, which only mirrors 0.4.0. `[patch.crates-io]` in
-`agent/Cargo.toml` redirects `h12tiny-client-normalize` and
-`h12tiny-tls-system` to `mycrates`. It goes away once h12tiny names the
-registry on those workspace dependencies and republishes.
+`h12tiny-client-sync` 0.7.0 depends on `h12tiny-client-normalize` and
+`h12tiny-tls-system` as crates.io packages, so those two resolve through the
+crates.io mirror. The mirror carries them because the agent lockfile was
+imported into it as project `stats-agent`; a new h12tiny release needs the
+same import before the agent can move to it.
 
 The client bounds the request write and response-header read with the request
 timeout; the agent bounds the body read to the remainder of the same deadline.

@@ -275,7 +275,7 @@ dependencies = [
 [[package]]
 name = "h12tiny-client-normalize"
 version = "0.7.0"
-source = "sparse+https://crates.17166969.xyz/current/registry/"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "726288f88917e16eb154bdbda5034bdabbe73aee8b7526513a3b21d599b1c0d2"
 dependencies = [
  "http",
@@ -298,7 +298,7 @@ dependencies = [
 [[package]]
 name = "h12tiny-tls-system"
 version = "0.7.0"
-source = "sparse+https://crates.17166969.xyz/current/registry/"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9415c66396cb636154e2132bbcde156cabce260bbd7ca06a76c6ec25c095c59"
 dependencies = [
  "base64",

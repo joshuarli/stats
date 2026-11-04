@@ -25,7 +25,3 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 opt-level = "s"
-
-[patch.crates-io]
-h12tiny-client-normalize = { version = "0.7.0", registry = "mycrates" }
-h12tiny-tls-system = { version = "0.7.0", registry = "mycrates" }
