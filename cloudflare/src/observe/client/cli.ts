@@ -131,7 +131,7 @@ async function run(command: string, positional: readonly string[], values: Recor
       const query = new URLSearchParams({ state: string("state") ?? "open", limit: "100" });
       if (string("introduced-in") !== undefined) query.set("introducedIn", string("introduced-in")!);
       const issues = await call(context, `/issues?${query}`, decodeIssues);
-      return print(issues.items, () => table([["fingerprint", "issue", "count", "last seen", "since"], ...issues.items.map(issue => [issue.fingerprint.slice(0, 12), `${issue.name}${issue.operation === null ? "" : ` [${issue.operation}]`} ${issue.frame ?? ""}`, String(issue.occurrences), new Date(issue.lastAtMs).toISOString(), issue.firstVersionLabel ?? issue.firstVersion?.slice(0, 8) ?? "-"])], new Set([2])));
+      return print(issues.items, () => table([["fingerprint", "issue", "count", "last seen", "since"], ...issues.items.map(issue => [issue.fingerprint, `${issue.name}${issue.operation === null ? "" : ` [${issue.operation}]`} ${issue.frame ?? ""}`, String(issue.occurrences), new Date(issue.lastAtMs).toISOString(), issue.firstVersionLabel ?? issue.firstVersion?.slice(0, 8) ?? "-"])], new Set([2])));
     }
     case "issue": {
       const id = argument("64-hex fingerprint", /^[0-9a-f]{64}$/u);
@@ -145,7 +145,7 @@ async function run(command: string, positional: readonly string[], values: Recor
       const id = argument("64-hex fingerprint", /^[0-9a-f]{64}$/u);
       const state: IssueState = command === "resolve" ? "resolved" : "open";
       await call(context, `/issues/${id}/state`, () => null, { method: "POST", headers: { "Content-Type": "application/json", Origin: new URL(context.base).origin }, body: JSON.stringify({ state }) });
-      return print({ fingerprint: id, state }, () => [`${id.slice(0, 12)} ${state}`]);
+      return print({ fingerprint: id, state }, () => [`${id} ${state}`]);
     }
     case "deployment": {
       const id = argument("rollout id", /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u);

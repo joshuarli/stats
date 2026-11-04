@@ -64,6 +64,14 @@ await test("the slowest traces open as a text waterfall with both stages", async
   assert.match(trace.out, /^ {2}Installation GET \/hosts\/:host\/history/mu);
 });
 
+await test("an issue copied from the text list opens with its stack", async () => {
+  const list = await cli("issues");
+  const row = list.out.split("\n").find(line => line.includes("RangeError"))!;
+  const issue = await cli("issue", row.split(/ +/u)[0]!);
+  assert.equal(issue.code, EXIT.ok, issue.err);
+  assert.match(issue.out, /^RangeError/u);
+});
+
 await test("resolving sends the state with the API's own origin", async () => {
   const issues = JSON.parse((await cli("issues", "--json")).out) as { fingerprint: string; name: string }[];
   const target = issues.find(issue => issue.name === "RangeError")!;
