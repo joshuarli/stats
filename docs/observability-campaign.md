@@ -231,6 +231,37 @@ regressions, split rollouts, expired rollouts, and retention; a two-Worker
 test where a polled deployment reaches the store and its impact is read
 back; and UI tests for the impact line, badge, and filter.
 
+## Phase 3c: command-line client (designed, not built)
+
+A Cloudflare-agnostic CLI over the observe HTTP API, for terminals and
+agents now and as the reference producer for non-Cloudflare services later.
+
+- **Shape:** one TypeScript entry, `cloudflare/src/observe/cli.ts`, run as
+  `pnpm observe <command>` with Node's built-in `parseArgs` and `fetch` and
+  no dependencies. It reuses `src/observe/decode.ts`, so a response that
+  fails validation fails the command.
+- **Target and auth:** `--base` or `OBSERVE_URL`, and a header produced by
+  a command, `OBSERVE_AUTH_COMMAND` with `OBSERVE_AUTH_HEADER` (for stats,
+  `cf access token <host>` into `cf-access-token`). Credentials never come
+  from argv, matching the repo's token rule.
+- **Read commands:** `health`; `issues [--state] [--introduced-in]`;
+  `issue <fingerprint>` with its stack and occurrences; `traces [--failed]
+  [--route]`; `trace <id>` as a text waterfall with one row per invocation
+  and a proportional bar; `deployment <rollout id>` for new issues,
+  regressions, and failure rates.
+- **Write commands:** `issue resolve|reopen <fingerprint>`, sending the
+  base origin as `Origin` so the stats proxy's same-origin rule applies.
+- **Output:** aligned text by default and `--json` for scripts; exit 0 on
+  success, 1 on usage errors, 2 when the collector is unavailable, 3 when
+  the item is not found or expired.
+- **Not in the first cut:** `rollout record` from CI. The stats proxy
+  refuses rollout POSTs on purpose, so a CI write path needs its own
+  authenticated surface (an Access service token on a separate route, or a
+  write token on a future public receiver). That is an owner decision.
+  Source-map upload follows Phase 4.
+- **Tests:** commands against a local Node HTTP server serving recorded
+  responses, including malformed and 503 cases and the exit codes.
+
 ## Phase 4: source maps
 
 Caught-error stacks point into the bundle, so issue pages need maps to show
@@ -310,8 +341,15 @@ charts stay on the project page.
 
 ## State
 
-Baseline: `8043bd0`. Phases 0, 1, and 2 are done. Phase 3 has a working UI
-with behavior tests; its WebP goldens wait for a production capture.
+Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done. Phase 3 has a working
+UI with behavior tests; its WebP goldens wait for review of the production
+capture. Phase 3c is designed, not built. None of 3b is deployed.
+
+Tail delivery was checked on 2026-11-04: between 01:11 and 01:43 UTC the
+hosts made 127 uploads (counted from stored samples) and the store held 127
+ingest traces. Workers Logs counts for the same window read about 60%
+higher because of the dataset's sampling stamp, so they are not a delivery
+baseline.
 `stats-observe` and `stats` are deployed (`dc8c3793`, `2221f9c2`), and
 production capture started on 2026-11-04.
 

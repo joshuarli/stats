@@ -60,9 +60,12 @@ the host bearer token. Every other path that serves assets or data first passes
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `/api/observe/*` passes the same Access check and is then proxied over the
 `OBSERVE` service binding to `stats-observe`, the observability collector in
-`docs/observability-campaign.md`; POSTs there must be same-origin. That
-Worker is also the tail consumer of `stats`, has no route of its own, and
-keeps its data in its own `ObservationStore` Durable Object.
+`docs/observability-campaign.md`. The only POST it passes is an issue's
+resolve or reopen, and that must be same-origin. That Worker is also the
+tail consumer of `stats`, has no route of its own, and keeps its data in its
+own `ObservationStore` Durable Object. After each deployment poll, the
+scheduled handler forwards the stats project's stored deployments and
+version tags to it as rollouts over the same binding.
 `cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
 tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`
