@@ -313,6 +313,42 @@ budget is met at this resolution. Excluding the mark on routes the
 collector drops anyway would save at most the 0.1 ms difference, which the
 data cannot distinguish from zero.
 
+## Phase 6: second customer and self-measurement
+
+Goal: answer the Phase 5 questions from the stack itself, and prove the core
+serves more than one service.
+
+- **Services:** `src/observe/services.ts` lists the observed services,
+  `stats` and `usr-memories`. Each has its own `ObservationStore` instance
+  named after it, so the core stays single-service and nothing is shared
+  between their rows. The collector routes each tail event by the
+  producer's script name and drops any other script with a fixed log line.
+  `src/observe/cloudflare/policies.ts` holds each service's route templates
+  and closed set of error operations. usr-memories keeps only its known
+  path segments and replaces every other segment with `:id`, so object
+  digests and memory ids never become labels. The API and the stats proxy
+  are `/api/observe/<service>/*`; the CLI's base URL names the service.
+- **Producer:** usr-memories publishes the same invocation mark and error
+  reports on `stats.observe` from `agent-memory/cloudflare/src/telemetry.ts`
+  in `~/usr`, at the five catch sites that turn an unexpected error into a 503.
+- **Write cost:** the store adds up the backend's billed `rowsWritten` for
+  every ingest and cleanup, so `observe health` reports rows written per
+  invocation from production.
+- **Health reasons:** every health counter keeps a reason and one example.
+  A conflict names its key source (`span` or `fallback`) and the stored
+  columns that differ; counts from before this change read `unrecorded`.
+- **Deployment CPU:** a rollout's impact compares mean CPU per call, with its
+  standard error, and p50 and p95 CPU and wall time, per route and stage for
+  each compared version. The CLI and the deployment card mark a change only
+  when it exceeds twice the combined standard error. Platform CPU is whole
+  milliseconds, but a mean over every stored call resolves hundredths of a
+  millisecond, which a 10% log sample cannot.
+
+Exit: core tests for reasons, write cost, the migration from the old health
+table, and the per-route comparison; a workerd test where a second producer
+lands in its own store with its own operations and within the write budget;
+and UI tests for the CPU table and per-service reads.
+
 ## Budgets
 
 The design limits that cost by construction, and measurements confirm it.
@@ -364,9 +400,9 @@ Durable Object requests a month, against 50M and 1M included on Workers Paid.
 ## Non-goals
 
 Sentry or OTLP compatibility, per-statement SQL spans, browser
-instrumentation, log search, profiling, alert delivery, multi-tenancy,
-public ingestion, and a non-Cloudflare server. Instrumenting `stuff`,
-`usr-memories`, or the agent comes after this campaign. Request-rate and CPU
+instrumentation, log search, profiling, alert delivery, tenancy inside one store,
+public ingestion, and a non-Cloudflare server. Instrumenting `stuff` or
+the agent comes after this campaign. Request-rate and CPU
 charts stay on the project page.
 
 ## State

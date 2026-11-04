@@ -14,14 +14,20 @@ import { defaultSlice, duration, ErrorFrames, TraceView } from "./TraceTimeline"
 import { routeShift, type RouteShift } from "../../../observe/client/impact";
 import "./observe.css";
 
-const BASE = "/api/observe";
+import type { ObservedService } from "../../../observe/services";
 const TRACE_ID = /^[0-9a-f]{32}$/u;
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 export const MOMENT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
-export async function read<T>(path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
+export type ObserveRead = <T>(path: string, signal: AbortSignal, decode: (value: unknown) => T) => Promise<T>;
+
+function observeBase(service: ObservedService): string {
+  return `/api/observe/${service}`;
+}
+
+async function readFrom<T>(base: string, path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
   let response: Response;
-  try { response = await fetch(`${BASE}${path}`, { signal, credentials: "same-origin", cache: "no-store" }); }
+  try { response = await fetch(`${base}${path}`, { signal, credentials: "same-origin", cache: "no-store" }); }
   catch (cause) { throw new ApiFailure(0, "The observability collector could not be reached", cause); }
   if (response.status === 404 && path.startsWith("/traces/")) throw new ApiFailure(404, "This trace has expired or was never recorded");
   if (response.status === 404 && path.startsWith("/rollouts/")) throw new ApiFailure(404, "This deployment has not reached the collector yet; deployments are forwarded every 5 minutes");
@@ -70,7 +76,9 @@ function modalParam(view: ModalView | undefined): string | null {
   return view.kind === "issue" ? `issue:${view.fingerprint}` : view.kind === "trace" ? `trace:${view.traceId}` : `deployment:${view.id}`;
 }
 
-export function createObservability(refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow) {
+export function createObservability(service: ObservedService, refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow) {
+  const base = observeBase(service);
+  const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
   const [modals, setModals] = createSignal<readonly ModalView[]>(parseModal(readParam("modal")));
   const [health, setHealth] = createSignal<ObserveHealth | null>(null);
   const [traces, setTraces] = createSignal<Page<TraceSummary> | null>(null);
@@ -192,7 +200,7 @@ export function createObservability(refreshKey: () => string, windowKey: () => s
   const changeState = async (fingerprint: string, state: IssueState) => {
     setResolving(true);
     try {
-      const response = await fetch(`${BASE}/issues/${fingerprint}/state`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state }) });
+      const response = await fetch(`${base}/issues/${fingerprint}/state`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state }) });
       if (!response.ok) throw new ApiFailure(response.status, `Could not mark the issue ${state} (${response.status})`);
       setMutation(value => value + 1);
     } catch (cause) {
@@ -202,7 +210,7 @@ export function createObservability(refreshKey: () => string, windowKey: () => s
     }
   };
 
-  return { modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, error, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
+  return { read, modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, error, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
 }
 
 export type Observability = ReturnType<typeof createObservability>;
@@ -433,7 +441,7 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (impact()?.rolloutId !== query.id) setImpact(null);
-    void read(`/rollouts/${query.id}/impact`, controller.signal, value => decodeImpact(value, query.id)).then(value => {
+    void props.observe.read(`/rollouts/${query.id}/impact`, controller.signal, value => decodeImpact(value, query.id)).then(value => {
       if (controller.signal.aborted) return;
       setImpact(value);
       setError(null);
@@ -484,7 +492,7 @@ function IssueModalBody(props: { readonly fingerprint: string; readonly observe:
   createEffect(() => ({ id: props.fingerprint, mutation: props.observe.mutation() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    void Promise.all([read(`/issues/${query.id}`, controller.signal, decodeIssue), read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences)]).then(([nextIssue, nextOccurrences]) => {
+    void Promise.all([props.observe.read(`/issues/${query.id}`, controller.signal, decodeIssue), props.observe.read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences)]).then(([nextIssue, nextOccurrences]) => {
       if (controller.signal.aborted) return;
       setIssue(nextIssue);
       setOccurrences(nextOccurrences);
@@ -499,14 +507,14 @@ function IssueModalBody(props: { readonly fingerprint: string; readonly observe:
   );
 }
 
-function TraceModalBody(props: { readonly traceId: string }): JSX.Element {
+function TraceModalBody(props: { readonly traceId: string; readonly read: ObserveRead }): JSX.Element {
   const [detail, setDetail] = createSignal<TraceDetail | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
   const [slice, setSlice] = createSignal<string | null>(null);
   createEffect(() => props.traceId, id => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    void read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
+    void props.read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
       if (controller.signal.aborted) return;
       setDetail(value);
       setFailure(null);
@@ -539,7 +547,7 @@ export function ObserveModal(props: { readonly observe: Observability; readonly 
         backLabel={previous() === undefined ? undefined : modalTitle(previous()!)}
       >
         {view.kind === "issue" ? <IssueModalBody fingerprint={view.fingerprint} observe={o} />
-          : view.kind === "trace" ? <TraceModalBody traceId={view.traceId} />
+          : view.kind === "trace" ? <TraceModalBody traceId={view.traceId} read={o.read} />
           : <RolloutImpactPanel deploymentId={view.id} refreshKey={props.refreshKey} observe={o} />}
       </Modal>
     )}</Show>

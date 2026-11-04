@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { errorReport } from "../../src/observe/producer/report.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 
@@ -21,8 +22,8 @@ function objectItem(event: unknown, overrides: Partial<TailItem> = {}): TailItem
   return { ...fetchItem("https://installation/ingest", 200), event, executionModel: "durableObject", durableObjectId: OBJECT, entrypoint: "Installation", ...overrides };
 }
 
-function label(item: TailItem): string | null {
-  const reduction = reduceTailItem(item);
+function label(item: TailItem, policy = POLICIES.stats): string | null {
+  const reduction = reduceTailItem(item, policy);
   return reduction.kind === "observed" ? reduction.invocation.label : reduction.kind;
 }
 
@@ -44,6 +45,25 @@ await test("health, assets, the observability API, and unauthorized or unmatched
   ]) assert.equal(label(item), "excluded", JSON.stringify(item.event));
 });
 
+await test("usr-memories routes keep only its known path segments, so digests and memory ids never become labels", () => {
+  const memories = POLICIES["usr-memories"];
+  const digest = "b".repeat(64);
+  assert.equal(label(fetchItem(`https://memories.example/api/v1/sync/objects/${digest}?origin=SECRET_IN_QUERY`, 200), memories), "GET /api/v1/sync/objects/:id");
+  assert.equal(label(fetchItem(`https://memories.example/api/v1/sync/manifests/${digest}`, 200), memories), "GET /api/v1/sync/manifests/:id");
+  assert.equal(label(fetchItem("https://memories.example/m/project-name/1234", 200), memories), "GET /m/:id/:id");
+  assert.equal(label(fetchItem("https://memories.example/api/v1/sync/learning/deltas", 200), memories), "GET /api/v1/sync/learning/deltas");
+  assert.equal(label(fetchItem("https://memories.example/", 200), memories), "GET /");
+  assert.equal(label(fetchItem("https://memories.example/api/v1/status", 403), memories), "excluded");
+});
+
+await test("each service accepts only its own error operations", () => {
+  const report = (operation: string) => ({ channel: OBSERVE_CHANNEL, message: { kind: "error", operation, name: "Error", message: "", stack: null } });
+  const memories = POLICIES["usr-memories"];
+  assert.equal(label(fetchItem("https://memories.example/api/v1/status", 503, { diagnosticsChannelEvents: [MARK, report("request.route")] }), memories), "GET /api/v1/status");
+  assert.equal(label(fetchItem("https://memories.example/api/v1/status", 503, { diagnosticsChannelEvents: [MARK, report("deployments.poll")] }), memories), "rejected");
+  assert.equal(label(fetchItem("https://stats.example/api/v1/hosts", 200, { diagnosticsChannelEvents: [MARK, report("request.route")] })), "rejected");
+});
+
 await test("object fetch, RPC, alarm, and cron invocations get their own labels", () => {
   assert.equal(label(objectItem({ request: { url: "https://installation/ingest", method: "POST", headers: {} }, response: { status: 200 } })), "Installation POST /ingest");
   assert.equal(label(objectItem({ rpcMethod: "recordCollectorRun" })), "Installation.recordCollectorRun");
@@ -56,7 +76,7 @@ await test("a reduced invocation carries trace context, platform timing, and err
     outcome: "ok",
     exceptions: [{ name: "TypeError", message: "cause b", stack: "    at failB (src/index.ts:15:13)" }],
     diagnosticsChannelEvents: [MARK, { channel: "other", message: { anything: true } }, { channel: OBSERVE_CHANNEL, message: errorReport("deployments.poll", new Error("http_500")) }]
-  }));
+  }), POLICIES.stats);
   assert.equal(reduction.kind, "observed");
   if (reduction.kind !== "observed") return;
   const invocation = reduction.invocation;

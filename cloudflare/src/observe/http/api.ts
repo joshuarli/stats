@@ -167,9 +167,8 @@ async function readState(request: Request): Promise<IssueState> {
   return issueState((body as { state?: unknown }).state);
 }
 
-export async function handleApi(request: Request, store: ObserveService): Promise<Response> {
+export async function handleApi(request: Request, path: string, store: ObserveService): Promise<Response> {
   const url = new URL(request.url);
-  const path = url.pathname;
   try {
     const artifact = /^\/artifacts\/([^/]+)\/([^/]+)$/u.exec(path);
     if (artifact !== null) {

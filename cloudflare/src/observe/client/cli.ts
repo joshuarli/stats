@@ -21,7 +21,7 @@ commands:
                                   register a bundle's source map for a version
 
 options:
-  --base URL   observe API base (or OBSERVE_URL), e.g. https://stats.example/api/observe
+  --base URL   observe API base for one service (or OBSERVE_URL), e.g. https://stats.example/api/observe/stats
   --json       print the decoded response instead of text
 
 auth: OBSERVE_AUTH_COMMAND prints a credential, sent in the header named by
@@ -207,7 +207,7 @@ export async function main(argv: readonly string[], env: NodeJS.ProcessEnv, out:
     const [command, ...rest] = positionals;
     if (command === undefined) throw new Exit(EXIT.usage, USAGE);
     const base = (values.base ?? env["OBSERVE_URL"] ?? "").replace(/\/+$/u, "");
-    if (!/^https?:\/\//u.test(base)) throw new Exit(EXIT.usage, "set --base or OBSERVE_URL to the observe API, e.g. https://stats.example/api/observe");
+    if (!/^https?:\/\//u.test(base)) throw new Exit(EXIT.usage, "set --base or OBSERVE_URL to one service's observe API, e.g. https://stats.example/api/observe/stats");
     await run(command, rest, values, { base, headers: credential(env), json: values.json === true, out }, now);
     return EXIT.ok;
   } catch (error) {

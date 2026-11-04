@@ -144,11 +144,13 @@ async function readBody(request) {
   return Buffer.concat(chunks);
 }
 
-async function observe(request, response, route, url) {
+async function observe(request, response, servicePath, url) {
+  const [, service, route] = /^([a-z][a-z0-9-]{0,31})\/(.*)$/u.exec(servicePath) ?? [];
+  if (service !== "stats") return json(response, { error: { code: "not_found", message: "preview serves only the stats service" } }, 404);
   if (scenarioStore !== undefined) {
     const body = request.method === "POST" ? await readBody(request) : undefined;
     const headers = { "content-type": request.headers["content-type"] ?? "" };
-    const answer = await handleApi(new Request(`https://observe/${route}${url.search}`, { method: request.method, headers, body }), scenarioStore);
+    const answer = await handleApi(new Request(`https://observe/${route}${url.search}`, { method: request.method, headers, body }), `/${route}`, scenarioStore);
     const payload = Buffer.from(await answer.arrayBuffer());
     response.writeHead(answer.status, { "Content-Type": answer.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" });
     return response.end(payload);

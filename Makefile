@@ -98,7 +98,7 @@ worker-deploy: auth-ready work-ready worker-bundle observe-deploy
 
 observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }
-	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe' OBSERVE_AUTH_COMMAND="cf access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
+	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' OBSERVE_AUTH_COMMAND="cf access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
 
 worker-test: cloudflare-test dashboard-test lint
 

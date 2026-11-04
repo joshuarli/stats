@@ -22,11 +22,15 @@ reducer, and the `pnpm observe` CLI (against the scenario over local HTTP)
 under Node. `test/observe-e2e/sourcemap.test.ts` maps a throw site in the
 built stats bundle back to the source line that throws. `pnpm run test:observe-e2e` needs `pnpm build` and
 `pnpm run build:observe` first; it loads both bundles into Miniflare with
-`stats-observe` as the tail consumer of `stats`, drives real ingest,
+`stats-observe` as the tail consumer of `stats` and of a small `usr-memories`
+stand-in that publishes marks and one caught error, drives real ingest,
 dashboard, admin, and scheduled traffic, and checks linked traces, grouped
-issues, that polling `/api/observe/*` stores nothing, that no secret reaches
-the store, and that a crashing or missing collector leaves stats responses
-unchanged. `TEST_NOW_MS` pins the stats clock in the past, so
+issues, that each service lands in its own store, that polling
+`/api/observe/*` stores nothing, that no secret reaches the store, that
+billed rows written per invocation stay within budget, and that a crashing
+or missing collector leaves stats responses unchanged. Local workerd sends
+tail events with no script name, so the harness wraps the collector bundle
+once per producer to supply the name production sends. `TEST_NOW_MS` pins the stats clock in the past, so
 `Installation`'s retention alarm fires repeatedly there; the test waits for
 the invocations it caused rather than for quiet.
 
@@ -37,7 +41,7 @@ through the real core store with injected faults: a canary that introduces
 a parser bug, a v1.4.0 deploy that adds an ingest error, regresses the
 resolved parser bug, and makes host history reads CPU-hot, and a poll
 failure carried across every version. The spec and `make preview` answer
-`/api/observe/*` from it through the real API handler;
+`/api/observe/stats/*` from it through the real API handler;
 `PREVIEW_OBSERVE=capture make preview` serves the production capture. Its WebP goldens
 (`observe.spec.ts-snapshots/`) cover the route explorer, the Deployment card
 with v1.4.0's impact, the Errors card, and the trace modal on desktop and
@@ -47,7 +51,7 @@ script version, so the two-Worker test proves that a polled deployment is
 forwarded and stored, while version attribution is covered by the core
 tests. `cloudflare/scripts/capture-project.sh stats` also
 saves the production observe responses, which `make preview` serves from
-`/api/observe/*`.
+`/api/observe/stats/*`.
 
 ## Screenshot goldens
 

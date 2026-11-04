@@ -16,6 +16,35 @@ export const HOST_NAME = "host-name-QXZ";
 export const SECRET_QUERY = "SECRET_IN_QUERY_7d1f";
 const COMPAT = { compatibilityDate: "2026-10-30", compatibilityFlags: ["nodejs_compat"] };
 const CRASHING_CONSUMER = "export default { tail() { throw new Error('collector down'); }, fetch() { throw new Error('collector down'); } };";
+function namedCollector(scriptName: string): string {
+  return `import collector, { ObservationStore } from "./index.js";
+export { ObservationStore };
+export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(scriptName)} })), env, ctx); } };`;
+}
+
+function collectorModules(scriptName: string) {
+  return [
+    { type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: namedCollector(scriptName) },
+    { type: "ESModule" as const, path: join(ROOT, "observe-worker/index.js"), contents: readFileSync(OBSERVE_BUNDLE, "utf8") }
+  ];
+}
+
+const MEMORIES_PRODUCER = `
+import diagnostics from "node:diagnostics_channel";
+import { tracing } from "cloudflare:workers";
+const channel = diagnostics.channel("stats.observe");
+export default {
+  async fetch(request) {
+    const span = tracing.getActiveSpan();
+    if (span !== undefined) { const context = span.spanContext(); channel.publish({ kind: "invocation", traceId: context.traceId, spanId: context.spanId }); }
+    if (new URL(request.url).pathname.startsWith("/api/v1/sync/objects/")) {
+      try { throw new TypeError("replacement failed"); }
+      catch (error) { channel.publish({ kind: "error", operation: "sync.replace", name: error.name, message: error.message, stack: error.stack ?? null }); }
+      return new Response("unavailable", { status: 503 });
+    }
+    return Response.json({ ok: true });
+  }
+};`;
 
 export type StatsInit = NonNullable<Parameters<Miniflare["dispatchFetch"]>[1]>;
 export type Response = Awaited<ReturnType<Miniflare["dispatchFetch"]>>;
@@ -26,6 +55,8 @@ export interface Harness {
   readonly persist: string;
   stats(path: string, init?: StatsInit): Promise<Response>;
   observe(path: string): Promise<unknown>;
+  observeService(service: string, path: string): Promise<unknown>;
+  memories(path: string): Promise<Response>;
   scheduled(): Promise<unknown>;
   stop(): Promise<void>;
   dispose(): Promise<void>;
@@ -48,9 +79,13 @@ export async function start(collector: Collector, bindings: Record<string, strin
   };
   const observeWorker = collector === "crashing"
     ? { name: "stats-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
-    : { name: "stats-observe", modules: true, scriptPath: OBSERVE_BUNDLE, ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } } };
+    : { name: "stats-observe", modules: collectorModules("stats"), ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } } };
+  const memoriesCollector = collector === "crashing"
+    ? { name: "memories-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
+    : { name: "memories-observe", modules: collectorModules("usr-memories"), ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", scriptName: "stats-observe", useSQLite: true } } };
+  const memoriesWorker = { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) };
   const mf = new Miniflare({
-    ...convertV4MiniflareOptions({ workers: collector === "absent" ? [statsWorker] : [statsWorker, observeWorker] }),
+    ...convertV4MiniflareOptions({ workers: collector === "absent" ? [statsWorker, memoriesWorker] : [statsWorker, observeWorker, memoriesCollector, memoriesWorker] }),
     resourcePersistencePath: persist
   });
   const stats = await mf.getWorker("stats");
@@ -64,7 +99,9 @@ export async function start(collector: Collector, bindings: Record<string, strin
     mf,
     persist,
     stats: async (path, init) => mf.dispatchFetch(`${ORIGIN}${path}`, init),
-    observe: async path => (await (await mf.getWorker("stats-observe")).fetch(`https://observe${path}`)).json(),
+    observe: async path => (await (await mf.getWorker("stats-observe")).fetch(`https://observe/stats${path}`)).json(),
+    observeService: async (service, path) => (await (await mf.getWorker("stats-observe")).fetch(`https://observe/${service}${path}`)).json(),
+    memories: async path => (await mf.getWorker("usr-memories")).fetch(`https://memories.example${path}`),
     scheduled: async () => stats.scheduled({ cron: "*/5 * * * *", scheduledTime: new Date(Number(VARS["TEST_NOW_MS"])) }),
     stop,
     dispose: async () => { await stop(); rmSync(persist, { recursive: true, force: true }); }

@@ -58,14 +58,20 @@ the host bearer token. Every other path that serves assets or data first passes
 `verifyAccess` in `access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
-`/api/observe/*` passes the same Access check and is then proxied over the
-`OBSERVE` service binding to `stats-observe`, the observability collector in
-`docs/observability-campaign.md`. The only POST it passes is an issue's
-resolve or reopen, and that must be same-origin. That Worker is also the
-tail consumer of `stats`, has no route of its own, and keeps its data in its
-own `ObservationStore` Durable Object. After each deployment poll, the
-scheduled handler forwards the stats project's stored deployments and
-version tags to it as rollouts over the same binding.
+`/api/observe/<service>/*` passes the same Access check and is then proxied
+over the `OBSERVE` service binding to `stats-observe`, the observability
+collector in `docs/observability-campaign.md`. The only writes it passes are
+an issue's resolve or reopen and a source-map upload, and both must be
+same-origin. That Worker is the tail consumer of every observed service
+(`stats` and `usr-memories`, listed in `src/observe/services.ts`), has no
+route of its own, and keeps each service's data in its own
+`ObservationStore` Durable Object named after the service. It routes each
+tail event by the producer's script name; each service's route templates
+and closed set of error operations live in `src/observe/cloudflare/policies.ts`,
+and an event from any other script is dropped with a fixed log line. After
+each deployment poll, the scheduled handler forwards every observed
+project's stored deployments and version tags to its service as rollouts
+over the same binding.
 
 The observability code under `cloudflare/src/observe/` is layered so only
 one folder knows about Cloudflare. `core/` holds the model, grouping, SQL

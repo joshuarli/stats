@@ -26,7 +26,7 @@ import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel } f
 import { RequestExplorerWidget } from "./project/Requests";
 import { rangeMs } from "../state";
 import { RETENTION_MS } from "../../observe/core/limits";
-import { OBSERVED_PROJECT } from "../../observe/producer/channel";
+import { isObservedService } from "../../observe/services";
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();
@@ -113,7 +113,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const cells = createMemo(() => buildProjectCells(data(), view()));
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
-  const observed = props.project.id === OBSERVED_PROJECT;
+  const service = isObservedService(props.project.worker) ? props.project.worker : null;
+  const observed = service !== null;
   const observeWindow = () => {
     const zoomed = view();
     if (zoomed !== null) return zoomed;
@@ -121,7 +122,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     return { fromMs: end - Math.min(rangeMs[range()], RETENTION_MS), toMs: end };
   };
   const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
-  const observe = observed ? createObservability(() => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow) : null;
+  const observe = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow) : null;
   const moreSections = (): SectionLink[] => [
     ...(observed ? [{ label: "Routes", anchor: "route-explorer" }, { label: "Errors", anchor: "issues" }] : []),
     { label: "Deployment", anchor: "deployments" },

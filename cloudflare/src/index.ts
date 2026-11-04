@@ -9,7 +9,7 @@ import { runCollector } from "./projects/collector";
 import { markInvocation } from "./observe/cloudflare/mark";
 import { reportError } from "./observe/producer/report";
 import { readLimitedText } from "./body";
-import { OBSERVED_PROJECT } from "./observe/producer/channel";
+import { isObservedService } from "./observe/services";
 import { MAX_ARTIFACT_BYTES } from "./observe/core/limits";
 import { rolloutsFromDeployments } from "./observe/cloudflare/rollouts";
 import { decodeDeploymentHistory } from "./deployments/decode";
@@ -76,8 +76,8 @@ async function observe(request: Request, env: Env, path: string): Promise<Respon
   const url = new URL(request.url);
   const target = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
   if (request.method === "GET") return secure(await env.OBSERVE.fetch(target));
-  const write = request.method === "POST" && /^\/api\/observe\/issues\/[0-9a-f]{64}\/state$/u.test(path) ? MAX_OBSERVE_BODY_BYTES
-    : request.method === "PUT" && /^\/api\/observe\/artifacts\/[^/]+\/[^/]+$/u.test(path) ? MAX_ARTIFACT_BYTES
+  const write = request.method === "POST" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/issues\/[0-9a-f]{64}\/state$/u.test(path) ? MAX_OBSERVE_BODY_BYTES
+    : request.method === "PUT" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/artifacts\/[^/]+\/[^/]+$/u.test(path) ? MAX_ARTIFACT_BYTES
     : null;
   if (write === null) return error(405, "invalid_request", "method not allowed");
   if (request.headers.get("Origin") !== url.origin) return error(403, "forbidden", "cross-origin request");
@@ -86,18 +86,22 @@ async function observe(request: Request, env: Env, path: string): Promise<Respon
   return secure(await env.OBSERVE.fetch(target, { method: request.method, headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
 }
 
-async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>): Promise<void> {
+async function forwardProjectRollouts(env: Env, store: DurableObjectStub<Installation>, project: string, service: string): Promise<void> {
   try {
-    if (!parseProjects(env.PROJECTS).some(project => project.id === OBSERVED_PROJECT)) return;
-    const response = await store.fetch(`https://installation/projects/${OBSERVED_PROJECT}/deployments`);
+    const response = await store.fetch(`https://installation/projects/${project}/deployments`);
     if (!response.ok) throw new Error(`deployment history unavailable (${response.status})`);
-    const history = decodeDeploymentHistory(await response.json(), OBSERVED_PROJECT);
+    const history = decodeDeploymentHistory(await response.json(), project);
     if (!history.enabled || history.deployments.length === 0) return;
-    const sent = await env.OBSERVE.fetch("https://observe/rollouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rolloutsFromDeployments(history)) });
+    const sent = await env.OBSERVE.fetch(`https://observe/${service}/rollouts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rolloutsFromDeployments(history)) });
     if (!sent.ok) throw new Error(`rollout forward rejected (${sent.status})`);
   } catch (error) {
     reportError("deployments.forward", error);
   }
+}
+
+async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>): Promise<void> {
+  const observed = parseProjects(env.PROJECTS).filter(project => isObservedService(project.worker));
+  await Promise.all(observed.map(project => forwardProjectRollouts(env, store, project.id, project.worker)));
 }
 
 export default {

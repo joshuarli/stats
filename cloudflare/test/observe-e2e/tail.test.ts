@@ -41,7 +41,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     }, "the requests' traces");
     await until(async () => (await harness.observe("/issues") as Page<IssueSummary>).items, items => items.some(issue => issue.operation === "deployments.poll"), "the poll failure issue");
 
-    const traces = (await (await harness.stats("/api/observe/traces", { headers: await accessHeaders() })).json()) as Page<TraceSummary>;
+    const traces = (await (await harness.stats("/api/observe/stats/traces", { headers: await accessHeaders() })).json()) as Page<TraceSummary>;
     const byLabel = new Map(traces.items.map(trace => [trace.label, trace]));
     const ingestTrace = byLabel.get("POST /ingest/v1/batches");
     assert.ok(ingestTrace?.traceId, `labels: ${[...byLabel.keys()].join(", ")}`);
@@ -51,22 +51,22 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     const scheduled = byLabel.get("scheduled */5 * * * *");
     assert.ok(scheduled?.failed, "the scheduled run fails without analytics and is marked failed");
 
-    const detail = (await (await harness.stats(`/api/observe/traces/${ingestTrace.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;
+    const detail = (await (await harness.stats(`/api/observe/stats/traces/${ingestTrace.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;
     assert.equal(detail.rootPresent, true);
     assert.deepEqual(detail.invocations.map(invocation => invocation.label), ["POST /ingest/v1/batches", "Installation POST /ingest"]);
 
-    const issues = (await (await harness.stats("/api/observe/issues", { headers: await accessHeaders() })).json()) as Page<IssueSummary>;
+    const issues = (await (await harness.stats("/api/observe/stats/issues", { headers: await accessHeaders() })).json()) as Page<IssueSummary>;
     const poll = issues.items.find(issue => issue.operation === "deployments.poll");
     assert.ok(poll, `issues: ${issues.items.map(issue => `${issue.operation}:${issue.name}`).join(", ")}`);
     assert.ok(poll.frame?.includes("src/deployments/collector.ts") || poll.frame?.includes("index.js"), poll.frame ?? "no frame");
     assert.ok(issues.items.some(issue => issue.operation === null && issue.name === "TypeError"), "the collector's uncaught failure is its own issue");
     assert.ok(scheduled.traceId !== null);
-    const scheduledDetail = (await (await harness.stats(`/api/observe/traces/${scheduled.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;
+    const scheduledDetail = (await (await harness.stats(`/api/observe/stats/traces/${scheduled.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;
     assert.ok(scheduledDetail.occurrences.some(occurrence => occurrence.operation === "deployments.poll"), "the caught poll failure links to its scheduled trace");
 
     const before = (await workerTraces(harness)).length;
     for (let i = 0; i < 100; i++) {
-      const response = await harness.stats(i % 2 === 0 ? "/api/observe/traces" : "/api/observe/health", { headers: await accessHeaders() });
+      const response = await harness.stats(i % 2 === 0 ? "/api/observe/stats/traces" : "/api/observe/stats/health", { headers: await accessHeaders() });
       assert.equal(response.status, 200);
     }
     assert.equal((await harness.stats("/health")).status, 200);
@@ -87,17 +87,40 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
   }
 });
 
+await test("a second service's invocations land in its own store with its own operations", async () => {
+  const harness = await start("attached");
+  try {
+    const digest = "b".repeat(64);
+    assert.equal((await harness.memories("/api/v1/status")).status, 200);
+    assert.equal((await harness.memories(`/api/v1/sync/objects/${digest}?origin=SECRET_IN_QUERY`)).status, 503);
+    const traces = await until(async () => (await harness.observeService("usr-memories", "/traces?limit=100") as Page<TraceSummary>).items,
+      items => items.length === 2, "both usr-memories requests");
+    assert.deepEqual(traces.map(trace => trace.label).sort(), ["GET /api/v1/status", "GET /api/v1/sync/objects/:id"]);
+    assert.ok(traces.every(trace => trace.traceId !== null), "the producer's marks key and link its invocations");
+    const issues = (await (await harness.stats("/api/observe/usr-memories/issues", { headers: await accessHeaders() })).json()) as Page<IssueSummary>;
+    assert.deepEqual(issues.items.map(issue => [issue.operation, issue.name]), [["sync.replace", "TypeError"]]);
+    assert.ok((await workerTraces(harness)).every(trace => !trace.label.includes("/sync/")), "stats' store holds none of them");
+    assert.equal((await harness.stats("/api/observe/unknown/traces", { headers: await accessHeaders() })).status, 404);
+    const health = await harness.observeService("usr-memories", "/health") as { writes: { accepted: number; ingestRows: number } };
+    assert.equal(health.writes.accepted, 2);
+    const perInvocation = health.writes.ingestRows / health.writes.accepted;
+    assert.ok(perInvocation <= 6, `billed rows per invocation ${perInvocation}`);
+  } finally {
+    await harness.dispose();
+  }
+});
+
 await test("the observability API rejects unauthenticated and cross-origin requests", async () => {
   const harness = await start("attached");
   try {
-    assert.equal((await harness.stats("/api/observe/traces")).status, 401);
+    assert.equal((await harness.stats("/api/observe/stats/traces")).status, 401);
     const fingerprint = "a".repeat(64);
-    const crossOrigin = await harness.stats(`/api/observe/issues/${fingerprint}/state`, { method: "POST", headers: await accessHeaders({ Origin: "https://evil.example", "Content-Type": "application/json" }), body: JSON.stringify({ state: "resolved" }) });
+    const crossOrigin = await harness.stats(`/api/observe/stats/issues/${fingerprint}/state`, { method: "POST", headers: await accessHeaders({ Origin: "https://evil.example", "Content-Type": "application/json" }), body: JSON.stringify({ state: "resolved" }) });
     assert.equal(crossOrigin.status, 403);
-    const sameOrigin = await harness.stats(`/api/observe/issues/${fingerprint}/state`, { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ state: "resolved" }) });
+    const sameOrigin = await harness.stats(`/api/observe/stats/issues/${fingerprint}/state`, { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ state: "resolved" }) });
     assert.equal(sameOrigin.status, 404);
-    assert.equal((await harness.stats("/api/observe/traces?cursor=1'%20OR%201", { headers: await accessHeaders() })).status, 400);
-    assert.equal((await harness.stats("/api/observe/traces", { method: "DELETE", headers: await accessHeaders() })).status, 405);
+    assert.equal((await harness.stats("/api/observe/stats/traces?cursor=1'%20OR%201", { headers: await accessHeaders() })).status, 400);
+    assert.equal((await harness.stats("/api/observe/stats/traces", { method: "DELETE", headers: await accessHeaders() })).status, 405);
   } finally {
     await harness.dispose();
   }
@@ -147,17 +170,17 @@ await test("a polled Cloudflare deployment reaches the store as a rollout, reada
     const impact = await until(() => harness.observe(`/rollouts/${DEPLOYMENT}/impact`) as Promise<{ rolloutId?: string }>, value => value.rolloutId === DEPLOYMENT, "the forwarded rollout");
     assert.deepEqual(impact, {
       rolloutId: DEPLOYMENT, atMs, previousRolloutId: null, introduced: [DEPLOYED_VERSION], state: "measured", baselineMs: 0, newIssues: [], regressions: [],
-      versions: [{ version: DEPLOYED_VERSION, label: "v9.9.9", introduced: true, requests: 0, failed: 0 }]
+      versions: [{ version: DEPLOYED_VERSION, label: "v9.9.9", introduced: true, requests: 0, failed: 0 }], routes: []
     });
-    assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`)).status, 401);
-    assert.equal((await harness.stats(`/api/observe/rollouts/${DEPLOYMENT}/impact`, { headers: await accessHeaders() })).status, 200);
+    assert.equal((await harness.stats(`/api/observe/stats/rollouts/${DEPLOYMENT}/impact`)).status, 401);
+    assert.equal((await harness.stats(`/api/observe/stats/rollouts/${DEPLOYMENT}/impact`, { headers: await accessHeaders() })).status, 200);
     const map = JSON.stringify({ version: 3, sources: ["../src/index.ts"], names: [], mappings: "AAAA" });
-    const upload = async (origin: string) => harness.stats(`/api/observe/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", headers: await accessHeaders({ Origin: origin, "Content-Type": "application/json" }), body: map });
+    const upload = async (origin: string) => harness.stats(`/api/observe/stats/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", headers: await accessHeaders({ Origin: origin, "Content-Type": "application/json" }), body: map });
     assert.equal((await upload("https://evil.example")).status, 403);
     assert.equal((await upload(ORIGIN)).status, 201);
     assert.equal((await upload(ORIGIN)).status, 200);
-    assert.equal((await harness.stats(`/api/observe/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", body: map })).status, 401);
-    const forged = await harness.stats("/api/observe/rollouts", { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ rollouts: [], versions: [] }) });
+    assert.equal((await harness.stats(`/api/observe/stats/artifacts/${DEPLOYED_VERSION}/index.js`, { method: "PUT", body: map })).status, 401);
+    const forged = await harness.stats("/api/observe/stats/rollouts", { method: "POST", headers: await accessHeaders({ Origin: ORIGIN, "Content-Type": "application/json" }), body: JSON.stringify({ rollouts: [], versions: [] }) });
     assert.equal(forged.status, 405);
     await harness.scheduled().catch(() => undefined);
     const issues = await harness.observe("/issues?state=open") as Page<IssueSummary>;

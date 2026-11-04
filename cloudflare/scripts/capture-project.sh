@@ -32,16 +32,16 @@ if [ "$id" = stats ]; then
     node "$here/api.mjs" "/projects/$id/history?range=1h&kind=$kind" | jaq -c . > "$out/$kind-1h.json"
   done
   node "$here/api.mjs" "/projects/$id/deployments" | jaq -c . > "$out/deployments.json"
-  node "$here/api.mjs" /api/observe/health | jaq -c . > "$out/observe-health.json"
-  node "$here/api.mjs" "/api/observe/traces?limit=100" | jaq -c . > "$out/observe-traces.json"
+  node "$here/api.mjs" /api/observe/stats/health | jaq -c . > "$out/observe-health.json"
+  node "$here/api.mjs" "/api/observe/stats/traces?limit=100" | jaq -c . > "$out/observe-traces.json"
   for trace in $(jaq -r '.items[].traceId // empty' "$out/observe-traces.json"); do
-    node "$here/api.mjs" "/api/observe/traces/$trace" | jaq -c . > "$out/observe-trace-$trace.json"
+    node "$here/api.mjs" "/api/observe/stats/traces/$trace" | jaq -c . > "$out/observe-trace-$trace.json"
   done
-  open=$(node "$here/api.mjs" "/api/observe/issues?state=open&limit=100")
-  resolved=$(node "$here/api.mjs" "/api/observe/issues?state=resolved&limit=100")
+  open=$(node "$here/api.mjs" "/api/observe/stats/issues?state=open&limit=100")
+  resolved=$(node "$here/api.mjs" "/api/observe/stats/issues?state=resolved&limit=100")
   jaq -nc --argjson open "$open" --argjson resolved "$resolved" '{items: ($open.items + $resolved.items), next: null}' > "$out/observe-issues.json"
   for issue in $(jaq -r '.items[].fingerprint' "$out/observe-issues.json"); do
-    node "$here/api.mjs" "/api/observe/issues/$issue/occurrences?limit=100" | jaq -c . > "$out/observe-occurrences-$issue.json"
+    node "$here/api.mjs" "/api/observe/stats/issues/$issue/occurrences?limit=100" | jaq -c . > "$out/observe-occurrences-$issue.json"
   done
 fi
 jaq -n --arg id "$id" --argjson capturedAtMs "$(($(date +%s) * 1000))" '{projectId: $id, capturedAtMs: $capturedAtMs}' > "$out/capture.json"

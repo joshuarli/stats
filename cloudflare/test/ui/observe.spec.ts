@@ -6,18 +6,20 @@ const now = Date.UTC(2026, 10, 4, 2, 0);
 const collector = { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false };
 const STATS = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"], d1Databases: [], probes: [], collector };
 const STUFF = { id: "stuff", name: "stuff", worker: "stuff", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
+const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[] }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now));
   const requests: string[] = [];
   const posts: string[] = [];
+  const services = new Set<string>();
   await page.clock.setFixedTime(now);
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
-    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [STATS, STUFF] });
+    if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [STATS, STUFF, MEMORIES] });
     if (url.pathname === "/api/v1/projects/stats/deployments") return route.fulfill({ json: scenario.deployments });
     const comparison = /^\/api\/v1\/projects\/stats\/deployments\/([^/]+)\/comparison$/u.exec(url.pathname);
     if (comparison !== null) {
@@ -25,8 +27,9 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
       const body = scenarioComparison(scenario, comparison[1]!, window);
       return body === null ? route.fulfill({ status: 404, json: { error: { code: "not_found", message: "deployment not found" } } }) : route.fulfill({ json: body });
     }
-    if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: { projectId: "stuff", worker: "stuff", enabled: false, sync: null, deployments: [], versions: [] } });
-    const history = /^\/api\/v1\/projects\/(\w+)\/history$/u.exec(url.pathname);
+    const unpolled = /^\/api\/v1\/projects\/(stuff|usr-memories)\/deployments$/u.exec(url.pathname);
+    if (unpolled !== null) return route.fulfill({ json: { projectId: unpolled[1], worker: unpolled[1], enabled: false, sync: null, deployments: [], versions: [] } });
+    const history = /^\/api\/v1\/projects\/([\w-]+)\/history$/u.exec(url.pathname);
     const kinds = url.searchParams.get("kinds");
     if (history !== null && kinds !== null) {
       const base = { projectId: history[1], range: "24h", fromMs: now - 86_400_000, toMs: now, stepMs: 3_600_000 };
@@ -39,7 +42,9 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
   });
   await page.route("**/api/observe/**", async route => {
     const url = new URL(route.request().url());
-    const path = url.pathname.slice("/api/observe".length);
+    const [, service, path] = /^\/api\/observe\/([^/]+)(\/.*)$/u.exec(url.pathname) ?? [];
+    if (service === undefined || path === undefined) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "unknown observed service" } } });
+    services.add(service);
     requests.push(path + url.search);
     if (options.failing === true) return route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "observe down" } } });
     const method = route.request().method();
@@ -47,7 +52,7 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     const response = await answer(scenario, now, new Request(`https://observe${path}${url.search}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
     return route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() });
   });
-  return { requests, posts };
+  return { requests, posts, services };
 }
 
 const durations = async (page: Page): Promise<number[]> =>
@@ -224,6 +229,14 @@ test("an unavailable collector is reported instead of an empty dataset", async (
   await expect(page.locator("#route-explorer")).toContainText("collector is unavailable (503)");
   await expect(page.locator("#route-explorer")).not.toContainText("No requests were observed");
   await expect(page.locator("#issues")).not.toContainText("No open issues");
+});
+
+test("each observed project reads its own service", async ({ page }) => {
+  const observe = await setup(page);
+  await page.goto("/#/project/usr-memories?range=24h");
+  await expect(page.locator("#route-explorer")).toHaveCount(1);
+  await expect(page.locator("#issues")).toHaveCount(1);
+  await expect.poll(() => [...observe.services]).toEqual(["usr-memories"]);
 });
 
 test("other projects keep the sampled route card and never call the observability API", async ({ page }) => {
