@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -79,11 +79,15 @@ auth-ready:
 
 worker-check: node-ready
 	cd cloudflare && pnpm build && cf deploy --prebuilt --dry-run --mode production
+	cd cloudflare && pnpm run build:observe && cd observe-worker && cf deploy --prebuilt --dry-run --mode production
+
+observe-deploy: auth-ready node-ready
+	cd cloudflare && pnpm run build:observe && cd observe-worker && cf deploy --prebuilt --mode production
 
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
 
-worker-deploy: auth-ready worker-bundle
+worker-deploy: auth-ready worker-bundle observe-deploy
 	cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')
 
 worker-test: cloudflare-test dashboard-test lint

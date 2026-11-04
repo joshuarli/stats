@@ -56,6 +56,12 @@ then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
 secrets in place. The `cf` session must be authenticated (`make auth-ready`).
 
+`make worker-deploy` deploys `stats-observe` first (`make observe-deploy`),
+because Cloudflare rejects a `stats` deploy whose tail consumer does not
+exist (`[10203]`). For the same reason, stopping collection means removing
+`tailConsumers` from `cloudflare.config.ts` and deploying `stats` before
+`stats-observe` can be deleted (`[100109]`).
+
 A host deploy installs through `stats.new` and `mv`, keeps the previous binary
 as `/usr/local/bin/stats.prev`, and after restart polls `/api/v1/hosts` for a
 new `lastReceivedAtMs` on that host. The poll uses `cf access token`, so run
