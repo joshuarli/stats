@@ -329,7 +329,7 @@ serves more than one service.
   digests and memory ids never become labels. The API and the stats proxy
   are `/api/observe/<service>/*`; the CLI's base URL names the service.
 - **Producer:** usr-memories publishes the same invocation mark and error
-  reports on `stats.observe` from `agent-memory/cloudflare/src/telemetry.ts`
+  reports on `stats.observe` from `agent-memory/cloudflare/src/observe-channel.ts`
   in `~/usr`, at the five catch sites that turn an unexpected error into a 503.
 - **Write cost:** the store adds up the backend's billed `rowsWritten` for
   every ingest and cleanup, so `observe health` reports rows written per
