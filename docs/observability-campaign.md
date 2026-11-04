@@ -186,6 +186,51 @@ fixed GET queries and one same-origin POST (resolve and reopen) to
 Exit: `make dashboard-test` passes with new goldens for desktop and mobile,
 and a replay fixture captured from a Phase 2 run.
 
+## Phase 3b: versions and rollouts
+
+Goal: show whether a deployment brought new issue groups, regressions, or a
+higher failure rate, without Cloudflare concepts in the core.
+
+- **Version:** the code identity every invocation and occurrence already
+  carries, a bounded token rather than a Cloudflare UUID, with an optional
+  label (a tag or commit) and message.
+- **Rollout:** an event at a time that sets the traffic mix across
+  versions, `[{ version, percent }]`, with a source and a message. A plain
+  deploy is a one-version rollout. Rollouts are pushed to the receiver's
+  `POST /rollouts` and are idempotent on their id; the same id with
+  different content is a conflict.
+- **New in rollout R:** an issue with an occurrence on a version R
+  introduced, after R, and no retained occurrence on any version active
+  before R. An issue that also appears on an earlier version is carried
+  over, not new.
+- **Regression in R:** an issue resolved before R that recurs on a version
+  R introduced. Issues record when they were last resolved for this.
+- **Failure rate:** failed invocations over invocations, per version, from
+  the stored invocations.
+- **Retention:** rollouts are kept 30 days, matching deployment history,
+  plus the newest older one as the baseline. For a rollout older than the
+  7-day observation window the answer is "older than retained data", never
+  a guess, and every answer states how much earlier data it compared
+  against.
+- **Attribution only:** an issue first seen on a version is attributed to
+  it; that says where it appeared, not that the deploy caused it.
+
+The Cloudflare adapter is the existing deployment poll. After a successful
+poll for the observed project, stats forwards its deployments and version
+tags to `stats-observe` over the `OBSERVE` binding; a failure is reported as
+the `deployments.forward` operation and never affects the poll. The browser
+proxy accepts only the issue-state POST, so rollouts cannot be written from
+the dashboard.
+
+The UI adds, for the selected deployment in the Deployments card, its new
+issue groups, regressions, and failure rate before and after, linking to
+the issues, and gives each issue an "introduced in" version with a filter.
+
+Exit: core tests for idempotent rollouts, new versus carried-over issues,
+regressions, split rollouts, expired rollouts, and retention; a two-Worker
+test where a polled deployment reaches the store and its impact is read
+back; and UI tests for the impact line, badge, and filter.
+
 ## Phase 4: source maps
 
 Caught-error stacks point into the bundle, so issue pages need maps to show
