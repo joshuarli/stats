@@ -22,6 +22,9 @@ import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
 import { metricTrack } from "../history";
 import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
+import { createObservability, IssuesWidget, TracesWidget } from "./project/Observe";
+
+const OBSERVED_PROJECT = "stats";
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();
@@ -108,7 +111,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const cells = createMemo(() => buildProjectCells(data(), view()));
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
   const rowsRead = createMemo(() => collector().runs.at(-1)?.rowsRead);
+  const observed = props.project.id === OBSERVED_PROJECT;
+  const observe = observed ? createObservability(() => `${projectTick()}:${manualTick()}`) : null;
   const moreSections = (): SectionLink[] => [
+    ...(observed ? [{ label: "Errors", anchor: "issues" }, { label: "Traces", anchor: "traces" }] : []),
     { label: "Deployments", anchor: "deployments" },
     { label: "Cost", anchor: "cost" },
     { label: "Routes", anchor: "routes" },
@@ -160,6 +166,12 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
           </Show>
         </Loading>
       </Errored>
+      <Show when={observe}>{state => (
+        <section class="charts observe-section" aria-label="Errors and traces">
+          <IssuesWidget observe={state()} />
+          <TracesWidget observe={state()} />
+        </section>
+      )}</Show>
     </DeploymentEvents>
   );
 }

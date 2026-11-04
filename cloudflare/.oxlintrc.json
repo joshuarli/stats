@@ -62,7 +62,7 @@
       }
     },
     {
-      "files": ["src/client/components/TimeChart.tsx"],
+      "files": ["src/client/components/TimeChart.tsx", "src/client/pages/project/TraceTimeline.tsx"],
       "rules": {
         "jsx-a11y/no-noninteractive-element-interactions": "off",
         "jsx-a11y/no-noninteractive-tabindex": "off"

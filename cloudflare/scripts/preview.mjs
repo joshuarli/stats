@@ -13,7 +13,7 @@ const hour = 3_600_000;
 const day = 24 * hour;
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
 
-const timeKeys = new Set(["atMs", "fromMs", "toMs", "lastReceivedAtMs", "createdAtMs", "reportedAtMs", "lastRunAtMs", "lastSuccessAtMs", "lastAttemptAtMs", "readyAtMs"]);
+const timeKeys = new Set(["atMs", "fromMs", "toMs", "lastReceivedAtMs", "createdAtMs", "reportedAtMs", "lastRunAtMs", "lastSuccessAtMs", "lastAttemptAtMs", "readyAtMs", "firstAtMs", "lastAtMs", "newestAtMs", "oldestAtMs"]);
 
 function shift(value, delta) {
   if (Array.isArray(value)) return value.map(entry => shift(entry, delta));
@@ -128,6 +128,27 @@ function json(response, body, status = 200) {
   response.end(JSON.stringify(body));
 }
 
+async function observe(request, response, route, url) {
+  const capture = projectsById.get("stats");
+  const missing = () => json(response, { error: { code: "not_found", message: "no observe capture for that request" } }, 404);
+  if (capture === undefined) return missing();
+  if (request.method === "POST" && /^issues\/[0-9a-f]{64}\/state$/u.test(route)) return response.writeHead(204).end();
+  const trace = /^traces\/([0-9a-f]{32})$/u.exec(route);
+  const occurrences = /^issues\/([0-9a-f]{64})\/occurrences$/u.exec(route);
+  const file = route === "health" ? "observe-health.json" : route === "issues" ? "observe-issues.json" : route === "traces" ? "observe-traces.json"
+    : trace !== null ? `observe-trace-${trace[1]}.json` : occurrences !== null ? `observe-occurrences-${occurrences[1]}.json` : undefined;
+  const body = file === undefined ? undefined : await captureFile(capture, file);
+  if (body === undefined) return missing();
+  const shifted = shift(body, shiftFor(capture));
+  if (route === "traces") {
+    const failed = url.searchParams.get("failed");
+    const label = url.searchParams.get("label");
+    return json(response, { ...shifted, items: shifted.items.filter(item => (failed === null || String(item.failed) === failed) && (label === null || item.label === label)) });
+  }
+  if (route === "issues") return json(response, { ...shifted, items: shifted.items.filter(item => item.state === (url.searchParams.get("state") ?? "open")) });
+  return json(response, shifted);
+}
+
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -143,6 +164,7 @@ const server = createServer(async (request, response) => {
       if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
       return json(response, shift(deployed[2] === undefined ? body : { ...body, deploymentId: deployed[2] }, shiftFor(capture)));
     }
+    if (path.startsWith("/api/observe/")) return observe(request, response, path.slice("/api/observe/".length), url);
     const host = /^\/api\/v1\/hosts\/([^/]+)\/(system|history)$/u.exec(path);
     if (host !== null) {
       const capture = hostsById.get(decodeURIComponent(host[1]));

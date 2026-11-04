@@ -265,9 +265,10 @@ charts stay on the project page.
 
 ## State
 
-Baseline: `8043bd0`. Phases 0, 1, and 2 are done. Phase 3 is next.
-`stats-observe` is deployed (version `53004c4a`) with no route or
-`workers.dev`; `stats` does not tail to it until its next deploy.
+Baseline: `8043bd0`. Phases 0, 1, and 2 are done. Phase 3 has a working UI
+with behavior tests; its WebP goldens wait for a production capture.
+`stats-observe` and `stats` are deployed (`dc8c3793`, `2221f9c2`), and
+production capture started on 2026-11-04.
 
 Phase 1 dropped the STO1 codec and the fragment benchmark: with classic tail
 there is no per-invocation payload beyond columns, so a codec would encode

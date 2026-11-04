@@ -28,6 +28,12 @@ unchanged. `TEST_NOW_MS` pins the stats clock in the past, so
 `Installation`'s retention alarm fires repeatedly there; the test waits for
 the invocations it caused rather than for quiet.
 
+`cloudflare/test/ui/observe.spec.ts` drives the Errors and Traces cards on
+the `stats` project page against the synthetic collector responses in
+`observe-fixture.ts`. `cloudflare/scripts/capture-project.sh stats` also
+saves the production observe responses, which `make preview` serves from
+`/api/observe/*`.
+
 ## Screenshot goldens
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
