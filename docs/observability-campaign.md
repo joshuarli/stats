@@ -292,6 +292,16 @@ project page. Rollback removes `tailConsumers` from stats first, because a
 referenced consumer cannot be deleted; deleting `stats-observe` and its data
 is a separate decision.
 
+Interim reading on 2026-11-04 at 03:02 UTC, 1 h 50 min after capture began,
+comparing CPU per invocation in Workers Logs against the previous 24 hours:
+Worker ingest 0.61 → 0.88 ms, Durable Object ingest 14.72 → 14.93 ms,
+Durable Object RPC 8.52 → 10.0 ms, scheduled run 30.9 → 27.5 ms, and
+`stats-observe` 0.78 ms per tail call. Only the Worker ingest rise could be
+the per-invocation publish, and it is not yet significant: CPU is recorded
+in whole milliseconds and logs are sampled at 10%, so the window holds about
+42 sampled ingest rows. Repeat over a full day after 2026-11-05 01:10 UTC
+before calling the CPU budget met.
+
 ## Budgets
 
 The design limits that cost by construction, and measurements confirm it.
