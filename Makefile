@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -102,15 +102,19 @@ observe-sourcemap: node-ready
 
 worker-test: cloudflare-test dashboard-test lint
 
-deploy: auth-ready
-	$(MAKE) fixtures
-	$(MAKE) worker-test
-	$(MAKE) agent-test
-	$(MAKE) worker-deploy
-	$(MAKE) smoke-deployed
-	$(MAKE) deploy-hosts
+deploy: auth-ready work-ready
+	@scripts/step.sh 'fixtures' $(MAKE) --no-print-directory fixtures
+	@scripts/step.sh 'worker tests' $(MAKE) --no-print-directory worker-test
+	@scripts/step.sh 'agent tests' $(MAKE) --no-print-directory agent-test
+	@scripts/step.sh 'agent build' $(MAKE) --no-print-directory agent-build
+	@scripts/step.sh -s 'Current Version ID|\(custom domain\)' 'worker deploy' $(MAKE) --no-print-directory worker-deploy
+	@scripts/step.sh -s '^OK' 'smoke' $(MAKE) --no-print-directory smoke-deployed
+	@$(MAKE) --no-print-directory push-hosts
 
 deploy-hosts: agent-test agent-build
+	@$(MAKE) --no-print-directory push-hosts
+
+push-hosts:
 	@set -eu; \
 	hosts="$$(jaq -er '.hosts | keys[]' deploy/hosts.json)"; \
 	test -n "$$hosts" || { echo 'no hosts in deploy/hosts.json' >&2; exit 1; }; \
