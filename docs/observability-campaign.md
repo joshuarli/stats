@@ -351,7 +351,10 @@ charts stay on the project page.
 ## State
 
 Baseline: `8043bd0`. Phases 0, 1, 2, and 3b are done and deployed (3b as
-`daf404d3` and `a9204e03` on 2026-11-04). Phase 4 is done locally; its deploy-time registration needs `cf access login`. Phase 3c is built as `pnpm observe` and was checked read-only against
+`daf404d3` and `a9204e03` on 2026-11-04). Phase 4 is deployed (`3fce93e0` and `dec5e1f4` on 2026-11-04), and the
+first map registered for `dec5e1f4`; no caught error has occurred in
+production since, so live resolution is not yet observed. Deploy-time
+registration needs `cf access login`. Phase 3c is built as `pnpm observe` and was checked read-only against
 production. The CI rollout write path stays deferred to a write token on a
 future public receiver, since the Cloudflare adapter already records every
 stats deployment.
