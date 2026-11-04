@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 43
+Next: 44
+
+### STA-43 · P3 · Retention alarm test flakes when workerd fires the alarm itself
+
+- **Area:** Tests
+- **Where:** `cloudflare/test/history.test.ts:266`
+- **Problem:** "schedules another pass after a full retention batch" failed once in `make worker-test` on 2026-11-04 with 0 remaining rows where it expects 1, then passed 5 of 5 alone. The run logged "SQLite alarm overdue, running despite AlarmManager mismatch". The test sets the alarm `Date.now() + 1_000` ahead, so workerd's alarm manager can fire it alongside `runDurableObjectAlarm`, and two retention passes delete both batches. Unproven: that the double run is the cause rather than another timing race.
+- **Recommendation:** Set the alarm far ahead (an hour) so only `runDurableObjectAlarm` runs it, then run the file 50 times to confirm the failure is gone.
+- **Fix with:** root-cause
+- **Effort:** S
 
 ### STA-41 · P2 · Watch the usr-memories D1 size against the 10 GB cap
 
