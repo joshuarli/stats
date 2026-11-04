@@ -19,7 +19,7 @@ work-ready:
 node-ready:
 	@set -eu; \
 	test "$$(node --version)" = "v$$(cat .node-version)" || { echo 'use the Node version in .node-version' >&2; exit 1; }; \
-	test "$$(pnpm --version)" = 11.0.2 || { echo 'pnpm 11.0.2 is required' >&2; exit 1; }
+	test "$$(pnpm --version)" = 12.15.0 || { echo 'pnpm 12.15.0 is required' >&2; exit 1; }
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs
