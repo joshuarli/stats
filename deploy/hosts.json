@@ -6,6 +6,13 @@
       "target": "x86_64-unknown-linux-musl",
       "init": "openrc",
       "elevate": "doas"
+    },
+    "lisa": {
+      "name": "lisa",
+      "ssh": "josh@lisa",
+      "target": "x86_64-unknown-linux-musl",
+      "init": "openrc",
+      "elevate": "doas"
     }
   }
 }
