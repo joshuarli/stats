@@ -1,5 +1,5 @@
 use crate::CollectionScope;
-use serde::Deserialize;
+use deser::Deserialize;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,26 +12,26 @@ const DEFAULT_QUEUE: usize = 16;
 const DEFAULT_TIMEOUT_MS: u64 = 10_000;
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[deser(deny_unknown_fields)]
 pub struct AgentConfig {
     pub endpoint: String,
-    #[serde(rename = "hostId")]
+    #[deser(rename = "hostId")]
     pub host_id: String,
-    #[serde(rename = "tokenFile")]
+    #[deser(rename = "tokenFile")]
     pub token_file: PathBuf,
-    #[serde(rename = "sampleIntervalMs", default = "default_sample_ms")]
+    #[deser(rename = "sampleIntervalMs", default = default_sample_ms())]
     pub sample_interval_ms: u64,
-    #[serde(rename = "uploadIntervalMs", default = "default_upload_ms")]
+    #[deser(rename = "uploadIntervalMs", default = default_upload_ms())]
     pub upload_interval_ms: u64,
-    #[serde(rename = "maxQueueSamples", default = "default_queue")]
+    #[deser(rename = "maxQueueSamples", default = default_queue())]
     pub max_queue_samples: usize,
-    #[serde(rename = "requestTimeoutMs", default = "default_timeout_ms")]
+    #[deser(rename = "requestTimeoutMs", default = default_timeout_ms())]
     pub request_timeout_ms: u64,
-    #[serde(rename = "blockLatencyFile", default)]
+    #[deser(rename = "blockLatencyFile", default)]
     pub block_latency_file: Option<PathBuf>,
-    #[serde(rename = "includeVirtualInterfaces", default)]
+    #[deser(rename = "includeVirtualInterfaces", default)]
     pub include_virtual_interfaces: bool,
-    #[serde(rename = "includeVirtualFilesystems", default)]
+    #[deser(rename = "includeVirtualFilesystems", default)]
     pub include_virtual_filesystems: bool,
 }
 
@@ -135,7 +135,7 @@ fn owner_file(path: &Path, limit: usize) -> Result<Vec<u8>, ConfigError> {
 pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
     let bytes = owner_file(path, CONFIG_LIMIT)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| ConfigError::new(format!("{}: not UTF-8", path.display())))?;
-    let mut config: AgentConfig = serde_json::from_str(text).map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))?;
+    let mut config: AgentConfig = deser_json::from_str(text).map_err(|error| ConfigError::new(format!("{}: {error}", path.display())))?;
     if !valid_host_id(&config.host_id) {
         return Err(ConfigError::new("hostId must be h_ followed by 32 lowercase hex characters"));
     }

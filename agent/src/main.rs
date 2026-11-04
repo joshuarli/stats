@@ -1,9 +1,12 @@
 use stats::config::{load, load_token};
 use stats::runtime::{install_signal_handlers, run};
 use stats::{sample_once, CollectionScope, VERSION};
-use serde::Serialize;
+use deser::Serialize;
+use deser_json::{Indent, SerializerConfig};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+const PRETTY: SerializerConfig = SerializerConfig::builder().pretty(Indent::Spaces(2)).build();
 
 #[derive(Serialize)]
 struct BenchReport {
@@ -70,7 +73,7 @@ fn bench(iterations: u32, interval_ms: u64) -> i32 {
         cpu_system_ms: system_after - system_before,
         max_rss_bytes: max_rss,
     };
-    match serde_json::to_string_pretty(&report) {
+    match PRETTY.to_string(&report) {
         Ok(text) => {
             println!("{text}");
             0
@@ -84,7 +87,7 @@ fn bench(iterations: u32, interval_ms: u64) -> i32 {
 
 fn once() -> i32 {
     match sample_once(CollectionScope::default()) {
-        Some(sample) => match serde_json::to_string_pretty(&sample) {
+        Some(sample) => match PRETTY.to_string(&sample) {
             Ok(text) => {
                 println!("{text}");
                 0

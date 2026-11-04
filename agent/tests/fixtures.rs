@@ -1,6 +1,6 @@
 use stats::model::{Cpu, Disk, FileSystem, Mem, MemoryPressure, Net, Power, PsiGroup, Sample, SwapActivity, SystemPower, Unavailable};
 use stats::parse::FILESYSTEM_TYPES;
-use serde_json::Value;
+use deser_value::{value as json, Kind, Map, Value};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -61,17 +61,17 @@ fn fixed(value: &Value, fraction: usize) -> bool {
 }
 
 fn object(value: &Value, keys: &[&str]) -> bool {
-    let Some(map) = value.as_object() else { return false };
+    let Some(map) = value.as_map() else { return false };
     map.len() == keys.len() && keys.iter().all(|key| map.contains_key(*key))
 }
 
 fn keys(value: &Value, allowed: &[&str]) -> bool {
-    value.as_object().is_some_and(|map| map.keys().all(|key| allowed.contains(&key.as_str())))
+    value.as_map().is_some_and(|map| map.keys().all(|key| key.as_str().is_some_and(|key| allowed.contains(&key))))
 }
 
 fn u64_map(value: &Value, required: &[&str], optional: &[&str]) -> bool {
-    value.as_object().is_some_and(|map| {
-        map.keys().all(|key| required.contains(&key.as_str()) || optional.contains(&key.as_str()))
+    value.as_map().is_some_and(|map| {
+        map.keys().all(|key| key.as_str().is_some_and(|key| required.contains(&key) || optional.contains(&key)))
             && required.iter().all(|key| map.contains_key(*key))
             && map.values().all(decimal)
     })
@@ -114,7 +114,7 @@ fn validate_block(value: &Value) -> bool {
     if !object(value, &["buckets", "count", "totalUs", "minUs", "maxUs"]) {
         return false;
     }
-    let Some(buckets) = value["buckets"].as_array() else { return false };
+    let Some(buckets) = value["buckets"].as_seq() else { return false };
     if buckets.len() != 16 {
         return false;
     }
@@ -151,27 +151,27 @@ fn validate_group(sample: &Value, key: &str) -> bool {
         "uptimeMs" => decimal(value),
         "cpuCount" => value.as_u64().is_some_and(|count| (1..=4096).contains(&count)),
         "disks" => {
-            value.as_array().is_some_and(|devices| {
+            value.as_seq().is_some_and(|devices| {
                 devices.len() <= 16
                     && devices.iter().enumerate().all(|(index, device)| {
                         id(&device["id"], valid_disk_id)
                             && id(&device["name"], valid_name)
-                            && device.as_object().is_some_and(|map| {
-                                let counters: serde_json::Map<String, Value> = map.iter().filter(|(key, _)| *key != "id" && *key != "name").map(|(key, value)| (key.clone(), value.clone())).collect();
-                                u64_map(&Value::Object(counters), &["reads", "readSectors", "writes", "writeSectors"], &["ioMs"])
+                            && device.as_map().is_some_and(|map| {
+                                let counters: Map = map.iter().filter(|(key, _)| *key != "id" && *key != "name").map(|(key, value)| (key.clone(), value.clone())).collect();
+                                u64_map(&Value::new(Kind::Map(counters)), &["reads", "readSectors", "writes", "writeSectors"], &["ioMs"])
                             })
                             && devices[..index].iter().all(|other| other["id"] != device["id"])
                     })
             })
         }
         "nets" => {
-            value.as_array().is_some_and(|interfaces| {
+            value.as_seq().is_some_and(|interfaces| {
                 interfaces.len() <= 16
                     && interfaces.iter().enumerate().all(|(index, interface)| {
                         id(&interface["id"], valid_ifname)
-                            && interface.as_object().is_some_and(|map| {
-                                let counters: serde_json::Map<String, Value> = map.iter().filter(|(key, _)| *key != "id").map(|(key, value)| (key.clone(), value.clone())).collect();
-                                u64_map(&Value::Object(counters), &["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txErrors"], &["txDrops"])
+                            && interface.as_map().is_some_and(|map| {
+                                let counters: Map = map.iter().filter(|(key, _)| *key != "id").map(|(key, value)| (key.clone(), value.clone())).collect();
+                                u64_map(&Value::new(Kind::Map(counters)), &["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txErrors"], &["txDrops"])
                             })
                             && interfaces[..index].iter().all(|other| other["id"] != interface["id"])
                     })
@@ -179,8 +179,8 @@ fn validate_group(sample: &Value, key: &str) -> bool {
         }
         "psi" => {
             keys(value, &["cpu", "memory", "io"])
-                && value.as_object().is_some_and(|map| !map.is_empty())
-                && value.as_object().is_some_and(|map| map.values().all(|group| {
+                && value.as_map().is_some_and(|map| !map.is_empty())
+                && value.as_map().is_some_and(|map| map.values().all(|group| {
                     keys(group, &["some10", "some60", "some300", "total", "full10", "full60", "full300", "fullTotal"])
                         && ["some10", "some60", "some300"].iter().all(|field| fixed(&group[*field], 2))
                         && decimal(&group["total"])
@@ -189,7 +189,7 @@ fn validate_group(sample: &Value, key: &str) -> bool {
                 }))
         }
         "filesystems" => {
-            value.as_array().is_some_and(|filesystems| {
+            value.as_seq().is_some_and(|filesystems| {
                 filesystems.len() <= 16
                     && filesystems.iter().enumerate().all(|(index, filesystem)| {
                         object(filesystem, &["id", "type", "total", "available"])
@@ -205,14 +205,14 @@ fn validate_group(sample: &Value, key: &str) -> bool {
         "gpu" => object(value, &["active", "total"]) && decimal(&value["active"]) && decimal(&value["total"]),
         "power" => {
             u64_map(value, &[], &["gpuNj", "systemMwSum", "systemReadings"])
-                && value.as_object().is_some_and(|map| !map.is_empty() && map.contains_key("systemMwSum") == map.contains_key("systemReadings"))
+                && value.as_map().is_some_and(|map| !map.is_empty() && map.contains_key("systemMwSum") == map.contains_key("systemReadings"))
         }
         _ => false,
     }
 }
 
 fn validate_sample(value: &Value) -> bool {
-    let Some(map) = value.as_object() else { return false };
+    let Some(map) = value.as_map() else { return false };
     if !keys(value, &SAMPLE_KEYS) || !map.contains_key("seq") || !map.contains_key("atMs") || !map.contains_key("monoMs") {
         return false;
     }
@@ -221,7 +221,7 @@ fn validate_sample(value: &Value) -> bool {
     }
     let mut unavailable = HashSet::new();
     if let Some(groups) = map.get("unavailable") {
-        let Some(groups) = groups.as_array() else { return false };
+        let Some(groups) = groups.as_seq() else { return false };
         if groups.len() > UNAVAILABLE.len() {
             return false;
         }
@@ -259,7 +259,7 @@ fn bounded(value: &Value, high: u64) -> bool {
 }
 
 fn validate_system(value: &Value) -> bool {
-    let Some(map) = value.as_object() else { return false };
+    let Some(map) = value.as_map() else { return false };
     if !keys(value, &["agent", "hostname", "os", "kernel", "arch", "cpu"]) || !["agent", "hostname", "kernel", "arch", "cpu"].iter().all(|key| map.contains_key(*key)) {
         return false;
     }
@@ -281,8 +281,8 @@ fn validate(text: &str) -> Result<(), Failure> {
     if text.len() > 65_536 {
         return Err(Failure::TooLarge);
     }
-    let value: Value = serde_json::from_str(text).map_err(|_| Failure::InvalidJson)?;
-    let Some(map) = value.as_object() else { return Err(Failure::InvalidBatch) };
+    let value: Value = deser_json::from_str(text).map_err(|_| Failure::InvalidJson)?;
+    let Some(map) = value.as_map() else { return Err(Failure::InvalidBatch) };
     if !keys(&value, &["v", "hostId", "bootId", "samples", "system"]) || !["v", "hostId", "bootId", "samples"].iter().all(|key| map.contains_key(*key)) {
         return Err(Failure::InvalidBatch);
     }
@@ -295,7 +295,7 @@ fn validate(text: &str) -> Result<(), Failure> {
     if map.get("system").is_some_and(|system| !validate_system(system)) {
         return Err(Failure::InvalidBatch);
     }
-    let Some(samples) = value["samples"].as_array() else { return Err(Failure::InvalidBatch) };
+    let Some(samples) = value["samples"].as_seq() else { return Err(Failure::InvalidBatch) };
     if samples.is_empty() || samples.len() > 16 {
         return Err(Failure::InvalidBatch);
     }
@@ -312,9 +312,9 @@ fn fixture_dir() -> PathBuf {
 #[test]
 fn fixture_manifest_matches_the_validator() {
     let directory = fixture_dir();
-    let manifest: Value = serde_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap()).unwrap();
+    let manifest: Value = deser_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap()).unwrap();
     let mut checked = 0;
-    for entry in manifest["fixtures"].as_array().unwrap() {
+    for entry in manifest["fixtures"].as_seq().unwrap() {
         let file = entry["file"].as_str().unwrap();
         let text = fs::read_to_string(directory.join(file)).unwrap();
         let outcome = validate(&text);
@@ -325,21 +325,21 @@ fn fixture_manifest_matches_the_validator() {
         }
         checked += 1;
     }
-    assert_eq!(checked, manifest["fixtures"].as_array().unwrap().len());
+    assert_eq!(checked, manifest["fixtures"].as_seq().unwrap().len());
 }
 
 #[cfg(target_os = "linux")]
 #[test]
 fn a_real_linux_sample_matches_the_wire_contract() {
     let sample = stats::sample_once(stats::CollectionScope::default()).expect("a Linux host should produce a sample");
-    let value = serde_json::to_value(&sample).unwrap();
+    let value = deser_value::to_value(&sample).unwrap();
     assert!(validate_sample(&value), "{value}");
 }
 
 #[test]
 fn every_fixture_file_is_manifested() {    let directory = fixture_dir();
-    let manifest: Value = serde_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap()).unwrap();
-    let listed: HashSet<String> = manifest["fixtures"].as_array().unwrap().iter().map(|entry| entry["file"].as_str().unwrap().to_owned()).collect();
+    let manifest: Value = deser_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap()).unwrap();
+    let listed: HashSet<String> = manifest["fixtures"].as_seq().unwrap().iter().map(|entry| entry["file"].as_str().unwrap().to_owned()).collect();
     for entry in fs::read_dir(directory).unwrap() {
         let name = entry.unwrap().file_name().into_string().unwrap();
         if name != "manifest.json" {
@@ -363,8 +363,8 @@ fn serializer_uses_the_wire_names() {
         ..Sample::empty(1, 2, 3)
     };
     assert_eq!(
-        serde_json::to_value(&sample).unwrap(),
-        serde_json::json!({
+        deser_value::to_value(&sample).unwrap(),
+        json!({
             "seq": "1",
             "atMs": "2",
             "monoMs": "3",
@@ -381,38 +381,38 @@ fn serializer_uses_the_wire_names() {
         pressure: Some(MemoryPressure::Warn),
     };
     assert_eq!(
-        serde_json::to_value(mem).unwrap(),
-        serde_json::json!({ "total": "8", "available": "4", "swapTotal": "2", "swapFree": "1", "swapIn": "10", "swapOut": "20", "pressure": "warn" })
+        deser_value::to_value(&mem).unwrap(),
+        json!({ "total": "8", "available": "4", "swapTotal": "2", "swapFree": "1", "swapIn": "10", "swapOut": "20", "pressure": "warn" })
     );
 
     let power = Power {
         gpu_nj: Some("5".into()),
         system: Some(SystemPower { milliwatt_sum: "6".into(), readings: "7".into() }),
     };
-    assert_eq!(serde_json::to_value(power).unwrap(), serde_json::json!({ "gpuNj": "5", "systemMwSum": "6", "systemReadings": "7" }));
-    assert_eq!(serde_json::to_value(Unavailable::Filesystems).unwrap().as_str(), Some("filesystems"));
+    assert_eq!(deser_value::to_value(&power).unwrap(), json!({ "gpuNj": "5", "systemMwSum": "6", "systemReadings": "7" }));
+    assert_eq!(deser_value::to_value(&Unavailable::Filesystems).unwrap().as_str(), Some("filesystems"));
 
     let disk = Disk { id: "8:0".into(), name: "sda".into(), reads: "1".into(), read_sectors: "2".into(), writes: "3".into(), write_sectors: "4".into(), io_ms: Some("5".into()) };
     assert_eq!(
-        serde_json::to_value(disk).unwrap(),
-        serde_json::json!({ "id": "8:0", "name": "sda", "reads": "1", "readSectors": "2", "writes": "3", "writeSectors": "4", "ioMs": "5" })
+        deser_value::to_value(&disk).unwrap(),
+        json!({ "id": "8:0", "name": "sda", "reads": "1", "readSectors": "2", "writes": "3", "writeSectors": "4", "ioMs": "5" })
     );
 
     let net = Net { id: "eth0".into(), rx_bytes: "1".into(), rx_packets: "2".into(), rx_drops: "3".into(), rx_errors: "4".into(), tx_bytes: "5".into(), tx_packets: "6".into(), tx_drops: Some("7".into()), tx_errors: "8".into() };
     assert_eq!(
-        serde_json::to_value(net).unwrap(),
-        serde_json::json!({ "id": "eth0", "rxBytes": "1", "rxPackets": "2", "rxDrops": "3", "rxErrors": "4", "txBytes": "5", "txPackets": "6", "txDrops": "7", "txErrors": "8" })
+        deser_value::to_value(&net).unwrap(),
+        json!({ "id": "eth0", "rxBytes": "1", "rxPackets": "2", "rxDrops": "3", "rxErrors": "4", "txBytes": "5", "txPackets": "6", "txDrops": "7", "txErrors": "8" })
     );
 
     let psi = PsiGroup { some10: "0.00".into(), some60: "0.00".into(), some300: "0.00".into(), total: "0".into(), full10: Some("0.00".into()), full60: None, full300: None, full_total: None };
     assert_eq!(
-        serde_json::to_value(psi).unwrap(),
-        serde_json::json!({ "some10": "0.00", "some60": "0.00", "some300": "0.00", "total": "0", "full10": "0.00" })
+        deser_value::to_value(&psi).unwrap(),
+        json!({ "some10": "0.00", "some60": "0.00", "some300": "0.00", "total": "0", "full10": "0.00" })
     );
 
     let filesystem = FileSystem { id: "/".into(), fs_type: "ext4".into(), total: "1".into(), available: "1".into() };
     assert_eq!(
-        serde_json::to_value(filesystem).unwrap(),
-        serde_json::json!({ "id": "/", "type": "ext4", "total": "1", "available": "1" })
+        deser_value::to_value(&filesystem).unwrap(),
+        json!({ "id": "/", "type": "ext4", "total": "1", "available": "1" })
     );
 }

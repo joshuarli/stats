@@ -14,7 +14,7 @@ served through the same Worker, reads that API behind Cloudflare Access. The wir
 `agent/src/main.rs` parses the command line, `config.rs` loads and validates
 the config and token, `linux.rs` samples, `runtime.rs` runs the sampling and
 upload threads, `queue.rs` holds unsent samples, and `transport.rs` posts with
-ureq and rustls against the system trust roots.
+`h12tiny-client-sync` and Rustls (Graviola) against the system trust roots.
 
 A failed upload is logged to stderr with its class and message, rate-limited to
 one line a minute while it repeats. A 401 or 403 keeps the batch, backs off at

@@ -1,9 +1,12 @@
 use crate::model::{Sample, SystemInfo};
-use serde::{Deserialize, Serialize};
+use deser::{Deserialize, Serialize};
+use h12tiny_client_sync::http::{header, HeaderValue, Method, Request, Uri};
+use h12tiny_client_sync::{Client, ClientTlsConfigBuilder, Error as ClientError, ErrorKind};
+use std::error::Error as _;
 use std::fmt;
-use std::sync::{Arc, Mutex};
+use std::io::{self, Read};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
 const MAX_BODY: usize = 65_536;
 const MAX_RESPONSE: u64 = 16_384;
@@ -13,11 +16,11 @@ const SYSTEM_INTERVAL: Duration = Duration::from_secs(3600);
 #[derive(Serialize)]
 pub struct Batch<'a> {
     pub v: u8,
-    #[serde(rename = "hostId")]
+    #[deser(rename = "hostId")]
     pub host_id: &'a str,
-    #[serde(rename = "bootId")]
+    #[deser(rename = "bootId")]
     pub boot_id: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[deser(skip_serializing_if = Option::is_none)]
     pub system: Option<&'a SystemInfo>,
     pub samples: &'a [Sample],
 }
@@ -56,8 +59,8 @@ struct IngestResponse {
     v: u8,
     accepted: u64,
     duplicates: u64,
-    #[serde(default)]
-    rejected: Vec<serde_json::Value>,
+    #[deser(default)]
+    rejected: Vec<deser_value::Value>,
 }
 
 pub fn encode(host_id: &str, boot_id: &str, samples: &[Sample], system: Option<&SystemInfo>) -> Result<Vec<u8>, TransportError> {
@@ -67,29 +70,15 @@ pub fn encode(host_id: &str, boot_id: &str, samples: &[Sample], system: Option<&
     if samples.len() > 16 {
         return Err(TransportError::Permanent("batch exceeds 16 samples".to_owned()));
     }
-    let body = serde_json::to_vec(&Batch { v: 1, host_id, boot_id, system, samples }).map_err(|error| TransportError::Permanent(format!("encode: {error}")))?;
+    let body = deser_json::to_string(&Batch { v: 1, host_id, boot_id, system, samples }).map(String::into_bytes).map_err(|error| TransportError::Permanent(format!("encode: {error}")))?;
     if body.len() > MAX_BODY {
         return Err(TransportError::Permanent(format!("batch is {} bytes, over the {} byte cap", body.len(), MAX_BODY)));
     }
     Ok(body)
 }
 
-fn tls_config() -> Result<TlsConfig, TransportError> {
-    let native = rustls_native_certs::load_native_certs();
-    if native.certs.is_empty() {
-        return Err(TransportError::Permanent("no system trust roots are available".to_owned()));
-    }
-    let certs: Vec<Certificate<'static>> = native.certs.iter().map(|cert| Certificate::from_der(cert.as_ref()).to_owned()).collect();
-    let provider = Arc::new(rustls::crypto::ring::default_provider());
-    Ok(TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .unversioned_rustls_crypto_provider(provider)
-        .root_certs(RootCerts::from(certs))
-        .build())
-}
-
 fn parse_response(body: &[u8]) -> Result<SendOutcome, TransportError> {
-    let response: IngestResponse = serde_json::from_slice(body).map_err(|error| TransportError::Retryable(format!("invalid ingest response: {error}")))?;
+    let response: IngestResponse = deser_json::from_slice(body).map_err(|error| TransportError::Retryable(format!("invalid ingest response: {error}")))?;
     if response.v != 1 {
         return Err(TransportError::Retryable("unknown ingest response version".to_owned()));
     }
@@ -100,20 +89,26 @@ fn parse_response(body: &[u8]) -> Result<SendOutcome, TransportError> {
     })
 }
 
-fn classify(error: ureq::Error) -> TransportError {
-    match error {
-        ureq::Error::StatusCode(status) => classify_status(status, None),
-        ureq::Error::Timeout(_) => TransportError::Retryable("request timed out".to_owned()),
-        ureq::Error::Io(error) => TransportError::Retryable(format!("network: {error}")),
-        ureq::Error::HostNotFound => TransportError::Retryable("host not found".to_owned()),
-        ureq::Error::ConnectionFailed => TransportError::Retryable("connection failed".to_owned()),
-        ureq::Error::Protocol(error) => TransportError::Retryable(format!("protocol: {error}")),
-        ureq::Error::Tls(message) => TransportError::Retryable(format!("TLS: {message}")),
-        ureq::Error::Rustls(error) => TransportError::Retryable(format!("TLS: {error}")),
-        ureq::Error::BadUri(message) => TransportError::Permanent(format!("bad URL: {message}")),
-        ureq::Error::Http(error) => TransportError::Retryable(format!("HTTP: {error}")),
-        ureq::Error::BodyExceedsLimit(_) => TransportError::Permanent("request body exceeded its limit".to_owned()),
-        other => TransportError::Retryable(format!("request failed: {other}")),
+fn classify(error: &ClientError) -> TransportError {
+    let mut detail = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        detail.push_str(": ");
+        detail.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    classify_kind(error.kind(), detail)
+}
+
+fn classify_kind(kind: ErrorKind, detail: String) -> TransportError {
+    match kind {
+        ErrorKind::Timeout => TransportError::Retryable("request timed out".to_owned()),
+        ErrorKind::Connect => TransportError::Retryable(format!("network: {detail}")),
+        ErrorKind::Tls | ErrorKind::Alpn => TransportError::Retryable(format!("TLS: {detail}")),
+        ErrorKind::AbsoluteUriRequired | ErrorKind::InvalidPort | ErrorKind::UnsupportedScheme | ErrorKind::TlsUnavailable | ErrorKind::InvalidTimeout => {
+            TransportError::Permanent(format!("bad request: {detail}"))
+        }
+        _ => TransportError::Retryable(format!("request failed: {detail}")),
     }
 }
 
@@ -123,6 +118,26 @@ fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError
         401 | 403 => TransportError::Credential(format!("server returned {status}")),
         429 => TransportError::RateLimited(retry_after),
         _ => TransportError::Retryable(format!("server returned {status}")),
+    }
+}
+
+fn read_bounded(body: &mut h12tiny_client_sync::ResponseBody, deadline: Instant) -> io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "deadline reached"));
+        }
+        body.set_read_timeout(Some(remaining))?;
+        let read = body.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(bytes);
+        }
+        if bytes.len() + read > MAX_RESPONSE as usize {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "response exceeded its limit"));
+        }
+        bytes.extend_from_slice(&chunk[..read]);
     }
 }
 
@@ -150,31 +165,28 @@ impl SystemSchedule {
 
 pub struct HttpTransport {
     system: Option<Mutex<SystemSchedule>>,
-    agent: ureq::Agent,
-    final_agent: ureq::Agent,
-    url: String,
+    client: Client,
+    final_client: Client,
+    timeout: Duration,
+    uri: Uri,
     token: Mutex<String>,
     host_id: String,
 }
 
-fn build_agent(timeout: Duration) -> Result<ureq::Agent, TransportError> {
-    let tls = tls_config()?;
-    Ok(ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .max_redirects(0)
-        .timeout_global(Some(timeout))
-        .user_agent(concat!("stats/", env!("CARGO_PKG_VERSION")))
-        .tls_config(tls)
-        .build()
-        .into())
+fn build_client(connect_timeout: Duration) -> Result<Client, TransportError> {
+    let tls = ClientTlsConfigBuilder::new().build().map_err(|error| TransportError::Permanent(format!("system trust roots: {error}")))?;
+    let builder = Client::builder().connect_timeout(connect_timeout).map_err(|error| TransportError::Permanent(format!("client: {error}")))?;
+    Ok(builder.tls_config(tls).build())
 }
 
 impl HttpTransport {
     pub fn new(endpoint: &str, host_id: &str, token: &str, timeout: Duration) -> Result<Self, TransportError> {
+        let url = format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/'));
         Ok(Self {
-            agent: build_agent(timeout)?,
-            final_agent: build_agent(timeout.min(FINAL_TIMEOUT))?,
-            url: format!("{}/ingest/v1/batches", endpoint.trim_end_matches('/')),
+            client: build_client(timeout)?,
+            final_client: build_client(timeout.min(FINAL_TIMEOUT))?,
+            timeout,
+            uri: url.parse().map_err(|error| TransportError::Permanent(format!("bad URL: {error}")))?,
             token: Mutex::new(token.to_owned()),
             host_id: host_id.to_owned(),
             system: None,
@@ -209,29 +221,32 @@ impl HttpTransport {
         encode(&self.host_id, boot_id, samples, system.as_ref()).is_ok()
     }
 
-    fn send_with(&self, agent: &ureq::Agent, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+    fn send_with(&self, client: &Client, timeout: Duration, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
+        let started = Instant::now();
         let system = self.due_system();
         let body = encode(&self.host_id, boot_id, samples, system.as_ref())?;
-        let mut response = match agent
-            .post(&self.url)
-            .header("Authorization", format!("Bearer {}", self.token()))
-            .header("Content-Type", "application/json")
-            .send(body.as_slice())
-        {
-            Ok(response) => response,
-            Err(error) => return Err(classify(error)),
-        };
+        let mut authorization = HeaderValue::try_from(format!("Bearer {}", self.token())).map_err(|_| TransportError::Credential("token is not a valid header value".to_owned()))?;
+        authorization.set_sensitive(true);
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(self.uri.clone())
+            .header(header::AUTHORIZATION, authorization)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::USER_AGENT, concat!("stats/", env!("CARGO_PKG_VERSION")))
+            .body(body)
+            .map_err(|error| TransportError::Permanent(format!("bad request: {error}")))?;
+        let mut response = client.request_with_timeout(request, Some(timeout)).map_err(|error| classify(&error))?;
         let status = response.status().as_u16();
         if !(200..=299).contains(&status) {
             let retry_after = response
                 .headers()
-                .get("retry-after")
+                .get(header::RETRY_AFTER)
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.parse::<u64>().ok())
                 .map(Duration::from_secs);
             return Err(classify_status(status, retry_after));
         }
-        let body = response.body_mut().with_config().limit(MAX_RESPONSE).read_to_vec().map_err(|error| TransportError::Retryable(format!("response body: {error}")))?;
+        let body = read_bounded(response.body_mut(), started + timeout).map_err(|error| TransportError::Retryable(format!("response body: {error}")))?;
         let outcome = parse_response(&body)?;
         if system.is_some() {
             if let Some(schedule) = &self.system {
@@ -242,11 +257,11 @@ impl HttpTransport {
     }
 
     pub fn send(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        self.send_with(&self.agent, boot_id, samples)
+        self.send_with(&self.client, self.timeout, boot_id, samples)
     }
 
     pub fn send_final(&self, boot_id: &str, samples: &[Sample]) -> Result<SendOutcome, TransportError> {
-        self.send_with(&self.final_agent, boot_id, samples)
+        self.send_with(&self.final_client, self.timeout.min(FINAL_TIMEOUT), boot_id, samples)
     }
 }
 
@@ -343,7 +358,7 @@ mod tests {
         let text = String::from_utf8_lossy(&request);
         assert!(text.starts_with("POST /ingest/v1/batches HTTP/1.1"));
         assert!(text.to_ascii_lowercase().contains(&format!("authorization: bearer {token}").to_ascii_lowercase()));
-        let payload: serde_json::Value = serde_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
+        let payload: deser_value::Value = deser_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
         assert_eq!(payload["bootId"], boot);
         assert_eq!(payload["hostId"], host);
         assert_eq!(payload["samples"][0]["seq"], "1");
@@ -378,7 +393,7 @@ mod tests {
         let transport = HttpTransport::new(&receiver.endpoint, &host, &token, Duration::from_secs(2)).unwrap().announcing(system_info());
         transport.send(&boot, &[sample()]).unwrap();
         let request = receiver.request.recv_timeout(Duration::from_secs(2)).unwrap();
-        let payload: serde_json::Value = serde_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
+        let payload: deser_value::Value = deser_json::from_slice(&request[request.windows(4).position(|window| window == b"\r\n\r\n").unwrap() + 4..]).unwrap();
         assert_eq!(payload["system"]["hostname"], "threadripper");
         assert_eq!(payload["system"]["cpu"]["cores"], 16);
         assert_eq!(payload["system"]["cpu"]["maxMhz"], 5756);
@@ -477,11 +492,16 @@ mod tests {
 
     #[test]
     fn classifies_tls_and_unclassified_errors_as_retryable() {
-        assert!(matches!(classify(ureq::Error::Tls("certificate is not yet valid")), TransportError::Retryable(_)));
-        assert!(matches!(classify(ureq::Error::Rustls(rustls::Error::General("certificate is not yet valid".to_owned()))), TransportError::Retryable(_)));
-        assert!(matches!(classify(ureq::Error::RedirectFailed), TransportError::Retryable(_)));
-        assert!(matches!(classify(ureq::Error::BadUri("missing scheme".to_owned())), TransportError::Permanent(_)));
-        assert!(matches!(classify(ureq::Error::BodyExceedsLimit(1)), TransportError::Permanent(_)));
+        assert!(matches!(classify_kind(ErrorKind::Tls, "certificate is not yet valid".to_owned()), TransportError::Retryable(_)));
+        assert!(matches!(classify_kind(ErrorKind::Alpn, String::new()), TransportError::Retryable(_)));
+        assert!(matches!(classify_kind(ErrorKind::Response, String::new()), TransportError::Retryable(_)));
+        assert!(matches!(classify_kind(ErrorKind::AbsoluteUriRequired, "missing scheme".to_owned()), TransportError::Permanent(_)));
+    }
+
+    #[test]
+    fn rejects_an_unparseable_endpoint() {
+        let (host, token, _) = config();
+        assert!(matches!(HttpTransport::new("not a url", &host, &token, Duration::from_secs(2)), Err(TransportError::Permanent(_))));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 name = "stats"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 
 [lib]
 name = "stats"
@@ -14,11 +14,10 @@ path = "src/main.rs"
 
 [dependencies]
 libc = "0.2.191"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
-ureq = { version = "3.5.0", default-features = false, features = ["rustls-no-provider"] }
-rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
-rustls-native-certs = "0.8.5"
+deser = { version = "0.10.2", features = ["derive"] }
+deser-json = "0.10.2"
+deser-value = "0.10.2"
+h12tiny-client-sync = { version = "0.7.0", registry = "mycrates", features = ["tls"] }
 
 [profile.release]
 strip = true
@@ -26,3 +25,7 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 opt-level = "s"
+
+[patch.crates-io]
+h12tiny-client-normalize = { version = "0.7.0", registry = "mycrates" }
+h12tiny-tls-system = { version = "0.7.0", registry = "mycrates" }

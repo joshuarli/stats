@@ -1,5 +1,5 @@
 use crate::model::Block;
-use serde::Deserialize;
+use deser::Deserialize;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -10,16 +10,16 @@ const SNAPSHOT_LIMIT: usize = 4_096;
 const MAX_AGE: Duration = Duration::from_secs(30);
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[deser(deny_unknown_fields)]
 struct Snapshot {
     v: u32,
     buckets: Vec<String>,
     count: String,
-    #[serde(rename = "totalUs")]
+    #[deser(rename = "totalUs")]
     total_us: String,
-    #[serde(rename = "minUs")]
+    #[deser(rename = "minUs")]
     min_us: String,
-    #[serde(rename = "maxUs")]
+    #[deser(rename = "maxUs")]
     max_us: String,
 }
 
@@ -88,7 +88,7 @@ fn read_snapshot(path: &Path) -> Option<(Block, SystemTime)> {
     if bytes.len() > SNAPSHOT_LIMIT {
         return None;
     }
-    Some((snapshot_block(serde_json::from_slice(&bytes).ok()?)?, modified))
+    Some((snapshot_block(deser_json::from_slice(&bytes).ok()?)?, modified))
 }
 
 #[derive(Default)]
@@ -111,15 +111,15 @@ impl SnapshotReader {
 mod tests {
     use super::*;
     use crate::test_support::scratch;
-    use serde_json::json;
+    use deser_value::{from_value, value as json, Value};
     use std::os::unix::fs::PermissionsExt;
 
-    fn value(buckets: Vec<&str>, count: &str, total: &str, min: &str, max: &str) -> serde_json::Value {
+    fn value(buckets: Vec<&str>, count: &str, total: &str, min: &str, max: &str) -> Value {
         json!({ "v": 1, "buckets": buckets, "count": count, "totalUs": total, "minUs": min, "maxUs": max })
     }
 
-    fn parse(value: serde_json::Value) -> Option<Block> {
-        snapshot_block(serde_json::from_value(value).ok()?)
+    fn parse(value: Value) -> Option<Block> {
+        snapshot_block(from_value(&value).ok()?)
     }
 
     fn buckets(first: &str) -> Vec<&str> {
@@ -155,7 +155,7 @@ mod tests {
     }
 
     fn write_snapshot(path: &Path) {
-        let snapshot = serde_json::to_vec(&value(buckets("1"), "1", "10", "1", "10")).unwrap();
+        let snapshot = deser_json::to_string(&value(buckets("1"), "1", "10", "1", "10")).unwrap().into_bytes();
         fs::write(path, &snapshot).unwrap();
         fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
     }

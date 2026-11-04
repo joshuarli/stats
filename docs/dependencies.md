@@ -2,6 +2,24 @@
 
 Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm 12.15.0 (both enforced by `make node-ready`), and Zig 0.17.0 plus `python3` (both checked by `agent/scripts/build-static.sh`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
 
+## Agent crates
+
+The agent uses `deser` 0.10.2 (`deser-json`, `deser-value`) for JSON and
+`h12tiny-client-sync` 0.7.0 with its `tls` feature for HTTPS, replacing
+`serde`, `serde_json`, `ureq`, `rustls` with `ring`, and `rustls-native-certs`.
+TLS now runs on Graviola through `h12tiny-tls-system`. The h12tiny crates come
+from the `mycrates` registry configured in `agent/.cargo/config.toml`.
+
+`h12tiny-client-sync` 0.7.0 was published with its sibling dependencies
+pointing at crates.io, which only mirrors 0.4.0. `[patch.crates-io]` in
+`agent/Cargo.toml` redirects `h12tiny-client-normalize` and
+`h12tiny-tls-system` to `mycrates`. It goes away once h12tiny names the
+registry on those workspace dependencies and republishes.
+
+The client bounds the request write and response-header read with the request
+timeout; the agent bounds the body read to the remainder of the same deadline.
+Connection setup is bounded separately by the same duration.
+
 ## esbuild in `@stats/telemetry`
 
 The production build and deploy are esbuild-free: `vite build` writes the Build

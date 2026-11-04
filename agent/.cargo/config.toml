@@ -11,3 +11,6 @@ rustflags = ["-Clink-self-contained=no"]
 [target.aarch64-unknown-linux-musl]
 linker = "../tools/zig-cc-aarch64-linux-musl"
 rustflags = ["-Clink-self-contained=no"]
+
+[registries.mycrates]
+index = "sparse+https://crates.17166969.xyz/current/registry/"
