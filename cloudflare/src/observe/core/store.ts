@@ -465,7 +465,7 @@ interface IssueRow {
   occurrences: number; first_at: number; last_at: number; last_version: string | null; versions: number; first_version: string | null; first_version_label: string | null;
 }
 
-export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
+export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly fingerprint?: string; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
   const cutoff = nowMs - RETENTION_MS;
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
@@ -475,11 +475,11 @@ export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly st
        (SELECT l.version FROM observe_occurrences l WHERE l.fingerprint = i.fingerprint AND l.propagated = 0 AND l.observed_at > ? ORDER BY l.observed_at DESC, l.id DESC LIMIT 1) AS last_version,
        (SELECT f.version FROM observe_occurrences f WHERE f.fingerprint = i.fingerprint AND f.propagated = 0 AND f.observed_at > ? ORDER BY f.observed_at, f.id LIMIT 1) AS first_version
      FROM observe_issues i JOIN observe_occurrences o ON o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?
-     WHERE (? IS NULL OR i.state = ?)
+     WHERE (? IS NULL OR i.state = ?) AND (? IS NULL OR i.fingerprint = ?)
      GROUP BY i.fingerprint
      HAVING (? IS NULL OR first_version = ?) AND (? IS NULL OR MAX(o.observed_at) < ? OR (MAX(o.observed_at) = ? AND i.fingerprint < ?))
      ORDER BY last_at DESC, i.fingerprint DESC LIMIT ?`,
-    cutoff, cutoff, cutoff, filter.state ?? null, filter.state ?? null, filter.introducedIn ?? null, filter.introducedIn ?? null,
+    cutoff, cutoff, cutoff, filter.state ?? null, filter.state ?? null, filter.fingerprint ?? null, filter.fingerprint ?? null, filter.introducedIn ?? null, filter.introducedIn ?? null,
     cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
   );
   const labels = versionLabels(db, rows.map(row => row.first_version));
@@ -489,6 +489,10 @@ export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly st
     firstVersion: row.first_version, firstVersionLabel: row.first_version === null ? null : labels.get(row.first_version) ?? null
   }));
   return page(issues, size, issue => `${issue.lastAtMs}.${issue.fingerprint}`);
+}
+
+export function readIssue(db: SqlDatabase, nowMs: number, fingerprint: string): IssueSummary | null {
+  return listIssues(db, nowMs, { fingerprint, limit: 1 }).items[0] ?? null;
 }
 
 function versionLabels(db: SqlDatabase, versions: readonly (string | null)[]): Map<string, string> {

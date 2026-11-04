@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, prepareVersionLabel, type ObservedError, type ObservedInvocation, type ObservedRollout, type Preparation, type PreparedInvocation, type VersionLabel } from "../../src/observe/core/model.ts";
-import { explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState, type IssueState, type SqlDatabase, type SqlValue, type TraceFilter } from "../../src/observe/core/store.ts";
+import { explore, health, ingest, initializeStore, issueOccurrences, listIssues, readIssue, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState, type IssueState, type SqlDatabase, type SqlValue, type TraceFilter } from "../../src/observe/core/store.ts";
 import { handleApi } from "../../src/observe/worker/api.ts";
 import type { DeploymentHistory } from "../../src/deployments/model.ts";
 
@@ -180,6 +180,7 @@ export async function buildScenario(now: number): Promise<Scenario> {
 export function scenarioStore(scenario: Scenario, now: number) {
   return {
     issues: async (filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }) => listIssues(scenario.db, now, filter),
+    issue: async (fingerprint: string) => readIssue(scenario.db, now, fingerprint),
     occurrences: async (fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }) => issueOccurrences(scenario.db, now, fingerprint, filter),
     setIssueState: async (fingerprint: string, state: IssueState) => setIssueState(scenario.db, now, fingerprint, state),
     traces: async (filter: TraceFilter) => listTraces(scenario.db, now, filter),

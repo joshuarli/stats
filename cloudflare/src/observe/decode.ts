@@ -120,24 +120,30 @@ export function decodeTrace(value: unknown, traceId: string): TraceDetail {
   };
 }
 
+export function decodeIssue(value: unknown): IssueSummary {
+  return issueSummary(value);
+}
+
 export function decodeIssues(value: unknown): Page<IssueSummary> {
-  return page(value, item => {
-    const fields = record(item, "issue");
-    return {
-      fingerprint: text(fields["fingerprint"], "fingerprint", 64),
-      name: text(fields["name"], "issue name", 128),
-      operation: nullableText(fields["operation"], "issue operation", 64),
-      frame: nullableText(fields["frame"], "issue frame", 1024),
-      state: oneOf(fields["state"], STATES, "issue state"),
-      occurrences: integer(fields["occurrences"], "occurrences"),
-      firstAtMs: integer(fields["firstAtMs"], "first seen"),
-      lastAtMs: integer(fields["lastAtMs"], "last seen"),
-      lastVersion: nullableText(fields["lastVersion"], "last version", 64),
-      versions: integer(fields["versions"], "versions"),
-      firstVersion: nullableText(fields["firstVersion"], "first version", 64),
-      firstVersionLabel: nullableText(fields["firstVersionLabel"], "first version label", 128)
-    };
-  }, "issues");
+  return page(value, issueSummary, "issues");
+}
+
+function issueSummary(item: unknown): IssueSummary {
+  const fields = record(item, "issue");
+  return {
+    fingerprint: text(fields["fingerprint"], "fingerprint", 64),
+    name: text(fields["name"], "issue name", 128),
+    operation: nullableText(fields["operation"], "issue operation", 64),
+    frame: nullableText(fields["frame"], "issue frame", 1024),
+    state: oneOf(fields["state"], STATES, "issue state"),
+    occurrences: integer(fields["occurrences"], "occurrences"),
+    firstAtMs: integer(fields["firstAtMs"], "first seen"),
+    lastAtMs: integer(fields["lastAtMs"], "last seen"),
+    lastVersion: nullableText(fields["lastVersion"], "last version", 64),
+    versions: integer(fields["versions"], "versions"),
+    firstVersion: nullableText(fields["firstVersion"], "first version", 64),
+    firstVersionLabel: nullableText(fields["firstVersionLabel"], "first version label", 128)
+  };
 }
 
 export function decodeOccurrences(value: unknown): Page<Occurrence> {

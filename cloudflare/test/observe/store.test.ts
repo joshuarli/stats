@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, DURATION_EDGES, explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { cleanup, DURATION_EDGES, explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 
 const M = 60_000;
@@ -366,4 +366,14 @@ await test("the slowest calls in a duration band page deterministically", async 
   } while (cursor !== undefined);
   assert.deepEqual(seen, [500, 500, 500, 58, 57, 55, 54, 52, 51]);
   assert.equal(listTraces(db, T0 + H, { fromMs: T0 + 4, toMs: T0 + 6 }).items.length, 3);
+});
+
+await test("one issue reads back in any state, and not once its occurrences have expired", async () => {
+  const db = database();
+  ingest(db, await prepare(worker(1, { errors: [caught] })), NOW);
+  const fingerprint = listIssues(db, NOW).items[0]!.fingerprint;
+  setIssueState(db, NOW + 1, fingerprint, "resolved");
+  assert.equal(readIssue(db, NOW + 1, fingerprint)?.state, "resolved");
+  assert.equal(readIssue(db, NOW + 1, "f".repeat(64)), null);
+  assert.equal(readIssue(db, T0 + RETENTION_MS, fingerprint), null);
 });

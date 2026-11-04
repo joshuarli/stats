@@ -5,6 +5,7 @@ import { readLimitedText } from "../../body.ts";
 
 export interface ObserveStore {
   issues(filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>>;
+  issue(fingerprint: string): Promise<IssueSummary | null>;
   occurrences(fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }): Promise<Page<Occurrence>>;
   setIssueState(fingerprint: string, state: IssueState): Promise<boolean>;
   traces(filter: TraceFilter): Promise<Page<TraceSummary>>;
@@ -199,6 +200,13 @@ export async function handleApi(request: Request, store: ObserveStore): Promise<
       const introducedIn = values.get("introducedIn");
       if (introducedIn !== undefined && !VERSION.test(introducedIn)) throw new BadRequest("invalid version");
       return json(await store.issues({ ...page(values), ...(state === undefined ? {} : { state: issueState(state) }), ...(introducedIn === undefined ? {} : { introducedIn }) }));
+    }
+    const issue = /^\/issues\/([^/]+)$/u.exec(path);
+    if (issue !== null) {
+      if (!FINGERPRINT.test(issue[1]!)) throw new BadRequest("invalid issue id");
+      params(url, []);
+      const value = await store.issue(issue[1]!);
+      return value === null ? failure(404, "not_found", "issue not found or expired") : json(value);
     }
     const occurrences = /^\/issues\/([^/]+)\/occurrences$/u.exec(path);
     if (occurrences !== null) {

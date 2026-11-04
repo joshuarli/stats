@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { prepareRollout, prepareVersionLabel, type ObservedRollout, type Preparation, type VersionLabel } from "../core/model.ts";
 import {
-  cleanup, explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState,
+  cleanup, explore, health, ingest, initializeStore, issueOccurrences, listIssues, readIssue, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState,
   type Exploration, type Health, type IngestResult, type RolloutImpact, type RolloutResult, type IssueState, type IssueSummary, type Occurrence, type Page, type SqlDatabase, type SqlValue, type TraceDetail, type TraceFilter, type TraceSummary
 } from "../core/store.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
@@ -67,6 +67,10 @@ export class ObservationStore extends DurableObject<ObserveEnv> {
 
   async issues(filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>> {
     return listIssues(this.db, Date.now(), filter);
+  }
+
+  async issue(fingerprint: string): Promise<IssueSummary | null> {
+    return readIssue(this.db, Date.now(), fingerprint);
   }
 
   async occurrences(fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }): Promise<Page<Occurrence>> {
