@@ -1,0 +1,1 @@
+{"projectId":"stats","range":"1h","kind":"probes","fromMs":1793751900000,"toMs":1793755632188,"stepMs":300000,"series":[{"metric":"probe.health.up","values":[1,1,1,1,1,1,1,1,1,1,1,1,1]},{"metric":"probe.health.ms","values":[35,65,152,71,50,85,63,45,48,78,141,56,72]}]}
