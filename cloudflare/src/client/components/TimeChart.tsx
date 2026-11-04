@@ -8,6 +8,7 @@ import { createUpdateEffect } from "../effect";
 import { axisTime, clock, percent } from "../format";
 import { episodeText, evaluate, healthOf, markersOf, type Health, type Limits } from "../health";
 import { useTelemetry } from "../state";
+import { placeEvents } from "./event-layout";
 import { HealthMark } from "./ui";
 
 export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "ghost" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
@@ -27,6 +28,7 @@ export interface ChartEvent {
   readonly id?: string | undefined;
   readonly atMs: number;
   readonly label: string;
+  readonly short?: string | undefined;
   readonly onSelect?: (() => void) | undefined;
 }
 
@@ -109,6 +111,8 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     const limits = props.limits;
     return limits === undefined ? undefined : healthOf(value, limits) ?? undefined;
   };
+  const eventsUnder = (chart: uPlot, left: number): readonly ChartEvent[] =>
+    (props.events ?? []).filter(event => Math.abs(chart.valToPos(event.atMs / 1000, "x") - left) <= EVENT_HIT_PX);
   const eventNear = (chart: uPlot, left: number): ChartEvent | undefined => {
     let nearest: ChartEvent | undefined;
     let nearestDistance = EVENT_HIT_PX + 1;
@@ -324,29 +328,32 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       const { left, top, width, height } = chart.bbox;
       const context = chart.ctx;
       context.save();
-      context.setLineDash([2 * dpr, 3 * dpr]);
-      context.lineWidth = dpr;
       context.font = `${11 * dpr}px ${token("--font")}`;
       context.textAlign = "left";
-      for (const event of events) {
-        const x = Math.round(chart.valToPos(event.atMs / 1000, "x", true));
-        if (x < left || x > left + width) continue;
+      const placed = placeEvents(
+        events.map(event => ({ x: Math.round(chart.valToPos(event.atMs / 1000, "x", true)), label: event.label, short: event.short })),
+        text => context.measureText(text).width,
+        { minX: left, maxX: left + width, mergePx: 3 * dpr, padPx: 3 * dpr }
+      );
+      for (const mark of placed) {
+        context.setLineDash([2 * dpr, 3 * dpr]);
+        context.lineWidth = dpr;
         context.strokeStyle = token("--muted");
         context.globalAlpha = 0.7;
         context.beginPath();
-        context.moveTo(x, top);
-        context.lineTo(x, top + height);
+        context.moveTo(mark.x, top);
+        context.lineTo(mark.x, top + height);
         context.stroke();
+        if (mark.text === null) continue;
         context.globalAlpha = 1;
+        context.setLineDash([]);
         context.lineJoin = "round";
         context.lineWidth = 3 * dpr;
         context.strokeStyle = token("--surface");
-        context.setLineDash([]);
-        context.strokeText(event.label, x + 3 * dpr, top + 11 * dpr);
+        const textX = mark.side === "right" ? mark.x + 3 * dpr : mark.x - 3 * dpr - context.measureText(mark.text).width;
+        context.strokeText(mark.text, textX, top + 11 * dpr);
         context.fillStyle = token("--text-2");
-        context.fillText(event.label, x + 3 * dpr, top + 11 * dpr);
-        context.setLineDash([2 * dpr, 3 * dpr]);
-        context.lineWidth = dpr;
+        context.fillText(mark.text, textX, top + 11 * dpr);
       }
       context.restore();
     };
@@ -496,6 +503,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         setCursor: [chart => {
           setCursor(chart.cursor.idx ?? null);
           chart.over.style.cursor = eventNear(chart, chart.cursor.left ?? -1) === undefined ? "" : "pointer";
+          chart.over.title = eventsUnder(chart, chart.cursor.left ?? -1).map(event => event.label).join("\n");
           showTooltip(chart);
         }],
         setScale: [(chart, key) => {

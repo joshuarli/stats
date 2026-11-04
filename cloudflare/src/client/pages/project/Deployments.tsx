@@ -110,6 +110,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     id: deployment.id,
     atMs: deployment.atMs,
     label: `deploy ${name(deployment)}`,
+    short: title(deployment),
     onSelect: () => {
       select(deployment.id);
       jumpTo("deployments");
