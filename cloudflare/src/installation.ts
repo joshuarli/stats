@@ -10,6 +10,8 @@ import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
 import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
+import { readLimitedText } from "./body";
+import { reportError } from "./observe/report";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
@@ -181,34 +183,6 @@ function historyWindowKey(query: HistoryQuery): string {
 
 function failure(code: ErrorCode, message: string, status: number, headers: Record<string, string> = {}): Response {
   return json({ error: { code, message } }, status, headers);
-}
-
-async function readLimitedText(request: Request, limit: number): Promise<string | null> {
-  const declared = request.headers.get("content-length");
-  if (declared !== null && Number(declared) > limit) return null;
-  if (request.body === null) return "";
-  // SAFETY: Workers' Request.body getReader() erases the chunk type; HTTP body chunks are Uint8Array.
-  const reader = request.body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    const chunk = result.value;
-    total += chunk.length;
-    if (total > limit) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(chunk);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return new TextDecoder().decode(bytes);
 }
 
 function validName(name: string): boolean {
@@ -484,7 +458,8 @@ export class Installation extends DurableObject<Env> {
   private projectRegistry(): ProjectConfig[] | Response {
     try {
       return parseProjects(this.env.PROJECTS);
-    } catch {
+    } catch (error) {
+      reportError("projects.config", error);
       console.error(JSON.stringify({ event: "projects_config_invalid" }));
       return json({ error: { code: "unavailable", message: "project configuration is invalid" } }, 503);
     }
@@ -738,7 +713,8 @@ export class Installation extends DurableObject<Env> {
       const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
       if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       return failure("not_found", "unknown object route", 404);
-    } catch {
+    } catch (error) {
+      reportError("installation.request", error);
       console.error(JSON.stringify({ event: "request_failed", code: "internal" }));
       return failure("internal", "internal error", 500);
     }

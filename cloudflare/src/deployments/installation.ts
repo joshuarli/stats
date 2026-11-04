@@ -6,6 +6,8 @@ import { parseProjects } from "../projects/config";
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "./compare.ts";
 import { deploymentsEnabled, type DeploymentPoll } from "./collector.ts";
 import { UUID, type DeploymentHistory } from "./model.ts";
+import { markInvocation } from "../observe/mark.ts";
+import { reportError } from "../observe/report.ts";
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "./store.ts";
 
 /** Same exported class name, binding and object id; no new Durable Object namespace. */
@@ -21,11 +23,13 @@ export class Installation extends HostInstallation {
   }
 
   async knownDeploymentVersions(project: string, worker: string): Promise<readonly string[]> {
+    markInvocation();
     if (!parseProjects(this.env.PROJECTS).some(item => item.id === project && item.worker === worker)) throw new Error("unknown deployment project");
     return readVersions(this.ctx.storage.sql, project, worker).map(version => version.id);
   }
 
   async recordDeploymentPoll(poll: DeploymentPoll): Promise<void> {
+    markInvocation();
     if (!parseProjects(this.env.PROJECTS).some(item => item.id === poll.project && item.worker === poll.worker)) throw new Error("unknown deployment project");
     if (!Number.isSafeInteger(poll.atMs) || poll.atMs < 0 || poll.deployments.length > 300 || poll.versions.length > 4) throw new Error("invalid deployment poll");
     saveDeploymentPoll(this.ctx.storage, poll);
@@ -33,6 +37,7 @@ export class Installation extends HostInstallation {
   }
 
   override async recordCollectorRun(run: CollectorRun): Promise<{ metricRowsWritten: number }> {
+    markInvocation();
     const result = await super.recordCollectorRun(run);
     if (run.ok) {
       try {
@@ -48,18 +53,26 @@ export class Installation extends HostInstallation {
               Math.floor((run.atMs - PROJECT_SETTLE_MS) / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS);
           }
         });
-      } catch { console.error(JSON.stringify({ event: "deployment_coverage_unrecorded" })); }
+      } catch (error) {
+        reportError("deployments.coverage", error);
+        console.error(JSON.stringify({ event: "deployment_coverage_unrecorded" }));
+      }
     }
     return result;
   }
 
   override async alarm(): Promise<void> {
+    markInvocation();
     try { purgeDeployments(this.ctx.storage.sql, this.deploymentNow()); }
-    catch { console.error(JSON.stringify({ event: "deployment_retention_failed" })); }
+    catch (error) {
+      reportError("deployments.retention", error);
+      console.error(JSON.stringify({ event: "deployment_retention_failed" }));
+    }
     await super.alarm();
   }
 
   override async fetch(request: Request): Promise<Response> {
+    markInvocation();
     const url = new URL(request.url);
     const match = /^\/projects\/([a-z][a-z0-9-]{0,31})\/deployments(?:\/([0-9a-f-]{36})\/comparison)?$/i.exec(url.pathname);
     if (match === null) return super.fetch(request);
@@ -68,7 +81,10 @@ export class Installation extends HostInstallation {
     if (request.method !== "GET") return failure(405, "method not allowed");
     let project;
     try { project = parseProjects(this.env.PROJECTS).find(item => item.id === match[1]); }
-    catch { return failure(503, "project configuration unavailable"); }
+    catch (error) {
+      reportError("projects.config", error);
+      return failure(503, "project configuration unavailable");
+    }
     if (project === undefined) return failure(404, "project not found");
     const now = this.deploymentNow();
     const sql = this.ctx.storage.sql;
@@ -94,7 +110,8 @@ export class Installation extends HostInstallation {
       project.id, bounds.before.fromMs, bounds.after.toMs,
     ).toArray();
     return Response.json(compareDeployment({ deployment, deployments, rows, window, now, settleMs: PROJECT_SETTLE_MS, lastSuccessAtMs: sync?.lastSuccessAtMs ?? null, truncated: sync?.truncated ?? false, enabled, metricsSettled: hasSettledWindow(sql, project.id, project.worker, bounds.before.fromMs, bounds.before.toMs) && hasSettledWindow(sql, project.id, project.worker, bounds.after.fromMs, bounds.after.toMs), hasD1: project.d1Databases.length > 0, hasDurableObjects: project.durableObjectNamespaces.length > 0, buckets: project.buckets, probes: project.probes.map(probe => probe.name) }));
-    } catch {
+    } catch (error) {
+      reportError("deployments.api", error);
       console.error(JSON.stringify({ event: "deployment_api_failed" }));
       return Response.json({ error: { code: "internal", message: "deployment history unavailable" } }, { status: 500 });
     }

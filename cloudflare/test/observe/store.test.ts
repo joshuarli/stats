@@ -159,6 +159,13 @@ await test("trace filters select failed roots and summarize their object stages"
   assert.equal(ok.objectCpuMs, 12);
 });
 
+await test("a trace lists its root first, then object stages in time order", async () => {
+  const db = database();
+  ingest(db, await prepare(object(1, { eventAtMs: T0 + 5, trace: { traceId: traceId(1), spanId: "00000000000000b2" } }), object(1, { eventAtMs: T0 }), worker(1, { eventAtMs: T0 + 3 })), NOW);
+  const trace = readTrace(db, NOW, traceId(1))!;
+  assert.deepEqual(trace.invocations.map(invocation => [invocation.stage, invocation.atMs]), [["worker", T0 + 3], ["object", T0], ["object", T0 + 5]]);
+});
+
 await test("a trace whose root never arrived is marked incomplete", async () => {
   const db = database();
   ingest(db, await prepare(object(1)), NOW);

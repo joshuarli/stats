@@ -6,7 +6,7 @@ Run the narrowest target while iterating and `make check` before release.
 | --- | --- |
 | `make fixtures` | Fixture manifest, shapes, and cost arithmetic |
 | `make agent-test` | Rust unit tests and fixture parity |
-| `make cloudflare-test` | Worker typecheck and Workers-runtime tests |
+| `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, and the two-Worker tail test |
 | `make dashboard-test` | Dashboard build, Playwright tests, and the tracked-PNG check |
 | `make lint` | Type-aware Oxlint |
 | `make preview` | Built dashboard served from captures on `http://127.0.0.1:4174/` |
@@ -14,6 +14,19 @@ Run the narrowest target while iterating and `make check` before release.
 
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.
+
+## Observability tests
+
+`pnpm run test:observe` runs the portable core and the tail reducer under
+Node. `pnpm run test:observe-e2e` needs `pnpm build` and
+`pnpm run build:observe` first; it loads both bundles into Miniflare with
+`stats-observe` as the tail consumer of `stats`, drives real ingest,
+dashboard, admin, and scheduled traffic, and checks linked traces, grouped
+issues, that polling `/api/observe/*` stores nothing, that no secret reaches
+the store, and that a crashing or missing collector leaves stats responses
+unchanged. `TEST_NOW_MS` pins the stats clock in the past, so
+`Installation`'s retention alarm fires repeatedly there; the test waits for
+the invocations it caused rather than for quiet.
 
 ## Screenshot goldens
 

@@ -10,5 +10,5 @@ const fixtures = Object.fromEntries(readdirSync(fixtureDir).map(name => [name, r
 
 export default defineConfig({
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
-  test: { include: ["test/**/*.test.ts"], exclude: ["test/binary/**", "test/deployments/**"], testTimeout: 30_000 }
+  test: { include: ["test/**/*.test.ts"], exclude: ["test/binary/**", "test/deployments/**", "test/observe/**", "test/observe-e2e/**"], testTimeout: 30_000 }
 });

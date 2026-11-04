@@ -26,7 +26,10 @@
     "test/**/*.ts",
     "worker-configuration.d.ts",
     "cloudflare.config.ts",
+    "observe-worker/cloudflare.config.ts",
+    "observe-worker/vite.config.ts",
     "vite.config.ts",
     ".cloudflare/types"
-  ]
+  ],
+  "exclude": ["test/observe-e2e/**"]
 }

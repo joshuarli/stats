@@ -13,6 +13,7 @@ import {
 } from "./parse.ts";
 import { BUCKET_MS, d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
 import type { CollectorRun, ProjectPoints } from "./store.ts";
+import { reportError } from "../observe/report.ts";
 
 const COLLECTION_WINDOW_MS = 90 * 60_000;
 
@@ -78,7 +79,8 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
         rowsRead,
         durationMs: elapsed(),
       });
-    } catch {
+    } catch (recordError) {
+      reportError("collector.record", recordError);
       console.error(JSON.stringify({ event: "collector_run_unrecorded" }));
     }
     throw error;

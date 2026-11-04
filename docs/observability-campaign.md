@@ -247,7 +247,8 @@ Durable Object requests a month, against 50M and 1M included on Workers Paid.
   `Installation`.
 - Headers, query strings, bodies, tokens, Access assertions, client IPs, and
   SQL parameters are never stored. `stats-observe` never logs a raw tail
-  event and runs with its own Workers logs off.
+  event; its Workers logs keep invocation records only, so its own CPU can
+  be measured, and its traces are off.
 - No row older than 7 days is readable, whether or not cleanup has run. Live
   retention is not erasure from Durable Object point-in-time recovery, which
   keeps 30 days.
@@ -264,10 +265,20 @@ charts stay on the project page.
 
 ## State
 
-Baseline: `8043bd0`. Phases 0 and 1 are done. Phase 2 is next.
+Baseline: `8043bd0`. Phases 0, 1, and 2 are done. Phase 3 is next.
 
 Phase 1 dropped the STO1 codec and the fragment benchmark: with classic tail
 there is no per-invocation payload beyond columns, so a codec would encode
 nothing. A future producer outside Cloudflare would bring its own protocol
 decision. The core lives in `cloudflare/src/observe/core/` and is checked by
 `pnpm run typecheck:observe` and `pnpm run test:observe`.
+
+Phase 2 put the collector in `cloudflare/src/observe/worker/` and its config
+in `cloudflare/observe-worker/`. Stats publishes on `stats.observe` from
+`cloudflare/src/observe/mark.ts` and `report.ts`, and proxies
+`/api/observe/*` after Access. `cloudflare/test/observe-e2e/tail.test.ts`
+is the exit test. Two Miniflare quirks shape it: its Worker proxy rejects
+any request with an `Origin` header, so the test uses `dispatchFetch`, and
+persistence is the `resourcePersistencePath` shared option. Billed rows
+written per invocation are not yet measured under workerd; the core tests
+count rows, not billed writes.

@@ -66,7 +66,7 @@ export interface PreparedInvocation {
   readonly errors: readonly PreparedError[];
 }
 
-export type Rejection = "invalid_trace" | "invalid_version" | "invalid_object" | "invalid_label" | "invalid_status" | "invalid_outcome" | "invalid_timing" | "invalid_operation";
+export type Rejection = "invalid_event" | "invalid_trace" | "invalid_version" | "invalid_object" | "invalid_label" | "invalid_status" | "invalid_outcome" | "invalid_timing" | "invalid_operation";
 
 export type Preparation = { readonly ok: true; readonly invocation: PreparedInvocation } | { readonly ok: false; readonly reason: Rejection };
 

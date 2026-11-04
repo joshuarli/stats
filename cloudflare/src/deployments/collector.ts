@@ -1,4 +1,5 @@
 import { DEPLOYMENT_RETENTION_MS, parseDeployment, parseVersion, record, type Deployment, type VersionMetadata } from "./model.ts";
+import { reportError } from "../observe/report.ts";
 
 const MAX_PAGES = 3;
 const PAGE_SIZE = 100;
@@ -101,13 +102,17 @@ async function collectProject(input: {
     const versions: VersionMetadata[] = [];
     for (const id of missing) {
       try { versions.push(parseVersion((await request(`/versions/${id}`))["result"], id)); }
-      catch { /* Optional enrichment must not discard a valid deployment timeline. */ }
+      catch (error) { reportError("deployments.version", error); }
     }
     await store.recordDeploymentPoll({ project: project.id, worker: project.worker, atMs: now, error: null, deployments: ordered, versions, truncated });
-  } catch {
+  } catch (error) {
+    reportError("deployments.poll", error);
     try {
       await store.recordDeploymentPoll({ project: project.id, worker: project.worker, atMs: now, error: signal.aborted ? "timeout" : code, deployments: [], versions: [], truncated: false });
-    } catch { console.error(JSON.stringify({ event: "deployment_poll_unrecorded" })); }
+    } catch (recordError) {
+      reportError("deployments.record", recordError);
+      console.error(JSON.stringify({ event: "deployment_poll_unrecorded" }));
+    }
   }
 }
 
@@ -124,7 +129,10 @@ export async function collectDeployments(input: {
   if (!/^[a-f0-9]{32}$/i.test(input.account ?? "") || !input.token || /[\r\n]/u.test(input.token)) {
     for (const project of input.projects) {
       try { await input.store.recordDeploymentPoll({ project: project.id, worker: project.worker, atMs: input.now, error: "configuration", deployments: [], versions: [], truncated: false }); }
-      catch { console.error(JSON.stringify({ event: "deployment_poll_unrecorded" })); }
+      catch (error) {
+        reportError("deployments.record", error);
+        console.error(JSON.stringify({ event: "deployment_poll_unrecorded" }));
+      }
     }
     return;
   }

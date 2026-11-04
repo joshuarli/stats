@@ -1,4 +1,4 @@
-import { privateJwk } from "./access-key";
+import { privateJwk } from "./access-key.ts";
 
 const encoder = new TextEncoder();
 

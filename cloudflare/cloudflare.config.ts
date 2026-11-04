@@ -56,9 +56,11 @@ export default defineConfig({
       INSTALLATION: bindings.durableObject({ worker: WORKER_NAME, exportName: "Installation" }),
       ASSETS: bindings.assets(),
       ANALYTICS_SQL: bindings.analytics(),
-      PROJECTS: bindings.text(PROJECTS_JSON)
+      PROJECTS: bindings.text(PROJECTS_JSON),
+      OBSERVE: bindings.worker({ worker: "stats-observe" })
     },
     triggers: [triggers.scheduled({ schedule: "*/5 * * * *" })],
+    tailConsumers: [{ worker: "stats-observe" }],
     assets: { runWorkerFirst: true },
     workersDev: false,
     previewUrls: false,

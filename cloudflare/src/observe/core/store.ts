@@ -423,7 +423,7 @@ export function readTrace(db: SqlDatabase, nowMs: number, traceId: string): Trac
   if (!TRACE_ID.test(traceId)) throw new RangeError("invalid trace id");
   const cutoff = nowMs - RETENTION_MS;
   const rows = db.rows<InvocationRow>(
-    `SELECT ${INVOCATION_COLUMNS} FROM observe_invocations WHERE trace_id = ? AND observed_at > ? ORDER BY event_at, key LIMIT ?`,
+    `SELECT ${INVOCATION_COLUMNS} FROM observe_invocations WHERE trace_id = ? AND observed_at > ? ORDER BY stage = 'object', event_at, key LIMIT ?`,
     traceId, cutoff, MAX_TRACE_INVOCATIONS + 1
   );
   if (rows.length === 0) return null;

@@ -58,6 +58,11 @@ the host bearer token. Every other path that serves assets or data first passes
 `verifyAccess` in `access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
+`/api/observe/*` passes the same Access check and is then proxied over the
+`OBSERVE` service binding to `stats-observe`, the observability collector in
+`docs/observability-campaign.md`; POSTs there must be same-origin. That
+Worker is also the tail consumer of `stats`, has no route of its own, and
+keeps its data in its own `ObservationStore` Durable Object.
 `cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
 tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`

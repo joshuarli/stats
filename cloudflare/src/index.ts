@@ -6,6 +6,9 @@ import { collectDeployments } from "./deployments/collector";
 import { parseProjects } from "./projects/config";
 import { MAX_BODY_BYTES } from "./limits";
 import { runCollector } from "./projects/collector";
+import { markInvocation } from "./observe/mark";
+import { reportError } from "./observe/report";
+import { readLimitedText } from "./body";
 
 export { Installation };
 
@@ -60,10 +63,28 @@ function internal(request: Request, path: string): Request {
   return new Request(`https://installation${path}${url.search}`, request);
 }
 
+const OBSERVE_PREFIX = "/api/observe";
+const MAX_OBSERVE_BODY_BYTES = 256;
+
+async function observe(request: Request, env: Env, path: string): Promise<Response> {
+  const access = await verifyAccess(request, env);
+  if (!access.ok) return error(access.status, access.status === 503 ? "unavailable" : "unauthorized", access.message);
+  const url = new URL(request.url);
+  const target = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
+  if (request.method === "GET") return secure(await env.OBSERVE.fetch(target));
+  if (request.method !== "POST") return error(405, "invalid_request", "method not allowed");
+  if (request.headers.get("Origin") !== url.origin) return error(403, "forbidden", "cross-origin request");
+  const body = await readLimitedText(request, MAX_OBSERVE_BODY_BYTES);
+  if (body === null) return error(413, "too_large", "body exceeds the cap");
+  return secure(await env.OBSERVE.fetch(target, { method: "POST", headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    markInvocation();
     const path = new URL(request.url).pathname;
     if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
+    if (path.startsWith(`${OBSERVE_PREFIX}/`)) return observe(request, env, path);
     if (path === "/ingest/v1/batches") {
       if (request.method === "POST") {
         if (bearerToken(request.headers.get("authorization")) === null) {
@@ -95,6 +116,7 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    markInvocation();
     const store = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
     const [metrics] = await Promise.allSettled([
       runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
@@ -106,7 +128,10 @@ export default {
             ...(env.DEPLOYMENTS_API_TOKEN === undefined ? {} : { token: env.DEPLOYMENTS_API_TOKEN }),
             now: controller.scheduledTime, store, fetch: (url, init) => fetch(url, init)
           });
-        } catch { console.error(JSON.stringify({ event: "deployment_collection_failed" })); }
+        } catch (error) {
+          reportError("deployments.collect", error);
+          console.error(JSON.stringify({ event: "deployment_collection_failed" }));
+        }
       })()
     ]);
     if (metrics.status === "rejected") throw metrics.reason;
