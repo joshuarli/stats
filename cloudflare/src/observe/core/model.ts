@@ -48,8 +48,11 @@ export interface PreparedError {
   readonly fingerprint: string;
 }
 
+export type KeySource = "span" | "fallback";
+
 export interface PreparedInvocation {
   readonly key: string;
+  readonly keySource: KeySource;
   readonly digest: string;
   readonly version: string | null;
   readonly stage: Stage;
@@ -101,7 +104,7 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
     ? (await sha256Hex(["observe.key.v1", input.version ?? "", input.objectId ?? "", input.kind, input.label, String(input.eventAtMs)].join("\u0000"))).slice(0, 32)
     : input.trace.spanId;
   const digest = await sha256Hex(JSON.stringify(fields));
-  return { ok: true, invocation: { key, digest, ...fields } };
+  return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields } };
 }
 
 function rejection(input: ObservedInvocation): Rejection | null {

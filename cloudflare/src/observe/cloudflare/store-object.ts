@@ -9,12 +9,18 @@ export interface ObserveEnv {
 }
 
 function sqlDatabase(storage: DurableObjectStorage): SqlDatabase {
+  let written = 0;
   return {
     rows<T>(query: string, ...params: SqlValue[]): T[] {
       return storage.sql.exec(query, ...params).toArray() as T[];
     },
     run(query: string, ...params: SqlValue[]): void {
-      storage.sql.exec(query, ...params);
+      const cursor = storage.sql.exec(query, ...params);
+      cursor.toArray();
+      written += cursor.rowsWritten;
+    },
+    rowsWritten(): number {
+      return written;
     },
     transaction<T>(fn: () => T): T {
       return storage.transactionSync(fn);

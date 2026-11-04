@@ -6,7 +6,7 @@ import { cleanup, DURATION_EDGES, explore, health, ingest, initializeStore, issu
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 
 const M = 60_000;
-import { BUNDLE_STACK, D, DO_STACK, H, T0, database, object, synthetic, traceId, worker, wrap } from "./support.ts";
+import { BUNDLE_STACK, D, DO_STACK, H, OBJECT, T0, database, object, synthetic, traceId, worker, wrap } from "./support.ts";
 
 const POLICY: MessagePolicy = { safeNames: new Set() };
 const NOW = T0 + 1000;
@@ -39,6 +39,60 @@ await test("the same key with different content is a conflict and leaves the ori
   ingest(db, await prepare(worker(1, { cpuMs: 2 })), NOW);
   assert.equal(ingest(db, await prepare(worker(1, { cpuMs: 9 })), NOW).conflict, 1);
   assert.equal(listTraces(db, NOW).items[0]!.cpuMs, 2);
+});
+
+await test("health names each conflict's key source and the fields that differ from the stored invocation", async () => {
+  const db = database();
+  const untraced = { trace: null, kind: "rpc", stage: "object", objectId: OBJECT, label: "Installation.ingest" } as const;
+  ingest(db, await prepare(worker(1, { cpuMs: 2 }), worker(2, { ...untraced, wallMs: 40 })), NOW);
+  ingest(db, await prepare(worker(1, { cpuMs: 9 }), worker(2, { ...untraced, wallMs: 41, outcome: "exception" }), worker(1, { cpuMs: 2 })), NOW);
+  const reasons = health(db, NOW).reasons;
+  assert.deepEqual(reasons.filter(reason => reason.counter === "conflict").sort((a, b) => a.reason.localeCompare(b.reason)), [
+    { counter: "conflict", reason: "fallback", count: 1, example: "rpc Installation.ingest; differs: outcome, wall_ms" },
+    { counter: "conflict", reason: "span", count: 1, example: "fetch GET /api/v1/hosts; differs: cpu_ms" }
+  ]);
+  assert.deepEqual(reasons.find(reason => reason.counter === "duplicate"), { counter: "duplicate", reason: "span", count: 1, example: "fetch GET /api/v1/hosts" });
+  assert.equal(health(db, NOW).conflict, 2);
+});
+
+await test("rejections, expiries, and issue capacity are counted by reason", async () => {
+  const db = database();
+  ingest(db, [{ ok: false, reason: "invalid_trace" }, { ok: false, reason: "invalid_trace" }, { ok: false, reason: "invalid_label" }, ...await prepare(worker(1, { eventAtMs: NOW - RETENTION_MS - 1 }))], NOW);
+  const reasons = health(db, NOW).reasons.map(({ counter, reason, count }) => `${counter}:${reason}:${count}`).sort();
+  assert.deepEqual(reasons, ["expired:fetch:1", "rejected:invalid_label:1", "rejected:invalid_trace:2"]);
+  assert.equal(health(db, NOW).rejected, 3);
+});
+
+await test("health reports the rows each ingest and cleanup wrote against the invocations accepted", async () => {
+  const db = database();
+  const batch: Preparation[] = [];
+  for (let n = 0; n < 20; n++) batch.push(synthetic(n, T0 + n));
+  const before = db.rowsWritten();
+  ingest(db, batch, T0 + 100);
+  const ingested = db.rowsWritten() - before;
+  const later = T0 + RETENTION_MS + 1000;
+  const beforeCleanup = db.rowsWritten();
+  cleanup(db, later);
+  const cleaned = db.rowsWritten() - beforeCleanup;
+  const writes = health(db, later).writes;
+  assert.equal(writes.accepted, 20);
+  assert.equal(writes.ingestBatches, 1);
+  assert.ok(writes.ingestRows > 0 && writes.ingestRows < ingested, `${writes.ingestRows} of ${ingested}`);
+  assert.ok(writes.cleanupRows >= 20 && writes.cleanupRows < cleaned, `${writes.cleanupRows} of ${cleaned}`);
+});
+
+await test("opening a store from before reasons keeps its counters as unrecorded", () => {
+  const legacy = new DatabaseSync(":memory:");
+  legacy.exec("CREATE TABLE observe_health (bucket_at INTEGER PRIMARY KEY, duplicate INTEGER NOT NULL, conflict INTEGER NOT NULL, expired INTEGER NOT NULL, future INTEGER NOT NULL, rejected INTEGER NOT NULL, issue_capacity INTEGER NOT NULL, evicted INTEGER NOT NULL)");
+  legacy.exec(`INSERT INTO observe_health VALUES (${NOW - (NOW % H)}, 3, 1, 0, 0, 0, 0, 0)`);
+  const db = wrap(legacy);
+  initializeStore(db);
+  initializeStore(db);
+  const reported = health(db, NOW);
+  assert.equal(reported.conflict, 1);
+  assert.equal(reported.duplicate, 3);
+  assert.deepEqual(reported.reasons.map(({ counter, reason, count }) => `${counter}:${reason}:${count}`).sort(), ["conflict:unrecorded:1", "duplicate:unrecorded:3"]);
+  assert.equal(db.rows("SELECT name FROM sqlite_master WHERE name = 'observe_health'").length, 0);
 });
 
 await test("a write failure mid-batch rolls back every row of the batch", async () => {

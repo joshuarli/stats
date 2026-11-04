@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type ObservedError, type ObservedInvocation, type Preparation, type PreparedInvocation } from "../../src/observe/core/model.ts";
-import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase, type SqlValue } from "../../src/observe/core/store.ts";
+import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { wrap } from "../observe/support.ts";
 import { createObserveService, type ObserveService } from "../../src/observe/core/service.ts";
 import { encode, type SourceMapSegment } from "@jridgewell/sourcemap-codec";
 import { handleApi } from "../../src/observe/http/api.ts";
@@ -92,14 +93,7 @@ export interface Scenario {
 
 export async function buildScenario(now: number): Promise<Scenario> {
   const raw = new DatabaseSync(":memory:");
-  const db: SqlDatabase = {
-    rows: <T>(query: string, ...params: SqlValue[]) => raw.prepare(query).all(...params) as T[],
-    run: (query: string, ...params: SqlValue[]) => { raw.prepare(query).run(...params); },
-    transaction: <T>(fn: () => T): T => {
-      raw.exec("BEGIN");
-      try { const value = fn(); raw.exec("COMMIT"); return value; } catch (error) { raw.exec("ROLLBACK"); throw error; }
-    }
-  };
+  const db: SqlDatabase = wrap(raw);
   initializeStore(db);
   const next = random(20261104);
   const plan = rollouts(now);
@@ -119,7 +113,7 @@ export async function buildScenario(now: number): Promise<Scenario> {
     const span = id(16);
     const invocation: PreparedInvocation = {
       key: span, digest: span, version: fields.version, stage: fields.stage, objectId: fields.objectId ?? null, kind: fields.kind, label: fields.label, status: fields.status,
-      outcome: fields.outcome, cpuMs: fields.cpuMs, wallMs: fields.wallMs, eventAtMs: fields.eventAtMs, trace: { traceId: fields.trace, spanId: span }, errorCount: 0, errors: []
+      outcome: fields.outcome, cpuMs: fields.cpuMs, wallMs: fields.wallMs, eventAtMs: fields.eventAtMs, trace: { traceId: fields.trace, spanId: span }, errorCount: 0, errors: [], keySource: "span"
     };
     return { ok: true, invocation };
   };

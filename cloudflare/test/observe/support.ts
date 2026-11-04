@@ -15,6 +15,7 @@ export function database(): TestDatabase {
 }
 
 export function wrap(db: DatabaseSync): TestDatabase {
+  let written = 0;
   const store: TestDatabase = {
     db,
     failOnRun: null,
@@ -23,7 +24,10 @@ export function wrap(db: DatabaseSync): TestDatabase {
     },
     run(query: string, ...params: SqlValue[]): void {
       if (store.failOnRun?.(query) === true) throw new Error("injected write failure");
-      db.prepare(query).run(...params);
+      written += Number(db.prepare(query).run(...params).changes);
+    },
+    rowsWritten(): number {
+      return written;
     },
     transaction<T>(fn: () => T): T {
       db.exec("BEGIN");
@@ -70,7 +74,8 @@ export function object(n: number, overrides: Partial<ObservedInvocation> = {}): 
 export function synthetic(n: number, atMs: number, failed = false): Preparation {
   const invocation: PreparedInvocation = {
     key: hex(n + 1, 16), digest: hex(n + 1, 64), version: VERSION, stage: "worker", objectId: null, kind: "fetch", label: "POST /ingest/v1/batches",
-    status: failed ? 500 : 204, outcome: "ok", cpuMs: 3, wallMs: 60, eventAtMs: atMs, trace: { traceId: hex(n + 1, 32), spanId: hex(n + 1, 16) }, errorCount: 0, errors: []
+    status: failed ? 500 : 204, outcome: "ok", cpuMs: 3, wallMs: 60, eventAtMs: atMs, trace: { traceId: hex(n + 1, 32), spanId: hex(n + 1, 16) }, errorCount: 0, errors: [],
+    keySource: "span"
   };
   return { ok: true, invocation };
 }

@@ -9,6 +9,8 @@ export interface SqlDatabase {
   rows<T>(query: string, ...params: SqlValue[]): T[];
   run(query: string, ...params: SqlValue[]): void;
   transaction<T>(fn: () => T): T;
+  /** Cumulative rows the backend reports written by `run`, as the backend bills them. */
+  rowsWritten(): number;
 }
 
 export type IssueState = "open" | "resolved";
@@ -181,6 +183,25 @@ export const DURATION_EDGES: readonly number[] = [5, 10, 20, 50, 100, 200, 500, 
 const HEATMAP_BUCKETS = 60;
 const MIN_PERCENTILE_SAMPLES = 5;
 
+export const HEALTH_COUNTERS = ["duplicate", "conflict", "expired", "future", "rejected", "issue_capacity", "evicted"] as const;
+export type HealthCounter = typeof HEALTH_COUNTERS[number];
+
+export interface HealthReason {
+  readonly counter: HealthCounter;
+  readonly reason: string;
+  readonly count: number;
+  readonly example: string | null;
+}
+
+export interface WriteCost {
+  readonly ingestBatches: number;
+  readonly accepted: number;
+  readonly ingestRows: number;
+  readonly cleanupRows: number;
+}
+
+const MAX_HEALTH_REASONS = 20;
+
 export interface Health {
   readonly newestAtMs: number | null;
   readonly oldestAtMs: number | null;
@@ -195,6 +216,8 @@ export interface Health {
   readonly rejected: number;
   readonly issueCapacity: number;
   readonly evicted: number;
+  readonly reasons: readonly HealthReason[];
+  readonly writes: WriteCost;
 }
 
 const STATEMENTS = [
@@ -274,16 +297,22 @@ const STATEMENTS = [
     uploaded_at INTEGER NOT NULL,
     PRIMARY KEY (version, file)
   )`,
-  `CREATE TABLE IF NOT EXISTS observe_health (
-    bucket_at INTEGER PRIMARY KEY,
-    duplicate INTEGER NOT NULL,
-    conflict INTEGER NOT NULL,
-    expired INTEGER NOT NULL,
-    future INTEGER NOT NULL,
-    rejected INTEGER NOT NULL,
-    issue_capacity INTEGER NOT NULL,
-    evicted INTEGER NOT NULL
-  )`
+  `CREATE TABLE IF NOT EXISTS observe_health_events (
+    bucket_at INTEGER NOT NULL,
+    counter TEXT NOT NULL CHECK (counter IN (${HEALTH_COUNTERS.map(counter => `'${counter}'`).join(", ")})),
+    reason TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    example TEXT,
+    PRIMARY KEY (bucket_at, counter, reason)
+  ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_write_cost (
+    bucket_at INTEGER NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('ingest', 'cleanup')),
+    runs INTEGER NOT NULL,
+    invocations INTEGER NOT NULL,
+    rows_written INTEGER NOT NULL,
+    PRIMARY KEY (bucket_at, phase)
+  ) WITHOUT ROWID`
 ];
 
 export function initializeStore(db: SqlDatabase): void {
@@ -291,6 +320,12 @@ export function initializeStore(db: SqlDatabase): void {
     for (const statement of STATEMENTS) db.run(statement);
     if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
       db.run("ALTER TABLE observe_issues ADD COLUMN resolved_at INTEGER");
+    }
+    if (db.rows<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'observe_health'").length > 0) {
+      for (const counter of HEALTH_COUNTERS) {
+        db.run(`INSERT INTO observe_health_events (bucket_at, counter, reason, count, example) SELECT bucket_at, '${counter}', 'unrecorded', ${counter}, NULL FROM observe_health WHERE ${counter} > 0`);
+      }
+      db.run("DROP TABLE observe_health");
     }
   });
 }
@@ -326,29 +361,57 @@ export function recordRollouts(db: SqlDatabase, preparations: readonly RolloutPr
   return result;
 }
 
+interface HealthEvent {
+  readonly counter: HealthCounter;
+  readonly reason: string;
+  readonly example: string | null;
+}
+
+type StoredColumns = Record<typeof COMPARED_COLUMNS[number], SqlValue>;
+
+const COMPARED_COLUMNS = ["event_at", "trace_id", "stage", "kind", "label", "object_id", "version", "status", "outcome", "cpu_ms", "wall_ms", "error_count"] as const;
+
+function differingColumns(stored: StoredColumns, invocation: PreparedInvocation): string {
+  const incoming: StoredColumns = {
+    event_at: invocation.eventAtMs, trace_id: invocation.trace?.traceId ?? null, stage: invocation.stage, kind: invocation.kind, label: invocation.label, object_id: invocation.objectId,
+    version: invocation.version, status: invocation.status, outcome: invocation.outcome, cpu_ms: invocation.cpuMs, wall_ms: invocation.wallMs, error_count: invocation.errorCount
+  };
+  const differing = COMPARED_COLUMNS.filter(column => stored[column] !== incoming[column]);
+  return differing.length === 0 ? "errors" : differing.sort().join(", ");
+}
+
 export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
+  const events: HealthEvent[] = [];
   const cutoff = nowMs - RETENTION_MS;
   db.transaction(() => {
+    const writtenBefore = db.rowsWritten();
     for (const preparation of preparations) {
-      if (!preparation.ok) { result.rejected++; continue; }
+      if (!preparation.ok) { result.rejected++; events.push({ counter: "rejected", reason: preparation.reason, example: null }); continue; }
       const invocation = preparation.invocation;
+      const described = `${invocation.kind} ${invocation.label}`;
       const observedAt = Math.min(invocation.eventAtMs, nowMs);
-      if (invocation.eventAtMs > nowMs + MAX_FUTURE_SKEW_MS) { result.future++; continue; }
-      if (observedAt <= cutoff) { result.expired++; continue; }
-      const existing = db.rows<{ digest: string }>("SELECT digest FROM observe_invocations WHERE key = ?", invocation.key)[0];
+      if (invocation.eventAtMs > nowMs + MAX_FUTURE_SKEW_MS) { result.future++; events.push({ counter: "future", reason: invocation.kind, example: described }); continue; }
+      if (observedAt <= cutoff) { result.expired++; events.push({ counter: "expired", reason: invocation.kind, example: described }); continue; }
+      const existing = db.rows<StoredColumns & { digest: string }>(`SELECT digest, ${COMPARED_COLUMNS.join(", ")} FROM observe_invocations WHERE key = ?`, invocation.key)[0];
       if (existing !== undefined) {
-        if (existing.digest === invocation.digest) result.duplicate++;
-        else result.conflict++;
+        if (existing.digest === invocation.digest) {
+          result.duplicate++;
+          events.push({ counter: "duplicate", reason: invocation.keySource, example: described });
+        } else {
+          result.conflict++;
+          events.push({ counter: "conflict", reason: invocation.keySource, example: `${described}; differs: ${differingColumns(existing, invocation)}` });
+        }
         continue;
       }
       insertInvocation(db, invocation, observedAt);
       for (const error of invocation.errors) {
-        if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) result.issueCapacity++;
+        if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) { result.issueCapacity++; events.push({ counter: "issue_capacity", reason: "issues_full", example: error.name }); }
       }
       result.accepted++;
     }
-    recordHealth(db, nowMs, { ...result, evicted: 0 });
+    recordHealth(db, nowMs, events);
+    recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
   return result;
 }
@@ -401,27 +464,47 @@ function upsertIssue(db: SqlDatabase, error: PreparedError, observedAt: number):
   return true;
 }
 
-function recordHealth(db: SqlDatabase, nowMs: number, counts: Omit<IngestResult, "accepted"> & { evicted: number }): void {
-  const values = [counts.duplicate, counts.conflict, counts.expired, counts.future, counts.rejected, counts.issueCapacity, counts.evicted];
-  if (values.every(value => value === 0)) return;
+function healthBucket(nowMs: number): number {
+  return nowMs - (nowMs % HEALTH_BUCKET_MS);
+}
+
+function recordHealth(db: SqlDatabase, nowMs: number, events: readonly HealthEvent[]): void {
+  const grouped = new Map<string, { event: HealthEvent; count: number }>();
+  for (const event of events) {
+    const key = `${event.counter}\u0000${event.reason}`;
+    const entry = grouped.get(key);
+    if (entry === undefined) grouped.set(key, { event, count: 1 });
+    else entry.count++;
+  }
+  for (const { event, count } of grouped.values()) {
+    db.run(
+      `INSERT INTO observe_health_events (bucket_at, counter, reason, count, example) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (bucket_at, counter, reason) DO UPDATE SET count = count + excluded.count`,
+      healthBucket(nowMs), event.counter, event.reason, count, event.example
+    );
+  }
+}
+
+function recordWriteCost(db: SqlDatabase, nowMs: number, phase: "ingest" | "cleanup", invocations: number, rowsWritten: number): void {
+  if (invocations === 0 && rowsWritten === 0) return;
   db.run(
-    `INSERT INTO observe_health (bucket_at, duplicate, conflict, expired, future, rejected, issue_capacity, evicted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (bucket_at) DO UPDATE SET duplicate = duplicate + excluded.duplicate, conflict = conflict + excluded.conflict,
-       expired = expired + excluded.expired, future = future + excluded.future, rejected = rejected + excluded.rejected,
-       issue_capacity = issue_capacity + excluded.issue_capacity, evicted = evicted + excluded.evicted`,
-    nowMs - (nowMs % HEALTH_BUCKET_MS), ...values
+    `INSERT INTO observe_write_cost (bucket_at, phase, runs, invocations, rows_written) VALUES (?, ?, 1, ?, ?)
+     ON CONFLICT (bucket_at, phase) DO UPDATE SET runs = runs + 1, invocations = invocations + excluded.invocations, rows_written = rows_written + excluded.rows_written`,
+    healthBucket(nowMs), phase, invocations, rowsWritten
   );
 }
 
 export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
   const cutoff = nowMs - RETENTION_MS;
   return db.transaction(() => {
+    const writtenBefore = db.rowsWritten();
     const expiredInvocations = count(db, "SELECT COUNT(*) AS n FROM observe_invocations WHERE observed_at <= ?", cutoff);
     const expiredOccurrences = count(db, "SELECT COUNT(*) AS n FROM observe_occurrences WHERE observed_at <= ?", cutoff);
     db.run("DELETE FROM observe_invocations WHERE key IN (SELECT key FROM observe_invocations WHERE observed_at <= ? ORDER BY observed_at LIMIT ?)", cutoff, CLEANUP_BATCH);
     db.run("DELETE FROM observe_occurrences WHERE id IN (SELECT id FROM observe_occurrences WHERE observed_at <= ? ORDER BY observed_at LIMIT ?)", cutoff, CLEANUP_BATCH);
     db.run("DELETE FROM observe_issues WHERE NOT EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = observe_issues.fingerprint AND o.observed_at > ?)", cutoff);
-    db.run("DELETE FROM observe_health WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
+    db.run("DELETE FROM observe_health_events WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
+    db.run("DELETE FROM observe_write_cost WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -429,18 +512,22 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     db.run("DELETE FROM observe_version_labels WHERE updated_at <= ? AND version NOT IN (SELECT version FROM observe_rollout_shares)", rolloutCutoff);
     db.run("DELETE FROM observe_artifacts WHERE rowid NOT IN (SELECT rowid FROM observe_artifacts ORDER BY uploaded_at DESC, version DESC, file DESC LIMIT ?)", MAX_ARTIFACTS);
     const evicted = evict(db);
-    recordHealth(db, nowMs, { duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted });
+    recordHealth(db, nowMs, [
+      ...Array.from({ length: evicted.invocations }, (): HealthEvent => ({ counter: "evicted", reason: "invocations", example: null })),
+      ...Array.from({ length: evicted.occurrences }, (): HealthEvent => ({ counter: "evicted", reason: "occurrences", example: null }))
+    ]);
+    recordWriteCost(db, nowMs, "cleanup", Math.min(expiredInvocations, CLEANUP_BATCH) + evicted.invocations, db.rowsWritten() - writtenBefore);
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
-    return { deleted, evicted, more: expiredInvocations > CLEANUP_BATCH || expiredOccurrences > CLEANUP_BATCH };
+    return { deleted, evicted: evicted.invocations + evicted.occurrences, more: expiredInvocations > CLEANUP_BATCH || expiredOccurrences > CLEANUP_BATCH };
   });
 }
 
-function evict(db: SqlDatabase): number {
+function evict(db: SqlDatabase): { readonly invocations: number; readonly occurrences: number } {
   const invocationExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_invocations") - MAX_RETAINED_INVOCATIONS, CLEANUP_BATCH);
   if (invocationExcess > 0) db.run("DELETE FROM observe_invocations WHERE key IN (SELECT key FROM observe_invocations WHERE failed = 0 ORDER BY observed_at LIMIT ?)", invocationExcess);
   const occurrenceExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_occurrences") - MAX_RETAINED_OCCURRENCES, CLEANUP_BATCH);
   if (occurrenceExcess > 0) db.run("DELETE FROM observe_occurrences WHERE id IN (SELECT id FROM observe_occurrences ORDER BY observed_at LIMIT ?)", occurrenceExcess);
-  return Math.max(invocationExcess, 0) + Math.max(occurrenceExcess, 0);
+  return { invocations: Math.max(invocationExcess, 0), occurrences: Math.max(occurrenceExcess, 0) };
 }
 
 export function nextCleanupAt(db: SqlDatabase, nowMs: number, cleaned: CleanupResult): number | null {
@@ -750,11 +837,18 @@ export function health(db: SqlDatabase, nowMs: number): Health {
     "SELECT COUNT(*) AS n, MIN(observed_at) AS oldest, MAX(observed_at) AS newest FROM observe_invocations WHERE observed_at > ?", cutoff
   )[0];
   const backlog = db.rows<{ n: number; oldest: number | null }>("SELECT COUNT(*) AS n, MIN(observed_at) AS oldest FROM observe_invocations WHERE observed_at <= ?", cutoff)[0];
-  const counters = db.rows<Record<"duplicate" | "conflict" | "expired" | "future" | "rejected" | "issue_capacity" | "evicted", number | null>>(
-    `SELECT SUM(duplicate) AS duplicate, SUM(conflict) AS conflict, SUM(expired) AS expired, SUM(future) AS future, SUM(rejected) AS rejected,
-       SUM(issue_capacity) AS issue_capacity, SUM(evicted) AS evicted FROM observe_health WHERE bucket_at + ? > ?`,
+  const reasons = db.rows<HealthReason>(
+    `SELECT counter, reason, SUM(count) AS count, MAX(example) AS example FROM observe_health_events WHERE bucket_at + ? > ?
+     GROUP BY counter, reason ORDER BY count DESC, counter, reason`,
     HEALTH_BUCKET_MS, cutoff
-  )[0];
+  );
+  const total = (counter: HealthCounter): number => reasons.reduce((sum, reason) => sum + (reason.counter === counter ? reason.count : 0), 0);
+  const cost = db.rows<{ phase: "ingest" | "cleanup"; runs: number; invocations: number; rows_written: number }>(
+    "SELECT phase, SUM(runs) AS runs, SUM(invocations) AS invocations, SUM(rows_written) AS rows_written FROM observe_write_cost WHERE bucket_at + ? > ? GROUP BY phase",
+    HEALTH_BUCKET_MS, cutoff
+  );
+  const ingestCost = cost.find(row => row.phase === "ingest");
+  const cleanupCost = cost.find(row => row.phase === "cleanup");
   const openIssues = count(db, `SELECT COUNT(*) AS n FROM observe_issues i WHERE i.state = 'open' AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)`, cutoff);
   const oldestExpired = backlog?.oldest ?? null;
   return {
@@ -764,12 +858,14 @@ export function health(db: SqlDatabase, nowMs: number): Health {
     cleanupBacklog: backlog?.n ?? 0,
     cleanupLagMs: oldestExpired === null ? 0 : nowMs - (oldestExpired + RETENTION_MS),
     openIssues,
-    duplicate: counters?.duplicate ?? 0,
-    conflict: counters?.conflict ?? 0,
-    expired: counters?.expired ?? 0,
-    future: counters?.future ?? 0,
-    rejected: counters?.rejected ?? 0,
-    issueCapacity: counters?.issue_capacity ?? 0,
-    evicted: counters?.evicted ?? 0
+    duplicate: total("duplicate"),
+    conflict: total("conflict"),
+    expired: total("expired"),
+    future: total("future"),
+    rejected: total("rejected"),
+    issueCapacity: total("issue_capacity"),
+    evicted: total("evicted"),
+    reasons: reasons.slice(0, MAX_HEALTH_REASONS).map(({ counter, reason, count, example }) => ({ counter, reason, count, example })),
+    writes: { ingestBatches: ingestCost?.runs ?? 0, accepted: ingestCost?.invocations ?? 0, ingestRows: ingestCost?.rows_written ?? 0, cleanupRows: cleanupCost?.rows_written ?? 0 }
   };
 }

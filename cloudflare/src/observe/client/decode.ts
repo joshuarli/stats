@@ -1,3 +1,4 @@
+import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
 import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
@@ -176,7 +177,29 @@ export function decodeHealth(value: unknown): ObserveHealth {
     rejected: counter("rejected"),
     issueCapacity: counter("issueCapacity"),
     evicted: counter("evicted"),
+    reasons: list(fields["reasons"], 20, healthReason, "health reasons"),
+    writes: writeCost(fields["writes"]),
     databaseBytes: counter("databaseBytes")
+  };
+}
+
+function healthReason(value: unknown): HealthReason {
+  const fields = record(value, "health reason");
+  return {
+    counter: oneOf(fields["counter"], HEALTH_COUNTERS, "health counter"),
+    reason: text(fields["reason"], "health reason", 64),
+    count: integer(fields["count"], "health reason count"),
+    example: nullableText(fields["example"], "health example", 512)
+  };
+}
+
+function writeCost(value: unknown): Health["writes"] {
+  const fields = record(value, "write cost");
+  return {
+    ingestBatches: integer(fields["ingestBatches"], "ingest batches"),
+    accepted: integer(fields["accepted"], "accepted invocations"),
+    ingestRows: integer(fields["ingestRows"], "ingest rows written"),
+    cleanupRows: integer(fields["cleanupRows"], "cleanup rows written")
   };
 }
 

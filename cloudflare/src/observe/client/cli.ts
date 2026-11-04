@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
-import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces } from "./decode.ts";
+import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "./decode.ts";
 import type { InvocationSummary, IssueState } from "../core/store.ts";
 
 const USAGE = `usage: observe <command> [options]
@@ -68,6 +68,11 @@ async function call<T>(context: Context, path: string, decode: (value: unknown) 
   catch (error) { throw new Exit(EXIT.unavailable, error instanceof Error ? error.message : "invalid response"); }
 }
 
+function rowsPerInvocation(writes: ObserveHealth["writes"]): string {
+  if (writes.accepted === 0) return "no invocations accepted in the retention window";
+  return `${((writes.ingestRows + writes.cleanupRows) / writes.accepted).toFixed(2)} rows written per invocation (${writes.ingestRows} ingest and ${writes.cleanupRows} cleanup over ${writes.accepted} invocations in ${writes.ingestBatches} batches)`;
+}
+
 function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`;
 }
@@ -106,7 +111,7 @@ async function run(command: string, positional: readonly string[], values: Recor
   switch (command) {
     case "health": {
       const health = await call(context, "/health", decodeHealth);
-      return print(health, () => [`${health.liveInvocations} invocations retained, newest ${health.newestAtMs === null ? "never" : new Date(health.newestAtMs).toISOString()}`, `${health.openIssues} open issues, cleanup lag ${ms(health.cleanupLagMs)}`, `rejected ${health.rejected}, duplicate ${health.duplicate}, evicted ${health.evicted}`]);
+      return print(health, () => [`${health.liveInvocations} invocations retained, newest ${health.newestAtMs === null ? "never" : new Date(health.newestAtMs).toISOString()}`, `${health.openIssues} open issues, cleanup lag ${ms(health.cleanupLagMs)}`, `rejected ${health.rejected}, duplicate ${health.duplicate}, conflict ${health.conflict}, evicted ${health.evicted}`, rowsPerInvocation(health.writes), ...health.reasons.map(reason => `  ${reason.counter} ${reason.reason} ${reason.count}${reason.example === null ? "" : `  ${reason.example}`}`)]);
     }
     case "routes": {
       const exploration = await call(context, `/explore?${windowQuery(string("window"), now)}`, decodeExploration);

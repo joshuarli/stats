@@ -324,7 +324,7 @@ live invocations at 7 days.
 | --- | --- | --- |
 | Stats CPU per request | One publish per invocation; no other change outside catch paths | Project page CPU before and after Phase 5 |
 | Stats bundle | Under 1 KiB gzip added | `make worker-bundle` size before and after |
-| Rows written per invocation, including index entries and its later delete | 6 or fewer | Store test reading the cursor's `rowsWritten` |
+| Rows written per invocation, including index entries and its later delete | 6 or fewer | `pnpm observe health`, which sums the cursor's billed `rowsWritten` over every ingest and cleanup in the retention window, excluding the one counter row each run writes |
 | Stored bytes per successful invocation | Under 512 bytes; 351 measured with both index entries | 70k synthetic rows in `node:sqlite` |
 | Collector CPU per tail call | Under 1 ms; the probe measured about 0.08 ms | Tail `cpuTime` once deployed |
 | `ObservationStore` requests | One per tail call | Collector test |
