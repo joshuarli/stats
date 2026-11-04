@@ -10,13 +10,13 @@ import type { Deployment, DeploymentHistory } from "../../../deployments/model";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
 import "./deployments.css";
 
-async function read<T>(path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
+async function read<T>(what: "Deployment history" | "Deployment comparison", path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
   let response: Response;
   try { response = await fetch(path, { signal, credentials: "same-origin", cache: "no-store" }); }
-  catch (cause) { throw new ApiFailure(0, "Deployment history request failed", cause); }
-  if (!response.ok) throw new ApiFailure(response.status, `Deployment history unavailable (${response.status})`);
+  catch (cause) { throw new ApiFailure(0, `${what} request failed`, cause); }
+  if (!response.ok) throw new ApiFailure(response.status, `${what} unavailable (${response.status})`);
   try { return decode(await response.json()); }
-  catch (cause) { throw new ApiFailure(0, "Invalid deployment history response", cause); }
+  catch (cause) { throw new ApiFailure(0, `Invalid ${what.toLowerCase()} response`, cause); }
 }
 
 function figure(value: number | null, unit = ""): string {
@@ -75,7 +75,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; }
-    void read(`/api/v1/projects/${encodeURIComponent(project)}/deployments`, controller.signal, value => decodeDeploymentHistory(value, project)).then(value => {
+    void read("Deployment history", `/api/v1/projects/${encodeURIComponent(project)}/deployments`, controller.signal, value => decodeDeploymentHistory(value, project)).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);
       setHistoryError(null);
@@ -88,7 +88,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     onCleanup(() => controller.abort());
     setComparisonError(null);
     if (query.id === "") { setComparison(null); return; }
-    void read(`/api/v1/projects/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => decodeDeploymentComparison(value, query.id, query.window)).then(value => {
+    void read("Deployment comparison", `/api/v1/projects/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => decodeDeploymentComparison(value, query.id, query.window)).then(value => {
       if (!controller.signal.aborted) setComparison(value);
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
