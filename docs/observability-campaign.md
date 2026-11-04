@@ -283,7 +283,7 @@ prevented; the Makefile pairs the map and the version from one deploy. A map
 larger than 1.5 MiB is rejected rather than chunked; the stats map is
 370 KB.
 
-## Phase 5: rollout (owner-run)
+## Phase 5: rollout (done)
 
 Deploy `stats-observe` first, because stats cannot reference a consumer that
 does not exist. Then deploy stats with `tailConsumers`, register its map, and
@@ -292,15 +292,26 @@ project page. Rollback removes `tailConsumers` from stats first, because a
 referenced consumer cannot be deleted; deleting `stats-observe` and its data
 is a separate decision.
 
-Interim reading on 2026-11-04 at 03:02 UTC, 1 h 50 min after capture began,
-comparing CPU per invocation in Workers Logs against the previous 24 hours:
-Worker ingest 0.61 → 0.88 ms, Durable Object ingest 14.72 → 14.93 ms,
-Durable Object RPC 8.52 → 10.0 ms, scheduled run 30.9 → 27.5 ms, and
-`stats-observe` 0.78 ms per tail call. Only the Worker ingest rise could be
-the per-invocation publish, and it is not yet significant: CPU is recorded
-in whole milliseconds and logs are sampled at 10%, so the window holds about
-42 sampled ingest rows. Repeat over a full day after 2026-11-05 01:10 UTC
-before calling the CPU budget met.
+Reading on 2026-11-04 at 14:55 UTC, 13 h 43 min after capture began, in
+Workers Logs CPU per invocation. It compares the capture window against the
+24 hours before it and against the same clock hours the day before:
+
+| Invocation | 24 h before | Same hours, day before | Since capture |
+| --- | --- | --- | --- |
+| Worker ingest | 0.61 ms | 0.47 ms | 0.72 ms (3,630 sampled rows) |
+| Durable Object ingest | 14.74 ms | 13.09 ms | 9.03 ms |
+| Durable Object RPC | 8.81 ms | 5.84 ms | 4.12 ms |
+| Scheduled run | 30.9 ms | 29.3 ms | 30.7 ms |
+| `stats-observe` tail call | | | 0.74 ms, plus 0.39 ms per store RPC |
+
+The Worker ingest figure is the only one the per-invocation publish could
+move, and its rise is within normal day-to-day variation. CPU is recorded
+in whole milliseconds, so most rows read 0 or 1. Hourly means ranged from
+0 to 3 ms both before and after capture, and 2026-11-02 averaged above the
+capture window. Worker ingest wall time fell from 87.9 to 75.3 ms. The
+budget is met at this resolution. Excluding the mark on routes the
+collector drops anyway would save at most the 0.1 ms difference, which the
+data cannot distinguish from zero.
 
 ## Budgets
 
@@ -386,7 +397,8 @@ ingest traces. Workers Logs counts for the same window read about 60%
 higher because of the dataset's sampling stamp, so they are not a delivery
 baseline.
 `stats-observe` and `stats` are deployed (`dc8c3793`, `2221f9c2`), and
-production capture started on 2026-11-04.
+production capture started on 2026-11-04. Phase 5 closed the same day on
+13 h 43 min of capture instead of a full day, with no measurable CPU change.
 
 Phase 1 dropped the STO1 codec and the fragment benchmark: with classic tail
 there is no per-invocation payload beyond columns, so a codec would encode
