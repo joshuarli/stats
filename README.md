@@ -13,7 +13,7 @@ lives in the Niceforge repository, and Niceforge execution never depends on
 telemetry.
 
 Deploying the Worker and provisioning hosts: [`docs/operations.md`](docs/operations.md).
-Wire protocol: [`docs/protocol.md`](docs/protocol.md). Developer guide: [`AGENTS.md`](AGENTS.md).
+Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Developer guide: [`AGENTS.md`](AGENTS.md).
 
 ## Install the agent
 
@@ -150,9 +150,15 @@ an upload.
   permanent ones below keep the batch and retry with exponential backoff and
   jitter (1 s base, 60 s cap). 429 honors `Retry-After`. A batch put back on a
   full queue displaces the newest samples.
-- 400, 404, 413, 422, or a bad URL drops the batch. A queued batch is trimmed
-  to the 65,536-byte encoded body cap before it is sent; a single sample
-  larger than the cap is dropped.
+- 400, 404, 413, 422, or a bad URL drops the batch. The agent encodes a
+  batch once as a binary STB2 frame and sends the longest prefix of samples
+  that fits the 65,536-byte body cap; the rest go back to the front of the
+  queue and start the next frame. A sample that cannot be encoded on its own
+  is dropped and counted, never retried.
+- 410, 415, or a success response that is not a valid STB2 acknowledgment
+  covering every sample in the batch is a protocol error: the server does not
+  speak ingest v2, so the batch is dropped and the error is logged. An agent
+  of this version and a server older than ingest v2 cannot exchange data.
 - 401 and 403 keep the batch, retry at the 60 s cap, and reread the token file
   before each retry. Rotating a host token is a file replace; the agent picks
   up the new token without a restart. A revoked host keeps retrying and

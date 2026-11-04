@@ -1,7 +1,7 @@
 # Architecture
 
 A Rust agent, static musl on Linux and native on macOS (`agent/src/linux.rs`,
-`agent/src/macos.rs`), samples each host and posts batches over HTTPS
+`agent/src/macos.rs`), samples each host and posts binary STB2 batches over HTTPS
 to a Cloudflare Worker. The Worker forwards ingest and API calls to one
 SQLite-backed Durable Object, which stores raw samples and rollups and answers
 history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
@@ -13,8 +13,15 @@ served through the same Worker, reads that API behind Cloudflare Access. The wir
 
 `agent/src/main.rs` parses the command line, `config.rs` loads and validates
 the config and token, `linux.rs` samples, `runtime.rs` runs the sampling and
-upload threads, `queue.rs` holds unsent samples, and `transport.rs` posts with
+upload threads, `queue.rs` holds unsent samples, `wire.rs` encodes STB2
+request frames and decodes STA2 acknowledgments, and `transport.rs` posts with
 `h12tiny-client-sync` and Rustls (Graviola) against the system trust roots.
+Samples hold native integers (`model.rs`): counters as `u64`, load averages
+as thousandths, PSI averages as hundredths. The JSON form exists only for
+`--once` and the fixture sources. The runtime asks the transport to prepare a
+batch, which encodes the samples once in order and keeps the longest prefix
+that fits 65,536 bytes; the samples after it go back to the front of the
+queue in order and start the next frame.
 
 A failed upload is logged to stderr with its class and message, rate-limited to
 one line a minute while it repeats. A 401 or 403 keeps the batch, backs off at
@@ -53,8 +60,15 @@ and keeps `seq` unique.
 ## Worker
 
 `cloudflare/src/index.ts` is the whole routing table. `/health` is public.
-`/ingest/v1/batches` is forwarded to the Durable Object, which authenticates
-the host bearer token. Every other path that serves assets or data first passes
+`POST /ingest/v2/batches` with a token-shaped bearer, the STB2 media type, no
+content encoding, and a declared length within the cap is forwarded to the
+Durable Object unread; the object reads the body as bounded bytes, decodes it
+(`src/ingest/frame.ts`), authenticates the host bearer token, validates each
+sample and normalizes it to the stored JSON shape (`src/ingest/sample.ts`),
+and answers with an STA2 acknowledgment (`src/ingest/ack.ts`). Any request to
+the retired `/ingest/v1/batches` answers `410 Gone`.
+
+Every other path that serves assets or data first passes
 `verifyAccess` in `access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
@@ -146,7 +160,10 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
 - `host_history_versions`: a per-host version advanced by ingest and retention,
   used for history ETags.
 - `host_system`: the latest `system` object per host and when it arrived.
-- `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`.
+- `samples`: raw samples for 48 hours, unique on `(hostId, bootId, seq)`. The
+  payload is the sample's canonical JSON (decimal-string counters, sorted
+  keys), the same text the v1 JSON protocol stored; the binary ingest format
+  does not reach storage, and duplicates compare this text.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 30 days.
 

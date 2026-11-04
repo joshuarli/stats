@@ -2,9 +2,11 @@
 
 Status: **integrated**. Every host and project history response is an STC1
 frame (`HISTORY_CONTENT_TYPE`); the JSON history representation, content
-negotiation, and point-object models were removed. Ingest protocol v1, the SQL
-schema, and the history algorithms (rollups, rates, missing-versus-zero, gap
-rules) are unchanged. The wire contract, compression, and ETag behavior are in
+negotiation, and point-object models were removed. The SQL schema and the
+history algorithms (rollups, rates, missing-versus-zero, gap
+rules) are unchanged. Host ingest later moved to the separate binary STB2
+format (`docs/binary-ingest.md`), which shares no envelope or code with STC1
+and leaves stored samples as they were. The wire contract, compression, and ETag behavior are in
 `docs/architecture.md#history-frames`; this file holds the codec reference,
 measurements, and the negative storage result.
 
@@ -282,8 +284,8 @@ helper can read both: a real stored-format change needs an explicit migration.
 2. A stacked layout (one table per kind with a series index) would remove the
    per-column cost for hosts with many short-lived devices and the 7d and 90d
    size growth. It needs a row limit above 16,384 and a new frame version.
-3. Leave ingest v1, exact counters, canonical duplicate/conflict comparison and
-   raw JSON storage unchanged unless an independent storage experiment wins.
+3. Leave exact counters, canonical duplicate/conflict comparison and raw JSON
+   storage unchanged unless an independent storage experiment wins.
    Binary bytes from different versions are not a replacement for canonical
    sample equality. A derived columnar BLOB cache must retain a way to rebuild
    from authoritative samples and repair affected buckets.

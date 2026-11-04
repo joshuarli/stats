@@ -4,11 +4,17 @@ Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-versio
 
 ## Agent crates
 
-The agent uses `deser` 0.10.2 (`deser-json`, `deser-value`) for JSON and
-`h12tiny-client-sync` 0.7.0 with its `tls` feature for HTTPS, replacing
+The agent uses `deser` 0.10.2 and `deser-json` for its JSON config, the
+block-latency snapshot, and `--once` output (`deser-value` is now a test-only
+dev-dependency), and `h12tiny-client-sync` 0.7.0 with its `tls` feature for
+HTTPS, replacing
 `serde`, `serde_json`, `ureq`, `rustls` with `ring`, and `rustls-native-certs`.
 TLS now runs on Graviola through `h12tiny-tls-system`. The h12tiny crates come
 from the `mycrates` registry configured in `agent/.cargo/config.toml`.
+The binary ingest codec (`agent/src/wire.rs`, `cloudflare/src/ingest/`) is
+written by hand against `docs/protocol.md` and adds no dependency on either
+side: no serialization framework, schema compiler, WASM, or compression
+library.
 
 `h12tiny-client-sync` 0.7.0 depends on `h12tiny-client-normalize` and
 `h12tiny-tls-system` as crates.io packages, so those two resolve through the

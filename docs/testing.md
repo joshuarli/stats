@@ -4,8 +4,11 @@ Run the narrowest target while iterating and `make check` before release.
 
 | Command | Covers |
 | --- | --- |
-| `make fixtures` | Fixture manifest, shapes, and cost arithmetic |
-| `make agent-test` | Rust unit tests and fixture parity |
+| `make fixtures` | Ingest corpus manifest, size budgets, cross-file constants, and byte/row accounting |
+| `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
+| `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
+| `make smoke-local` | `deploy/deployed-smoke.sh` against the built Worker in local workerd |
+| `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
 | `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, and the two-Worker tail test |
 | `make dashboard-test` | Dashboard build, Playwright tests, and the tracked-PNG check |
 | `make lint` | Type-aware Oxlint |
@@ -14,6 +17,27 @@ Run the narrowest target while iterating and `make check` before release.
 
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.
+
+## Ingest conformance
+
+`fixtures/v2/` holds the cross-language corpus for the binary ingest format.
+`scripts/fixture-sources.mjs` deterministically writes the semantic sources
+(`sources/*.json`, the stored sample shape) and `manifest.json` with each
+sample's expected outcome and the size budgets. `agent/tests/conformance.rs`
+encodes every source with the agent's encoder and requires the bytes to equal
+`frames/<name>.stb2` and `.absolute.stb2`, the hand-audited segments in
+`annotated.json` to equal their golden frame, and every golden
+acknowledgment in `acks.json` (written by the Worker's encoder) to decode to
+its stated values, with the malformed acknowledgments rejected. The Node suite
+`test/ingest/` decodes every golden frame and compares the normalized samples
+with the sources, checks that delta and absolute encodings store the same
+content, rejects every frame in `malformed.json` with its code and every
+strict prefix of every golden frame, runs 20,000 seeded byte mutations, and
+checks that the test-only frame builder (`test/support/stb2.ts`, used by the
+workerd tests for ad hoc batches) reproduces the agent's golden bytes. The
+workerd suite posts every golden and malformed frame through the public route.
+After a deliberate format or corpus change, `make fixtures-write` regenerates
+everything; review the binary diff against `annotated.json`.
 
 ## Observability tests
 

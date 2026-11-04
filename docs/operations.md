@@ -13,6 +13,12 @@ drops rustc's `--fix-cortex-a53-843419` argument, which Zig does not accept.
 Recorded 2026-11-01: 1,984,688 bytes x86_64 and 1,760,912 bytes aarch64,
 stripped; two builds produced identical SHA-256 digests.
 
+Recorded 2026-11-04 with the current toolchain, at `9ee3319` (JSON ingest) and
+after the binary ingest change: x86_64 2,918,104 → 2,819,632 bytes, aarch64
+2,563,256 → 2,471,568 bytes, macOS arm64 (`cargo build --release`) 2,631,120 →
+2,553,120 bytes. The Worker bundle grew from 175,074 to 190,494 bytes (42,756
+to 46,633 gzipped).
+
 ## Deployment
 
 `deploy/hosts.json` is the host inventory: SSH target, musl target, init
@@ -29,6 +35,8 @@ make deploy-host-<key>     # one host from deploy/hosts.json, idempotent
 make deploy-hosts          # every host in the manifest
 make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
+make smoke-local           # the same check against the built Worker in local workerd
+make agent-e2e             # the real agent binary against the built Worker in local workerd
 ```
 
 `cloudflare/scripts/api.mjs <path>` reads the live API as JSON. It gets an
@@ -70,6 +78,76 @@ A host deploy installs through `stats.new` and `mv`, keeps the previous binary
 as `/usr/local/bin/stats.prev`, and after restart polls `/api/v1/hosts` for a
 new `lastReceivedAtMs` on that host. The poll uses `cf access token`, so run
 `cf access login https://<host>` once before deploying a host directly.
+
+## Ingest protocol v2 cutover
+
+Ingest v2 (binary STB2 batches, `docs/protocol.md`) is a hard break with no
+negotiation. **Agents built before it cannot deliver to a v2 server**: the
+server answers their `POST /ingest/v1/batches` with `410 Gone`, which those
+agents treat as retryable, so they back off and drop their oldest queued
+samples while storing nothing. A v2 agent against a v1 server gets `405` and
+also stores nothing. The server and every agent therefore move together, and
+samples taken on a host between stopping its old agent and starting the new
+one are not recovered. Storage does not change, so neither direction migrates
+or deletes history.
+
+`make deploy` alone is not a coordinated cutover: it deploys the Worker and
+then updates only the Linux hosts listed in `deploy/hosts.json` (today only
+`threadripper`), one at a time, while old agents elsewhere start failing.
+macOS hosts and hosts provisioned with `make add-host` but missing from the
+manifest are not updated by it. List every host first:
+
+```sh
+node cloudflare/scripts/api.mjs /hosts | jaq -r '.hosts[] | [.hostId, .name] | @tsv'
+```
+
+1. **Build and stage** from the release commit, on a quiet machine:
+   `make check` (fixtures, both agent builds' tests, the Worker suites,
+   `agent-e2e`, `smoke-local`, the dashboard suite, lint), then
+   `make agent-build` for both musl targets. Build each macOS host's binary on
+   a Mac with `make agent-build-macos`. Record `stats --version` and the
+   SHA-256 of every artifact, and record the currently deployed Worker
+   version for rollback: `cf workers deployments list --worker stats`.
+2. **Verify the binary smoke test before cutover**: `make smoke-local` runs
+   `deploy/deployed-smoke.sh` against the built Worker in local workerd, and
+   `make agent-e2e` delivers a real sample from the built agent through it.
+   Both must pass before anything is deployed.
+3. **Stop the old agents** (or accept the telemetry gap and skip this):
+   `ssh <host> doas rc-service stats stop` (OpenRC),
+   `ssh <host> sudo systemctl stop stats` (systemd), or
+   `launchctl bootout gui/$(id -u)/xyz.17166969.stats` on a Mac.
+4. **Deploy the binary-only server**: `make worker-deploy`. Note the printed
+   `Current Version ID`.
+5. **Run the binary smoke test** against production: `make smoke-deployed`.
+   It checks that `GET /ingest/v2/batches` is 405, the v1 path is 410,
+   JSON is 415, a version-1 STB2 header is `unknown_version`, and a valid STB2
+   frame with an unknown token reaches the object and is `unauthorized`. It
+   writes nothing.
+6. **Replace and restart every agent**: `make push-hosts` for the manifest
+   hosts (each install starts the stopped service and waits for a fresh
+   receipt), and `make add-host NAME=<label> SSH=<target>` for each other host,
+   which updates the binary in place and waits for a receipt.
+7. **Verify** for every host: `online` and a recent `lastReceivedAtMs` in
+   `/hosts`; no `upload failed` lines in the agent log
+   (`/var/log/stats.log`, `journalctl -u stats`, or `log show` on macOS);
+   no `ingest_rejected` lines with `invalid_frame`, `invalid_batch`,
+   `unknown_version`, or `conflict` in Workers Logs; a duplicate replay
+   (restart one agent within a minute) answering with duplicates, not
+   conflicts; and `range=1h` history showing new points after the gap.
+8. **Verify existing history**: `range=24h`, `7d`, and `30d` history for each
+   host still returns the points from before the cutover
+   (`node cloudflare/scripts/api.mjs '/hosts/<id>/history?range=7d&kinds=summary'`).
+
+### Rolling back the cutover
+
+Roll back the server and the agents together; there is no protocol
+negotiation to fall back on. Stop the v2 agents (step 3), restore the
+recorded Worker version with `cf workers deployments create` (below), then run
+`make rollback-host-<key>` for each manifest host, which restores the v1 agent
+saved as `/usr/local/bin/stats.prev` and waits for a receipt. For other hosts,
+check out the previous release, rebuild, and rerun `make add-host`. Samples
+written by v2 are the same canonical JSON v1 writes, so the v1 server reads
+them and nothing is migrated or deleted.
 
 ## Rollback
 
