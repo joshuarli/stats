@@ -1,7 +1,7 @@
 .wf-stats { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; border-top: 1px solid var(--line); }
 .wf-stat { min-width: 0; padding: var(--space-md) var(--inset); }
 .wf-stat + .wf-stat { border-left: 1px solid var(--line); }
-.wf-stat dt { color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+.wf-stat dt { color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--caps-tracking); text-transform: uppercase; }
 .wf-stat dd { display: flex; align-items: baseline; gap: var(--space-sm); margin: var(--space-xs) 0 0; min-width: 0; }
 .wf-stat strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-hero-dense); font-weight: 500; letter-spacing: -.035em; line-height: 1.15; }
 .wf-stat-note { flex: none; color: var(--muted); font-size: var(--fs-meta); white-space: nowrap; }
@@ -11,7 +11,7 @@
 .wf-col-value { width: 88px; }
 .wf th, .wf td { padding: 0; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; }
 .wf tbody tr:last-child :is(th, td) { border-bottom: 0; }
-.wf thead th { height: 36px; color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.wf thead th { height: 36px; color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--caps-tracking); text-transform: uppercase; white-space: nowrap; }
 .wf tbody :is(th, td) { height: 40px; }
 .wf .numeric { padding-right: var(--space-lg); text-align: right; white-space: nowrap; }
 .wf .numeric:last-child { padding-right: var(--inset); }
@@ -55,7 +55,7 @@
 .wf-callout .icon { flex: none; }
 .wf-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); }
 .wf-panel { min-width: 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
-.wf-panel-title { margin: 0 0 var(--space-sm); color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+.wf-panel-title { margin: 0 0 var(--space-sm); color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--caps-tracking); text-transform: uppercase; }
 
 @container wf (max-width: 640px) {
   .wf { min-width: 420px; }

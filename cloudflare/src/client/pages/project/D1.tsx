@@ -1,8 +1,10 @@
-import { For, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { TimeWindow } from "../../chart-data";
-import { bytes, count, dollars } from "../../format";
+import { bytes, count, dollars, dollarsPrecise } from "../../format";
 import { Widget } from "../../components/ui";
+import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
+import { stack } from "../../waterfall";
 import { PanelLabel, PanelChart, seriesColor } from "../host/shared";
 import { holdLast } from "./math";
 import { provisionalFromMs, statementRows, type ProjectData } from "./series";
@@ -10,7 +12,6 @@ import { metricTrack } from "../../history";
 
 export function D1Widget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
   const totals = () => props.data.d1;
-  const statements = () => (props.data.d1Statements === undefined ? [] : statementRows(props.data.d1Statements, props.view));
   return (
     <Widget id="d1" title="D1" expandable>
       <Show when={totals()}>
@@ -48,34 +49,41 @@ export function D1Widget(props: { readonly data: ProjectData; readonly view: Tim
           </>
         )}
       </Show>
+    </Widget>
+  );
+}
+
+export function D1StatementsWidget(props: { readonly data: ProjectData; readonly view: TimeWindow | null }): JSX.Element {
+  const statements = createMemo(() => (props.data.d1Statements === undefined ? [] : statementRows(props.data.d1Statements, props.view)));
+  const totalCost = () => statements().reduce((sum, row) => sum + row.cost, 0);
+  const rowsWritten = () => statements().reduce((sum, row) => sum + row.rowsWritten, 0);
+  const rows = createMemo((): WaterfallRow[] => {
+    const extents = stack(statements().map(row => row.cost));
+    return statements().map((row, index) => ({
+      id: row.statement,
+      label: row.statement,
+      tag: index === 0 && statements().length > 1 && totalCost() > 0 ? "TOP" : undefined,
+      from: extents[index]?.from ?? 0,
+      to: extents[index]?.to ?? 0,
+      color: 0,
+      values: [dollars(row.cost), count(row.rowsWritten), count(row.rowsRead), count(row.queries)]
+    }));
+  });
+  return (
+    <Widget id="d1-statements" class="wide" title="D1 statements" bodyClass={statements().length > 0 ? "flush wf-body" : undefined} expandable>
       <Show when={statements().length > 0} fallback={<PanelLabel>No statement data was collected in this range</PanelLabel>}>
-        <PanelLabel>Costliest statements</PanelLabel>
-        <div class="table-scroll flush-table">
-          <table class="data-table compact" aria-label="D1 cost by statement">
-            <thead>
-              <tr>
-                <th>Statement</th>
-                <th class="numeric">List cost</th>
-                <th class="numeric">Rows written</th>
-                <th class="numeric">Rows read</th>
-                <th class="numeric">Queries</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={statements()}>
-                {(row) => (
-                  <tr>
-                    <td>{row.statement}</td>
-                    <td class="numeric">{dollars(row.cost)}</td>
-                    <td class="numeric">{count(row.rowsWritten)}</td>
-                    <td class="numeric">{count(row.rowsRead)}</td>
-                    <td class="numeric">{count(row.queries)}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </div>
+        <WaterfallSummary stats={[
+          { label: "Total list cost", value: dollars(totalCost()) },
+          { label: "Rows written", value: count(rowsWritten()) },
+          { label: "Costliest statement", value: statements()[0]?.statement ?? "—", note: dollars(statements()[0]?.cost) }
+        ]} />
+        <Waterfall
+          label="D1 cost by statement"
+          stepLabel="Statement"
+          columns={["List cost", "Written", "Read", "Queries"]}
+          axis={{ from: 0, to: totalCost() > 0 ? totalCost() : 1, format: dollarsPrecise }}
+          rows={rows()}
+        />
       </Show>
     </Widget>
   );

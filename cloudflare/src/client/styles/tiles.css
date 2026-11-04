@@ -6,7 +6,7 @@
 .strip-cell.is-elevated:hover, .strip-cell.is-critical:hover { background: var(--hover); }
 .status-strip.dense .strip-cell { gap: var(--space-xs); padding-top: var(--space-md); }
 
-.tile-label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: .01em; }
+.tile-label { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--caps-tracking); text-transform: uppercase; }
 .tile-value { font-size: var(--fs-hero); font-weight: 500; letter-spacing: -.035em; line-height: 1.05; overflow-wrap: anywhere; }
 .status-strip.dense .tile-value { font-size: var(--fs-hero-dense); }
 .tile-unit { font-size: .46em; font-weight: 450; letter-spacing: 0; color: var(--muted); margin-left: .1em; }

@@ -13,7 +13,7 @@ import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../comp
 import { StatusStrip } from "./host/Status";
 import { CollectorWidget } from "./project/Collector";
 import { CostWidget } from "./project/Cost";
-import { D1Widget } from "./project/D1";
+import { D1StatementsWidget, D1Widget } from "./project/D1";
 import { createProjectDeployments, DeploymentRail, DeploymentsWidget } from "./project/Deployments";
 import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
@@ -165,6 +165,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                   <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : id => <RolloutImpactPanel deploymentId={id} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
                   <CostWidget data={data()} view={view()} />
                   {observed ? null : <RoutesWidget data={data()} view={view()} />}
+                  {hasDatabases() ? <D1StatementsWidget data={data()} view={view()} /> : null}
                   <RequestsWidget data={data()} />
                   <StatusWidget data={data()} />
                   {hasBuckets() ? <OperationsWidget data={data()} /> : null}

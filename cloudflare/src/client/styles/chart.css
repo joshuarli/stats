@@ -33,7 +33,7 @@
 
 .chart-legend-scroll { contain: paint; }
 .chart-legend { --mark-slot: 22px; --legend-row: 22px; width: 100%; border-collapse: collapse; font-size: var(--fs-meta); margin-top: var(--space-2xs); }
-.chart-legend th { text-align: right; font-weight: 500; color: var(--muted); font-size: var(--fs-label); padding: var(--space-xs) 0 var(--space-xs) var(--space-md); }
+.chart-legend th { text-align: right; font-weight: 500; color: var(--muted); font-size: var(--fs-label); letter-spacing: var(--caps-tracking); text-transform: uppercase; padding: var(--space-xs) 0 var(--space-xs) var(--space-md); }
 .chart-legend td { text-align: right; padding: var(--space-2xs) 0 var(--space-2xs) var(--space-md); height: var(--legend-row); color: var(--text-2); white-space: nowrap; }
 .chart-legend th:nth-child(-n+2), .chart-legend td:nth-child(-n+2) { text-align: left; padding-left: 0; }
 .chart-legend th:nth-child(n+5) { padding-right: var(--mark-slot); }

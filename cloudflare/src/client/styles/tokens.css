@@ -73,6 +73,8 @@
   --row-height-compact: 32px;
   --page-width: 1480px;
 
+  --caps-tracking: .06em;
+
   --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;

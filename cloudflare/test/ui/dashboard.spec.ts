@@ -850,10 +850,11 @@ test("a project without namespaces has no Durable Object widget and makes no req
 test("D1 ranks statements by list cost and the cost estimate adds D1 to the Worker's usage", async ({ page }) => {
   const requests = await mock(page, { d1: true });
   await page.goto("/#/project/stuff");
-  const rows = page.locator("#d1").getByRole("table", { name: "D1 cost by statement" }).locator("tbody tr");
+  const rows = page.locator("#d1-statements").getByRole("table", { name: "D1 cost by statement" }).locator("tbody tr");
   await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toContainText("UPDATE hot SET a = ?");
   await expect(rows.nth(0)).toContainText("$1.08");
+  await expect(rows.nth(0)).toContainText("TOP");
   await expect(rows.nth(1)).toContainText("SELECT * FROM big_read");
   await expect(rows.nth(1)).toContainText("$0.60");
   await expect(rows.nth(2)).toContainText("INSERT INTO log VALUES (?)");

@@ -7,6 +7,7 @@
 .table-scroll { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: var(--fs-label); padding: var(--space-sm) var(--inset) var(--space-sm) 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.data-table thead th { text-transform: uppercase; letter-spacing: var(--caps-tracking); }
 .data-table td { height: var(--row-height); border-bottom: 1px solid var(--line); padding: 0 var(--inset) 0 0; vertical-align: middle; white-space: nowrap; }
 .data-table.compact td { height: var(--row-height-compact); }
 .data-table.compact :is(th, td):first-child { white-space: normal; overflow-wrap: anywhere; }
@@ -41,18 +42,19 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .fleet-table-scroll .entity-cell { align-items: flex-start; }
 .fleet-table-scroll .entity-cell > .status-dot { margin-top: calc((var(--line-height) - var(--dot)) / 2); }
 
-.meter { width: 44px; height: 3px; border-radius: 3px; background: var(--line-strong); overflow: hidden; flex: none; }
-.meter span { display: block; height: 100%; border-radius: 3px; }
-.meter .tone-neutral { background: var(--accent); }
-.meter .tone-warn { background: var(--warn); }
-.meter .tone-bad { background: var(--bad); }
+.meter { width: 44px; height: 6px; border-radius: var(--radius-pill); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
+.meter span { display: block; height: 100%; border-radius: inherit; }
+.meter .tone-neutral { --tone: var(--accent); }
+.meter .tone-warn { --tone: var(--warn); }
+.meter .tone-bad { --tone: var(--bad); }
+.meter span, .capacity-fill { background: color-mix(in srgb, var(--tone, var(--accent)) 26%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--accent)) 55%, var(--surface)); }
 
 .capacity { display: flex; align-items: center; gap: var(--space-lg); }
 .capacity-with-state { display: flex; align-items: center; gap: var(--space-sm); }
-.capacity-track { width: 200px; height: 4px; border-radius: var(--radius-sm); background: var(--line-strong); overflow: hidden; }
-.capacity-fill { display: block; height: 100%; background: var(--accent); }
-.capacity-fill.tone-warn { background: var(--warn); }
-.capacity-fill.tone-bad { background: var(--bad); }
+.capacity-track { width: 200px; height: 8px; border-radius: var(--radius-pill); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.capacity-fill { display: block; height: 100%; border-radius: inherit; }
+.capacity-fill.tone-warn { --tone: var(--warn); }
+.capacity-fill.tone-bad { --tone: var(--bad); }
 .capacity-label { display: flex; gap: var(--space-sm); }
 .capacity-label span { color: var(--muted); }
 
