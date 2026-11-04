@@ -343,8 +343,12 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
   return result;
 }
 
+const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
+
 function isFailed(invocation: PreparedInvocation): boolean {
-  return invocation.outcome !== "ok" || (invocation.status !== null && invocation.status >= 500) || invocation.errorCount > 0;
+  if (invocation.errorCount > 0 || (invocation.status !== null && invocation.status >= 500)) return true;
+  if (invocation.outcome === "ok") return false;
+  return !(CLIENT_ENDED_OUTCOMES.has(invocation.outcome) && invocation.status !== null);
 }
 
 function insertInvocation(db: SqlDatabase, invocation: PreparedInvocation, observedAt: number): void {

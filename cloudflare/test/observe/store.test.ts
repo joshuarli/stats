@@ -377,3 +377,17 @@ await test("one issue reads back in any state, and not once its occurrences have
   assert.equal(readIssue(db, NOW + 1, "f".repeat(64)), null);
   assert.equal(readIssue(db, T0 + RETENTION_MS, fingerprint), null);
 });
+
+await test("a request the client abandoned after a successful response is not a failure", async () => {
+  const db = database();
+  ingest(db, await prepare(
+    worker(1, { outcome: "canceled", status: 200 }),
+    worker(2, { outcome: "responseStreamDisconnected", status: 204 }),
+    worker(3, { outcome: "canceled", status: null }),
+    worker(4, { outcome: "canceled", status: 503 }),
+    worker(5, { outcome: "exceededCpu", status: 200 })
+  ), NOW);
+  const failed = listTraces(db, NOW, { failed: true }).items.map(trace => trace.traceId ?? "").sort((a, b) => a.localeCompare(b));
+  assert.deepEqual(failed, [traceId(3), traceId(4), traceId(5)].sort((a, b) => a.localeCompare(b)));
+  assert.equal(explore(db, NOW, { fromMs: T0 - H, toMs: NOW }).routes[0]!.failed, 3);
+});
