@@ -131,13 +131,53 @@ export interface TraceDetail {
   readonly occurrences: readonly Occurrence[];
 }
 
+export type TraceOrder = "recent" | "slowest";
+
 export interface TraceFilter {
   readonly label?: string;
   readonly version?: string;
   readonly failed?: boolean;
+  readonly fromMs?: number;
+  readonly toMs?: number;
+  readonly minWallMs?: number;
+  readonly maxWallMs?: number;
+  readonly order?: TraceOrder;
   readonly cursor?: string;
   readonly limit?: number;
 }
+
+export interface RouteStats {
+  readonly label: string;
+  readonly requests: number;
+  readonly failed: number;
+  readonly cpuMs: number;
+  readonly p50WallMs: number;
+  readonly p95WallMs: number;
+  readonly p99WallMs: number;
+  readonly p50CpuMs: number;
+  readonly p95CpuMs: number;
+}
+
+export interface Heatmap {
+  readonly fromMs: number;
+  readonly bucketMs: number;
+  readonly edges: readonly number[];
+  readonly cells: readonly (readonly number[])[];
+  readonly failed: readonly number[];
+  readonly p95WallMs: readonly (number | null)[];
+}
+
+export interface Exploration {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly route: string | null;
+  readonly routes: readonly RouteStats[];
+  readonly heatmap: Heatmap;
+}
+
+export const DURATION_EDGES: readonly number[] = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+const HEATMAP_BUCKETS = 60;
+const MIN_PERCENTILE_SAMPLES = 5;
 
 export interface Health {
   readonly newestAtMs: number | null;
@@ -564,25 +604,86 @@ function invocationSummary(row: InvocationRow): InvocationSummary {
   };
 }
 
+function window(nowMs: number, fromMs: number | undefined, toMs: number | undefined): { fromMs: number; toMs: number } {
+  const from = Math.max(fromMs ?? nowMs - RETENTION_MS, nowMs - RETENTION_MS);
+  const to = Math.min(toMs ?? nowMs, nowMs);
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from >= to) throw new RangeError("invalid time window");
+  return { fromMs: from, toMs: to };
+}
+
 export function listTraces(db: SqlDatabase, nowMs: number, filter: TraceFilter = {}): Page<TraceSummary> {
   const cutoff = nowMs - RETENTION_MS;
+  const { fromMs, toMs } = window(nowMs, filter.fromMs, filter.toMs);
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
   const failed = filter.failed === undefined ? null : filter.failed ? 1 : 0;
+  const slowest = filter.order === "slowest";
+  const keyset = slowest
+    ? "(? IS NULL OR wall_ms < ? OR (wall_ms = ? AND key < ?))"
+    : "(? IS NULL OR observed_at < ? OR (observed_at = ? AND key < ?))";
   const rows = db.rows<InvocationRow & { observed_at: number; object_invocations: number; object_cpu_ms: number | null }>(
     `SELECT ${INVOCATION_COLUMNS}, observed_at,
        (SELECT COUNT(*) FROM observe_invocations c WHERE c.trace_id = r.trace_id AND c.stage = 'object' AND c.observed_at > ?) AS object_invocations,
        (SELECT SUM(c.cpu_ms) FROM observe_invocations c WHERE c.trace_id = r.trace_id AND c.stage = 'object' AND c.observed_at > ?) AS object_cpu_ms
      FROM observe_invocations r
-     WHERE stage = 'worker' AND observed_at > ? AND (? IS NULL OR label = ?) AND (? IS NULL OR version = ?) AND (? IS NULL OR failed = ?)
-       AND (? IS NULL OR observed_at < ? OR (observed_at = ? AND key < ?))
-     ORDER BY observed_at DESC, key DESC LIMIT ?`,
-    cutoff, cutoff, cutoff, filter.label ?? null, filter.label ?? null, filter.version ?? null, filter.version ?? null, failed, failed,
+     WHERE stage = 'worker' AND observed_at > ? AND observed_at >= ? AND observed_at <= ?
+       AND (? IS NULL OR label = ?) AND (? IS NULL OR version = ?) AND (? IS NULL OR failed = ?)
+       AND (? IS NULL OR wall_ms >= ?) AND (? IS NULL OR wall_ms < ?) AND ${keyset}
+     ORDER BY ${slowest ? "wall_ms DESC" : "observed_at DESC"}, key DESC LIMIT ?`,
+    cutoff, cutoff, cutoff, fromMs, toMs, filter.label ?? null, filter.label ?? null, filter.version ?? null, filter.version ?? null, failed, failed,
+    filter.minWallMs ?? null, filter.minWallMs ?? null, filter.maxWallMs ?? null, filter.maxWallMs ?? null,
     cursor?.at ?? null, cursor?.at ?? null, cursor?.at ?? null, cursor?.key ?? null, size + 1
   );
   const traces = rows.map(row => ({ ...invocationSummary(row), observedAt: row.observed_at, objectInvocations: row.object_invocations, objectCpuMs: row.object_cpu_ms ?? 0 }));
-  const result = page(traces, size, trace => `${trace.observedAt}.${trace.key}`);
+  const result = page(traces, size, trace => `${slowest ? trace.wallMs : trace.observedAt}.${trace.key}`);
   return { items: result.items.map(({ observedAt: _observedAt, ...trace }) => trace), next: result.next };
+}
+
+function percentile(sorted: readonly number[], fraction: number): number {
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))] ?? 0;
+}
+
+function durationBin(wallMs: number): number {
+  const index = DURATION_EDGES.findIndex(edge => wallMs < edge);
+  return index === -1 ? DURATION_EDGES.length : index;
+}
+
+export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string } = {}): Exploration {
+  const cutoff = nowMs - RETENTION_MS;
+  const { fromMs, toMs } = window(nowMs, filter.fromMs, filter.toMs);
+  const rows = db.rows<{ label: string; observed_at: number; wall_ms: number; failed: number; cpu_ms: number }>(
+    `SELECT r.label, r.observed_at, r.wall_ms, r.failed, r.cpu_ms + COALESCE(c.cpu_ms, 0) AS cpu_ms
+     FROM observe_invocations r
+     LEFT JOIN (SELECT trace_id, SUM(cpu_ms) AS cpu_ms FROM observe_invocations WHERE stage = 'object' AND observed_at > ? AND observed_at >= ? GROUP BY trace_id) c ON c.trace_id = r.trace_id
+     WHERE r.stage = 'worker' AND r.observed_at > ? AND r.observed_at >= ? AND r.observed_at <= ?`,
+    cutoff, fromMs - 60_000, cutoff, fromMs, toMs
+  );
+  const byRoute = new Map<string, typeof rows>();
+  for (const row of rows) byRoute.set(row.label, [...byRoute.get(row.label) ?? [], row]);
+  const routes = [...byRoute].map(([label, entries]) => {
+    const walls = entries.map(entry => entry.wall_ms).sort((a, b) => a - b);
+    const cpus = entries.map(entry => entry.cpu_ms).sort((a, b) => a - b);
+    return {
+      label, requests: entries.length, failed: entries.reduce((sum, entry) => sum + entry.failed, 0), cpuMs: cpus.reduce((sum, cpu) => sum + cpu, 0),
+      p50WallMs: percentile(walls, 0.5), p95WallMs: percentile(walls, 0.95), p99WallMs: percentile(walls, 0.99), p50CpuMs: percentile(cpus, 0.5), p95CpuMs: percentile(cpus, 0.95)
+    };
+  }).sort((a, b) => b.cpuMs - a.cpuMs || a.label.localeCompare(b.label));
+  const route = filter.route !== undefined && byRoute.has(filter.route) ? filter.route : null;
+  const selected = route === null ? rows : byRoute.get(route) ?? [];
+  const bucketMs = Math.max(1, Math.ceil((toMs - fromMs) / HEATMAP_BUCKETS));
+  const cells = Array.from({ length: HEATMAP_BUCKETS }, () => Array.from({ length: DURATION_EDGES.length + 1 }, () => 0));
+  const failed = Array.from({ length: HEATMAP_BUCKETS }, () => 0);
+  const walls: number[][] = Array.from({ length: HEATMAP_BUCKETS }, () => []);
+  for (const row of selected) {
+    const bucket = Math.min(HEATMAP_BUCKETS - 1, Math.floor((row.observed_at - fromMs) / bucketMs));
+    const cell = cells[bucket]!;
+    const bin = durationBin(row.wall_ms);
+    cell[bin] = (cell[bin] ?? 0) + 1;
+    failed[bucket] = (failed[bucket] ?? 0) + row.failed;
+    walls[bucket]!.push(row.wall_ms);
+  }
+  const p95WallMs = walls.map(values => values.length < MIN_PERCENTILE_SAMPLES ? null : percentile(values.sort((a, b) => a - b), 0.95));
+  return { fromMs, toMs, route, routes, heatmap: { fromMs, bucketMs, edges: DURATION_EDGES, cells, failed, p95WallMs } };
 }
 
 const TRACE_ID = /^[0-9a-f]{32}$/u;

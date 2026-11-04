@@ -4,7 +4,7 @@ import { VERSION, type ObservedRollout, type VersionLabel } from "../core/model.
 import { readLimitedText } from "../../body.ts";
 import type { ObservationStore } from "./store-object.ts";
 
-type Store = Pick<ObservationStore, "issues" | "occurrences" | "setIssueState" | "traces" | "trace" | "health" | "rollouts" | "impact">;
+type Store = Pick<ObservationStore, "issues" | "occurrences" | "setIssueState" | "traces" | "trace" | "health" | "rollouts" | "impact" | "explore">;
 
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 const TRACE_ID = /^[0-9a-f]{32}$/u;
@@ -53,8 +53,42 @@ function issueState(value: unknown): IssueState {
   throw new BadRequest("state must be open or resolved");
 }
 
+function milliseconds(values: Map<string, string>, key: string): number | undefined {
+  const value = values.get(key);
+  if (value === undefined) return undefined;
+  if (!/^\d{1,16}$/u.test(value)) throw new BadRequest(`invalid ${key}`);
+  return Number(value);
+}
+
+function label(values: Map<string, string>, key: string): string | undefined {
+  const value = values.get(key);
+  if (value === undefined) return undefined;
+  if (value === "" || new TextEncoder().encode(value).length > MAX_LABEL_BYTES) throw new BadRequest(`invalid ${key}`);
+  return value;
+}
+
+function exploreFilter(values: Map<string, string>): { fromMs?: number; toMs?: number; route?: string } {
+  const filter: { fromMs?: number; toMs?: number; route?: string } = {};
+  const fromMs = milliseconds(values, "from");
+  const toMs = milliseconds(values, "to");
+  const route = label(values, "route");
+  if (fromMs !== undefined) filter.fromMs = fromMs;
+  if (toMs !== undefined) filter.toMs = toMs;
+  if (route !== undefined) filter.route = route;
+  return filter;
+}
+
 function traceFilter(values: Map<string, string>): TraceFilter {
-  const filter: { -readonly [K in keyof TraceFilter]: TraceFilter[K] } = page(values);
+  const filter: { -readonly [K in keyof TraceFilter]: TraceFilter[K] } = { ...page(values), ...exploreFilter(new Map([...values].filter(([key]) => key === "from" || key === "to"))) };
+  const minWallMs = milliseconds(values, "minWall");
+  const maxWallMs = milliseconds(values, "maxWall");
+  if (minWallMs !== undefined) filter.minWallMs = minWallMs;
+  if (maxWallMs !== undefined) filter.maxWallMs = maxWallMs;
+  const order = values.get("order");
+  if (order !== undefined) {
+    if (order !== "recent" && order !== "slowest") throw new BadRequest("order must be recent or slowest");
+    filter.order = order;
+  }
   const label = values.get("label");
   if (label !== undefined) {
     if (label === "" || new TextEncoder().encode(label).length > MAX_LABEL_BYTES) throw new BadRequest("invalid label");
@@ -162,7 +196,8 @@ export async function handleApi(request: Request, store: Store): Promise<Respons
       if (!FINGERPRINT.test(occurrences[1]!)) throw new BadRequest("invalid issue id");
       return json(await store.occurrences(occurrences[1]!, page(params(url, ["cursor", "limit"]))));
     }
-    if (path === "/traces") return json(await store.traces(traceFilter(params(url, ["label", "version", "failed", "cursor", "limit"]))));
+    if (path === "/traces") return json(await store.traces(traceFilter(params(url, ["label", "version", "failed", "from", "to", "minWall", "maxWall", "order", "cursor", "limit"]))));
+    if (path === "/explore") return json(await store.explore(exploreFilter(params(url, ["from", "to", "route"]))));
     const trace = /^\/traces\/([^/]+)$/u.exec(path);
     if (trace !== null) {
       if (!TRACE_ID.test(trace[1]!)) throw new BadRequest("invalid trace id");
@@ -184,6 +219,7 @@ export async function handleApi(request: Request, store: Store): Promise<Respons
     return failure(404, "not_found", "unknown observe route");
   } catch (error) {
     if (error instanceof BadRequest) return failure(400, "invalid_request", error.message);
+    if (error instanceof RangeError) return failure(400, "invalid_request", error.message);
     throw error;
   }
 }

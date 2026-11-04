@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { cleanup, DURATION_EDGES, explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
+
+const M = 60_000;
 import { BUNDLE_STACK, D, DO_STACK, H, T0, database, object, synthetic, traceId, worker, wrap } from "./support.ts";
 
 const POLICY: MessagePolicy = { safeNames: new Set() };
@@ -329,4 +331,39 @@ await test("an issue a rollout introduced stays new in it when it also appears o
   ingest(db, await prepare(worker(1, { version: V1, eventAtMs: T0 + H }), worker(2, { version: V2, eventAtMs: T0 + D + H, errors: [errorB] }), worker(3, { version: V3, eventAtMs: T0 + 2 * D + H, errors: [errorB] })), T0 + 2 * D + 2 * H);
   assert.deepEqual(rolloutImpact(db, T0 + 2 * D + 2 * H, "r2")!.newIssues.map(issue => issue.operation), ["deployments.poll"]);
   assert.deepEqual(rolloutImpact(db, T0 + 2 * D + 2 * H, "r3")!.newIssues, []);
+});
+
+await test("exploring a window ranks routes by trace CPU with wall-time percentiles and a heatmap", async () => {
+  const db = database();
+  const batch: ObservedInvocation[] = [];
+  for (let n = 0; n < 20; n++) {
+    batch.push(worker(n, { label: "GET /api/v1/hosts/:host/history", eventAtMs: T0 + n * M, wallMs: (n + 1) * 10, cpuMs: 1 }));
+    batch.push(object(n, { eventAtMs: T0 + n * M + 1, cpuMs: n === 19 ? 400 : 20 }));
+  }
+  for (let n = 20; n < 23; n++) batch.push(worker(n, { label: "GET /api/v1/hosts", eventAtMs: T0 + n * M, wallMs: 30, cpuMs: 2, status: n === 22 ? 500 : 200 }));
+  ingest(db, await prepare(...batch), T0 + H);
+  const result = explore(db, T0 + H, { fromMs: T0, toMs: T0 + H, route: "GET /api/v1/hosts/:host/history" });
+  assert.deepEqual(result.routes.map(route => [route.label, route.requests, route.failed, route.cpuMs]), [["GET /api/v1/hosts/:host/history", 20, 0, 20 * 1 + 19 * 20 + 400], ["GET /api/v1/hosts", 3, 1, 6]]);
+  const history = result.routes[0]!;
+  assert.deepEqual([history.p50WallMs, history.p95WallMs, history.p99WallMs, history.p50CpuMs, history.p95CpuMs], [100, 190, 200, 21, 21]);
+  assert.equal(result.route, "GET /api/v1/hosts/:host/history");
+  assert.equal(result.heatmap.cells.flat().reduce((sum, value) => sum + value, 0), 20);
+  assert.equal(result.heatmap.cells[0]![DURATION_EDGES.indexOf(20)], 1);
+  assert.equal(result.heatmap.p95WallMs.filter(value => value !== null).length, 0);
+  assert.equal(explore(db, T0 + H, { route: "unknown route" }).route, null);
+  assert.throws(() => explore(db, T0 + H, { fromMs: T0 + H, toMs: T0 }), RangeError);
+});
+
+await test("the slowest calls in a duration band page deterministically", async () => {
+  const db = database();
+  ingest(db, await prepare(...Array.from({ length: 9 }, (_, n) => worker(n, { eventAtMs: T0 + n, wallMs: n % 3 === 0 ? 500 : 50 + n }))), T0 + H);
+  const seen: number[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = listTraces(db, T0 + H, { order: "slowest", minWallMs: 51, limit: 2, ...(cursor === undefined ? {} : { cursor }) });
+    seen.push(...page.items.map(item => item.wallMs));
+    cursor = page.next ?? undefined;
+  } while (cursor !== undefined);
+  assert.deepEqual(seen, [500, 500, 500, 58, 57, 55, 54, 52, 51]);
+  assert.equal(listTraces(db, T0 + H, { fromMs: T0 + 4, toMs: T0 + 6 }).items.length, 3);
 });

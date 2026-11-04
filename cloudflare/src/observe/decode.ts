@@ -1,4 +1,4 @@
-import type { Health, ImpactState, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "./core/store.ts";
+import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "./core/store.ts";
 import type { StackFrame } from "./core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "./core/model.ts";
 
@@ -203,5 +203,39 @@ export function decodeImpact(value: unknown, rolloutId: string): RolloutImpact {
     newIssues: list(fields["newIssues"], 50, issueRef, "new issues"),
     regressions: list(fields["regressions"], 50, issueRef, "regressions"),
     versions: list(fields["versions"], 8, versionStats, "versions")
+  };
+}
+
+function routeStats(value: unknown): RouteStats {
+  const fields = record(value, "route stats");
+  const ms = (key: string) => integer(fields[key], key);
+  return {
+    label: text(fields["label"], "route label", 128),
+    requests: ms("requests"), failed: ms("failed"), cpuMs: ms("cpuMs"),
+    p50WallMs: ms("p50WallMs"), p95WallMs: ms("p95WallMs"), p99WallMs: ms("p99WallMs"), p50CpuMs: ms("p50CpuMs"), p95CpuMs: ms("p95CpuMs")
+  };
+}
+
+function heatmap(value: unknown): Heatmap {
+  const fields = record(value, "heatmap");
+  const edges = list(fields["edges"], 16, item => integer(item, "edge"), "edges");
+  return {
+    fromMs: integer(fields["fromMs"], "heatmap start"),
+    bucketMs: integer(fields["bucketMs"], "bucket"),
+    edges,
+    cells: list(fields["cells"], 120, row => list(row, edges.length + 1, item => integer(item, "cell"), "cell row"), "cells"),
+    failed: list(fields["failed"], 120, item => integer(item, "failed"), "failed"),
+    p95WallMs: list(fields["p95WallMs"], 120, item => nullableInteger(item, "p95"), "p95")
+  };
+}
+
+export function decodeExploration(value: unknown): Exploration {
+  const fields = record(value, "exploration");
+  return {
+    fromMs: integer(fields["fromMs"], "from"),
+    toMs: integer(fields["toMs"], "to"),
+    route: nullableText(fields["route"], "route", 128),
+    routes: list(fields["routes"], 64, routeStats, "routes"),
+    heatmap: heatmap(fields["heatmap"])
   };
 }
