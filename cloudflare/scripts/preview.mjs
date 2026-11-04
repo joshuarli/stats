@@ -58,9 +58,10 @@ for (const capture of capturesFound) {
   } catch {}
   try {
     for (const project of await readJson(join(capture.directory, "projects.json"))) {
-      if (projectsById.has(project.id)) continue;
-      projectsById.set(project.id, capture);
-      projects.push(shift(project, shiftFor(capture)));
+      if (project.id === capture.projectId) projectsById.set(project.id, capture);
+      const listed = projects.findIndex(entry => entry.id === project.id);
+      if (listed === -1) projects.push(shift(project, shiftFor(capture)));
+      else if (project.id === capture.projectId) projects[listed] = shift(project, shiftFor(capture));
     }
   } catch {}
 }
@@ -119,13 +120,15 @@ async function history(capture, kind, url) {
 }
 
 function frame(response, body) {
+  const encoded = encodeHistory(body);
   response.writeHead(200, { "Content-Type": HISTORY_CONTENT_TYPE, "Cache-Control": "no-store" });
-  response.end(encodeHistory(body));
+  response.end(encoded);
 }
 
 function json(response, body, status = 200) {
+  const encoded = JSON.stringify(body);
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-  response.end(JSON.stringify(body));
+  response.end(encoded);
 }
 
 async function observe(request, response, route, url) {
@@ -214,7 +217,8 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { "Content-Type": types[extname(file)] ?? "application/octet-stream", "Cache-Control": "no-store" });
     response.end(body);
   } catch {
-    response.writeHead(404).end();
+    if (!response.headersSent) response.writeHead(404);
+    response.end();
   }
 });
 
