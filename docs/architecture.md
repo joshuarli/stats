@@ -405,7 +405,9 @@ resource group; a tile past a limit gets a status-coloured edge and tint, and
 the host's eight tiles share one row. The fleet table carries the status dot,
 OS and kernel, CPU model, cores and threads under CPU, disk used of total, and
 health-coloured sparklines for CPU, memory, load, and disk space, with disk
-read/write and network in/out drawn as mirrored pairs. Chart cards are laid out in aligned
+read/write and network in/out drawn as mirrored pairs. Pressure panels share
+one control for the kernel's 10 s, 1 min, or 5 min PSI average and show the
+coverage-weighted mean and peak for the visible range. Chart cards are laid out in aligned
 two-column rows so both cards in a row start at the same top edge; the host's
 CPU, memory, OS, kernel, agent, and uptime facts live in a hover card beside
 its name rather than on the page. A chart's axis fits its data, and an elevated limit is

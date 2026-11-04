@@ -5,6 +5,7 @@ import type { DeviceHistory, SummaryHistory } from "../../history";
 import { LIMITS, loadLimits, type Health, type Limits } from "../../health";
 import { monitorState } from "../../monitoring";
 import { cpuUsed, lastValue, memoryUsed, netFaults, usedShare } from "../../metrics";
+import { psiField, type PsiWindow } from "../../psi";
 import { perSecond } from "./shared";
 
 export interface HostData {
@@ -48,7 +49,7 @@ interface Spec {
   readonly format: (value: number | undefined) => string;
 }
 
-export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell[] {
+export function buildCells(data: HostData, view: TimeWindow | null, psiWindow: PsiWindow): MonitorCell[] {
   const table = data.summary.table;
   const stepMs = data.summary.stepMs;
   const [first, last] = windowIndexes(table.times, view);
@@ -68,7 +69,7 @@ export function buildCells(data: HostData, view: TimeWindow | null): MonitorCell
       label: "Pressure",
       anchor: reportsPsi ? "memory" : "pressure",
       limits: LIMITS.pressureSome,
-      series: [take(table.cells("psi.cpu.some10")), take(table.cells("psi.memory.some10")), take(table.cells("psi.io.some10"))],
+      series: [take(table.cells(psiField("cpu", "some", psiWindow))), take(table.cells(psiField("memory", "some", psiWindow))), take(table.cells(psiField("io", "some", psiWindow)))],
       stepMs,
       format: percent
     },

@@ -11,6 +11,9 @@
 .u-select { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 1px 0 var(--accent), inset -1px 0 var(--accent); }
 
 .chart-inline-legend { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); padding-top: var(--space-2xs); font-size: var(--fs-meta); color: var(--text-2); position: relative; z-index: var(--z-raised); }
+.pressure-bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm) var(--space-md); }
+.pressure-bar-label { color: var(--muted); font-size: var(--fs-meta); }
+.pressure-summary { margin: 0; padding-top: var(--space-xs); color: var(--muted); font-size: var(--fs-meta); }
 .inline-key { display: inline-flex; align-items: center; gap: var(--space-sm); padding: var(--space-2xs) var(--space-xs); margin-left: calc(-1 * var(--space-xs)); border-radius: var(--radius-sm); }
 .inline-key:hover { background: var(--hover); }
 .inline-key.off { opacity: .38; }

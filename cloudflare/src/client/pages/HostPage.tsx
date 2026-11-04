@@ -13,13 +13,15 @@ import { PageHeader } from "../components/PageHeader";
 import { SectionBar, type SectionLink } from "../components/SectionBar";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";
-import { CpuWidget, LoadWidget, PressureNotice } from "./host/Compute";
+import { CpuWidget, LoadWidget, PressureNotice, reportsPressure } from "./host/Compute";
 import { DiskWidget } from "./host/Disk";
 import { FilesystemsWidget } from "./host/Filesystems";
 import { MemoryWidget } from "./host/Memory";
 import { buildCells } from "./host/monitors";
 import { NetworkWidget } from "./host/Network";
 import { PowerWidget, reportsPower } from "./host/Power";
+import { PsiWindowBar } from "./host/Psi";
+import type { PsiWindow } from "../psi";
 import { rebootEvents } from "./host/shared";
 import { StatusStrip } from "./host/Status";
 import { SystemInfo } from "./host/System";
@@ -54,6 +56,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const hostId = () => props.host.hostId;
   const { query, view, refreshHosts, tick } = useTelemetry();
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
+  const [psiWindow, setPsiWindow] = createSignal<PsiWindow>("300");
 
   const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
   const histories = createMemo(() => loadQuery(signal => getHostHistories(hostId(), query(), signal)));
@@ -82,7 +85,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
     ...(reportsPower(table()) ? [{ label: "Power", anchor: "power" }] : []),
     ...(reportsBlock() ? [{ label: "Block latency", anchor: "block" }, { label: "Block completions", anchor: "block-completions" }] : [])
   ];
-  const cells = createMemo(() => buildCells({ summary: summary(), disks: disks(), nets: nets(), filesystems: filesystems() }, view()));
+  const cells = createMemo(() => buildCells({ summary: summary(), disks: disks(), nets: nets(), filesystems: filesystems() }, view(), psiWindow()));
 
   return (
     <>
@@ -129,16 +132,19 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>
             </Show>
             <PressureNotice table={table()} />
+            <Show when={reportsPressure(table())}>
+              <PsiWindowBar value={psiWindow()} onChange={setPsiWindow} />
+            </Show>
             <section class="charts host" aria-label="Charts">
-              <CpuWidget table={table()} stepMs={summary().stepMs} events={events()} />
+              <CpuWidget table={table()} stepMs={summary().stepMs} events={events()} psiWindow={psiWindow()} />
               <LoadWidget table={table()} stepMs={summary().stepMs} events={events()} />
-              <MemoryWidget table={table()} stepMs={summary().stepMs} events={events()} />
+              <MemoryWidget table={table()} stepMs={summary().stepMs} events={events()} psiWindow={psiWindow()} />
               <Show when={reportsPower(table())}>
                 <PowerWidget table={table()} stepMs={summary().stepMs} events={events()} />
               </Show>
               <FilesystemsWidget series={filesystems().series} stepMs={filesystems().stepMs} events={events()} />
               <NetworkWidget series={nets().series} stepMs={nets().stepMs} events={events()} />
-              <DiskWidget series={disks().series} stepMs={disks().stepMs} summary={table()} summaryStepMs={summary().stepMs} events={events()} />
+              <DiskWidget series={disks().series} stepMs={disks().stepMs} summary={table()} summaryStepMs={summary().stepMs} events={events()} psiWindow={psiWindow()} />
               <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
                 <BlockWidget series={block().series} stepMs={block().stepMs} events={events()} />
                 <BlockCompletionsWidget series={block().series} stepMs={block().stepMs} events={events()} />

@@ -5,12 +5,21 @@ import { count, percent, rate } from "../../format";
 import type { DiskSeries, SummaryTable } from "../../history";
 import { healthOf, LIMITS } from "../../health";
 import { useTelemetry } from "../../state";
+import type { PsiWindow } from "../../psi";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, HealthMark, Meter, Widget } from "../../components/ui";
+import { PressureChart } from "./Psi";
 import { colorsFor, PanelLabel, perSecond, activeSeries, topSeries, PanelChart } from "./shared";
 
-export function DiskWidget(props: { readonly series: readonly DiskSeries[]; readonly stepMs: number; readonly summary: SummaryTable; readonly summaryStepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
+export function DiskWidget(props: {
+  readonly series: readonly DiskSeries[];
+  readonly stepMs: number;
+  readonly summary: SummaryTable;
+  readonly summaryStepMs: number;
+  readonly events: readonly ChartEvent[];
+  readonly psiWindow: PsiWindow;
+}): JSX.Element {
   const { view } = useTelemetry();
   const active = createMemo(() => activeSeries(props.series, props.stepMs));
   const shown = createMemo(() => topSeries(props.series, table => table.cells("busyPct")));
@@ -61,20 +70,7 @@ export function DiskWidget(props: { readonly series: readonly DiskSeries[]; read
             />
           </Show>
           <Show when={reportsPressure()}>
-            <PanelLabel>I/O pressure, 10 s average</PanelLabel>
-            <PanelChart
-              label="I/O pressure"
-              area
-              series={[
-                { label: "some", color: "ramp-3", track: props.summary.track("psi.io.some10") },
-                { label: "full", color: "ramp-5", scored: false, track: props.summary.track("psi.io.full10") }
-              ]}
-              format={percent}
-              limits={LIMITS.pressureSome}
-              min={0}
-              events={props.events}
-              stepMs={props.summaryStepMs}
-            />
+            <PressureChart label="I/O pressure" table={props.summary} group="io" window={props.psiWindow} stepMs={props.summaryStepMs} events={props.events} />
           </Show>
           <div class="table-scroll flush-table">
             <table class="data-table compact" aria-label="Disk activity">

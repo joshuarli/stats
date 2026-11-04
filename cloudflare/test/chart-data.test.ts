@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTracks, duration, panWindow, sparkGeometry, sparkToneStops, sumTracks, windowIndexes, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
+import { alignTracks, duration, panWindow, sparkGeometry, sparkToneStops, sumTracks, windowIndexes, windowMean, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
 
 describe("chart data", () => {
   it("keeps a missing value as a gap instead of interpolating or zeroing it", () => {
@@ -115,6 +115,12 @@ describe("chart data", () => {
     expect(windowStats(values, 0, 4)).toEqual({ min: 2, avg: 14 / 3, max: 8, last: 2 });
     expect(windowStats(values, 1, 1)).toBeUndefined();
     expect(windowStats(values, 2, 3)).toEqual({ min: 2, avg: 5, max: 8, last: 2 });
+  });
+
+  it("weights a window mean by coverage and keeps the peak", () => {
+    expect(windowMean([1, null, 3], [1000, 1000, 3000], 0, 2)).toEqual({ mean: 2.5, peak: 3 });
+    expect(windowMean([1, 2], [1000, 3000], 0, 0)).toEqual({ mean: 1, peak: 1 });
+    expect(windowMean([null, null], [1000, 1000], 0, 1)).toBeUndefined();
   });
 
   it("selects the sample indexes inside a time window", () => {

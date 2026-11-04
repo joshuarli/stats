@@ -18,6 +18,11 @@ export interface WindowStats {
   readonly last: number;
 }
 
+export interface WindowMean {
+  readonly mean: number;
+  readonly peak: number;
+}
+
 export interface SparkGap {
   readonly x0: number;
   readonly x1: number;
@@ -280,6 +285,22 @@ export function windowStats(values: Cells, first: number, last: number): WindowS
     latest = value;
   }
   return count === 0 || latest === undefined ? undefined : { min, avg: sum / count, max, last: latest };
+}
+
+export function windowMean(values: Cells, coverage: Cells, first: number, last: number): WindowMean | undefined {
+  let weighted = 0;
+  let weight = 0;
+  let peak = Number.NEGATIVE_INFINITY;
+  for (let index = Math.max(0, first); index <= Math.min(values.length - 1, last); index += 1) {
+    const value = values[index];
+    if (value === null || value === undefined || !Number.isFinite(value)) continue;
+    const coverageMs = coverage[index];
+    const extent = coverageMs === null || coverageMs === undefined || !Number.isFinite(coverageMs) || coverageMs <= 0 ? 1 : coverageMs;
+    weighted += value * extent;
+    weight += extent;
+    peak = Math.max(peak, value);
+  }
+  return weight === 0 ? undefined : { mean: weighted / weight, peak };
 }
 
 export function panWindow(window: TimeWindow, direction: -1 | 1, bounds: TimeWindow): TimeWindow {

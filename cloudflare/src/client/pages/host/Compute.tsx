@@ -5,8 +5,10 @@ import { count, percent } from "../../format";
 import type { SummaryTable } from "../../history";
 import { LIMITS, loadLimits } from "../../health";
 import { cpuUsed, lastCell } from "../../metrics";
+import type { PsiWindow } from "../../psi";
 import { TimeChart, type ChartEvent, type VizColor } from "../../components/TimeChart";
 import { Notice, Widget } from "../../components/ui";
+import { PressureChart } from "./Psi";
 import { AXIS_WIDTH, PanelLabel, PanelChart } from "./shared";
 
 interface SeriesExtra {
@@ -41,6 +43,7 @@ export function CpuWidget(props: {
   readonly table: SummaryTable;
   readonly stepMs: number;
   readonly events: readonly ChartEvent[];
+  readonly psiWindow: PsiWindow;
 }): JSX.Element {
   const series = useSeries(() => props.table);
   const chartSeries = createMemo(() => [
@@ -81,20 +84,7 @@ export function CpuWidget(props: {
         />
       </Show>
       <Show when={reportsPressure(props.table)}>
-        <PanelLabel>CPU pressure, 10 s average</PanelLabel>
-        <PanelChart
-          label="CPU pressure"
-          area
-          series={[
-            { label: "some", color: "ramp-3", track: props.table.track("psi.cpu.some10") },
-            { label: "full", color: "ramp-5", scored: false, track: props.table.track("psi.cpu.full10") }
-          ]}
-          format={percent}
-          limits={LIMITS.pressureSome}
-          min={0}
-          events={props.events}
-          stepMs={props.stepMs}
-        />
+        <PressureChart label="CPU pressure" table={props.table} group="cpu" window={props.psiWindow} stepMs={props.stepMs} events={props.events} />
       </Show>
     </Widget>
   );

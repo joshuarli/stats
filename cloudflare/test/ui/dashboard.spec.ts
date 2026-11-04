@@ -317,6 +317,15 @@ test("fleet and host views render charts, ranges, and keyboard controls", { tag:
   await expect(page.getByRole("table", { name: "Network activity" })).toContainText("eth0");
   await expect(page.getByRole("table", { name: "Filesystem capacity" })).toContainText("Mount");
   for (const panel of ["CPU pressure", "Memory pressure", "I/O pressure"]) await expect(page.getByText(panel)).toBeVisible();
+  const pressureWindow = page.getByRole("group", { name: "Pressure average window" });
+  await expect(pressureWindow.getByRole("button")).toHaveCount(3);
+  await expect(pressureWindow.getByRole("button", { name: "5 min" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("CPU pressure, 5 min average")).toBeVisible();
+  await expect(page.locator(".pressure-summary").first()).toHaveText("24h mean 0.4% · peak 0.4%");
+  await pressureWindow.getByRole("button", { name: "1 min" }).click();
+  await expect(pressureWindow.getByRole("button", { name: "1 min" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("CPU pressure, 1 min average")).toBeVisible();
+  await expect(page.locator(".pressure-summary").first()).toHaveText("24h mean 0.8% · peak 0.8%");
   await expect(page.getByRole("heading", { name: "Pressure" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Full stalls" })).toHaveCount(0);
   for (const title of ["CPU", "Load", "Memory", "Disk", "Network", "Filesystems"]) {

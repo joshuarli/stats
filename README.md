@@ -217,7 +217,10 @@ agent reports with its first upload after an update and then hourly. Below that:
 
 Dotted vertical lines mark reboots, read from a fall in uptime. Mounts of the
 same block device (bind mounts, btrfs subvolumes) are listed once. Pressure
-panels appear only when the kernel reports PSI; otherwise one notice says so.
+panels appear only when the kernel reports PSI; one control selects the
+kernel's 10 s, 1 min, or 5 min average for every pressure panel and the status
+cell, and each panel shows the coverage-weighted mean and peak for the visible
+range. Otherwise one notice says so.
 
 Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
 chart to that window. The smallest zoom is two samples of the tier the window
