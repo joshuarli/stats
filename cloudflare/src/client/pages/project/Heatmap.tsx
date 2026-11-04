@@ -18,6 +18,7 @@ export function LatencyHeatmap(props: {
   readonly band: Band | null;
   readonly events: readonly ChartEvent[];
   readonly onSelect: (band: Band | null) => void;
+  readonly onMarker: (event: ChartEvent) => void;
 }): JSX.Element {
   const span = createMemo(() => {
     const used = props.heatmap.cells.flatMap(cells => cells.flatMap((value, bin) => value > 0 ? [bin] : []));
@@ -85,7 +86,7 @@ export function LatencyHeatmap(props: {
           <polyline points={p95Path()} vector-effect="non-scaling-stroke" />
         </svg>
         <For each={markers()}>{event => (
-          <button type="button" class="heatmap-marker" style={`left:${x(event.atMs)}%`} title={event.label} aria-label={event.label} onClick={() => event.onSelect?.()}>
+          <button type="button" class="heatmap-marker" style={`left:${x(event.atMs)}%`} title={event.label} aria-label={event.label} onClick={() => props.onMarker(event)}>
             <span>{event.label.replace(/^deploy /u, "")}</span>
           </button>
         )}</For>

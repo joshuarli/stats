@@ -4,12 +4,13 @@ import { ApiFailure } from "../../api";
 import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { jumpTo, Skeleton, Widget } from "../../components/ui";
-import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
+import { Skeleton, Widget } from "../../components/ui";
+import { decodeExploration, decodeHealth, decodeImpact, decodeIssue, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
+import { Modal } from "../../components/Modal";
 import type { Exploration, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../../../observe/core/store";
 import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";
-import { duration, ErrorFrames } from "./TraceTimeline";
+import { defaultSlice, duration, ErrorFrames, TraceView } from "./TraceTimeline";
 import "./observe.css";
 
 const BASE = "/api/observe";
@@ -50,7 +51,26 @@ function bandParam(band: Band | null): string | null {
   return band.kind === "slow" ? "slow" : `cell:${band.fromMs}:${band.toMs}:${band.minWallMs}:${band.maxWallMs ?? ""}`;
 }
 
+export type ModalView =
+  | { readonly kind: "issue"; readonly fingerprint: string }
+  | { readonly kind: "trace"; readonly traceId: string }
+  | { readonly kind: "deployment"; readonly id: string; readonly label: string };
+
+function parseModal(value: string | null): ModalView[] {
+  const match = value === null ? null : /^(issue|trace|deployment):([A-Za-z0-9._:+-]{1,64})$/u.exec(value);
+  if (match === null) return [];
+  if (match[1] === "issue") return FINGERPRINT.test(match[2]!) ? [{ kind: "issue", fingerprint: match[2]! }] : [];
+  if (match[1] === "trace") return TRACE_ID.test(match[2]!) ? [{ kind: "trace", traceId: match[2]! }] : [];
+  return VERSION.test(match[2]!) ? [{ kind: "deployment", id: match[2]!, label: "Deployment" }] : [];
+}
+
+function modalParam(view: ModalView | undefined): string | null {
+  if (view === undefined) return null;
+  return view.kind === "issue" ? `issue:${view.fingerprint}` : view.kind === "trace" ? `trace:${view.traceId}` : `deployment:${view.id}`;
+}
+
 export function createObservability(refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow) {
+  const [modals, setModals] = createSignal<readonly ModalView[]>(parseModal(readParam("modal")));
   const [health, setHealth] = createSignal<ObserveHealth | null>(null);
   const [traces, setTraces] = createSignal<Page<TraceSummary> | null>(null);
   const [exploration, setExploration] = createSignal<Exploration | null>(null);
@@ -127,7 +147,7 @@ export function createObservability(refreshKey: () => string, windowKey: () => s
       if (controller.signal.aborted) return;
       setTrace(value);
       setTraceError(null);
-      if (!value.invocations.some(invocation => invocation.key === slice())) setSlice(value.invocations.find(invocation => invocation.stage === "worker")?.key ?? value.invocations[0]?.key ?? null);
+      if (!value.invocations.some(invocation => invocation.key === slice())) setSlice(defaultSlice(value));
     }).catch((cause: unknown) => {
       if (controller.signal.aborted) return;
       setTrace(null);
@@ -157,14 +177,16 @@ export function createObservability(refreshKey: () => string, windowKey: () => s
   const chooseBand = (value: Band | null) => { setBand(value); writeParam("band", bandParam(value)); };
   const filterIssues = (value: IssueState) => { setIssueState(value); writeParam("issues", value === "open" ? null : value); selectIssue(null, false); };
   const filterIntroduced = (value: string | null) => { setIntroducedIn(value); writeParam("introduced", value); selectIssue(null, false); };
-  const openIssue = (fingerprint: string) => {
-    selectIssue(fingerprint);
-    jumpTo("issues");
+  const showModals = (next: readonly ModalView[]) => {
+    setModals(next);
+    writeParam("modal", modalParam(next.at(-1)));
   };
-  const openTrace = (id: string) => {
-    selectTrace(id);
-    jumpTo("route-explorer");
-  };
+  const openModal = (view: ModalView) => showModals([...modals(), view]);
+  const backModal = () => showModals(modals().slice(0, -1));
+  const closeModals = () => showModals([]);
+  const openIssue = (fingerprint: string) => openModal({ kind: "issue", fingerprint });
+  const openTrace = (traceId: string) => openModal({ kind: "trace", traceId });
+  const openDeployment = (id: string, label: string) => openModal({ kind: "deployment", id, label });
   const [resolving, setResolving] = createSignal(false);
   const changeState = async (fingerprint: string, state: IssueState) => {
     setResolving(true);
@@ -179,7 +201,7 @@ export function createObservability(refreshKey: () => string, windowKey: () => s
     }
   };
 
-  return { health, traces, exploration, band, chooseBand, issues, error, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
+  return { modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, error, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
 }
 
 export type Observability = ReturnType<typeof createObservability>;
@@ -210,12 +232,56 @@ export function Segmented<T extends string>(props: { readonly label: string; rea
   );
 }
 
+export function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly observe: Observability }): JSX.Element {
+  const { now } = useTelemetry();
+  const o = props.observe;
+  const issue = () => props.issue;
+  const representative = () => props.occurrences?.items[0] ?? null;
+  return (
+    <>
+      <div class="issue-head">
+        <div class="issue-title">
+          <b>{issue().name}</b>
+          <Show when={issue().operation}>{operation => <span class="op-tag">{operation()}</span>}</Show>
+        </div>
+        <button class="btn btn-small" type="button" disabled={o.resolving()} onClick={() => void o.changeState(issue().fingerprint, issue().state === "open" ? "resolved" : "open")}>
+          {issue().state === "open" ? "Resolve" : "Reopen"}
+        </button>
+      </div>
+      <dl class="issue-facts">
+        <div><dt>Occurrences</dt><dd>{count(issue().occurrences)}</dd></div>
+        <div><dt>First seen</dt><dd title="Within the retained 7 days, not proof it never happened earlier">{age(issue().firstAtMs, now())}</dd></div>
+        <div><dt>Last seen</dt><dd>{age(issue().lastAtMs, now())}</dd></div>
+        <div><dt>Introduced in</dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
+      </dl>
+      <Show when={representative()} fallback={<Skeleton rows={4} />}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
+      <h3 class="observe-subhead">Occurrences</h3>
+      <div class="table-scroll" role="region" aria-label="Occurrences">
+        <table class="data-table compact occurrence-table">
+          <thead><tr><th>When</th><th>Version</th><th>Source</th><th class="numeric">Trace</th></tr></thead>
+          <tbody>
+            <For each={props.occurrences?.items ?? []}>{occurrence => (
+              <tr>
+                <td title={MOMENT.format(occurrence.atMs)}>{age(occurrence.atMs, now())}</td>
+                <td class="mono cell-note">{occurrence.version?.slice(0, 8) ?? "unknown"}</td>
+                <td class="cell-note">{occurrence.source}</td>
+                <td class="numeric">
+                  <Show when={occurrence.traceId} fallback={<span class="cell-note">none</span>}>{id => <button type="button" class="link" onClick={() => o.openTrace(id())}>Open trace</button>}</Show>
+                </td>
+              </tr>
+            )}</For>
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export function IssuesWidget(props: { readonly observe: Observability }): JSX.Element {
   const { now } = useTelemetry();
   const o = props.observe;
   const items = () => o.issues()?.items ?? [];
   const current = createMemo(() => items().find(issue => issue.fingerprint === o.issueId()) ?? null);
-  const representative = createMemo(() => o.occurrences()?.items[0] ?? null);
   const introducedVersions = createMemo(() => {
     const versions = new Map<string, string>();
     const selected = o.introducedIn();
@@ -261,44 +327,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
               )}</For>
             </div>
             <div class="issue-detail">
-              <Show when={current()}>{issue => (
-                <>
-                  <div class="issue-head">
-                    <div class="issue-title">
-                      <b>{issue().name}</b>
-                      <Show when={issue().operation}>{operation => <span class="op-tag">{operation()}</span>}</Show>
-                    </div>
-                    <button class="btn btn-small" type="button" disabled={o.resolving()} onClick={() => void o.changeState(issue().fingerprint, issue().state === "open" ? "resolved" : "open")}>
-                      {issue().state === "open" ? "Resolve" : "Reopen"}
-                    </button>
-                  </div>
-                  <dl class="issue-facts">
-                    <div><dt>Occurrences</dt><dd>{count(issue().occurrences)}</dd></div>
-                    <div><dt>First seen</dt><dd title="Within the retained 7 days, not proof it never happened earlier">{age(issue().firstAtMs, now())}</dd></div>
-                    <div><dt>Last seen</dt><dd>{age(issue().lastAtMs, now())}</dd></div>
-                    <div><dt>Introduced in</dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
-                  </dl>
-                  <Show when={representative()} fallback={<Skeleton rows={4} />}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
-                  <h3 class="observe-subhead">Occurrences</h3>
-                  <div class="table-scroll" role="region" aria-label="Occurrences">
-                    <table class="data-table compact occurrence-table">
-                      <thead><tr><th>When</th><th>Version</th><th>Source</th><th class="numeric">Trace</th></tr></thead>
-                      <tbody>
-                        <For each={o.occurrences()?.items ?? []}>{occurrence => (
-                          <tr>
-                            <td title={MOMENT.format(occurrence.atMs)}>{age(occurrence.atMs, now())}</td>
-                            <td class="mono cell-note">{occurrence.version?.slice(0, 8) ?? "unknown"}</td>
-                            <td class="cell-note">{occurrence.source}</td>
-                            <td class="numeric">
-                              <Show when={occurrence.traceId} fallback={<span class="cell-note">none</span>}>{id => <button type="button" class="link" onClick={() => o.openTrace(id())}>Open trace</button>}</Show>
-                            </td>
-                          </tr>
-                        )}</For>
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}</Show>
+              <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} observe={o} />}</Show>
             </div>
           </div>
         </Show>
@@ -385,5 +414,74 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
         );
       }}</Show>
     </section>
+  );
+}
+
+function IssueModalBody(props: { readonly fingerprint: string; readonly observe: Observability }): JSX.Element {
+  const [issue, setIssue] = createSignal<IssueSummary | null>(null);
+  const [occurrences, setOccurrences] = createSignal<Page<Occurrence> | null>(null);
+  const [failure, setFailure] = createSignal<string | null>(null);
+  createEffect(() => ({ id: props.fingerprint, mutation: props.observe.mutation() }), query => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    void Promise.all([read(`/issues/${query.id}`, controller.signal, decodeIssue), read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences)]).then(([nextIssue, nextOccurrences]) => {
+      if (controller.signal.aborted) return;
+      setIssue(nextIssue);
+      setOccurrences(nextOccurrences);
+      setFailure(null);
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailure(message(cause, "Issue unavailable")); });
+  });
+  return (
+    <>
+      <Show when={failure()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
+      <Show when={issue()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <IssueDetail issue={value()} occurrences={occurrences()} observe={props.observe} />}</Show>
+    </>
+  );
+}
+
+function TraceModalBody(props: { readonly traceId: string }): JSX.Element {
+  const [detail, setDetail] = createSignal<TraceDetail | null>(null);
+  const [failure, setFailure] = createSignal<string | null>(null);
+  const [slice, setSlice] = createSignal<string | null>(null);
+  createEffect(() => props.traceId, id => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    void read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
+      if (controller.signal.aborted) return;
+      setDetail(value);
+      setFailure(null);
+      setSlice(defaultSlice(value));
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailure(message(cause, "Trace unavailable")); });
+  });
+  return (
+    <>
+      <Show when={failure()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
+      <Show when={detail()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <TraceView detail={value()} selected={slice()} onSelect={setSlice} />}</Show>
+    </>
+  );
+}
+
+function modalTitle(view: ModalView): string {
+  return view.kind === "issue" ? "Issue" : view.kind === "trace" ? "Trace" : view.label;
+}
+
+export function ObserveModal(props: { readonly observe: Observability; readonly refreshKey: string }): JSX.Element {
+  const o = props.observe;
+  const top = () => o.modals().at(-1);
+  const previous = () => o.modals().at(-2);
+  return (
+    <Show when={top()} keyed>{view => (
+      <Modal
+        title={modalTitle(view)}
+        label={modalTitle(view)}
+        onClose={o.closeModals}
+        onBack={previous() === undefined ? undefined : o.backModal}
+        backLabel={previous() === undefined ? undefined : modalTitle(previous()!)}
+      >
+        {view.kind === "issue" ? <IssueModalBody fingerprint={view.fingerprint} observe={o} />
+          : view.kind === "trace" ? <TraceModalBody traceId={view.traceId} />
+          : <RolloutImpactPanel deploymentId={view.id} refreshKey={props.refreshKey} observe={o} />}
+      </Modal>
+    )}</Show>
   );
 }

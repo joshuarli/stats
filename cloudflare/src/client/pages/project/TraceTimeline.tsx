@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { InvocationSummary, Occurrence, TraceDetail } from "../../../observe/core/store";
 import { isInApp } from "../../../observe/core/stack";
@@ -106,6 +106,9 @@ export function TraceTimeline(props: {
   const [view, setView] = createSignal<[number, number]>(fit());
   const [hovered, setHovered] = createSignal<Slice | null>(null);
   let canvas: HTMLDivElement | undefined;
+  const [canvasWidth, setCanvasWidth] = createSignal(0);
+  const resize = new ResizeObserver(entries => { setCanvasWidth(entries[0]?.contentRect.width ?? 0); });
+  onCleanup(() => resize.disconnect());
 
   createEffect(() => props.detail.traceId, () => { setView(fit()); });
 
@@ -127,7 +130,7 @@ export function TraceTimeline(props: {
   };
   const ticks = createMemo(() => {
     const [from, to] = view();
-    const step = niceStep((to - from) / 8);
+    const step = niceStep((to - from) / (canvasWidth() > 0 ? Math.max(2, Math.floor(canvasWidth() / 72)) : 8));
     const first = Math.ceil(from / step) * step;
     const values: number[] = [];
     for (let value = first; value <= to && values.length < 40; value += step) values.push(Math.round(value / step) * step);
@@ -234,7 +237,7 @@ export function TraceTimeline(props: {
             )}</For>
           )}</For>
         </div>
-        <div class="tl-canvas" style={`height:${height()}px`} ref={element => { canvas = element; }} onWheel={onWheel} onPointerLeave={() => setHovered(null)}>
+        <div class="tl-canvas" style={`height:${height()}px`} ref={element => { canvas = element; resize.observe(element); }} onWheel={onWheel} onPointerLeave={() => setHovered(null)}>
           <For each={ticks()}>{tick => <span class="tl-grid" style={`left:${x(tick)}%`} />}</For>
           <For each={rows()}>{row => (
             <>
@@ -337,4 +340,24 @@ export function ErrorFrames(props: { readonly occurrence: Pick<Occurrence, "name
       </ol>
     </div>
   );
+}
+
+export function TraceView(props: { readonly detail: TraceDetail; readonly selected: string | null; readonly onSelect: (key: string | null) => void }): JSX.Element {
+  return (
+    <>
+      <div class="trace-head">
+        <b>{props.detail.invocations.find(invocation => invocation.stage === "worker")?.label ?? "Root not received"}</b>
+        <span class="cell-note mono">{props.detail.traceId}</span>
+      </div>
+      <Show when={!props.detail.rootPresent}><div class="notice notice-warn" role="status"><span>The Worker invocation that started this trace was not received, so it is incomplete.</span></div></Show>
+      <Show when={props.detail.truncated}><div class="notice notice-warn" role="status"><span>Only the first 16 invocations are shown.</span></div></Show>
+      <TraceTimeline detail={props.detail} selected={props.selected} onSelect={props.onSelect} />
+      <p class="observe-footnote">Wall and CPU time are measured by the platform per invocation. CPU is a total for the invocation; where in the slice it was spent is not recorded.</p>
+    </>
+  );
+}
+
+export function defaultSlice(detail: TraceDetail): string | null {
+  const failing = detail.invocations.find(invocation => detail.occurrences.some(occurrence => occurrence.invocationKey === invocation.key));
+  return failing?.key ?? detail.invocations.find(invocation => invocation.stage === "worker")?.key ?? detail.invocations[0]?.key ?? null;
 }

@@ -4,7 +4,7 @@ import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
 import { encodeHistory } from "../test/support/history.ts";
-import { buildScenario, scenarioStore as scenarioStoreFor } from "../test/ui/observe-scenario.ts";
+import { buildScenario, scenarioComparison, scenarioStore as scenarioStoreFor } from "../test/ui/observe-scenario.ts";
 import { handleApi } from "../src/observe/http/api.ts";
 
 const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
@@ -181,7 +181,10 @@ const server = createServer(async (request, response) => {
     if (path === "/api/v1/projects") return json(response, projects);
     const deployed = /^\/api\/v1\/projects\/([^/]+)\/deployments(?:\/([^/]+)\/comparison)?$/u.exec(path);
     if (deployed !== null && scenario !== undefined && deployed[1] === "stats") {
-      return deployed[2] === undefined ? json(response, scenario.deployments) : json(response, { error: { code: "not_found", message: "no comparison in the scenario" } }, 404);
+      if (deployed[2] === undefined) return json(response, scenario.deployments);
+      const window = url.searchParams.get("window") ?? "1h";
+      const body = ["1h", "6h", "24h"].includes(window) ? scenarioComparison(scenario, deployed[2], window) : null;
+      return body === null ? json(response, { error: { code: "not_found", message: "no comparison in the scenario" } }, 404) : json(response, body);
     }
     if (deployed !== null) {
       const capture = projectsById.get(deployed[1]);

@@ -107,6 +107,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   };
 
   const events = createMemo(() => (history()?.deployments ?? []).map(deployment => ({
+    id: deployment.id,
     atMs: deployment.atMs,
     label: `deploy ${name(deployment)}`,
     onSelect: () => {

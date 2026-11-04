@@ -22,7 +22,7 @@ import { DurableObjectsWidget, RoutesWidget } from "./project/Routes";
 import { metricTrack } from "../history";
 import { buildProjectCells, hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
-import { createObservability, IssuesWidget, RolloutImpactPanel } from "./project/Observe";
+import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel } from "./project/Observe";
 import { RequestExplorerWidget } from "./project/Requests";
 import { rangeMs } from "../state";
 import { RETENTION_MS } from "../../observe/core/limits";
@@ -179,6 +179,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         <section class="charts observe-section" aria-label="Errors and traces">
           <RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} />
           <IssuesWidget observe={state()} />
+          <ObserveModal observe={state()} refreshKey={`${projectTick()}:${manualTick()}`} />
         </section>
       )}</Show>
     </DeploymentEvents>

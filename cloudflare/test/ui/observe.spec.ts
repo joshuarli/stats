@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
-import { answer, buildScenario, SCENARIO_ROLLOUTS, SCENARIO_VERSIONS, type Scenario } from "./observe-scenario";
+import { answer, buildScenario, scenarioComparison, SCENARIO_ROLLOUTS, SCENARIO_VERSIONS, type Scenario } from "./observe-scenario";
 
 const now = Date.UTC(2026, 10, 4, 2, 0);
 const collector = { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false };
@@ -19,6 +19,12 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [STATS, STUFF] });
     if (url.pathname === "/api/v1/projects/stats/deployments") return route.fulfill({ json: scenario.deployments });
+    const comparison = /^\/api\/v1\/projects\/stats\/deployments\/([^/]+)\/comparison$/u.exec(url.pathname);
+    if (comparison !== null) {
+      const window = url.searchParams.get("window") === "6h" ? "6h" : url.searchParams.get("window") === "24h" ? "24h" : "1h";
+      const body = scenarioComparison(scenario, comparison[1]!, window);
+      return body === null ? route.fulfill({ status: 404, json: { error: { code: "not_found", message: "deployment not found" } } }) : route.fulfill({ json: body });
+    }
     if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: { projectId: "stuff", worker: "stuff", enabled: false, sync: null, deployments: [], versions: [] } });
     const history = /^\/api\/v1\/projects\/(\w+)\/history$/u.exec(url.pathname);
     const kinds = url.searchParams.get("kinds");
@@ -99,7 +105,16 @@ test("the v1.4.0 deployment shows its new issue group, its regression, and a hig
   await expect(impact).toContainText("1 new issue group · 1 regression");
   await expect(impact.locator(".impact-rate")).toContainText("→");
   await impact.getByRole("button", { name: /RangeError/u }).click();
-  await expect(page.locator("#issues .issue-item[aria-selected='true']")).toContainText("RangeError");
+  const dialog = page.getByRole("dialog", { name: "Issue" });
+  await expect(dialog).toContainText("RangeError");
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await expect(dialog.locator(".issue-facts")).toContainText("v1.4.0");
+  await expect(page).toHaveURL(/modal=issue%3A[0-9a-f]{64}|modal=issue:[0-9a-f]{64}/u);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page).not.toHaveURL(/modal=/u);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+  await expect(impact).toBeInViewport();
 });
 
 test("the canary is where the parser bug first appeared", async ({ page }) => {
@@ -110,11 +125,18 @@ test("the canary is where the parser bug first appeared", async ({ page }) => {
   await expect(impact.getByRole("button", { name: /TypeError/u })).toBeVisible();
 });
 
-test("clicking a deploy marker on the heatmap selects that deployment", async ({ page }) => {
+test("a deploy marker opens that deployment in a modal, and its issues open on top with a way back", async ({ page }) => {
   await setup(page);
   await page.goto(`/#/project/stats?range=24h&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   await page.locator("#route-explorer .heatmap-marker").click();
-  await expect(page).toHaveURL(new RegExp(`deployment=${SCENARIO_ROLLOUTS.v14}`, "u"));
+  const deployment = page.getByRole("dialog");
+  await expect(deployment).toContainText("1 new issue group · 1 regression");
+  await deployment.getByRole("button", { name: /TypeError/u }).click();
+  await expect(page.getByRole("dialog", { name: "Issue" })).toContainText("TypeError");
+  await page.getByRole("dialog").getByRole("button", { name: /Back|Deployment/u }).first().click();
+  await expect(page.getByRole("dialog")).toContainText("Errors after this deployment");
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("issues show the version they appeared on and filter by it", async ({ page }) => {
@@ -128,15 +150,17 @@ test("issues show the version they appeared on and filter by it", async ({ page 
   expect(observe.requests.some(request => request.includes(`introducedIn=${SCENARIO_VERSIONS[2].id}`))).toBe(true);
 });
 
-test("an occurrence opens its trace in the explorer, and selections survive a reload", async ({ page }) => {
+test("an occurrence opens its trace in a modal that survives a reload", async ({ page }) => {
   await setup(page);
   await page.goto("/#/project/stats?range=24h");
   await page.locator("#issues").getByRole("option", { name: /deployments\.poll/u }).click();
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
-  await expect(page).toHaveURL(/trace=[0-9a-f]{32}/u);
-  await expect(page.locator("#route-explorer .trace-head")).toContainText("scheduled */5 * * * *");
+  const dialog = page.getByRole("dialog", { name: "Trace" });
+  await expect(dialog.locator(".trace-head")).toContainText("scheduled */5 * * * *");
+  await expect(dialog.locator(".tl-slice.failed")).toHaveCount(1);
+  await expect(dialog.getByRole("region", { name: "Current selection" })).toContainText("deployments.poll");
   await page.reload();
-  await expect(page.locator("#route-explorer .trace-head")).toContainText("scheduled */5 * * * *");
+  await expect(page.getByRole("dialog", { name: "Trace" }).locator(".trace-head")).toContainText("scheduled */5 * * * *");
   await expect(page.locator("#issues .issue-item[aria-selected='true']")).toContainText("deployments.poll");
 });
 
@@ -187,4 +211,28 @@ test("other projects keep the sampled route card and never call the observabilit
   await expect(page.locator("#route-explorer, #issues")).toHaveCount(0);
   await expect(page.locator("#routes")).toHaveCount(1);
   expect(observe.requests).toEqual([]);
+});
+
+test("the observability cards and trace modal match their goldens", { tag: "@mobile" }, async ({ page }) => {
+  await setup(page);
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const style = document.createElement("style");
+      style.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } .topbar { position: static !important; } .section-bar { display: none !important; }";
+      document.head.appendChild(style);
+    });
+  });
+  await page.goto(`/#/project/stats?range=24h&route=${encodeURIComponent(HISTORY_ROUTE)}&band=slow&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  const explorer = page.locator("#route-explorer");
+  await expect(explorer.locator(".hot-summary")).toBeVisible();
+  await expect(explorer.locator(".tl-slice").first()).toBeVisible();
+  await expect(page.locator("#deployments .impact-summary")).toBeVisible();
+  await expect(page.locator("#issues .issue-facts")).toBeVisible();
+  await expect(explorer).toHaveScreenshot("stats-route-explorer.webp");
+  await expect(page.locator("#deployments")).toHaveScreenshot("stats-deployments.webp");
+  await expect(page.locator("#issues")).toHaveScreenshot("stats-issues.webp");
+  await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Trace" });
+  await expect(dialog.locator(".tl-slice").first()).toBeVisible();
+  await expect(dialog).toHaveScreenshot("stats-trace-modal.webp");
 });

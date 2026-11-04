@@ -185,3 +185,15 @@ export function scenarioStore(scenario: Scenario, now: number): ObserveService {
 export async function answer(scenario: Scenario, now: number, request: Request): Promise<Response> {
   return handleApi(request, scenarioStore(scenario, now));
 }
+
+export function scenarioComparison(scenario: Scenario, deploymentId: string, window: "1h" | "6h" | "24h"): object | null {
+  const deployment = scenario.deployments.deployments.find(item => item.id === deploymentId);
+  if (deployment === undefined) return null;
+  const span = { "1h": H, "6h": 6 * H, "24h": D }[window];
+  const end = Math.floor(deployment.atMs / (5 * M)) * 5 * M;
+  return {
+    deploymentId, window, before: { fromMs: end - span, toMs: end }, after: { fromMs: end + 10 * M, toMs: end + 10 * M + span },
+    readyAtMs: end + 10 * M + span, beforeInvocations: null, afterInvocations: null,
+    reasons: ["The scenario has no collected Worker metrics to compare."], warnings: [], metrics: []
+  };
+}

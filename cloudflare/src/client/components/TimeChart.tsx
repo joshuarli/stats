@@ -24,6 +24,7 @@ export interface ChartSeries {
 }
 
 export interface ChartEvent {
+  readonly id?: string | undefined;
   readonly atMs: number;
   readonly label: string;
   readonly onSelect?: (() => void) | undefined;

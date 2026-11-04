@@ -5,7 +5,7 @@ import { useTelemetry } from "../../state";
 import { Skeleton, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
-import { duration, TraceTimeline } from "./TraceTimeline";
+import { duration, TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
 import { HealthMeta, MOMENT, Segmented, type Observability } from "./Observe";
 
@@ -123,7 +123,7 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
               <Segmented label="Calls" value={band() === null ? "recent" : band()!.kind === "slow" ? "slow" : "cell"} options={[["recent", "Recent"], ["slow", value().route === null ? "Slowest" : "≥ p95"], ...(band()?.kind === "cell" ? [["cell", "Selected"] as ["cell", string]] : [])]} onChange={choice => { if (choice === "recent") o.chooseBand(null); else if (choice === "slow") o.chooseBand({ kind: "slow" }); }} />
             </div>
           </div>
-          <LatencyHeatmap heatmap={value().heatmap} toMs={value().toMs} band={band()} events={events()} onSelect={o.chooseBand} />
+          <LatencyHeatmap heatmap={value().heatmap} toMs={value().toMs} band={band()} events={events()} onSelect={o.chooseBand} onMarker={event => { if (event.id !== undefined) o.openDeployment(event.id, event.label.replace(/^deploy /u, "Deployment ")); }} />
           <Show when={comparison()}>{summary => (
             <p class="hot-summary">
               <b>{bandLabel()}</b>: {count(summary().calls)} {summary().calls === 1 ? "call" : "calls"}, median {duration(summary().wall)} wall and {duration(summary().cpu)} CPU, {Math.round(summary().objectShare * 100)}% of it in the Durable Object
@@ -147,18 +147,7 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
             </div>
             <div class="trace-detail">
               <Show when={o.traceError()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
-              <Show when={o.trace()} fallback={o.traceError() === null && items().length > 0 ? <Skeleton rows={6} /> : null}>{detail => (
-                <>
-                  <div class="trace-head">
-                    <b>{detail().invocations.find(invocation => invocation.stage === "worker")?.label ?? "Root not received"}</b>
-                    <span class="cell-note mono">{detail().traceId}</span>
-                  </div>
-                  <Show when={!detail().rootPresent}><div class="notice notice-warn" role="status"><span>The Worker invocation that started this trace was not received, so it is incomplete.</span></div></Show>
-                  <Show when={detail().truncated}><div class="notice notice-warn" role="status"><span>Only the first 16 invocations are shown.</span></div></Show>
-                  <TraceTimeline detail={detail()} selected={o.slice()} onSelect={o.setSlice} />
-                  <p class="observe-footnote">Wall and CPU time are measured by the platform per invocation. CPU is a total for the invocation; where in the slice it was spent is not recorded.</p>
-                </>
-              )}</Show>
+              <Show when={o.trace()} fallback={o.traceError() === null && items().length > 0 ? <Skeleton rows={6} /> : null}>{detail => <TraceView detail={detail()} selected={o.slice()} onSelect={o.setSlice} />}</Show>
             </div>
           </div>
         </Show>

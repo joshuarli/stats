@@ -36,7 +36,11 @@ a parser bug, a v1.4.0 deploy that adds an ingest error, regresses the
 resolved parser bug, and makes host history reads CPU-hot, and a poll
 failure carried across every version. The spec and `make preview` answer
 `/api/observe/*` from it through the real API handler;
-`PREVIEW_OBSERVE=capture make preview` serves the production capture. Local workerd sets no
+`PREVIEW_OBSERVE=capture make preview` serves the production capture. Its WebP goldens
+(`observe.spec.ts-snapshots/`) cover the route explorer, the Deployments card
+with v1.4.0's impact, the Errors card, and the trace modal on desktop and
+mobile; they come from the scenario, so they change only when the scenario
+or the design does. Local workerd sets no
 script version, so the two-Worker test proves that a polled deployment is
 forwarded and stored, while version attribution is covered by the core
 tests. `cloudflare/scripts/capture-project.sh stats` also

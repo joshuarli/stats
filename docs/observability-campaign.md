@@ -353,7 +353,11 @@ routes ranked by exact trace CPU with p50, p95, and p99, a latency heatmap
 with the p95 line and deploy markers, a p95 view that says where slow calls
 spend their time, and the trace waterfall, all following the page's time
 range. It replaces the sampled CPU-by-route card for the observed project.
-WebP goldens wait for review of the design on the fault-injection scenario.
+Drill-downs that cross cards (a deployment's issues, an occurrence's trace,
+a heatmap deploy marker) open in a stacked modal with Back, kept in the
+URL, instead of scrolling the page; a trace opened from an error selects
+the slice that raised it. WebP goldens come from the fault-injection
+scenario.
 
 Tail delivery was checked on 2026-11-04: between 01:11 and 01:43 UTC the
 hosts made 127 uploads (counted from stored samples) and the store held 127
