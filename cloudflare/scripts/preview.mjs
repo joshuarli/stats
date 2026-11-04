@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
 import { encodeHistory } from "../test/support/history.ts";
 import { buildScenario, scenarioStore as scenarioStoreFor } from "../test/ui/observe-scenario.ts";
-import { handleApi } from "../src/observe/worker/api.ts";
+import { handleApi } from "../src/observe/http/api.ts";
 
 const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), ".."));
 const assets = join(cloudflare, ".cloudflare", "output", "v0", "workers", "default", "assets");

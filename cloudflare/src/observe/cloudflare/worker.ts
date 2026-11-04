@@ -1,6 +1,6 @@
 import { prepareInvocation, type MessagePolicy, type Preparation } from "../core/model.ts";
-import { handleApi } from "./api.ts";
-import { reduceTailItem } from "./reduce.ts";
+import { handleApi } from "../http/api.ts";
+import { reduceTailItem } from "./tail.ts";
 import { ObservationStore, type ObserveEnv } from "./store-object.ts";
 
 export { ObservationStore };

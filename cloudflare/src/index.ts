@@ -6,11 +6,11 @@ import { collectDeployments } from "./deployments/collector";
 import { parseProjects } from "./projects/config";
 import { MAX_BODY_BYTES } from "./limits";
 import { runCollector } from "./projects/collector";
-import { markInvocation } from "./observe/mark";
-import { reportError } from "./observe/report";
+import { markInvocation } from "./observe/cloudflare/mark";
+import { reportError } from "./observe/producer/report";
 import { readLimitedText } from "./body";
-import { OBSERVED_PROJECT } from "./observe/channel";
-import { rolloutsFromDeployments } from "./observe/rollouts";
+import { OBSERVED_PROJECT } from "./observe/producer/channel";
+import { rolloutsFromDeployments } from "./observe/cloudflare/rollouts";
 import { decodeDeploymentHistory } from "./deployments/decode";
 
 export { Installation };

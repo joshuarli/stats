@@ -236,13 +236,14 @@ back; and UI tests for the impact line, badge, and filter.
 A Cloudflare-agnostic CLI over the observe HTTP API, for terminals and
 agents now and as the reference producer for non-Cloudflare services later.
 
-- **Shape:** one TypeScript entry, `cloudflare/src/observe/cli.ts`, run as
+- **Shape:** one TypeScript entry, `cloudflare/src/observe/client/cli.ts`, run as
   `pnpm observe <command>` with Node's built-in `parseArgs` and `fetch` and
   no dependencies. It reuses `src/observe/decode.ts`, so a response that
   fails validation fails the command.
 - **Target and auth:** `--base` or `OBSERVE_URL`, and a header produced by
-  a command, `OBSERVE_AUTH_COMMAND` with `OBSERVE_AUTH_HEADER` (for stats,
-  `cf access token <host>` into `cf-access-token`). Credentials never come
+  a command, `OBSERVE_AUTH_COMMAND` with the required `OBSERVE_AUTH_HEADER`
+  (for stats, `cf access token <host>` into `cf-access-token`); the CLI
+  assumes no provider. Credentials never come
   from argv, matching the repo's token rule.
 - **Read commands:** `health`; `routes [--window]`; `issues [--state] [--introduced-in]`;
   `issue <fingerprint>` with its stack and occurrences; `traces [--failed]

@@ -1,20 +1,9 @@
-import type { Exploration, Health, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, RolloutResult, TraceDetail, TraceFilter, TraceSummary } from "../core/store.ts";
+import type { IssueState, TraceFilter } from "../core/store.ts";
+import type { ObserveService } from "../core/service.ts";
 import { MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH } from "../core/limits.ts";
 import { VERSION, type ObservedRollout, type VersionLabel } from "../core/model.ts";
 import { readLimitedText } from "../../body.ts";
 
-export interface ObserveStore {
-  issues(filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>>;
-  issue(fingerprint: string): Promise<IssueSummary | null>;
-  occurrences(fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }): Promise<Page<Occurrence>>;
-  setIssueState(fingerprint: string, state: IssueState): Promise<boolean>;
-  traces(filter: TraceFilter): Promise<Page<TraceSummary>>;
-  trace(traceId: string): Promise<TraceDetail | null>;
-  health(): Promise<Health & { readonly databaseBytes: number }>;
-  rollouts(rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]): Promise<RolloutResult>;
-  impact(rolloutId: string): Promise<RolloutImpact | null>;
-  explore(filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }): Promise<Exploration>;
-}
 
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 const TRACE_ID = /^[0-9a-f]{32}$/u;
@@ -178,7 +167,7 @@ async function readState(request: Request): Promise<IssueState> {
   return issueState((body as { state?: unknown }).state);
 }
 
-export async function handleApi(request: Request, store: ObserveStore): Promise<Response> {
+export async function handleApi(request: Request, store: ObserveService): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   try {

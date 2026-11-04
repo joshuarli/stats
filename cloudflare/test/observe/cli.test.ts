@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { EXIT, main } from "../../src/observe/cli.ts";
+import { EXIT, main } from "../../src/observe/client/cli.ts";
 import { answer, buildScenario, SCENARIO_ROLLOUTS } from "../ui/observe-scenario.ts";
 
 const now = Date.UTC(2026, 10, 4, 2, 0);
@@ -83,6 +83,7 @@ await test("exit codes separate usage errors, missing items, and an unavailable 
   failing = false;
   const unreachable = await main(["health"], { OBSERVE_URL: "http://127.0.0.1:9/api/observe" }, () => undefined, () => undefined, now);
   assert.equal(unreachable, EXIT.unavailable);
+  assert.equal(await main(["health"], { OBSERVE_URL: base, OBSERVE_AUTH_COMMAND: "printf token" }, () => undefined, () => undefined, now), EXIT.usage);
 });
 
 server.close();

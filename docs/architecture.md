@@ -66,6 +66,18 @@ tail consumer of `stats`, has no route of its own, and keeps its data in its
 own `ObservationStore` Durable Object. After each deployment poll, the
 scheduled handler forwards the stats project's stored deployments and
 version tags to it as rollouts over the same binding.
+
+The observability code under `cloudflare/src/observe/` is layered so only
+one folder knows about Cloudflare. `core/` holds the model, grouping, SQL
+store, and `service.ts`, which implements every API operation over any
+SQLite database and a clock. `http/api.ts` turns Web-standard requests into
+service calls. `client/` holds the response decoders and the `pnpm observe`
+CLI, and `producer/` the diagnostics-channel contract that application code
+reports through. `cloudflare/` holds the adapters: the `stats-observe`
+Worker entry, the `ObservationStore` Durable Object, the tail reducer, the
+deployment-to-rollout mapping, and the trace-context mark. `observe.tsconfig.json`
+typechecks everything outside `cloudflare/` without Workers types, so a
+Cloudflare dependency there fails the build.
 `cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
 tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`

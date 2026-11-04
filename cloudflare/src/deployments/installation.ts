@@ -6,8 +6,8 @@ import { parseProjects } from "../projects/config";
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "./compare.ts";
 import { deploymentsEnabled, type DeploymentPoll } from "./collector.ts";
 import { UUID, type DeploymentHistory } from "./model.ts";
-import { markInvocation } from "../observe/mark.ts";
-import { reportError } from "../observe/report.ts";
+import { markInvocation } from "../observe/cloudflare/mark.ts";
+import { reportError } from "../observe/producer/report.ts";
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "./store.ts";
 
 /** Same exported class name, binding and object id; no new Durable Object namespace. */

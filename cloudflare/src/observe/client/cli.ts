@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces } from "./decode.ts";
-import type { InvocationSummary, IssueState } from "./core/store.ts";
+import type { InvocationSummary, IssueState } from "../core/store.ts";
 
 const USAGE = `usage: observe <command> [options]
 
@@ -19,8 +19,8 @@ options:
   --base URL   observe API base (or OBSERVE_URL), e.g. https://stats.example/api/observe
   --json       print the decoded response instead of text
 
-auth: OBSERVE_AUTH_COMMAND prints a credential, sent as OBSERVE_AUTH_HEADER
-(default cf-access-token). Credentials are never read from arguments.`;
+auth: OBSERVE_AUTH_COMMAND prints a credential, sent in the header named by
+OBSERVE_AUTH_HEADER. Credentials are never read from arguments.`;
 
 const WINDOWS: Record<string, number> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000, "7d": 604_800_000 };
 
@@ -44,9 +44,11 @@ interface Context {
 function credential(env: NodeJS.ProcessEnv): Record<string, string> {
   const command = env["OBSERVE_AUTH_COMMAND"];
   if (command === undefined || command === "") return {};
+  const header = env["OBSERVE_AUTH_HEADER"];
+  if (header === undefined || !/^[A-Za-z0-9-]{1,64}$/u.test(header)) throw new Exit(EXIT.usage, "OBSERVE_AUTH_COMMAND needs OBSERVE_AUTH_HEADER, the header that carries its output");
   const result = spawnSync("sh", ["-c", command], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
   if (result.status !== 0) throw new Exit(EXIT.unavailable, "OBSERVE_AUTH_COMMAND failed");
-  return { [env["OBSERVE_AUTH_HEADER"] ?? "cf-access-token"]: result.stdout.trim() };
+  return { [header]: result.stdout.trim() };
 }
 
 async function call<T>(context: Context, path: string, decode: (value: unknown) => T, init: RequestInit = {}): Promise<T> {

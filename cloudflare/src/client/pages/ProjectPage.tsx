@@ -26,7 +26,7 @@ import { createObservability, IssuesWidget, RolloutImpactPanel } from "./project
 import { RequestExplorerWidget } from "./project/Requests";
 import { rangeMs } from "../state";
 import { RETENTION_MS } from "../../observe/core/limits";
-import { OBSERVED_PROJECT } from "../../observe/channel";
+import { OBSERVED_PROJECT } from "../../observe/producer/channel";
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();

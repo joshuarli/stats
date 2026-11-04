@@ -5,7 +5,7 @@ import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { readParam, writeParam } from "../../urlState";
 import { jumpTo, Skeleton, Widget } from "../../components/ui";
-import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/decode";
+import { decodeExploration, decodeHealth, decodeImpact, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
 import type { Exploration, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../../../observe/core/store";
 import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";

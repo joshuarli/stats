@@ -1,5 +1,5 @@
 import { bindings, defineConfig, exports, triggers } from "cf/config";
-import * as entrypoint from "../src/observe/worker/index.ts" with { type: "cf-worker" };
+import * as entrypoint from "../src/observe/cloudflare/worker.ts" with { type: "cf-worker" };
 
 const WORKER_NAME = "stats-observe";
 

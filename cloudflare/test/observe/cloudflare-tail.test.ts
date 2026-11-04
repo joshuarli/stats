@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reduceTailItem, type TailItem } from "../../src/observe/worker/reduce.ts";
-import { errorReport } from "../../src/observe/report.ts";
-import { OBSERVE_CHANNEL } from "../../src/observe/channel.ts";
+import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { errorReport } from "../../src/observe/producer/report.ts";
+import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 
 const VERSION = "3172128e-5c58-48a4-8c16-7767d5521979";
 const OBJECT = "71437be8483ec4c778560417396a6e8e81f1673f27ec5d341ec7a2645e467eb9";

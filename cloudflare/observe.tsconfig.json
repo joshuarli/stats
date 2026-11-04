@@ -4,5 +4,5 @@
     "types": ["node"],
     "lib": ["ES2023"]
   },
-  "include": ["src/observe/core/**/*.ts", "src/observe/cli.ts", "test/observe/**/*.ts", "test/observe-e2e/**/*.ts"]
+  "include": ["src/observe/core/**/*.ts", "src/observe/http/**/*.ts", "src/observe/client/**/*.ts", "src/observe/producer/**/*.ts", "test/observe/**/*.ts", "test/observe-e2e/**/*.ts", "test/ui/observe-scenario.ts"]
 }

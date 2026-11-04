@@ -1,6 +1,6 @@
-import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "./core/store.ts";
-import type { StackFrame } from "./core/stack.ts";
-import type { ErrorSource, InvocationKind, Stage } from "./core/model.ts";
+import type { Exploration, Health, Heatmap, ImpactState, RouteStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { StackFrame } from "../core/stack.ts";
+import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
 
 export interface ObserveHealth extends Health {
   readonly databaseBytes: number;

@@ -11,7 +11,7 @@ import { parseProjects, type ProjectConfig } from "./projects/config";
 import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
 import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 import { readLimitedText } from "./body";
-import { reportError } from "./observe/report";
+import { reportError } from "./observe/producer/report";
 
 export const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;

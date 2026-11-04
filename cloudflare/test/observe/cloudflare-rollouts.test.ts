@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rolloutsFromDeployments } from "../../src/observe/rollouts.ts";
+import { rolloutsFromDeployments } from "../../src/observe/cloudflare/rollouts.ts";
 import { prepareRollout } from "../../src/observe/core/model.ts";
 import type { DeploymentHistory } from "../../src/deployments/model.ts";
 

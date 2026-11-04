@@ -1,4 +1,4 @@
-import { OBSERVE_CHANNEL, OPERATIONS, type Operation } from "../channel.ts";
+import { OBSERVE_CHANNEL, OPERATIONS, type Operation } from "../producer/channel.ts";
 import type { InvocationKind, ObservedError, ObservedInvocation, Stage, TraceContext } from "../core/model.ts";
 
 export interface TailItem {

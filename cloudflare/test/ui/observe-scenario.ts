@@ -1,7 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
-import { prepareInvocation, prepareRollout, prepareVersionLabel, type ObservedError, type ObservedInvocation, type ObservedRollout, type Preparation, type PreparedInvocation, type VersionLabel } from "../../src/observe/core/model.ts";
-import { explore, health, ingest, initializeStore, issueOccurrences, listIssues, readIssue, listTraces, readTrace, recordRollouts, rolloutImpact, setIssueState, type IssueState, type SqlDatabase, type SqlValue, type TraceFilter } from "../../src/observe/core/store.ts";
-import { handleApi } from "../../src/observe/worker/api.ts";
+import { prepareInvocation, prepareRollout, type ObservedError, type ObservedInvocation, type Preparation, type PreparedInvocation } from "../../src/observe/core/model.ts";
+import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase, type SqlValue } from "../../src/observe/core/store.ts";
+import { createObserveService, type ObserveService } from "../../src/observe/core/service.ts";
+import { handleApi } from "../../src/observe/http/api.ts";
 import type { DeploymentHistory } from "../../src/deployments/model.ts";
 
 const S = 1000;
@@ -177,20 +178,8 @@ export async function buildScenario(now: number): Promise<Scenario> {
   return { db, deployments, invocations };
 }
 
-export function scenarioStore(scenario: Scenario, now: number) {
-  return {
-    issues: async (filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }) => listIssues(scenario.db, now, filter),
-    issue: async (fingerprint: string) => readIssue(scenario.db, now, fingerprint),
-    occurrences: async (fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }) => issueOccurrences(scenario.db, now, fingerprint, filter),
-    setIssueState: async (fingerprint: string, state: IssueState) => setIssueState(scenario.db, now, fingerprint, state),
-    traces: async (filter: TraceFilter) => listTraces(scenario.db, now, filter),
-    trace: async (traceId: string) => readTrace(scenario.db, now, traceId),
-    health: async () => ({ ...health(scenario.db, now), databaseBytes: 0 }),
-    rollouts: async (rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]) =>
-      recordRollouts(scenario.db, await Promise.all(rollouts.map(prepareRollout)), labels.flatMap(label => prepareVersionLabel(label) ?? []), now),
-    impact: async (rolloutId: string) => rolloutImpact(scenario.db, now, rolloutId),
-    explore: async (filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }) => explore(scenario.db, now, filter)
-  };
+export function scenarioStore(scenario: Scenario, now: number): ObserveService {
+  return createObserveService(scenario.db, { now: () => now, databaseBytes: () => 0 });
 }
 
 export async function answer(scenario: Scenario, now: number, request: Request): Promise<Response> {

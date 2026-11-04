@@ -1,5 +1,5 @@
 import { DEPLOYMENT_RETENTION_MS, parseDeployment, parseVersion, record, type Deployment, type VersionMetadata } from "./model.ts";
-import { reportError } from "../observe/report.ts";
+import { reportError } from "../observe/producer/report.ts";
 
 const MAX_PAGES = 3;
 const PAGE_SIZE = 100;

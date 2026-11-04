@@ -1,6 +1,6 @@
 import { tracing } from "cloudflare:workers";
 import diagnostics from "node:diagnostics_channel";
-import { OBSERVE_CHANNEL, type InvocationMark } from "./channel.ts";
+import { OBSERVE_CHANNEL, type InvocationMark } from "../producer/channel.ts";
 
 const channel = diagnostics.channel(OBSERVE_CHANNEL);
 

@@ -1,5 +1,5 @@
-import type { DeploymentHistory } from "../deployments/model.ts";
-import type { ObservedRollout, VersionLabel } from "./core/model.ts";
+import type { DeploymentHistory } from "../../deployments/model.ts";
+import type { ObservedRollout, VersionLabel } from "../core/model.ts";
 
 export interface RolloutBatch {
   readonly rollouts: readonly ObservedRollout[];
