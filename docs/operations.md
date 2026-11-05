@@ -302,6 +302,47 @@ Live runs took 0.5 to 2.1 s of wall time.
 `cloudflare/wrangler.test.jsonc` is test-only configuration for
 `@cloudflare/vitest-plugin`, not a deploy configuration.
 
+## Run on Node
+
+The Node server serves the same API, ingest route, and dashboard as the
+Worker, without project collection, deployment tracking, or observe (see
+`docs/architecture.md`). It needs the Node version in `.node-version` and the
+built dashboard, and runs from the repository:
+
+```sh
+make worker-bundle
+mkdir -p "$HOME/.local/share/stats-node"
+cd cloudflare && \
+  STATS_DATA_DIR="$HOME/.local/share/stats-node" \
+  STATS_ALLOWED_LOGINS=you@example.com \
+  node --experimental-strip-types src/node/main.ts
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time. |
+| `STATS_LISTEN` | `IPV4:PORT` or `[IPV6]:PORT`. Default `127.0.0.1:18791`; port `0` picks a free one. |
+| `STATS_ALLOWED_LOGINS` | Required. Comma-separated Tailscale logins allowed to read the API and dashboard. |
+
+A missing or invalid value stops startup with exit code 2 and a
+`stats: <variable> ...` line on stderr. Once listening, the server prints
+`{"event":"listening","host":...,"port":...}`. On SIGTERM or SIGINT it
+stops accepting connections, finishes requests in flight, closes the
+database, and exits 0.
+
+Every path other than `/health` and ingest needs a loopback peer and an
+allowed `Tailscale-User-Login` header, which `tailscale serve` adds for
+tailnet users:
+
+```sh
+tailscale serve --bg --http=18790 http://127.0.0.1:18791
+```
+
+Provision a host through the tailnet origin as on the Worker, with
+`POST /api/v1/admin/hosts` and `{"name": "<label>"}`; the token is shown once.
+`make node-e2e` runs `deploy/deployed-smoke.sh` and the real agent against a
+local instance.
+
 ## Verified environments
 
 Recorded 2026-10-31:

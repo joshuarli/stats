@@ -8,9 +8,10 @@ Run the narrowest target while iterating and `make check` before release.
 | `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built Worker in local workerd |
+| `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
-| `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, and the two-Worker tail test |
-| `make dashboard-test` | Dashboard build, Playwright tests, and the tracked-PNG check |
+| `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, the two-Worker tail test, and the Node server's auth and Worker-parity tests |
+| `make dashboard-test` | Dashboard build, Playwright tests (including one against the Node server), and the tracked-PNG check |
 | `make lint` | Type-aware Oxlint |
 | `make preview` | Built dashboard served from captures on `http://127.0.0.1:4174/` |
 | `make dashboard-bench` | Paint and transfer medians from the preview |

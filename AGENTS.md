@@ -1,7 +1,7 @@
 # Stats
 
 A host agent (`agent/`), static musl on Linux and a native binary on macOS, a Cloudflare Worker with one
-SQLite-backed Durable Object and a Solid dashboard (`cloudflare/`), the shared
+SQLite-backed Durable Object and a Solid dashboard (`cloudflare/`), the same core served by a Node server (`cloudflare/src/node/`), the shared
 ingest conformance corpus (`fixtures/v2/`), an optional bpftrace block-latency collector
 (`bpf/`), and deploy scripts (`deploy/`).
 
@@ -17,6 +17,7 @@ make dashboard-test    # vite build + Playwright
 make preview           # build and serve the dashboard from captured fixtures
 make lint              # type-aware Oxlint
 make agent-e2e         # the real agent binary against the built Worker in workerd
+make node-e2e          # the smoke and the real agent binary against the Node server
 make smoke-local       # deploy/deployed-smoke.sh against the built Worker in workerd
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
 make check             # all of the above plus make release
@@ -41,7 +42,7 @@ go under `.work/tmp`.
 - Missing data is absent or `unavailable`, never zero; counter regressions are gaps, never negative rates.
 - Rates come from `monoMs` deltas within one boot, never from wall-clock deltas.
 - Tokens never appear in argv, logs, telemetry responses, or built assets; the provisioning response returns a new token once, and the server stores only a SHA-256 verifier.
-- Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
+- Every non-ingest, non-health path that serves assets or data passes the target's auth adapter: Access JWT verification on Cloudflare, Tailscale identity from loopback on Node. A request that fails it is rejected before any data is read.
 - Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
 - Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
 - `statsctl` read commands never mutate. `check ingest` is the only mutation, and it writes one flagged sample only to the `synthetic-check` host.

@@ -7,15 +7,17 @@ SQLite-backed Durable Object, which stores raw samples and rollups and answers
 history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
 configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
 served through the same Worker, reads that API behind Cloudflare Access. The wire contract between agent and Worker is in
-[`protocol.md`](protocol.md).
+[`protocol.md`](protocol.md). The same core also runs as a Node server
+(`cloudflare/src/node/`) for a tailnet-only instance; see [Node server](#node-server).
 
 ## Source layout
 
 `cloudflare/src/` is split into a portable core and Cloudflare adapters.
 
 - **Adapters** are `src/cloudflare/` and `src/observe/cloudflare/`. The first
-  holds the stats Worker entry (`index.ts`, with its routing table and
-  scheduled handler), the `Installation` Durable Object wrapper
+  holds the stats Worker entry (`index.ts`, which wires Access, the Durable
+  Object, assets, and the observe binding into the shared handler, and owns
+  the scheduled handler), the `Installation` Durable Object wrapper
   (`installation.ts`), Access verification (`access.ts`), the Analytics
   collector and its row parsers (`projects/`), the Cloudflare API deployment
   collector (`deployments/`), and the `ctx.storage.sql`, clock, alarm, and
@@ -26,8 +28,9 @@ served through the same Worker, reads that API behind Cloudflare Access. The wir
   host, history, project, and deployment logic, written against the ports in
   `src/core/sql.ts` (`SqlStatements`, the `SqlDatabase` that extends it, and
   `SqlScopes`) and `src/core/ports.ts` (`Clock`, `Scheduler`). The observation
-  store takes the same `SqlStatements`. `src/node/` implements the ports on
-  `node:sqlite` and timers.
+  store takes the same `SqlStatements`. `src/core/http.ts` is the routing
+  table both targets serve. `src/node/` implements the ports on `node:sqlite`
+  and timers, and holds the Node server.
 
 `test/node/boundary.test.ts` fails when any core file imports from an adapter
 directory, `cloudflare:*`, or `@cloudflare/*`, so the core and `src/node/`
@@ -83,7 +86,10 @@ and keeps `seq` unique.
 
 ## Worker
 
-`cloudflare/src/cloudflare/index.ts` is the whole routing table. `/health` is public.
+`handleStatsRequest` in `cloudflare/src/core/http.ts` is the whole routing
+table; `cloudflare/src/cloudflare/index.ts` calls it with Access as the auth
+decision, the Durable Object as the `Installation` transport, the `ASSETS`
+binding, and the `OBSERVE` service. `/health` is public.
 `POST /ingest/v2/batches` with a token-shaped bearer, the STB2 media type, no
 content encoding, and a declared length within the cap is forwarded to the
 Durable Object unread; the object reads the body as bounded bytes, decodes it
@@ -92,8 +98,8 @@ sample and normalizes it to the stored JSON shape (`src/ingest/sample.ts`),
 and answers with an STA2 acknowledgment (`src/ingest/ack.ts`). Any request to
 the retired `/ingest/v1/batches` answers `410 Gone`.
 
-Every other path that serves assets or data first passes
-`verifyAccess` in `src/cloudflare/access.ts`. Assets run through the Worker
+Every other path that serves assets or data first passes the target's auth
+decision, which on the Worker is `verifyAccess` in `src/cloudflare/access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `/api/observe/<service>/*` passes the same Access check and is then proxied
@@ -352,6 +358,37 @@ The state is:
 A comparison is `reconciled` only if both sides are. On 2026-11-05 from 06:05
 to 06:50 UTC, 246 Worker events were observed against an analytics estimate of
 220: a spread of 11.8%, inside a bound of 64%.
+
+## Node server
+
+`cloudflare/src/node/main.ts` serves the same `handleStatsRequest` over
+`node:http`, so every supported route answers with the same status, headers,
+and body bytes as the Worker; `test/node/http-parity.test.ts` checks health,
+ingest, host, history (including `304`), project, and rejection routes
+against the built Worker in workerd. It differs from the Worker only in what
+it plugs into the handler:
+
+- **Storage.** One `InstallationCore` on a `node:sqlite` file,
+  `$STATS_DATA_DIR/stats.sqlite`. One process owns the file, which gives the
+  single-writer guarantee the Durable Object gives. Retention runs on the
+  timer scheduler.
+- **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
+  accepted only when the TCP peer is loopback and its `Tailscale-User-Login`
+  header is in `STATS_ALLOWED_LOGINS`; otherwise it gets `401 unauthorized`
+  before any data is read. The server is meant to sit behind
+  `tailscale serve`, which sets that header for tailnet users. Ingest ignores
+  Tailscale headers and requires the host bearer token, as on the Worker.
+- **Assets.** `src/node/assets.ts` serves the Vite output in
+  `cloudflare/.cloudflare/output/v0/workers/default/assets`, with `/` as
+  `index.html` and no path outside that directory.
+- **Encoding.** workerd compresses a body whose `Content-Encoding` the handler
+  sets; the Node writer compresses negotiated history frames with `zlib`.
+
+Features that read Cloudflare are off. The project registry is empty, so
+`/api/v1/projects` is `[]`, project history and deployment routes answer
+`404 not_found` as the Worker does for an unregistered project, and the
+dashboard shows no projects. `/api/observe/*` answers
+`503 {"error":{"code":"unavailable"}}` after auth. No cron runs.
 
 ## Storage and rollups
 
