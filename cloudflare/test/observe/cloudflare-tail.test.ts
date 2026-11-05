@@ -4,8 +4,8 @@ import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { errorReport } from "../../src/observe/producer/report.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES } from "../../src/observe/cloudflare/nanoshop-policy.ts";
-import { groupByService, OBSERVED_SERVICES } from "../../src/observe/services.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES, NANOSHOP_RPC_METHODS } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { groupByService, isObservedService, OBSERVED_SERVICES } from "../../src/observe/services.ts";
 
 const VERSION = "3172128e-5c58-48a4-8c16-7767d5521979";
 const OBJECT = "71437be8483ec4c778560417396a6e8e81f1673f27ec5d341ec7a2645e467eb9";
@@ -127,7 +127,6 @@ await test("nanoshop-storied routes are templates generated from its route list,
     ["https://shop.example/cart/items/9007199254740993", "GET /cart/items/:variant_id"],
     ["https://shop.example/cart/items/9007199254740993/remove", "GET /cart/items/:variant_id/remove"]
   ];
-  assert.equal(cases.length, NANOSHOP_ROUTES.length);
   for (const [url, expected] of cases) assert.equal(label(fetchItem(url, 200), shop), expected, url);
   for (const url of [
     "https://shop.example/static/app.css", "https://shop.example/assets/hero.webp", "https://shop.example/static", "https://shop.example/products/a/b",
@@ -137,11 +136,72 @@ await test("nanoshop-storied routes are templates generated from its route list,
 
 await test("nanoshop-storied operations come from its route and RPC lists", () => {
   assert.deepEqual([...NANOSHOP_OPERATIONS].sort(), [
-    "catalog.load", "catalog.rejected",
-    "request.cart", "request.cart-add", "request.cart-remove", "request.cart-set", "request.collection", "request.collections", "request.home",
-    "request.product", "request.products", "request.search", "request.unmatched",
-    "store.rpc.addToCart", "store.rpc.readCart", "store.rpc.removeCartItem", "store.rpc.setCartQuantity", "store.rpc.syncCatalog"
-  ]);
+    ...NANOSHOP_ROUTES.map(route => `request.${route.name}`),
+    "request.unmatched", "catalog.load", "catalog.rejected",
+    ...NANOSHOP_RPC_METHODS.map(method => `store.rpc.${method}`),
+    "store.alarm", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"
+  ].sort());
+  assert.equal(new Set(NANOSHOP_OPERATIONS).size, NANOSHOP_OPERATIONS.length);
+  for (const operation of ["store.rpc.commerceCommand", "store.rpc.commerceQuery", "request.webhook", "request.admin-order-refund", "request.checkout-attempt"]) assert.ok(NANOSHOP_OPERATIONS.includes(operation as never), operation);
+});
+
+await test("nanoshop commerce, order, shop, admin, and webhook routes are templates, and tokens and references are never stored", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const post = (url: string) => label(fetchItem(url, 200, { event: { request: { url, method: "POST", headers: SECRET_HEADERS }, response: { status: 200 } } }), shop);
+  const cases: readonly [string, string][] = [
+    ["https://shop.example/checkout", "GET /checkout"],
+    ["https://shop.example/checkout/quotes/Q-SECRET-REF/accept", "GET /checkout/quotes/:ref/accept"],
+    ["https://shop.example/checkout/attempts/A-SECRET-REF", "GET /checkout/attempts/:ref"],
+    ["https://shop.example/orders/lookup", "GET /orders/lookup"],
+    ["https://shop.example/orders/SO-1001", "GET /orders/:number"],
+    ["https://shop.example/orders/access/SECRET_ACCESS_TOKEN", "GET /orders/access/:token"],
+    ["https://shop.example/pages/shipping?x=SECRET_IN_QUERY", "GET /pages/:slug"],
+    ["https://shop.example/sitemap.xml", "GET /sitemap.xml"],
+    ["https://shop.example/robots.txt", "GET /robots.txt"],
+    ["https://shop.example/admin", "GET /admin"],
+    ["https://shop.example/admin/products/new", "GET /admin/products/new"],
+    ["https://shop.example/admin/products/p_42", "GET /admin/products/:product_id"],
+    ["https://shop.example/admin/orders/SO-1001/refunds", "GET /admin/orders/:number/refunds"],
+    ["https://shop.example/admin/media/m1/file.jpg", "GET /admin/media/:media_id/:file"],
+    ["https://shop.example/webhooks/stripe", "GET /webhooks/stripe"]
+  ];
+  for (const [url, expected] of cases) {
+    const found = label(fetchItem(url, 200), shop);
+    assert.equal(found, expected, url);
+    assert.ok(!String(found).includes("SECRET"), url);
+  }
+  assert.equal(post("https://shop.example/webhooks/stripe"), "POST /webhooks/stripe");
+  for (const url of ["https://shop.example/orders/access/a/b", "https://shop.example/checkout/attempts/", "https://shop.example/admin/orders/SO-1/unknown"]) assert.equal(label(fetchItem(url, 200), shop), "excluded", url);
+  for (const route of NANOSHOP_ROUTES) {
+    const url = `https://shop.example${route.pattern.replace(/\{[a-z_]+\}/gu, "x1")}`;
+    const template = route.pattern.replace(/\{([a-z_]+)\}/gu, ":$1");
+    assert.equal(label(fetchItem(url, 200), shop), `GET ${template}`, route.name);
+  }
+});
+
+await test("nanoshop-storied accepts reports of its commerce operations and rejects another service's", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const report = (operation: string) => ({ channel: OBSERVE_CHANNEL, message: { kind: "error", operation, name: "Error", message: "", stack: null } });
+  for (const operation of ["store.rpc.commerceCommand", "store.rpc.commerceQuery", "store.alarm", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"]) {
+    const reduction = reduceTailItem(fetchItem("https://shop.example/cart", 500, { diagnosticsChannelEvents: [MARK, report(operation)] }), shop);
+    assert.equal(reduction.kind, "observed", operation);
+    if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.errors.map(error => error.operation), [operation]);
+  }
+  assert.equal(label(fetchItem("https://shop.example/cart", 500, { diagnosticsChannelEvents: [MARK, report("host.ingest")] }), shop), "rejected");
+});
+
+await test("the demo shops are observed services with the same policy as nanoshop-storied", () => {
+  for (const service of ["nanoshop-fieldhouse", "nanoshop-tidewater"] as const) {
+    assert.ok(isObservedService(service), service);
+    const demo = POLICIES[service];
+    const storied = POLICIES["nanoshop-storied"];
+    assert.equal(demo.workerRoute, storied.workerRoute, service);
+    assert.equal(demo.objectRoute("/anything"), null, service);
+    assert.deepEqual([demo.operations, demo.operationMessages, demo.sampling], [storied.operations, storied.operationMessages, storied.sampling], service);
+    const { byService, unknown } = groupByService([{ scriptName: service }]);
+    assert.deepEqual([[...byService.keys()], unknown.length], [[service], 0]);
+  }
+  assert.equal(isObservedService("nanoshop-evil"), false);
 });
 
 await test("nanoshop-storied labels its Durable Object RPCs, has no object route, and accepts only its own error operations", () => {
@@ -172,7 +232,7 @@ await test("service identity comes only from the platform script name", () => {
   ]);
   assert.equal(unknown.length, 3);
   assert.deepEqual([...byService].map(([service, items]) => [service, items.length]), [["stats", 1], ["nanoshop-storied", 1]]);
-  assert.deepEqual(OBSERVED_SERVICES, ["stats", "usr-memories", "nanoshop-storied"]);
+  assert.deepEqual(OBSERVED_SERVICES, ["stats", "usr-memories", "nanoshop-storied", "nanoshop-fieldhouse", "nanoshop-tidewater"]);
 });
 
 const SHOP_SPAN = { traceId: "9bcf42a3d155dee9563e537e144790e4", spanId: "2b1e95b0d4dcde81" };

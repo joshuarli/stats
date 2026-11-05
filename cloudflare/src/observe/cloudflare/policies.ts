@@ -67,5 +67,19 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(NANOSHOP_OPERATIONS),
     operationMessages: "service",
     sampling: NANOSHOP_SAMPLING
+  },
+  "nanoshop-fieldhouse": {
+    workerRoute: nanoshopWorkerRoute,
+    objectRoute: () => null,
+    operations: new Set(NANOSHOP_OPERATIONS),
+    operationMessages: "service",
+    sampling: NANOSHOP_SAMPLING
+  },
+  "nanoshop-tidewater": {
+    workerRoute: nanoshopWorkerRoute,
+    objectRoute: () => null,
+    operations: new Set(NANOSHOP_OPERATIONS),
+    operationMessages: "service",
+    sampling: NANOSHOP_SAMPLING
   }
 };
