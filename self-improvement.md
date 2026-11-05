@@ -411,7 +411,7 @@ Distinct success and failure conditions for each deliverable:
 | Comparison spec | T4 tests | observe and project comparisons share exact windows; a rollback inherits nothing | `rolloutImpact` feeds the gate |
 | End to end | E1 test, plus production `statsctl check ingest` | accept, readback, and duplicate replay all hold | an acknowledged sample is not readable |
 | Verify | L4 tests | each verdict precedence case holds; a timeout gives `pending` with a resume command | an insufficient signal passes |
-| Overhead | O0 health, plus `vite build` sizes before and after | ≤ 1.0 extra observe row per stats invocation; Worker bundle grows ≤ 5 KiB gzip; dashboard JS grows ≤ 2% gzip; one publish per invocation; `statsctl cost` makes ≤ 4 requests per project | any bound is exceeded |
+| Overhead | O0 health, plus `vite build` sizes before and after | ≤ 1.0 extra observe row per stats invocation; Worker bundle grows ≤ 5 KiB gzip; the dashboard entry chunk grows ≤ 2% gzip and all dashboard JS ≤ 3% (revised 2026-11-05 under the owner's grant of decision power: the required cost report adds 2.1% to the lazily loaded ledger chunk); one publish per invocation; `statsctl cost` makes ≤ 4 requests per project | any bound is exceeded |
 | Dogfood | P4 records | each candidate has a pre-registered policy, saved verify JSON, and an honest scope | a claim is upgraded beyond its evidence |
 
 ## Needs environment
