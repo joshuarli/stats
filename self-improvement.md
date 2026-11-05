@@ -37,6 +37,7 @@
 2. **Synthetic host:** the executor may create exactly one production host, named `synthetic-check`, through `POST /api/v1/admin/hosts`. Write the creation response directly to `.work/credentials/synthetic-check.json` (mode 0600). It never appears in argv, stdout, logs, or commits. The executor never rotates, revokes, or purges any host. Its rows age out with normal retention. If the credential file is lost, the production end-to-end check parks under **Needs environment**; do not create a second host.
 3. **No deploy freeze.** The owner and other sessions keep deploying stats; 46 deployments landed in the 3.3 days before this campaign. The executor detects overlap. An overlapped experiment is `confounded` and may be retried twice per candidate, then it parks with production verification `pending`.
 4. **Observer as a project:** add `stats-observe` to `PROJECTS` in `cloudflare/cloudflare.config.ts`, with its Worker and `ObservationStore` namespace. Its dashboard project page and goldens are part of the change. Tail invocations are priced by CPU only.
+5. **Unattended loop (2026-11-05):** after O1–O3, the executor may schedule the P4 loop as an unattended job that deploys stats and keeps or rolls back on `verify`'s verdict, under X2's condition.
 
 ### Prescribed
 
@@ -395,6 +396,8 @@ Acceptance per candidate: the committed policy, the verify JSON saved at `.work/
 ### P5 — Close
 
 - **X1** (S): delete the dead code and prove it dead with `dead-code-archaeology`. This covers `src/client/pricing.ts`, the old `cost-ledger.ts` exports with no callers, `test/support/stb2.ts` if it was replaced, and `scripts/api.mjs`'s dependency on `test/support/history.ts` (now production decoders, or the script is deleted in favour of `statsctl`). Run the full set. Use `review` on the integrated diff and fix P1 and P2 findings. Write the final report: what was implemented, locally tested, deployed, production-verified, reverted, and pending; the commands to run next; the commits and deployment ids; the measured CLI and observer overhead; and the before/after table.
+- **X2** (S, owner decision 5, 2026-11-05): schedule the loop as an unattended job only if O1–O3 produced trustworthy verdicts: every verdict matches the offline prediction's direction or is explained by a named confound, and at least one candidate ended `unchanged`, `regressed`, or reverted. The job runs one candidate per run through the P4 loop (rank with `statsctl cost`, offline proof, `make stats-deploy`, safety check, `verify`, keep or `cf` rollback, a `docs(campaign)` record), under every hard stop in this doc, and commits locally without pushing. If the condition fails, write why in the final report and do not schedule.
+  - Acceptance: the job is listed by the scheduler, and its prompt names this doc and the stop rules.
 
 ## Acceptance
 
