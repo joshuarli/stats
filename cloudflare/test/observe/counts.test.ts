@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
+import { POLICIES, type ServicePolicy } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { OTHER_ROUTE, type CountDelta } from "../../src/observe/core/model.ts";
 import { cleanup, health, ingest, nextCleanupAt, statsWindow, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { COUNT_BUCKET_MS, HEALTH_BUCKET_MS, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { cleanupCounts, recordCounts } from "../../src/observe/core/counts.ts";
-import { sampled } from "../../src/observe/core/sampling.ts";
+import { MILLION, sampled } from "../../src/observe/core/sampling.ts";
 import { decodeExploration, decodeHealth, decodeObjectMethods, decodeStatsWindow, decodeTrace, decodeTraces } from "../../src/observe/client/decode.ts";
 import { T0, VERSION, database, hex } from "./support.ts";
 
@@ -107,7 +108,7 @@ await test("counts over 10,000 seeded events equal the input exactly, and kept r
     const slice = items.slice(at, at + size);
     at += slice.length;
     const nowMs = Math.max(...slice.map(item => item.eventTimestamp ?? 0)) + 1_000;
-    const batch = await prepareTailItems(slice, SHOP, nowMs);
+    const batch = await prepareTailItems(slice, SHOP, nowMs, new AlwaysKeptCap());
     ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
   }
   const want = new Map<string, { count: number; cpu: number; wall: number }>();
@@ -148,7 +149,7 @@ await test("every always-keep case is stored with its count, and an untraced inv
     workerItem(6, START + 6, "/cart", "GET", 200, null),
     workerItem(7, START + 7, "/cart", "GET", 200, "request.cart", { diagnosticsChannelEvents: [operationMessage(hex(8, 32), hex(8, 16), "request.cart"), { channel: OBSERVE_CHANNEL, message: { kind: "error", operation: "request.cart", name: "Error", message: "", stack: null } }] })
   ];
-  const batch = await prepareTailItems(cases, policy, nowMs);
+  const batch = await prepareTailItems(cases, policy, nowMs, new AlwaysKeptCap());
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, cases.length);
   assert.equal(batch.counts.length, 0);
@@ -165,7 +166,7 @@ await test("an invalid event of a sampled service keeps today's rejection and is
   const nowMs = START + 10_000;
   const badVersion = workerItem(1, START + 1, "/cart", "GET", 200, "request.cart", { scriptVersion: { id: "bad version" } });
   const badStage = workerItem(2, START + 2, "/cart", "GET", 200, "request.cart", { executionModel: "dispatch" });
-  const batch = await prepareTailItems([badVersion, badStage], policy, nowMs);
+  const batch = await prepareTailItems([badVersion, badStage], policy, nowMs, new AlwaysKeptCap());
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_counts").length, 0);
   assert.deepEqual(db.rows<{ outcome: string; count: number }>("SELECT outcome, SUM(count) AS count FROM observe_outcomes GROUP BY outcome").map(row => ({ ...row })), [{ outcome: "rejected-invalid", count: 2 }]);
@@ -180,7 +181,7 @@ await test("excluded events of a sampled service are counted by outcome, not sto
     workerItem(3, START + 3, "/cart", "GET", 401, "request.cart"),
     workerItem(4, START + 4, "/nope", "GET", 404, null)
   ];
-  const batch = await prepareTailItems(items, SHOP, nowMs);
+  const batch = await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap());
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, 0);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
@@ -197,7 +198,7 @@ await test("excluded events of a sampled service are counted by outcome, not sto
 await test("routes beyond the per-class cap fold into other, and malformed or expired counts are refused with a health reason", async () => {
   const db = database();
   const nowMs = START + 10_000;
-  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 1, wallMsSum: 1 };
+  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 1 };
   const counts = Array.from({ length: MAX_OUTCOME_ROUTES_PER_CLASS + 5 }, (_, n): CountDelta => ({ ...base, route: `GET /r${n}` }));
   ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts });
   const routes = db.rows<{ route: string; sampled_out: number }>("SELECT route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY route");
@@ -220,7 +221,7 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
 await test("a count with a future bucket lands in the current bucket", () => {
   const db = database();
   const nowMs = START + 10_000;
-  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 0, wallMsSum: 0 }] });
+  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 }] });
   assert.deepEqual(db.rows<{ bucket_at: number }>("SELECT bucket_at FROM observe_counts").map(row => ({ ...row })), [{ bucket_at: START }]);
 });
 
@@ -236,10 +237,10 @@ await test("health reports kept, sampled out, excluded, untraced and flushed bat
     workerItem(4, START + 4, "/search", "GET", 200, null),
     workerItem(5, START + 5, "/static/x", "GET", 200, null)
   ];
-  const batch = await prepareTailItems(items, policy, nowMs);
+  const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
   const sampledHealth = health(db, nowMs, quiet).sampling;
-  assert.deepEqual(sampledHealth, { policy: quiet, kept: 2, sampledOut: 2, excluded: 1, untraced: 1, flushes: 1 });
+  assert.deepEqual(sampledHealth, { policy: quiet, kept: 2, sampledOut: 2, excluded: 1, untraced: 1, flushes: 1, capped: 0 });
   assert.equal("sampling" in health(db, nowMs), false);
 });
 
@@ -247,13 +248,13 @@ await test("a service that keeps everything writes nothing to the count tables, 
   const all = database();
   const nowMs = START + 10_000;
   const items = [workerItem(1, START + 1, "/search", "GET", 200, "request.search"), workerItem(2, START + 2, "/static/x", "GET", 200, null)];
-  const batch = await prepareTailItems(items, POLICIES["usr-memories"], nowMs);
+  const batch = await prepareTailItems(items, POLICIES["usr-memories"], nowMs, new AlwaysKeptCap());
   assert.deepEqual(batch.counts, []);
   ingest(all, batch.preparations, nowMs, batch.outcomes, { sampling: POLICIES["usr-memories"].sampling, counts: batch.counts });
   assert.equal(all.rows("SELECT 1 FROM observe_counts").length, 0);
 
   const db = database();
-  const shop = await prepareTailItems(items, SHOP, nowMs);
+  const shop = await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap());
   ingest(db, shop.preparations, nowMs, shop.outcomes, { sampling: SHOP.sampling, counts: shop.counts });
   const later = nowMs + RETENTION_MS + 2 * HEALTH_BUCKET_MS;
   assert.ok(nextCleanupAt(db, nowMs, { deleted: 0, evicted: 0, more: false }) !== null);
@@ -270,7 +271,7 @@ await test("the service answers a sampled window, explore, and traces with the p
     ...Array.from({ length: 7 }, (_, n) => workerItem(n, START + n, "/search", "GET", 200, "request.search")),
     workerItem(10, START + 10, "/search", "GET", 500, "request.search")
   ];
-  const batch = await prepareTailItems(items, policy, nowMs);
+  const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
   const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => quiet);
   const summary = { keepPerMillion: 0, kept: 1, observed: 8 };
@@ -300,7 +301,7 @@ function flushOf(random: () => number, bucketAt: number, keys: number, events: n
     const failed = random() < 0.1;
     deltas.push({
       bucketAt, version: VERSION, stage: key % 2 === 0 ? "worker" : "object", route: `GET /r${key}`, operation: `request.r${key}`, outcome: failed ? "failed" : "ok",
-      kept: random() < 0.2 ? 1 : 0, sampledOut: 1, cpuMsSum: 1 + Math.floor(random() * 5), wallMsSum: 5 + Math.floor(random() * 60)
+      kept: random() < 0.2 ? 1 : 0, sampledOut: 1, capped: 0, cpuMsSum: 1 + Math.floor(random() * 5), wallMsSum: 5 + Math.floor(random() * 60)
     });
   }
   return deltas;
@@ -346,7 +347,7 @@ await test("many flushes from several isolates merge into one row per bucket and
 await test("the route cap holds across flushes because the stored bucket remembers its routes", () => {
   const db = database();
   const nowMs = START + 10_000;
-  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 0, wallMsSum: 0 };
+  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 };
   for (let n = 0; n < MAX_OUTCOME_ROUTES_PER_CLASS + 5; n++) recordCounts(db, nowMs, [{ ...base, route: `GET /r${n}` }], { untraced: 0, flush: 1 });
   recordCounts(db, nowMs, [{ ...base, route: "GET /r0" }], { untraced: 0, flush: 1 });
   const rows = db.rows<{ route: string; sampled_out: number }>("SELECT route, sampled_out FROM observe_count_entries");
@@ -370,4 +371,67 @@ await test("retention deletes one row per expired bucket whatever its key count,
   assert.equal(db.rowsWritten() - before, 2);
   assert.deepEqual(db.rows<{ bucket_at: number }>("SELECT bucket_at FROM observe_counts").map(row => row.bucket_at), [fresh - (fresh % COUNT_BUCKET_MS)]);
   assert.equal(db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries")[0]!.n, kept.reduce((sum, delta) => sum + delta.kept + delta.sampledOut, 0));
+});
+
+function failures(from: number, count: number, atMs: number): TailItem[] {
+  return Array.from({ length: count }, (_, n) => workerItem(from + n, atMs + n, "/cart", "GET", 500, "request.cart"));
+}
+
+async function deliverInBatches(db: SqlDatabase, policy: ServicePolicy, cap: AlwaysKeptCap, items: readonly TailItem[], nowMs: number): Promise<void> {
+  for (let at = 0; at < items.length; at += 7) {
+    const batch = await prepareTailItems(items.slice(at, at + 7), policy, nowMs, cap);
+    ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: policy.sampling, counts: batch.counts });
+  }
+}
+
+await test("failures past the per-bucket cap are counted as failed and sampled out, so failure totals stay exact and health reports the cap", async () => {
+  const quiet = sampled({ keepPerMillion: 0, slowWallMs: 100, slowCpuMs: 10 });
+  const policy = { ...SHOP, sampling: quiet };
+  const db = database();
+  const nowMs = START + 10_000;
+  const total = ALWAYS_KEPT_PER_BUCKET + 15;
+  await deliverInBatches(db, policy, new AlwaysKeptCap(), failures(1, total, START + 1), nowMs);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, ALWAYS_KEPT_PER_BUCKET);
+  const counted = db.rows<{ outcome: string; kept: number; sampled_out: number }>("SELECT outcome, SUM(kept) AS kept, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY outcome").map(row => ({ ...row }));
+  assert.deepEqual(counted, [{ outcome: "failed", kept: ALWAYS_KEPT_PER_BUCKET, sampled_out: total - ALWAYS_KEPT_PER_BUCKET }]);
+  assert.deepEqual(health(db, nowMs, quiet).sampling, { policy: quiet, kept: ALWAYS_KEPT_PER_BUCKET, sampledOut: total - ALWAYS_KEPT_PER_BUCKET, excluded: 0, untraced: 0, flushes: 3, capped: total - ALWAYS_KEPT_PER_BUCKET });
+  const window = statsWindow(db, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, quiet);
+  assert.equal(window.invocations.reduce((sum, row) => sum + row.count, 0), total);
+  assert.equal(versionFailures(db), total);
+});
+
+function versionFailures(db: SqlDatabase): number {
+  return db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries WHERE outcome = 'failed'")[0]!.n;
+}
+
+await test("the cap starts over in the next bucket, and each isolate's cap is its own", async () => {
+  const quiet = sampled({ keepPerMillion: 0, slowWallMs: 100, slowCpuMs: 10 });
+  const policy = { ...SHOP, sampling: quiet };
+  const db = database();
+  const cap = new AlwaysKeptCap();
+  const nowMs = START + COUNT_BUCKET_MS + 10_000;
+  await deliverInBatches(db, policy, cap, [...failures(1, 12, START + 1), ...failures(100, 12, START + COUNT_BUCKET_MS + 1)], nowMs);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, 2 * ALWAYS_KEPT_PER_BUCKET);
+  await deliverInBatches(db, policy, new AlwaysKeptCap(), failures(200, 3, START + COUNT_BUCKET_MS + 50), nowMs);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, 2 * ALWAYS_KEPT_PER_BUCKET + 3);
+  assert.equal(versionFailures(db), 27);
+});
+
+await test("trace-hash keeps are not capped", async () => {
+  const everything = sampled({ keepPerMillion: MILLION, slowWallMs: 100, slowCpuMs: 10 });
+  const policy = { ...SHOP, sampling: everything };
+  const db = database();
+  const items = Array.from({ length: 3 * ALWAYS_KEPT_PER_BUCKET }, (_, n) => workerItem(n + 1, START + 1 + n, "/search", "GET", 200, "request.search"));
+  await deliverInBatches(db, policy, new AlwaysKeptCap(), items, START + 10_000);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, items.length);
+  assert.equal(health(db, START + 10_000, everything).sampling?.capped, 0);
+});
+
+await test("a service that keeps everything stores every failure and counts nothing", async () => {
+  const policy = POLICIES["usr-memories"];
+  const db = database();
+  const nowMs = START + 10_000;
+  await deliverInBatches(db, policy, new AlwaysKeptCap(), Array.from({ length: 100 }, (_, n) => workerItem(n + 1, START + 1 + n, "/", "GET", 500, "request.route")), nowMs);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, 100);
+  assert.equal(db.rows("SELECT 1 FROM observe_counts").length, 0);
 });

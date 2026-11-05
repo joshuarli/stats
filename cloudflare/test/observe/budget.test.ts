@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CLOUDFLARE_STORE_WALL_MS_PER_CALL, CLOUDFLARE_TAIL_CPU_MS_PER_INVOCATION, NANOSHOP_ASSUMPTIONS, OBSERVATION_BUDGET, fits, project, type MeasuredFigures, type Workload } from "../../src/observe/core/budget.ts";
+import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.ts";
+import { alwaysKeptStorm, CLOUDFLARE_STORE_WALL_MS_PER_CALL, CLOUDFLARE_TAIL_CPU_MS_PER_INVOCATION, MONTH_MS, NANOSHOP_ASSUMPTIONS, OBSERVATION_BUDGET, fits, project, type MeasuredFigures, type Workload } from "../../src/observe/core/budget.ts";
+import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
 import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
 import { MILLION } from "../../src/observe/core/sampling.ts";
@@ -34,6 +36,15 @@ await test("the shipped sampling policy keeps Nanoshop's observation within the 
     assert.ok(projection.usd.total <= OBSERVATION_BUDGET.maxUsd, `${isolates} isolates: $${projection.usd.total.toFixed(3)} exceeds $${OBSERVATION_BUDGET.maxUsd}`);
     assert.ok(projection.rowsWritten <= OBSERVATION_BUDGET.maxRowsWritten, `${isolates} isolates: ${Math.round(projection.rowsWritten)} rows exceed ${OBSERVATION_BUDGET.maxRowsWritten}`);
   }
+});
+
+await test("every tail isolate hitting the always-kept cap in every bucket all month still fits $5.00 at three isolates", async () => {
+  const { figures } = await measured();
+  const storm = project(figures, alwaysKeptStorm(shipped(NANOSHOP_ASSUMPTIONS.tailIsolates)));
+  const stormEvents = NANOSHOP_ASSUMPTIONS.tailIsolates * (MONTH_MS / COUNT_BUCKET_MS) * ALWAYS_KEPT_PER_BUCKET;
+  assert.ok(Math.abs(storm.failedEvents - stormEvents) < 1, `${storm.failedEvents} failed events, expected ${stormEvents}`);
+  console.log(`always-kept storm at ${NANOSHOP_ASSUMPTIONS.tailIsolates} isolates: $${storm.usd.total.toFixed(3)}, ${Math.round(storm.rowsWritten)} rows`);
+  assert.ok(storm.usd.total <= 5, `$${storm.usd.total.toFixed(3)} exceeds $5.00`);
 });
 
 await test("keeping a quarter more invocations than shipped would exceed the budget at three tail isolates", async () => {

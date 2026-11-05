@@ -51,7 +51,7 @@ async function cleanUntilEmpty(rig: Rig, from: number): Promise<number> {
   throw new Error("cleanup did not empty the store");
 }
 
-async function phase(rig: Rig, entries: readonly SimEntry[], settle = 0): Promise<{ report: PhaseReport; clock: number; countRows: number; countBuckets: number; hoursSpanned: number; keptTotal: number }> {
+async function phase(rig: Rig, entries: readonly SimEntry[], settle = 0): Promise<{ report: PhaseReport; clock: number; countRows: number; countBuckets: number; hoursSpanned: number; keptTotal: number; cappedTotal: number }> {
   const begun = await rig.meter();
   const flushesBefore = (await rig.health()).sampling?.flushes ?? 0;
   await rig.tail(entries, settle);
@@ -64,7 +64,7 @@ async function phase(rig: Rig, entries: readonly SimEntry[], settle = 0): Promis
   const cleaning = await rig.meter();
   const clock = await cleanUntilEmpty(rig, ended.nowMs);
   const cleaned = await rig.meter();
-  return { report: { events: entries.length, ingest: delta(ended, begun), retention: delta(cleaned, cleaning), flushes }, clock, countRows, countBuckets, hoursSpanned, keptTotal: ending?.kept ?? 0 };
+  return { report: { events: entries.length, ingest: delta(ended, begun), retention: delta(cleaned, cleaning), flushes }, clock, countRows, countBuckets, hoursSpanned, keptTotal: ending?.kept ?? 0, cappedTotal: ending?.capped ?? 0 };
 }
 
 function forced(count: number, startMs: number, spacingMs: number, keepPerMillion: number, fate: Fate, failure?: "uncaught" | "double-operation", seed = 7): SimEntry[] {
@@ -113,7 +113,7 @@ export async function measure(rig: Rig, options: MeasureOptions): Promise<Measur
   const keptEntries = forced(300, clock, 6_000, keepPerMillion, "kept");
   const kept = await phase(rig, keptEntries);
   next(kept.clock);
-  const failed = await phase(rig, forced(100, clock, 6_000, keepPerMillion, "natural", "uncaught", 8));
+  const failed = await phase(rig, forced(100, clock, 40_000, keepPerMillion, "natural", "uncaught", 8));
   next(failed.clock);
   const rejected = await phase(rig, forced(100, clock, 6_000, keepPerMillion, "natural", "double-operation", 9));
   next(rejected.clock);
@@ -138,12 +138,13 @@ export async function measure(rig: Rig, options: MeasureOptions): Promise<Measur
   });
   const steady = await phase(rig, workload.entries, 30_000);
 
+  const storedFailures = workload.failed - steady.cappedTotal;
   const flushReport: FlushReport = { ...flush.report, keysPerFlush: flush.countRows / flush.countBuckets, countRows: flush.countRows, countBuckets: flush.countBuckets, hoursSpanned: flush.hoursSpanned };
   const otherRetention = flush.report.retention.rowsWritten - (flush.report.retention.byTable["observe_counts"] ?? 0);
 
   return {
     kept: kept.report, failed: failed.report, rejected: rejected.report, flushing: flushReport, maintenance,
-    steady: { ...steady.report, requests: workload.requests, keptEvents: steady.keptTotal - workload.failed, failedEvents: workload.failed, durationMs: options.steadyDurationMs },
+    steady: { ...steady.report, requests: workload.requests, keptEvents: steady.keptTotal - storedFailures, failedEvents: storedFailures, durationMs: options.steadyDurationMs },
     figures: {
       kept: eventRows(kept.report), failed: eventRows(failed.report), rejected: eventRows(rejected.report),
       flush: { rowsPerFlush: flush.report.ingest.rowsWritten / flush.report.flushes, retentionRowsPerBucket: (flush.report.retention.byTable["observe_counts"] ?? 0) / flush.countBuckets, retentionRowsPerHour: otherRetention / flush.hoursSpanned },

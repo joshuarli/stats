@@ -4,6 +4,7 @@ import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedServ
 import { POLICIES } from "./policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { COUNT_FLUSH_INTERVAL_MS, CountBuffer, deliverSampled } from "../core/count-buffer.ts";
+import { AlwaysKeptCap } from "../core/always-kept-cap.ts";
 import { awaitEvery } from "../core/fan-out.ts";
 import { ObservationStore, type ObserveEnv } from "./store-object.ts";
 
@@ -23,6 +24,17 @@ function bufferOf(service: ObservedService): CountBuffer {
   return buffer;
 }
 
+const caps = new Map<ObservedService, AlwaysKeptCap>();
+
+function capOf(service: ObservedService): AlwaysKeptCap {
+  let cap = caps.get(service);
+  if (cap === undefined) {
+    cap = new AlwaysKeptCap();
+    caps.set(service, cap);
+  }
+  return cap;
+}
+
 function store(env: ObserveEnv, service: ObservedService): DurableObjectStub<ObservationStore> {
   return env.STORE.getByName(service);
 }
@@ -37,7 +49,7 @@ export default {
     const services = new Map(byService);
     if (unknown.length > 0 && !services.has(UNKNOWN_SERVICE_HOME)) services.set(UNKNOWN_SERVICE_HOME, []);
     await awaitEvery([...services].map(async ([service, items]) => {
-      const prepared = await prepareTailItems(items, POLICIES[service], nowMs);
+      const prepared = await prepareTailItems(items, POLICIES[service], nowMs, capOf(service));
       const batch = service === UNKNOWN_SERVICE_HOME ? { ...prepared, outcomes: [...prepared.outcomes, ...unknown] } : prepared;
       if (POLICIES[service].sampling.kind === "all") {
         await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts);

@@ -120,7 +120,7 @@ await test("a sampled service's health, routes and traces say they are sampled",
   const health = {
     newestAtMs: now, oldestAtMs: now, liveInvocations: 12, cleanupBacklog: 0, cleanupLagMs: 0, openIssues: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted: 0, reasons: [],
     writes: { ingestBatches: 3, accepted: 12, ingestRows: 40, cleanupRows: 0 }, databaseBytes: 0,
-    sampling: { policy: { kind: "sampled", keepPerMillion: 10_000, slowWallMs: 100, slowCpuMs: 10 }, kept: 12, sampledOut: 980, excluded: 8, untraced: 1, flushes: 3 }
+    sampling: { policy: { kind: "sampled", keepPerMillion: 10_000, slowWallMs: 100, slowCpuMs: 10 }, kept: 12, sampledOut: 980, excluded: 8, untraced: 1, flushes: 3, capped: 2 }
   };
   const sampled = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://observe").pathname.replace(/^\/api\/observe/u, "");
@@ -135,7 +135,7 @@ await test("a sampled service's health, routes and traces say they are sampled",
     return { code, out: out.join("\n") };
   };
   try {
-    assert.match((await run("health")).out, /^sampled at 10000 per million \(slow at 100 ms wall or 10 ms cpu\): 1000 events observed, 12 kept, 980 sampled out, 8 excluded, 1 untraced, 3 flushed batches$/mu);
+    assert.match((await run("health")).out, /^sampled at 10000 per million \(slow at 100 ms wall or 10 ms cpu\): 1000 events observed, 12 kept, 980 sampled out, 8 excluded, 1 untraced, 3 flushed batches, 2 capped$/mu);
     const routes = await run("routes");
     assert.match(routes.out, /^sampled: .*12 kept of 1000 observed/u);
     assert.match(routes.out, /p50 \(sampled\).*p95 cpu \(sampled\)/u);

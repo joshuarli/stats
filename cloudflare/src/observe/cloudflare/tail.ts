@@ -1,9 +1,10 @@
 import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
-import { OTHER_ROUTE, prepareInvocation, rejection, VERSION, type CountDelta, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
+import { isFailedInvocation, OTHER_ROUTE, prepareInvocation, rejection, VERSION, type CountDelta, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
 import { addCount, countBucket } from "../core/counts.ts";
 import { keepReason } from "../core/sampling.ts";
+import type { AlwaysKeptCap } from "../core/always-kept-cap.ts";
 
 export interface TailItem {
   readonly event: unknown;
@@ -95,18 +96,19 @@ export interface TailBatch {
 function excludedCount(item: TailItem, reduction: Extract<Reduction, { kind: "excluded" }>, nowMs: number): CountDelta {
   return {
     bucketAt: countBucket(item.eventTimestamp ?? nowMs, nowMs), version: versionOf(item), stage: reduction.stage, route: reduction.route, operation: "", outcome: reduction.outcome,
-    kept: 0, sampledOut: 1, cpuMsSum: Math.round(item.cpuTime), wallMsSum: Math.round(item.wallTime)
+    kept: 0, sampledOut: 1, capped: 0, cpuMsSum: Math.round(item.cpuTime), wallMsSum: Math.round(item.wallTime)
   };
 }
 
-function sampledOutCount(invocation: ObservedInvocation, nowMs: number): CountDelta {
+function sampledOutCount(invocation: ObservedInvocation, nowMs: number, capped: 0 | 1): CountDelta {
   return {
-    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "", outcome: "ok",
-    kept: 0, sampledOut: 1, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
+    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "",
+    outcome: isFailedInvocation({ errorCount: invocation.errors.length, status: invocation.status, outcome: invocation.outcome }) ? "failed" : "ok",
+    kept: 0, sampledOut: 1, capped, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
   };
 }
 
-export async function prepareTailItems(items: readonly TailItem[], policy: ServicePolicy, nowMs: number): Promise<TailBatch> {
+export async function prepareTailItems(items: readonly TailItem[], policy: ServicePolicy, nowMs: number, cap: AlwaysKeptCap): Promise<TailBatch> {
   const preparations: Preparation[] = [];
   const outcomes: OutcomeEvent[] = [];
   const counted = new Map<string, CountDelta>();
@@ -122,9 +124,16 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
       outcomes.push(outcomeOf(item, "rejected-invalid", OTHER_ROUTE));
       continue;
     }
-    if (keepReason(reduction.invocation, policy.sampling) === null && rejection(reduction.invocation) === null) {
-      addCount(counted, sampledOutCount(reduction.invocation, nowMs));
-      continue;
+    const reason = keepReason(reduction.invocation, policy.sampling);
+    if (rejection(reduction.invocation) === null) {
+      if (reason === null) {
+        addCount(counted, sampledOutCount(reduction.invocation, nowMs, 0));
+        continue;
+      }
+      if (policy.sampling.kind === "sampled" && reason !== "trace-hash" && !cap.admit(countBucket(reduction.invocation.eventAtMs, nowMs))) {
+        addCount(counted, sampledOutCount(reduction.invocation, nowMs, 1));
+        continue;
+      }
     }
     const preparation = await prepareInvocation(reduction.invocation, POLICY);
     preparations.push(preparation);

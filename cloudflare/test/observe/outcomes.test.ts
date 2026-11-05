@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { OTHER_ROUTE, prepareInvocation, type MessagePolicy, type OutcomeEvent } from "../../src/observe/core/model.ts";
@@ -29,7 +30,7 @@ function outcomes(db: ReturnType<typeof database>): OutcomeRow[] {
 }
 
 async function receive(db: ReturnType<typeof database>, items: readonly TailItem[], at = NOW): Promise<void> {
-  const batch = await prepareTailItems(items, POLICIES.stats, at);
+  const batch = await prepareTailItems(items, POLICIES.stats, at, new AlwaysKeptCap());
   ingest(db, batch.preparations, at, batch.outcomes);
 }
 
@@ -66,7 +67,7 @@ await test("invalid events and invalid invocations are counted rejected-invalid,
 
 await test("a batch of only observed invocations writes no outcome row", async () => {
   const db = database();
-  const batch = await prepareTailItems([fetchItem("https://stats.example/ingest/v2/batches", 200)], POLICIES.stats, NOW);
+  const batch = await prepareTailItems([fetchItem("https://stats.example/ingest/v2/batches", 200)], POLICIES.stats, NOW, new AlwaysKeptCap());
   assert.deepEqual(batch.outcomes, []);
   ingest(db, batch.preparations, NOW, batch.outcomes);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
@@ -88,7 +89,7 @@ await test("outcomes bucket by event time capped at receipt, and lag keeps the m
 await test("one upsert per bucket key per batch bounds the rows written", async () => {
   const db = database();
   const items = Array.from({ length: 50 }, () => fetchItem("https://stats.example/favicon.ico", 404));
-  const batch = await prepareTailItems(items, POLICIES.stats, NOW);
+  const batch = await prepareTailItems(items, POLICIES.stats, NOW, new AlwaysKeptCap());
   const before = db.rowsWritten();
   ingest(db, batch.preparations, NOW, batch.outcomes);
   const first = db.rowsWritten() - before;

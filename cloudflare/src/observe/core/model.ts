@@ -30,9 +30,18 @@ export interface CountDelta {
   readonly outcome: CountOutcome;
   readonly kept: number;
   readonly sampledOut: number;
+  readonly capped: number;
   readonly cpuMsSum: number;
   readonly wallMsSum: number;
 }
+const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
+
+export function isFailedInvocation(invocation: { readonly errorCount: number; readonly status: number | null; readonly outcome: string }): boolean {
+  if (invocation.errorCount > 0 || (invocation.status !== null && invocation.status >= 500)) return true;
+  if (invocation.outcome === "ok") return false;
+  return !(CLIENT_ENDED_OUTCOMES.has(invocation.outcome) && invocation.status !== null);
+}
+
 export type InvocationKind = "fetch" | "rpc" | "alarm" | "scheduled";
 export type ErrorSource = "uncaught" | "caught";
 

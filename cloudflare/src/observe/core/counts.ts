@@ -49,15 +49,16 @@ export function addCount(into: Map<string, CountDelta>, delta: CountDelta): void
     ...existing,
     kept: existing.kept + delta.kept,
     sampledOut: existing.sampledOut + delta.sampledOut,
+    capped: existing.capped + delta.capped,
     cpuMsSum: existing.cpuMsSum + delta.cpuMsSum,
     wallMsSum: existing.wallMsSum + delta.wallMsSum
   });
 }
 
 function wellFormed(delta: CountDelta): boolean {
-  const integers = [delta.kept, delta.sampledOut, delta.cpuMsSum, delta.wallMsSum];
+  const integers = [delta.kept, delta.sampledOut, delta.capped, delta.cpuMsSum, delta.wallMsSum];
   return Number.isSafeInteger(delta.bucketAt) && delta.bucketAt > 0 && delta.bucketAt % COUNT_BUCKET_MS === 0
-    && integers.every(value => Number.isSafeInteger(value) && value >= 0) && delta.kept + delta.sampledOut > 0
+    && integers.every(value => Number.isSafeInteger(value) && value >= 0) && delta.kept + delta.sampledOut > 0 && delta.capped <= delta.sampledOut
     && (delta.version === "" || VERSION.test(delta.version))
     && (delta.stage === "worker" || delta.stage === "object")
     && (COUNT_OUTCOMES as readonly string[]).includes(delta.outcome)
@@ -70,7 +71,7 @@ export interface CountsRecorded {
   readonly expired: number;
 }
 
-type StoredEntry = Omit<CountDelta, "bucketAt">;
+type StoredEntry = Omit<CountDelta, "bucketAt" | "capped"> & { readonly capped?: number };
 
 interface BucketCounts {
   readonly bucketAt: number;
@@ -87,7 +88,7 @@ function loadBucket(db: SqlDatabase, bucketAt: number): BucketCounts {
   const routes = new Map<string, Set<string>>();
   const stored = db.rows<{ entries: string }>("SELECT entries FROM observe_counts WHERE bucket_at = ?", bucketAt)[0];
   for (const entry of stored === undefined ? [] : JSON.parse(stored.entries) as StoredEntry[]) {
-    const delta = { ...entry, bucketAt };
+    const delta = { ...entry, capped: entry.capped ?? 0, bucketAt };
     entries.set(deltaKey(delta), delta);
     const group = routeGroup(delta);
     const known = routes.get(group);
@@ -99,7 +100,7 @@ function loadBucket(db: SqlDatabase, bucketAt: number): BucketCounts {
 function storeBucket(db: SqlDatabase, bucket: BucketCounts, events: SamplingEvents): void {
   const entries = [...bucket.entries.values()].map((delta): StoredEntry => ({
     version: delta.version, stage: delta.stage, outcome: delta.outcome, route: delta.route, operation: delta.operation,
-    kept: delta.kept, sampledOut: delta.sampledOut, cpuMsSum: delta.cpuMsSum, wallMsSum: delta.wallMsSum
+    kept: delta.kept, sampledOut: delta.sampledOut, capped: delta.capped, cpuMsSum: delta.cpuMsSum, wallMsSum: delta.wallMsSum
   }));
   db.run(
     `INSERT INTO observe_counts (bucket_at, untraced, flushes, entries) VALUES (?, ?, ?, ?)
@@ -164,6 +165,7 @@ export interface SamplingHealth {
   readonly excluded: number;
   readonly untraced: number;
   readonly flushes: number;
+  readonly capped: number;
 }
 
 const WINDOW = "bucket_at >= ? AND bucket_at < ?";
@@ -200,7 +202,10 @@ export function samplingHealth(db: SqlDatabase, nowMs: number, policy: SampledPo
   const events = db.rows<{ untraced: number | null; flushes: number | null }>(
     "SELECT SUM(untraced) AS untraced, SUM(flushes) AS flushes FROM observe_counts WHERE bucket_at + ? > ?", COUNT_BUCKET_MS, cutoff
   )[0];
-  return { policy, kept: totals?.kept ?? 0, sampledOut: totals?.sampled_out ?? 0, excluded: totals?.excluded ?? 0, untraced: events?.untraced ?? 0, flushes: events?.flushes ?? 0 };
+  const capped = db.rows<{ capped: number | null }>(
+    "SELECT SUM(json_extract(e.value, '$.capped')) AS capped FROM observe_counts c, json_each(c.entries) e WHERE c.bucket_at + ? > ?", COUNT_BUCKET_MS, cutoff
+  )[0];
+  return { policy, kept: totals?.kept ?? 0, sampledOut: totals?.sampled_out ?? 0, excluded: totals?.excluded ?? 0, untraced: events?.untraced ?? 0, flushes: events?.flushes ?? 0, capped: capped?.capped ?? 0 };
 }
 
 export interface CountWindow {

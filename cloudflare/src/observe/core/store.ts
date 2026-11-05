@@ -1,5 +1,5 @@
 import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
-import { OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
+import { isFailedInvocation, OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
@@ -527,7 +527,7 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
 function keptCount(invocation: PreparedInvocation, nowMs: number): CountDelta {
   return {
     bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "",
-    outcome: isFailed(invocation) ? "failed" : "ok", kept: 1, sampledOut: 0, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
+    outcome: isFailed(invocation) ? "failed" : "ok", kept: 1, sampledOut: 0, capped: 0, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
   };
 }
 
@@ -655,12 +655,8 @@ function recordOperations(db: SqlDatabase, buckets: ReadonlyMap<string, Operatio
   }
 }
 
-const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
-
 function isFailed(invocation: PreparedInvocation): boolean {
-  if (invocation.errorCount > 0 || (invocation.status !== null && invocation.status >= 500)) return true;
-  if (invocation.outcome === "ok") return false;
-  return !(CLIENT_ENDED_OUTCOMES.has(invocation.outcome) && invocation.status !== null);
+  return isFailedInvocation(invocation);
 }
 
 function insertInvocation(db: SqlDatabase, invocation: PreparedInvocation, observedAt: number): void {

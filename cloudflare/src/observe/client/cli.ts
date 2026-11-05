@@ -85,7 +85,7 @@ function samplingLine(health: ObserveHealth): string[] {
   const sampling = health.sampling;
   if (sampling === undefined) return [];
   const observed = sampling.kept + sampling.sampledOut + sampling.excluded;
-  return [`sampled at ${sampling.policy.keepPerMillion} per million (slow at ${sampling.policy.slowWallMs} ms wall or ${sampling.policy.slowCpuMs} ms cpu): ${observed} events observed, ${sampling.kept} kept, ${sampling.sampledOut} sampled out, ${sampling.excluded} excluded, ${sampling.untraced} untraced, ${sampling.flushes} flushed batches`];
+  return [`sampled at ${sampling.policy.keepPerMillion} per million (slow at ${sampling.policy.slowWallMs} ms wall or ${sampling.policy.slowCpuMs} ms cpu): ${observed} events observed, ${sampling.kept} kept, ${sampling.sampledOut} sampled out, ${sampling.excluded} excluded, ${sampling.untraced} untraced, ${sampling.flushes} flushed batches, ${sampling.capped} capped`];
 }
 
 function ms(value: number): string {

@@ -80,7 +80,7 @@ function samplingHealth(value: unknown): { readonly sampling?: SamplingHealth } 
     sampling: {
       policy: { kind: "sampled", keepPerMillion, slowWallMs: integer(policy["slowWallMs"], "slow wall"), slowCpuMs: integer(policy["slowCpuMs"], "slow cpu") },
       kept: integer(sampling["kept"], "sampling kept"), sampledOut: integer(sampling["sampledOut"], "sampled out"), excluded: integer(sampling["excluded"], "sampling excluded"),
-      untraced: integer(sampling["untraced"], "untraced"), flushes: integer(sampling["flushes"], "flushes")
+      untraced: integer(sampling["untraced"], "untraced"), flushes: integer(sampling["flushes"], "flushes"), capped: integer(sampling["capped"], "capped")
     }
   };
 }

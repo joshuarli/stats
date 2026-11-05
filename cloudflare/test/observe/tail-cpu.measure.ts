@@ -1,4 +1,5 @@
 import { prepareTailItems } from "../../src/observe/cloudflare/tail.ts";
+import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { CountBuffer, COUNT_FLUSH_INTERVAL_MS, deliverSampled } from "../../src/observe/core/count-buffer.ts";
 import { ALL_SHAPES, objectEntry, random, traceFor, workerEntry, type Fate } from "./workload.ts";
@@ -28,7 +29,7 @@ async function run(batch: readonly TailItem[]): Promise<number> {
   const started = process.hrtime.bigint();
   for (const item of batch) {
     const nowMs = item.eventTimestamp! + 5;
-    await deliverSampled({ buffer, batch: await prepareTailItems([item], POLICY, nowMs), nowMs, now: () => nowMs, sink, defer: () => undefined, sleep: () => new Promise<void>(() => undefined), onDeferredFailure: () => undefined });
+    await deliverSampled({ buffer, batch: await prepareTailItems([item], POLICY, nowMs, new AlwaysKeptCap()), nowMs, now: () => nowMs, sink, defer: () => undefined, sleep: () => new Promise<void>(() => undefined), onDeferredFailure: () => undefined });
   }
   return Number(process.hrtime.bigint() - started) / batch.length / 1000;
 }

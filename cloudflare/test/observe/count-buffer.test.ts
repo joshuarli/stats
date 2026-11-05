@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
@@ -64,7 +65,7 @@ function harness(inner: CountSink | null = null, failure: { error: unknown } | n
     deliver: async (items, nowMs) => {
       clock = nowMs;
       await deliverSampled({
-        buffer, batch: await prepareTailItems(items, SHOP, nowMs), nowMs, now: () => clock, sink,
+        buffer, batch: await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()), nowMs, now: () => clock, sink,
         defer: work => { pending.push(work); },
         sleep: ms => new Promise<void>(resolve => { sleeps.push(ms); timers.push(resolve); }),
         onDeferredFailure: error => { if (failure !== null) failure.error = error; }
@@ -152,7 +153,7 @@ await test("a timer that wakes while batches are still arriving leaves the flush
 await test("a failed flush loses the drained counts, a failed timer is reported, and a failed kept write leaves the buffer", async () => {
   const dead: CountSink = { ingest: async () => { throw new Error("store down"); } };
   const never = () => new Promise<void>(() => undefined);
-  const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs).then(batch => deliverSampled({
+  const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()).then(batch => deliverSampled({
     buffer, batch, nowMs, now: () => wakeMs, sink: dead, defer: work => { deferred.push(work); }, sleep, onDeferredFailure: error => { reported.push(error); }
   }));
 
@@ -178,7 +179,7 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
 
 await test("a buffer with too many distinct keys is flushed at once", async () => {
   const buffer = new CountBuffer(INTERVAL);
-  const counts: CountDelta[] = Array.from({ length: MAX_BUFFERED_COUNT_KEYS }, (_, n) => ({ bucketAt: START, version: VERSION, stage: "worker", route: `GET /r${n}`, operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 0, wallMsSum: 0 }));
+  const counts: CountDelta[] = Array.from({ length: MAX_BUFFERED_COUNT_KEYS }, (_, n) => ({ bucketAt: START, version: VERSION, stage: "worker", route: `GET /r${n}`, operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 }));
   buffer.add(counts.slice(0, MAX_BUFFERED_COUNT_KEYS - 1), START);
   assert.equal(buffer.isDue(START), false);
   buffer.add(counts.slice(MAX_BUFFERED_COUNT_KEYS - 1), START);

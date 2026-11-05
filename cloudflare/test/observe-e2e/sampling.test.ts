@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { collectorModules, ROOT, until, type Page, type TraceSummary } from "./harness.ts";
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
+import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
 import type { Health, Exploration, ObjectMethods, StatsWindow } from "../../src/observe/core/store.ts";
@@ -91,7 +92,7 @@ async function sendAll(shop: Shop, requests: readonly (readonly [string, string]
 await test("a sampled service is counted exactly, keeps a trace's Worker and Durable Object invocations together, and keeps every failure", async () => {
   const shop = await startShop();
   try {
-    const carts = 1_000, searches = 1_000, failures = 20, assets = 20;
+    const carts = 1_000, searches = 1_000, failures = 4, assets = 20;
     const requests: (readonly [string, string])[] = [
       ...Array.from({ length: carts }, () => ["/cart/items", "POST"] as const),
       ...Array.from({ length: searches }, () => ["/search", "GET"] as const),
@@ -146,6 +147,32 @@ await test("a sampled service is counted exactly, keeps a trace's Worker and Dur
     const failed = (await shop.observe<Page<TraceSummary>>("/traces?limit=100&failed=true")).items;
     assert.equal(failed.length, failures + triggers);
 
+  } finally {
+    await shop.dispose();
+  }
+});
+
+await test("failures past the per-bucket cap are counted as failed but not stored", async () => {
+  const shop = await startShop();
+  try {
+    const failures = 30;
+    await sendAll(shop, Array.from({ length: failures }, () => ["/cart", "GET"] as const));
+    await until(() => shop.observe<Health>("/health"), value => value.liveInvocations >= ALWAYS_KEPT_PER_BUCKET, "the stored failures");
+    let triggers = 0;
+    let health = await shop.observe<Health>("/health");
+    while ((health.sampling?.capped ?? 0) < failures - ALWAYS_KEPT_PER_BUCKET) {
+      assert.ok(triggers < 5, `capped ${health.sampling?.capped}`);
+      await shop.collectorClockForward(COUNT_FLUSH_INTERVAL_MS + 1_000);
+      await shop.send("/search");
+      triggers++;
+      health = await until(() => shop.observe<Health>("/health"), value => (value.sampling?.capped ?? 0) >= failures - ALWAYS_KEPT_PER_BUCKET, "the flush").catch(() => shop.observe<Health>("/health"));
+    }
+    assert.equal(health.liveInvocations, health.sampling?.kept);
+    assert.equal(health.sampling?.capped, failures - ALWAYS_KEPT_PER_BUCKET);
+    const bucket = Math.floor(Date.now() / COUNT_BUCKET_MS) * COUNT_BUCKET_MS;
+    const explored = await shop.observe<Exploration>(`/explore?from=${bucket - COUNT_BUCKET_MS}&to=${bucket + 2 * COUNT_BUCKET_MS}`);
+    assert.equal(explored.routes.find(route => route.label === "GET /cart")?.observed, failures);
+    assert.equal((await shop.observe<Page<TraceSummary>>("/traces?limit=100&failed=true")).items.length, ALWAYS_KEPT_PER_BUCKET);
   } finally {
     await shop.dispose();
   }

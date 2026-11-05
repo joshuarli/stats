@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { ingest } from "../../src/observe/core/store.ts";
@@ -48,7 +49,7 @@ for (const service of ["stats", "usr-memories"] as const) {
     let now = T0;
     for (const batch of SCENARIOS[service].batches) {
       now = Math.max(...batch.map(entry => entry.eventTimestamp ?? 0)) + 2_000;
-      const prepared = await prepareTailItems(batch, policy, now);
+      const prepared = await prepareTailItems(batch, policy, now, new AlwaysKeptCap());
       const before = db.rowsWritten();
       ingest(db, prepared.preparations, now, prepared.outcomes);
       rows.push(db.rowsWritten() - before);

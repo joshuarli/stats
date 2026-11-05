@@ -1,4 +1,5 @@
 import { DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_MILLION } from "../../cost/pricing.ts";
+import { ALWAYS_KEPT_PER_BUCKET } from "./always-kept-cap.ts";
 import { COUNT_BUCKET_MS } from "./limits.ts";
 
 export const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -83,6 +84,11 @@ export function project(figures: MeasuredFigures, workload: Workload, periodMs: 
     duration: perMillion(storeGbSeconds, LIST_PRICE_PER_MILLION.durableObjectGbSeconds)
   };
   return { keptEvents, failedEvents, rejectedEvents, flushes, rowsWritten, storeRequests, tailCpuMs, storeGbSeconds, usd: { ...usd, total: usd.rows + usd.requests + usd.cpu + usd.duration } };
+}
+
+export function alwaysKeptStorm(workload: Workload, periodMs: number = MONTH_MS): Workload {
+  const stormEvents = workload.tailIsolates * (periodMs / COUNT_BUCKET_MS) * ALWAYS_KEPT_PER_BUCKET;
+  return { ...workload, failedPerMillion: (stormEvents / workload.events) * MILLION, slowPerMillion: 0, untracedPerMillion: 0 };
 }
 
 export function fits(projection: Projection, budget: { readonly maxUsd: number; readonly maxRowsWritten: number } = OBSERVATION_BUDGET): boolean {
