@@ -3,10 +3,10 @@
 ## Status
 
 - **Goal:** the whole `stats` Cloudflare topology (the `stats` Worker, `stats-observe`, their Durable Objects, tail wiring, and the dashboard assets) runs and verifies itself on this machine with no Cloudflare login and no network. The one hosted dependency with no local implementation, the `ANALYTICS_SQL` binding, is replaced at its binding boundary by an offline provider, so the real scheduled handler, collector, parsers, Durable Object, history frames, cost report, `statsctl`, and dashboard all run on a successful collection.
-- **State:** L1 to L3 accepted; M1 (full suite) green in 82 s at `7514c02`. `test:local` is 18 tests in 3 s.
-- **Accepted:** L1, L2, L3. **Red:** none. **Parked:** none.
-- **Next:** L4. Use `cloudflare/local/stack.ts` (`startStack`, `restart`, `collect`, `runAlarm`, `cliEnv`) rather than a new setup.
-- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item L4. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
+- **State:** L1 to L6 accepted; M2 (full suite plus `make integration-local`) green in 76 s at `bffc474`. `make integration-local` is 7.7 s and joined `make check` (Decision 10).
+- **Accepted:** L1 to L6. **Red:** none. **Parked:** none.
+- **Next:** H1.
+- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item H1. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
 
