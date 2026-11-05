@@ -427,6 +427,12 @@ Rejections never include credentials, token hashes, or request bodies.
   minute, so an interval in which `systemReadings` did not advance has no
   system watts, never zero. Rollups sum the deltas, so a bucket's system watts
   is the mean of the readings that arrived in it.
+- A service's CPU is the `cpuUsec` delta divided by the monotonic interval in
+  microseconds, in cores; its io throughput is the `ioReadBytes` plus
+  `ioWriteBytes` delta divided by the interval. A service that is unavailable
+  in either sample, a counter that regressed (a recreated cgroup starts from
+  zero), or io counters on only one side give no rate for that interval.
+  `memoryCurrent` and `memoryPeak` are levels, never rates.
 - Disk and network rates are deltas divided by the monotonic interval. Disk
   bytes use 512-byte sectors. `ioMs / interval` is busy time and may exceed
   100% when the device has concurrent I/O.

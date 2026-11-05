@@ -554,7 +554,10 @@ gauge sums with counts; they never average counters. A device rate divides by
 its own covered interval, so a missing sample is a gap rather than a lower
 rate; swap in and out sums carry their own covered interval the same way, and GPU energy carries the interval it covers. GPU residency and system power readings sum as plain deltas. Block histograms sum bucket counts and totals and keep the observed
 minimum and maximum; percentiles come from bucket upper bounds and are not
-exact. A late sample rebuilds its minute, the minute
+exact. A service's cgroup counters (`services` in a sample) roll up per service
+name: `cpuUsec` and the io byte sums each carry the interval they covered, and
+`memoryCurrent` is a gauge; a payload with no service reading has no
+`services` key, so host-only rollups are unchanged. A late sample rebuilds its minute, the minute
 of the following sample, and every hour those minutes fall in. A bucket with
 less than 80% of its span covered by usable intervals is marked partial.
 

@@ -123,6 +123,16 @@ interface FileSums {
   readonly total: Gauge;
   readonly available: Gauge;
 }
+export interface ServiceRollup {
+  readonly cpu?: { readonly usec: string; readonly coveredMs: number };
+  readonly io?: { readonly readBytes: string; readonly writeBytes: string; readonly coveredMs: number };
+  readonly memoryCurrent?: Gauge;
+}
+export interface ServiceLevels {
+  readonly cpuCores?: number;
+  readonly memoryBytes?: number;
+  readonly ioBytesPerSec?: number;
+}
 export interface RollupPayload {
   readonly v: 1;
   readonly bucketMs: number;
@@ -139,6 +149,7 @@ export interface RollupPayload {
   readonly nets: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly filesystems: Readonly<Record<string, FileSums>>;
   readonly block?: BlockRollup;
+  readonly services?: Readonly<Record<string, ServiceRollup>>;
 }
 
 export interface RawRow {
@@ -298,6 +309,43 @@ function addBlock(target: BlockRollup | undefined, source: Block | BlockRollup):
   return { buckets, count: count.toString(), totalUs: totalUs.toString(), minUs, maxUs };
 }
 
+function addService(target: ServiceRollup | undefined, add: ServiceRollup): ServiceRollup {
+  const cpu = add.cpu === undefined ? target?.cpu : { usec: (BigInt(target?.cpu?.usec ?? "0") + BigInt(add.cpu.usec)).toString(), coveredMs: (target?.cpu?.coveredMs ?? 0) + add.cpu.coveredMs };
+  const io = add.io === undefined ? target?.io : {
+    readBytes: (BigInt(target?.io?.readBytes ?? "0") + BigInt(add.io.readBytes)).toString(),
+    writeBytes: (BigInt(target?.io?.writeBytes ?? "0") + BigInt(add.io.writeBytes)).toString(),
+    coveredMs: (target?.io?.coveredMs ?? 0) + add.io.coveredMs
+  };
+  const memoryCurrent = add.memoryCurrent === undefined ? target?.memoryCurrent : { sum: (target?.memoryCurrent?.sum ?? 0) + add.memoryCurrent.sum, count: (target?.memoryCurrent?.count ?? 0) + add.memoryCurrent.count };
+  return { ...(cpu === undefined ? {} : { cpu }), ...(io === undefined ? {} : { io }), ...(memoryCurrent === undefined ? {} : { memoryCurrent }) };
+}
+
+function rawServices(row: RawRow): Record<string, ServiceRollup> {
+  const services: Record<string, ServiceRollup> = {};
+  for (const service of row.sample.services ?? []) {
+    if ("unavailable" in service || service.memoryCurrent === undefined) continue;
+    services[service.name] = { memoryCurrent: { sum: Number(service.memoryCurrent), count: 1 } };
+  }
+  for (const [name, delta] of Object.entries(row.delta.services ?? {})) {
+    const io = delta.ioReadBytes === undefined || delta.ioWriteBytes === undefined ? undefined : { readBytes: delta.ioReadBytes, writeBytes: delta.ioWriteBytes, coveredMs: row.delta.intervalMs };
+    services[name] = { ...services[name], cpu: { usec: delta.cpuUsec, coveredMs: row.delta.intervalMs }, ...(io === undefined ? {} : { io }) };
+  }
+  return services;
+}
+
+function mergeServices(target: Record<string, ServiceRollup>, source: Readonly<Record<string, ServiceRollup>>): void {
+  for (const [name, value] of Object.entries(source)) target[name] = addService(target[name], value);
+}
+
+export function serviceLevels(payload: RollupPayload, name: string): ServiceLevels {
+  const service = payload.services?.[name];
+  if (service === undefined) return {};
+  const cpu = service.cpu === undefined || service.cpu.coveredMs <= 0 ? undefined : Number(service.cpu.usec) / (service.cpu.coveredMs * 1000);
+  const memory = service.memoryCurrent === undefined || service.memoryCurrent.count === 0 ? undefined : service.memoryCurrent.sum / service.memoryCurrent.count;
+  const io = service.io === undefined || service.io.coveredMs <= 0 ? undefined : (Number(service.io.readBytes) + Number(service.io.writeBytes)) * 1000 / service.io.coveredMs;
+  return { ...(cpu === undefined ? {} : { cpuCores: cpu }), ...(memory === undefined ? {} : { memoryBytes: memory }), ...(io === undefined ? {} : { ioBytesPerSec: io }) };
+}
+
 function blockPercentile(buckets: readonly string[], count: bigint, maxUs: string, percent: bigint): number {
   const target = (count * percent + 99n) / 100n;
   let cumulative = 0n;
@@ -335,8 +383,11 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
   const disks: Record<string, Record<string, string>> = {};
   const nets: Record<string, Record<string, string>> = {};
   const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  const services: Record<string, ServiceRollup> = {};
   let block: BlockRollup | undefined;
-  for (const { sample, delta } of rows) {
+  for (const row of rows) {
+    const { sample, delta } = row;
+    mergeServices(services, rawServices(row));
     if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
     if (delta.swap !== undefined) swap = sumSwap(swap, delta.swap, delta.intervalMs);
     if (delta.gpu !== undefined) gpu = sumGpu(gpu, delta.gpu);
@@ -411,7 +462,8 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     disks,
     nets,
     filesystems,
-    ...(block === undefined ? {} : { block })
+    ...(block === undefined ? {} : { block }),
+    ...(Object.keys(services).length === 0 ? {} : { services })
   };
 }
 
@@ -426,6 +478,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
   const disks: Record<string, Record<string, string>> = {};
   const nets: Record<string, Record<string, string>> = {};
   const filesystems: Record<string, { total: Gauge; available: Gauge }> = {};
+  const services: Record<string, ServiceRollup> = {};
   let block: BlockRollup | undefined;
   let coverageMs = 0;
   let samples = 0;
@@ -458,6 +511,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
       };
     }
     if (payload.block !== undefined) block = addBlock(block, payload.block);
+    if (payload.services !== undefined) mergeServices(services, payload.services);
   }
   return {
     v: 1,
@@ -474,7 +528,8 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     disks,
     nets,
     filesystems,
-    ...(block === undefined ? {} : { block })
+    ...(block === undefined ? {} : { block }),
+    ...(Object.keys(services).length === 0 ? {} : { services })
   };
 }
 

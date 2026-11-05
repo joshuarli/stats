@@ -1,8 +1,14 @@
-import type { Cpu, Disk, Gpu, Net, Power, Sample } from "./protocol.ts";
+import type { Cpu, Disk, Gpu, Net, Power, Sample, Service } from "./protocol.ts";
 
 export interface SwapDelta {
   readonly swapIn: string;
   readonly swapOut: string;
+}
+
+export interface ServiceDelta {
+  readonly cpuUsec: string;
+  readonly ioReadBytes?: string;
+  readonly ioWriteBytes?: string;
 }
 
 export interface Delta {
@@ -13,6 +19,7 @@ export interface Delta {
   readonly power?: Power;
   readonly disks: Record<string, Disk>;
   readonly nets: Record<string, Net>;
+  readonly services?: Record<string, ServiceDelta>;
 }
 
 const EMPTY: Delta = { intervalMs: 0, disks: {}, nets: {} };
@@ -60,6 +67,27 @@ function powerDelta(previous: Power | undefined, current: Power | undefined): Po
   return { ...(gpuNj === null ? {} : { gpuNj }), ...(system ? { systemMwSum, systemReadings } : {}) };
 }
 
+const SERVICE_IO_FIELDS = ["ioReadBytes", "ioWriteBytes"] as const;
+
+function serviceDelta(previous: Service, current: Service): ServiceDelta | null {
+  if ("unavailable" in previous || "unavailable" in current) return null;
+  const cpuUsec = difference(current.cpuUsec, previous.cpuUsec);
+  const io = counterDelta(previous, current, SERVICE_IO_FIELDS);
+  return cpuUsec === null || io === null ? null : { cpuUsec, ...io };
+}
+
+function serviceDeltas(previous: readonly Service[] | undefined, current: readonly Service[] | undefined): Record<string, ServiceDelta> | null {
+  if (previous === undefined || current === undefined) return null;
+  const before = new Map(previous.map(service => [service.name, service]));
+  const deltas: Record<string, ServiceDelta> = {};
+  for (const service of current) {
+    const prior = before.get(service.name);
+    const delta = prior === undefined ? null : serviceDelta(prior, service);
+    if (delta !== null) deltas[service.name] = delta;
+  }
+  return Object.keys(deltas).length === 0 ? null : deltas;
+}
+
 const CPU_OPTIONAL_FIELDS = ["iowait", "steal"] as const;
 export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
 export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
@@ -105,7 +133,8 @@ export function computeDelta(previous: Sample | undefined, current: Sample, elap
       nets[net.id] = { id: net.id, ...values } as Net;
     }
   }
-  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), ...(gpu === null ? {} : { gpu }), ...(power === null ? {} : { power }), disks, nets };
+  const services = serviceDeltas(previous.services, current.services);
+  return { intervalMs: elapsedMs, ...(cpu === null ? {} : { cpu }), ...(swap === null ? {} : { swap }), ...(gpu === null ? {} : { gpu }), ...(power === null ? {} : { power }), disks, nets, ...(services === null ? {} : { services }) };
 }
 
 export function parseDelta(text: string): Delta {
@@ -118,7 +147,8 @@ export function parseDelta(text: string): Delta {
       ...(value.gpu === undefined ? {} : { gpu: value.gpu }),
       ...(value.power === undefined ? {} : { power: value.power }),
       disks: value.disks ?? {},
-      nets: value.nets ?? {}
+      nets: value.nets ?? {},
+      ...(value.services === undefined ? {} : { services: value.services })
     };
   } catch {
     return EMPTY;
