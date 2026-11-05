@@ -29,7 +29,7 @@ async function snapshot(stack: Stack, hostId: string): Promise<Snapshot> {
   return {
     hosts: await (await stack.fetch("/api/v1/hosts")).json(),
     latest: await (await stack.fetch(`/api/v1/hosts/${hostId}/latest`)).json(),
-    projects: await (await stack.fetch("/api/v1/projects")).json(),
+    projects: (await (await stack.fetch("/api/v1/projects")).json() as { id: string; collector: unknown }[]).map(project => [project.id, project.collector]),
     etag: history.headers.get("etag"),
     frame: new Uint8Array(await history.arrayBuffer())
   };
