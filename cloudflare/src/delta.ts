@@ -1,4 +1,4 @@
-import type { Cpu, Disk, Gpu, Net, Power, Sample } from "./protocol";
+import type { Cpu, Disk, Gpu, Net, Power, Sample } from "./protocol.ts";
 
 export interface SwapDelta {
   readonly swapIn: string;

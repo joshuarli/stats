@@ -1,4 +1,4 @@
-import type { Block, Cpu, Disk, FileSystem, Gpu, MemoryPressure, Net, Power, PsiGroup, Sample } from "./protocol";
+import type { Block, Cpu, Disk, FileSystem, Gpu, MemoryPressure, Net, Power, PsiGroup, Sample } from "./protocol.ts";
 import type { Delta, SwapDelta } from "./delta.ts";
 import { DISK_FIELDS, NET_FIELDS } from "./delta.ts";
 import { BLOCK_BOUNDS_US, BLOCK_BUCKETS, HISTORY_KINDS, MAX_POINTS, RANGES, RANGE_MS, type HistoryKind, type RangeKey } from "./limits.ts";
