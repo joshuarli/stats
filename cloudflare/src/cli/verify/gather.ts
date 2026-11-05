@@ -2,7 +2,7 @@ import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../deplo
 import { decodeIssues, decodeStatsWindow } from "../../observe/client/decode.ts";
 import type { StatsWindow } from "../../observe/core/store.ts";
 import { scopeSpec, windowQuery, type ComparisonScope } from "../../compare/spec.ts";
-import { transportError } from "../exit.ts";
+import { CommandError, transportError } from "../exit.ts";
 import { HISTORY_BODY_LIMIT, type Fetched, type HttpClient } from "../http.ts";
 import { decodeProjects } from "../decode.ts";
 import { isPending, type Evidence, type IssueCheck } from "./decide.ts";
@@ -23,6 +23,15 @@ export class BudgetExhausted extends Error {
     super(scope === "poll" ? `a poll may make at most ${POLL_REQUEST_LIMIT} requests` : `a verify may make at most ${TOTAL_REQUEST_LIMIT} requests`);
     this.name = "BudgetExhausted";
     this.scope = scope;
+  }
+}
+
+export const UNRECORDED_POLL_MS = 5 * 60_000;
+
+export class DeploymentUnrecorded extends Error {
+  constructor(deploymentId: string, lastSyncAtMs: number | null) {
+    super(`deployment ${deploymentId} is not recorded yet; the last successful deployment sync began ${lastSyncAtMs === null ? "never" : new Date(lastSyncAtMs).toISOString()}, before this verify started`);
+    this.name = "DeploymentUnrecorded";
   }
 }
 
@@ -86,7 +95,8 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
   const path = comparisonPath(project, deploymentId, window);
   let evidence: Evidence | null = previous === null ? null : { ...previous, windows: null, issues: null };
   try {
-    const comparison = await conditional(path, value => decodeDeploymentComparison(value, deploymentId, window), previous?.comparison);
+    const comparison = await conditional(path, value => decodeDeploymentComparison(value, deploymentId, window), previous?.comparison)
+      .catch((error: unknown) => previous === null && error instanceof CommandError && error.code === "not_found" ? unrecorded(budget, state) : Promise.reject(error));
     const deployedAtMs = previous?.deployedAtMs ?? await deploymentTime(budget, project, deploymentId);
     evidence = { comparison, deployedAtMs, windows: null, issues: null, probes: previous?.probes ?? null };
     if (isPending(comparison, nowMs) || project !== OBSERVED_PROJECT) return { evidence, etags, exhausted: null };
@@ -121,6 +131,17 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
     if (error instanceof BudgetExhausted && evidence !== null) return { evidence, etags, exhausted: error };
     throw error;
   }
+}
+
+async function unrecorded(budget: RequestBudget, state: VerifyState): Promise<never> {
+  const { project, deploymentId, pinnedAtMs } = state;
+  const path = `/api/v1/projects/${encodeURIComponent(project)}/deployments`;
+  const fetched = await budget.json(path, value => decodeDeploymentHistory(value, project));
+  if (fetched.kind !== "ok") return notModifiedWithoutBase(path);
+  const lastSyncAtMs = fetched.value.sync?.lastSuccessAtMs ?? null;
+  const listed = fetched.value.deployments.some(item => item.id === deploymentId);
+  if (!listed && lastSyncAtMs !== null && lastSyncAtMs >= pinnedAtMs) throw transportError("deployment_missing", `${project} has no deployment ${deploymentId}: the deployment sync that began ${new Date(lastSyncAtMs).toISOString()}, after this verify started, does not list it`);
+  throw new DeploymentUnrecorded(deploymentId, lastSyncAtMs);
 }
 
 async function deploymentTime(budget: RequestBudget, project: string, deploymentId: string): Promise<number> {

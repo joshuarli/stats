@@ -42,12 +42,13 @@ export interface World {
   operationRows: boolean;
   paddingRows: number;
   doRows: boolean;
+  syncedAtMs: number;
 }
 
 export function newWorld(over: Partial<World> = {}): World {
   return {
     clock: { now: AT + 3 * H }, deployments: [PREVIOUS, CANDIDATE], settled: true, probes: [], probeRows: [],
-    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, operationRows: true, paddingRows: 0, doRows: false, ...over
+    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, operationRows: true, paddingRows: 0, doRows: false, syncedAtMs: AT, ...over
   };
 }
 
@@ -102,8 +103,9 @@ export function handler(world: World) {
     const url = new URL(request.url ?? "", "http://x");
     const { pathname, searchParams } = url;
     if (pathname === "/api/v1/projects") return sendJson(response, [projectEntry("stats", { probes: world.probes.map(name => ({ name, url: `https://x/${name}` })) })]);
-    if (pathname === "/api/v1/projects/stats/deployments") return sendJson(response, deploymentHistory("stats", { deployments: world.deployments }));
-    if (/^\/api\/v1\/projects\/stats\/deployments\/[^/]+\/comparison$/u.test(pathname)) return sendJson(response, comparisonOf(world));
+    if (pathname === "/api/v1/projects/stats/deployments") return sendJson(response, deploymentHistory("stats", { deployments: world.deployments, sync: { lastAttemptAtMs: world.syncedAtMs, lastSuccessAtMs: world.syncedAtMs, error: null, truncated: false } }));
+    const compared = /^\/api\/v1\/projects\/stats\/deployments\/([^/]+)\/comparison$/u.exec(pathname);
+    if (compared !== null) return world.deployments.some(item => item.id === compared[1]) ? sendJson(response, comparisonOf(world)) : void response.writeHead(404).end();
     if (pathname === "/api/observe/stats/health") return sendJson(response, observeHealth(world.clock.now - 60_000));
     if (pathname === "/api/observe/stats/window") return sendJson(response, windowBody(world, Number(searchParams.get("from")), Number(searchParams.get("to")), searchParams.get("operation")));
     if (pathname === "/api/observe/stats/issues") {

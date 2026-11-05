@@ -4,7 +4,7 @@ import { UUID } from "../../deployments/model.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import type { HttpClient } from "../http.ts";
 import { decide, isPending, type Decision, type Reason, type SafetyRecord, type VerifyVerdict } from "./decide.ts";
-import { BudgetExhausted, POLL_INTERVAL_MS, gatherEvidence, requestBudget } from "./gather.ts";
+import { BudgetExhausted, DeploymentUnrecorded, POLL_INTERVAL_MS, UNRECORDED_POLL_MS, gatherEvidence, requestBudget } from "./gather.ts";
 import { policyHash, type Policy } from "./policy.ts";
 import { STATE_SCHEMA, decodeState, readStateText, statePath, writeState, type VerifyState } from "./state.ts";
 
@@ -101,6 +101,14 @@ export async function runVerification(deps: LoopDeps, request: VerificationReque
     } catch (error) {
       state = save(state);
       if (error instanceof BudgetExhausted) throw new CommandError(EXIT.pending, "request_budget", `${error.message}; nothing was read this run`);
+      if (error instanceof DeploymentUnrecorded) {
+        const extraReasons = [{ code: "deployment-unrecorded", message: error.message }];
+        if (!request.wait) return finished({ extraReasons }, "pending");
+        const wakeAtMs = evaluatedAtMs + UNRECORDED_POLL_MS;
+        if (wakeAtMs > deadline) return finished({ timedOut: true, extraReasons }, "pending");
+        if (!await deps.sleep(Math.max(0, wakeAtMs - deps.now()), deps.signal)) return finished({ interrupted: true, extraReasons }, "pending");
+        continue;
+      }
       if (deps.signal.aborted && error instanceof CommandError && error.code === "cancelled") return finished({ interrupted: true }, "pending");
       throw error;
     }

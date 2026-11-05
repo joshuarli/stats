@@ -357,3 +357,32 @@ await test("a deferred rollout confounds a global Durable Object metric instead 
   const attributed = await verdictFor(newWorld({ doRows: true }), {}, policy);
   assert.equal(verdictOf(attributed).verdict, "improved");
 });
+
+await test("a deployment the collector has not recorded yet is pending until a later sync lists it, and unknown after one that does not", async () => {
+  const fresh = newWorld({ deployments: [deployment(1, AT - 2 * H, 101)] });
+  const h = await harness(fresh);
+  try {
+    const safety = h.safetyFile({});
+    const once = await h.run({ deployment: CANDIDATE.id, "safety-check-file": safety });
+    assert.equal(once.result.exit, EXIT.pending);
+    assert.equal(verdictOf(once.result).verdict, "pending");
+    assert.ok(verdictOf(once.result).reasons.some(reason => reason.code === "deployment-unrecorded"));
+
+    const { result } = await h.run({ deployment: CANDIDATE.id, wait: true, timeout: "1h", "safety-check-file": safety }, {
+      onSleep: ms => { fresh.deployments = [...fresh.deployments, CANDIDATE]; fresh.syncedAtMs = fresh.clock.now + ms; }
+    });
+    assert.equal(verdictOf(result).verdict, "improved");
+    assert.deepEqual(h.sleeps, [300_000]);
+  } finally {
+    await h.close();
+  }
+
+  const typo = newWorld({ syncedAtMs: AT + 3 * H });
+  const t = await harness(typo);
+  try {
+    await assert.rejects(t.run({ deployment: id(9), wait: true, timeout: "1h", "safety-check-file": t.safetyFile({}) }), (error: unknown) => error instanceof CommandError && error.code === "deployment_missing" && error.exit === EXIT.transport);
+    assert.deepEqual(t.sleeps, []);
+  } finally {
+    await t.close();
+  }
+});
