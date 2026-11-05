@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { openHistory } from "../../src/binary/history.ts";
 import { decodeProjectHistories, metricTrack, type ProjectHistories } from "../../src/client/history.ts";
-import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { PROJECT_SETTLE_MS } from "../../src/limits.ts";
 import { windowStartMs } from "../../src/projects/metrics.ts";
 import { BUCKET_MS } from "../../src/projects/queries.ts";
 import { RECORDED_AT_MS, R2_ACTIONS, WORKER_STATUSES, D1_STATEMENTS, scenario, slots, values, type Scenario } from "../../local/scenario.ts";
 import { CLOUDFLARE_ROOT, STATS_OUTPUT, readBuiltWorker } from "../../local/topology.ts";
+import { addHost, ingestFixture as ingest } from "../../local/seed.ts";
 import { cliEnv, productionProjects, startStack, type Stack } from "../../local/stack.ts";
 
 const T = RECORDED_AT_MS;
@@ -18,7 +17,6 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 const PROJECT_SAMPLE_HORIZON_MS = 7 * DAY_MS;
 const PROJECT_HOUR_HORIZON_MS = 30 * DAY_MS;
-const BATCH = JSON.parse(readFileSync(join(CLOUDFLARE_ROOT, "../fixtures/v2/sources/linux-normal.json"), "utf8")) as SourceBatch;
 const BASE_KINDS = "worker,routes,r2,collector";
 
 interface Frame {
@@ -90,28 +88,6 @@ async function projectsList(stack: Stack): Promise<{ id: string; collector: { la
   const response = await stack.fetch("/api/v1/projects");
   assert.equal(response.status, 200);
   return await response.json() as { id: string; collector: { lastRunAtMs: number | null; lastSuccessAtMs: number | null; lastError: string | null; stale: boolean } }[];
-}
-
-async function addHost(stack: Stack): Promise<{ hostId: string; token: string }> {
-  const response = await stack.fetch("/api/v1/admin/hosts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "local-stack-host" }) });
-  assert.equal(response.status, 201);
-  return await response.json() as { hostId: string; token: string };
-}
-
-async function ingest(stack: Stack, host: { hostId: string; token: string }, atMs: number, seqOffset = 0n): Promise<number> {
-  const u64 = (value: unknown): bigint => {
-    if (typeof value !== "string") throw new TypeError("fixture u64 is not a string");
-    return BigInt(value);
-  };
-  const offset = BigInt(atMs) - u64(BATCH.samples[BATCH.samples.length - 1]!["atMs"]);
-  const samples = BATCH.samples.map(sample => ({ ...sample, atMs: (u64(sample["atMs"]) + offset).toString(), seq: (u64(sample["seq"]) + seqOffset).toString() }));
-  const response = await stack.anonymous("/ingest/v2/batches", {
-    method: "POST",
-    headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" },
-    body: encodeFrame({ ...BATCH, hostId: host.hostId, samples })
-  });
-  await response.arrayBuffer();
-  return response.status;
 }
 
 async function until<V>(read: () => Promise<V>, done: (value: V) => boolean, what: string): Promise<V> {

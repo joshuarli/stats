@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -93,6 +93,9 @@ observe-deploy: auth-ready node-ready
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
 
+observe-bundle: node-ready
+	cd cloudflare && pnpm run build:observe
+
 worker-deploy: auth-ready work-ready worker-bundle observe-deploy stats-deploy
 
 stats-deploy: auth-ready work-ready worker-bundle
@@ -142,8 +145,14 @@ ingest-bench: work-ready node-ready
 smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
-smoke-local: work-ready node-ready worker-bundle
-	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-worker.mjs ../deploy/deployed-smoke.sh
+smoke-local: work-ready node-ready worker-bundle observe-bundle
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-stack.mjs run -- ../deploy/deployed-smoke.sh
+
+dev-local: work-ready node-ready worker-bundle observe-bundle
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-stack.mjs dev
+
+reset-local:
+	rm -rf '$(CURDIR)/.work/local/state'
 
 agent-e2e: work-ready node-ready worker-bundle
 	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo build

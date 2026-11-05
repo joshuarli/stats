@@ -20,6 +20,7 @@ export interface StackStart {
   readonly projectsJson?: string;
   readonly collector?: Collector;
   readonly port?: number;
+  readonly localExplorer?: true;
 }
 
 export interface Stack {
@@ -80,7 +81,8 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
       alarms: "rpc"
     }),
     host: "127.0.0.1",
-    port: start.port ?? 0
+    port: start.port ?? 0,
+    ...(start.localExplorer === true ? { unsafeLocalExplorer: true } : {})
   });
   const origin = (await mf.ready).origin.replace(/\/$/u, "");
   const worker = await mf.getWorker(shared.stats.name);
