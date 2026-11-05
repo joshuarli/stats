@@ -51,15 +51,6 @@ await test("a usage error in --json mode is one failure document", async () => {
   assert.match((parsed["error"] as { message: string }).message, /--project and --all/);
 });
 
-await test("planned commands parse their options and exit 4 not_implemented without touching the network", async () => {
-  await withOrigin((_, response) => { response.end("{}"); }, async origin => {
-    const run = await jsonRun(origin, ["verify", "--project", "stats", "--deployment", "d1", "--policy", "p.json"]);
-    assert.equal(run.code, EXIT.transport);
-    assert.equal(errorOf(run.stdout).code, "not_implemented");
-    assert.equal(origin.connections(), 0);
-  });
-});
-
 await test("projects returns a sorted payload inside one statsctl/1 document", async () => {
   await withOrigin((request, response) => {
     if (!authorized(request)) return sendJson(response, {}, 401);

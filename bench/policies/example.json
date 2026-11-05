@@ -1,0 +1,14 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "example-ingest-rows-written",
+  "hypothesis": "Writing each ingest batch with fewer index updates cuts SQLite rows written per persisted sample by at least 10% with no loss of persisted samples.",
+  "project": "stats",
+  "operation": "host.ingest",
+  "metric": "rowsWrittenPerUnit",
+  "direction": "decrease",
+  "minChangePercent": 10,
+  "floor": 0.5,
+  "guardrails": ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"],
+  "window": "1h",
+  "maxWaitMs": 7200000
+}

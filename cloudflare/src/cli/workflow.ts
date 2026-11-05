@@ -31,34 +31,43 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    the deployment bucket and one warm-up bucket; read its reasons before its metrics.
 
 5. Write a policy
-   Commit the hypothesis and policy before deploying the candidate.
-   cat > bench/policies/EXPERIMENT.json <<'JSON'
-   {"id":"EXPERIMENT","project":"stats","operation":"host.ingest","metric":"rowsWrittenPerPersistedSample","minOperations":100,"materialChangePercent":10}
-   JSON
-   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --readiness --json
-   --readiness lists each signal the policy needs as available or unavailable:<code>. A
-   signal the policy does not use never blocks it.
+   Commit the hypothesis and policy before deploying the candidate. Start from
+   bench/policies/example.json and read: statsctl help verify, for every field. Strict JSON:
+   unknown fields, a minChangePercent under 10, a floor under the metric default, and a
+   waiver of safety-check or coverage are all refused.
+   cp bench/policies/example.json bench/policies/EXPERIMENT.json
+   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --readiness --json
+   --readiness lists each signal the policy needs as available or unavailable:<code>, and
+   exits 5 unless all are available. A signal the policy does not use never blocks it.
+   During the deployment warm-up (after it begins, before the after window), save the
+   safety check; verify never mutates:
+   pnpm --dir cloudflare -s statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json > .work/check-ingest.json
 
 6. Wait for settlement
-   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --wait --timeout 2h --json
+   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
    --wait sleeps until the after window is ready, then polls at most every 15 minutes with
    If-None-Match. On timeout it exits 5 with pending and prints the command to resume.
 
 7. Interpret the verdict (exit codes: 0 improved, 5 pending or insufficient-data,
    6 unchanged or confounded, 7 regressed)
-   insufficient-data  a side has too few operations or the signal is missing. Not a pass.
+   insufficient-data  a side has too few operations, coverage is not reconciled, or a signal
+                      or guardrail has no evidence. Not a pass.
                       Wait for more traffic or widen the window; never lower the minimum.
-   confounded         another deployment overlapped a window, the workload mix moved, or
-                      coverage is not reconciled. The result says nothing about the change.
+   confounded         another deployment overlapped a window, the rollout was split or
+                      deferred, or the workload moved. It says nothing about the change.
                       Retry in a clean window; it may be retried twice per candidate.
-   inconclusive       the effect is below the policy's material change or metric floor.
-                      Treat it as no evidence either way, not as a small win.
-   regressed          any guardrail failed. It outranks every other verdict.
+   unchanged          the effect is below the policy's material change or metric floor
+                      (exit 6). It is inconclusive, no evidence either way, not a small win.
+   regressed          any guardrail regressed, or the target moved the wrong way
+                      materially. It outranks every other verdict. A guardrail with no
+                      evidence is insufficient-data, never a pass.
 
 8. Resume after an interruption
-   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --wait --timeout 2h --json
+   pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
    State lives in .work/statsctl/verify/DEPLOYMENT_ID.json; repeating the same command
-   continues from it and counts requests across runs.
+   continues from it and counts requests across runs. A finished verdict is not re-read.
+   statsctl verify --replay .work/statsctl/verify/DEPLOYMENT_ID.json re-derives the
+   verdict offline from the saved evidence and fails if it differs.
 
 9. Check ingest end to end (mutation)
    pnpm --dir cloudflare -s statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json

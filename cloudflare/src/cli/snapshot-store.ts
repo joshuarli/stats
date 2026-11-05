@@ -26,7 +26,7 @@ export function cliRevision(): string {
   }
 }
 
-function invocationDirectory(): string {
+export function invocationDirectory(): string {
   return process.env["INIT_CWD"] ?? process.cwd();
 }
 
