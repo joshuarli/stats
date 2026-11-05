@@ -3,10 +3,43 @@
 ## Status
 
 - **Goal:** the whole `stats` Cloudflare topology (the `stats` Worker, `stats-observe`, their Durable Objects, tail wiring, and the dashboard assets) runs and verifies itself on this machine with no Cloudflare login and no network. The one hosted dependency with no local implementation, the `ANALYTICS_SQL` binding, is replaced at its binding boundary by an offline provider, so the real scheduled handler, collector, parsers, Durable Object, history frames, cost report, `statsctl`, and dashboard all run on a successful collection.
-- **State:** L1 to L6 accepted; M2 (full suite plus `make integration-local`) green in 76 s at `bffc474`. `make integration-local` is 7.7 s and joined `make check` (Decision 10).
-- **Accepted:** L1 to L6. **Red:** none. **Parked:** none.
-- **Next:** H1.
-- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item H1. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
+- **State:** closed. Every item accepted; no item parked. The closing full suite passed in 71 s and `make integration-local` in 8.5 s, with the upgrade test run against `.work/wt/baseline`.
+- **Accepted:** L1 to L6, H1 to H3, O1, X. **Red:** none. **Parked:** none.
+- **Report:** **Closing report** below.
+
+## Closing report
+
+**What runs offline.**
+- **Workers:** both built Workers (`stats` with its assets and `Installation`, `stats-observe` with `ObservationStore`) with the tail link and the `OBSERVE` binding. The setup comes from the built `worker.config.json`.
+- **Collection:** the real scheduled handler, collector, parsers, and project history, against an offline `ANALYTICS_SQL` provider that answers only the fixed queries.
+- **Readers:** host ingest and retention, history frames, a real `statsctl` process, and the dashboard in Chromium.
+- **Network:** every outbound request answers 503, and an undeclared one fails the run. On macOS, `sandbox-exec` also denies all non-loopback network, including DNS.
+
+**What does not.**
+- Whether Cloudflare still accepts the fixed queries and returns the recorded columns.
+- The Linux sandbox: `scripts/offline-run.sh` exits 2 off macOS.
+- Billable CPU.
+- Cron Triggers: tests call `scheduled()`, and `dev` fires it on 5-minute boundaries.
+
+**Commands.**
+- `make integration-local`: joins `make check` on macOS.
+- `make dev-local` and `make reset-local`.
+- `make bench-local`.
+- `pnpm --dir cloudflare run test:local`: part of `make cloudflare-test`.
+- `node cloudflare/scripts/local-stack.mjs run -- CMD`.
+
+**Scenarios.** S1 to S6 are in `cloudflare/test/local/collection.test.ts`. Six planted defects each failed their scenario; they are listed in the L3 commit.
+
+**Changes outside the planned files.**
+- `cloudflare/vitest.config.mjs` excludes `test/local/`.
+- `cloudflare/test/ingest-load.ts` takes its sample sequence from `cloudflare/local/samples.ts`.
+- The bench is `cloudflare/bench/local.ts`, not `local.workerd.ts`, because `bench:workerd` runs every `*.workerd.ts` inside workerd.
+
+**Review findings left open (P3).**
+- A restart can lose its port to a parallel stack.
+- Failure paths leak a scratch directory or a `workerd` when startup throws after `ready`.
+- `dev` and `openStatsWorker` never report unexpected outbound requests.
+- The Local Explorer in `dev` reads state without Access, on loopback only.
 
 ## Charter
 
