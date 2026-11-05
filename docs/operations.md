@@ -395,7 +395,7 @@ local instance.
 `statsctl` picks its target from the origin. A host ending in `.ts.net`, or a
 bare name with no dot, is a Node origin: statsctl sends no credential, because
 `tailscale serve` adds the identity. `check ingest`, `deploy mark`, `services`, and
-`service deployments` work there; every other command reads Cloudflare
+`service deployments` work there, and so does `verify --service`; every other command reads Cloudflare
 telemetry and exits 2 with `unsupported_on_target` before any request. Store the `synthetic-check` host
 credential (`{hostId, name, token}`, mode 0600) and run:
 
@@ -470,6 +470,32 @@ Worker; no other Access application is needed. Access matches by path, not
 method, so the readback stays on `/api/v1`, behind Access. The Node target
 needs nothing extra: the marker route ignores Tailscale identity, so any
 process that can reach the tailnet origin can mark with the token.
+
+### Comparing a service's deployments
+
+Once a service has two markers more than the window apart and its hosts have
+reported across both, the dashboard's Services page and `statsctl verify` compare
+them. The Services page is `#/services`; a service page is `#/service/NAME`, with
+the deployments timeline and the before and after table. A source the service
+lacks (no health URL, no host data in a window) shows as unavailable, never zero.
+
+```sh
+pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/stats-node-cpu.json --origin http://threadripper.tailcf741.ts.net:18790 --json
+```
+
+The policy is strict JSON, schema `statsctl-policy/1`, with `id`, `hypothesis`,
+`service`, `metric`, `direction`, `minChangePercent`, `floor`, and `window`.
+`metric` is one of the level metrics in
+[Service comparison](architecture.md#service-comparison); there are no
+guardrails and no waiting. It makes one read. Exit 0 improved, 5 pending (the
+after window has not settled; run it again) or insufficient-data (a source is
+unavailable), 6 unchanged or confounded, 7 regressed. Every output states that
+it shows resource levels changed, not fewer resources for the same work, and the
+host rollups include every process on the hosts the marker names.
+
+The Node server probes each service's `healthUrl` every five minutes. A Node
+container with no network sees every probe fail, so its probe failure share is
+100 percent in both windows; leave `healthUrl` off for such a service.
 
 ## Verified environments
 

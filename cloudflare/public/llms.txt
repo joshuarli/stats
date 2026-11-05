@@ -65,7 +65,7 @@ For cost, comparison, and deployment-verification questions, use `statsctl` inst
     pnpm --dir cloudflare -s statsctl help workflow
     pnpm --dir cloudflare -s statsctl health --project stats --json
 
-`statsctl help workflow` has the recipes and `statsctl help verify` the policy fields. Exit 5 means pending or insufficient data, 6 unchanged or confounded, 7 regressed; none of them is a pass. Only `check ingest` and `deploy mark` write: `check ingest` only to the `synthetic-check` host, and `deploy mark` one deployment marker for the named service.
+`statsctl help workflow` has the recipes and `statsctl help verify` the policy fields. Exit 5 means pending or insufficient data, 6 unchanged or confounded, 7 regressed; none of them is a pass. `verify --service NAME` compares a service's resource levels around a deployment marker; it cannot show fewer resources for the same work. Only `check ingest` and `deploy mark` write: `check ingest` only to the `synthetic-check` host, and `deploy mark` one deployment marker for the named service.
 
 ## More
 

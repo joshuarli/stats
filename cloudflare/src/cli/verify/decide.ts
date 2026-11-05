@@ -92,7 +92,9 @@ function sideCoverage(window: StatsWindow, analytics: DeploymentComparison["anal
   return computeCoverage({ fromMs: window.fromMs, toMs: window.toMs, analyticsSampleRate: STATS_ANALYTICS_SAMPLE_RATE, observed: observedEventTotals(window, ANALYTICS_COUNTED_STAGES), analytics });
 }
 
-function judgeTarget(policy: Policy, source: { readonly before: number | null; readonly after: number | null; readonly verdict: VerifyVerdict }): TargetReport {
+export type TargetRule = Pick<Policy, "metric" | "direction" | "floor" | "minChangePercent">;
+
+export function judgeTarget(policy: TargetRule, source: { readonly before: number | null; readonly after: number | null; readonly verdict: VerifyVerdict }): TargetReport {
   const base = { metric: policy.metric, direction: policy.direction, floor: policy.floor, minChangePercent: policy.minChangePercent, before: source.before, after: source.after };
   const delta = source.before === null || source.after === null ? null : source.after - source.before;
   const deltaPercent = delta === null || source.before === null || source.before === 0 ? null : delta / source.before * 100;

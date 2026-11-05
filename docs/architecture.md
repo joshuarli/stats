@@ -168,7 +168,9 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 - `POST /admin/services`, `GET /services`, `GET /services/:name`,
   and `GET /services/:name/deployments`; the marker `POST` is
-  `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)).
+  `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)),
+  and `GET /services/:name/deployments/:id/comparison?window=1h|6h|24h`
+  (see [Service comparison](#service-comparison)).
 
 Two authorization boundaries:
 
@@ -480,6 +482,51 @@ older than 30 days in batches of 1000.
 version ids, so service histories go through
 `decodeServiceDeploymentHistory` in `src/deployments/service-decode.ts`, which
 accepts marker versions such as a commit.
+
+### Service comparison
+
+`GET /api/v1/services/:name/deployments/:id/comparison?window=1h|6h|24h`
+(default `1h`) compares one marker with the marker before it, with the project
+comparison's windows, settling, and baseline rules. `gateDeployment` in
+`src/deployments/compare.ts` is the shared part: the before window ends at the
+bucket the marker landed in, the after window starts one full bucket later, and
+a marker with no earlier marker at least one window before it, a split or
+overlapping deploy, or an after window not yet settled withholds a verdict
+with a reason code. The service settle time is 15 minutes
+(`SERVICE_SETTLE_MS`), because agents report continuously and no collector has
+to catch up. `compareServiceDeployment` in
+`src/deployments/service-compare.ts` supplies the metrics. The response is a
+project `DeploymentComparison` (invocation counts are `null` and
+`analyticsInvocations` is empty) plus:
+
+- `hostIds`, the hosts named in the marker, which are the hosts compared;
+- `sources`, `[{ source: "hosts" | "probe", status: "available" | "unavailable", detail }]`.
+
+Metrics are levels, each the mean of five-minute buckets in the window, and a
+bucket counts only when every compared host reported at least 150 s of it:
+
+| Metric | Source |
+| --- | --- |
+| `host.cpu` (user + system, %), `host.memory` (used, %) | host one-minute rollups |
+| `host.pressure.cpu`, `.memory`, `.io` (PSI some, 60 s average, %) | host one-minute rollups |
+| `host.net` (rx + tx excluding `lo`, B/s), `host.disk` (read + write, B/s) | host one-minute rollups |
+| `probe.health.ms`, `probe.health.failure` (%) | service health probes, only when `healthUrl` is set |
+
+Hosts are averaged, so a host that has no bucket makes that bucket absent. A
+window needs 75% of its buckets, as probe metrics do for projects. A metric
+with no value in a window is `null`, never zero, and its verdict is
+`insufficient-data`. When no metric has a value on both sides, the comparison
+carries the reason code `no-data`. The warnings always include that the
+comparison shows resource levels, not fewer resources for the same work,
+because a service does not report its own work counts, and that host rollups
+include every process on the host.
+
+Probes on the Node target run on the scheduler port every five minutes, on the
+bucket boundary (`src/node/probes.ts`), with `runProbes` from
+`src/projects/probes.ts`. `InstallationCore.collectServiceProbes` writes
+`probe.health.up` and `probe.health.ms` to `project_samples` under the owner
+`service:<name>`, which cannot collide with a project id. The Worker target
+runs no service probes, so a service's probe source is `unavailable` there.
 
 ## Storage and rollups
 

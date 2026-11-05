@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { CommandError, EXIT, usageError } from "../exit.ts";
 import { invocationDirectory } from "../snapshot-store.ts";
 import type { SafetyRecord } from "./decide.ts";
-import { MAX_POLICY_BYTES, parsePolicyText, PolicyError, type Policy } from "./policy.ts";
+import { MAX_POLICY_BYTES, parsePolicyText, parseServicePolicyText, PolicyError, type Policy, type ServicePolicy } from "./policy.ts";
 import type { Source } from "./readiness.ts";
 
 const MAX_SAFETY_BYTES = 256 * 1024;
@@ -36,6 +36,16 @@ export function readPolicyFile(file: string): Policy {
   const text = readCapped(file, MAX_POLICY_BYTES, "policy file");
   try {
     return parsePolicyText(text);
+  } catch (error) {
+    if (error instanceof PolicyError) throw new CommandError(EXIT.usage, "policy_invalid", `${resolveInvocationPath(file)}: ${error.message}`);
+    throw error;
+  }
+}
+
+export function readServicePolicyFile(file: string): ServicePolicy {
+  const text = readCapped(file, MAX_POLICY_BYTES, "policy file");
+  try {
+    return parseServicePolicyText(text);
   } catch (error) {
     if (error instanceof PolicyError) throw new CommandError(EXIT.usage, "policy_invalid", `${resolveInvocationPath(file)}: ${error.message}`);
     throw error;

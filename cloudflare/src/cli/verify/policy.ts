@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { COMPARISON_WINDOWS, type ComparisonWindow } from "../../deployments/compare.ts";
 import { OPERATION_METRICS, type MetricFloors, type OperationMetric } from "../../compare/operation.ts";
+import { SERVICE_LEVEL_METRICS } from "../../deployments/service-compare.ts";
 import type { ClassedOperation, ClasslessOperation, ComparableOperation } from "../../compare/spec.ts";
 
 export const POLICY_SCHEMA = "statsctl-policy/1";
@@ -199,4 +200,46 @@ export function parsePolicyText(source: string): Policy {
 
 export function policyHash(policy: Policy): string {
   return createHash("sha256").update(JSON.stringify(policy)).digest("hex");
+}
+
+export interface ServicePolicy {
+  readonly schema: typeof POLICY_SCHEMA;
+  readonly id: string;
+  readonly hypothesis: string;
+  readonly service: string;
+  readonly metric: string;
+  readonly direction: "decrease" | "increase";
+  readonly minChangePercent: number;
+  readonly floor: number;
+  readonly window: ComparisonWindow;
+}
+
+const SERVICE_POLICY_FIELDS = ["schema", "id", "hypothesis", "service", "metric", "direction", "minChangePercent", "floor", "window"];
+
+export function parseServicePolicyText(source: string): ServicePolicy {
+  if (new TextEncoder().encode(source).byteLength > MAX_POLICY_BYTES) fail(`the policy is larger than ${MAX_POLICY_BYTES} bytes`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    fail("the policy is not valid JSON");
+  }
+  const fields = record(parsed, "the policy");
+  noUnknown(fields, SERVICE_POLICY_FIELDS, "the policy");
+  if (fields["schema"] !== POLICY_SCHEMA) fail(`schema must be ${POLICY_SCHEMA}`);
+  const id = text(fields["id"], "id", 1, 64);
+  if (!/^[a-z][a-z0-9-]*$/u.test(id)) fail("id must be lowercase letters, digits, and hyphens, starting with a letter");
+  const hypothesis = text(fields["hypothesis"], "hypothesis", 10, 500);
+  const service = text(fields["service"], "service", 1, 32);
+  if (!/^[a-z][a-z0-9-]{0,31}$/u.test(service)) fail("service must be a service name such as stats-node");
+  const metric = oneOf(fields["metric"], SERVICE_LEVEL_METRICS.map(entry => entry.metric), "metric");
+  const direction = oneOf(fields["direction"], ["decrease", "increase"] as const, "direction");
+  const minChangePercent = number(fields["minChangePercent"], "minChangePercent");
+  if (minChangePercent < MIN_CHANGE_PERCENT) fail(`minChangePercent must be at least ${MIN_CHANGE_PERCENT}; a lower bar is not evidence`);
+  if (minChangePercent > 1000) fail("minChangePercent must be at most 1000");
+  const window = oneOf(fields["window"], Object.keys(COMPARISON_WINDOWS) as ComparisonWindow[], "window");
+  const minimum = SERVICE_LEVEL_METRICS.find(entry => entry.metric === metric)!.floor;
+  const floor = number(fields["floor"], "floor");
+  if (floor < minimum) fail(`floor for ${metric} must be at least its default ${minimum}`);
+  return { schema: POLICY_SCHEMA, id, hypothesis, service, metric, direction, minChangePercent, floor, window };
 }

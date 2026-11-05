@@ -83,6 +83,9 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    The token file is the JSON returned once when the service was created, mode 0600. The
    marker id defaults to v-VERSION, so repeating a deploy exits 0 and records nothing new;
    a marker id reused with different content exits 2 (marker_conflict).
+   Compare a marker with the one before it (resource levels only, never "fewer resources for
+   the same work"; Cloudflare and Node origins, exit codes as verify):
+   pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/stats-node-cpu.json --origin http://threadripper.tailcf741.ts.net:18790 --json
 
 Why a lower monthly estimate is not necessarily a win
    cost projects a month from one window, so it moves with traffic, time of day, and which
@@ -97,4 +100,4 @@ Authentication
    sh -c) and STATSCTL_AUTH_HEADER. It never starts a login; if it fails, run
    cf access login <origin>. The credential is sent only to the configured origin.
    A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: no credential is
-   sent, and only check ingest, deploy mark, services, and service deployments work there.`;
+   sent, and only check ingest, deploy mark, services, service deployments, and verify --service work there.`;

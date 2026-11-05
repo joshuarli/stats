@@ -6,12 +6,15 @@ import { decodeHealth, decodeStatsWindow } from "../../observe/client/decode.ts"
 import { DEFAULT_ORIGIN } from "../auth.ts";
 import { decodeProjects } from "../decode.ts";
 import type { ResultMeta, Warning } from "../envelope.ts";
-import { EXIT, transportError, usageError, type ExitCode } from "../exit.ts";
+import { EXIT, transportError, unsupportedOnTarget, usageError, type ExitCode } from "../exit.ts";
+import { targetOf } from "../auth.ts";
 import { defineCommand, type Command, type CommandContext } from "../registry.ts";
 import { MEASUREMENT_REVISION } from "../revisions.ts";
+import { SERVICE_LEVEL_METRICS } from "../../deployments/service-compare.ts";
 import { table, timeText } from "../text.ts";
 import { EXIT_FOR_VERDICT, type Decision, type Reason, type SafetyRecord, type VerifyVerdict } from "../verify/decide.ts";
-import { parseDuration, readPolicyFile, readSafetyFile, resolveInvocationPath, sleepUntil, source } from "../verify/files.ts";
+import { parseDuration, readPolicyFile, readSafetyFile, readServicePolicyFile, resolveInvocationPath, sleepUntil, source } from "../verify/files.ts";
+import { verifyService, type ServiceVerdictPayload } from "../verify/service.ts";
 import { POLL_REQUEST_LIMIT, TOTAL_REQUEST_LIMIT, comparisonPath, observeWindowPath } from "../verify/gather.ts";
 import { replay, resolveLatest, runVerification, type LoopDeps, type Outcome } from "../verify/loop.ts";
 import { GUARDRAIL_IDS, MAX_WAIT_MS, MIN_CHANGE_PERCENT, MIN_WAIT_MS, DEFAULT_OPERATION_FLOORS, UNWAIVABLE, isOperationPolicy, policyHash, type Policy } from "../verify/policy.ts";
@@ -45,7 +48,7 @@ export interface VerdictPayload {
   readonly replay: { readonly file: string; readonly reproduced: true } | null;
 }
 
-export type VerifyPayload = ReadinessPayload | VerdictPayload;
+export type VerifyPayload = ReadinessPayload | VerdictPayload | ServiceVerdictPayload;
 
 export interface VerifyDeps {
   readonly sleep: LoopDeps["sleep"];
@@ -133,7 +136,7 @@ function verdictPayload(outcome: Outcome, context: CommandContext, input: { read
 export function createVerifyCommand(deps: VerifyDeps): Command {
   return defineCommand<VerifyPayload>({
     name: "verify",
-    summary: "decide whether a deployment used fewer resources for the same work",
+    summary: "decide whether a deployment used fewer resources for the same work, or (--service) changed a service's resource levels",
     description: [
       "Applies a pre-registered policy to the exact before and after windows of one deployment and prints a verdict: improved, unchanged, confounded, insufficient-data, pending, or regressed.",
       "Read-only. It never runs `check ingest`; run that yourself inside the deployment warm-up and pass its saved --json output with --safety-check-file. A missing, failed, or pre-deploy check never passes.",
@@ -153,11 +156,17 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "Guardrails:",
       ...pad(GUARDRAIL_HELP),
       "",
+      "Service policy (--service), schema statsctl-policy/1, strict: schema, id, hypothesis, service, metric, direction, minChangePercent, floor, window.",
+      `  metric is one of ${SERVICE_LEVEL_METRICS.map(entry => entry.metric).join(", ")}; floor is at least the metric's default (${SERVICE_LEVEL_METRICS.map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
+      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after, and every process on those hosts counts.",
+      "",
       "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],
     access: "read",
+    targets: ["cloudflare", "node"],
     options: {
-      project: { type: "string", placeholder: "ID", description: "project id from `statsctl projects`; must match the policy (required unless --replay)" },
+      project: { type: "string", placeholder: "ID", description: "project id from `statsctl projects`; must match the policy (required unless --replay or --service)" },
+      service: { type: "string", placeholder: "NAME", description: "verify a service's deployment marker from `statsctl services` instead of a project; takes a service policy (see below), one read, no waiting" },
       deployment: { type: "string", placeholder: "ID", description: "deployment id from `statsctl deployments`, or latest (required unless --replay)" },
       window: { type: "string", placeholder: "SPAN", description: "comparison window, 1h, 6h, or 24h; defaults to the policy's window and may not differ from it" },
       policy: { type: "string", placeholder: "FILE", description: "policy JSON file, e.g. bench/policies/<id>.json (required unless --replay)" },
@@ -167,7 +176,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       readiness: { type: "boolean", description: "list each signal the policy needs as available or unavailable and exit" },
       replay: { type: "string", placeholder: "FILE", description: "re-derive the verdict from a saved state file, offline" }
     },
-    exclusive: [["replay", "wait"], ["replay", "readiness"], ["replay", "policy"], ["replay", "project"], ["replay", "deployment"], ["replay", "safety-check-file"], ["readiness", "wait"]],
+    exclusive: [["service", "project"], ["service", "wait"], ["service", "readiness"], ["service", "replay"], ["service", "safety-check-file"], ["replay", "wait"], ["replay", "readiness"], ["replay", "policy"], ["replay", "project"], ["replay", "deployment"], ["replay", "safety-check-file"], ["readiness", "wait"]],
     examples: [
       "statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --readiness --json",
       "statsctl verify --project stats --deployment DEPLOYMENT_ID --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json",
@@ -175,13 +184,16 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
     ],
     limitations: [
       "A full verify makes at most 60 requests; a poll makes at most 6.",
+      "--service compares resource levels only (host CPU, memory, pressure, network, disk, and health probe time or failure share). It cannot show fewer resources for the same work, because a service does not report its own work counts.",
       "Operation summaries, coverage, and issue groups exist only for the stats project.",
+      "--service works on Cloudflare and Node origins; every other mode reads Cloudflare telemetry and exits 2 with unsupported_on_target on a Node origin.",
       "At most two candidate versions are checked for new issue groups; more is insufficient-data.",
       "Global policies need 1,000 invocations a side for the failed-share guardrail, so a small project cannot pass one."
     ],
     async run(context) {
       const replayFile = context.option("replay");
       if (replayFile !== undefined) {
+        if (targetOf(context.origin) === "node") throw unsupportedOnTarget("verify without --service", context.origin);
         const path = resolveInvocationPath(replayFile);
         const text = readStateText(path);
         if (text === null) throw usageError(`cannot open the state file ${path}`);
@@ -190,6 +202,10 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
         const payload: VerdictPayload = { ...verdictPayload(outcome, context, { policy: state.policy, requested: state.requested, wait: false, resume: null }), replay: { file: path, reproduced: true } };
         return { ...verdictMeta(payload, state.project), payload, exit: EXIT_FOR_VERDICT[decision.verdict] };
       }
+
+      const serviceName = context.option("service");
+      if (serviceName !== undefined) return serviceVerification(context, serviceName);
+      if (targetOf(context.origin) === "node") throw unsupportedOnTarget("verify without --service", context.origin);
 
       const project = requireProject(context);
       const requested = context.option("deployment");
@@ -214,9 +230,29 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       return { ...verdictMeta(payload, project), payload, exit: EXIT_FOR_VERDICT[outcome.verdict] };
     },
     render(payload) {
-      return payload.kind === "readiness" ? renderReadiness(payload) : renderVerdict(payload);
+      return payload.kind === "readiness" ? renderReadiness(payload) : payload.kind === "service-verdict" ? renderServiceVerdict(payload) : renderVerdict(payload);
     }
   });
+}
+
+async function serviceVerification(context: CommandContext, serviceName: string): Promise<{ payload: ServiceVerdictPayload; exit: ExitCode } & ResultMeta> {
+  const requested = context.option("deployment");
+  const policyFile = context.option("policy");
+  if (requested === undefined || policyFile === undefined) throw usageError("--deployment and --policy are required with --service");
+  const policy = readServicePolicyFile(policyFile);
+  if (policy.service !== serviceName) throw usageError(`the policy is for service ${policy.service}, not ${serviceName}`);
+  const windowSpan = context.option("window") ?? policy.window;
+  if (!isComparisonWindow(windowSpan) || windowSpan !== policy.window) throw usageError(`--window must match the policy's pre-registered window ${policy.window}`);
+  const payload = await verifyService(context.http, context.now(), policy, requested);
+  return {
+    project: serviceName,
+    windows: [{ fromMs: payload.spec.before.fromMs, toMs: payload.spec.before.toMs }, { fromMs: payload.spec.after.fromMs, toMs: payload.spec.after.toMs }],
+    measurementRevision: MEASUREMENT_REVISION,
+    warnings: [{ code: "resource-levels-only", message: payload.caveat }],
+    identities: { deploymentIds: [payload.deployment.id], versionIds: [...new Set([...payload.spec.before.versionIds, ...payload.spec.after.versionIds])] },
+    payload,
+    exit: EXIT_FOR_VERDICT[payload.verdict]
+  };
 }
 
 async function readiness(context: CommandContext, policy: Policy, requested: string, safety: SafetyRecord | null): Promise<{ payload: ReadinessPayload; exit: ExitCode } & ResultMeta> {
@@ -246,6 +282,25 @@ function renderReadiness(payload: ReadinessPayload): string[] {
   return [
     `readiness for policy ${payload.policy.id} on deployment ${payload.deployment.id}: ${payload.ready ? "ready" : "NOT ready"}`,
     ...table(payload.signals.map(signal => [signal.signal, signal.status, signal.message]))
+  ];
+}
+
+function renderServiceVerdict(payload: ServiceVerdictPayload): string[] {
+  const { target } = payload;
+  return [
+    `service verdict ${payload.verdict} (exit ${EXIT_FOR_VERDICT[payload.verdict]}) for policy ${payload.policy.id}`,
+    `hypothesis: ${payload.policy.hypothesis}`,
+    `service ${payload.policy.service}, deployment ${payload.deployment.id}${payload.deployment.requested === "latest" ? " (resolved from latest)" : ""}, window ${payload.window}`,
+    `before [${timeText(payload.spec.before.fromMs)}, ${timeText(payload.spec.before.toMs)})`,
+    `after  [${timeText(payload.spec.after.fromMs)}, ${timeText(payload.spec.after.toMs)})`,
+    ...table([
+      ["target", "direction", "before", "after", "delta", "percent", "verdict"],
+      [target.metric, target.direction, number(target.before), number(target.after), number(target.delta), number(target.deltaPercent), target.verdict]
+    ]),
+    "sources:",
+    ...table(payload.sources.map(item => [`  ${item.source}`, item.status, item.detail])),
+    ...(payload.reasons.length > 0 ? ["reasons:", ...payload.reasons.map(reason => `  ${reason.code}: ${reason.message}`)] : []),
+    `caveat: ${payload.caveat}`
   ];
 }
 

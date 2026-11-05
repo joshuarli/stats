@@ -1,0 +1,11 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "example-service-cpu",
+  "hypothesis": "The new build keeps the hosts it runs on at least 10% less busy than the build before it.",
+  "service": "stats-node",
+  "metric": "host.cpu",
+  "direction": "decrease",
+  "minChangePercent": 10,
+  "floor": 2,
+  "window": "1h"
+}

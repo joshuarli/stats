@@ -1,4 +1,7 @@
 import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
+import { decodeDeploymentComparison } from "./decode.ts";
+import type { ComparisonWindow } from "./compare.ts";
+import type { ServiceComparison, SourceStatus } from "./service-compare.ts";
 import { UUID, annotation, record, type Deployment } from "./model.ts";
 
 function string(value: unknown, limit: number): string {
@@ -78,4 +81,16 @@ export function decodeServiceDeploymentHistory(value: unknown, service: string):
   const known = new Set(deployments.map(deployment => deployment.id));
   if (markers.length !== deployments.length || !markers.every(marker => known.has(marker.deploymentId))) throw new Error("service markers do not match deployments");
   return { projectId: service, worker: string(item["worker"], 63), enabled: true, sync: null, versions: [], deployments, markers };
+}
+
+export function decodeServiceComparison(value: unknown, deploymentId: string, window: ComparisonWindow): ServiceComparison {
+  const item = record(value);
+  const sources = list(item["sources"], 2, (raw): SourceStatus => {
+    const source = record(raw);
+    const name = source["source"];
+    const status = source["status"];
+    if ((name !== "hosts" && name !== "probe") || (status !== "available" && status !== "unavailable")) throw new Error("invalid service source");
+    return { source: name, status, detail: string(source["detail"], 200) };
+  });
+  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources };
 }

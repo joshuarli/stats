@@ -27,6 +27,7 @@ pnpm --dir cloudflare -s statsctl help workflow    # copy-pastable recipes for t
 pnpm --dir cloudflare -s statsctl health --project stats --json    # are the telemetry sources fresh and complete
 pnpm --dir cloudflare -s statsctl cost --project stats --window 1h --json    # price a window, find the bottleneck
 pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a deployment use fewer resources for the same work
+pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a service's resource levels change after a marker (not "fewer for the same work")
 ```
 
 `statsctl` reads the production origin through Access; `statsctl help workflow` and
