@@ -89,7 +89,7 @@ export type PlanBillReport =
     readonly projectedMonthEnd: number;
     readonly account: { readonly kind: "unknown"; readonly reason: "other-projects-not-covered" };
   }
-  | { readonly kind: "unavailable"; readonly reason: "month-histories-not-supplied" };
+  | { readonly kind: "unavailable"; readonly reason: "month-histories-not-supplied" | "no-data" };
 
 export type WarningCode =
   | "window-ends-after-now"
@@ -101,7 +101,8 @@ export type WarningCode =
   | "duration-upper-bound-proxy"
   | "unattributed-residual"
   | "tail-requests-unpriced"
-  | "plan-month-unavailable";
+  | "plan-month-unavailable"
+  | "plan-month-partial";
 
 export interface Warning {
   readonly code: WarningCode;
@@ -274,7 +275,8 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
   }
   if (input.project.workerBilling === "cpu-only") warn("tail-requests-unpriced", "worker", "Worker invocations are billed by CPU time only, as Tail Worker invocations are; the few fetch and cron requests this Worker also serves are not priced.");
   for (const residual of residuals) warn("unattributed-residual", residual.lineId, `${residual.label} is the part of the total that per-item analytics do not account for.`);
-  if (plan.kind === "unavailable") warn("plan-month-unavailable", "plan-bill", "Month-to-date histories were not supplied, so there is no plan bill.");
+  if (plan.kind === "unavailable") warn("plan-month-unavailable", "plan-bill", plan.reason === "no-data" ? "No month-to-date bucket was collected, so there is no plan bill." : "Month-to-date histories were not supplied, so there is no plan bill.");
+  if (plan.kind === "isolated" && plan.coverage.fraction < 1) warn("plan-month-partial", "plan-bill", `The plan bill covers ${(plan.coverage.fraction * 100).toFixed(1)}% of the month so far (${plan.coverage.coveredMs} of ${plan.coverage.windowMs} ms); uncollected time is not priced.`);
   return warnings;
 }
 
@@ -283,10 +285,12 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   const month = utcMonthOf(input.planMonth.settledMs);
   const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, input.planMonth.settledMs) };
   const bill = planBill(input.planMonth.histories, window, input.project.buckets, input.project.d1Databases, input.project.workerBilling);
+  const coverage = coverageOf(input.planMonth.histories.worker, window);
+  if (coverage.fraction === 0) return { kind: "unavailable", reason: "no-data" };
   const projected = projectedBill(bill, window.toMs, month.toMs, monthly);
   return {
     kind: "isolated", basis: "utc-month", assumption: "project-alone-on-account-allowances",
-    month, settledMs: window.toMs, coverage: coverageOf(input.planMonth.histories.worker, window),
+    month, settledMs: window.toMs, coverage,
     usage: bill.usage, billed: bill.billed, billedSoFar: bill.billed.values.at(-1) ?? 0,
     projected, projectedMonthEnd: projected.values.at(-1) ?? 0,
     account: { kind: "unknown", reason: "other-projects-not-covered" }

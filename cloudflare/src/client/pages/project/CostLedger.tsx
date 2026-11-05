@@ -197,6 +197,15 @@ function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly k
   );
 }
 
+function MonthNoData(): JSX.Element {
+  return (
+    <div class="ledger-month">
+      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: no data</PanelLabel>
+      <span class="ledger-month-note">No analytics bucket has been collected since the 1st (UTC), so nothing is priced.</span>
+    </div>
+  );
+}
+
 export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spendPending: boolean }): JSX.Element {
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
     const top = props.report.lines[0];
@@ -297,7 +306,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
             </button>
           )}</For>
         </div>
-        <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
+        <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : props.report.planBill.kind === "unavailable" && props.report.planBill.reason === "no-data" ? <MonthNoData /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">
