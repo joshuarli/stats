@@ -1,12 +1,14 @@
-import { createMemo, For, Show, useContext } from "solid-js";
+import { createEffect, createMemo, For, Show, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { age, axisTime, count, percent } from "../../format";
 import { useTelemetry } from "../../state";
-import { Segmented, Skeleton, Widget } from "../../components/ui";
+import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
 import { duration, TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
+
+const LIST_PAGE = 12;
 import { HealthMeta, MOMENT, RouteLabel, type Observability } from "./Observe";
 
 function statusTone(trace: TraceSummary): string {
@@ -69,6 +71,8 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
   const o = props.observe;
   const events = useContext(DeploymentEvents);
   const items = () => o.traces()?.items ?? [];
+  const paged = createPagedList(items, LIST_PAGE);
+  createEffect(() => items().findIndex(item => item.traceId !== null && item.traceId === o.traceId()), index => { if (index >= 0) paged.reveal(index); });
   const exploration = () => o.exploration();
   const selectedRoute = createMemo(() => exploration()?.routes.find(route => route.label === exploration()?.route) ?? null);
   const maxWall = createMemo(() => Math.max(1, ...items().map(item => item.wallMs)));
@@ -95,7 +99,10 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
     if (next?.traceId == null) return;
     event.preventDefault();
     o.selectTrace(next.traceId);
-    event.currentTarget.querySelectorAll<HTMLButtonElement>(".trace-row")[list.indexOf(next)]?.focus();
+    const row = items().indexOf(next);
+    paged.reveal(row);
+    const rows = event.currentTarget;
+    requestAnimationFrame(() => rows.querySelectorAll<HTMLButtonElement>(".trace-row")[row]?.focus());
   };
   return (
     <Widget id="route-explorer" class="wide observe" title="Requests by route" meta={<><span class="observe-window">{props.windowLabel}</span><HealthMeta health={o.health()} /></>} expandable>
@@ -121,7 +128,7 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
             <div class="trace-list" role="listbox" tabindex="-1" aria-label="Traces" onKeyDown={moveSelection}>
               <div class="trace-list-head" aria-hidden="true"><span /><span>{band() === null ? "Recent" : "Slowest first"}</span><span>Duration</span><span class="numeric">CPU</span><span class="numeric">When</span></div>
               <Show when={items().length > 0} fallback={<p class="panel-label observe-empty trace-empty">No calls match.</p>}>
-                <For each={items()}>{item => (
+                <For each={paged.visible()}>{item => (
                   <button type="button" role="option" class="trace-row" disabled={item.traceId === null} title={item.traceId === null ? "This invocation published no trace context" : MOMENT.format(item.atMs)} tabindex={o.traceId() === item.traceId ? 0 : -1} aria-selected={o.traceId() === item.traceId ? "true" : "false"} onClick={() => { if (item.traceId !== null) o.selectTrace(item.traceId); }}>
                     <span class={`status-dot ${statusTone(item)}`} aria-label={item.failed ? "failed" : "ok"} />
                     <span class="trace-route"><RouteLabel label={item.label} /><span class="cell-note">{item.status === null ? item.outcome : item.status}{item.objectInvocations > 0 ? ` · ${item.objectInvocations} DO` : ""}</span></span>
@@ -130,6 +137,7 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
                     <span class="numeric cell-note">{age(item.atMs, now())}</span>
                   </button>
                 )}</For>
+                <ShowMore hidden={paged.hidden()} noun="calls" onMore={paged.more} />
               </Show>
             </div>
             <div class="trace-detail">

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
 
@@ -39,6 +39,30 @@ function hostCaptures(): HostCapture[] {
 
 function capturedKind(name: string, range: string, kind: string): unknown {
   return readCapture(name, `${kind}-${range}.json`);
+}
+
+interface CapturedHistory {
+  readonly range?: string;
+  readonly fromMs: number;
+  readonly stepMs?: number;
+  readonly series?: readonly { readonly metric: string; readonly values: readonly (number | null)[] }[];
+  readonly runs?: readonly { readonly atMs: number }[];
+}
+
+function windowedKind(name: string, kind: string, fromMs: number, toMs: number): unknown {
+  for (const range of ["1h", "6h", "24h", "7d", "30d"]) {
+    if (!existsSync(captureFile(name, `${kind}-${range}.json`))) continue;
+    const captured = readCapture(name, `${kind}-${range}.json`) as CapturedHistory;
+    if (captured.fromMs > fromMs) continue;
+    const body = Object.fromEntries(Object.entries(captured).filter(([key]) => key !== "range"));
+    if (captured.runs !== undefined) return { ...body, fromMs, toMs, runs: captured.runs.filter(run => run.atMs >= fromMs && run.atMs <= toMs) };
+    const stepMs = captured.stepMs!;
+    const length = captured.series?.[0]?.values.length ?? 0;
+    const first = Math.max(0, Math.ceil((fromMs - captured.fromMs) / stepMs));
+    const last = Math.min(length - 1, Math.floor((toMs - captured.fromMs) / stepMs));
+    return { ...body, fromMs: captured.fromMs + first * stepMs, toMs, series: (captured.series ?? []).map(entry => ({ ...entry, values: entry.values.slice(first, last + 1) })) };
+  }
+  return capturedKind(name, "1h", kind);
 }
 
 function fulfillCapture(route: Route, name: string, file: string, history: boolean) {
@@ -104,8 +128,10 @@ async function replayProject(page: Page, name: string, capturedAtMs: number): Pr
     }
     const kinds = url.searchParams.get("kinds");
     if (kinds !== null) {
-      const histories = Object.fromEntries(kinds.split(",").map(kind => [kind, capturedKind(name, "1h", kind)]));
-      return fulfillHistory(route, { projectId: name, histories });
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      const body = (kind: string) => from === null || to === null ? capturedKind(name, "1h", kind) : windowedKind(name, kind, Number(from), Number(to));
+      return fulfillHistory(route, { projectId: name, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, body(kind)])) });
     }
     return fulfillCapture(route, name, `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`, true);
   });
@@ -142,20 +168,18 @@ for (const capture of hostCaptures()) {
 
 test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=signals");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator('[id="ledger-worker"]')).toBeVisible();
+  await expect(ledger.locator('[id="ledger-r2"]')).toBeVisible();
+  await expect(ledger.locator(".ledger-detail")).toBeVisible();
   await page.waitForLoadState("networkidle");
   await page.mouse.move(0, 0);
-  const strip = page.getByRole("region", { name: "Project summary" });
-  const absent = strip.locator(".strip-absent");
-  await expect(absent).toContainText("No data in this range");
-  await expect(absent.getByRole("button", { name: "R2 storage", exact: true })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^Requests: / })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^Worker 5xx: 0%/ })).toBeVisible();
   const regions = [
-    ["tiles", page.getByRole("region", { name: "Project summary" })] as const,
+    ["ledger", ledger] as const,
     ["charts", page.getByRole("region", { name: "Charts" })] as const
   ];
   for (const [file, region] of regions) {
@@ -163,20 +187,10 @@ test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
   }
 });
 
-test("the project summary offers a longer range when cells have no data", async ({ page }) => {
-  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
-  await page.goto("/#/project/stuff");
-  const absent = page.getByRole("region", { name: "Project summary" }).locator(".strip-absent");
-  await expect(absent).toContainText("No data in this range");
-  await absent.getByRole("button", { name: "Show 24h" }).click();
-  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(absent.getByRole("button", { name: "Show 24h" })).toHaveCount(0);
-});
-
 for (const range of ["1h", "6h"]) {
   test(`stuff deployments card, ${range}`, { tag: "@mobile" }, async ({ page }) => {
     await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
-    await page.goto("/#/project/stuff");
+    await page.goto("/#/project/stuff?open=deploys");
     await expect(page.getByRole("heading", { name: "Deployments" })).toBeVisible();
     if (range !== "1h") await page.getByRole("button", { name: range, exact: true }).click();
     const card = page.locator("#deployments");

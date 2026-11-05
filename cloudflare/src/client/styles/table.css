@@ -102,3 +102,5 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   :is(.fleet-table-scroll, .projects-table-scroll) .entity-name::after { content: none; }
   .fleet-table-scroll .wrap-note { max-width: 20ch; }
 }
+.list-more { width: 100%; min-height: var(--row-height-compact); padding: 0 var(--inset); text-align: left; color: var(--accent); font-size: var(--fs-meta); font-weight: 500; border-top: 1px solid var(--line); }
+.list-more:hover { background: var(--hover); }

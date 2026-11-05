@@ -11,11 +11,6 @@ export interface Placement {
   readonly clippedEnd: boolean;
 }
 
-export interface Extent {
-  readonly from: number;
-  readonly to: number;
-}
-
 const TICK_TARGET = 4;
 const MAX_TICKS = 40;
 
@@ -41,13 +36,4 @@ export function place(start: number, end: number, axis: Axis): Placement | null 
   if (right < 0 || left > 100) return null;
   const visibleLeft = Math.max(0, left);
   return { left: visibleLeft, width: Math.max(0, Math.min(100, right) - visibleLeft), clippedStart: left < 0, clippedEnd: right > 100 };
-}
-
-export function stack(sizes: readonly number[]): Extent[] {
-  let offset = 0;
-  return sizes.map(size => {
-    const extent = { from: offset, to: offset + size };
-    offset += size;
-    return extent;
-  });
 }

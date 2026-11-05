@@ -4,7 +4,7 @@ import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
 import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { jumpTo, Skeleton, Widget } from "../../components/ui";
+import { createPagedList, jumpTo, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
@@ -62,6 +62,7 @@ function span(bounds: { readonly fromMs: number; readonly toMs: number }): strin
 
 export type ProjectDeployments = ReturnType<typeof createProjectDeployments>;
 
+const DEPLOYMENT_PAGE = 8;
 const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "30d": "24h" };
 
 export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string) {
@@ -195,6 +196,8 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
 export function DeploymentRail(props: { readonly deployments: ProjectDeployments }): JSX.Element {
   const { now } = useTelemetry();
   const { history, selected, select, focus, title } = props.deployments;
+  const paged = createPagedList(() => history()?.deployments ?? [], DEPLOYMENT_PAGE);
+  createEffect(() => (history()?.deployments ?? []).findIndex(deployment => deployment.id === selected()), index => { if (index >= 0) paged.reveal(index); });
   const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {
     const items = history()?.deployments ?? [];
     const index = items.findIndex(deployment => deployment.id === selected());
@@ -203,7 +206,10 @@ export function DeploymentRail(props: { readonly deployments: ProjectDeployments
     if (next === undefined) return;
     event.preventDefault();
     select(next.id);
-    event.currentTarget.querySelectorAll<HTMLButtonElement>(".deployment-item")[items.indexOf(next)]?.focus();
+    const row = items.indexOf(next);
+    paged.reveal(row);
+    const rows = event.currentTarget;
+    requestAnimationFrame(() => rows.querySelectorAll<HTMLButtonElement>(".deployment-item")[row]?.focus());
   };
   const checked = () => {
     const value = history();
@@ -213,11 +219,12 @@ export function DeploymentRail(props: { readonly deployments: ProjectDeployments
     <aside class="deployment-rail" aria-label="Deployments">
       <div class="deployment-rail-head"><h2>Deployments</h2><span>{checked()}</span></div>
       <div class="deployment-list" role="listbox" tabindex="-1" aria-label="Deployment" onKeyDown={moveSelection}>
-        <For each={history()?.deployments ?? []}>{deployment => (
+        <For each={paged.visible()}>{deployment => (
           <button type="button" role="option" class="deployment-item" tabindex={selected() === deployment.id ? 0 : -1} aria-selected={selected() === deployment.id ? "true" : "false"} onClick={() => focus(deployment.id)}>
             <span class="deployment-item-head"><b>{title(deployment)}</b><span title={MOMENT.format(deployment.atMs)}>{age(deployment.atMs, now())}</span></span>
           </button>
         )}</For>
+        <ShowMore hidden={paged.hidden()} noun="deployments" onMore={paged.more} />
       </div>
     </aside>
   );

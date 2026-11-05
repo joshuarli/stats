@@ -4,7 +4,7 @@ import { ApiFailure } from "../../api";
 import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { Segmented, Skeleton, Widget } from "../../components/ui";
+import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { decodeExploration, decodeHealth, decodeImpact, decodeIssue, decodeIssues, decodeOccurrences, decodeTrace, decodeTraces, type ObserveHealth } from "../../../observe/client/decode";
 import { Modal } from "../../components/Modal";
 import { Info, Term } from "../../components/Info";
@@ -17,6 +17,8 @@ import "./observe.css";
 
 import type { ObservedService } from "../../../observe/services";
 const TRACE_ID = /^[0-9a-f]{32}$/u;
+const ISSUE_PAGE = 12;
+const OCCURRENCE_PAGE = 10;
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 export const MOMENT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
@@ -77,7 +79,7 @@ function modalParam(view: ModalView | undefined): string | null {
   return view.kind === "issue" ? `issue:${view.fingerprint}` : view.kind === "trace" ? `trace:${view.traceId}` : `deployment:${view.id}`;
 }
 
-export function createObservability(service: ObservedService, refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow) {
+export function createObservability(service: ObservedService, refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow, exploring: () => boolean) {
   const base = observeBase(service);
   const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
   const [modals, setModals] = createSignal<readonly ModalView[]>(parseModal(readParam("modal")));
@@ -117,7 +119,8 @@ export function createObservability(service: ObservedService, refreshKey: () => 
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause, "The observability collector is unavailable")); });
   });
 
-  createEffect(() => ({ tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()) }), query => {
+  createEffect(() => ({ tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()), active: exploring() }), query => {
+    if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     const { fromMs, toMs } = windowAt();
@@ -237,6 +240,7 @@ export function IssueDetail(props: { readonly issue: IssueSummary; readonly occu
   const o = props.observe;
   const issue = () => props.issue;
   const representative = () => props.occurrences?.items[0] ?? null;
+  const occurrences = createPagedList(() => props.occurrences?.items ?? [], OCCURRENCE_PAGE);
   return (
     <>
       <div class="issue-head">
@@ -260,7 +264,7 @@ export function IssueDetail(props: { readonly issue: IssueSummary; readonly occu
         <table class="data-table compact occurrence-table">
           <thead><tr><th>When</th><th>Version</th><th>Source</th><th class="numeric">Trace</th></tr></thead>
           <tbody>
-            <For each={props.occurrences?.items ?? []}>{occurrence => (
+            <For each={occurrences.visible()}>{occurrence => (
               <tr>
                 <td title={MOMENT.format(occurrence.atMs)}>{age(occurrence.atMs, now())}</td>
                 <td class="mono cell-note">{occurrence.version?.slice(0, 8) ?? "unknown"}</td>
@@ -273,6 +277,7 @@ export function IssueDetail(props: { readonly issue: IssueSummary; readonly occu
           </tbody>
         </table>
       </div>
+      <ShowMore hidden={occurrences.hidden()} noun="occurrences" onMore={occurrences.more} />
     </>
   );
 }
@@ -281,6 +286,8 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
   const { now } = useTelemetry();
   const o = props.observe;
   const items = () => o.issues()?.items ?? [];
+  const paged = createPagedList(items, ISSUE_PAGE);
+  createEffect(() => items().findIndex(issue => issue.fingerprint === o.issueId()), index => { if (index >= 0) paged.reveal(index); });
   const current = createMemo(() => items().find(issue => issue.fingerprint === o.issueId()) ?? null);
   const introducedVersions = createMemo(() => {
     const versions = new Map<string, string>();
@@ -296,7 +303,10 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
     if (next === undefined) return;
     event.preventDefault();
     o.selectIssue(next.fingerprint);
-    event.currentTarget.querySelectorAll<HTMLButtonElement>(".issue-item")[items().indexOf(next)]?.focus();
+    const row = items().indexOf(next);
+    paged.reveal(row);
+    const rows = event.currentTarget;
+    requestAnimationFrame(() => rows.querySelectorAll<HTMLButtonElement>(".issue-item")[row]?.focus());
   };
   return (
     <Widget id="issues" class="wide observe" title="Errors" meta={<span>{o.issues() === null ? "" : `${count(items().length)} ${o.issueState()} · last 7 days`}</span>} expandable>
@@ -314,7 +324,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
         <Show when={items().length > 0} fallback={<p class="panel-label observe-empty">{o.issueState() === "open" ? "No open issues in the last 7 days." : "No resolved issues with occurrences in the last 7 days."}</p>}>
           <div class="issue-layout">
             <div class="issue-list" role="listbox" tabindex="-1" aria-label="Issues" onKeyDown={moveSelection}>
-              <For each={items()}>{issue => (
+              <For each={paged.visible()}>{issue => (
                 <button type="button" role="option" class="issue-item" tabindex={o.issueId() === issue.fingerprint ? 0 : -1} aria-selected={o.issueId() === issue.fingerprint ? "true" : "false"} onClick={() => o.selectIssue(issue.fingerprint)}>
                   <span class="issue-item-head">
                     <b>{issue.name}</b>
@@ -325,6 +335,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
                   <span class="issue-when">last {age(issue.lastAtMs, now())} · first {age(issue.firstAtMs, now())}<Show when={issue.firstVersion}>{version => <> · since <span class="version-tag">{versionName(version(), issue.firstVersionLabel)}</span></>}</Show></span>
                 </button>
               )}</For>
+              <ShowMore hidden={paged.hidden()} noun="issues" onMore={paged.more} />
             </div>
             <div class="issue-detail">
               <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} observe={o} />}</Show>

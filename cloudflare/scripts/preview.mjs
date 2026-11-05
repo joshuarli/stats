@@ -105,20 +105,31 @@ function emptyHistory(base, fromMs, toMs) {
   };
 }
 
+function sliceHistory(body, fromMs, toMs) {
+  const { range: _range, ...rest } = body;
+  if (Array.isArray(body.runs)) return { ...rest, fromMs, toMs, runs: body.runs.filter(run => run.atMs >= fromMs && run.atMs <= toMs) };
+  const length = body.series[0]?.values.length ?? 0;
+  const first = Math.max(0, Math.ceil((fromMs - body.fromMs) / body.stepMs));
+  const last = Math.min(length - 1, Math.floor((toMs - body.fromMs) / body.stepMs));
+  return { ...rest, fromMs: body.fromMs + first * body.stepMs, toMs, series: body.series.map(entry => ({ ...entry, values: entry.values.slice(first, last + 1) })) };
+}
+
 async function history(capture, kind, url) {
   const range = url.searchParams.get("range");
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  const fromMs = from === null ? undefined : Number(from);
-  const toMs = to === null ? undefined : Number(to);
-  if (fromMs !== undefined && toMs !== undefined && toMs < previewNow - day / 2) {
-    const reference = await captureFile(capture, `${kind}-1h.json`) ?? await closest(capture, kind, rangeForSpan(toMs - fromMs));
-    return reference === undefined ? undefined : emptyHistory(reference, fromMs, toMs);
+  if (range !== null) {
+    const chosen = await captureFile(capture, `${kind}-${range}.json`) ?? await closest(capture, kind, range);
+    return chosen === undefined ? undefined : shift(chosen, shiftFor(capture));
   }
-  const chosen = range !== null
-    ? await captureFile(capture, `${kind}-${range}.json`) ?? await closest(capture, kind, range)
-    : await closest(capture, kind, fromMs !== undefined && toMs !== undefined ? rangeForSpan(toMs - fromMs) : "1h");
-  return chosen === undefined ? undefined : shift(chosen, shiftFor(capture));
+  const fromMs = Number(url.searchParams.get("from"));
+  const toMs = Number(url.searchParams.get("to"));
+  for (const candidate of ["1h", "6h", "24h", "7d", "30d"]) {
+    const found = await captureFile(capture, `${kind}-${candidate}.json`);
+    if (found === undefined) continue;
+    const shifted = shift(found, shiftFor(capture));
+    if (shifted.fromMs <= fromMs) return sliceHistory(shifted, fromMs, toMs);
+  }
+  const reference = await closest(capture, kind, rangeForSpan(toMs - fromMs));
+  return reference === undefined ? undefined : emptyHistory(reference, fromMs, toMs);
 }
 
 function frame(response, body) {
@@ -229,8 +240,12 @@ const server = createServer(async (request, response) => {
         const histories = {};
         for (const kind of kinds.split(",")) {
           const body = await history(capture, kind, url);
-          if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
-          histories[kind] = body;
+          if (body !== undefined) histories[kind] = body;
+          else if (kind !== "worker" && kind !== "collector") {
+            const base = await history(capture, "worker", url);
+            if (base === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
+            histories[kind] = emptyHistory({ ...base, kind }, base.fromMs, base.toMs);
+          } else return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
         }
         return frame(response, { projectId: decodeURIComponent(project[1]), histories });
       }

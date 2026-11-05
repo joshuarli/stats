@@ -267,3 +267,28 @@ export function Meter(props: { readonly value: number | undefined; readonly warn
     </div>
   );
 }
+
+export interface PagedList<T> {
+  readonly visible: () => readonly T[];
+  readonly hidden: () => number;
+  readonly more: () => void;
+  readonly reveal: (index: number) => void;
+}
+
+export function createPagedList<T>(items: () => readonly T[], page: number): PagedList<T> {
+  const [shown, setShown] = createSignal(page);
+  return {
+    visible: () => items().slice(0, shown()),
+    hidden: () => Math.max(0, items().length - shown()),
+    more: () => setShown(value => value + page),
+    reveal: index => setShown(value => Math.max(value, index + 1))
+  };
+}
+
+export function ShowMore(props: { readonly hidden: number; readonly noun: string; readonly onMore: () => void }): JSX.Element {
+  return (
+    <Show when={props.hidden > 0}>
+      <button type="button" class="list-more" onClick={() => props.onMore()}>Show {props.hidden} more {props.noun}</button>
+    </Show>
+  );
+}

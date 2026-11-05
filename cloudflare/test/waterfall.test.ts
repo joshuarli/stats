@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axisTicks, place, stack, type Axis } from "../src/client/waterfall";
+import { axisTicks, place, type Axis } from "../src/client/waterfall";
 
 const axis = (from: number, to: number): Axis => ({ from, to, format: String });
 
@@ -16,10 +16,6 @@ describe("waterfall axis", () => {
 
   it("keeps a degenerate span to one tick instead of looping", () => {
     expect(axisTicks(5, 5)).toEqual([5]);
-  });
-
-  it("stacks sizes so each bar starts where the previous one ended", () => {
-    expect(stack([0.04, 0.03, 0.25])).toEqual([{ from: 0, to: 0.04 }, { from: 0.04, to: 0.07 }, { from: 0.07, to: 0.32 }]);
   });
 
   it("clips bars to the visible window and hides bars outside it", () => {

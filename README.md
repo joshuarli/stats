@@ -184,11 +184,15 @@ read/write and network in/out drawn as mirrored pairs, so the state of the
 fleet reads without opening a host.
 
 The Projects page (`#/projects`) lists each configured Cloudflare project with
-its collector state. A project page (`#/project/<id>`) shows a Worker's
-requests, status mix, and CPU time, its R2 buckets' operations by outcome,
-storage, and objects, endpoint availability probed from Cloudflare's edge, and
-the collector's own health, with the same status strip, limits, and aligned
-chart rows as a host. Worker CPU is CPU time per invocation, not latency,
+its collector state. A project page (`#/project/<id>`) opens with a cost
+ledger: the projected monthly list-price cost, its change from the window
+before, and a tree you can expand from component (Worker, Durable Objects,
+D1, R2 storage) to route, method, statement, or bucket, with calls, CPU or wall
+time per call, and their change. Health pills for the 5xx share, open errors,
+endpoints, and the last deploy sit beside the name. Deployments, errors, the
+request explorer, and the Worker, R2, D1, endpoint, Durable Object, and
+collector charts are in sections below that start closed. Worker CPU is CPU
+time per invocation, not latency,
 R2 user errors such as 404s are shown but not scored, and a share or average
 is not scored from a five-minute bucket with fewer than 100 events. Projects are configured
 in `cloudflare/cloudflare.config.ts`; see

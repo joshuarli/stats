@@ -59,7 +59,9 @@ once per producer to supply the name production sends. `TEST_NOW_MS` pins the st
 the invocations it caused rather than for quiet.
 
 `cloudflare/test/ui/observe.spec.ts` drives the route explorer, the Errors
-card, and the deployment impact panel on the `stats` project page.
+card, the deployment impact panel, and the ledger's Durable Object split on
+the `stats` project page, and checks that with every section open nothing on
+the page scrolls on its own.
 `observe-scenario.ts` builds a deterministic seven-day stats workload
 through the real core store with injected faults: a canary that introduces
 a parser bug, a v1.4.0 deploy that adds an ingest error, regresses the
@@ -81,9 +83,11 @@ saves the production observe responses, which `make preview` serves from
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
 `cloudflare/test/ui/captures/` with the clock frozen at the capture time. It
-compares the host summary and charts on each captured host page, and the same
-two regions on the `stuff` project page, plus its Deployment card at the 1h and
-6h ranges. Baselines live beside the spec as WebP files, and `make
+compares the host summary and charts on each captured host page, the cost
+ledger and charts on the `stuff` project page, and its Deployment card at the
+1h and 6h ranges. The ledger reads `from`/`to` windows, which the replay and
+`make preview` answer by slicing the shortest captured range that covers the
+window. Baselines live beside the spec as WebP files, and `make
 dashboard-test` rejects tracked PNGs. The replay hides the section bar and
 zeroes the card scroll offset, because Playwright's scroll-into-view would
 otherwise leave a card shorter than the viewport partly off-screen and

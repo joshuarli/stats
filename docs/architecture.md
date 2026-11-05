@@ -351,14 +351,32 @@ use bound parameters, so request data does not create series. The dataset
 reports every statement the database ran, so a backfill or a migration shows
 up here as its own statements.
 
-The project page's Estimated cost widget multiplies collected usage (Worker
-requests and CPU, Durable Object requests, D1 rows) by the Workers Paid list
-prices in `cloudflare/src/client/pricing.ts`. Worker requests count the
-entrypoint only, so an ingest is one Worker request and one Durable Object
-request, not two Worker requests. It is a list-price figure for the
-range shown, before the included monthly allowances, and leaves out R2, storage,
-and Durable Object duration, so it ranks where spend comes from and is not a
-bill.
+The project page opens with a cost ledger (`cloudflare/src/client/pages/project/cost-ledger.ts`
+builds it, `CostLedger.tsx` draws it). It prices collected usage at the list
+prices in `cloudflare/src/client/pricing.ts` and projects each line to 30 days.
+The lines are Worker requests and CPU split by route; Durable Object requests
+plus duration at 128 MB, split by method; D1 rows read and written split by
+statement, plus D1 storage; and R2 storage per bucket. GB is 10^9 bytes, and
+the plan's included allowances are not subtracted, so the ledger ranks where
+spend comes from and is not a bill. Worker requests count the entrypoint only,
+so an ingest is one Worker request and one Durable Object request.
+
+The ledger reads its own two history windows. The current window is the
+selected range ending at the last settled bucket, and the previous window is
+the same length immediately before it. Each window is projected from the time
+it actually covers, so a collector gap is not read as savings. A previous
+window that starts after the history's retention has no baseline, and its
+lines show no change.
+
+Durable Object duration is billed per object while it is active, and
+overlapping requests share one meter. Summed request wall time is therefore
+an upper bound, and the ledger marks it with `≤`. For an observed service, the
+per-method split comes from the observability store's `GET /objects`: summed
+wall time, CPU, and call counts per object-stage label. The ledger attributes
+the Durable Object total by each method's share. SQLite rows and storage have
+no source (STA-34), so the ledger lists them as not collected. A residual line
+("not attributed to a route" or "to a statement") holds whatever the
+per-route or per-statement analytics do not account for.
 
 **Missing versus zero.** A five-minute bucket is settled once its end is 45
 minutes old, because analytics rows arrive late. The history API reports `0`
@@ -413,10 +431,13 @@ its name rather than on the page. A chart's axis fits its data, and an elevated 
 drawn only once the data reaches half of it. Periods outside a chart's limits
 get a tinted vertical band, and hovering one shows its peak, range, and
 duration. On project pages the newest buckets, which the collector has not yet
-settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still arriving,
-and a count tile such as Requests reports the last settled bucket; ratio tiles
-use the newest bucket because both sides of the ratio are partial. Widgets
-collapse, and the choice persists in `localStorage`. `make preview` serves the
+settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still arriving.
+The project page keeps its deployments, errors, request explorer, and charts
+in sections that start closed; the open sections live in the URL's `open`
+parameter, and a deep link such as `deployment=` or `route=` opens its
+section. The request explorer loads only while its section is open. Long lists
+show their first rows and a "Show more" control, so the page scrolls as one
+page. Widgets collapse, and the choice persists in `localStorage`. `make preview` serves the
 built client from the captured API fixtures with a frozen clock.
 
 ## Non-goals

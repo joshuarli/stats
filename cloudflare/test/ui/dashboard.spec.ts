@@ -65,15 +65,23 @@ function projects(collector: keyof typeof projectCollector, withProbes: boolean,
 const PROJECT_STEP = 300_000;
 const PROJECT_POINTS = 12;
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[]) {
-  const fromMs = now - PROJECT_POINTS * PROJECT_STEP;
-  const base = { projectId: "stuff", range, fromMs, toMs: now, stepMs: PROJECT_STEP };
-  const scale = range === "24h" ? 2 : 1;
+interface ProjectWindow {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly scale: number;
+}
+
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], window?: ProjectWindow) {
+  const fromMs = window === undefined ? now - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
+  const toMs = window?.toMs ?? now;
+  const points = Math.max(1, Math.ceil((toMs - fromMs) / PROJECT_STEP));
+  const base = window === undefined ? { projectId: "stuff", range, fromMs, toMs, stepMs: PROJECT_STEP } : { projectId: "stuff", fromMs, toMs, stepMs: PROJECT_STEP };
+  const scale = window?.scale ?? (range === "24h" ? 2 : 1);
   if (kind === "collector") {
-    return { ...base, kind, runs: Array.from({ length: PROJECT_POINTS }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })) };
+    return { ...base, kind, runs: Array.from({ length: points }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })) };
   }
-  const column = (value: (index: number) => number | null) => Array.from({ length: PROJECT_POINTS }, (_, index) => value(index));
-  const hot = (index: number) => spike && index >= PROJECT_POINTS - 4;
+  const column = (value: (index: number) => number | null) => Array.from({ length: points }, (_, index) => value(index));
+  const hot = (index: number) => spike && window === undefined && index >= points - 4;
   if (kind === "worker") {
     return {
       ...base, kind,
@@ -142,7 +150,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
     return {
       ...base, kind,
       series: probeTargets.flatMap(target => [
-        { metric: `probe.${target.name}.up`, values: column(index => (probeDown && target.name === "npm" && index >= PROJECT_POINTS - 3 ? 0 : 1)) },
+        { metric: `probe.${target.name}.up`, values: column(index => (probeDown && target.name === "npm" && index >= points - 3 ? 0 : 1)) },
         { metric: `probe.${target.name}.ms`, values: column(() => 85 * scale) }
       ])
     };
@@ -191,7 +199,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -204,7 +212,13 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     const kinds = url.searchParams.get("kinds");
     const projectPath = /^\/api\/v1\/projects\/stuff\/history$/u.exec(url.pathname);
     if (projectPath !== null) {
-      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets);
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      const window = from === null || to === null ? undefined : {
+        fromMs: Number(from), toMs: Number(to),
+        scale: (Number(to) - Number(from) > 6 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
+      };
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, window);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
       return fulfillHistory(route, body(kind));
     }
@@ -534,8 +548,9 @@ test("mobile pages confine dense data to local scroll areas", { tag: "@mobile-on
       expect(await legend.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     }
 
-    await page.goto("/#/project/stuff");
+    await page.goto("/#/project/stuff?open=signals");
     await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
     await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
     await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
   }
@@ -566,10 +581,18 @@ test("a stale collector is flagged on the projects page and the project page", a
   await expect(page.getByRole("dialog", { name: "Collector status" })).toContainText("The collector has not succeeded recently");
 });
 
+const ledgerRow = (page: Page, id: string) => page.locator(`[id="ledger-${id}"]`);
+
+async function openSection(page: Page, title: string): Promise<void> {
+  const head = page.locator(".project-section-head", { hasText: title });
+  if (await head.getAttribute("aria-expanded") !== "true") await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+}
+
 test("the project page compares a deployment's before and after windows", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/stuff");
-  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
+  await openSection(page, "Deployments");
   const deployment = page.getByRole("listbox", { name: "Deployment", exact: true });
   await expect(deployment.getByRole("option", { name: /v42/u })).toHaveAttribute("aria-selected", "true");
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
@@ -581,7 +604,7 @@ test("the project page compares a deployment's before and after windows", async 
 
 test("the deployment comparison window follows the time range", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=deploys");
   const row = page.getByRole("region", { name: "Deployment metric comparison" }).getByRole("row", { name: /Worker CPU/u });
   await expect(row).toContainText("improved");
   await expect(page.locator("#deployments")).toContainText("1h each side");
@@ -593,15 +616,19 @@ test("the deployment comparison window follows the time range", async ({ page })
   expect(requests.some(request => request.includes("/comparison?window=24h"))).toBe(true);
 });
 
-test("the range and the selected deployment live in the URL", async ({ page }) => {
+test("the range, the open sections, and the selected deployment live in the URL", async ({ page }) => {
   await mock(page);
   await page.goto("/#/project/stuff?range=24h");
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await openSection(page, "Deployments");
+  await expect(page).toHaveURL(/[?&]open=deploys(&|$)/u);
   await expect(page.locator("#deployments")).toContainText("24h each side");
   await page.getByRole("button", { name: "6h", exact: true }).click();
-  await expect(page).toHaveURL(/#\/project\/stuff\?range=6h$/u);
+  await expect(page).toHaveURL(/[?&]range=6h(&|$)/u);
   await page.getByRole("button", { name: "1h", exact: true }).click();
-  await expect(page).toHaveURL(/#\/project\/stuff$/u);
+  await expect(page).not.toHaveURL(/range=/u);
+  await page.reload();
+  await expect(page.locator(".project-section-head", { hasText: "Deployments" })).toHaveAttribute("aria-expanded", "true");
 
   await page.goto(`/#/project/stuff?deployment=${EARLIER_DEPLOYMENT_ID}`);
   await page.reload();
@@ -613,16 +640,18 @@ test("the range and the selected deployment live in the URL", async ({ page }) =
 
 test("choosing a deployment fetches project history for its rollout window, not a longer trailing range", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff?range=1h");
+  await page.goto("/#/project/stuff?range=1h&open=deploys");
   const options = page.getByRole("listbox", { name: "Deployment" });
+  const before = requests.length;
   await options.getByRole("option", { name: /v41/u }).click();
-  await expect.poll(() => requests.some(request => /\/projects\/stuff\/history\?from=\d+&to=\d+&kinds=.*worker/u.test(request))).toBe(true);
+  const rollout = () => requests.slice(before).filter(request => /\/projects\/stuff\/history\?from=\d+&to=\d+&kinds=.*worker/u.test(request));
+  await expect.poll(() => rollout().some(request => Number(/to=(\d+)/u.exec(request)![1]) < now - 86_400_000)).toBe(true);
   expect(requests.some(request => request.includes("/projects/stuff/history?range=7d") || request.includes("/projects/stuff/history?range=30d"))).toBe(false);
 });
 
 test("arrow keys move through the deployment list", async ({ page }) => {
   await mock(page);
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=deploys");
   const options = page.getByRole("listbox", { name: "Deployment" });
   const latest = options.getByRole("option", { name: /v42/u });
   const earlier = options.getByRole("option", { name: /v41/u });
@@ -638,27 +667,13 @@ test("arrow keys move through the deployment list", async ({ page }) => {
   await expect(latest).toHaveAttribute("aria-selected", "true");
 });
 
-test("the section bar marks the card you are reading", async ({ page }) => {
-  await mock(page);
-  await page.goto("/#/project/stuff");
-  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  const bar = page.getByRole("navigation", { name: "Sections" });
-  await page.mouse.wheel(0, 400);
-  await expect(bar).toBeVisible();
-  await bar.getByRole("button", { name: "Cost" }).click();
-  await expect(bar.getByRole("button", { name: "Cost" })).toHaveAttribute("aria-current", "location");
-  await expect(bar.locator('[aria-current="location"]')).toHaveCount(1);
-});
-
-test("clicking a deploy marker on a chart selects that deployment", async ({ page }) => {
+test("clicking a deploy marker on a chart opens the deployments and selects that one", async ({ page }) => {
   await mock(page);
   const recent = deploymentHistory();
   recent.deployments[0]!.atMs = now - 15 * 60_000;
   recent.deployments[1]!.atMs = now - 45 * 60_000;
   await page.route("**/api/v1/projects/stuff/deployments", route => route.fulfill({ json: recent }));
-  await page.goto("/#/project/stuff");
-  const options = page.getByRole("listbox", { name: "Deployment" });
-  await expect(options.getByRole("option", { name: /v42/u })).toHaveAttribute("aria-selected", "true");
+  await page.goto("/#/project/stuff?open=signals");
   const plot = page.locator(".chart", { has: page.getByRole("img", { name: /Worker invocations;/u }) }).locator(".u-over");
   await plot.scrollIntoViewIfNeeded();
   const box = await plot.boundingBox();
@@ -670,14 +685,15 @@ test("clicking a deploy marker on a chart selects that deployment", async ({ pag
   }
   expect(pointerAt.length).toBeGreaterThan(0);
   await page.mouse.click(box.x + pointerAt[0]! + 1, box.y + box.height / 2);
+  const options = page.getByRole("listbox", { name: "Deployment" });
   await expect(options.getByRole("option", { name: /v41/u })).toHaveAttribute("aria-selected", "true");
-  await expect(page).toHaveURL(new RegExp(`deployment=${EARLIER_DEPLOYMENT_ID}$`, "u"));
+  await expect(page).toHaveURL(new RegExp(`deployment=${EARLIER_DEPLOYMENT_ID}(&|$)`, "u"));
 });
 
 test("a project without deployment tracking says so", async ({ page }) => {
   await mock(page);
   await page.route("**/api/v1/projects/stuff/deployments", route => route.fulfill({ json: { projectId: "stuff", worker: "stuff", enabled: false, sync: null, deployments: [], versions: [] } }));
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=deploys");
   await expect(page.locator("#deployments")).toContainText("Deployment tracking is disabled");
 });
 
@@ -689,7 +705,7 @@ test("the deployment table stays in place while the next comparison loads", asyn
     await gate;
     await route.fallback();
   });
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=deploys");
   const row = page.getByRole("region", { name: "Deployment metric comparison" }).getByRole("row", { name: /Worker CPU/u });
   await expect(row).toContainText("improved");
   const detail = page.locator(".deployment-detail");
@@ -699,21 +715,6 @@ test("the deployment table stays in place while the next comparison loads", asyn
   release();
   await expect(row).toContainText("confounded");
   await expect(detail).toHaveAttribute("aria-busy", "false");
-});
-
-test("a section bar appears below the summary and jumps to a card without hiding it", async ({ page }) => {
-  await mock(page);
-  await page.goto("/#/project/stuff");
-  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  const bar = page.getByRole("navigation", { name: "Sections" });
-  await expect(bar).toBeHidden();
-  await page.mouse.wheel(0, 400);
-  await expect(bar).toBeVisible();
-  await bar.getByRole("button", { name: "Deployment" }).click();
-  const card = page.locator("#deployments");
-  const barBottom = async () => (await bar.boundingBox())!.y + (await bar.boundingBox())!.height;
-  await expect.poll(async () => (await card.boundingBox())!.y >= (await barBottom()) - 1).toBe(true);
-  await expect(card.getByRole("heading", { name: "Deployment" })).toBeInViewport();
 });
 
 test("an unknown project id shows a not-found state", async ({ page }) => {
@@ -727,8 +728,9 @@ test("the project page refreshes on the collector cadence, not every live tick",
   const requests = await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
-  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  const projectHistory = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history")).length;
+  await expect(ledgerRow(page, "worker")).toBeVisible();
+  const projectHistory = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?range=")).length;
+  await expect.poll(() => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?from=")).length).toBe(2);
   const initial = projectHistory();
   expect(initial).toBe(1);
 
@@ -744,50 +746,72 @@ test("the project page refreshes on the collector cadence, not every live tick",
   await expect.poll(() => projectHistory()).toBeGreaterThan(beforeManual);
 });
 
-test("the project page shows its summary and balanced columns of chart cards", async ({ page }, testInfo) => {
+test("the project page leads with a cost ledger and keeps every other section closed", async ({ page }, testInfo) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
-  const strip = page.getByRole("region", { name: "Project summary" });
-  for (const label of ["Requests", "Worker 5xx", "CPU time", "R2 failures", "R2 storage", "Collector"]) {
-    await expect(strip.getByRole("button", { name: new RegExp(`^${label}: `, "u") })).toBeVisible();
-  }
-  await expect(strip.getByRole("button", { name: /^Requests: 1,000/u })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^CPU time: 3 ms/u })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^R2 storage: /u })).toContainText("858.3 MiB");
-  for (const title of ["Requests", "Response status", "CPU time", "R2 operations", "R2 storage", "Collector"]) {
-    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-  }
-  await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
-  await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
-  const cards = page.locator(".charts > .widget:not(.wide)");
-  await expect(cards.first().getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
-  await expect(cards.nth(1).getByRole("heading", { name: "Response status" })).toBeVisible();
-  const rects = await cards.evaluateAll(elements => elements.map(element => {
-    const box = element.getBoundingClientRect();
-    return { left: Math.round(box.left), top: Math.round(box.top), bottom: Math.round(box.bottom) };
-  }));
-  const columns = new Map<number, { top: number; bottom: number }[]>();
-  for (const { left, top, bottom } of rects) columns.set(left, [...(columns.get(left) ?? []), { top, bottom }]);
-  expect(columns.size).toBe(2);
-  for (const stack of columns.values()) {
-    for (let index = 1; index < stack.length; index += 1) expect(stack[index]!.top).toBeGreaterThanOrEqual(stack[index - 1]!.bottom);
-  }
-  const ends = [...columns.values()].map(stack => Math.max(...stack.map(card => card.bottom)));
-  const tallest = Math.max(...rects.map(card => card.bottom - card.top));
-  expect(Math.max(...ends) - Math.min(...ends)).toBeLessThanOrEqual(tallest);
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator(".ledger-amount")).toHaveText("$3.12/mo");
+  await expect(ledgerRow(page, "worker")).toContainText("$3.11");
+  await expect(ledgerRow(page, "worker")).toContainText("requests $2.59 · CPU $0.52");
+  await expect(ledgerRow(page, "worker")).toContainText("288,000 req");
+  await expect(ledgerRow(page, "worker")).toContainText("3 ms CPU/req");
+  await expect(ledgerRow(page, "r2")).toContainText("$0.01");
+  const routes = page.locator(".ledger-row.depth-1");
+  await expect(routes).toHaveCount(3);
+  await expect(routes.nth(0)).toContainText("POST /ingest");
+  await expect(routes.nth(0)).toContainText("$0.40");
+  await expect(routes.nth(0)).toContainText("18 ms CPU/call");
+  await expect(routes.nth(1)).toContainText("GET /api/v1/projects");
+  await expect(routes.nth(2)).toContainText("not attributed to a route");
+  await expect(ledgerRow(page, "route:POST /ingest")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".ledger-detail")).toContainText("20,160");
+  await expect(page.locator(".ledger-detail").getByRole("img", { name: /^CPU time per bucket;/u })).toBeVisible();
+  for (const title of ["Deployments", "Signals"]) await expect(page.locator(".project-section-head", { hasText: title })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".widget")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
   await page.getByRole("button", { name: "24h", exact: true }).click();
-  await expect(strip.getByRole("button", { name: /^Requests: 2,000/u })).toBeVisible();
-  await expect(page.getByRole("img", { name: "Worker invocations; latest 2,000" })).toBeVisible();
+  await expect(ledgerRow(page, "worker")).toContainText("576,000 req");
   expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);
 });
 
-test("an elevated Worker 5xx share raises an incident that is marked and explained on hover", async ({ page }) => {
+test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {
+  await mock(page, { baselineScale: 0.5 });
+  await page.goto("/#/project/stuff");
+  await expect(ledgerRow(page, "worker").locator(".ledger-delta")).toHaveText("+$1.56");
+  await expect(ledgerRow(page, "route:POST /ingest").locator(".ledger-ratio")).toHaveCount(0);
+  await expect(page.locator(".ledger-was")).toContainText("was $1.56/mo");
+
+  await page.route(/\/projects\/stuff\/history\?from=/u, route => Number(new URL(route.request().url()).searchParams.get("to")) < now - 90 * 60_000
+    ? route.fulfill({ status: 500, json: { error: { code: "internal", message: "store unavailable" } } })
+    : route.fallback());
+  await page.getByRole("button", { name: "6h", exact: true }).click();
+  await expect(page.getByText(/The previous window could not be read/u)).toBeVisible();
+  await expect(ledgerRow(page, "worker").locator(".ledger-delta")).toHaveText("—");
+});
+
+test("selecting a ledger line opens its detail, and ordering by change surfaces what grew", async ({ page }) => {
+  await mock(page, { baselineScale: 0.5 });
+  await page.goto("/#/project/stuff");
+  await ledgerRow(page, "route:GET /api/v1/projects").click();
+  await expect(ledgerRow(page, "route:GET /api/v1/projects")).toHaveAttribute("aria-expanded", "true");
+  await expect(ledgerRow(page, "route:POST /ingest")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".ledger-detail")).toContainText("1.7 ms");
+  await page.getByRole("button", { name: "By change" }).click();
+  await expect(page.locator(".ledger-row.depth-0").first()).toContainText("Worker");
+  await ledgerRow(page, "worker").click();
+  await expect(page.locator(".ledger-row.depth-1")).toHaveCount(0);
+});
+
+test("an elevated Worker 5xx share marks the health pill, which opens the charts that explain it", async ({ page }) => {
   const requests = await mock(page, { spike: true });
   await page.goto("/#/project/stuff");
-  await expect(page.getByRole("button", { name: /^Worker 5xx: .*Jump to chart/u })).toHaveClass(/is-critical/);
+  const pill = page.locator(".project-pill", { hasText: /^5xx/u });
+  await expect(pill).toHaveText("5xx 2.7%");
+  await expect(pill).toHaveClass(/tone-warn/u);
+  await pill.click();
+  await expect(page.locator(".project-section-head", { hasText: "Signals" })).toHaveAttribute("aria-expanded", "true");
   const plot = page.locator(".chart", { has: page.getByRole("img", { name: /Worker 5xx share;/u }) }).locator(".u-over");
   await plot.scrollIntoViewIfNeeded();
   const box = await plot.boundingBox();
@@ -797,26 +821,24 @@ test("an elevated Worker 5xx share raises an incident that is marked and explain
   expect(requests.some(request => request.includes("/projects/stuff/history?range=1h&kinds=") && request.includes("worker"))).toBe(true);
 });
 
-test("a tile past its limit is marked, and tiles with limits show headroom", async ({ page }) => {
-  await mock(page, { spike: true });
+test("the ledger reads a full window of settled buckets and one equal window before it", async ({ page }) => {
+  const requests = await mock(page);
   await page.goto("/#/project/stuff");
-  const strip = page.getByRole("region", { name: "Project summary" });
-  await expect(strip.getByRole("button", { name: /^Worker 5xx: 8%/u })).toHaveClass(/is-critical/u);
-  await expect(strip.getByRole("button", { name: /^Requests: /u })).not.toHaveClass(/is-/u);
-  await expect(strip.getByRole("button", { name: /^CPU time: /u }).locator(".gauge")).toHaveCount(1);
-  await expect(strip.getByRole("button", { name: /^Requests: /u }).locator(".gauge")).toHaveCount(0);
+  await expect(page.locator(".ledger-basis")).toContainText(/^Settled 1h ending \d+m ago vs the 1h before/u);
+  const windows = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?from=")).map(request => {
+    const params = new URLSearchParams(request.slice(request.indexOf("?") + 1));
+    return { fromMs: Number(params.get("from")), toMs: Number(params.get("to")) };
+  }).sort((left, right) => right.toMs - left.toMs);
+  await expect.poll(() => windows().length).toBe(2);
+  const [current, previous] = windows();
+  expect(current!.toMs - current!.fromMs).toBe(3_600_000);
+  expect(current!.toMs).toBeLessThanOrEqual(now - 45 * 60_000);
+  expect(previous).toEqual({ fromMs: current!.fromMs - 3_600_000, toMs: current!.fromMs });
 });
 
-test("the newest project bucket is marked as still arriving", async ({ page }) => {
+test("widgets in the signals section collapse and stay collapsed after a reload", async ({ page }) => {
   await mock(page);
-  await page.goto("/#/project/stuff");
-  const strip = page.getByRole("region", { name: "Project summary" });
-  await expect(strip.getByRole("button", { name: /^Requests: / })).toContainText("newest still arriving");
-});
-
-test("widgets collapse, stay collapsed after a reload, and a tile reveals the widget it jumps to", async ({ page }) => {
-  await mock(page);
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=signals");
   const cpu = page.locator("#worker-cpu");
   await expect(cpu.getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
   await cpu.getByRole("button", { name: "Hide CPU time" }).click();
@@ -826,114 +848,106 @@ test("widgets collapse, stay collapsed after a reload, and a tile reveals the wi
   await page.reload();
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
   await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
-  await page.getByRole("region", { name: "Project summary" }).getByRole("button", { name: /^CPU time: / }).click();
-  await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toBeVisible();
 });
 
-test("configured probes surface endpoint health and a down endpoint raises an incident", async ({ page }) => {
+test("configured probes surface endpoint health and a down endpoint marks the pill", async ({ page }) => {
   const options = { probes: true, probeDown: false };
   const requests = await mock(page, options);
   await page.goto("/#/project/stuff");
-  const strip = page.getByRole("region", { name: "Project summary" });
-  await expect(strip.getByRole("button", { name: /^Endpoints: all up/u })).toBeVisible();
+  const pill = page.locator(".project-pill", { hasText: "endpoints up" });
+  await expect(pill).toHaveText("2/2 endpoints up");
+  await pill.click();
   const widget = page.locator("#endpoints");
   await expect(widget.getByRole("heading", { name: "Endpoints" })).toBeVisible();
   await expect(page.getByRole("img", { name: /Endpoint availability;/u })).toBeVisible();
   await expect(page.getByRole("img", { name: /Endpoint response time;/u })).toBeVisible();
-  await expect(page.locator(".widget:not(.charts .widget)")).toHaveCount(0);
   expect(requests.some(request => request.includes("kinds=") && request.includes("probes"))).toBe(true);
 
   options.probeDown = true;
   await page.getByRole("button", { name: "Refresh" }).click();
-  const down = strip.getByRole("button", { name: /^Endpoints: down/u });
-  await expect(down).toHaveClass(/is-critical/);
+  await expect(pill).toHaveText("1/2 endpoints up");
+  await expect(pill).toHaveClass(/tone-bad/u);
 });
 
-test("CPU by route ranks routes, and Durable Object charts appear only for projects with namespaces", async ({ page }) => {
+test("Durable Objects price requests and a duration bound, and their charts appear only for projects with namespaces", async ({ page }) => {
   const requests = await mock(page, { durableObjects: true });
-  await page.goto("/#/project/stuff");
-  const routes = page.locator("#routes");
-  await expect(routes.getByRole("heading", { name: "CPU by route" })).toBeVisible();
-  const rows = routes.getByRole("table", { name: "CPU time by route" }).locator("tbody tr");
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText("POST /ingest");
-  await expect(rows.first()).toContainText("89.4%");
-  await expect(rows.first()).toContainText("18 ms");
+  await page.goto("/#/project/stuff?open=signals");
+  const objects = ledgerRow(page, "objects");
+  await expect(objects).toContainText("≤ $0.68");
+  await expect(objects).toContainText("requests $0.52 · duration ≤ $0.17");
+  await expect(objects).toContainText("30 ms wall/call");
+  await objects.click();
+  await expect(ledgerRow(page, "object:storage")).toContainText("not collected");
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object average CPU time;/u })).toBeVisible();
   expect(requests.some(request => request.includes("kinds=") && request.includes("durable-objects"))).toBe(true);
 });
 
-test("a project without namespaces has no Durable Object widget and makes no request for one", async ({ page }) => {
+test("a project without namespaces has no Durable Object line or widget and makes no request for one", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff");
-  await expect(page.locator("#routes")).toBeVisible();
+  await page.goto("/#/project/stuff?open=signals");
+  await expect(ledgerRow(page, "worker")).toBeVisible();
+  await expect(ledgerRow(page, "objects")).toHaveCount(0);
   await expect(page.locator("#durable-objects")).toHaveCount(0);
   expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("durable-objects"))).toBe(false);
 });
 
-test("D1 ranks statements by list cost and the cost estimate adds D1 to the Worker's usage", async ({ page }) => {
+test("D1 ranks statements by list cost and adds its storage", async ({ page }) => {
   const requests = await mock(page, { d1: true });
-  await page.goto("/#/project/stuff");
-  const rows = page.locator("#d1-statements").getByRole("table", { name: "D1 cost by statement" }).locator("tbody tr");
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText("UPDATE hot SET a = ?");
-  await expect(rows.nth(0)).toContainText("$1.08");
-  await expect(rows.nth(0)).toContainText("TOP");
-  await expect(rows.nth(1)).toContainText("SELECT * FROM big_read");
-  await expect(rows.nth(1)).toContainText("$0.60");
-  await expect(rows.nth(2)).toContainText("INSERT INTO log VALUES (?)");
-  await expect(rows.nth(2)).toContainText("$0.12");
-  const cost = page.locator("#cost").getByRole("table", { name: "Estimated cost by component" });
-  await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("$1.20");
-  await expect(cost.getByRole("row", { name: /D1 rows read/u })).toContainText("$0.60");
-  await expect(page.locator("#cost .wf-stat").filter({ hasText: "Total cost" })).toContainText("$1.80");
-  await expect(cost.getByRole("row", { name: /D1 rows written/u })).toContainText("TOP");
-  await expect(cost.getByText("TOP")).toHaveCount(1);
-  await page.locator("#cost").getByRole("button", { name: "Over time" }).click();
-  await expect(page.locator("#cost").getByRole("img", { name: /Estimated cost per bucket;/u })).toBeVisible();
-  await expect(cost).toHaveCount(0);
+  await page.goto("/#/project/stuff?open=signals");
+  const d1 = ledgerRow(page, "d1");
+  await expect(page.locator(".ledger-row.depth-0").first()).toContainText("D1");
+  await expect(d1).toContainText("$1296.18");
+  await expect(d1).toContainText("rows read $432.00 · rows written $864.00 · storage $0.18");
+  const statements = page.locator(".ledger-row.depth-1");
+  await expect(statements.nth(0)).toContainText("UPDATE hot SET a = ?");
+  await expect(statements.nth(0)).toContainText("$777.60");
+  await expect(statements.nth(1)).toContainText("SELECT * FROM big_read");
+  await expect(statements.nth(1)).toContainText("$432.00");
+  await expect(statements.nth(2)).toContainText("INSERT INTO log VALUES (?)");
+  await expect(statements.nth(2)).toContainText("$86.40");
+  await expect(ledgerRow(page, `d1-storage:${DATABASES[0]}`)).toContainText("234.5 MiB");
   await expect(page.locator("#d1").getByRole("img", { name: /D1 database size;/u })).toBeVisible();
   expect(requests.some(request => request.includes("kinds=") && request.includes("d1-statements"))).toBe(true);
 });
 
-test("a project without databases has no D1 widget, no D1 request, and a cost estimate without D1 rows", async ({ page }) => {
+test("a project without databases has no D1 line or widget and makes no D1 request", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff");
-  const cost = page.locator("#cost").getByRole("table", { name: "Estimated cost by component" });
-  await expect(cost.getByRole("row", { name: /Worker requests/u })).toBeVisible();
-  await expect(cost.getByRole("row", { name: /D1/u })).toHaveCount(0);
+  await page.goto("/#/project/stuff?open=signals");
+  await expect(ledgerRow(page, "worker")).toBeVisible();
+  await expect(ledgerRow(page, "d1")).toHaveCount(0);
   await expect(page.locator("#d1")).toHaveCount(0);
   expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("d1"))).toBe(false);
 });
 
-test("a project without probes has no endpoints widget and makes no probe request", async ({ page }) => {
+test("a project without probes has no endpoints pill or widget and makes no probe request", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=signals");
   await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect(page.locator(".project-pill", { hasText: "endpoints" })).toHaveCount(0);
   await expect(page.locator("#endpoints")).toHaveCount(0);
   expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("probes"))).toBe(false);
 });
 
-test("a project without buckets shows no R2 widgets or cells", async ({ page }) => {
+test("a project without buckets shows no R2 line or widgets", async ({ page }) => {
   await mock(page, { bucketless: true, probes: true });
-  await page.goto("/#/project/stuff");
-  const strip = page.getByRole("region", { name: "Project summary" });
-  await expect(strip.getByRole("button", { name: /^Requests:/u })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /^R2 /u })).toHaveCount(0);
+  await page.goto("/#/project/stuff?open=signals");
+  await expect(ledgerRow(page, "worker")).toBeVisible();
+  await expect(ledgerRow(page, "r2")).toHaveCount(0);
   await expect(page.locator("#r2-operations")).toHaveCount(0);
   await expect(page.locator("#r2-storage")).toHaveCount(0);
-  await expect(strip.getByRole("button")).toHaveCount(5);
 });
 
-test("project charts follow a refresh, not just the first load", async ({ page }) => {
+test("project charts and pills follow a refresh, not just the first load", async ({ page }) => {
   const options = { spike: false };
   await mock(page, options);
-  await page.goto("/#/project/stuff");
+  await page.goto("/#/project/stuff?open=signals");
   await expect(page.getByRole("img", { name: "Worker 5xx share; latest 0%" })).toBeVisible();
+  const pill = page.locator(".project-pill", { hasText: /^5xx/u });
+  await expect(pill).toHaveText("5xx 0%");
   options.spike = true;
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByRole("img", { name: "Worker 5xx share; latest 8%" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Worker 5xx: 8%/u })).toBeVisible();
+  await expect(pill).not.toHaveText("5xx 0%");
 });
 
 test("a status pill keeps its place and background when hovered", async ({ page }) => {
@@ -983,7 +997,7 @@ test("primary navigation reaches hosts and projects and the host switcher follow
 
 const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1]; readonly expandable: string }> = [
   { name: "host", path: `/#/host/${hostId}`, options: { accelerator: true }, expandable: "memory" },
-  { name: "project", path: "/#/project/stuff", options: { probes: true, durableObjects: true, d1: true }, expandable: "requests" }
+  { name: "project", path: "/#/project/stuff?open=deploys,signals", options: { probes: true, durableObjects: true, d1: true }, expandable: "requests" }
 ];
 
 async function openPage(page: Page, path: string, options: Parameters<typeof mock>[1]): Promise<void> {
