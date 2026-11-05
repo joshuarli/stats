@@ -23,7 +23,7 @@ export const snapshotCommand = defineCommand<SnapshotPayload>({
   description: [
     "Reads the history frames and, for an observed project with Durable Objects, the method statistics for one window, and writes them with the resolved windows, project configuration, revisions, the git SHA of this checkout, and a SHA-256 of each input. Credentials are never stored, and observe stack frames are never read.",
     "Replay with `statsctl cost --input FILE`: it makes no request and runs no credential command.",
-    "A bare file name goes to .work/statsctl/snapshots/ at the repository root; a path is used as given. Only that default directory is pruned, oldest first, to 200 MiB."
+    "A bare file name goes to .work/statsctl/snapshots/ at the repository root; a path is used as given, relative to the directory the command was started in (the invocation directory under pnpm). Only that default directory is pruned, oldest first, to 200 MiB."
   ],
   access: "read",
   options: {

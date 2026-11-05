@@ -26,8 +26,12 @@ export function cliRevision(): string {
   }
 }
 
+function invocationDirectory(): string {
+  return process.env["INIT_CWD"] ?? process.cwd();
+}
+
 export function snapshotPath(out: string): string {
-  return out.includes("/") || out.includes("\\") ? resolve(out) : join(DEFAULT_SNAPSHOT_DIRECTORY, out);
+  return out.includes("/") || out.includes("\\") ? resolve(invocationDirectory(), out) : join(DEFAULT_SNAPSHOT_DIRECTORY, out);
 }
 
 export function pruneDirectory(directory: string, keep: string, limit: number): number {
@@ -68,7 +72,7 @@ export function writeSnapshotFile(out: string, text: string, limits: { readonly 
 }
 
 export function readSnapshotFile(file: string): string {
-  const path = resolve(file);
+  const path = resolve(invocationDirectory(), file);
   try {
     const size = statSync(path).size;
     if (size > SNAPSHOT_MAX_BYTES) throw transportError("snapshot_too_large", `${path} is ${size} bytes; the cap is ${SNAPSHOT_MAX_BYTES}`);
