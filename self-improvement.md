@@ -39,6 +39,7 @@
 3. **No deploy freeze.** The owner and other sessions keep deploying stats; 46 deployments landed in the 3.3 days before this campaign. The executor detects overlap. An overlapped experiment is `confounded` and may be retried twice per candidate, then it parks with production verification `pending`.
 4. **Observer as a project:** add `stats-observe` to `PROJECTS` in `cloudflare/cloudflare.config.ts`, with its Worker and `ObservationStore` namespace. Its dashboard project page and goldens are part of the change. Tail invocations are priced by CPU only.
 5. **Unattended loop (2026-11-05):** after O1–O3, the executor may schedule the P4 loop as an unattended job that deploys stats and keeps or rolls back on `verify`'s verdict, under X2's condition.
+6. **Sampled-out counts (2026-11-05):** buffered in the tail isolate and flushed in batches, as N2 describes. Counts are exact for every event that is received and flushed. An eviction loses at most one flush interval of counts, and shows as coverage below `reconciled`. Do not add a durable write per event.
 
 ### Prescribed
 
