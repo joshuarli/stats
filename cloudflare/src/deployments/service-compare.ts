@@ -52,10 +52,6 @@ export const SERVICE_LEVEL_METRICS: readonly LevelMetric[] = [
   { metric: `probe.${SERVICE_PROBE_NAME}.failure`, label: "Health probe failure share", unit: "%", floor: 1, source: "probe" }
 ];
 
-export function levelMetricNames(): readonly string[] {
-  return SERVICE_LEVEL_METRICS.map(entry => entry.metric);
-}
-
 function sum(values: readonly number[]): number | null {
   return values.length === 0 ? null : values.reduce((total, value) => total + value, 0);
 }
