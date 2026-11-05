@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -142,6 +142,9 @@ deploy-threadripper: deploy-host-threadripper
 
 ingest-bench: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' bench/ingest.sh
+
+bench-local: work-ready node-ready
+	@cd cloudflare && pnpm -s build >&2 && pnpm -s run build:observe >&2 && TMPDIR='$(CURDIR)/.work/tmp' node bench/local.ts
 
 smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh

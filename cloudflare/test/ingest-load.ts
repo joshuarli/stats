@@ -5,12 +5,12 @@ import { encodeFrame, type SourceBatch } from "../src/ingest/encode.ts";
 import type { Installation } from "../src/cloudflare/installation";
 import { OBSERVE_CHANNEL, type ChannelMessage } from "../src/observe/producer/channel";
 import { INGEST_TYPE, readAck, source, type DecodedAck } from "./ingest-worker";
+import { FIRST_AT_MS, HOUR_MS, SAMPLE_STEP_MS, arrivalMs, sampleAt as sampleFrom } from "../local/samples.ts";
 
 export const HOST_ID = "h_00000000000000000000000000000001";
 export const TOKEN = `nft_${"A".repeat(43)}`;
-export const HOUR = 3_600_000;
-export const FIRST_AT_MS = Math.floor(1_793_510_400_000 / HOUR) * HOUR - 10 * 60_000;
-export const SAMPLE_STEP_MS = 15_000;
+export const HOUR = HOUR_MS;
+export { FIRST_AT_MS, SAMPLE_STEP_MS, arrivalMs };
 export const BOOT_ID = "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f";
 
 export interface Rows { readonly read: number; readonly written: number; readonly statements: number }
@@ -20,27 +20,8 @@ export function stub() {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
 }
 
-type Field = Record<string, string>;
-
-function bump(entry: Field, step: number, keys: readonly string[]): Field {
-  const next = { ...entry };
-  for (const key of keys) next[key] = (BigInt(entry[key]!) + BigInt(step)).toString();
-  return next;
-}
-
 export function sampleAt(index: number): Record<string, unknown> {
-  const template = source("linux-normal").samples[0] as Record<string, unknown>;
-  const cpuTemplate = template["cpu"] as Field;
-  const cpu = { ...cpuTemplate, user: bump(cpuTemplate, index * 1000, ["user"])["user"]!, system: bump(cpuTemplate, index * 1000, ["system"])["system"]!, idle: bump(cpuTemplate, index * 2000, ["idle"])["idle"]!, total: bump(cpuTemplate, index * 4000, ["total"])["total"]! };
-  const nets = (template["nets"] as Field[]).map(net => bump(net, index * 1500, ["rxBytes", "txBytes"]));
-  return {
-    ...template,
-    seq: String(900_000 + index * 15),
-    monoMs: String(900_000_000 + index * SAMPLE_STEP_MS),
-    atMs: String(FIRST_AT_MS + index * SAMPLE_STEP_MS),
-    cpu,
-    nets
-  };
+  return sampleFrom(source("linux-normal").samples[0]!, index);
 }
 
 export async function createLoadHost(name = "load"): Promise<void> {
@@ -84,10 +65,6 @@ export async function ingestBatch(spec: BatchSpec): Promise<Ingested> {
   if (message === undefined || message.kind !== "operation" || message.operation !== "host.ingest") throw new Error("no host.ingest summary");
   const ack = await readAck(response);
   return { ack, rows: message.rows, persisted: message.work.persisted };
-}
-
-export function arrivalMs(lastIndex: number): number {
-  return FIRST_AT_MS + lastIndex * SAMPLE_STEP_MS + 1000;
 }
 
 export async function history(path: string, nowMs: number, ifNoneMatch?: string): Promise<{ status: number; etag: string | null; body: Uint8Array }> {

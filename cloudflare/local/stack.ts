@@ -5,7 +5,7 @@ import { accessToken } from "../test/access-token.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
 import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, type BuiltWorker, type Collector } from "./topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, FETCH_AT_METHOD, type BuiltWorker, type FetchedAt, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 export const ACCESS_HEADER = "cf-access-jwt-assertion";
@@ -38,6 +38,7 @@ export interface Stack {
   anonymous(path: string, init?: DispatchInit): Promise<DispatchResponse>;
   observe(service: string, path: string): Promise<unknown>;
   runAlarm(): Promise<void>;
+  installationAt(nowMs: number, path: string, init: { readonly method: string; readonly headers: Record<string, string>; readonly body?: Uint8Array }): Promise<FetchedAt>;
   restart(next: { readonly nowMs: number | null }): Promise<Stack>;
   stop(): Promise<void>;
   dispose(): Promise<void>;
@@ -103,6 +104,18 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     throw error;
   }
   const worker = await mf.getWorker(shared.stats.name);
+  type InstallationStub = {
+    [RUN_ALARM_METHOD](): Promise<void>;
+    [FETCH_AT_METHOD](nowMs: number, url: string, init: { readonly method: string; readonly headers: Record<string, string>; readonly body?: Uint8Array }): Promise<FetchedAt & Partial<Disposable>>;
+  };
+  let stub: InstallationStub | null = null;
+  const installation = async (): Promise<InstallationStub> => {
+    if (stub === null) {
+      const namespace = await mf.getDurableObjectNamespace("INSTALLATION", shared.stats.name);
+      stub = namespace.get(namespace.idFromName("installation")) as unknown as InstallationStub;
+    }
+    return stub;
+  };
   let stopped = false;
   const stop = async (): Promise<void> => {
     if (stopped) return;
@@ -125,9 +138,15 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     anonymous: async (path, init) => mf.dispatchFetch(`${origin}${path}`, init),
     observe: async (service, path) => (await (await mf.getWorker(shared.observe.name)).fetch(`https://observe/${service}${path}`)).json(),
     runAlarm: async () => {
-      const namespace = await mf.getDurableObjectNamespace("INSTALLATION", shared.stats.name);
-      const stub = namespace.get(namespace.idFromName("installation")) as unknown as Record<typeof RUN_ALARM_METHOD, () => Promise<void>>;
-      await stub[RUN_ALARM_METHOD]();
+      await (await installation())[RUN_ALARM_METHOD]();
+    },
+    installationAt: async (nowMs, path, init) => {
+      const result = await (await installation())[FETCH_AT_METHOD](nowMs, `https://installation${path}`, init);
+      try {
+        return { status: result.status, body: result.body.slice(0), published: structuredClone(result.published) };
+      } finally {
+        result[Symbol.dispose]?.();
+      }
     },
     restart: async next => {
       await stop();

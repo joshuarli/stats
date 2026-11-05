@@ -144,6 +144,14 @@ export interface StackOptions {
 }
 
 export const RUN_ALARM_METHOD = "runAlarm";
+export const FETCH_AT_METHOD = "fetchAt";
+export const OBSERVE_CHANNEL = "stats.observe";
+
+export interface FetchedAt {
+  readonly status: number;
+  readonly body: ArrayBuffer;
+  readonly published: readonly unknown[];
+}
 
 function compat(worker: BuiltWorker): Pick<V4WorkerOptions, "compatibilityDate" | "compatibilityFlags"> {
   return { compatibilityDate: worker.compatibilityDate, compatibilityFlags: [...worker.compatibilityFlags] };
@@ -186,8 +194,24 @@ export function collectorWorker(observe: BuiltWorker, name: string, producer: st
 
 function alarmModules(worker: BuiltWorker): V4ModuleDefinition[] {
   const main = `./${worker.mainModule}`;
-  const subclasses = worker.sqliteDurableObjects.map(name => `export class ${name} extends bundle.${name} { async ${RUN_ALARM_METHOD}() { return this.alarm(); } }`);
-  const entry = [`import * as bundle from "${main}";`, `export * from "${main}";`, `export { default } from "${main}";`, ...subclasses].join("\n");
+  const subclasses = worker.sqliteDurableObjects.map(name => `export class ${name} extends bundle.${name} {
+  async ${RUN_ALARM_METHOD}() { return this.alarm(); }
+  async ${FETCH_AT_METHOD}(nowMs, url, init) {
+    const original = this.env;
+    const published = [];
+    const listen = message => { published.push(message); };
+    Object.defineProperty(this, "env", { value: { ...original, TEST_NOW_MS: String(nowMs) }, configurable: true, writable: true });
+    diagnostics.subscribe(${JSON.stringify(OBSERVE_CHANNEL)}, listen);
+    try {
+      const response = await this.fetch(new Request(url, init));
+      return { status: response.status, body: await response.arrayBuffer(), published };
+    } finally {
+      diagnostics.unsubscribe(${JSON.stringify(OBSERVE_CHANNEL)}, listen);
+      Object.defineProperty(this, "env", { value: original, configurable: true, writable: true });
+    }
+  }
+}`);
+  const entry = [`import diagnostics from "node:diagnostics_channel";`, `import * as bundle from "${main}";`, `export * from "${main}";`, `export { default } from "${main}";`, ...subclasses].join("\n");
   return [
     { type: "ESModule", path: join(worker.output, "bundle", "alarm-entry.js"), contents: entry },
     { type: "ESModule", path: bundlePath(worker), contents: readFileSync(bundlePath(worker), "utf8") }

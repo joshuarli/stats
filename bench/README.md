@@ -87,3 +87,36 @@ pnpm --dir cloudflare run bench:workerd ingest-rows
 `Installation` object in local workerd and prints `writtenPerSample`, the
 SQLite rows written per persisted sample from cursor totals. The count is
 deterministic; it read 7.762 at `c85450f`.
+
+## Local stack counts
+
+```sh
+make bench-local
+```
+
+`cloudflare/bench/local.ts` runs two fixed workloads against the local stack
+and prints one JSON object per workload. Every value is a count, so two runs
+on the same revision print the same numbers and the host-load rules for timing
+do not apply. Each object names its `revision`, whether the tree was `dirty`,
+and the `miniflare` and `workerd` versions.
+
+- `ingest` sends 40 warm-up batches and then 1,500 two-sample `linux-normal`
+  batches to the `Installation` object, advancing its clock per batch the way
+  the Durable Object rows bench does. `writtenPerSample` matches that bench:
+  7.762.
+- `collection` runs one S1 collection of the production registry through the
+  offline `ANALYTICS_SQL` provider.
+
+Each object's `provenance` maps every field to where its number comes from:
+
+| Provenance | Meaning | Fields |
+| --- | --- | --- |
+| `local-measured` | Counted by the real code in local workerd: cursor totals, operation work, observe store writes, and file sizes on disk | rows read and written, statements, `metricRows`, `upstreamQueries`, response bytes, database growth, observation rows per invocation |
+| `fixture-replay` | Fixed by the replayed fixture input | ingest `invocations`, `requestBytes` |
+| `modeled` | Produced by the scenario model, not by Cloudflare | `analyticsRowsReturned` |
+
+Database growth counts the Installation's SQLite file and its WAL, which
+local workerd does not checkpoint, so it is not the size Cloudflare bills.
+Nothing here measures CPU time. `cloudflare/test/local/bench.test.ts` checks
+that two runs agree and that one planted SQL statement per ingest raises
+`statements` by one per batch.
