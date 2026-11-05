@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the same stats core runs as a Cloudflare Worker (today's production, unchanged) and as a Node.js server in a container on `josh@threadripper`, reachable only on the tailnet. Cloudflare-only features become an adapter layer on top, as in Nanoshop.
-- **Baseline:** none recorded yet. P0 records it.
-- **Accepted:** none. **Red:** none. **Parked:** none.
-- **Next:** P0.
+- **Baseline:** master `b9f8fb0`. Full set at `425fb3e` (code unchanged since): fixtures, agent-test, release, agent-e2e, smoke-local, dashboard-test (114), and lint pass; `cloudflare-test` 297 of 297 in 5 reruns, with one load-only failure (STA-54). `pnpm --dir cloudflare run bench:workerd ingest-rows` reads `writtenPerSample 7.762`, which P1 must reproduce exactly.
+- **Accepted:** P0. **Red:** none. **Parked:** none.
+- **Next:** P1, after STA-52 merges (both touch `observe/core/store.ts`).
 - **Resume:** `Execute docs/portable-core-campaign.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
