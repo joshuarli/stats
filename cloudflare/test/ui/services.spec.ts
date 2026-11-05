@@ -60,6 +60,8 @@ async function ingest(host: { hostId: string; token: string }, series: HostSerie
   }
 }
 
+test.describe.configure({ mode: "serial" });
+
 test.beforeAll(async () => {
   const root = fileURLToPath(new URL("../../../.work/tmp", import.meta.url));
   mkdirSync(root, { recursive: true });
