@@ -248,7 +248,7 @@ Observation overhead is already proven through the two-Worker stack by `tail.tes
 ## Needs environment
 
 - **Hosted SQL contract.** Fixtures cannot show Cloudflare still accepts the fixed queries or still returns the recorded column shapes. After any change to `cloudflare/src/projects/queries.ts`, or periodically, the owner runs `node cloudflare/scripts/check-analytics-sql.mjs`, which runs each built query through `cf sql query` and parses the rows with the real parsers (`docs/operations.md:252`), and `pnpm --dir cloudflare -s statsctl health --project stats --json`.
-- **Linux offline run.** `scripts/offline-run.sh` exits 2 off Darwin until verified. On a Linux host the owner runs `make integration-local` after the executor's `unshare -rn` variant is added; this campaign cannot run it.
+- **Linux offline run (deferred 2026-11-05: no Linux host available).** `scripts/offline-run.sh` exits 2 off Darwin until verified. On a Linux host the owner runs `make integration-local` after the executor's `unshare -rn` variant is added; this campaign cannot run it.
 - **Schema upgrade, if H2 parks.** `BASELINE_WORKTREE=.work/wt/baseline` with `a5918ea~1` built, then `pnpm --dir cloudflare run test:local`.
 - **Production parity of local timing.** Nothing here measures billable CPU; `statsctl cost` and `verify` against production remain the evidence for that (`self-improvement.md`).
 
