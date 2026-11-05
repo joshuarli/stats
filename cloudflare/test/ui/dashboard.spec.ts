@@ -219,7 +219,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       const to = url.searchParams.get("to");
       const window = from === null || to === null ? undefined : {
         fromMs: Number(from), toMs: Number(to),
-        scale: (Number(to) - Number(from) > 6 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
+        scale: (Number(to) - Number(from) > 6 * 3_600_000 && Number(to) - Number(from) <= 24 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
       };
       const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
