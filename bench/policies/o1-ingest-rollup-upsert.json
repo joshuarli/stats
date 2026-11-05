@@ -1,0 +1,14 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "o1-ingest-rollup-upsert",
+  "hypothesis": "Writing the 1m and 1h rollups in place with ON CONFLICT DO UPDATE, and merging the two hosts updates into one, cuts host.ingest SQLite rows written per persisted sample by at least 15% (offline: 10.53 to 7.83, -25.7%) with identical stored rows and no loss of persisted samples.",
+  "project": "stats",
+  "operation": "host.ingest",
+  "metric": "rowsWrittenPerUnit",
+  "direction": "decrease",
+  "minChangePercent": 15,
+  "floor": 0.5,
+  "guardrails": ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"],
+  "window": "1h",
+  "maxWaitMs": 14400000
+}

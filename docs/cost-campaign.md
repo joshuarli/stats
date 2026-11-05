@@ -145,6 +145,14 @@ about ten days if it continued (STA-41). The D1 widget now charts it.
 - The remaining esbuild and wrangler weight comes from the vitest plugin and is
   decided in `docs/dependencies.md`; revisit only if the plugin moves off them.
 
+## Experiments
+
+Each row is registered before its deploy, with its policy in `bench/policies/`, and its result is filled in after `statsctl verify` settles. Scope is resource efficiency at list price unless the row says otherwise; stats sits inside the Workers Paid allowances, so invoice impact is zero for every row.
+
+| ID | Hypothesis | Policy | Code | Deployment | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| O1 | Writing the 1m and 1h rollups in place (`ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`) and merging the two `hosts` updates cuts `host.ingest` SQLite rows written per persisted sample by at least 15%. Offline in workerd: 10.53 to 7.83 (-25.7%), stored rows, frames, and ETags byte-identical. | `bench/policies/o1-ingest-rollup-upsert.json` | `campaign/o1` (`e5576c3`) | pending | pending |
+
 ## Stop rule
 
 A lane stops when its top item is under 10% of the project's list cost, or when

@@ -5,9 +5,10 @@
 - **Goal:** build `statsctl`, an agent-facing TypeScript CLI that shares the dashboard's cost engine. Give it the telemetry it needs to answer one question: did this version use fewer resources for the same useful work, without losing data or degrading service, and is the evidence complete? Then use it on production stats for at most three deployed optimization candidates.
 - **Baseline:** `00e18d2` on `master`. All loop commands are green (see **Baseline**).
 - **Accepted:** G1, D1, E1, T1, C1, L1, C2, L3, T2, T3, P1x, T4, L2 (master `f441be0`, full set green).
-- **O0 in progress:** `stats-observe` `dc041292` (version `f30bbdac`) and `stats` `c9d4980e` (version `6340f145`) were deployed at 05:15–05:17Z on 2026-11-05 from `f441be0`. The previous versions, for rollback, are stats `220698c9` and observe `e78aec31`. `synthetic-check` is host `h_671f99496b24b9cfa91d34f7fa5b9284`; the production `check ingest` passed. The 24 h O0 window closes at 2026-11-06 05:20Z.
+- **O0 in progress:** measurement deploy from `0f411be` after the M3 review fixes. `stats-observe` `dc041292` (version `f30bbdac`, 05:15Z) and `stats` `8d426e74` (version `e38f0726`, 05:52:15Z on 2026-11-05). The safety check passed at 05:52:20Z and is saved at `.work/statsctl/safety/8d426e74.json`. The rollback targets are stats `6340f145`, then `220698c9`, and observe `e78aec31`. `synthetic-check` is host `h_671f99496b24b9cfa91d34f7fa5b9284`. The O0 24 h window closes at 2026-11-06 05:55Z; then read `statsctl health`, check that coverage is reconciled in 20 of 24 hours, and record the spread.
+- **M3:** the review of `00e18d2..4ca5419` found 1 P1 and 9 P2; all are fixed (`1c07472`, `1d2f2f7`, `725e393`, `de69070`).
+- **Ready:** O1 on `campaign/o1` (`e5576c3`), offline -25.7% rows written per persisted sample; hypothesis and policy registered. Merge and deploy only after O0 is accepted.
 - **Red:** none. **Parked:** none.
-- **In flight:** L4 (`campaign/l4`). **Next:** H1, then O0 acceptance, M3 review, P4.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
