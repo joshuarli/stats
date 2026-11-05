@@ -1,6 +1,7 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
-import { NANOSHOP_OPERATIONS, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_SAMPLING, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import { KEEP_ALL, type Sampling } from "../core/sampling.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
 export interface ServicePolicy {
@@ -8,6 +9,7 @@ export interface ServicePolicy {
   readonly objectRoute: (path: string) => string | null;
   readonly operations: ReadonlySet<string>;
   readonly operationMessages: "stats" | "service";
+  readonly sampling: Sampling;
 }
 
 const HOST_ID = /^h_[0-9a-f]{32}$/u;
@@ -46,18 +48,21 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: statsWorkerRoute,
     objectRoute: path => path === "/" ? null : statsTemplate(path),
     operations: new Set(OPERATIONS),
-    operationMessages: "stats"
+    operationMessages: "stats",
+    sampling: KEEP_ALL
   },
   "usr-memories": {
     workerRoute: memoriesWorkerRoute,
     objectRoute: () => null,
     operations: new Set(MEMORIES_OPERATIONS),
-    operationMessages: "service"
+    operationMessages: "service",
+    sampling: KEEP_ALL
   },
   "nanoshop-storied": {
     workerRoute: nanoshopWorkerRoute,
     objectRoute: () => null,
     operations: new Set(NANOSHOP_OPERATIONS),
-    operationMessages: "service"
+    operationMessages: "service",
+    sampling: NANOSHOP_SAMPLING
   }
 };

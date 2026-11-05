@@ -1,3 +1,5 @@
+import { sampled } from "../core/sampling.ts";
+
 export const NANOSHOP_ROUTES = [
   { name: "home", method: "GET", pattern: "/" },
   { name: "products", method: "GET", pattern: "/products" },
@@ -44,3 +46,5 @@ export function nanoshopWorkerRoute(path: string): string | null {
   }
   return null;
 }
+
+export const NANOSHOP_SAMPLING = sampled({ keepPerMillion: 10_000, slowWallMs: 100, slowCpuMs: 10 });

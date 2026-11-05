@@ -92,7 +92,13 @@ uncaught exception, a channel error report, or a status of at least 500 is
 not excluded: it is observed as `<METHOD> unmatched`. Each service's
 `operation` channel message is read by that service's decoder: stats' typed
 summaries, or a generic `{operation, synthetic, rows}` message for the
-others. After
+others. Each policy also names a sampling mode: `stats` and `usr-memories` keep
+every observed invocation (`{ kind: "all" }`), and `nanoshop-storied` is
+`sampled` with a keep rate in parts per million and slow-wall and slow-CPU
+thresholds. Its thresholds sit well above Nanoshop's documented request
+latency, which has a local p99 under 20 ms, and above its 2 to 5 ms CPU
+assumption, so only abnormal invocations are kept for being slow; the rate is
+provisional until the cost budget sets it. After
 each deployment poll, the scheduled handler forwards every observed
 project's stored deployments and version tags to its service as rollouts
 over the same binding.
