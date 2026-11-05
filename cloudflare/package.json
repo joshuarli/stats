@@ -26,6 +26,7 @@
     "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast",
     "test:observe": "node --experimental-strip-types --test test/observe/*.test.ts",
     "test:observe-e2e": "node --experimental-strip-types --test test/observe-e2e/*.test.ts",
+    "bench:workerd": "vitest run --config vitest.bench.config.mjs --disableConsoleIntercept",
     "typecheck:observe": "tsrs -p observe.tsconfig.json --noEmit --fast"
   },
   "devDependencies": {

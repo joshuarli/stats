@@ -76,3 +76,14 @@ complete decode-to-stored-string work against the v1 parser kept in
 the Worker and Durable Object in local workerd. With `BASELINE_WORKTREE` set
 to a checkout of a v1 commit it runs the v1 end-to-end twin there too. Method,
 results, and limits are in [`docs/binary-ingest.md`](../docs/binary-ingest.md).
+
+## Durable Object rows per ingest
+
+```sh
+pnpm --dir cloudflare run bench:workerd ingest-rows
+```
+
+`cloudflare/bench/ingest-rows.workerd.ts` ingests fixture batches into the
+`Installation` object in local workerd and prints `writtenPerSample`, the
+SQLite rows written per persisted sample from cursor totals. The count is
+deterministic; it read 7.762 at `c85450f`.
