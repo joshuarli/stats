@@ -24,7 +24,7 @@
 - **Next:** S3 live comparison, then S4. Carry-overs:
   - Deploy tokens have no rotate or revoke yet.
   - Host network and disk throughput are averaged across a marker's hosts, not summed; level values are unrounded.
-  - Host data for `stats-node` (owner, 2026-11-05): a second agent, `/usr/local/bin/stats` run as `josh` with `~/.config/stats-node-agent/agent.json`, reports host `threadripper` to `https://threadripper.tailcf741.ts.net:18791`, a `tailscale serve --https` entry on the Node socket. `/etc/hosts` maps that name to `100.98.145.91`, because the host's local resolver does not forward `*.ts.net`. It was started with `setsid nohup`, so it does not survive a reboot. The container has no network, so probes stay unavailable.
+  - Host data for `stats-node` (owner, 2026-11-05): a second agent, the OpenRC service `stats-node-agent` (`/etc/init.d/stats-node-agent`, user `stats`, `/etc/stats-node-agent/agent.json`, log `/var/log/stats-node-agent.log`, in the default runlevel), reports host `threadripper` to `https://threadripper.tailcf741.ts.net:18791`, a `tailscale serve --https` entry on the Node socket. `/etc/hosts` maps that name to `100.98.145.91`, because the host's local resolver does not forward `*.ts.net`. The container has no network, so probes stay unavailable.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
 ## Charter
