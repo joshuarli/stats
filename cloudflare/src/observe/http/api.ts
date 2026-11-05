@@ -215,6 +215,7 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
     }
     if (path === "/traces") return json(await store.traces(traceFilter(params(url, ["label", "version", "failed", "from", "to", "minWall", "maxWall", "order", "cursor", "limit"]))));
     if (path === "/explore") return json(await store.explore(exploreFilter(params(url, ["from", "to", "route"]))));
+    if (path === "/objects") return json(await store.objects(exploreFilter(params(url, ["from", "to"]))));
     const trace = /^\/traces\/([^/]+)$/u.exec(path);
     if (trace !== null) {
       if (!TRACE_ID.test(trace[1]!)) throw new BadRequest("invalid trace id");

@@ -1,5 +1,5 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { Exploration, Health, Heatmap, ImpactState, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
 
@@ -303,6 +303,15 @@ function heatmap(value: unknown): Heatmap {
   };
 }
 
+export function decodeObjectMethods(value: unknown): ObjectMethods {
+  const fields = record(value, "object methods");
+  return {
+    fromMs: integer(fields["fromMs"], "from"),
+    toMs: integer(fields["toMs"], "to"),
+    methods: list(fields["methods"], 64, objectMethodStats, "object methods")
+  };
+}
+
 export function decodeExploration(value: unknown): Exploration {
   const fields = record(value, "exploration");
   return {
@@ -310,7 +319,6 @@ export function decodeExploration(value: unknown): Exploration {
     toMs: integer(fields["toMs"], "to"),
     route: nullableText(fields["route"], "route", 128),
     routes: list(fields["routes"], 64, routeStats, "routes"),
-    objects: list(fields["objects"], 64, objectMethodStats, "object methods"),
     heatmap: heatmap(fields["heatmap"])
   };
 }

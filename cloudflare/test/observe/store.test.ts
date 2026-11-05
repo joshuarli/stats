@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, DURATION_EDGES, explore, health, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { cleanup, DURATION_EDGES, explore, health, objectMethods, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 
 const M = 60_000;
@@ -434,20 +434,20 @@ await test("exploring a window ranks routes by trace CPU with wall-time percenti
   assert.throws(() => explore(db, T0 + H, { fromMs: T0 + H, toMs: T0 }), RangeError);
 });
 
-await test("exploring a window totals Durable Object wall time per method for duration cost", async () => {
+await test("object methods total Durable Object wall time per method in a window for duration cost", async () => {
   const db = database();
   const batch: ObservedInvocation[] = [];
   for (let n = 0; n < 4; n++) batch.push(object(n, { label: "Installation.ingest", eventAtMs: T0 + n * M, wallMs: 10 * (n + 1), cpuMs: 2 }));
   batch.push(object(4, { label: "Installation GET /hosts/:host/history", eventAtMs: T0 + 5 * M, wallMs: 300, cpuMs: 90, outcome: "exception" }));
   batch.push(object(5, { label: "Installation.ingest", eventAtMs: T0 + 2 * H, wallMs: 1000, cpuMs: 1 }));
   ingest(db, await prepare(...batch), T0 + 3 * H);
-  const result = explore(db, T0 + 3 * H, { fromMs: T0, toMs: T0 + H });
-  assert.deepEqual(result.objects.map(method => [method.label, method.requests, method.failed, method.wallMs, method.cpuMs]), [
+  const result = objectMethods(db, T0 + 3 * H, { fromMs: T0, toMs: T0 + H });
+  assert.deepEqual([result.fromMs, result.toMs], [T0, T0 + H]);
+  assert.deepEqual(result.methods.map(method => [method.label, method.requests, method.failed, method.wallMs, method.cpuMs]), [
     ["Installation GET /hosts/:host/history", 1, 1, 300, 90],
     ["Installation.ingest", 4, 0, 100, 8]
   ]);
-  assert.deepEqual([result.objects[1]!.p50WallMs, result.objects[1]!.p95WallMs], [20, 40]);
-  assert.deepEqual(result.routes, []);
+  assert.deepEqual([result.methods[1]!.p50WallMs, result.methods[1]!.p95WallMs], [20, 40]);
 });
 
 await test("the slowest calls in a duration band page deterministically", async () => {
