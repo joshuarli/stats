@@ -39,6 +39,16 @@ workerd suite posts every golden and malformed frame through the public route.
 After a deliberate format or corpus change, `make fixtures-write` regenerates
 everything; review the binary diff against `annotated.json`.
 
+## Node target tests
+
+`pnpm run test:node` runs the `Installation` core under Node on `node:sqlite`:
+the corpus ingest and history paths, retention, the scheduler, and the SQL
+adapter. Its parity test needs `pnpm build`. It sends every `fixtures/v2` frame
+to the built Worker in Miniflare and to the core on `node:sqlite`, and requires
+identical acknowledgment bytes, history frame bytes, ETags, and host rows. Row
+counts are not compared: `node:sqlite` reports table rows changed, not the rows
+Cloudflare bills.
+
 ## Observability tests
 
 `pnpm run test:observe` runs the portable core, symbolication, the tail

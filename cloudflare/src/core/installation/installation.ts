@@ -342,6 +342,10 @@ export class InstallationCore {
     return frameResponse(frame, etag);
   }
 
+  async armRetention(): Promise<void> {
+    await this.ensureAlarm(this.now());
+  }
+
   private async ensureAlarm(now: number): Promise<void> {
     const alarm = await this.ports.scheduler.pending();
     if (alarm === null) await this.ports.scheduler.at(now + 10 * 60 * 1000);
