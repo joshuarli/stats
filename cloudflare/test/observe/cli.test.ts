@@ -112,4 +112,39 @@ await test("exit codes separate usage errors, missing items, and an unavailable 
   assert.equal(await main(["health"], { OBSERVE_URL: base, OBSERVE_AUTH_COMMAND: "printf token" }, () => undefined, () => undefined, now), EXIT.usage);
 });
 
+
+await test("a sampled service's health, routes and traces say they are sampled", async () => {
+  const sampling = { keepPerMillion: 10_000, kept: 12, observed: 1_000 };
+  const route = { label: "GET /cart", requests: 12, observed: 1_000, failed: 1, cpuMs: 30, p50WallMs: 4, p95WallMs: 9, p99WallMs: 12, p50CpuMs: 1, p95CpuMs: 2 };
+  const trace = { key: "k", traceId: "a".repeat(32), stage: "worker", kind: "fetch", label: "GET /cart", objectId: null, status: 200, outcome: "ok", failed: false, cpuMs: 1, wallMs: 5, atMs: now, version: null, errorCount: 0, objectInvocations: 0, objectCpuMs: 0 };
+  const health = {
+    newestAtMs: now, oldestAtMs: now, liveInvocations: 12, cleanupBacklog: 0, cleanupLagMs: 0, openIssues: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0, evicted: 0, reasons: [],
+    writes: { ingestBatches: 3, accepted: 12, ingestRows: 40, cleanupRows: 0 }, databaseBytes: 0,
+    sampling: { policy: { kind: "sampled", keepPerMillion: 10_000, slowWallMs: 100, slowCpuMs: 10 }, kept: 12, sampledOut: 980, excluded: 8, untraced: 1, flushes: 3 }
+  };
+  const sampled = createServer((request, response) => {
+    const path = new URL(request.url ?? "/", "http://observe").pathname.replace(/^\/api\/observe/u, "");
+    const body = path === "/health" ? health : path === "/explore" ? { fromMs: 0, toMs: 1, route: null, routes: [route], heatmap: { fromMs: 0, bucketMs: 1, edges: [], cells: [], failed: [], p95WallMs: [] }, sampling } : { items: [trace], next: null, sampling };
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
+  });
+  await new Promise<void>(resolve => sampled.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(sampled.address() as AddressInfo).port}/api/observe`;
+  const run = async (...argv: string[]) => {
+    const out: string[] = [];
+    const code = await main(argv, { OBSERVE_URL: url }, line => out.push(line), () => undefined, now);
+    return { code, out: out.join("\n") };
+  };
+  try {
+    assert.match((await run("health")).out, /^sampled at 10000 per million \(slow at 100 ms wall or 10 ms cpu\): 1000 events observed, 12 kept, 980 sampled out, 8 excluded, 1 untraced, 3 flushed batches$/mu);
+    const routes = await run("routes");
+    assert.match(routes.out, /^sampled: .*12 kept of 1000 observed/u);
+    assert.match(routes.out, /p50 \(sampled\).*p95 cpu \(sampled\)/u);
+    assert.deepEqual((JSON.parse((await run("routes", "--json")).out) as { sampling: unknown }).sampling, sampling);
+    assert.match((await run("traces")).out, /^sampled: only 12 kept of 1000 observed invocations are listed/u);
+    assert.deepEqual((JSON.parse((await run("traces", "--json")).out) as { sampling: unknown }).sampling, sampling);
+  } finally {
+    sampled.close();
+  }
+});
+
 server.close();

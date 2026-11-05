@@ -235,6 +235,19 @@ is kept and counted `untraced`; one with two operation messages is rejected as
 `rejected-invalid`. Worker events were unaffected. Whether production behaves
 the same is unverified.
 
+For a sampled service, health adds a `sampling` object: the policy, and over
+the retained days, the invocations `kept`, the ok invocations `sampledOut`, the
+`excluded` events, the `untraced` invocations, and the count `flushes` (batches
+that carried counts). The window, explore, objects, traces, trace and rollout
+impact responses add `sampling: { keepPerMillion, kept, observed }`, where
+`observed` is exact and counts kept plus sampled-out ok and failed invocations
+of the response's stage over the whole buckets it overlaps. Explore routes add an
+exact `observed` count, and a rollout's request and failure counts come from the
+counts table. Every percentile and the CPU share in those responses are computed
+from the kept invocations only: `statsctl observe --project nanoshop-storied` and
+the dashboard label them sampled, and a service that keeps everything returns
+none of these fields.
+
 `GET /api/observe/stats/window?from=<ms>&to=<ms>[&operation=<id>][&class=<name>]`
 returns one half-open window: operation rows, outcome rows, invocation rows and
 lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes

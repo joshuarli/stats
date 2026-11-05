@@ -10,6 +10,9 @@ const trace = { key: "k", traceId: "a".repeat(32), stage: "worker", kind: "fetch
 const issue = { fingerprint: "b".repeat(64), name: "Error", operation: null, frame: null, state: "open", occurrences: 3, firstAtMs: 1, lastAtMs: 2, lastVersion: null, versions: 1, firstVersion: null, firstVersionLabel: null };
 const impact = { rolloutId: ROLLOUT, atMs: 1_700_000_000_000, previousRolloutId: null, introduced: ["v2"], state: "measured", baselineMs: 1, newIssues: [], regressions: [], versions: [{ version: "v2", label: null, introduced: true, requests: 10, failed: 1 }], routes: [] };
 
+const sampling = { keepPerMillion: 10_000, kept: 12, observed: 1_000 };
+const shopRoute = { ...route(1), label: "GET /products/:handle", requests: 12, observed: 1_000 };
+
 function handler(overrides: { routes?: unknown } = {}): Handler {
   return (request, response) => {
     if (!authorized(request)) return void response.writeHead(401).end();
@@ -18,6 +21,10 @@ function handler(overrides: { routes?: unknown } = {}): Handler {
       case "/api/observe/stats/explore": return sendJson(response, { fromMs: 0, toMs: 1, route: null, routes: overrides.routes ?? [route(1), route(2)], heatmap });
       case "/api/observe/stats/traces": return sendJson(response, { items: [trace], next: "5.ab" });
       case "/api/observe/stats/issues": return sendJson(response, { items: [issue], next: null });
+      case "/api/observe/nanoshop-storied/explore": return sendJson(response, { fromMs: 0, toMs: 1, route: null, routes: [shopRoute], heatmap, sampling });
+      case "/api/observe/nanoshop-storied/traces": return sendJson(response, { items: [trace], next: null, sampling });
+      case `/api/observe/nanoshop-storied/rollouts/${ROLLOUT}/impact`: return sendJson(response, { ...impact, sampling });
+      case "/api/observe/usr-memories/explore": return sendJson(response, { fromMs: 0, toMs: 1, route: null, routes: [route(1)], heatmap });
       case `/api/observe/stats/rollouts/${ROLLOUT}/impact`: return sendJson(response, impact);
       default: return void response.writeHead(404).end();
     }
@@ -111,5 +118,29 @@ await test("an observe response that does not decode exits 4", async () => {
     const result = await run(origin, ["observe", "issues", "--project", "stats"]);
     assert.equal(result.code, EXIT.transport);
     assert.equal((JSON.parse(result.stdout) as { error: { code: string } }).error.code, "contract");
+  });
+});
+
+await test("a sampled service marks every percentile as sampled in text and json, and an unsampled one is unchanged", async () => {
+  await withOrigin(handler(), async origin => {
+    const text = await run(origin, ["observe", "routes", "--project", "nanoshop-storied"], false);
+    assert.equal(text.code, EXIT.ok, text.stderr);
+    assert.match(text.stdout, /sampled: .*12 kept of 1000 observed invocations \(1\.20%; keep rate 10000 per million\)/u);
+    assert.match(text.stdout, /p50 \(sampled\) +p95 \(sampled\) +p99 \(sampled\) +p95 cpu \(sampled\)/u);
+    assert.match(text.stdout, /GET \/products\/:handle +12 +1000 +/u);
+    const json = JSON.parse((await run(origin, ["observe", "routes", "--project", "nanoshop-storied"])).stdout) as { payload: { sampling?: unknown; routes: { observed?: number }[] } };
+    assert.deepEqual(json.payload.sampling, sampling);
+    assert.equal(json.payload.routes[0]?.observed, 1_000);
+
+    const traces = await run(origin, ["observe", "traces", "--project", "nanoshop-storied"], false);
+    assert.match(traces.stdout, /sampled: the listed traces come from 12 kept of 1000 observed/u);
+    const impactText = await run(origin, ["observe", "deployment", "--project", "nanoshop-storied", "--deployment", ROLLOUT], false);
+    assert.match(impactText.stdout, /sampled: per-route CPU comparisons come from 12 kept of 1000 observed/u);
+
+    const plain = await run(origin, ["observe", "routes", "--project", "usr-memories"]);
+    assert.equal("sampling" in (JSON.parse(plain.stdout) as { payload: object }).payload, false);
+    const plainText = await run(origin, ["observe", "routes", "--project", "usr-memories"], false);
+    assert.doesNotMatch(plainText.stdout, /sampled/u);
+    assert.match(plainText.stdout, /requests +failed +cpu +p50 +p95 +p99 +p95 cpu/u);
   });
 });

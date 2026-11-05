@@ -1,5 +1,6 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TracePage, VersionStats } from "../core/store.ts";
+import type { SamplingHealth, SamplingSummary } from "../core/counts.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import { OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage } from "../core/model.ts";
 import { OPERATION_IDS } from "../producer/channel.ts";
@@ -56,6 +57,32 @@ function oneOf<T extends string>(value: unknown, options: readonly T[], what: st
 function list<T>(value: unknown, limit: number, decode: (item: unknown) => T, what: string): T[] {
   if (!Array.isArray(value) || value.length > limit) fail(what);
   return value.map(decode);
+}
+
+function withSampling(value: unknown): { readonly sampling?: SamplingSummary } {
+  const fields = record(value, "response");
+  if (fields["sampling"] === undefined) return {};
+  const sampling = record(fields["sampling"], "sampling");
+  const keepPerMillion = integer(sampling["keepPerMillion"], "sampling keep rate");
+  if (keepPerMillion > 1_000_000) fail("sampling keep rate");
+  return { sampling: { keepPerMillion, kept: integer(sampling["kept"], "sampling kept"), observed: integer(sampling["observed"], "sampling observed") } };
+}
+
+function samplingHealth(value: unknown): { readonly sampling?: SamplingHealth } {
+  const fields = record(value, "health");
+  if (fields["sampling"] === undefined) return {};
+  const sampling = record(fields["sampling"], "sampling health");
+  const policy = record(sampling["policy"], "sampling policy");
+  if (policy["kind"] !== "sampled") fail("sampling policy kind");
+  const keepPerMillion = integer(policy["keepPerMillion"], "sampling keep rate");
+  if (keepPerMillion > 1_000_000) fail("sampling keep rate");
+  return {
+    sampling: {
+      policy: { kind: "sampled", keepPerMillion, slowWallMs: integer(policy["slowWallMs"], "slow wall"), slowCpuMs: integer(policy["slowCpuMs"], "slow cpu") },
+      kept: integer(sampling["kept"], "sampling kept"), sampledOut: integer(sampling["sampledOut"], "sampled out"), excluded: integer(sampling["excluded"], "sampling excluded"),
+      untraced: integer(sampling["untraced"], "untraced"), flushes: integer(sampling["flushes"], "flushes")
+    }
+  };
 }
 
 function page<T>(value: unknown, decode: (item: unknown) => T, what: string): Page<T> {
@@ -118,11 +145,14 @@ function occurrence(value: unknown): Occurrence {
   };
 }
 
-export function decodeTraces(value: unknown): Page<TraceSummary> {
-  return page(value, item => {
-    const fields = record(item, "trace");
-    return { ...invocation(item), objectInvocations: integer(fields["objectInvocations"], "object invocations"), objectCpuMs: integer(fields["objectCpuMs"], "object cpu") };
-  }, "traces");
+export function decodeTraces(value: unknown): TracePage {
+  return {
+    ...page(value, item => {
+      const fields = record(item, "trace");
+      return { ...invocation(item), objectInvocations: integer(fields["objectInvocations"], "object invocations"), objectCpuMs: integer(fields["objectCpuMs"], "object cpu") };
+    }, "traces"),
+    ...withSampling(value)
+  };
 }
 
 export function decodeTrace(value: unknown, traceId: string): TraceDetail {
@@ -133,7 +163,8 @@ export function decodeTrace(value: unknown, traceId: string): TraceDetail {
     rootPresent: bool(fields["rootPresent"], "root present"),
     truncated: bool(fields["truncated"], "truncated"),
     invocations: list(fields["invocations"], 16, invocation, "invocations"),
-    occurrences: list(fields["occurrences"], 64, occurrence, "occurrences")
+    occurrences: list(fields["occurrences"], 64, occurrence, "occurrences"),
+    ...withSampling(value)
   };
 }
 
@@ -186,7 +217,8 @@ export function decodeHealth(value: unknown): ObserveHealth {
     evicted: counter("evicted"),
     reasons: list(fields["reasons"], 20, healthReason, "health reasons"),
     writes: writeCost(fields["writes"]),
-    databaseBytes: counter("databaseBytes")
+    databaseBytes: counter("databaseBytes"),
+    ...samplingHealth(value)
   };
 }
 
@@ -248,7 +280,8 @@ export function decodeImpact(value: unknown, rolloutId: string): RolloutImpact {
     newIssues: list(fields["newIssues"], 50, issueRef, "new issues"),
     regressions: list(fields["regressions"], 50, issueRef, "regressions"),
     versions: list(fields["versions"], 8, versionStats, "versions"),
-    routes: list(fields["routes"], 20, routeComparison, "route comparisons")
+    routes: list(fields["routes"], 20, routeComparison, "route comparisons"),
+    ...withSampling(value)
   };
 }
 
@@ -278,7 +311,8 @@ function routeStats(value: unknown): RouteStats {
   return {
     label: text(fields["label"], "route label", 128),
     requests: ms("requests"), failed: ms("failed"), cpuMs: ms("cpuMs"),
-    p50WallMs: ms("p50WallMs"), p95WallMs: ms("p95WallMs"), p99WallMs: ms("p99WallMs"), p50CpuMs: ms("p50CpuMs"), p95CpuMs: ms("p95CpuMs")
+    p50WallMs: ms("p50WallMs"), p95WallMs: ms("p95WallMs"), p99WallMs: ms("p99WallMs"), p50CpuMs: ms("p50CpuMs"), p95CpuMs: ms("p95CpuMs"),
+    ...(fields["observed"] === undefined ? {} : { observed: ms("observed") })
   };
 }
 
@@ -309,7 +343,8 @@ export function decodeObjectMethods(value: unknown): ObjectMethods {
   return {
     fromMs: integer(fields["fromMs"], "from"),
     toMs: integer(fields["toMs"], "to"),
-    methods: list(fields["methods"], 64, objectMethodStats, "object methods")
+    methods: list(fields["methods"], 64, objectMethodStats, "object methods"),
+    ...withSampling(value)
   };
 }
 
@@ -320,7 +355,8 @@ export function decodeExploration(value: unknown): Exploration {
     toMs: integer(fields["toMs"], "to"),
     route: nullableText(fields["route"], "route", 128),
     routes: list(fields["routes"], 64, routeStats, "routes"),
-    heatmap: heatmap(fields["heatmap"])
+    heatmap: heatmap(fields["heatmap"]),
+    ...withSampling(value)
   };
 }
 
@@ -380,6 +416,7 @@ export function decodeStatsWindow(value: unknown): StatsWindow {
     operations: list(fields["operations"], MAX_WINDOW_ROWS, operationWindowRow, "operations"),
     outcomes: list(fields["outcomes"], MAX_WINDOW_ROWS, outcomeWindowRow, "outcomes"),
     invocations: list(fields["invocations"], MAX_WINDOW_ROWS, invocationWindowRow, "invocations"),
-    lag: { operations: lagTotals(lag["operations"]), outcomes: lagTotals(lag["outcomes"]) }
+    lag: { operations: lagTotals(lag["operations"]), outcomes: lagTotals(lag["outcomes"]) },
+    ...withSampling(value)
   };
 }

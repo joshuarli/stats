@@ -10,7 +10,9 @@ const USAGE = `usage: observe <command> [options]
 
 commands:
   health                          collector health
-  routes [--window 1h|6h|24h|7d]  routes ranked by CPU with latency percentiles
+  routes [--window 1h|6h|24h|7d]  routes ranked by CPU with latency percentiles; for a sampled
+                                  service the percentiles come from kept invocations and are
+                                  marked sampled, and --json prints { sampling, routes }
   traces [--route R] [--failed] [--slowest] [--window W]
   trace <trace id>                one trace as a text waterfall
   issues [--state open|resolved] [--introduced-in VERSION]
@@ -79,6 +81,13 @@ function rowsPerInvocation(writes: ObserveHealth["writes"]): string {
   return `${((writes.ingestRows + writes.cleanupRows) / writes.accepted).toFixed(2)} rows written per invocation (${writes.ingestRows} ingest and ${writes.cleanupRows} cleanup over ${writes.accepted} invocations in ${writes.ingestBatches} batches)`;
 }
 
+function samplingLine(health: ObserveHealth): string[] {
+  const sampling = health.sampling;
+  if (sampling === undefined) return [];
+  const observed = sampling.kept + sampling.sampledOut + sampling.excluded;
+  return [`sampled at ${sampling.policy.keepPerMillion} per million (slow at ${sampling.policy.slowWallMs} ms wall or ${sampling.policy.slowCpuMs} ms cpu): ${observed} events observed, ${sampling.kept} kept, ${sampling.sampledOut} sampled out, ${sampling.excluded} excluded, ${sampling.untraced} untraced, ${sampling.flushes} flushed batches`];
+}
+
 function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`;
 }
@@ -117,12 +126,18 @@ async function run(command: string, positional: readonly string[], values: Recor
   switch (command) {
     case "health": {
       const health = await call(context, "/health", decodeHealth);
-      return print(health, () => [`${health.liveInvocations} invocations retained, newest ${health.newestAtMs === null ? "never" : new Date(health.newestAtMs).toISOString()}`, `${health.openIssues} open issues, cleanup lag ${ms(health.cleanupLagMs)}`, `rejected ${health.rejected}, duplicate ${health.duplicate}, conflict ${health.conflict}, evicted ${health.evicted}`, rowsPerInvocation(health.writes), ...health.reasons.map(reason => `  ${reason.counter} ${reason.reason} ${reason.count}${reason.example === null ? "" : `  ${reason.example}`}`)]);
+      return print(health, () => [`${health.liveInvocations} invocations retained, newest ${health.newestAtMs === null ? "never" : new Date(health.newestAtMs).toISOString()}`, `${health.openIssues} open issues, cleanup lag ${ms(health.cleanupLagMs)}`, `rejected ${health.rejected}, duplicate ${health.duplicate}, conflict ${health.conflict}, evicted ${health.evicted}`, rowsPerInvocation(health.writes), ...samplingLine(health), ...health.reasons.map(reason => `  ${reason.counter} ${reason.reason} ${reason.count}${reason.example === null ? "" : `  ${reason.example}`}`)]);
     }
     case "routes": {
       const exploration = await call(context, `/explore?${windowQuery(string("window"), now)}`, decodeExploration);
+      const sampling = exploration.sampling;
       const total = Math.max(1, exploration.routes.reduce((sum, route) => sum + route.cpuMs, 0));
-      return print(exploration.routes, () => table([["route", "requests", "failed", "cpu", "p50", "p95", "p99", "p95 cpu"], ...exploration.routes.map(route => [route.label, String(route.requests), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`, ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)])], new Set([1, 2, 3, 4, 5, 6, 7])));
+      const head = sampling === undefined ? ["route", "requests", "failed", "cpu", "p50", "p95", "p99", "p95 cpu"] : ["route", "kept", "observed", "failed", "cpu", "p50 (sampled)", "p95 (sampled)", "p99 (sampled)", "p95 cpu (sampled)"];
+      const row = (route: (typeof exploration.routes)[number]) => [route.label, String(route.requests), ...(sampling === undefined ? [] : [String(route.observed ?? 0)]), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`, ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)];
+      return print(sampling === undefined ? exploration.routes : { sampling, routes: exploration.routes }, () => [
+        ...(sampling === undefined ? [] : [`sampled: the kept, failed, cpu and percentile columns come from ${sampling.kept} kept of ${sampling.observed} observed invocations (keep rate ${sampling.keepPerMillion} per million); observed is exact`]),
+        ...table([head, ...exploration.routes.map(row)], new Set(Array.from(head.keys()).slice(1)))
+      ]);
     }
     case "traces": {
       const query = windowQuery(string("window"), now);
@@ -131,7 +146,7 @@ async function run(command: string, positional: readonly string[], values: Recor
       if (values["failed"] === true) query.set("failed", "true");
       if (values["slowest"] === true) query.set("order", "slowest");
       const traces = await call(context, `/traces?${query}`, decodeTraces);
-      return print(traces.items, () => table([["trace", "route", "status", "wall", "cpu", "at"], ...traces.items.map(trace => [trace.traceId ?? "-", trace.label, trace.status === null ? trace.outcome : String(trace.status), ms(trace.wallMs), ms(trace.cpuMs + trace.objectCpuMs), new Date(trace.atMs).toISOString()])], new Set([3, 4])));
+      return print(traces.sampling === undefined ? traces.items : { sampling: traces.sampling, items: traces.items }, () => [...(traces.sampling === undefined ? [] : [`sampled: only ${traces.sampling.kept} kept of ${traces.sampling.observed} observed invocations are listed`]), ...table([["trace", "route", "status", "wall", "cpu", "at"], ...traces.items.map(trace => [trace.traceId ?? "-", trace.label, trace.status === null ? trace.outcome : String(trace.status), ms(trace.wallMs), ms(trace.cpuMs + trace.objectCpuMs), new Date(trace.atMs).toISOString()])], new Set([3, 4]))]);
     }
     case "trace": {
       const id = argument("32-hex trace id", /^[0-9a-f]{32}$/u);

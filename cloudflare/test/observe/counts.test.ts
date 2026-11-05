@@ -8,6 +8,7 @@ import { cleanup, health, ingest, nextCleanupAt, statsWindow, type SqlDatabase }
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { COUNT_BUCKET_MS, HEALTH_BUCKET_MS, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { sampled } from "../../src/observe/core/sampling.ts";
+import { decodeExploration, decodeHealth, decodeObjectMethods, decodeStatsWindow, decodeTrace, decodeTraces } from "../../src/observe/client/decode.ts";
 import { T0, VERSION, database, hex } from "./support.ts";
 
 const SHOP = POLICIES["nanoshop-storied"];
@@ -281,4 +282,12 @@ await test("the service answers a sampled window, explore, and traces with the p
   const trace = await service.trace(hex(11, 32));
   assert.deepEqual(trace?.sampling, summary);
   assert.deepEqual((await service.health()).sampling?.kept, 1);
+  const wire = <T>(value: T): unknown => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(decodeExploration(wire(explored)), explored);
+  assert.deepEqual(decodeTraces(wire(await service.traces({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, summary);
+  assert.deepEqual(decodeObjectMethods(wire(await service.objects({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, { keepPerMillion: 0, kept: 0, observed: 0 });
+  assert.deepEqual(decodeStatsWindow(wire(await service.window({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, summary);
+  assert.deepEqual(decodeTrace(wire(trace), hex(11, 32)).sampling, summary);
+  assert.deepEqual(decodeHealth(wire(await service.health())).sampling, (await service.health()).sampling);
+  assert.throws(() => decodeExploration(wire({ ...explored, sampling: { keepPerMillion: 2_000_000, kept: 0, observed: 0 } })));
 });
