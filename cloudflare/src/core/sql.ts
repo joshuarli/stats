@@ -11,9 +11,7 @@ export interface SqlDatabase {
   each<T>(query: string, params: readonly SqlValue[], visit: (row: T) => void): void;
   run(query: string, ...params: SqlValue[]): void;
   transaction<T>(fn: () => T): T;
-  /** Cumulative rows the backend reports written, as the backend bills them. */
   rowsWritten(): number;
-  /** Rows and statements the backend reported for every statement this scope ran to completion. */
   total(): SqlRows;
   databaseBytes(): number;
 }
