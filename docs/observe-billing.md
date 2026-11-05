@@ -112,8 +112,18 @@ rejected per million assumed, it projects to:
 | Store duration | $0.01 |
 | Total | $1.05 |
 
-Always-kept events take $0.38 of that before any sampled-in event, and nothing
-bounds them yet (STA-52).
+Always-kept events take $0.38 of that before any sampled-in event, and a tail
+isolate admits at most 10 of them per five-minute bucket
+(`ALWAYS_KEPT_PER_BUCKET`); the rest are counted with their outcome class and
+not stored. The worst case is every one of the three isolates hitting the cap
+in every bucket all month: 259,200 always-kept events at the failed per-event
+cost, plus the shipped sampled-in volume and the assumed rejected share. It
+projects to $3.86 and 3.55M rows a month (`alwaysKeptStorm` in `budget.ts`),
+and `budget.test.ts` fails above $5.00. The ceiling scales linearly with the
+number of tail isolates, so a deploy that fails most requests costs at most
+that, not the $19 a month a 5% failure rate projected before the cap. The
+1.0M-row budget is not held in the storm: that is the price of detail on every
+failure.
 
 ## Unverified
 
@@ -127,4 +137,4 @@ bounds them yet (STA-52).
   five-minute bucket of sampled-out counts, and the tail handler's
   `waitUntil` limit is not documented (STA-51).
 - The slow, untraced, and rejected shares, which are assumptions until
-  Nanoshop runs under load (STA-50, STA-52).
+  Nanoshop runs under load (STA-50).

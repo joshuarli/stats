@@ -213,7 +213,8 @@ policy samples. It holds one row per five-minute event-time bucket, so a flush
 writes one row per bucket it touches however many keys it carries, and
 retention deletes one row per bucket. The row's `entries` column is a JSON array
 with one element per `(version, stage, outcome, route, operation)` key holding
-`kept`, `sampledOut`, `cpuMsSum` and `wallMsSum`, merged in the store
+`kept`, `sampledOut`, `capped`, `cpuMsSum` and `wallMsSum` (`capped` is part
+of `sampledOut`; entries written before it existed read as 0), merged in the store
 transaction; the `untraced` and `flushes` columns count the sampling events of
 the calls that wrote the row. The view `observe_count_entries` presents the
 elements as rows for reads. An element's `outcome` is `ok`, `failed`,
@@ -259,6 +260,20 @@ Exactness across eviction would take one durable write per event, which is the
 cost buffering removes; the owner accepted that trade. A service that keeps
 everything is not buffered.
 
+A sampled service also caps its always-kept invocations. `keepReason` keeps
+errors, status 500 and above, non-ok outcomes, slow events and untraced events
+whatever `keepPerMillion` says, and each costs a store request and up to 12 rows.
+The tail isolate admits at most `ALWAYS_KEPT_PER_BUCKET` (10) of them per service
+per five-minute count bucket (`AlwaysKeptCap`, module state next to the count
+buffer in `cloudflare/worker.ts`). Past the cap an invocation is not stored: it
+is counted like a sampled-out one, with its real outcome class, so `failed`
+totals stay exact, and its `capped` count rises. Trace-hash keeps, invocations
+rejected as invalid, and services that keep everything are never capped. The cap
+is per isolate, so the bound scales with the number of tail isolates: the
+ceiling is `isolates x 10` always-kept invocations per bucket, priced in
+`observe-billing.md`. Detail beyond the cap is lost, so a deploy that fails every
+request keeps ten stored failures per isolate per bucket and counts the rest.
+
 Sampling relies on each invocation's tail event carrying exactly one `operation`
 message. In local workerd, when RPCs overlap on one Durable Object instance
 (even two at a time), diagnostics-channel messages land on other invocations'
@@ -270,9 +285,10 @@ is kept and counted `untraced`; one with two operation messages is rejected as
 the same is unverified.
 
 For a sampled service, health adds a `sampling` object: the policy, and over
-the retained days, the invocations `kept`, the ok invocations `sampledOut`, the
-`excluded` events, the `untraced` invocations, and the count `flushes` (batches
-that carried counts). The window, explore, objects, traces, trace and rollout
+the retained days, the invocations `kept`, the ok or capped failed invocations `sampledOut`, the
+`excluded` events, the `untraced` invocations, the count `flushes` (batches
+that carried counts), and `capped`, the always-kept invocations counted instead
+of stored (a subset of `sampledOut`). The window, explore, objects, traces, trace and rollout
 impact responses add `sampling: { keepPerMillion, kept, observed }`, where
 `observed` is exact and counts kept plus sampled-out ok and failed invocations
 of the response's stage over the whole buckets it overlaps. Explore routes add an

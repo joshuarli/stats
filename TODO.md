@@ -19,15 +19,6 @@ Next: 55
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-52 · P2 · Always-kept Nanoshop invocations have no bound
-
-- **Area:** Observability
-- **Where:** `cloudflare/src/observe/core/sampling.ts` (`keepReason`), `cloudflare/src/observe/core/budget.ts` (`NANOSHOP_ASSUMPTIONS`)
-- **Problem:** Failures, rejected events, untraced events, and slow events are kept whatever `keepPerMillion` says, and each costs one store request and 3 (rejected) to 12 (failed) rows written, retention included. The budget test assumes 500 failed, 1,000 slow, 45 untraced, and 45 rejected per million; those take $0.38 of the $1.10 budget before any sampled-in event. A bad deploy that fails 5% of requests keeps 1.5M events a month and projects to about $19 a month. STA-50 can make untraced object events common for the same reason.
-- **Recommendation:** Before Nanoshop deploys with `stats-observe` as its tail consumer, cap always-kept invocations per service per count bucket and count the overflow as sampled out with its class, so failure totals stay exact while detail is bounded. Measure the real slow and untraced shares in workerd under Nanoshop load first.
-- **Fix with:** none
-- **Effort:** M
-
 ### STA-51 · P2 · Two production behaviors that sampling relies on are unverified
 
 - **Area:** Observability
