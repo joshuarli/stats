@@ -222,6 +222,10 @@ export function decodeProjectHistories(root: HistoryView): ProjectHistories {
   };
 }
 
+export function decodeWorkerHistory(root: HistoryView): MetricHistory {
+  return metricsFrom(entry(bundled(root), "worker"), "worker");
+}
+
 export function metricTrack(history: MetricHistory, metric: string): Track {
   return history.table.has(metric) ? history.table.track(metric) : { times: [], values: [] };
 }

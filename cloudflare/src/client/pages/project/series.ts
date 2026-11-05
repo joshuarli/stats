@@ -3,16 +3,12 @@ import { count } from "../../format";
 import { metricTrack, type CollectorHistory, type MetricHistory } from "../../history";
 import { MIN_SCORED_EVENTS } from "../../health";
 import { addAll, ratio } from "../../math.ts";
-import { PROJECT_SETTLE_MS } from "../../../limits";
+
+export { provisionalFromMs } from "../../project-ledger.ts";
 
 const MINUTE_MS = 60_000;
 export const STATUS_CLASSES = ["2xx", "3xx", "4xx", "5xx", "other"] as const;
 const R2_OUTCOMES = ["success", "userError", "other"] as const;
-
-export function provisionalFromMs(history: MetricHistory): number {
-  const cutoff = history.toMs - history.stepMs - PROJECT_SETTLE_MS;
-  return history.fromMs + (Math.floor((cutoff - history.fromMs) / history.stepMs) + 1) * history.stepMs;
-}
 
 export function silenceMinutes(history: CollectorHistory, nowMs: number, lastSuccessAtMs: number | null): Track {
   const times: number[] = [];
