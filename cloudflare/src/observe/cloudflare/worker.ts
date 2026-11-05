@@ -4,6 +4,7 @@ import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedServ
 import { POLICIES } from "./policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { COUNT_FLUSH_INTERVAL_MS, CountBuffer, deliverSampled } from "../core/count-buffer.ts";
+import { awaitEvery } from "../core/fan-out.ts";
 import { ObservationStore, type ObserveEnv } from "./store-object.ts";
 
 export { ObservationStore };
@@ -33,18 +34,21 @@ export default {
     const unknown: OutcomeEvent[] = grouped.unknown.map(item => outcomeOf(item, "unknown-service", OTHER_ROUTE));
     if (unknown.length > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown.length }));
     const nowMs = Date.now();
-    const batches = new Map(await Promise.all([...byService].map(async ([service, items]) => [service, await prepareTailItems(items, POLICIES[service], nowMs)] as const)));
-    if (unknown.length > 0) {
-      const home = batches.get(UNKNOWN_SERVICE_HOME) ?? { preparations: [], outcomes: [], counts: [] };
-      batches.set(UNKNOWN_SERVICE_HOME, { ...home, outcomes: [...home.outcomes, ...unknown] });
-    }
-    await Promise.all([...batches].map(([service, batch]) => POLICIES[service].sampling.kind === "all"
-      ? store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts)
-      : deliverSampled({
+    const services = new Map(byService);
+    if (unknown.length > 0 && !services.has(UNKNOWN_SERVICE_HOME)) services.set(UNKNOWN_SERVICE_HOME, []);
+    await awaitEvery([...services].map(async ([service, items]) => {
+      const prepared = await prepareTailItems(items, POLICIES[service], nowMs);
+      const batch = service === UNKNOWN_SERVICE_HOME ? { ...prepared, outcomes: [...prepared.outcomes, ...unknown] } : prepared;
+      if (POLICIES[service].sampling.kind === "all") {
+        await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts);
+        return;
+      }
+      await deliverSampled({
         buffer: bufferOf(service), batch, nowMs, now: () => Date.now(), sink: store(env, service), defer: work => ctx.waitUntil(work),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         onDeferredFailure: error => console.error(JSON.stringify({ event: "observe_count_flush_failed", service, message: error instanceof Error ? error.message : "unknown" }))
-      })));
+      });
+    }));
   },
 
   async scheduled(_controller: ScheduledController, env: ObserveEnv): Promise<void> {
