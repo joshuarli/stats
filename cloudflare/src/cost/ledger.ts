@@ -149,8 +149,8 @@ interface Sampler {
   readonly before: (metric: (history: LedgerHistories) => MetricHistory | undefined, name: string) => number | null;
 }
 
-function coveredMs(history: MetricHistory, window: TimeWindow): number {
-  const columns = history.table.names().map(name => history.table.cells(name));
+export function coveredMs(history: MetricHistory, window: TimeWindow, only?: readonly string[]): number {
+  const columns = history.table.names().filter(name => only === undefined || only.includes(name)).map(name => history.table.cells(name));
   let buckets = 0;
   history.table.times.forEach((time, index) => {
     if (time >= window.fromMs && time < window.toMs && columns.some(cells => cells[index] !== null)) buckets += 1;
@@ -205,7 +205,10 @@ function workerLine(input: LedgerInput, sample: Sampler): CostLine {
   const children: CostLine[] = routeNames(input.current.routes).map(route => {
     const calls = sample.now(input.current, routes, `${ROUTE_PREFIX}${route}.invocations`);
     const cpu = sample.now(input.current, routes, `${ROUTE_PREFIX}${route}.cpuMsSum`);
-    const before = { calls: sample.before(routes, `${ROUTE_PREFIX}${route}.invocations`), cpu: sample.before(routes, `${ROUTE_PREFIX}${route}.cpuMsSum`) };
+    const callsName = `${ROUTE_PREFIX}${route}.invocations`;
+    const cpuName = `${ROUTE_PREFIX}${route}.cpuMsSum`;
+    const inBaseline = input.previous !== undefined && coveredMs(input.previous.routes, input.previousWindow, [callsName, cpuName]) > 0;
+    const before = inBaseline ? { calls: sample.before(routes, callsName), cpu: sample.before(routes, cpuName) } : { calls: null, cpu: null };
     const callsTrack = metricTrack(input.current.routes, `${ROUTE_PREFIX}${route}.invocations`);
     const cpuTrack = metricTrack(input.current.routes, `${ROUTE_PREFIX}${route}.cpuMsSum`);
     return {
@@ -219,8 +222,14 @@ function workerLine(input: LedgerInput, sample: Sampler): CostLine {
   }).filter(line => line.usage.kind === "requests" && (line.usage.calls.now > 0 || (line.usage.calls.before ?? 0) > 0));
   const total = cost(callsNow, cpuNow);
   const routed = children.reduce((sum, line) => sum + (monthlyOf(line)?.now ?? 0), 0);
+  const totalBefore = beforeCost(callsBefore, cpuBefore);
+  const routedBefore = children.reduce<number | null>((sum, line) => {
+    const value = monthlyOf(line)?.before ?? null;
+    return sum === null || value === null ? null : sum + value;
+  }, 0);
+  const residualBefore = totalBefore === null || routedBefore === null ? null : totalBefore - routedBefore;
   if (total - routed > total * UNATTRIBUTED_SHARE) {
-    children.push({ id: "route:unattributed", kind: "unrouted", label: "not attributed to a route", price: priced(total - routed, null), parts: [], usage: { kind: "none" }, trend: null, children: [] });
+    children.push({ id: "route:unattributed", kind: "unrouted", label: "not attributed to a route", price: priced(total - routed, residualBefore), parts: [], usage: { kind: "none" }, trend: null, children: [] });
   }
   return {
     id: "worker", kind: "worker", label: "Worker",
@@ -537,7 +546,8 @@ export function projectedBill(bill: PlanBill, fromMs: number, toMs: number, mont
 
 export function buildLedger(input: LedgerInput): Ledger {
   const sample = sampler(input);
-  const lines = byCost([workerLine(input, sample), objectsLine(input, sample), d1Line(input, sample), r2Line(input)].filter(line => line !== null));
+  const worker = sample.covers(input.current.worker) ? workerLine(input, sample) : emptyLine("worker", "worker", "Worker");
+  const lines = byCost([worker, objectsLine(input, sample), d1Line(input, sample), r2Line(input)].filter(line => line !== null));
   const entries = lines.map(line => ({ line, amount: monthlyOf(line) }));
   const now = entries.reduce((sum, entry) => sum + (entry.amount?.now ?? 0), 0);
   const compared = entries.filter(entry => entry.amount !== null && entry.amount.before !== null);

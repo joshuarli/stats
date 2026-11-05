@@ -145,12 +145,13 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   };
   const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
   const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => sections().has("requests")) : null;
-  const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
-    () => props.project, ledgerWindow, () => `${projectTick()}:${manualTick()}`,
-    observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now }
-  );
   const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
   const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
+  const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
+    () => props.project, ledgerWindow, () => `${projectTick()}:${manualTick()}`,
+    observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now },
+    monthSpend.spend
+  );
 
   const toggleSection = (section: SectionId) => {
     setSections(current => {
@@ -230,7 +231,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                 <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
               )}</Show>
               <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} class="skeleton-ledger" /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
-                {current => <CostLedger ledger={current().ledger} histories={current().histories} windowLabel={windowLabel()} spend={monthSpend.spend()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
+                {current => <CostLedger report={current().report} histories={current().histories} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
               </Show>
             </Show>
           </Loading>
