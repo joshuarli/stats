@@ -65,6 +65,7 @@ go under `.work/tmp`.
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Portable core: stats on Node with Cloudflare as an adapter | `docs/portable-core-campaign.md` |
+| Service deployments: deployment tracking for servers | `docs/service-deployments-campaign.md` |
 | Observability product campaign | `docs/observability-campaign.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |
 | `statsctl`, measurement, and the measured-optimization campaign | `self-improvement.md` |
