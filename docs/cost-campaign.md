@@ -151,7 +151,7 @@ Each row is registered before its deploy, with its policy in `bench/policies/`, 
 
 | ID | Hypothesis | Policy | Code | Deployment | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| O1 | Writing the 1m and 1h rollups in place (`ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`) and merging the two `hosts` updates cuts `host.ingest` SQLite rows written per persisted sample by at least 15%. Offline in workerd: 10.53 to 7.83 (-25.7%), stored rows, frames, and ETags byte-identical. | `bench/policies/o1-ingest-rollup-upsert.json` | `campaign/o1` (`e5576c3`), merged `3f6411d` | `e233b271` (version `bbbb4bb3`, 2026-11-05 09:54Z) | pending |
+| O1 | Writing the 1m and 1h rollups in place (`ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`) and merging the two `hosts` updates cuts `host.ingest` SQLite rows written per persisted sample by at least 15%. Offline in workerd: 10.53 to 7.83 (-25.7%), stored rows, frames, and ETags byte-identical. | `bench/policies/o1-ingest-rollup-upsert.json` | `campaign/o1` (`e5576c3`), merged `3f6411d` | `e233b271` (version `bbbb4bb3`, 2026-11-05 09:54Z) | **improved** (`statsctl verify`, exit 0): `host.ingest` rows written per persisted sample 10.83 to 7.92 (-26.9%) over 239 operations a side (476 and 479 persisted samples), 08:50-09:50Z against 10:00-11:00Z. All six guardrails pass; coverage reconciled at 7.1% and 10.8% spread. Kept. The first read was `insufficient-data` because one probe bucket per side was missing (STA-53); `68396b7` averages probes over the samples present, deployed as `a65a6058`, and the re-read is this verdict. |
 
 ## Stop rule
 

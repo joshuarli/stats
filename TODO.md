@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 48
+Next: 54
+
+### STA-53 · P3 · Collector runs go missing or fail about one time in nine
+
+- **Area:** Projects
+- **Where:** `cloudflare/src/projects/collector.ts`, the stats `scheduled` handler
+- **Problem:** From 08:50 to 11:00Z on 2026-11-05, 3 of 26 five-minute collector runs left no probe sample. The 09:35 and 09:40Z crons recorded no run at all, and the 10:05Z run recorded `collector_failed` after 5.2 s with 32M analytics rows read. Each gap removes a probe sample and delays settled coverage. Until `68396b7`, any one gap voided the probe guardrail, which is why O1 first came back `insufficient-data`.
+- **Recommendation:** Read the stats-observe traces for the scheduled invocations at those times to tell a skipped cron from one that died before recording its run, and record the failing step of `collector_failed`. Fix the cause if it is ours; if Cloudflare skipped the crons, document the rate.
+- **Fix with:** root-cause
+- **Effort:** S
 
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
