@@ -1,5 +1,6 @@
 pub mod backoff;
 pub mod block;
+pub mod cgroup;
 pub mod config;
 pub mod model;
 pub mod parse;

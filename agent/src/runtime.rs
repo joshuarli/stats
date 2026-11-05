@@ -1,7 +1,8 @@
 use crate::backoff::Backoff;
 use crate::block;
+use crate::cgroup;
 use crate::config::{load_token_file, AgentConfig, ConfigError};
-use crate::model::{BootId, Sample};
+use crate::model::{BootId, Sample, Unavailable};
 use crate::queue::Queue;
 use crate::sample_once;
 use crate::transport::{HttpTransport, SendOutcome, TransportError};
@@ -284,11 +285,17 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn sample_with_block(config: &AgentConfig, snapshots: &mut block::SnapshotReader) -> Option<Sample> {
+fn collect_sample(config: &AgentConfig, snapshots: &mut block::SnapshotReader) -> Option<Sample> {
     let mut sample = sample_once(config.scope())?;
     if let Some(path) = &config.block_latency_file {
         if let Some(value) = snapshots.read(path) {
             sample.block = Some(value);
+        }
+    }
+    if !config.services.is_empty() {
+        match cgroup::read_services(Path::new(cgroup::ROOT), &config.services) {
+            Some(services) => sample.services = Some(services),
+            None => sample.mark_unavailable(Unavailable::Services),
         }
     }
     Some(sample)
@@ -317,14 +324,14 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
     let mut report = RunReport::default();
     let interval = Duration::from_millis(config.sample_interval_ms);
     let mut snapshots = block::SnapshotReader::default();
-    if let Some(sample) = sample_with_block(config, &mut snapshots) {
+    if let Some(sample) = collect_sample(config, &mut snapshots) {
         queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
         report.sampled += 1;
     } else {
         report.sample_failures += 1;
     }
     while sleep_interruptible(interval, stop) {
-        if let Some(sample) = sample_with_block(config, &mut snapshots) {
+        if let Some(sample) = collect_sample(config, &mut snapshots) {
             queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
             report.sampled += 1;
         } else {

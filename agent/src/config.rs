@@ -1,3 +1,5 @@
+use crate::cgroup::{unit_cgroup, ServiceCgroup};
+use crate::wire::MAX_DEVICES;
 use crate::CollectionScope;
 use deser::Deserialize;
 use std::fmt;
@@ -10,6 +12,13 @@ const DEFAULT_SAMPLE_MS: u64 = 15_000;
 const DEFAULT_UPLOAD_MS: u64 = 30_000;
 const DEFAULT_QUEUE: usize = 16;
 const DEFAULT_TIMEOUT_MS: u64 = 10_000;
+
+#[derive(Debug, Clone, Deserialize)]
+#[deser(deny_unknown_fields)]
+pub struct ServiceConfig {
+    pub name: String,
+    pub unit: String,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[deser(deny_unknown_fields)]
@@ -33,6 +42,10 @@ pub struct AgentConfig {
     pub include_virtual_interfaces: bool,
     #[deser(rename = "includeVirtualFilesystems", default)]
     pub include_virtual_filesystems: bool,
+    #[deser(rename = "services", default)]
+    service_units: Vec<ServiceConfig>,
+    #[deser(skip)]
+    pub services: Vec<ServiceCgroup>,
 }
 
 impl AgentConfig {
@@ -78,6 +91,29 @@ impl std::error::Error for ConfigError {}
 
 pub fn valid_host_id(value: &str) -> bool {
     value.len() == 34 && value.starts_with("h_") && value[2..].bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_service_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    !bytes.is_empty() && bytes.len() <= 32 && bytes[0].is_ascii_lowercase() && bytes.iter().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+}
+
+fn resolve_services(units: &[ServiceConfig]) -> Result<Vec<ServiceCgroup>, ConfigError> {
+    if units.len() > MAX_DEVICES {
+        return Err(ConfigError::new(format!("services lists at most {MAX_DEVICES} services")));
+    }
+    let mut services: Vec<ServiceCgroup> = Vec::with_capacity(units.len());
+    for unit in units {
+        if !valid_service_name(&unit.name) {
+            return Err(ConfigError::new(format!("service name {:?} must be 1-32 lowercase letters, digits, or hyphens, starting with a letter", unit.name)));
+        }
+        if services.iter().any(|known| known.name == unit.name) {
+            return Err(ConfigError::new(format!("service {} is listed twice", unit.name)));
+        }
+        let cgroup = unit_cgroup(&unit.unit).ok_or_else(|| ConfigError::new(format!("service {} unit {:?} must be a systemd .service unit or a container .scope", unit.name, unit.unit)))?;
+        services.push(ServiceCgroup { name: unit.name.clone(), cgroup });
+    }
+    Ok(services)
 }
 
 pub fn valid_token(value: &str) -> bool {
@@ -162,6 +198,7 @@ pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
         config.token_file = parent.join(&config.token_file);
     }
+    config.services = resolve_services(&config.service_units)?;
     if let Some(block_latency_file) = &config.block_latency_file {
         if block_latency_file.as_os_str().is_empty() {
             return Err(ConfigError::new("blockLatencyFile must not be empty"));
@@ -355,6 +392,35 @@ mod tests {
         let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":30001");
         write(&path, &text, 0o600);
         assert!(load(&path).unwrap_err().to_string().contains("30000"));
+    }
+
+    #[test]
+    fn services_resolve_to_their_cgroup_and_bad_entries_fail_loudly() {
+        let root = scratch("config");
+        let token = root.join("token");
+        write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
+        let with = |name: &str, services: &str| {
+            let path = root.join(name);
+            write(&path, &valid_config(&token).replace('}', &format!(r#","services":{services}}}"#)), 0o600);
+            load(&path)
+        };
+        let config = with("agent.json", r#"[{"name":"stats-node","unit":"stats-node.service"},{"name":"web","unit":"docker-0123abcd.scope"}]"#).unwrap();
+        let resolved: Vec<(&str, String)> = config.services.iter().map(|service| (service.name.as_str(), service.cgroup.display().to_string())).collect();
+        assert_eq!(resolved, [("stats-node", "system.slice/stats-node.service".to_owned()), ("web", "system.slice/docker-0123abcd.scope".to_owned())]);
+        assert!(with("agent-none.json", "[]").unwrap().services.is_empty());
+
+        let many = (0..17).map(|index| format!(r#"{{"name":"s{index}","unit":"s{index}.service"}}"#)).collect::<Vec<_>>().join(",");
+        for (file, services, expected) in [
+            ("agent-name.json", r#"[{"name":"Web","unit":"web.service"}]"#.to_owned(), "lowercase"),
+            ("agent-unit.json", r#"[{"name":"web","unit":"../web.service"}]"#.to_owned(), "unit"),
+            ("agent-socket.json", r#"[{"name":"web","unit":"web.socket"}]"#.to_owned(), "unit"),
+            ("agent-twice.json", r#"[{"name":"web","unit":"a.service"},{"name":"web","unit":"b.service"}]"#.to_owned(), "twice"),
+            ("agent-many.json", format!("[{many}]"), "at most 16"),
+            ("agent-extra.json", r#"[{"name":"web","unit":"web.service","cgroup":"/x"}]"#.to_owned(), "cgroup"),
+        ] {
+            let error = with(file, &services).unwrap_err().to_string();
+            assert!(error.contains(expected), "{file}: {error}");
+        }
     }
 
     #[test]

@@ -109,7 +109,8 @@ never accepted in argv or written to logs.
   "uploadIntervalMs": 30000,
   "maxQueueSamples": 16,
   "requestTimeoutMs": 10000,
-  "blockLatencyFile": "/run/stats/block-latency.json"
+  "blockLatencyFile": "/run/stats/block-latency.json",
+  "services": [{ "name": "stats-node", "unit": "stats-node.service" }]
 }
 ```
 
@@ -131,6 +132,28 @@ capped at 16.
 group from that file if it is a regular file, not group- or world-writable,
 and modified within the last 30 seconds; otherwise `block` is absent. See
 [`bpf/README.md`](bpf/README.md) for the collector that writes it.
+
+`services` is optional and lists at most 16 services, each a `name` (the
+service name on the server, 1-32 lowercase letters, digits, or hyphens,
+starting with a letter) and a `unit`. On a host with a cgroup v2 hierarchy at
+`/sys/fs/cgroup`, each sample reads that unit's `cpu.stat` `usage_usec`,
+`memory.current`, `memory.peak` where the kernel has it, and `io.stat` summed
+over its devices, and sends them as the `services` group
+([`docs/protocol.md`](docs/protocol.md)). The unit picks the cgroup:
+
+| `unit` | cgroup under `/sys/fs/cgroup` |
+| --- | --- |
+| `name.service` | `system.slice/name.service` |
+| `name@instance.service` | `system.slice/system-name.slice/name@instance.service` (`-` in `name` becomes `\x2d`) |
+| `docker-<id>.scope` (Docker with the systemd cgroup driver) | `system.slice/docker-<id>.scope` |
+| `libpod-<id>.scope` (Podman), `machine-<name>.scope` (machined) | `machine.slice/<unit>` |
+
+A unit whose cgroup does not exist is sent as unavailable, never zero; a
+memory or io controller that is not enabled for it leaves those values
+absent. With no cgroup v2 hierarchy, including on macOS, the whole group is
+unavailable. A container scope carries the container id, so a recreated
+container needs its new scope in the config. Reading these files needs no
+privileges.
 
 ## Running
 
