@@ -50,3 +50,4 @@
 @media (max-width: 960px) {
   .project-body.with-rail { grid-template-columns: minmax(0, 1fr); }
 }
+.deployment-source.unavailable { color: var(--serious-text); }

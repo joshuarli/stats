@@ -1,5 +1,7 @@
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history";
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
+import { decodeServices } from "../deployments/service-decode.ts";
+import type { Service } from "../core/installation/services.ts";
 import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
 
@@ -211,6 +213,12 @@ const hostPath = (hostId: string, suffix = "") => `/api/v1/hosts/${encodeURIComp
 
 export async function getHosts(signal: AbortSignal): Promise<readonly Host[]> {
   return getJson("/api/v1/hosts", value => array(record(value).hosts, decodeHost), signal);
+}
+
+export type { Service };
+
+export function getServices(signal: AbortSignal): Promise<readonly Service[]> {
+  return getJson("/api/v1/services", decodeServices, signal);
 }
 
 export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {

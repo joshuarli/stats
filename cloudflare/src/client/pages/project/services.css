@@ -1,0 +1,2 @@
+.services-url { display: inline-block; max-width: 36ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.service-facts { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-xl); margin: 0 0 var(--space-md); color: var(--muted); font-size: var(--fs-meta); }

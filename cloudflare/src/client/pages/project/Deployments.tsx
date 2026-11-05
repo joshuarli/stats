@@ -7,7 +7,9 @@ import { readParam, writeParam } from "../../urlState";
 import { createPagedList, jumpTo, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
+import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../../deployments/service-decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
+import type { ServiceComparison } from "../../../deployments/service-compare";
 import { rolloutWindow } from "./rollout";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
 import "./deployments.css";
@@ -25,8 +27,28 @@ export function loadDeploymentHistory(projectId: string, signal: AbortSignal): P
   return read("Deployment history", `/api/v1/projects/${encodeURIComponent(projectId)}/deployments`, signal, value => decodeDeploymentHistory(value, projectId));
 }
 
-export function deploymentTitle(history: DeploymentHistory, deployment: Deployment): string {
-  const tag = (id: string) => history.versions.find(version => version.id === id)?.tag ?? id.slice(0, 8);
+export function loadServiceDeploymentHistory(service: string, signal: AbortSignal): Promise<DeploymentHistory> {
+  return read("Deployment history", `/api/v1/services/${encodeURIComponent(service)}/deployments`, signal, value => decodeServiceDeploymentHistory(value, service));
+}
+
+export type DeploymentKind = "project" | "service";
+type AnyComparison = DeploymentComparison | ServiceComparison;
+
+interface DeploymentRoutes {
+  readonly collection: "projects" | "services";
+  readonly subject: string;
+  readonly history: (id: string, signal: AbortSignal) => Promise<DeploymentHistory>;
+  readonly comparison: (value: unknown, deploymentId: string, window: ComparisonWindow) => AnyComparison;
+  readonly versionLabel: (id: string, tag: string | null) => string;
+}
+
+const ROUTES: Readonly<Record<DeploymentKind, DeploymentRoutes>> = {
+  project: { collection: "projects", subject: "Worker", history: loadDeploymentHistory, comparison: decodeDeploymentComparison, versionLabel: (id, tag) => tag ?? id.slice(0, 8) },
+  service: { collection: "services", subject: "service", history: loadServiceDeploymentHistory, comparison: decodeServiceComparison, versionLabel: (id, tag) => tag ?? id }
+};
+
+export function deploymentTitle(history: DeploymentHistory, deployment: Deployment, kind: DeploymentKind = "project"): string {
+  const tag = (id: string) => ROUTES[kind].versionLabel(id, history.versions.find(version => version.id === id)?.tag ?? null);
   return deployment.versions.map(version => deployment.versions.length === 1 ? tag(version.id) : `${tag(version.id)} ${version.percentage}%`).join(" / ");
 }
 
@@ -69,16 +91,25 @@ function span(bounds: { readonly fromMs: number; readonly toMs: number }): strin
   return RANGE.formatRange(bounds.fromMs, bounds.toMs);
 }
 
-export type ProjectDeployments = ReturnType<typeof createProjectDeployments>;
+export type ProjectDeployments = ReturnType<typeof createDeployments>;
 
 const DEPLOYMENT_PAGE = 8;
 const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "30d": "24h" };
 
 export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string) {
+  return createDeployments("project", projectId, range, refreshKey);
+}
+
+export function createServiceDeployments(serviceName: () => string, range: () => Range, refreshKey: () => string) {
+  return createDeployments("service", serviceName, range, refreshKey);
+}
+
+function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string) {
+  const routes = ROUTES[kind];
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
   const window = createMemo(() => WINDOW_FOR_RANGE[range()]);
-  const [comparison, setComparison] = createSignal<DeploymentComparison | null>(null);
+  const [comparison, setComparison] = createSignal<AnyComparison | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [comparisonError, setComparisonError] = createSignal<string | null>(null);
   let loadedProject = "";
@@ -89,7 +120,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; linkPending = true; }
-    void loadDeploymentHistory(project, controller.signal).then(value => {
+    void routes.history(project, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);
       setHistoryError(null);
@@ -107,7 +138,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     onCleanup(() => controller.abort());
     setComparisonError(null);
     if (query.id === "") { setComparison(null); return; }
-    void read("Deployment comparison", `/api/v1/projects/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => decodeDeploymentComparison(value, query.id, query.window)).then(value => {
+    void read("Deployment comparison", `/api/v1/${routes.collection}/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => routes.comparison(value, query.id, query.window)).then(value => {
       if (!controller.signal.aborted) setComparison(value);
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
@@ -117,11 +148,11 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   });
 
   const versions = createMemo(() => new Map((history()?.versions ?? []).map(version => [version.id, version])));
-  const tag = (id: string) => versions().get(id)?.tag ?? id.slice(0, 8);
+  const tag = (id: string) => routes.versionLabel(id, versions().get(id)?.tag ?? null);
   const name = (deployment: Deployment) => deployment.versions.map(version => `${tag(version.id)} ${version.percentage}%`).join(" / ");
   const title = (deployment: Deployment) => {
     const value = history();
-    return value === null ? deployment.id.slice(0, 8) : deploymentTitle(value, deployment);
+    return value === null ? deployment.id.slice(0, 8) : deploymentTitle(value, deployment, kind);
   };
   const select = (id: string) => {
     setSelected(id);
@@ -153,7 +184,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   };
   const problem = (): string | null => {
     const value = history();
-    if (value === null) return null;
+    if (value === null || kind === "service") return null;
     if (!value.enabled) return "Deployment tracking is disabled. Configure DEPLOYMENTS_ACCOUNT_ID and the read-only DEPLOYMENTS_API_TOKEN secret.";
     if (value.sync === null) return "Waiting for the first deployment poll.";
     if (value.sync.error !== null) return `Deployment polling failed: ${value.sync.error}. Previously collected history is retained.`;
@@ -164,15 +195,24 @@ export function createProjectDeployments(projectId: () => string, range: () => R
 
   const listed = () => (history()?.deployments.length ?? 0) > 0;
 
-  return { history, listed, selected, select, focus, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem };
+  return { history, listed, selected, select, focus, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem, subject: routes.subject };
 }
 
-function ComparisonTable(props: { readonly comparison: DeploymentComparison }): JSX.Element {
+function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | null {
+  return "sources" in comparison ? comparison.sources : null;
+}
+
+function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Element {
   const windows = () => `Before ${span(props.comparison.before)}. After ${span(props.comparison.after)}. The bucket the deployment landed in and the bucket after it are excluded.`;
   const caveats = () => props.comparison.warnings.length;
   return (
     <>
-      <p class="deployment-windows"><Term hint={windows()}>{`${props.comparison.window} each side`}</Term> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</p>
+      <p class="deployment-windows">
+        <Term hint={windows()}>{`${props.comparison.window} each side`}</Term>
+        <Show when={sourcesOf(props.comparison)} fallback={<>{count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
+          <For each={sources()}>{source => <span class={`deployment-source ${source.status}`}>{source.source === "hosts" ? "Hosts" : "Health probe"}: {source.status === "available" ? source.detail : `unavailable, ${source.detail}`}</span>}</For>
+        )}</Show>
+      </p>
       <Show when={props.comparison.reasons.length > 0}>
         <div class="notice notice-warn deployment-reasons" role="status">
           <span><b>No verdict</b><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></span>
@@ -186,7 +226,7 @@ function ComparisonTable(props: { readonly comparison: DeploymentComparison }): 
               <tr>
                 <th scope="row">{metric.label}</th>
                 <td class="numeric" title={metric.verdict.replaceAll("-", " ")}>
-                  {movement(metric)}
+                  {sourcesOf(props.comparison) !== null && metric.before === null && metric.after === null ? "unavailable" : movement(metric)}
                   <Show when={delta(metric)}>{text => <span class={`deployment-delta ${VERDICT_CLASS[metric.verdict]}`}>({text()})</span>}</Show>
                   <span class="sr-only">, {metric.verdict.replaceAll("-", " ")}</span>
                 </td>
@@ -251,7 +291,7 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
       <Show when={notice()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
       <Show when={history() === null && historyError() === null}><Skeleton rows={4} /></Show>
       <Show when={history()?.enabled === true && history()?.deployments.length === 0 && historyError() === null}>
-        <p class="panel-label">No deployments have been recorded for this Worker yet.</p>
+        <p class="panel-label">No deployments have been recorded for this {props.deployments.subject} yet.</p>
       </Show>
       <Show when={listed()}>
         <div class="deployment-detail" aria-busy={stale() ? "true" : "false"}>

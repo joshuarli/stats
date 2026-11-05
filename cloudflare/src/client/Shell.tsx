@@ -11,6 +11,7 @@ import { readParam, writeParam } from "./urlState";
 
 const DEFAULT_RANGE: Range = "1h";
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
+const SERVICE_PATH = /^\/service\/([a-z][a-z0-9-]{0,31})$/u;
 const PROJECT_PATH = /^\/project\/([a-z][a-z0-9-]{0,31})$/u;
 
 function isHostsPath(path: string): boolean {
@@ -19,6 +20,10 @@ function isHostsPath(path: string): boolean {
 
 function isProjectsPath(path: string): boolean {
   return path === "/projects" || PROJECT_PATH.test(path);
+}
+
+function isServicesPath(path: string): boolean {
+  return path === "/services" || SERVICE_PATH.test(path);
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -94,6 +99,7 @@ export function Shell(props: ParentProps): JSX.Element {
           <nav class="primary-nav" aria-label="Primary">
             <a href="#/" aria-current={isHostsPath(location.pathname) ? "page" : "false"}>Hosts</a>
             <a href="#/projects" aria-current={isProjectsPath(location.pathname) ? "page" : "false"}>Projects</a>
+            <a href="#/services" aria-current={isServicesPath(location.pathname) ? "page" : "false"}>Services</a>
           </nav>
           <Breadcrumb />
         </div>
