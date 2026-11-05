@@ -19,6 +19,7 @@
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
     "test:ingest": "node --experimental-strip-types --test test/ingest/*.test.ts",
     "test:agent-e2e": "node --experimental-strip-types --test test/agent-e2e/*.test.ts",
+    "test:node-e2e": "node --experimental-strip-types --test test/node-e2e/*.test.ts",
     "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
     "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.ts",
     "test:cost": "node --experimental-strip-types --test test/cost/*.test.ts",
