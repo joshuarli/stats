@@ -320,7 +320,7 @@ cd cloudflare && \
 
 | Variable | Meaning |
 | --- | --- |
-| `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time. |
+| `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
 | `STATS_LISTEN` | `IPV4:PORT` or `[IPV6]:PORT`. Default `127.0.0.1:18791`; port `0` picks a free one. |
 | `STATS_ALLOWED_LOGINS` | Required. Comma-separated Tailscale logins allowed to read the API and dashboard. |
 

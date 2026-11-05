@@ -1,14 +1,21 @@
 import type { ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { dirname } from "node:path";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError } from "./config.ts";
-import { openNodeInstallation } from "./installation.ts";
+import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
 import { createStatsServer } from "./server.ts";
 
 async function main(): Promise<void> {
   const config = nodeConfig(process.env);
   const assets = await openAssets(BUILT_ASSETS);
-  const installation = openNodeInstallation({ path: config.databasePath, projects: "[]" });
+  let installation: NodeInstallation;
+  try {
+    installation = openNodeInstallation({ path: config.databasePath, projects: "[]" });
+  } catch (error) {
+    if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
+    throw error;
+  }
   const server = createStatsServer({ installation: request => installation.core.fetch(request), assets, allowedLogins: config.allowedLogins });
   let draining = false;
   const inFlight = new Set<ServerResponse>();

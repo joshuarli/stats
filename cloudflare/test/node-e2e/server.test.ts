@@ -132,3 +132,21 @@ await test("the Node server refuses to start without its allowlist or data direc
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+await test("a second Node server on the same data directory exits 2 and leaves the first serving", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-lock-"));
+  try {
+    const first = await start(dataDir);
+    try {
+      const second = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: LOGIN });
+      assert.equal(await second.exited(), 2, second.output());
+      assert.match(second.output(), /stats: STATS_DATA_DIR .* is in use by another server/u);
+      assert.equal((await fetch(`${first.origin}/health`)).status, 200);
+    } finally {
+      first.child.kill("SIGTERM");
+    }
+    assert.equal(await first.exited(), 0, first.output());
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});

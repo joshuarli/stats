@@ -6,7 +6,7 @@ import { decodeAck } from "../../src/ingest/ack-decode.ts";
 import { ACK_MEDIA_TYPE } from "../../src/ingest/ack.ts";
 import { encodeFrame } from "../../src/ingest/encode.ts";
 import { canonicalJson } from "../../src/protocol.ts";
-import { openNodeInstallation } from "../../src/node/installation.ts";
+import { DatabaseInUseError, openNodeInstallation } from "../../src/node/installation.ts";
 import { HISTORY_CONTENT_TYPE } from "../../src/binary/history.ts";
 import { readHistory } from "../support/history.ts";
 import { DAY_MS, fixtureBytes, fixtureSource, historyRequest, ingestRequest, manifest, NOW_MS, openHarness, scratchDirectory, withHost, type Harness } from "./support.ts";
@@ -152,6 +152,19 @@ await test("a node:sqlite database file keeps its hosts and samples across a clo
     } finally {
       second.close();
     }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+await test("a second server on the same database file fails to open while the first is running, and succeeds after it closes", async () => {
+  const directory = scratchDirectory("node-lock");
+  const path = join(directory, "stats.sqlite");
+  try {
+    const first = openNodeInstallation({ path, projects: "[]", clock: { now: () => NOW_MS } });
+    assert.throws(() => openNodeInstallation({ path, projects: "[]", clock: { now: () => NOW_MS } }), DatabaseInUseError);
+    first.close();
+    openNodeInstallation({ path, projects: "[]", clock: { now: () => NOW_MS } }).close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
