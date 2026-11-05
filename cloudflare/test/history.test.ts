@@ -7,7 +7,7 @@ import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { accessToken } from "./access-token";
 import { readFrame as frame } from "./support/history";
 import { fixtureText, frame as encode, frameFor, post, source } from "./ingest-worker";
-import type { SourceBatch } from "./support/stb2";
+import type { SourceBatch } from "../src/ingest/encode.ts";
 
 const now = 1_793_510_415_000;
 

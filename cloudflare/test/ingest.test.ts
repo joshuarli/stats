@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Installation } from "../src/installation";
 import { canonicalJson } from "../src/protocol";
 import { ACK_TYPE, INGEST_TYPE, INGEST_URL, fixtureBytes, fixtureText, frame, frameFor, post, readAck, source } from "./ingest-worker";
-import type { SourceBatch } from "./support/stb2";
+import type { SourceBatch } from "../src/ingest/encode.ts";
 
 afterEach(() => {
   vi.restoreAllMocks();
