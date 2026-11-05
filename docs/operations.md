@@ -176,6 +176,43 @@ cf workers deployments create --worker stats \
   --versions '[{"version_id":"<version-id>","percentage":100}]'
 ```
 
+## Measuring a deployment with statsctl
+
+`statsctl` answers whether a deployed version used fewer resources for the same
+work. It reads the production origin through Access, so run it from a machine
+logged in with `cf access login https://stats.17166969.xyz`:
+
+```sh
+pnpm --dir cloudflare -s statsctl help workflow
+pnpm --dir cloudflare -s statsctl health --project stats --json
+pnpm --dir cloudflare -s statsctl deployments --project stats --json
+pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
+```
+
+`statsctl help workflow` holds the full recipes and `statsctl help verify`
+the policy fields; this page does not copy them. The same binary also runs as
+`node --experimental-strip-types cloudflare/src/cli/statsctl.ts`. Run `health`
+first and fix anything unhealthy before trusting a verdict. Exit codes: 0 read
+succeeded or improved, 2 usage, 3 authentication, 4 transport or contract
+failure, 5 pending or insufficient data, 6 unchanged or confounded, 7
+regressed. `--json` prints one `statsctl/1` document. Resumable verdict state
+and snapshots live under `.work/statsctl/`. Authentication runs
+`cf access token <origin>`; set `STATSCTL_AUTH_COMMAND` and
+`STATSCTL_AUTH_HEADER` to use another credential source.
+
+Every command reads except `check ingest`, which writes one flagged sample and
+takes the `synthetic-check` host's credential from
+`.work/credentials/synthetic-check.json`. Run it only inside a deployment's
+excluded bucket and warm-up interval, so its sample never enters a measured
+window.
+
+Deploy order matters for measurement. `stats` publishes one `operation` message
+per instrumented invocation, and `stats-observe` must already accept it:
+`make observe-deploy` goes first. Never roll `stats-observe` back below the
+version that accepts `operation` while `stats` still emits it. The older tail
+rejects those invocations as `rejected-invalid`, and the operation tables stop
+filling.
+
 ## Observability
 
 `cloudflare.config.ts` enables Workers Logs and Workers traces, each at 10%

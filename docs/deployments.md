@@ -1,9 +1,12 @@
 # Cloudflare deployment tracking
 
 This is an opt-in, read-only addition to the Cloudflare project dashboard. It is
-implemented but has **not been deployed or verified against production**.
+deployed and enabled in production, and its sync is healthy; see
+[Verification record](#verification-record).
 
 ## Enable and verify
+
+These are the steps that enabled tracking; repeat them for a new environment.
 
 1. Run `make cloudflare-test`, `make lint`, `make worker-check`, and
    `make dashboard-test` using the repository's pinned Node/pnpm toolchain.
@@ -107,7 +110,31 @@ GET /api/v1/projects/:id/deployments/:deploymentId/comparison?window=1h|6h|24h
 The history response includes `enabled`, `sync`, `deployments` and `versions`.
 Comparison responses include exact half-open before/after bounds, readiness time,
 invocation counts (null when unavailable), blocking reasons, warnings and metric
-values/deltas. Read-only routes reject writes and invalid/duplicate parameters.
+values/deltas, plus four fields that make a response self-describing:
+
+- `spec`: the exact comparison inputs, namely both sides' deployment id, version
+  ids and bounds, an optional operation scope, and the measurement identity
+  (measurement revision, observe filter revision, pricing revision). A verdict
+  is only comparable with another produced from the same `spec`.
+- `reasonCodes`: a closed set of codes, one for each entry in `reasons`.
+- `deferredObjects`: true when either deployment deferred Durable Object code
+  updates, which suppresses Durable Object and cost attribution.
+- `analyticsInvocations`: the per-bucket analytics `worker.invocations` that the
+  Worker-level metrics used, for each side. `statsctl verify` reconciles them
+  against the invocations the `stats-observe` tail counted (the coverage rule in
+  [Architecture](architecture.md#operations-and-coverage)).
+
+Read-only routes reject writes and invalid/duplicate parameters.
+
+The comparison route stays descriptive: it ranks Worker-level metrics and says
+why they are or are not trustworthy, but it never decides acceptance. The
+operation-scoped comparison in `src/compare/` divides CPU, wall time and SQLite
+rows and statements by one operation's own work unit (for example, per persisted
+sample for `host.ingest`) from the `stats-observe` operation tables, and applies
+guardrails for failed share, ingest persistence and coverage. `statsctl verify`
+runs it against a committed policy and is the acceptance gate. Its exit code and
+verdict, not this route's metrics, decide whether a candidate is accepted
+(`statsctl help verify`).
 Chart annotations use the existing event mechanism. Lines closer than three
 pixels merge into one counted marker, and a label is drawn only where it fits
 before the next line, so a wide range shows bare lines (hover lists the
@@ -162,11 +189,19 @@ are separate work, not implied by the new release timeline.
 
 ## Verification record
 
-Local: standalone fixture/SQLite tests and strict standalone TypeScript checking.
-The editing sandbox has Node 22, not the project's pinned Node 26, and cannot
-install the pinned Workers/Solid tooling. Full Workers runtime, lint, built UI,
-Playwright goldens, live permissions, API pagination/enrichment and production
-comparisons are **unverified**. No production deploy or Cloudflare writes were run.
+Production, as of 2026-11-05: tracking is enabled, `sync` is healthy and not
+truncated, and `stats` has recorded 46 deployments since 2026-11-01. Comparisons
+for those deployments were read from production through `statsctl` on
+2026-11-04 and 2026-11-05 using read-only requests; no Cloudflare writes were
+made to produce them.
+
+Local: the repository's pinned Node 26 and pnpm run the standalone fixture and
+SQLite tests, the Workers runtime suite, lint, the built UI and the Playwright
+goldens through `make cloudflare-test`, `make lint` and `make dashboard-test`.
+
+Not established by this record: how a rollback appears on the timeline, the
+behavior of a failed token, and the permissions of any token other than the one
+in use. Check those before relying on them.
 
 Primary API references:
 
