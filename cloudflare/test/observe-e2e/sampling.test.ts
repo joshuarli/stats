@@ -9,6 +9,7 @@ import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts"
 import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import type { Health, Exploration, ObjectMethods, StatsWindow } from "../../src/observe/core/store.ts";
 
 const COMPAT = { compatibilityDate: "2026-10-30", compatibilityFlags: ["nodejs_compat"] };
@@ -28,11 +29,16 @@ export class TenantStore extends DurableObject {
   async addToCart() { mark("store.rpc.addToCart"); return { ok: true }; }
 }
 function objectNotSharedWithConcurrentRequests(env) { return env.STORE.getByName(crypto.randomUUID()); }
+function traced(response) {
+  const span = tracing.getActiveSpan();
+  if (span !== undefined) response.headers.set("x-trace-id", span.spanContext().traceId);
+  return response;
+}
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path === "/cart/items") { mark("request.cart-add"); await objectNotSharedWithConcurrentRequests(env).addToCart(); return Response.json({ ok: true }); }
-    if (path === "/search") { mark("request.search"); return Response.json({ ok: true }); }
+    if (path === "/cart/items") { mark("request.cart-add"); await objectNotSharedWithConcurrentRequests(env).addToCart(); return traced(Response.json({ ok: true })); }
+    if (path === "/search") { mark("request.search"); return traced(Response.json({ ok: true })); }
     if (path === "/cart") { mark("request.cart"); return new Response("unavailable", { status: 500 }); }
     return new Response("static");
   }
@@ -55,7 +61,7 @@ export default {
 
 interface Shop {
   readonly mf: Miniflare;
-  send(path: string, method?: string): Promise<void>;
+  send(path: string, method?: string): Promise<string | null>;
   observe<T>(path: string): Promise<T>;
   collectorClockForward(ms: number): Promise<void>;
   dispose(): Promise<void>;
@@ -78,28 +84,49 @@ async function startShop(): Promise<Shop> {
   const collector = await mf.getWorker("stats-observe");
   return {
     mf,
-    send: async (path, method = "GET") => { await (await shop.fetch(`https://shop.example${path}`, { method })).arrayBuffer(); },
+    send: async (path, method = "GET") => {
+      const response = await shop.fetch(`https://shop.example${path}`, { method });
+      await response.arrayBuffer();
+      return response.headers.get("x-trace-id");
+    },
     observe: async <T>(path: string) => await (await collector.fetch(`https://observe/${SERVICE}${path}`)).json() as T,
     collectorClockForward: async ms => { await (await collector.fetch(`https://observe/clock-forward?ms=${ms}`)).arrayBuffer(); },
     dispose: async () => { await mf.dispose(); rmSync(persist, { recursive: true, force: true }); }
   };
 }
 
-async function sendAll(shop: Shop, requests: readonly (readonly [string, string])[]): Promise<void> {
-  for (let at = 0; at < requests.length; at += 50) await Promise.all(requests.slice(at, at + 50).map(([path, method]) => shop.send(path, method)));
+async function sendAll(shop: Shop, requests: readonly (readonly [string, string])[]): Promise<(string | null)[]> {
+  const traceIds: (string | null)[] = [];
+  for (let at = 0; at < requests.length; at += 50) traceIds.push(...await Promise.all(requests.slice(at, at + 50).map(([path, method]) => shop.send(path, method))));
+  return traceIds;
+}
+
+function keptByTraceHash(traceId: string | null): boolean {
+  return traceId !== null && fnv1a32(traceId) % MILLION < NANOSHOP_SAMPLING.keepPerMillion;
+}
+
+async function startClearOfBucketEnd(): Promise<void> {
+  const intoBucket = Date.now() % COUNT_BUCKET_MS;
+  if (intoBucket > COUNT_BUCKET_MS - 60_000) await new Promise(resolve => setTimeout(resolve, COUNT_BUCKET_MS - intoBucket + 1_000));
 }
 
 await test("a sampled service is counted exactly, keeps a trace's Worker and Durable Object invocations together, and keeps every failure", async () => {
   const shop = await startShop();
   try {
-    const carts = 1_000, searches = 1_000, failures = 4, assets = 20;
-    const requests: (readonly [string, string])[] = [
-      ...Array.from({ length: carts }, () => ["/cart/items", "POST"] as const),
-      ...Array.from({ length: searches }, () => ["/search", "GET"] as const),
+    const round = 1_000, failures = 4, assets = 20;
+    let carts = 0, searches = 0, cartKept = false, searchKept = false;
+    await startClearOfBucketEnd();
+    while (!cartKept || !searchKept) {
+      assert.ok(carts < 10 * round, `the trace hash kept no cart or no search request in ${carts} of each`);
+      cartKept = (await sendAll(shop, Array.from({ length: round }, () => ["/cart/items", "POST"] as const))).some(keptByTraceHash) || cartKept;
+      searchKept = (await sendAll(shop, Array.from({ length: round }, () => ["/search", "GET"] as const))).some(keptByTraceHash) || searchKept;
+      carts += round;
+      searches += round;
+    }
+    await sendAll(shop, [
       ...Array.from({ length: failures }, () => ["/cart", "GET"] as const),
       ...Array.from({ length: assets }, () => ["/static/app.css", "GET"] as const)
-    ];
-    await sendAll(shop, requests);
+    ]);
     const events = 2 * carts + searches + failures + assets;
     await until(() => shop.observe<Health>("/health"), value => value.liveInvocations >= failures, "the failures");
     await new Promise(resolve => setTimeout(resolve, 1_000));
@@ -156,8 +183,7 @@ await test("failures past the per-bucket cap are counted as failed but not store
   const shop = await startShop();
   try {
     const failures = 30;
-    const intoBucket = Date.now() % COUNT_BUCKET_MS;
-    if (intoBucket > COUNT_BUCKET_MS - 60_000) await new Promise(resolve => setTimeout(resolve, COUNT_BUCKET_MS - intoBucket + 1_000));
+    await startClearOfBucketEnd();
     await sendAll(shop, Array.from({ length: failures }, () => ["/cart", "GET"] as const));
     await until(() => shop.observe<Health>("/health"), value => value.liveInvocations >= ALWAYS_KEPT_PER_BUCKET, "the stored failures");
     let triggers = 0;
