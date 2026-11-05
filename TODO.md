@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 57
+Next: 58
+
+### STA-57 · P3 · A refactor makes a pre-existing error look like a new issue group
+
+- **Area:** Verification
+- **Where:** `cloudflare/src/cli/verify/decide.ts` (`issueGuardrail`), `cloudflare/src/observe/core/grouping.ts` (`fingerprint`)
+- **Problem:** The fingerprint hashes the in-app frames' function names, so a deploy that changes the call stack above a recurring error regroups it, and `new-issue-group` reports it as regressed. O2 (`d0fb1f45`) hit this: the `deployments.poll` error from `nanoshop-storied`'s missing Worker, which recurs every 5 minutes, was last seen under `31f2f398` at 15:50:49Z and first seen under `8ba50543` at 15:55:49Z with a new fingerprint. An unattended loop would roll that deploy back.
+- **Recommendation:** When a candidate-first group has the same operation and error name as a group seen in the before window, report it as `regrouped`, naming both fingerprints, and have `verify` exit as confounded instead of regressed. That way the loop asks a person instead of rolling back, and a genuinely new error name or operation still regresses.
+- **Fix with:** none
+- **Effort:** S
 
 ### STA-56 · P3 · Explore hides a sampled route that has no kept invocation
 
