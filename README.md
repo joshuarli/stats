@@ -189,8 +189,8 @@ range, each against the range before it, plus its last deploy and collector
 state; a row expands to its request, CPU per request, 5xx, and endpoint or
 storage trends. A project page (`#/project/<id>`) opens with a cost
 ledger: the monthly list-price cost projected from the last settled hour, its
-change from the hour before, this month's spend so far with a dashed
-projection to month end, and a tree you can expand from component (Worker, Durable Objects,
+change from the hour before, what this month is billed beyond the
+$5 plan's allowances so far, with a dashed projection to month end, and a tree you can expand from component (Worker, Durable Objects,
 D1, R2 storage) to route, method, statement, or bucket, with calls, CPU or wall
 time per call, and their change. Health pills for the 5xx share, open errors,
 endpoints, and the last deploy sit beside the name. Deployments, errors, the

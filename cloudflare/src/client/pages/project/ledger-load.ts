@@ -5,8 +5,7 @@ import { errorMessage } from "../../format";
 import type { MetricHistory, ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
-import type { Track } from "../../columns";
-import { buildLedger, previousWindowOf, spendOf, type Ledger, type LedgerHistories, type ObjectMethods } from "./cost-ledger";
+import { buildLedger, planBill, previousWindowOf, type Ledger, type LedgerHistories, type ObjectMethods, type PlanBill } from "./cost-ledger";
 import { provisionalFromMs } from "./series";
 
 export type Baseline =
@@ -113,7 +112,8 @@ export function monthOf(atMs: number): TimeWindow {
 
 export interface MonthSpend {
   readonly month: TimeWindow;
-  readonly spent: Track;
+  readonly settledMs: number;
+  readonly bill: PlanBill;
 }
 
 export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {
@@ -126,8 +126,7 @@ export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor
     onCleanup(() => controller.abort());
     getProjectHistories(project().id, window, historyKinds(project()), controller.signal).then(histories => {
       if (controller.signal.aborted) return;
-      const ledger = buildLedger({ current: ledgerHistories(histories), previous: undefined, window, previousWindow: previousWindowOf(window), buckets: project().buckets, databases: project().d1Databases, objectMethods: undefined });
-      setSpend({ month, spent: spendOf(ledger) });
+      setSpend({ month, settledMs: window.toMs, bill: planBill(ledgerHistories(histories), window, project().buckets, project().d1Databases) });
       setError(null);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(errorMessage(cause));

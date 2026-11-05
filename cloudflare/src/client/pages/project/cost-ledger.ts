@@ -1,7 +1,7 @@
 import type { TimeWindow } from "../../chart-data";
 import type { Track } from "../../columns";
 import { metricTrack, type MetricHistory } from "../../history";
-import { BYTES_PER_GB, DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_GB_MONTH, LIST_PRICE_PER_MILLION } from "../../pricing";
+import { BYTES_PER_GB, DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_GB_MONTH, LIST_PRICE_PER_MILLION, WORKERS_PAID_INCLUDED } from "../../pricing";
 import type { ObjectMethodStats } from "../../../observe/core/store";
 import { holdLast } from "./math";
 
@@ -418,32 +418,120 @@ function r2Line(input: LedgerInput): CostLine | null {
   };
 }
 
-function accrued(track: Track, window: TimeWindow): Track {
-  const times: number[] = [];
-  const values: number[] = [];
-  let total = 0;
-  track.times.forEach((time, index) => {
-    const start = Math.max(time, window.fromMs);
-    const end = Math.min(track.times[index + 1] ?? window.toMs, window.toMs);
-    const rate = track.values[index];
-    if (end <= start || rate === null || rate === undefined) return;
-    total += (rate * (end - start)) / MONTH_MS;
-    times.push(end);
-    values.push(total);
-  });
-  return { times, values };
+export type Meter = keyof typeof WORKERS_PAID_INCLUDED;
+export type MeterUsage = Readonly<Record<Meter, number>>;
+
+function usageOf(units: (meter: Meter) => number): Record<Meter, number> {
+  return {
+    workerRequests: units("workerRequests"),
+    workerCpuMs: units("workerCpuMs"),
+    durableObjectRequests: units("durableObjectRequests"),
+    durableObjectGbSeconds: units("durableObjectGbSeconds"),
+    d1RowsWritten: units("d1RowsWritten"),
+    d1RowsRead: units("d1RowsRead"),
+    r2Storage: units("r2Storage"),
+    d1Storage: units("d1Storage"),
+    durableObjectStorage: units("durableObjectStorage")
+  };
 }
 
-export function spendOf(ledger: Ledger): Track {
-  const tracks = ledger.lines.map(line => line.trend).filter(track => track !== null).map(track => accrued(track, ledger.window));
-  const times = [...new Set([ledger.window.fromMs, ...tracks.flatMap(track => track.times)])].sort((left, right) => left - right);
-  const cursors = tracks.map(() => -1);
-  const values = times.map(time => tracks.reduce((sum, track, index) => {
-    let cursor = cursors[index]!;
-    while (cursor + 1 < track.times.length && track.times[cursor + 1]! <= time) cursor += 1;
-    cursors[index] = cursor;
-    return sum + (cursor < 0 ? 0 : track.values[cursor] ?? 0);
-  }, 0));
+const UNIT_PRICE: MeterUsage = {
+  workerRequests: LIST_PRICE_PER_MILLION.workerRequests / 1_000_000,
+  workerCpuMs: LIST_PRICE_PER_MILLION.workerCpuMs / 1_000_000,
+  durableObjectRequests: LIST_PRICE_PER_MILLION.durableObjectRequests / 1_000_000,
+  durableObjectGbSeconds: LIST_PRICE_PER_MILLION.durableObjectGbSeconds / 1_000_000,
+  d1RowsWritten: LIST_PRICE_PER_MILLION.d1RowsWritten / 1_000_000,
+  d1RowsRead: LIST_PRICE_PER_MILLION.d1RowsRead / 1_000_000,
+  r2Storage: LIST_PRICE_PER_GB_MONTH.r2Storage,
+  d1Storage: LIST_PRICE_PER_GB_MONTH.d1Storage,
+  durableObjectStorage: LIST_PRICE_PER_GB_MONTH.durableObjectStorage
+};
+
+export function billedBeyondPlan(usage: MeterUsage): number {
+  return Object.values(usageOf(meter => Math.max(0, usage[meter] - WORKERS_PAID_INCLUDED[meter]) * UNIT_PRICE[meter])).reduce((sum, value) => sum + value, 0);
+}
+
+interface Accrual {
+  readonly atMs: number;
+  readonly meter: Meter;
+  readonly units: number;
+}
+
+function counterAccruals(meter: Meter, history: MetricHistory | undefined, name: string, window: TimeWindow, scale = 1): Accrual[] {
+  if (history === undefined) return [];
+  const track = metricTrack(history, name);
+  return track.times.flatMap((time, index) => {
+    const value = track.values[index];
+    return time >= window.fromMs && time < window.toMs && value !== null && value !== undefined
+      ? [{ atMs: Math.min(time + history.stepMs, window.toMs), meter, units: value * scale }]
+      : [];
+  });
+}
+
+function storedAccruals(meter: Meter, history: MetricHistory | undefined, name: string, window: TimeWindow): Accrual[] {
+  if (history === undefined) return [];
+  const held = holdLast(metricTrack(history, name));
+  return held.times.flatMap((time, index) => {
+    const bytes = held.values[index];
+    const start = Math.max(time, window.fromMs);
+    const end = Math.min(held.times[index + 1] ?? window.toMs, window.toMs);
+    return end > start && bytes !== null && bytes !== undefined
+      ? [{ atMs: end, meter, units: (bytes / BYTES_PER_GB) * ((end - start) / MONTH_MS) }]
+      : [];
+  });
+}
+
+export interface PlanBill {
+  readonly billed: Track;
+  readonly usage: MeterUsage;
+}
+
+export function planBill(histories: LedgerHistories, window: TimeWindow, buckets: readonly string[], databases: readonly string[]): PlanBill {
+  const accruals = [
+    ...counterAccruals("workerRequests", histories.worker, "worker.invocations", window),
+    ...counterAccruals("workerCpuMs", histories.worker, "worker.cpuMsSum", window),
+    ...counterAccruals("durableObjectRequests", histories.durableObjects, "do.invocations", window),
+    ...counterAccruals("durableObjectGbSeconds", histories.durableObjects, "do.wallMsSum", window, DURABLE_OBJECT_MEMORY_GB / 1000),
+    ...counterAccruals("d1RowsRead", histories.d1, "d1.rowsRead", window),
+    ...counterAccruals("d1RowsWritten", histories.d1, "d1.rowsWritten", window),
+    ...storedAccruals("durableObjectStorage", histories.durableObjects, OBJECT_STORAGE_METRIC, window),
+    ...databases.flatMap(database => storedAccruals("d1Storage", histories.d1, `d1.${database}.storageBytes`, window)),
+    ...buckets.flatMap(bucket => storedAccruals("r2Storage", histories.r2, `r2.${bucket}.storageBytes`, window))
+  ].sort((left, right) => left.atMs - right.atMs);
+  const usage = usageOf(() => 0);
+  const times = [window.fromMs];
+  const values = [0];
+  for (const accrual of accruals) {
+    usage[accrual.meter] += accrual.units;
+    const billed = billedBeyondPlan(usage);
+    if (times.at(-1) === accrual.atMs) values[values.length - 1] = billed;
+    else { times.push(accrual.atMs); values.push(billed); }
+  }
+  return { billed: { times, values }, usage };
+}
+
+export function monthlyUsage(ledger: Ledger): MeterUsage {
+  const usage = usageOf(() => 0);
+  const stored = (line: CostLine | undefined) => (line?.usage.kind === "stored" ? line.usage.bytes.now / BYTES_PER_GB : 0);
+  for (const line of ledger.lines) {
+    const kind = line.usage;
+    if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = kind.calls.now; usage.workerCpuMs = kind.cpuMs.now; }
+    if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls.now; usage.durableObjectGbSeconds = (kind.wallMs.now / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
+    if (kind.kind === "rows") { usage.d1RowsRead = kind.read.now; usage.d1RowsWritten = kind.written.now; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
+    if (line.kind === "r2") usage.r2Storage = stored(line);
+  }
+  return usage;
+}
+
+const PROJECTION_POINTS = 48;
+
+export function projectedBill(bill: PlanBill, fromMs: number, toMs: number, monthly: MeterUsage): Track {
+  const span = Math.max(0, toMs - fromMs);
+  const times = Array.from({ length: PROJECTION_POINTS + 1 }, (_, index) => fromMs + (span * index) / PROJECTION_POINTS);
+  const values = times.map(time => {
+    const elapsed = (time - fromMs) / MONTH_MS;
+    return billedBeyondPlan(usageOf(meter => bill.usage[meter] + monthly[meter] * elapsed));
+  });
   return { times, values };
 }
 

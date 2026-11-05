@@ -6,8 +6,8 @@ import { Segmented } from "../../components/ui";
 import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
 import { holdLast } from "./math";
-import type { Track } from "../../columns";
-import { isResidual, MONTH_MS, monthlyOf, type Amount, type CostLine, type Ledger, type LedgerHistories } from "./cost-ledger";
+import { WORKERS_PAID_MONTHLY_FEE } from "../../pricing";
+import { isResidual, MONTH_MS, monthlyOf, monthlyUsage, projectedBill, type Amount, type CostLine, type Ledger, type LedgerHistories } from "./cost-ledger";
 import type { MonthSpend } from "./ledger-load";
 import "./cost-ledger.css";
 
@@ -179,29 +179,23 @@ function Detail(props: { readonly line: CostLine; readonly histories: LedgerHist
   return <div class="ledger-detail"><div class="ledger-facts">{facts()}</div>{charts()}</div>;
 }
 
-function projectedSpend(spend: MonthSpend, monthly: number): { readonly spent: number; readonly projected: Track } {
-  const lastIndex = spend.spent.times.length - 1;
-  const fromMs = spend.spent.times[lastIndex] ?? spend.month.fromMs;
-  const spent = spend.spent.values[lastIndex] ?? 0;
-  const end = spent + (monthly * Math.max(0, spend.month.toMs - fromMs)) / MONTH_MS;
-  return { spent, projected: { times: [fromMs, spend.month.toMs], values: [spent, end] } };
-}
-
-function MonthChart(props: { readonly spend: MonthSpend; readonly monthly: number }): JSX.Element {
-  const view = () => projectedSpend(props.spend, props.monthly);
-  const end = () => view().projected.values[1] ?? 0;
+function MonthChart(props: { readonly spend: MonthSpend; readonly ledger: Ledger }): JSX.Element {
+  const projected = createMemo(() => projectedBill(props.spend.bill, props.spend.settledMs, props.spend.month.toMs, monthlyUsage(props.ledger)));
+  const spent = () => props.spend.bill.billed.values.at(-1) ?? 0;
+  const end = () => projected().values.at(-1) ?? 0;
   return (
     <div class="ledger-month">
-      <PanelLabel>This month: {dollarsPrecise(view().spent)} so far, {dollarsPrecise(end())} by month end at the rate above</PanelLabel>
+      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {dollarsPrecise(spent())} so far, {dollarsPrecise(end())} by month end at the rate above</PanelLabel>
       <PanelChart
-        label="Spend this month"
+        label="Billed this month"
         series={() => [
-          { label: "spent", color: "blue", track: props.spend.spent },
-          { label: "projected", color: "blue", track: view().projected, dashed: true }
+          { label: "billed", color: "blue", track: props.spend.bill.billed },
+          { label: "projected", color: "blue", track: projected(), dashed: true }
         ]}
         format={value => dollarsPrecise(value)}
         min={0}
       />
+      <span class="ledger-month-note">Usage beyond the Workers Paid allowances at list price, counted from the 1st (UTC) as if this project had the account's allowances to itself.</span>
     </div>
   );
 }
@@ -306,7 +300,7 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
             </button>
           )}</For>
         </div>
-        <Show when={props.spend}>{spend => <MonthChart spend={spend()} monthly={total()} />}</Show>
+        <Show when={props.spend}>{spend => <MonthChart spend={spend()} ledger={props.ledger} />}</Show>
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">

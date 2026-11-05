@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Table } from "../src/client/columns";
 import type { MetricHistory } from "../src/client/history";
-import { buildLedger, monthlyOf, previousWindowOf, spendOf, type CostLine, type LedgerHistories, type LedgerInput } from "../src/client/pages/project/cost-ledger";
+import { buildLedger, monthlyOf, planBill, previousWindowOf, projectedBill, type CostLine, type LedgerHistories, type LedgerInput } from "../src/client/pages/project/cost-ledger";
 import { tableView, type Cell } from "./support/history";
 
 const H = 3_600_000;
@@ -147,17 +147,30 @@ describe("project cost ledger", () => {
     expect(ledger.monthly.now).toBeCloseTo(ledger.lines.reduce((sum, entry) => sum + now(entry), 0), 9);
   });
 
-  it("accrues spend bucket by bucket inside the window, with storage billed for the time it was held", () => {
+  it("bills only usage beyond the Workers Paid allowances, bucket by bucket inside the window", () => {
     const database = "9870c4da-3758-4f0c-ab6d-2372eb34009b";
     const current = histories(T0, {
-      worker: { "worker.invocations": [1_000_000, 1_000_000, 9e9], "worker.cpuMsSum": [0, 0, 9e9] },
+      worker: { "worker.invocations": [6_000_000, 6_000_000, 9e9], "worker.cpuMsSum": [0, 0, 9e9] },
       d1: { "d1.rowsRead": [0, 0, 9e9], "d1.rowsWritten": [1_000_000, 0, 9e9], "d1.queries": [1, 0, 9e9], [`d1.${database}.storageBytes`]: [10e9, 10e9, 10e9] }
     });
-    const spend = spendOf(buildLedger(input(current, undefined, { databases: [database] })));
-    const storagePerHour = (10 * 0.75) / (30 * 24);
-    expect(spend.times).toEqual([T0, T0 + H, T0 + 2 * H]);
-    expect(spend.values[0]).toBe(0);
-    expect(spend.values[1]).toBeCloseTo(0.3 + 1 + storagePerHour, 9);
-    expect(spend.values[2]).toBeCloseTo(0.6 + 1 + 2 * storagePerHour, 9);
+    const bill = planBill(current, WINDOW, [], [database]);
+    expect(bill.billed.times).toEqual([T0, T0 + H, T0 + 2 * H]);
+    expect(bill.billed.values[1]).toBe(0);
+    expect(bill.billed.values[2]).toBeCloseTo(2 * 0.3, 9);
+    expect(bill.usage.workerRequests).toBe(12_000_000);
+    expect(bill.usage.d1RowsWritten).toBe(1_000_000);
+    expect(bill.usage.d1Storage).toBeCloseTo((10 * 2) / (30 * 24), 9);
+  });
+
+  it("projects each meter at its monthly rate and bills it only once it passes its allowance", () => {
+    const usage = { workerRequests: 9_000_000, workerCpuMs: 0, durableObjectRequests: 0, durableObjectGbSeconds: 0, d1RowsWritten: 0, d1RowsRead: 0, r2Storage: 0, d1Storage: 0, durableObjectStorage: 0 };
+    const monthly = { ...usage, workerRequests: 30_000_000 };
+    const halfMonth = 15 * 24 * H;
+    const projected = projectedBill({ billed: { times: [T0], values: [0] }, usage }, T0, T0 + halfMonth, monthly);
+    expect(projected.times[0]).toBe(T0);
+    expect(projected.times.at(-1)).toBe(T0 + halfMonth);
+    expect(projected.values[0]).toBe(0);
+    expect(projected.values[1]).toBe(0);
+    expect(projected.values.at(-1)).toBeCloseTo((9 + 15 - 10) * 0.3, 9);
   });
 });

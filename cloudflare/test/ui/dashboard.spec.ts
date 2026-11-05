@@ -791,8 +791,8 @@ test("the project page leads with a cost ledger and keeps every other section cl
   await expect(page.locator(".widget")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
-  await expect(ledger.getByRole("img", { name: /^Spend this month;/u })).toBeVisible();
-  await expect(ledger.locator(".ledger-month")).toContainText(/^This month: \$[\d.,]+ so far, \$[\d.,]+ by month end at the rate above/u);
+  await expect(ledger.getByRole("img", { name: /^Billed this month;/u })).toBeVisible();
+  await expect(ledger.locator(".ledger-month")).toContainText(/^Billed beyond the \$5 plan this month: \$0 so far, \$0 by month end at the rate above/u);
 
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);

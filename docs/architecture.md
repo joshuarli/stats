@@ -374,10 +374,16 @@ it actually covers, so a collector gap is not read as savings. A previous
 window that starts after the history's retention has no baseline, and its
 lines show no change.
 
-Below the total, a chart shows this UTC calendar month's list-price spend so far
-as a solid line, read from a third history window that starts at the month's
-first instant, and a dashed line from there to the month's end at the ledger's
-projected rate. Storage accrues for the time it was held at its GB-month price.
+Below the total, a chart shows what this UTC calendar month would be billed beyond
+the Workers Paid plan's $5 fee: each meter (Worker requests and CPU, Durable Object
+requests, GB-seconds, and storage, D1 rows read and written and storage, R2
+storage) accrues from a third history window that starts at the month's first
+instant, its plan allowance (`WORKERS_PAID_INCLUDED` in `pricing.ts`) is
+subtracted, and the remainder is priced at list price. Storage accrues GB-months
+for the time it was held. A dashed line extends every meter to the month's end at
+the ledger's projected rate and applies the same allowances, so it bends where a
+meter crosses its allowance. The allowances are account-wide, and the chart
+assumes this project uses them alone.
 
 Durable Object duration is billed per object while it is active, and
 overlapping requests share one meter. Summed request wall time is therefore
