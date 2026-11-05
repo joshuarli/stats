@@ -1,6 +1,6 @@
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history";
-import type { RangeKey } from "../limits";
-import { WORKER_BILLINGS, type WorkerBilling } from "../projects/config";
+import { decodeProject, type ProjectSummary } from "./project-model.ts";
+import { projectHistoryPath, windowParams, type HistoryQuery } from "./project-ledger.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
 
 export interface Host {
@@ -34,31 +34,10 @@ export interface HostSystem {
   readonly system: SystemInfo;
 }
 
-export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
+export type { HistoryQuery };
 
-export interface ProbeTarget {
-  readonly name: string;
-  readonly url: string;
-}
-
-export interface CollectorState {
-  readonly lastRunAtMs: number | null;
-  readonly lastSuccessAtMs: number | null;
-  readonly lastError: string | null;
-  readonly stale: boolean;
-}
-
-export interface Project {
-  readonly id: string;
-  readonly name: string;
-  readonly worker: string;
-  readonly workerBilling: WorkerBilling;
-  readonly buckets: readonly string[];
-  readonly durableObjectNamespaces: readonly string[];
-  readonly d1Databases: readonly string[];
-  readonly probes: readonly ProbeTarget[];
-  readonly collector: CollectorState;
-}
+export type { CollectorState, ProbeTarget } from "./project-model.ts";
+export type Project = ProjectSummary;
 
 type JsonObject = { readonly [key: string]: unknown };
 
@@ -110,40 +89,6 @@ function decodeHost(value: unknown): Host {
     revoked: boolean(entry.revoked),
     lastReceivedAtMs: entry.lastReceivedAtMs === null ? null : number(entry.lastReceivedAtMs),
     online: boolean(entry.online)
-  };
-}
-
-function workerBilling(value: unknown): WorkerBilling {
-  const found = WORKER_BILLINGS.find(billing => billing === value);
-  if (found === undefined) throw new Error("expected a worker billing");
-  return found;
-}
-
-function nullable<T>(value: unknown, decode: (entry: unknown) => T): T | null {
-  return value === null ? null : decode(value);
-}
-
-function decodeProject(value: unknown): Project {
-  const entry = record(value);
-  const collector = record(entry.collector);
-  return {
-    id: string(entry.id),
-    name: string(entry.name),
-    worker: string(entry.worker),
-    workerBilling: workerBilling(entry.workerBilling),
-    buckets: array(entry.buckets, string),
-    durableObjectNamespaces: array(entry.durableObjectNamespaces, string),
-    d1Databases: array(entry.d1Databases, string),
-    probes: array(entry.probes, probe => {
-      const target = record(probe);
-      return { name: string(target.name), url: string(target.url) };
-    }),
-    collector: {
-      lastRunAtMs: nullable(collector.lastRunAtMs, number),
-      lastSuccessAtMs: nullable(collector.lastSuccessAtMs, number),
-      lastError: nullable(collector.lastError, string),
-      stale: boolean(collector.stale)
-    }
   };
 }
 
@@ -272,21 +217,13 @@ export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
   return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
 }
 
-function windowParams(query: HistoryQuery): string {
-  return "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
-}
-
 export function getProjectHistories(
   projectId: string,
   query: HistoryQuery,
   options: { readonly durableObjects: boolean; readonly d1: boolean; readonly probes: boolean },
   signal: AbortSignal
 ): Promise<ProjectHistories> {
-  const kinds = ["worker", "routes", "r2", "collector"];
-  if (options.durableObjects) kinds.push("durable-objects");
-  if (options.d1) kinds.push("d1", "d1-statements");
-  if (options.probes) kinds.push("probes");
-  return getHistory(`/api/v1/projects/${encodeURIComponent(projectId)}/history?${windowParams(query)}&kinds=${kinds.join(",")}`, decodeProjectHistories, projectCache, signal);
+  return getHistory(projectHistoryPath(projectId, query, options), decodeProjectHistories, projectCache, signal);
 }
 
 export async function getSystem(hostId: string, signal: AbortSignal): Promise<HostSystem | null> {

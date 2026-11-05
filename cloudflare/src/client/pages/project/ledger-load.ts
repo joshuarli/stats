@@ -2,13 +2,15 @@ import { createEffect, createMemo, createSignal, onCleanup, type Accessor } from
 import { getProjectHistories, type Project } from "../../api";
 import type { TimeWindow } from "../../chart-data";
 import { errorMessage } from "../../format";
-import type { MetricHistory, ProjectHistories } from "../../history";
+import type { ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
-import { previousWindowOf, type LedgerHistories, type ObjectMethods } from "../../../cost/ledger.ts";
-import { PRICING_REVISION } from "../../../cost/pricing.ts";
-import { buildCostReport, utcMonthOf, type CostReport, type PlanMonthInput } from "../../../cost/report.ts";
-import { provisionalFromMs } from "./series";
+import { previousWindowOf } from "../../../cost/ledger.ts";
+import { utcMonthOf, type PlanMonthInput } from "../../../cost/report.ts";
+import { assembleProjectLedger, baselineMethodsRetained, historyKinds, ledgerHistories, objectMethodsOf, observeObjectsPath, settledWindow, type ProjectLedger } from "../../project-ledger.ts";
+import type { ObjectMethods } from "../../../cost/ledger.ts";
+
+export { historyKinds, ledgerHistories, settledWindow, type ProjectLedger };
 
 export type Baseline =
   | { readonly kind: "loaded"; readonly histories: ProjectHistories }
@@ -23,34 +25,10 @@ interface LedgerLoad {
   readonly loadedAtMs: number;
 }
 
-export interface ProjectLedger {
-  readonly report: CostReport;
-  readonly histories: LedgerHistories;
-  readonly previous: LedgerHistories | undefined;
-}
-
 export interface ObjectMethodSource {
   readonly read: ObserveRead;
   readonly retentionMs: number;
   readonly now: Accessor<number>;
-}
-
-export function ledgerHistories(histories: ProjectHistories): LedgerHistories {
-  return { worker: histories.worker, routes: histories.routes, r2: histories.r2, durableObjects: histories["durable-objects"], d1: histories.d1, d1Statements: histories["d1-statements"] };
-}
-
-export function settledWindow(worker: MetricHistory, rangeMs: number, view: TimeWindow | null): TimeWindow {
-  const settled = provisionalFromMs(worker);
-  if (view !== null) return { fromMs: view.fromMs, toMs: Math.max(view.fromMs, Math.min(view.toMs, settled)) };
-  return { fromMs: settled - rangeMs, toMs: settled };
-}
-
-export function historyKinds(project: Project) {
-  return { durableObjects: project.durableObjectNamespaces.length > 0, d1: project.d1Databases.length > 0, probes: project.probes.length > 0 };
-}
-
-function span(bounds: TimeWindow): URLSearchParams {
-  return new URLSearchParams({ from: String(Math.round(bounds.fromMs)), to: String(Math.round(bounds.toMs)) });
 }
 
 export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
@@ -66,9 +44,9 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     const methods = objects === null || !kinds.durableObjects ? Promise.resolve(undefined) : Promise.all([
-      objects.read(`/objects?${span(current)}`, controller.signal, decodeObjectMethods),
-      previous.fromMs >= objects.now() - objects.retentionMs ? objects.read(`/objects?${span(previous)}`, controller.signal, decodeObjectMethods) : Promise.resolve(null)
-    ]).then(([now, before]): ObjectMethods => ({ now: now.methods, before: before?.methods ?? null }), () => undefined);
+      objects.read(observeObjectsPath(current), controller.signal, decodeObjectMethods),
+      baselineMethodsRetained(previous, objects.now(), objects.retentionMs) ? objects.read(observeObjectsPath(previous), controller.signal, decodeObjectMethods) : Promise.resolve(null)
+    ]).then(([now, before]): ObjectMethods => objectMethodsOf(now, before), () => undefined);
     void Promise.all([
       getProjectHistories(project().id, current, kinds, controller.signal),
       getProjectHistories(project().id, previous, kinds, controller.signal)
@@ -85,22 +63,15 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
   const ledger = createMemo((): ProjectLedger | null => {
     const loaded = load();
     if (loaded === null) return null;
-    const histories = ledgerHistories(loaded.current);
-    const previous = loaded.baseline.kind === "loaded" ? ledgerHistories(loaded.baseline.histories) : undefined;
-    return {
-      histories,
-      previous,
-      report: buildCostReport({
-        nowMs: loaded.loadedAtMs,
-        pricingRevision: PRICING_REVISION,
-        project: project(),
-        windows: { current: loaded.window, previous: loaded.previous },
-        current: histories,
-        previous,
-        objectMethods: loaded.objectMethods,
-        planMonth: planMonth() ?? undefined
-      })
-    };
+    return assembleProjectLedger({
+      nowMs: loaded.loadedAtMs,
+      project: project(),
+      windows: { current: loaded.window, previous: loaded.previous },
+      current: loaded.current,
+      baseline: loaded.baseline.kind === "loaded" ? loaded.baseline.histories : undefined,
+      objectMethods: loaded.objectMethods,
+      planMonth: planMonth() ?? undefined
+    });
   });
   const baselineError = () => {
     const loaded = load();

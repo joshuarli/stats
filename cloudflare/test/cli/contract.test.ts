@@ -53,7 +53,7 @@ await test("a usage error in --json mode is one failure document", async () => {
 
 await test("planned commands parse their options and exit 4 not_implemented without touching the network", async () => {
   await withOrigin((_, response) => { response.end("{}"); }, async origin => {
-    const run = await jsonRun(origin, ["cost", "--project", "stats", "--window", "1h"]);
+    const run = await jsonRun(origin, ["verify", "--project", "stats", "--deployment", "d1", "--policy", "p.json"]);
     assert.equal(run.code, EXIT.transport);
     assert.equal(errorOf(run.stdout).code, "not_implemented");
     assert.equal(origin.connections(), 0);
