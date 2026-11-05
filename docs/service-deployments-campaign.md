@@ -14,9 +14,16 @@
   - Live: `make node-deploy` of `0cbd55e3575d` recorded marker `v-0cbd55e3575d` (deployment `0b1a438a`), `statsctl service deployments` on the tailnet origin lists it, and a repeat answers `created: false`.
   - On the threadripper instance: host `threadripper` (`h_a191bab6…`, token in `.work/credentials/node-threadripper-host.json`) and service `stats-node`. No agent reports to that host yet.
   - Tests: test:cli 124, test:node 27, node-e2e 5, vitest 305, lint clean.
+- **Merged, live comparison pending:** S3 (`7efe7b6`..`9f06f82`):
+  - `GET /api/v1/services/<name>/deployments/<id>/comparison?window=1h|6h|24h` on both targets: the project `DeploymentComparison` plus `hostIds` and `sources`, gated by the shared `gateDeployment`, settle 15 minutes. It compares the hosts named in the marker. `ReasonCode` gains `no-data`.
+  - Node runs service probes every 5 minutes into `project_samples` under owner `service:<name>`; the Worker runs none, so probes are unavailable on Cloudflare.
+  - `statsctl verify --service NAME --deployment ID|latest --policy FILE`, level metrics only, with the Decision 6 caveat; `#/services` and `#/service/NAME` pages with WebP goldens.
+  - Tests: `make cloudflare-test lint dashboard-test node-e2e` green (Playwright 120, test:node 33, test:cli 129).
+  - Live: a marked `make node-deploy` at or after 17:20Z, then the comparison after about 18:35Z.
 - **Red:** none. **Parked:** none.
-- **Next:** S3. Carry-overs:
+- **Next:** S3 live comparison, then S4. Carry-overs:
   - Deploy tokens have no rotate or revoke yet.
+  - Host network and disk throughput are averaged across a marker's hosts, not summed; level values are unrounded.
   - Host data for `stats-node` (owner, 2026-11-05): a second agent, `/usr/local/bin/stats` run as `josh` with `~/.config/stats-node-agent/agent.json`, reports host `threadripper` to `https://threadripper.tailcf741.ts.net:18791`, a `tailscale serve --https` entry on the Node socket. `/etc/hosts` maps that name to `100.98.145.91`, because the host's local resolver does not forward `*.ts.net`. It was started with `setsid nohup`, so it does not survive a reboot. The container has no network, so probes stay unavailable.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
