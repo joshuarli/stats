@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 47
+Next: 48
+
+### STA-47 · P1 · usr-memories D1 writes about 57M rows a day
+
+- **Area:** Cost
+- **Where:** `~/usr/agent-memory/cloudflare/src/db.ts`, `cloudflare/src/projects/queries.ts` (`d1Query`)
+- **Problem:** On 2026-11-05, for the 24 hours to about 05:15 UTC, raw `events.d1Queries` for database `9870c4da` holds 971,427 queries, 56,990,826 rows written and 83,455,727 rows read. `statsctl cost --all --window 24h` priced it at $1,805 a month list price (1.80B rows written a month), which matches the raw totals. The Workers Paid allowance is 50M rows written a month, so a sustained rate passes it in under a day; at $1 per million the overage would be about $1,750 a month. The previous 24 hours were about a quarter of that. Unproven: whether this is a finite restore or backfill (as on 2026-11-01) or a new steady state, and which statements write the rows.
+- **Recommendation:** Run `pnpm --dir cloudflare -s statsctl cost --project usr-memories --window 24h --json` and read the D1 statement children for the top writers, then check the current account invoice. If it is steady state, change the write path in usr-memories; that is outside this repo.
+- **Fix with:** make-it-fast
+- **Effort:** M
 
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
