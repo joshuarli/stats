@@ -373,7 +373,9 @@ it plugs into the handler:
   single-writer guarantee the Durable Object gives. Retention runs on the
   timer scheduler.
 - **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
-  accepted only when the TCP peer is loopback and its `Tailscale-User-Login`
+  accepted only when the TCP peer is loopback (or the connection is on the
+  Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
+  reachable only through filesystem permissions) and its `Tailscale-User-Login`
   header is in `STATS_ALLOWED_LOGINS`; otherwise it gets `401 unauthorized`
   before any data is read. The server is meant to sit behind
   `tailscale serve`, which sets that header for tailnet users. Ingest ignores

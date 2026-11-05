@@ -321,7 +321,7 @@ cd cloudflare && \
 | Variable | Meaning |
 | --- | --- |
 | `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
-| `STATS_LISTEN` | `IPV4:PORT` or `[IPV6]:PORT`. Default `127.0.0.1:18791`; port `0` picks a free one. |
+| `STATS_LISTEN` | `IPV4:PORT`, `[IPV6]:PORT`, or `unix:/absolute/path.sock`. Default `127.0.0.1:18791`; port `0` picks a free one. A socket's directory must exist; a stale socket file is replaced, a live one stops startup with exit 2, and the socket is `0600` and removed on shutdown. |
 | `STATS_ALLOWED_LOGINS` | Required. Comma-separated Tailscale logins allowed to read the API and dashboard. |
 
 A missing or invalid value stops startup with exit code 2 and a
@@ -330,9 +330,11 @@ A missing or invalid value stops startup with exit code 2 and a
 stops accepting connections, finishes requests in flight, closes the
 database, and exits 0.
 
-Every path other than `/health` and ingest needs a loopback peer and an
-allowed `Tailscale-User-Login` header, which `tailscale serve` adds for
-tailnet users:
+Every path other than `/health` and ingest needs an allowed
+`Tailscale-User-Login` header, which `tailscale serve` adds for tailnet users,
+and a loopback TCP peer. A connection on a Unix socket has no TCP peer and is
+trusted as transport, because only the owning user and root can open it; it
+still needs the header:
 
 ```sh
 tailscale serve --bg --http=18790 http://127.0.0.1:18791
@@ -359,16 +361,25 @@ because the image is tagged with the commit. It builds the dashboard here,
 copies `cloudflare/src`, the built assets, and `deploy/node/Dockerfile` to
 `~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
 there from `node:26.12.1-alpine`, which is the only image on the host it
-uses. It then replaces the `stats-node` container, which runs as `node` on
-the host network and listens on `127.0.0.1:18791`. The container keeps the
-database in `~/.local/share/stats-node` and is started with
-`--restart unless-stopped`. The deploy waits for `/health` and prints the
-tag, with the full output in `.work/tmp/node-deploy.log`.
+uses. It then replaces the `stats-node` container, which runs as `node`
+with `--network none` and listens on `unix:/run/stats/stats.sock`. The
+container keeps the database in `~/.local/share/stats-node`, mounts the
+`0700` directory `~/.local/share/stats-node-run` at `/run/stats`, and is
+started with `--restart unless-stopped`. The deploy waits for `/health` over
+the socket with `docker exec` and prints the tag, with the full output in
+`.work/tmp/node-deploy.log`.
 
-The container uses the host network because Docker's bridge network would
-present every request as coming from its gateway, and the auth adapter
-trusts loopback peers only. The tailnet reaches the server only through
-`tailscale serve`; nothing else listens beyond loopback. The deploy stops
+The container has no network at all: Docker's bridge network would present
+every request as coming from its gateway, and host networking would put a
+listener on the host, so the only way in is the socket (`Decision 1` in
+`docs/portable-core-campaign.md`). Expose it to the tailnet with
+`tailscale serve` running as root:
+
+```sh
+doas tailscale serve --bg --http=18790 unix:/home/josh/.local/share/stats-node-run/stats.sock
+```
+
+This replaces the earlier `http://127.0.0.1:18791` target. The deploy stops
 if the host has under 50 GB free.
 
 To roll back, run `docker run` for an earlier `stats-node:<commit>` image
