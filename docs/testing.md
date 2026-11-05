@@ -11,6 +11,7 @@ Run the narrowest target while iterating and `make check` before release.
 | `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
 | `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
+| `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
 | `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
 | `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, the two-Worker tail test, and the Node server's auth and Worker-parity tests |
 | `make dashboard-test` | Dashboard build, Playwright tests (including one against the Node server), and the tracked-PNG check |

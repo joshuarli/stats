@@ -23,6 +23,7 @@ make integration-local # the offline local stack (collection, statsctl, dashboar
 make dev-local         # a persistent local stack on http://127.0.0.1:8789, collecting every 5 minutes
 make reset-local       # delete the dev-local state in .work/local/state
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
+make bench-local       # row, statement, and byte counts for ingest and collection on the local stack
 make check             # all of the above plus make release
 make stats-deploy      # deploy only the stats Worker, leaving stats-observe untouched
 
