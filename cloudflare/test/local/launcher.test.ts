@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
 import { accessToken } from "../access-token.ts";
-import { SCRATCH } from "../../local/stack.ts";
+import { SCRATCH, ephemeralPrefix } from "../../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
 
 const LAUNCHER = join(CLOUDFLARE_ROOT, "scripts/local-stack.mjs");
@@ -85,7 +85,6 @@ try {
   });
 
   await test("SIGTERM to run reaches its command and leaves no process or scratch state", async () => {
-    const before = new Set(readdirSync(SCRATCH).filter(name => name.startsWith("stack-")));
     const child = launch(["run", "--", "sh", "-c", "echo started; exec sleep 60"]);
     const done = finish(child);
     let output = "";
@@ -100,7 +99,7 @@ try {
     assert.equal((await done).status, 128 + 15);
     await new Promise(resolve => setTimeout(resolve, 200));
     assert.deepEqual(pids.filter(alive), []);
-    assert.deepEqual(readdirSync(SCRATCH).filter(name => name.startsWith("stack-") && !before.has(name)), []);
+    assert.deepEqual(readdirSync(SCRATCH).filter(name => name.startsWith(ephemeralPrefix(child.pid!))), []);
   });
 
   await test("dev serves the stack from its state, survives a restart, and leaves no process after SIGTERM or SIGINT", async () => {
@@ -114,7 +113,11 @@ try {
       child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
       const deadline = Date.now() + 20_000;
       while (!/^ready$/mu.test(output)) {
-        if (Date.now() > deadline || child.exitCode !== null) throw new Error(`dev did not become ready: ${output}`);
+        if (Date.now() > deadline || child.exitCode !== null) {
+          child.kill("SIGTERM");
+          await done;
+          throw new Error(`dev did not become ready: ${output}`);
+        }
         await new Promise(resolve => setTimeout(resolve, 50));
       }
       assert.ok(output.includes(`stats local stack: ${origin}`), output);

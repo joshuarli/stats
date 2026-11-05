@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { Miniflare } from "miniflare";
-import { openStatsWorker } from "../../local/stack.ts";
+import { openStatsWorker, type StatsWorker } from "../../local/stack.ts";
 import { accessToken } from "../access-token.ts";
 import { runCli } from "./support.ts";
 
@@ -15,6 +15,7 @@ interface CheckDocument {
   readonly error?: { readonly code: string };
 }
 
+let worker: StatsWorker | undefined;
 let mf: Miniflare;
 let origin: string;
 let scratch: string;
@@ -22,7 +23,8 @@ let jwt: string;
 let host: { hostId: string; token: string };
 
 async function start(): Promise<void> {
-  mf = openStatsWorker(String(Date.now()));
+  worker = openStatsWorker({ testNowMs: String(Date.now()) });
+  mf = worker.mf;
   origin = (await mf.ready).origin;
   jwt = await accessToken();
   mkdirSync(SCRATCH_ROOT, { recursive: true });
@@ -33,7 +35,7 @@ async function start(): Promise<void> {
 }
 
 async function stop(): Promise<void> {
-  await mf?.dispose();
+  await worker?.dispose();
   if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
 }
 

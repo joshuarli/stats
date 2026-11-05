@@ -28,7 +28,8 @@ async function observe(response: Response): Promise<Observed> {
 }
 
 await test("the same fixture frames give identical acknowledgment bytes, history frame bytes, and stored host rows in the Worker on workerd and the core on node:sqlite", async () => {
-  const mf = openStatsWorker(VARS["TEST_NOW_MS"]!);
+  const worker = openStatsWorker({ testNowMs: VARS["TEST_NOW_MS"]! });
+  const mf = worker.mf;
   const node = openHarness(VARS["PROJECTS"]!);
   try {
     const origin = (await mf.ready).origin;
@@ -75,6 +76,6 @@ await test("the same fixture frames give identical acknowledgment bytes, history
     assert.deepEqual(await core("/hosts"), await worker("/api/v1/hosts"), "host list");
   } finally {
     node.close();
-    await mf.dispose();
+    await worker.dispose();
   }
 });

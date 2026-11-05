@@ -44,17 +44,35 @@ export interface Stack {
   dispose(): Promise<void>;
 }
 
-export function openStatsWorker(testNowMs: string): Miniflare {
+export function ephemeralPrefix(pid: number): string {
+  return `stack-${pid}-`;
+}
+
+export interface StatsWorker {
+  readonly mf: Miniflare;
+  dispose(): Promise<void>;
+}
+
+export function openStatsWorker(start: { readonly testNowMs: string; readonly statsOutput?: string }): StatsWorker {
   const { ENVIRONMENT, PROJECTS, WORKER_NAME, TEST_NOW_MS: _fixed, ...secrets } = readTestVars();
-  return openWorkers(readBuiltWorker(STATS_OUTPUT), readBuiltWorker(OBSERVE_OUTPUT), {
+  const outbound = offlineOutbound(probeUrls(PROJECTS!));
+  const mf = openWorkers(readBuiltWorker(start.statsOutput ?? STATS_OUTPUT), readBuiltWorker(OBSERVE_OUTPUT), {
     text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME! },
-    secrets: { ...secrets, TEST_NOW_MS: testNowMs },
+    secrets: { ...secrets, TEST_NOW_MS: start.testNowMs },
     analytics: "unbound",
     collector: { kind: "absent" },
-    outbound: offlineOutbound(probeUrls(PROJECTS!)).handler,
+    outbound: outbound.handler,
     persist: "memory",
     alarms: "platform"
   }, { port: 0, localExplorer: false });
+  return {
+    mf,
+    dispose: async () => {
+      await mf.dispose();
+      const unexpected = outbound.unexpected();
+      if (unexpected.length > 0) throw new Error(describeUnexpected(unexpected));
+    }
+  };
 }
 
 export function productionProjects(stats: BuiltWorker): string {
@@ -97,13 +115,14 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     alarms: "rpc"
   }, { port: start.port ?? 0, localExplorer: start.localExplorer === true });
   let origin: string;
+  let worker: Awaited<ReturnType<Miniflare["getWorker"]>>;
   try {
     origin = (await mf.ready).origin.replace(/\/$/u, "");
+    worker = await mf.getWorker(shared.stats.name);
   } catch (error) {
     await mf.dispose();
     throw error;
   }
-  const worker = await mf.getWorker(shared.stats.name);
   type InstallationStub = {
     [RUN_ALARM_METHOD](): Promise<void>;
     [FETCH_AT_METHOD](nowMs: number, url: string, init: { readonly method: string; readonly headers: Record<string, string>; readonly body?: Uint8Array }): Promise<FetchedAt & Partial<Disposable>>;
@@ -150,7 +169,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     },
     restart: async next => {
       await stop();
-      return launch(shared, { ...start, nowMs: next.nowMs, port: Number(new URL(origin).port) });
+      return launch(shared, { ...start, nowMs: next.nowMs });
     },
     stop,
     dispose: async () => {
@@ -166,8 +185,14 @@ export async function startStack(start: StackStart): Promise<Stack> {
   const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
   const observe = readBuiltWorker(start.observeOutput ?? OBSERVE_OUTPUT);
   mkdirSync(SCRATCH, { recursive: true });
-  const persist = start.persist ?? mkdtempSync(join(SCRATCH, "stack-"));
+  const persist = start.persist ?? mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)));
   mkdirSync(persist, { recursive: true });
   const outbound = offlineOutbound(probeUrls(start.projectsJson ?? productionProjects(stats)));
-  return launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, ephemeral: start.persist === undefined }, { ...start, persist });
+  const ephemeral = start.persist === undefined;
+  try {
+    return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, ephemeral }, { ...start, persist });
+  } catch (error) {
+    if (ephemeral) rmSync(persist, { recursive: true, force: true });
+    throw error;
+  }
 }

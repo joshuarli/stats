@@ -5,7 +5,8 @@ import { agentDeliversABatch } from "./flow.ts";
 
 
 await test("the real agent binary delivers a binary batch that the real Worker and Durable Object store", async () => {
-  const mf = openStatsWorker(String(Date.now()));
+  const worker = openStatsWorker({ testNowMs: String(Date.now()) });
+  const mf = worker.mf;
   try {
     await agentDeliversABatch({
       origin: (await mf.ready).origin,
@@ -13,6 +14,6 @@ await test("the real agent binary delivers a binary batch that the real Worker a
       request: async (url, init) => await mf.dispatchFetch(url, init as Parameters<typeof mf.dispatchFetch>[1]) as unknown as Response
     });
   } finally {
-    await mf.dispose();
+    await worker.dispose();
   }
 });

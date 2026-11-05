@@ -39,7 +39,8 @@ async function observed(response: Response): Promise<{ status: number; headers: 
 }
 
 await test("the Worker on workerd and the Node server answer health, ingest, host, history, project, service, and rejection routes with identical status, headers, and body bytes", async () => {
-  const mf = openStatsWorker(VARS["TEST_NOW_MS"]!);
+  const worker = openStatsWorker({ testNowMs: VARS["TEST_NOW_MS"]! });
+  const mf = worker.mf;
   const harness = openHarness(VARS["PROJECTS"]!);
   const assets = scratchDirectory("parity-assets");
   writeFileSync(join(assets, "index.html"), "<!doctype html>");
@@ -165,7 +166,7 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
     harness.close();
-    await mf.dispose();
+    await worker.dispose();
     rmSync(assets, { recursive: true, force: true });
   }
 });

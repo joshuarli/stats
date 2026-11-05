@@ -261,7 +261,7 @@ function statsWorker(stats: BuiltWorker, observe: BuiltWorker, options: StackOpt
   }
   return {
     name: stats.name,
-    ...(options.alarms === "rpc" ? { modules: alarmModules(stats), modulesRoot: join(stats.output, "bundle") } : { modules: true, scriptPath: bundlePath(stats) }),
+    ...(options.alarms === "rpc" ? { modules: alarmModules(stats), modulesRoot: join(stats.output, "bundle") } : { modules: true, scriptPath: bundlePath(stats), modulesRoot: join(stats.output, "bundle") }),
     ...compat(stats),
     bindings,
     durableObjects: durableObjects(stats, stats.name),

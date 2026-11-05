@@ -5,6 +5,7 @@ import { join } from "node:path";
 const osConstants = constants;
 import { BUCKET_MS } from "../src/projects/queries.ts";
 import { collectAt, seed } from "../local/seed.ts";
+import { describeUnexpected } from "../local/outbound.ts";
 import { cliEnv, startStack } from "../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../local/topology.ts";
 
@@ -61,8 +62,15 @@ async function dev(args) {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) usage("--port must be a TCP port");
   const stack = await startStack({ nowMs: null, persist: state, port, localExplorer: true });
   const hosts = await (await stack.fetch("/api/v1/hosts")).json();
+  let reported = 0;
+  const reportUnexpected = () => {
+    const unexpected = stack.outbound.unexpected();
+    if (unexpected.length > reported) console.error(`local-stack: ${describeUnexpected(unexpected.slice(reported))}`);
+    reported = unexpected.length;
+  };
   if (hosts.hosts.length === 0) await seed(stack, Date.now());
   else await collectAt(stack, Date.now());
+  reportUnexpected();
   const schedule = () => {
     setTimeout(async () => {
       try {
@@ -70,6 +78,7 @@ async function dev(args) {
       } catch (error) {
         console.error(`local-stack: scheduled collection failed: ${error instanceof Error ? error.message : String(error)}`);
       }
+      reportUnexpected();
       schedule();
     }, BUCKET_MS - (Date.now() % BUCKET_MS));
   };
