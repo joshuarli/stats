@@ -1,7 +1,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { Installation } from "../src/installation";
-import { retentionDelayMs } from "../src/installation";
+import { retentionDelayMs } from "../src/core/installation/schema";
 import { historyQuery } from "../src/aggregate";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { accessToken } from "./access-token";

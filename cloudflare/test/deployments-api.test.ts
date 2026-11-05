@@ -1,7 +1,7 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { accessToken } from "./access-token";
-import type { Installation } from "../src/deployments/installation";
+import type { Installation } from "../src/installation";
 import type { DeploymentHistory } from "../src/deployments/model";
 import type { DeploymentComparison } from "../src/deployments/compare";
 import { collectDeployments } from "../src/deployments/collector";

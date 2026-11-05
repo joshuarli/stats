@@ -261,7 +261,7 @@ describe("ingest", () => {
     await runInDurableObject(object, async (instance: Installation, state: DurableObjectState) => {
       const host = await instance.createHost("rollback");
       if (!host.ok) throw new Error(host.message);
-      (instance as unknown as { rebuildRollups: () => void }).rebuildRollups = () => { throw new Error("rollup failed"); };
+      (instance as unknown as { core: { rebuildRollups: () => void } }).core.rebuildRollups = () => { throw new Error("rollup failed"); };
       const response = await instance.fetch(new Request("https://installation/ingest", { method: "POST", headers: { Authorization: `Bearer ${host.value.token}`, "Content-Type": INGEST_TYPE }, body: frameFor("linux-normal", host.value.hostId) }));
       expect(response.status).toBe(500);
       expect(state.storage.sql.exec<{ count: number }>("SELECT count(*) AS count FROM samples").one().count).toBe(0);
@@ -304,7 +304,7 @@ describe("ingest", () => {
 
     const object = env.INSTALLATION.get(env.INSTALLATION.idFromName("log-500"));
     await runInDurableObject(object, async (instance: Installation) => {
-      (instance as unknown as { createHost: () => never }).createHost = () => { throw new Error("secret detail"); };
+      (instance as unknown as { core: { createHost: () => never } }).core.createHost = () => { throw new Error("secret detail"); };
       const response = await instance.fetch(new Request("https://installation/admin/hosts", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"name":"x"}' }));
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({ error: { code: "internal", message: "internal error" } });

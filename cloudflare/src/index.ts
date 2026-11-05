@@ -1,7 +1,7 @@
 import { verifyAccess } from "./access";
 import { bearerToken } from "./auth";
 import { HISTORY_CONTENT_TYPE } from "./binary/history";
-import { Installation } from "./deployments/installation";
+import { Installation } from "./installation";
 import { collectDeployments } from "./deployments/collector";
 import { parseProjects } from "./projects/config";
 import { MAX_BODY_BYTES } from "./limits";

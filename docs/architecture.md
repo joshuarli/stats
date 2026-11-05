@@ -120,7 +120,7 @@ tells an agent how to authenticate and read the API. A Vite plugin in
 into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
 files `llms.txt` links to; no other doc is served.
 
-Routes under `/api/v1/` (handled in `installation.ts`):
+Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
 
 - `GET /hosts`, `GET /hosts/:hostId/latest`, `GET /hosts/:hostId/system`
   (404 until the agent has reported).
@@ -333,7 +333,7 @@ to 06:50 UTC, 246 Worker events were observed against an analytics estimate of
 
 One Durable Object per installation holds the host tables below and the project
 tables in [Cloudflare projects](#cloudflare-projects), created with
-`CREATE TABLE IF NOT EXISTS` in `installation.ts`:
+`CREATE TABLE IF NOT EXISTS` in `src/core/installation/schema.ts`:
 
 - `hosts`: credentials, revocation, last receipt, and the rate-limit window.
 - `host_history_versions`: a per-host version advanced by ingest and retention,

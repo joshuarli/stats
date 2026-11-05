@@ -1,7 +1,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import diagnostics from "node:diagnostics_channel";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Installation } from "../src/deployments/installation";
+import type { Installation } from "../src/installation";
 import { HISTORY_KINDS } from "../src/limits";
 import { OBSERVE_CHANNEL, WORKLOAD_CLASS, type ChannelMessage, type OperationMessage } from "../src/observe/producer/channel";
 import { CloudflareSql } from "../src/cloudflare/sql";

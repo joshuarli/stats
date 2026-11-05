@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { migrate } from "../src/installation";
+import { migrate } from "../src/core/installation/schema";
 import { readMetricHistory } from "../src/projects/history";
 import { CloudflareSql } from "../src/cloudflare/sql";
 
