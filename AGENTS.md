@@ -18,7 +18,10 @@ make preview           # build and serve the dashboard from captured fixtures
 make lint              # type-aware Oxlint
 make agent-e2e         # the real agent binary against the built Worker in workerd
 make node-e2e          # the smoke and the real agent binary against the Node server
-make smoke-local       # deploy/deployed-smoke.sh against the built Worker in workerd
+make smoke-local       # deploy/deployed-smoke.sh against the built Workers in workerd
+make integration-local # the offline local stack (collection, statsctl, dashboard) under a no-network sandbox
+make dev-local         # a persistent local stack on http://127.0.0.1:8789, collecting every 5 minutes
+make reset-local       # delete the dev-local state in .work/local/state
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
 make check             # all of the above plus make release
 make stats-deploy      # deploy only the stats Worker, leaving stats-observe untouched
@@ -66,6 +69,7 @@ go under `.work/tmp`.
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Portable core: stats on Node with Cloudflare as an adapter | `docs/portable-core-campaign.md` |
+| Complete local stack: the Cloudflare topology offline | `docs/CAMPAIGN-LOCAL-STACK.md` |
 | Service deployments: deployment tracking for servers | `docs/service-deployments-campaign.md` |
 | Observability product campaign | `docs/observability-campaign.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |

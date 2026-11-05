@@ -7,7 +7,9 @@ Run the narrowest target while iterating and `make check` before release.
 | `make fixtures` | Ingest corpus manifest, size budgets, cross-file constants, and byte/row accounting |
 | `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
-| `make smoke-local` | `deploy/deployed-smoke.sh` against the built Worker in local workerd |
+| `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
+| `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
+| `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
 | `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, the two-Worker tail test, and the Node server's auth and Worker-parity tests |
@@ -18,6 +20,55 @@ Run the narrowest target while iterating and `make check` before release.
 
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.
+
+## Local stack
+
+`pnpm run test:local` runs the whole Cloudflare topology in Miniflare with no
+Cloudflare login and no network. It needs `pnpm build` and
+`pnpm run build:observe` first.
+
+- **Topology.** `cloudflare/local/topology.ts` builds the Miniflare workers
+  from the built `worker.config.json` of both Workers, the config
+  `cf deploy --prebuilt` ships. It throws on any config key or binding type it
+  does not map, and on a binding the stack depends on that is missing. Every
+  test that loads the `stats` bundle goes through it; `new Miniflare` appears
+  only in `cloudflare/local/` and the observe producer stand-ins.
+- **Analytics.** `ANALYTICS_SQL` has no local implementation, so
+  `cloudflare/local/analytics.ts` binds a `WorkerEntrypoint` in its place. It
+  answers a query only when the text and params equal what
+  `src/projects/queries.ts` builds for the scenario's registry and scheduled
+  time, and throws `unexpected analytics query` otherwise. Rows come from the
+  model in `cloudflare/local/scenario.ts`, with per-dataset modes `ok`,
+  `empty`, `late`, and `fail`.
+- **Scenarios.** `test/local/collection.test.ts` runs S1 to S6: success, late
+  and empty data, overlapping and raised windows, a failing dataset and its
+  recovery, restart on one persistence directory, and retention past the
+  sample horizon. Each compares stored history, `GET /api/v1/projects`, and a
+  real `statsctl` process to totals computed from the model, never read back
+  from the Worker.
+- **Upgrade.** `test/local/upgrade.test.ts` opens state written by the build of
+  `a5918ea~1` with the current build. It reads that build from
+  `BASELINE_WORKTREE` (default `.work/wt/baseline`) and skips with the build
+  command when it is absent.
+- **Offline.** The stack answers every outbound request with 503, and
+  `dispose()` throws naming any URL the scenario did not declare. A scenario
+  declares the probe URLs in its registry. `scripts/offline-run.sh` adds the
+  OS layer: it removes `CLOUDFLARE_*` and `CF_*` and runs its command under
+  `sandbox-exec` with only loopback and unix-socket network.
+- **Launcher.** `cloudflare/scripts/local-stack.mjs run -- CMD` runs `CMD`
+  against an ephemeral seeded stack with `STATS_URL`, `STATSCTL_AUTH_COMMAND`,
+  and `STATSCTL_AUTH_HEADER` set, so `statsctl` reads it without `cf`. `dev`
+  serves a persistent stack and prints the same environment.
+
+The stack loads the `stats` bundle behind an entry module that adds a
+`runAlarm()` RPC to each Durable Object, because Miniflare has no alarm
+trigger and RPC reserves `alarm()`. An identical collection rewrites only
+live-measured points: probe latencies and the store's own size.
+
+Limits: fixtures cannot show that Cloudflare still accepts the fixed queries or
+returns the recorded columns; run `node cloudflare/scripts/check-analytics-sql.mjs`
+after changing `src/projects/queries.ts`. `scripts/offline-run.sh` exits 2 off
+macOS until a Linux sandbox is verified. Nothing here measures billable CPU.
 
 ## Ingest conformance
 

@@ -35,8 +35,10 @@ make deploy-host-<key>     # one host from deploy/hosts.json, idempotent
 make deploy-hosts          # every host in the manifest
 make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
 make smoke-deployed        # read-only live check
-make smoke-local           # the same check against the built Worker in local workerd
+make smoke-local           # the same check against the built Workers in local workerd
 make agent-e2e             # the real agent binary against the built Worker in local workerd
+make integration-local     # the offline local stack: collection, statsctl, and the dashboard
+make dev-local             # a persistent local stack on http://127.0.0.1:8789; make reset-local clears it
 ```
 
 `cloudflare/scripts/api.mjs <path>` reads the live API as JSON. It gets an
@@ -103,7 +105,7 @@ node cloudflare/scripts/api.mjs /hosts | jaq -r '.hosts[] | [.hostId, .name] | @
 
 1. **Build and stage** from the release commit, on a quiet machine:
    `make check` (fixtures, both agent builds' tests, the Worker suites,
-   `agent-e2e`, `smoke-local`, the dashboard suite, lint), then
+   `agent-e2e`, `smoke-local`, the dashboard suite, lint, `integration-local`), then
    `make agent-build` for both musl targets. Build each macOS host's binary on
    a Mac with `make agent-build-macos`. Record `stats --version` and the
    SHA-256 of every artifact, and record the currently deployed Worker

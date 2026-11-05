@@ -34,7 +34,11 @@ served through the same Worker, reads that API behind Cloudflare Access. The wir
 
 `test/node/boundary.test.ts` fails when any core file imports from an adapter
 directory, `cloudflare:*`, or `@cloudflare/*`, so the core and `src/node/`
-load in plain Node.
+load in plain Node. It also fails when anything under `src/` imports
+`cloudflare/local/`, the local stack that runs both built Workers in Miniflare
+with an offline `ANALYTICS_SQL` provider (`docs/testing.md`, Local stack). The
+local stack reads the built `worker.config.json` of each Worker, so that file's
+shape is a dependency of the tests as well as of the deploy.
 
 ## Agent
 
