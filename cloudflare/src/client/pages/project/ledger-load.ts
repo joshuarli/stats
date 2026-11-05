@@ -5,7 +5,9 @@ import { errorMessage } from "../../format";
 import type { MetricHistory, ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
-import { buildLedger, planBill, previousWindowOf, type Ledger, type LedgerHistories, type ObjectMethods, type PlanBill } from "../../../cost/ledger.ts";
+import { previousWindowOf, type LedgerHistories, type ObjectMethods } from "../../../cost/ledger.ts";
+import { PRICING_REVISION } from "../../../cost/pricing.ts";
+import { buildCostReport, utcMonthOf, type CostReport, type PlanMonthInput } from "../../../cost/report.ts";
 import { provisionalFromMs } from "./series";
 
 export type Baseline =
@@ -18,10 +20,11 @@ interface LedgerLoad {
   readonly current: ProjectHistories;
   readonly baseline: Baseline;
   readonly objectMethods: ObjectMethods | undefined;
+  readonly loadedAtMs: number;
 }
 
 export interface ProjectLedger {
-  readonly ledger: Ledger;
+  readonly report: CostReport;
   readonly histories: LedgerHistories;
   readonly previous: LedgerHistories | undefined;
 }
@@ -50,7 +53,7 @@ function span(bounds: TimeWindow): URLSearchParams {
   return new URLSearchParams({ from: String(Math.round(bounds.fromMs)), to: String(Math.round(bounds.toMs)) });
 }
 
-export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null) {
+export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
   const [load, setLoad] = createSignal<LedgerLoad | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => {
@@ -73,7 +76,7 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
       methods
     ]).then(([histories, baseline, objectMethods]) => {
       if (controller.signal.aborted) return;
-      setLoad({ window: current, previous, current: histories, baseline, objectMethods });
+      setLoad({ window: current, previous, current: histories, baseline, objectMethods, loadedAtMs: Date.now() });
       setError(null);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(errorMessage(cause));
@@ -87,14 +90,15 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     return {
       histories,
       previous,
-      ledger: buildLedger({
+      report: buildCostReport({
+        nowMs: loaded.loadedAtMs,
+        pricingRevision: PRICING_REVISION,
+        project: project(),
+        windows: { current: loaded.window, previous: loaded.previous },
         current: histories,
         previous,
-        window: loaded.window,
-        previousWindow: loaded.previous,
-        buckets: project().buckets,
-        databases: project().d1Databases,
-        objectMethods: loaded.objectMethods
+        objectMethods: loaded.objectMethods,
+        planMonth: planMonth() ?? undefined
       })
     };
   });
@@ -105,28 +109,17 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
   return { ledger, error, baselineError };
 }
 
-export function monthOf(atMs: number): TimeWindow {
-  const at = new Date(atMs);
-  return { fromMs: Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1), toMs: Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1) };
-}
-
-export interface MonthSpend {
-  readonly month: TimeWindow;
-  readonly settledMs: number;
-  readonly bill: PlanBill;
-}
-
 export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {
-  const [spend, setSpend] = createSignal<MonthSpend | null>(null);
+  const [spend, setSpend] = createSignal<PlanMonthInput | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => `${project().id}:${settledMs()}:${refreshKey()}`, () => {
-    const month = monthOf(settledMs());
+    const month = utcMonthOf(settledMs());
     const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, settledMs()) };
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     getProjectHistories(project().id, window, historyKinds(project()), controller.signal).then(histories => {
       if (controller.signal.aborted) return;
-      setSpend({ month, settledMs: window.toMs, bill: planBill(ledgerHistories(histories), window, project().buckets, project().d1Databases) });
+      setSpend({ histories: ledgerHistories(histories), settledMs: window.toMs });
       setError(null);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(errorMessage(cause));

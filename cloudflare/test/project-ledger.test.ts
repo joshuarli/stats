@@ -50,7 +50,7 @@ describe("project cost ledger", () => {
     expect(now(line(worker.children, "route:GET /a"))).toBeCloseTo((1.2 * 0.3 + 8 * 0.02) * MONTH_FACTOR, 6);
     const routed = worker.children.reduce((sum, child) => sum + now(child), 0);
     expect(routed).toBeCloseTo(now(worker), 6);
-    expect(monthlyOf(line(worker.children, "route:GET /a"))!.before).toBe(0);
+    expect(monthlyOf(line(worker.children, "route:GET /a"))!.before).toBeNull();
   });
 
   it("leaves the change unknown when the previous window could not be read", () => {

@@ -5,27 +5,11 @@ import { Table } from "../../src/client/columns.ts";
 import type { MetricHistory } from "../../src/client/history.ts";
 import { buildLedger, monthlyOf, monthlyUsage, planBill, previousWindowOf, projectedBill, type CostLine, type LedgerHistories, type LedgerInput } from "../../src/cost/ledger.ts";
 import { tableView, type Cell } from "../support/history.ts";
+import { H, histories } from "./support.ts";
 
-const H = 3_600_000;
 const T0 = 100 * H;
 const MONTH_FACTOR = (30 * 24) / 2;
 const WINDOW = { fromMs: T0, toMs: T0 + 2 * H };
-
-function history(kind: MetricHistory["kind"], fromMs: number, columns: Record<string, Cell[]>): MetricHistory {
-  const rows = Object.values(columns)[0]?.length ?? 0;
-  return { projectId: "p", kind, fromMs, toMs: fromMs + rows * H, stepMs: H, table: Table.from(tableView(rows, columns), Array.from({ length: rows }, (_, index) => fromMs + index * H)) };
-}
-
-function histories(fromMs: number, parts: Partial<Record<keyof LedgerHistories, Record<string, Cell[]>>>): LedgerHistories {
-  return {
-    worker: history("worker", fromMs, parts.worker ?? { "worker.invocations": [0, 0, 0], "worker.cpuMsSum": [0, 0, 0] }),
-    routes: history("routes", fromMs, parts.routes ?? {}),
-    r2: history("r2", fromMs, parts.r2 ?? {}),
-    durableObjects: parts.durableObjects === undefined ? undefined : history("durable-objects", fromMs, parts.durableObjects),
-    d1: parts.d1 === undefined ? undefined : history("d1", fromMs, parts.d1),
-    d1Statements: parts.d1Statements === undefined ? undefined : history("d1-statements", fromMs, parts.d1Statements)
-  };
-}
 
 function input(current: LedgerHistories, previous: LedgerHistories | undefined, extra: Partial<LedgerInput> = {}): LedgerInput {
   return { current, previous, window: WINDOW, previousWindow: previousWindowOf(WINDOW), buckets: [], databases: [], objectMethods: undefined, ...extra };
@@ -51,7 +35,7 @@ await test("projects Worker requests and CPU from the window to a month and spli
   assert.deepEqual(worker.children.map(child => child.label), ["GET /a", "POST /b", "not attributed to a route"]);
   near(now(line(worker.children, "route:GET /a")), (1.2 * 0.3 + 8 * 0.02) * MONTH_FACTOR);
   near(worker.children.reduce((sum, child) => sum + now(child), 0), now(worker));
-  assert.equal(monthlyOf(line(worker.children, "route:GET /a"))!.before, 0);
+  assert.equal(monthlyOf(line(worker.children, "route:GET /a"))!.before, null);
 });
 
 await test("leaves the change unknown when the previous window could not be read", () => {

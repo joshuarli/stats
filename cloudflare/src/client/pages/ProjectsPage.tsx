@@ -145,11 +145,11 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     return loaded === null ? null : settledWindow(loaded.worker, rangeMs[range()], null);
   });
   const ready = () => window() !== null;
-  const { ledger, error: ledgerError } = createProjectLedger(() => props.project, () => window() ?? { fromMs: 0, toMs: 0 }, () => `${ready()}:${refreshKey()}`, null);
+  const { ledger, error: ledgerError } = createProjectLedger(() => props.project, () => window() ?? { fromMs: 0, toMs: 0 }, () => `${ready()}:${refreshKey()}`, null, () => null);
   const loaded = () => ready() ? ledger() : null;
   const failure = () => historyError() ?? ledgerError();
 
-  const worker = () => loaded()?.ledger.lines.find(line => line.id === "worker");
+  const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
   const perDay = (amount: Amount): Amount => ({ now: amount.now / DAYS_PER_MONTH, before: amount.before === null ? null : amount.before / DAYS_PER_MONTH });
   const calls = () => {
     const usage = worker()?.usage;
@@ -161,8 +161,8 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   };
   const serverErrors = () => {
     const value = loaded();
-    const bounds = value?.ledger.window;
-    const previousBounds = value?.ledger.previousWindow;
+    const bounds = value?.report.windows.current;
+    const previousBounds = value?.report.windows.previous;
     if (value === undefined || value === null || bounds === undefined || previousBounds === undefined) return null;
     const share = (source: LedgerHistories | undefined, at: TimeWindow) => {
       const errors = sumIn(source?.worker, "worker.status.5xx", at);
@@ -174,7 +174,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     return { current, before: share(value.previous, previousBounds) };
   };
   const storedBytes = () => {
-    const line = loaded()?.ledger.lines.find(entry => entry.id === "r2");
+    const line = loaded()?.report.lines.find(entry => entry.id === "r2");
     return line?.usage.kind === "stored" ? line.usage.bytes.now : null;
   };
   const latest = () => {
@@ -183,7 +183,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     return history === null || deployment === undefined ? null : { title: deploymentTitle(history, deployment), atMs: deployment.atMs };
   };
   const cpuDuration = (value: number) => value >= 3_600_000 ? `${(value / 3_600_000).toPrecision(3)} h` : value >= 60_000 ? `${(value / 60_000).toPrecision(3)} min` : value >= 1000 ? `${(value / 1000).toPrecision(3)} s` : milliseconds(Math.round(value));
-  const pending = () => failure() === null ? <span class="cell-pending" aria-hidden="true" /> : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
+  const pending = () => failure() === null ? (worker()?.price.kind === "uncollected" ? <span class="cell-note">no data</span> : <span class="cell-pending" aria-hidden="true" />) : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
 
   return (
     <tbody class={open() ? "projects-group open" : "projects-group"}>
@@ -218,7 +218,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
         <td class="numeric">
           <Show when={loaded()} fallback={pending()}>{value => (
             <span class="cell-stack">
-              <span class="cell-strong">{dollarsPrecise(value().ledger.monthly.now)}/mo<Change amount={value().ledger.monthly} worseUp money /></span>
+              <span class="cell-strong">{dollarsPrecise(value().report.total.monthly.now)}/mo<Change amount={value().report.total.monthly} worseUp money /></span>
               <span class="cell-note">{storedBytes() === null ? "no storage priced" : `incl. ${bytes(storedBytes() ?? 0)} R2`}</span>
             </span>
           )}</Show>

@@ -7,8 +7,8 @@ import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
 import { holdLast } from "../../math.ts";
 import { WORKERS_PAID_MONTHLY_FEE } from "../../../cost/pricing.ts";
-import { isResidual, MONTH_MS, monthlyOf, monthlyUsage, projectedBill, type Amount, type CostLine, type Ledger, type LedgerHistories } from "../../../cost/ledger.ts";
-import type { MonthSpend } from "./ledger-load";
+import { isResidual, MONTH_MS, monthlyOf, type Amount, type CostLine, type LedgerHistories } from "../../../cost/ledger.ts";
+import type { CostReport, PlanBillReport } from "../../../cost/report.ts";
 import "./cost-ledger.css";
 
 type Order = "cost" | "change";
@@ -179,18 +179,15 @@ function Detail(props: { readonly line: CostLine; readonly histories: LedgerHist
   return <div class="ledger-detail"><div class="ledger-facts">{facts()}</div>{charts()}</div>;
 }
 
-function MonthChart(props: { readonly spend: MonthSpend; readonly ledger: Ledger }): JSX.Element {
-  const projected = createMemo(() => projectedBill(props.spend.bill, props.spend.settledMs, props.spend.month.toMs, monthlyUsage(props.ledger)));
-  const spent = () => props.spend.bill.billed.values.at(-1) ?? 0;
-  const end = () => projected().values.at(-1) ?? 0;
+function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
   return (
     <div class="ledger-month">
-      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {dollarsPrecise(spent())} so far, {dollarsPrecise(end())} by month end at the rate above</PanelLabel>
+      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {dollarsPrecise(props.plan.billedSoFar)} so far, {dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
       <PanelChart
         label="Billed this month"
         series={() => [
-          { label: "billed", color: "blue", track: props.spend.bill.billed },
-          { label: "projected", color: "blue", track: projected(), dashed: true }
+          { label: "billed", color: "blue", track: props.plan.billed },
+          { label: "projected", color: "blue", track: props.plan.projected, dashed: true }
         ]}
         format={value => dollarsPrecise(value)}
         min={0}
@@ -200,9 +197,9 @@ function MonthChart(props: { readonly spend: MonthSpend; readonly ledger: Ledger
   );
 }
 
-export function CostLedger(props: { readonly ledger: Ledger; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spend: MonthSpend | null; readonly spendPending: boolean }): JSX.Element {
+export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spendPending: boolean }): JSX.Element {
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
-    const top = props.ledger.lines[0];
+    const top = props.report.lines[0];
     const first = top?.children.find(child => !isResidual(child));
     return { expanded: new Set(top === undefined || top.children.length === 0 ? [] : [top.id]), selected: first?.id ?? top?.id ?? null };
   };
@@ -210,8 +207,8 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
   const [selected, setSelected] = createSignal<string | null>(initial().selected);
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string>>(new Set());
   const [order, setOrder] = createSignal<Order>("cost");
-  const windowMs = () => props.ledger.window.toMs - props.ledger.window.fromMs;
-  const total = () => props.ledger.monthly.now;
+  const windowMs = () => props.report.windows.current.toMs - props.report.windows.current.fromMs;
+  const total = () => props.report.total.monthly.now;
 
   const sorted = (lines: readonly CostLine[]) => order() === "cost" ? lines : [...lines].sort((left, right) => Number(isResidual(left)) - Number(isResidual(right)) || (change(monthlyOf(right)) ?? -Infinity) - (change(monthlyOf(left)) ?? -Infinity));
   const toggle = (line: CostLine) => {
@@ -264,7 +261,7 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
           <span class="ledger-usage">{usageText(line())}</span>
           <span class="ledger-unit"><UnitCell line={line()} window={windowMs()} /></span>
           <span class="ledger-trend">
-            <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.ledger.window} label={`${line().label} cost`} zeroBased />}</Show>
+            <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.report.windows.current} label={`${line().label} cost`} zeroBased />}</Show>
           </span>
         </button>
         <Show when={leaf() && selected() === line().id}><Detail line={line()} histories={props.histories} /></Show>
@@ -286,21 +283,21 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
       <header class="ledger-hero">
         <div class="ledger-total">
           <span class="ledger-amount">{dollarsPrecise(total())}<small>/mo</small></span>
-          <Delta amount={props.ledger.monthly} />
-          <Show when={props.ledger.monthly.before}>{before => <span class="ledger-was">was {dollarsPrecise(before())}/mo{props.ledger.uncompared.length > 0 ? ` · change excludes ${props.ledger.uncompared.join(", ")} (no baseline)` : ""}</span>}</Show>
+          <Delta amount={props.report.total.monthly} />
+          <Show when={props.report.total.monthly.before}>{before => <span class="ledger-was">was {dollarsPrecise(before())}/mo{props.report.total.uncompared.length > 0 ? ` · change excludes ${props.report.total.uncompared.join(", ")} (no baseline)` : ""}</span>}</Show>
           <span class="ledger-basis">{props.windowLabel}, projected to 30 days at list price</span>
         </div>
         <div class="ledger-bar" role="img" aria-label="Cost by component">
-          <For each={props.ledger.lines}>{line => <span style={`flex:${Math.max(0, monthlyOf(line)?.now ?? 0)};background:${COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"}`} title={`${line.label} ${dollarsPrecise(monthlyOf(line)?.now)}`} />}</For>
+          <For each={props.report.lines}>{line => <span style={`flex:${Math.max(0, monthlyOf(line)?.now ?? 0)};background:${COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"}`} title={`${line.label} ${dollarsPrecise(monthlyOf(line)?.now)}`} />}</For>
         </div>
         <div class="ledger-key">
-          <For each={props.ledger.lines}>{line => (
+          <For each={props.report.lines}>{line => (
             <button type="button" onClick={() => reveal(line)}>
               <i style={`background:${COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"}`} />{line.label} <b>{dollarsPrecise(monthlyOf(line)?.now)}</b><Delta amount={monthlyOf(line)} />
             </button>
           )}</For>
         </div>
-        <Show when={props.spend} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : null}>{spend => <MonthChart spend={spend()} ledger={props.ledger} />}</Show>
+        <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">
@@ -310,7 +307,7 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
         <div class="ledger-head" aria-hidden="true">
           <span>Item</span><span class="num">$/mo</span><span>Share</span><span class="num">Δ $/mo</span><span class="num">Per day</span><span>Unit</span><span>Cost trend</span>
         </div>
-        <For each={sorted(props.ledger.lines)}>{line => <Row line={line} depth={0} color={COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"} />}</For>
+        <For each={sorted(props.report.lines)}>{line => <Row line={line} depth={0} color={COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"} />}</For>
         <p class="ledger-foot">
           List prices without plan allowances: Worker $0.30/M requests and $0.02/M CPU ms; Durable Objects $0.15/M requests and $12.50/M GB-s at 128 MB, duration bounded above by summed request wall time; D1 $0.001/M rows read, $1.00/M rows written, $0.75/GB-month; R2 $0.015/GB-month with operations unpriced. GB is 10⁹ bytes.
         </p>
