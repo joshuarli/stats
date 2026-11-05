@@ -1,5 +1,6 @@
 import { parseDeployment, parseVersion, record, type DeploymentHistory } from "./model.ts";
-import { COMPARISON_WINDOWS, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type Verdict, type WindowBounds } from "./compare.ts";
+import { COMPARISON_WINDOWS, type BucketValue, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type ReasonCode, type Verdict, type WindowBounds } from "./compare.ts";
+import type { ComparableOperation, ComparisonScope, ComparisonSide, ComparisonSpec } from "../compare/spec.ts";
 
 function number(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid deployment number");
@@ -53,6 +54,43 @@ export function decodeDeploymentHistory(value: unknown, projectId: string): Depl
   };
 }
 
+const REASON_CODES: readonly ReasonCode[] = [
+  "unsettled", "disabled", "not-ready", "expired", "truncated", "stale-history", "split", "baseline-missing", "baseline-split", "overlap",
+  "invocations-missing", "invocations-floor", "route-mix"
+];
+const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record", "cleanup.retention"];
+
+function decodeSide(value: unknown): ComparisonSide {
+  const side = record(value);
+  const deploymentId = side["deploymentId"] === null ? null : string(side["deploymentId"], 36);
+  const fromMs = time(side["fromMs"]), toMs = time(side["toMs"]);
+  if (toMs <= fromMs) throw new Error("invalid comparison side");
+  return { deploymentId, versionIds: array(side["versionIds"], 2, item => string(item, 36)), fromMs, toMs };
+}
+
+function decodeScope(value: unknown): ComparisonScope | null {
+  if (value === null) return null;
+  const scope = record(value);
+  const operation = string(scope["operation"], 32) as ComparableOperation;
+  if (!COMPARABLE_OPERATIONS.includes(operation)) throw new Error("invalid comparison scope");
+  if (operation === "host.history" || operation === "project.history") return { operation, workloadClass: string(scope["workloadClass"], 128) };
+  if (scope["workloadClass"] !== null) throw new Error("invalid comparison scope");
+  return { operation, workloadClass: null };
+}
+
+function decodeSpec(value: unknown): ComparisonSpec {
+  const spec = record(value);
+  const identity = record(spec["measurementRevision"]);
+  return {
+    before: decodeSide(spec["before"]), after: decodeSide(spec["after"]), scope: decodeScope(spec["scope"]),
+    measurementRevision: { measurement: number(identity["measurement"]), observeFilter: number(identity["observeFilter"]), pricing: string(identity["pricing"], 32) }
+  };
+}
+
+function decodeBuckets(value: unknown): BucketValue[] {
+  return array(value, 2016, raw => { const bucket = record(raw); return { atMs: time(bucket["atMs"]), value: number(bucket["value"]) }; });
+}
+
 export function decodeDeploymentComparison(value: unknown, deploymentId: string, window: ComparisonWindow): DeploymentComparison {
   const item = record(value);
   if (item["deploymentId"] !== deploymentId || item["window"] !== window) throw new Error("deployment comparison mismatch");
@@ -69,5 +107,5 @@ export function decodeDeploymentComparison(value: unknown, deploymentId: string,
     if (!verdicts.includes(verdict)) throw new Error("invalid comparison verdict");
     return { metric: string(metric["metric"]), label: string(metric["label"]), unit: string(metric["unit"], 16), before: nullableNumber(metric["before"]), after: nullableNumber(metric["after"]), delta: nullableNumber(metric["delta"]), deltaPercent: nullableNumber(metric["deltaPercent"]), verdict };
   });
-  return { deploymentId, window, before: bounds(item["before"]), after: bounds(item["after"]), readyAtMs: time(item["readyAtMs"]), beforeInvocations: nullableNumber(item["beforeInvocations"]), afterInvocations: nullableNumber(item["afterInvocations"]), reasons: array(item["reasons"], 20, value => string(value)), warnings: array(item["warnings"], 20, value => string(value)), metrics };
+  return { deploymentId, window, before: bounds(item["before"]), after: bounds(item["after"]), readyAtMs: time(item["readyAtMs"]), beforeInvocations: nullableNumber(item["beforeInvocations"]), afterInvocations: nullableNumber(item["afterInvocations"]), spec: decodeSpec(item["spec"]), reasons: array(item["reasons"], 20, value => string(value)), reasonCodes: array(item["reasonCodes"], 20, value => { const code = string(value, 32) as ReasonCode; if (!REASON_CODES.includes(code)) throw new Error("invalid comparison reason code"); return code; }), deferredObjects: boolean(item["deferredObjects"]), analyticsInvocations: { before: decodeBuckets(record(item["analyticsInvocations"])["before"]), after: decodeBuckets(record(item["analyticsInvocations"])["after"]) }, warnings: array(item["warnings"], 20, value => string(value)), metrics };
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { comparisonBounds } from "../../src/deployments/compare.ts";
+import { buildComparisonSpec } from "../../src/compare/spec.ts";
 import { EXIT } from "../../src/cli/exit.ts";
 import { authorized, deploymentHistory, fakeOrigin, runCli, sendJson, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
 
@@ -12,7 +13,8 @@ function comparisonBody(id: string, atMs: number, window: "1h" | "6h" | "24h", o
   const { before, after } = comparisonBounds(atMs, window);
   return {
     deploymentId: id, window, before, after, readyAtMs: after.toMs + 600_000, beforeInvocations: 500, afterInvocations: 480,
-    reasons: ["Waiting for the full post-deployment window and analytics settlement."], warnings: ["Heuristic signals."],
+    spec: buildComparisonSpec({ before: { deploymentId: null, versionIds: [], ...before }, after: { deploymentId: id, versionIds: [], ...after } }),
+    reasons: ["Waiting for the full post-deployment window and analytics settlement."], reasonCodes: ["not-ready"], deferredObjects: false, analyticsInvocations: { before: [], after: [] }, warnings: ["Heuristic signals."],
     metrics: [{ metric: "worker.cpu", label: "Worker CPU / invocation", unit: "ms", before: 1.5, after: 1.2, delta: -0.3, deltaPercent: -20, verdict: "improved" }], ...overrides
   };
 }
