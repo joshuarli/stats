@@ -123,7 +123,16 @@ await test("operations in one receipt bucket upsert into one row, and ingest wri
     [BUCKET, VERSION, "host.ingest", "", 0, 40, 1, 80, 1200]
   );
   assert.deepEqual([row["rows_read"], row["rows_written"], row["statements"]], [120, 200, 160]);
+  assert.deepEqual([row["lag_count"], row["lag_ms_max"], row["lag_ms_sum"]], [40, 11_000, 20 * 1_000 + 20 * 11_000]);
   assert.deepEqual([row["received"], row["persisted"], row["duplicate"], row["rejected_invalid_sample"], row["input_bytes"], row["points"]], [400, 280, 80, 40, 36000, 0]);
+});
+
+await test("operations bucket by event time capped at receipt, so a late batch lands in the event's bucket", async () => {
+  const db = database();
+  ingest(db, [await operationInvocation(1, { eventAtMs: T0 + OPERATION_BUCKET_MS + 10 })], T0 + 3 * OPERATION_BUCKET_MS);
+  ingest(db, [await operationInvocation(2, { eventAtMs: T0 + OPERATION_BUCKET_MS + 20 })], T0 + OPERATION_BUCKET_MS + 5);
+  const rows = db.rows<{ bucket_at: number; count: number; lag_ms_max: number; lag_ms_sum: number }>("SELECT bucket_at, count, lag_ms_max, lag_ms_sum FROM observe_operations");
+  assert.deepEqual(rows.map(row => ({ ...row })), [{ bucket_at: T0 + OPERATION_BUCKET_MS, count: 2, lag_ms_max: 2 * OPERATION_BUCKET_MS - 10, lag_ms_sum: 2 * OPERATION_BUCKET_MS - 10 }]);
 });
 
 await test("operations separate by bucket, class, and synthetic flag, and duplicates are not counted twice", async () => {
@@ -132,7 +141,7 @@ await test("operations separate by bucket, class, and synthetic flag, and duplic
   const first = await operationInvocation(1);
   ingest(db, [first], NOW);
   ingest(db, [first], NOW + 1);
-  ingest(db, [await operationInvocation(4)], NOW + OPERATION_BUCKET_MS);
+  ingest(db, [await operationInvocation(4, { eventAtMs: T0 + OPERATION_BUCKET_MS })], NOW + OPERATION_BUCKET_MS);
     const classed = history.kind === "observed" ? await prepareInvocation({ ...history.invocation, trace: worker(2).trace, eventAtMs: T0 }, POLICY) : first;
   ingest(db, [classed], NOW);
   const synthetic = reduce(message({ ...INGEST, synthetic: true }));
