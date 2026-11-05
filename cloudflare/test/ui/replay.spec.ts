@@ -210,14 +210,7 @@ for (const range of ["1h", "6h"]) {
   });
 }
 
-interface LayoutShiftBudget { readonly desktop: number; readonly mobile: number }
-
-const LAYOUT_SHIFT_BUDGET = {
-  fleet: { desktop: 0.01, mobile: 0.01 },
-  host: { desktop: 0.025, mobile: 0.04 },
-  projects: { desktop: 0.01, mobile: 0.01 },
-  project: { desktop: 0.01, mobile: 0.11 }
-} satisfies Record<string, LayoutShiftBudget>;
+const LAYOUT_SHIFT_BUDGET = 0.01;
 const LAYOUT_DATA_DELAY_MS = 1200;
 
 declare global {
@@ -238,13 +231,12 @@ async function trackLayoutShift(page: Page): Promise<void> {
   });
 }
 
-async function expectStableLayout(page: Page, testInfo: TestInfo, name: string, budget: LayoutShiftBudget): Promise<void> {
+async function expectStableLayout(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   await expect(page.locator(".skeleton")).toHaveCount(0);
   await page.waitForTimeout(300);
   const total = await page.evaluate(() => window.layoutShift.total);
-  const limit = testInfo.project.name === "mobile" ? budget.mobile : budget.desktop;
-  testInfo.annotations.push({ type: "layout-shift", description: `${name} ${testInfo.project.name} ${total.toFixed(4)} (budget ${limit})` });
-  expect(total, `${name} cumulative layout shift`).toBeLessThanOrEqual(limit);
+  testInfo.annotations.push({ type: "layout-shift", description: `${name} ${testInfo.project.name} ${total.toFixed(4)}` });
+  expect(total, `${name} cumulative layout shift`).toBeLessThanOrEqual(LAYOUT_SHIFT_BUDGET);
 }
 
 test("the fleet page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
@@ -254,7 +246,7 @@ test("the fleet page keeps its layout while its data arrives", { tag: "@mobile" 
   await replay(page, host, LAYOUT_DATA_DELAY_MS);
   await page.goto("/");
   await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: host.name })).toBeVisible();
-  await expectStableLayout(page, testInfo, "fleet", LAYOUT_SHIFT_BUDGET.fleet);
+  await expectStableLayout(page, testInfo, "fleet");
 });
 
 test("a host page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
@@ -265,7 +257,7 @@ test("a host page keeps its layout while its data arrives", { tag: "@mobile" }, 
   await page.goto(`/#/host/${host.hostId}`);
   await expect(page.getByRole("heading", { name: host.name, level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "Charts" })).toBeVisible();
-  await expectStableLayout(page, testInfo, "host", LAYOUT_SHIFT_BUDGET.host);
+  await expectStableLayout(page, testInfo, "host");
 });
 
 test("the projects page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
@@ -273,7 +265,7 @@ test("the projects page keeps its layout while its data arrives", { tag: "@mobil
   await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_DATA_DELAY_MS);
   await page.goto("/#/projects");
   await expect(page.getByRole("table", { name: "Projects" })).toBeVisible();
-  await expectStableLayout(page, testInfo, "projects", LAYOUT_SHIFT_BUDGET.projects);
+  await expectStableLayout(page, testInfo, "projects");
 });
 
 test("the stuff project page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
@@ -284,5 +276,5 @@ test("the stuff project page keeps its layout while its data arrives", { tag: "@
   await expect(page.locator(".ledger-month")).toBeVisible();
   await expect(page.locator("#deployments")).toBeVisible();
   await expect(page.locator(".charts > .widget").first()).toBeVisible();
-  await expectStableLayout(page, testInfo, "stuff project", LAYOUT_SHIFT_BUDGET.project);
+  await expectStableLayout(page, testInfo, "stuff project");
 });
