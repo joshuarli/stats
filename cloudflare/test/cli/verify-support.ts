@@ -40,12 +40,14 @@ export interface World {
   observedFactor: number;
   issues: Record<string, number>;
   operationRows: boolean;
+  paddingRows: number;
+  doRows: boolean;
 }
 
 export function newWorld(over: Partial<World> = {}): World {
   return {
     clock: { now: AT + 3 * H }, deployments: [PREVIOUS, CANDIDATE], settled: true, probes: [], probeRows: [],
-    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, operationRows: true, ...over
+    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, operationRows: true, paddingRows: 0, doRows: false, ...over
   };
 }
 
@@ -61,11 +63,12 @@ function opRows(side: "before" | "after", version: string, over: RowOver): Opera
   return rows;
 }
 
-function analytics(): MetricRow[] {
+function analytics(doRows: boolean): MetricRow[] {
   const rows: MetricRow[] = [];
   for (const key of ["before", "after"] as const) {
     for (let at = bounds[key].fromMs; at < bounds[key].toMs; at += BUCKET) {
       rows.push({ metric: "worker.invocations", bucket_ms: at, value: 1000 }, { metric: "worker.cpuMsSum", bucket_ms: at, value: 9000 }, { metric: "route.a.invocations", bucket_ms: at, value: 1000 });
+      if (doRows) rows.push({ metric: "do.invocations", bucket_ms: at, value: 1000 }, { metric: "do.cpuMsSum", bucket_ms: at, value: key === "before" ? 5000 : 2000 }, { metric: "do.wallMsSum", bucket_ms: at, value: 5000 });
     }
   }
   return rows;
@@ -74,7 +77,7 @@ function analytics(): MetricRow[] {
 export function comparisonOf(world: World): DeploymentComparison {
   const candidate = world.deployments.find(item => item.id === CANDIDATE.id) ?? CANDIDATE;
   return compareDeployment({
-    deployment: candidate, deployments: world.deployments, rows: [...analytics(), ...world.probeRows], window: "1h", now: world.clock.now, settleMs: SETTLE,
+    deployment: candidate, deployments: world.deployments, rows: [...analytics(world.doRows), ...world.probeRows], window: "1h", now: world.clock.now, settleMs: SETTLE,
     lastSuccessAtMs: world.clock.now, truncated: false, enabled: true, metricsSettled: world.settled, probes: world.probes
   });
 }
@@ -84,10 +87,11 @@ function windowBody(world: World, from: number, to: number, operation: string | 
   const comparison = comparisonOf(world);
   const version = comparison.spec[side].versionIds[0] ?? id(0);
   const operations = world.operationRows && operation !== null ? opRows(side, version, world[side]) : [];
+  const padding = operations.length === 0 ? [] : Array.from({ length: world.paddingRows }, (_, index) => ({ ...opRows(side, version, world[side])[0]!, operation: "host.history", workloadClass: `padding-${index}` }));
   const invocations: unknown[] = [];
   for (let at = from; at < to; at += BUCKET) invocations.push({ bucketAt: at, version, stage: "worker", count: Math.round(1000 * world.observedFactor) });
   return {
-    fromMs: from, toMs: to, bucketMs: BUCKET, operation, workloadClass: null, filterRevision: 1, operations, outcomes: [], invocations,
+    fromMs: from, toMs: to, bucketMs: BUCKET, operation, workloadClass: null, filterRevision: 1, operations: [...operations, ...padding], outcomes: [], invocations,
     lag: { operations: { count: 0, maxMs: 0, sumMs: 0 }, outcomes: { count: 0, maxMs: 0, sumMs: 0 } }
   };
 }

@@ -155,8 +155,8 @@ await test("delayed settlement is pending, sleeps to readyAtMs before reading da
     assert.equal(result.exit, EXIT.ok);
     assert.equal(h.sleeps[0], READY_AT - start);
     assert.deepEqual(h.sleeps.slice(1), [900_000, 900_000]);
-    assert.equal(seenAtSleep[0], 1);
-    assert.equal(h.origin.seen.slice(0, 1).every(seen => seen.url.includes("/comparison")), true);
+    assert.equal(seenAtSleep[0], 2);
+    assert.equal(h.origin.seen.slice(0, 2).filter(seen => seen.url.includes("/comparison")).length, 1);
     assert.equal(verdictOf(result).overhead.polls, 4);
   } finally {
     await h.close();
@@ -197,12 +197,12 @@ await test("SIGINT during a wait saves state and exits 5; the resume continues f
     assert.equal(state.polls, 1);
     assert.equal(state.requested, "latest");
     const listings = () => h.origin.seen.filter(seen => seen.url === "/api/v1/projects/stats/deployments").length;
-    assert.equal(listings(), 1);
+    assert.equal(listings(), 2);
 
     world.settled = true;
     const second = (await h.run({ deployment: CANDIDATE.id, wait: true, timeout: "30h", "safety-check-file": safety })).result;
     assert.equal(verdictOf(second).verdict, "improved");
-    assert.equal(listings(), 1);
+    assert.equal(listings(), 2);
     assert.equal(verdictOf(second).overhead.polls, 3);
     assert.equal(verdictOf(second).overhead.requests, h.origin.seen.length);
   } finally {
@@ -295,4 +295,65 @@ await test("readiness lists each needed signal, flags absent operation summaries
   } finally {
     await h.close();
   }
+});
+
+await test("a CPU target carries the stable cpu-quantized-ms warning and other targets do not", async () => {
+  const codes = (result: Result & { warnings?: readonly { code: string }[] }) => (result.warnings ?? []).map(item => item.code).filter(code => code !== "comparison-warning");
+  const cpu = await scenario(newWorld({ before: { cpuMsSum: 400 }, after: { cpuMsSum: 200 } }), {}, { ...POLICY, metric: "cpuMsPerUnit", floor: 0.5 });
+  const rows = await scenario(newWorld());
+  try {
+    assert.deepEqual(codes(cpu.result as never), ["cpu-quantized-ms"]);
+    assert.deepEqual(codes(rows.result as never), []);
+  } finally {
+    await cpu.h.close();
+    await rows.h.close();
+  }
+});
+
+await test("an observe window body larger than 1 MiB is read in full", async () => {
+  const world = newWorld({ paddingRows: 6000 });
+  const { h, result } = await scenario(world);
+  try {
+    assert.equal(verdictOf(result).verdict, "improved");
+    assert.ok(h.origin.seen.some(seen => seen.url.startsWith("/api/observe/stats/window")));
+  } finally {
+    await h.close();
+  }
+});
+
+await test("a safety check taken before the exact deployment time is insufficient, one taken at it is not", async () => {
+  const before = await verdictFor(newWorld(), {}, POLICY, { atMs: AT - 60_000 });
+  assert.equal(guardrail(before, "safety-check")?.status, "insufficient-data");
+  assert.equal(verdictOf(before).verdict, "insufficient-data");
+  const exact = await verdictFor(newWorld(), {}, POLICY, { atMs: AT });
+  assert.equal(guardrail(exact, "safety-check")?.status, "pass");
+  assert.equal(verdictOf(exact).verdict, "improved");
+});
+
+await test("waiting without a safety check keeps waiting through the pending window and then reports insufficient-data", async () => {
+  const world = newWorld({ settled: false });
+  world.clock.now = AT + 30 * 60_000;
+  const h = await harness(world);
+  try {
+    const { result } = await h.run({ deployment: CANDIDATE.id, wait: true, timeout: "30h" }, { onSleep: () => { if (h.sleeps.length === 3) world.settled = true; } });
+    const payload = verdictOf(result);
+    assert.equal(payload.verdict, "insufficient-data");
+    assert.equal(result.exit, EXIT.pending);
+    assert.equal(h.sleeps.length, 3);
+    assert.equal(payload.wait.timedOut, false);
+    assert.equal(payload.decision?.guardrails.find(item => item.id === "safety-check")?.status, "insufficient-data");
+    assert.equal(payload.decision?.target.verdict, "improved");
+  } finally {
+    await h.close();
+  }
+});
+
+await test("a deferred rollout confounds a global Durable Object metric instead of leaving it insufficient", async () => {
+  const policy = { ...POLICY, operation: "global", metric: "do.cpu", floor: 0.1, guardrails: POLICY.guardrails.filter(name => name !== "ingest-persistence") };
+  const deferred = newWorld({ doRows: true, deployments: [deployment(1, AT - 2 * H, 101), deployment(2, AT, 102, { deferred: true })] });
+  const result = await verdictFor(deferred, {}, policy);
+  assert.equal(verdictOf(result).verdict, "confounded");
+  assert.deepEqual(verdictOf(result).decision?.blockedBy, ["deferred"]);
+  const attributed = await verdictFor(newWorld({ doRows: true }), {}, policy);
+  assert.equal(verdictOf(attributed).verdict, "improved");
 });

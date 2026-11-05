@@ -107,3 +107,19 @@ await test("a JSON body decode failure names the path and is a contract failure"
     await origin.close();
   }
 });
+
+await test("a per-call body limit lets a JSON body larger than the default decode, and the default still refuses it", async () => {
+  const size = 1.5 * 1024 * 1024;
+  const origin = await fakeOrigin((_, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ pad: "x".repeat(size) }));
+  });
+  try {
+    const http = await client(origin.origin);
+    assert.equal((await failure(http.getJson("/window", value => value))).code, "body_too_large");
+    const wide = await http.getJson("/window", value => (value as { pad: string }).pad.length, { bodyLimit: HISTORY_BODY_LIMIT });
+    assert.deepEqual(wide, { kind: "ok", value: size, etag: null });
+  } finally {
+    await origin.close();
+  }
+});

@@ -111,7 +111,7 @@ function decodeEvidence(value: unknown, path: string, deploymentId: string, wind
     return { before: decodeStatsWindow(pair["before"]), after: decodeStatsWindow(pair["after"]) };
   })();
   const probes = fields["probes"] === null ? null : Array.isArray(fields["probes"]) ? fields["probes"].map(item => stringValue(item, path, "probe")) : fail(path, "probes must be a list or null");
-  return { comparison: decodeDeploymentComparison(fields["comparison"], deploymentId, window), windows, issues: decodeIssues(fields["issues"], path), probes };
+  return { comparison: decodeDeploymentComparison(fields["comparison"], deploymentId, window), deployedAtMs: integer(fields["deployedAtMs"], path, "deployedAtMs"), windows, issues: decodeIssues(fields["issues"], path), probes };
 }
 
 export function decodeState(text: string, path: string): VerifyState {

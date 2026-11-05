@@ -19,7 +19,7 @@ await test("help verify explains every policy field, guardrail, and flag, offlin
   const { stdout, code } = await runCli(["help", "verify"]);
   assert.equal(code, EXIT.ok);
   for (const field of Object.keys(POLICY)) assert.ok(stdout.includes(`  ${field}`), field);
-  for (const needle of [POLICY_SCHEMA, "waivedGuardrails", "never be waived", "ingest-persistence", "--safety-check-file", "--replay", "--readiness", "--wait", "precedence", "never a pass", "Exit codes", "readyAtMs", "SIGINT"]) assert.ok(stdout.includes(needle), needle);
+  for (const needle of [POLICY_SCHEMA, "waivedGuardrails", "never be waived", "ingest-persistence", "--safety-check-file", "--replay", "--readiness", "--wait", "precedence", "never a pass", "Exit codes", "readyAtMs", "SIGINT", "cpu-quantized-ms", "(persisted + duplicate) / received"]) assert.ok(stdout.includes(needle), needle);
 });
 
 await test("verify rejects a missing selector, a bad policy, and replay mixed with live options with exit 2", async () => {

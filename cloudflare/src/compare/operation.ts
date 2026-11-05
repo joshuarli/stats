@@ -7,6 +7,7 @@ export const OPERATION_MIN_COUNT = 100;
 export const OPERATION_DRIFT_FACTOR = 2;
 export const OPERATION_SHARE_DRIFT = 0.2;
 export const FAILED_SHARE_RISE_POINTS = 1;
+export const STORED_SHARE_FALL_POINTS = 1;
 
 export const OPERATION_METRICS = ["cpuMsPerUnit", "wallMsPerUnit", "rowsReadPerUnit", "rowsWrittenPerUnit", "statementsPerUnit"] as const;
 export type OperationMetric = typeof OPERATION_METRICS[number];
@@ -16,7 +17,7 @@ export type ScopedSpec = ComparisonSpec & { readonly scope: ComparisonScope };
 
 type NonBlocking = "route-mix" | "invocations-missing" | "invocations-floor";
 type Blocking = Exclude<ReasonCode, NonBlocking>;
-export type OperationReason = "deferred" | "version-mismatch" | "work-drift" | "share-drift" | Blocking;
+export type OperationReason = "deferred" | "version-mismatch" | "work-drift" | "share-drift" | "cache-mix" | Blocking;
 const NON_BLOCKING: readonly NonBlocking[] = ["route-mix", "invocations-missing", "invocations-floor"];
 const isBlocking = (code: ReasonCode): code is Blocking => !(NON_BLOCKING as readonly ReasonCode[]).includes(code);
 
@@ -60,8 +61,7 @@ const UNITS: Readonly<Record<ScopedSpec["scope"]["operation"], string>> = {
   "host.ingest": "persisted sample",
   "host.history": "request",
   "project.history": "request",
-  "collector.record": "successful run",
-  "cleanup.retention": "row expired"
+  "collector.record": "successful run"
 };
 
 interface SideTotals {
@@ -70,8 +70,10 @@ interface SideTotals {
   readonly failed: number;
   readonly received: number;
   readonly persisted: number;
-  readonly rejected: number;
+  readonly duplicate: number;
   readonly classShare: number;
+  readonly cacheHit304: number;
+  readonly cacheRebuilt: number;
   readonly foreignVersion: boolean;
   readonly numerators: Readonly<Record<OperationMetric, number>>;
 }
@@ -88,13 +90,13 @@ function sideTotals(rows: readonly OperationWindowRow[], scope: ComparisonScope,
       case "host.history":
       case "project.history": return operations;
       case "collector.record": return sum(row => row.work.runs);
-      case "cleanup.retention": return sum(row => row.work.expired);
     }
   })();
   return {
     operations, workUnits, failed: sum(row => row.failed),
     received: sum(row => row.work.received), persisted: sum(row => row.work.persisted),
-    rejected: sum(row => row.work.rejectedInvalidSample + row.work.rejectedTooOld + row.work.rejectedConflict),
+    duplicate: sum(row => row.work.duplicate),
+    cacheHit304: sum(row => row.work.cacheHit304), cacheRebuilt: sum(row => row.work.cacheRebuilt),
     classShare: all === 0 ? 0 : operations / all,
     foreignVersion: scoped.some(row => !side.versionIds.includes(row.version)),
     numerators: { cpuMsPerUnit: sum(row => row.cpuMsSum), wallMsPerUnit: sum(row => row.wallMsSum), rowsReadPerUnit: sum(row => row.rowsRead), rowsWrittenPerUnit: sum(row => row.rowsWritten), statementsPerUnit: sum(row => row.statements) }
@@ -114,13 +116,27 @@ export function failedShareGuardrail(before: { readonly failed: number; readonly
   return { name: "failed-share", status: regressed ? "regressed" : "pass", before: left, after: right };
 }
 
-/** persisted / (received - rejected) must not fall. */
-export function ingestPersistenceGuardrail(before: { readonly persisted: number; readonly received: number; readonly rejected: number }, after: { readonly persisted: number; readonly received: number; readonly rejected: number }): GuardrailResult {
-  const eligible = (side: { readonly received: number; readonly rejected: number }) => side.received - side.rejected;
-  const left = eligible(before), right = eligible(after);
-  if (left <= 0 || right <= 0) return { name: "ingest-persistence", status: "insufficient-data", before: left > 0 ? before.persisted / left : null, after: right > 0 ? after.persisted / right : null };
-  const fell = after.persisted * left < before.persisted * right;
-  return { name: "ingest-persistence", status: fell ? "regressed" : "pass", before: before.persisted / left, after: after.persisted / right };
+export interface IngestSide {
+  readonly persisted: number;
+  readonly duplicate: number;
+  readonly received: number;
+}
+
+/** The share of received samples that are stored or were already stored may not fall by more than a point. */
+export function ingestPersistenceGuardrail(before: IngestSide, after: IngestSide): GuardrailResult {
+  const share = (side: IngestSide) => side.received <= 0 ? null : (side.persisted + side.duplicate) / side.received * 100;
+  const left = share(before), right = share(after);
+  if (left === null || right === null) return { name: "ingest-persistence", status: "insufficient-data", before: left, after: right };
+  return { name: "ingest-persistence", status: left - right > STORED_SHARE_FALL_POINTS ? "regressed" : "pass", before: left, after: right };
+}
+
+function isHistory(operation: ScopedSpec["scope"]["operation"]): boolean {
+  return operation === "host.history" || operation === "project.history";
+}
+
+function hitShare(totals: SideTotals): number | null {
+  const answered = totals.cacheHit304 + totals.cacheRebuilt;
+  return answered === 0 ? null : totals.cacheHit304 / answered;
 }
 
 function drifted(before: number, after: number): boolean {
@@ -137,6 +153,10 @@ export function compareOperation(input: OperationComparisonInput): OperationComp
   if (before.foreignVersion || after.foreignVersion) blockedBy.push("version-mismatch");
   if (before.operations >= OPERATION_MIN_COUNT && after.operations >= OPERATION_MIN_COUNT && drifted(before.workUnits / before.operations, after.workUnits / after.operations)) blockedBy.push("work-drift");
   if (Math.abs(after.classShare - before.classShare) > OPERATION_SHARE_DRIFT) blockedBy.push("share-drift");
+  if (isHistory(spec.scope.operation)) {
+    const left = hitShare(before), right = hitShare(after);
+    if (left !== null && right !== null && Math.abs(right - left) > OPERATION_SHARE_DRIFT) blockedBy.push("cache-mix");
+  }
   const blocked = blockedBy.length > 0;
   const metrics = OPERATION_METRICS.map((metric): MetricComparison => {
     const left = perUnit(before, metric), right = perUnit(after, metric);

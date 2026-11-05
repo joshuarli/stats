@@ -175,6 +175,27 @@ await test("the plan bill is isolated to a UTC month, accrues held storage over 
   assert.equal(built.planBill.coverage.windowMs, 2 * H);
 });
 
+await test("a month with some buckets uncollected is billed from what exists and warns with the covered fraction", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const planMonth = { settledMs: month + 2 * H, histories: histories(month, { worker: { "worker.invocations": [0], "worker.cpuMsSum": [0] } }) };
+  const built = report({ current: histories(T0, {}), planMonth });
+  assert.ok(built.planBill.kind === "isolated");
+  assert.equal(built.planBill.coverage.fraction, 0.5);
+  const partial = built.warnings.find(entry => entry.code === "plan-month-partial");
+  assert.equal(partial?.subject, "plan-bill");
+  assert.match(partial?.message ?? "", /50\.0%/u);
+  assert.ok(!built.warnings.some(entry => entry.code === "plan-month-unavailable"));
+});
+
+await test("a month with no collected bucket has no plan bill rather than a zero one", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const planMonth = { settledMs: month + 2 * H, histories: histories(month - 10 * H, {}) };
+  const built = report({ current: histories(T0, {}), planMonth });
+  assert.deepEqual(built.planBill, { kind: "unavailable", reason: "no-data" });
+  assert.ok(warned(built, "plan-month-unavailable", "plan-bill"));
+  assert.ok(!built.warnings.some(entry => entry.code === "plan-month-partial"));
+});
+
 await test("without month histories there is no plan bill and a warning says so", () => {
   const built = report({ current: histories(T0, {}) });
   assert.deepEqual(built.planBill, { kind: "unavailable", reason: "month-histories-not-supplied" });

@@ -58,7 +58,7 @@ const REASON_CODES: readonly ReasonCode[] = [
   "unsettled", "disabled", "not-ready", "expired", "truncated", "stale-history", "split", "baseline-missing", "baseline-split", "overlap",
   "invocations-missing", "invocations-floor", "route-mix"
 ];
-const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record", "cleanup.retention"];
+const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record"];
 
 function decodeSide(value: unknown): ComparisonSide {
   const side = record(value);

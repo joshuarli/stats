@@ -19,6 +19,7 @@ export interface HttpOptions {
 
 export interface GetOptions {
   readonly ifNoneMatch?: string;
+  readonly bodyLimit?: number;
 }
 
 export type Fetched<T> =
@@ -159,7 +160,7 @@ export function createHttpClient(options: HttpOptions): HttpClient {
   return {
     requests: () => count,
     async getJson<T>(path: string, decode: (value: unknown) => T, extra: GetOptions = {}): Promise<Fetched<T>> {
-      const reply = await get(path, "application/json", JSON_BODY_LIMIT, extra);
+      const reply = await get(path, "application/json", extra.bodyLimit ?? JSON_BODY_LIMIT, extra);
       const etag = reply.headers.get("etag");
       if (classify(reply, path, extra.ifNoneMatch !== undefined) === "not-modified") return { kind: "not-modified", etag };
       let parsed: unknown;

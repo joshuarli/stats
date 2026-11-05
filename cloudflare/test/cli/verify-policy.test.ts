@@ -23,6 +23,8 @@ await test("a policy may not lower the bar or hide a guardrail", () => {
   rejects({ minChangePercent: 9.99 }, /at least 10/u);
   rejects({ floor: 0.1 }, /default 0\.5/u);
   rejects({ extra: 1 }, /unknown field extra/u);
+  rejects({ operation: "host.ingest", metric: "cpuMsPerUnit", floor: 0.05 }, /default 0\.5/u);
+  rejects({ operation: "cleanup.retention", metric: "rowsWrittenPerUnit" }, /cleanup\.retention cannot be verified.*rows written/u);
   rejects({ guardrails: ["safety-check", "coverage", "bogus"] }, /guardrails\[2\]/u);
   rejects({ guardrails: without("safety-check"), waivedGuardrails: [{ guardrail: "safety-check", reason: "it is slow to run" }] }, /never be waived/u);
   rejects({ guardrails: without("coverage"), waivedGuardrails: [{ guardrail: "coverage", reason: "coverage is noisy today" }] }, /never be waived/u);
