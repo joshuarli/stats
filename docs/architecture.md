@@ -208,6 +208,33 @@ in five-minute buckets and bounded to 100,000 rows:
   stage and outcome keeps at most 32 routes, then folds the rest into one `other` route. Each row
   records the `filter_revision` that excluded it.
 
+A third additive table, `observe_counts`, is written only for a service whose
+policy samples. It is keyed by `(bucket_at, version, stage, outcome, route,
+operation)` in the same five-minute event-time buckets, and holds `kept`,
+`sampled_out`, `cpu_ms_sum` and `wall_ms_sum`. Its `outcome` is `ok`, `failed`,
+or one of the four `excluded-*` classes; the operation is the generic operation
+name that stats-style summaries do not carry, empty when an event has none. The
+store counts a kept invocation in the same transaction that stores it, so a
+duplicate is never counted twice. The tail counts everything it does not keep
+(a sampled-out invocation is always `ok`, because every failure is kept, and an
+excluded event is never kept) and sends those counts with the batch. Each
+bucket, version, stage and outcome keeps at most 32 routes, then folds the rest
+into `other`. For a sampled service the window's invocation rows and its
+excluded outcome rows come from this table, so they total every event, kept or
+not. `observe_sampling_events` holds the hourly `untraced` and `flush`
+counters. Neither table has a row for a service that keeps everything, so
+`stats` and `usr-memories` write and answer exactly as before.
+
+Sampling relies on each invocation's tail event carrying exactly one `operation`
+message. In local workerd, when RPCs overlap on one Durable Object instance
+(even two at a time), diagnostics-channel messages land on other invocations'
+tail events: 200 sequential RPCs each carried one message, but 200 RPCs five
+at a time produced events carrying zero to four, and RPCs on distinct
+instances were unaffected. An object event with no message has no trace, so it
+is kept and counted `untraced`; one with two operation messages is rejected as
+`rejected-invalid`. Worker events were unaffected. Whether production behaves
+the same is unverified.
+
 `GET /api/observe/stats/window?from=<ms>&to=<ms>[&operation=<id>][&class=<name>]`
 returns one half-open window: operation rows, outcome rows, invocation rows and
 lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes

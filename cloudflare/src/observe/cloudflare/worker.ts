@@ -20,12 +20,13 @@ export default {
     const byService = grouped.byService;
     const unknown: OutcomeEvent[] = grouped.unknown.map(item => outcomeOf(item, "unknown-service", OTHER_ROUTE));
     if (unknown.length > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown.length }));
-    const batches = new Map(await Promise.all([...byService].map(async ([service, items]) => [service, await prepareTailItems(items, POLICIES[service])] as const)));
+    const nowMs = Date.now();
+    const batches = new Map(await Promise.all([...byService].map(async ([service, items]) => [service, await prepareTailItems(items, POLICIES[service], nowMs)] as const)));
     if (unknown.length > 0) {
-      const home = batches.get(UNKNOWN_SERVICE_HOME) ?? { preparations: [], outcomes: [] };
-      batches.set(UNKNOWN_SERVICE_HOME, { preparations: home.preparations, outcomes: [...home.outcomes, ...unknown] });
+      const home = batches.get(UNKNOWN_SERVICE_HOME) ?? { preparations: [], outcomes: [], counts: [] };
+      batches.set(UNKNOWN_SERVICE_HOME, { ...home, outcomes: [...home.outcomes, ...unknown] });
     }
-    await Promise.all([...batches].map(([service, batch]) => store(env, service).ingest(batch.preparations, batch.outcomes)));
+    await Promise.all([...batches].map(([service, batch]) => store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts)));
   },
 
   async scheduled(_controller: ScheduledController, env: ObserveEnv): Promise<void> {

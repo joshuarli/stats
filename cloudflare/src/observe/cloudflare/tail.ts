@@ -1,7 +1,9 @@
 import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
-import { OTHER_ROUTE, prepareInvocation, VERSION, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
+import { OTHER_ROUTE, prepareInvocation, rejection, VERSION, type CountDelta, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
+import { addCount, countBucket } from "../core/counts.ts";
+import { keepReason } from "../core/sampling.ts";
 
 export interface TailItem {
   readonly event: unknown;
@@ -22,8 +24,6 @@ export type Reduction =
   | { readonly kind: "observed"; readonly invocation: ObservedInvocation }
   | { readonly kind: "excluded"; readonly outcome: ExcludedOutcome; readonly stage: Stage; readonly route: string }
   | { readonly kind: "rejected" };
-
-export type ExcludedOutcome = "excluded-status:401" | "excluded-status:403" | "excluded-status:404" | "excluded-route";
 
 const POLICY: MessagePolicy = { safeNames: new Set() };
 const EXCLUDED_STATUSES = new Set([401, 403, 404]);
@@ -71,23 +71,50 @@ function observe(item: TailItem, stage: Stage, entry: Entry, eventAtMs: number, 
       eventAtMs,
       trace: channel.trace,
       ...(channel.operation === null ? {} : { operation: channel.operation }),
+      ...(policy.sampling.kind === "sampled" && channel.operationName !== null ? { operationName: channel.operationName } : {}),
       errors: [...uncaught, ...channel.errors]
     }
   };
 }
 
-export function outcomeOf(item: TailItem, outcome: OutcomeClass, route: string, stage = stageOf(item)): OutcomeEvent {
+function versionOf(item: TailItem): string {
   const version = item.scriptVersion?.id;
-  return { version: version !== undefined && VERSION.test(version) ? version : "", stage: stage ?? "unknown", outcome, route, eventAtMs: item.eventTimestamp };
+  return version !== undefined && VERSION.test(version) ? version : "";
 }
 
-export async function prepareTailItems(items: readonly TailItem[], policy: ServicePolicy): Promise<{ preparations: Preparation[]; outcomes: OutcomeEvent[] }> {
+export function outcomeOf(item: TailItem, outcome: OutcomeClass, route: string, stage = stageOf(item)): OutcomeEvent {
+  return { version: versionOf(item), stage: stage ?? "unknown", outcome, route, eventAtMs: item.eventTimestamp };
+}
+
+export interface TailBatch {
+  readonly preparations: Preparation[];
+  readonly outcomes: OutcomeEvent[];
+  readonly counts: CountDelta[];
+}
+
+function excludedCount(item: TailItem, reduction: Extract<Reduction, { kind: "excluded" }>, nowMs: number): CountDelta {
+  return {
+    bucketAt: countBucket(item.eventTimestamp ?? nowMs, nowMs), version: versionOf(item), stage: reduction.stage, route: reduction.route, operation: "", outcome: reduction.outcome,
+    kept: 0, sampledOut: 1, cpuMsSum: Math.round(item.cpuTime), wallMsSum: Math.round(item.wallTime)
+  };
+}
+
+function sampledOutCount(invocation: ObservedInvocation, nowMs: number): CountDelta {
+  return {
+    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "", outcome: "ok",
+    kept: 0, sampledOut: 1, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
+  };
+}
+
+export async function prepareTailItems(items: readonly TailItem[], policy: ServicePolicy, nowMs: number): Promise<TailBatch> {
   const preparations: Preparation[] = [];
   const outcomes: OutcomeEvent[] = [];
+  const counted = new Map<string, CountDelta>();
   for (const item of items) {
     const reduction = reduceTailItem(item, policy);
     if (reduction.kind === "excluded") {
-      outcomes.push(outcomeOf(item, reduction.outcome, reduction.route, reduction.stage));
+      if (policy.sampling.kind === "sampled") addCount(counted, excludedCount(item, reduction, nowMs));
+      else outcomes.push(outcomeOf(item, reduction.outcome, reduction.route, reduction.stage));
       continue;
     }
     if (reduction.kind === "rejected") {
@@ -95,11 +122,15 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
       outcomes.push(outcomeOf(item, "rejected-invalid", OTHER_ROUTE));
       continue;
     }
+    if (keepReason(reduction.invocation, policy.sampling) === null && rejection(reduction.invocation) === null) {
+      addCount(counted, sampledOutCount(reduction.invocation, nowMs));
+      continue;
+    }
     const preparation = await prepareInvocation(reduction.invocation, POLICY);
     preparations.push(preparation);
     if (!preparation.ok) outcomes.push(outcomeOf(item, "rejected-invalid", routeLabel(reduction.invocation.label)));
   }
-  return { preparations, outcomes };
+  return { preparations, outcomes, counts: [...counted.values()] };
 }
 
 interface Entry {
@@ -150,9 +181,10 @@ function pathOf(url: string): string | null {
   }
 }
 
-function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: ServicePolicy): { trace: TraceContext | null; operation: OperationSummary | null; errors: ObservedError[] } | null {
+function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: ServicePolicy): { trace: TraceContext | null; operation: OperationSummary | null; operationName: string | null; errors: ObservedError[] } | null {
   let trace: TraceContext | null = null;
   let summary: OperationSummary | null = null;
+  let operationName: string | null = null;
   let operationSeen = false;
   const errors: ObservedError[] = [];
   for (const event of events) {
@@ -172,6 +204,7 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
       trace ??= { traceId, spanId };
       operationSeen = true;
       summary = parsed.summary;
+      operationName = parsed.operation;
     } else if (kind === "error") {
       const operation = field(message, "operation");
       const name = text(field(message, "name"));
@@ -183,20 +216,20 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
       return null;
     }
   }
-  return { trace, operation: summary, errors };
+  return { trace, operation: summary, operationName, errors };
 }
 
 
-function readStatsOperation(message: unknown): { readonly summary: OperationSummary } | null {
+function readStatsOperation(message: unknown): { readonly summary: OperationSummary; readonly operation: string } | null {
   const summary = readOperation(message);
-  return summary === null ? null : { summary };
+  return summary === null ? null : { summary, operation: summary.operation };
 }
 
-function readServiceOperation(message: unknown, operations: ReadonlySet<string>): { readonly summary: null } | null {
+function readServiceOperation(message: unknown, operations: ReadonlySet<string>): { readonly summary: null; readonly operation: string } | null {
   const operation = field(message, "operation");
   const rows = field(message, "rows");
   if (typeof operation !== "string" || !operations.has(operation) || typeof field(message, "synthetic") !== "boolean") return null;
-  return rows === null || readRows(rows) !== null ? { summary: null } : null;
+  return rows === null || readRows(rows) !== null ? { summary: null, operation } : null;
 }
 
 function readOperation(message: unknown): OperationSummary | null {

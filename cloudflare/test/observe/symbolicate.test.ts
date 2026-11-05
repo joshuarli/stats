@@ -44,7 +44,7 @@ await test("errors that arrived before their map resolve once it is registered",
   const db = database();
   const service = createObserveService(db, { now: () => T0 + 1000, databaseBytes: () => 0 });
   const prepared = await prepareInvocation(worker(1, { version: "v1", errors: [{ source: "caught", operation: "deployments.poll", name: "Error", message: "x", stack: "    at request (index.js:3:5)" }] }), { safeNames: new Set() });
-  service.ingest([prepared], []);
+  service.ingest([prepared], [], []);
   const fingerprint = (await service.issues({})).items[0]!.fingerprint;
   assert.equal((await service.occurrences(fingerprint, {})).items[0]!.frames[0]!.original, null);
   await service.artifact({ version: "v1", file: "index.js", map: MAP });
