@@ -28,9 +28,13 @@ export const COUNT_STATEMENTS = [
   ) WITHOUT ROWID`
 ];
 
+export function eventBucket(eventAtMs: number | null, nowMs: number, widthMs: number): number {
+  const at = eventAtMs === null ? nowMs : Math.min(eventAtMs, nowMs);
+  return at - (at % widthMs);
+}
+
 export function countBucket(eventAtMs: number, nowMs: number): number {
-  const at = Math.min(eventAtMs, nowMs);
-  return at - (at % COUNT_BUCKET_MS);
+  return eventBucket(eventAtMs, nowMs, COUNT_BUCKET_MS);
 }
 
 function deltaKey(delta: CountDelta): string {
