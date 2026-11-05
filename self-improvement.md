@@ -464,6 +464,13 @@ Nanoshop (`~/d/nanoshop`, read-only) will run `nanoshop-storied` with `stats-obs
   - `statsctl observe` lists `nanoshop-storied` with zero events.
 
   Record the deployment ids in **Status**. Nanoshop's own deploy, and the production confirmation of its batch size and rows, are Nanoshop's work.
+- **N6** (S, owner request 2026-11-05, after N4 is accepted): follow up in `~/d/nanoshop`. This is the only write to another repository this campaign makes, and it is limited to three changes:
+  - **Tail pricing:** price tail invocations by CPU only, citing `docs/observe-billing.md`'s source.
+  - **Store rows:** replace the assumed Stats store rows per invocation (6) and the store-calls gap with N3's measured figures for kept and sampled-out events, and with the sampling rate N3 set.
+  - **Producer pin:** set `STATS_PRODUCER_PIN` to the pinned commit recorded in **Status** and run its sync script.
+
+  Follow Nanoshop's `AGENTS.md`, and update the "Reference shop estimate" section and the totals pinned by `tests/cost/reference.test.ts` together. Run Nanoshop's narrowest checks: the cost tests, its typecheck, and the Stats integration suite with `STATS_DIR` set to this repo, once the pinned commit is reachable. Commit on a branch in Nanoshop, never on its main branch. No push and no deploy.
+  - Acceptance: Nanoshop's cost and reference tests pass with the new totals, and its snapshot files are byte-identical to the pinned commit.
 
 ### P5 — Close
 
@@ -513,7 +520,7 @@ Distinct success and failure conditions for each deliverable:
 **Forbidden:**
 - pushing;
 - `make deploy`, or any host deploy or rollback;
-- deploying other projects or modifying other repositories;
+- deploying other projects, or modifying other repositories except N6's three Nanoshop changes;
 - changing account plans, Access policies, tokens, or permissions;
 - deleting resources or data, including host purge, revoke, or rotate;
 - `ALTER` or `DROP` on any existing table, and any Installation schema change;
