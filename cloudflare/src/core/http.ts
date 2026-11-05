@@ -4,6 +4,7 @@ import { readLimitedText } from "../body.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "../ingest/http.ts";
 import { MAX_BODY_BYTES } from "../limits.ts";
 import { MAX_ARTIFACT_BYTES } from "../observe/core/limits.ts";
+import { MAX_MARKER_BODY_BYTES } from "./installation/services.ts";
 
 export type AuthDecision =
   | { readonly ok: true }
@@ -29,6 +30,7 @@ const SECURITY: Record<string, string> = {
 const ASSET_CACHE = "private, max-age=31536000, immutable";
 const OBSERVE_PREFIX = "/api/observe";
 const MAX_OBSERVE_BODY_BYTES = 256;
+const SERVICE_MARKER_PATH = /^\/api\/v1\/services\/[^/]+\/deployments$/u;
 
 function secure(response: Response, cacheControl = "no-store"): Response {
   const headers = new Headers(response.headers);
@@ -86,6 +88,31 @@ function isJson(request: Request): boolean {
   return (request.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
 }
 
+function logMarkerRejection(code: string): void {
+  console.error(JSON.stringify({ event: "deploy_mark_rejected", code }));
+}
+
+async function markDeployment(request: Request, target: StatsTarget, path: string): Promise<Response> {
+  if (bearerToken(request.headers.get("authorization")) === null) {
+    logMarkerRejection("unauthorized");
+    return error(401, "unauthorized", "a service deploy token is required");
+  }
+  if (crossSiteWrite(request)) {
+    logMarkerRejection("forbidden");
+    return error(403, "forbidden", "cross-origin request");
+  }
+  if (!isJson(request)) {
+    logMarkerRejection("unsupported_media_type");
+    return error(415, "unsupported_media_type", "application/json required");
+  }
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) > MAX_MARKER_BODY_BYTES) {
+    logMarkerRejection("too_large");
+    return error(413, "too_large", "marker exceeds the body cap");
+  }
+  return secure(await target.installation(internal(request, path.slice("/api/v1".length))));
+}
+
 async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {
   const decision = await target.authorize(request);
   if (!decision.ok) return denied(decision);
@@ -129,13 +156,14 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     }
     return secure(await target.installation(internal(request, "/ingest")));
   }
+  if (request.method === "POST" && SERVICE_MARKER_PATH.test(path)) return markDeployment(request, target, path);
   if (path.startsWith("/api/v1/")) {
     const decision = await target.authorize(request);
     if (!decision.ok) return denied(decision);
     if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
-    if (!/^\/(hosts|admin\/hosts|projects)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
-    if (request.method === "POST" && suffix === "/admin/hosts" && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
+    if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
+    if (request.method === "POST" && (suffix === "/admin/hosts" || suffix === "/admin/services") && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
     const response = await target.installation(internal(request, suffix));
     return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
   }

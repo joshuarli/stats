@@ -166,6 +166,9 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
   other route and every error answers in JSON.
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
+- `POST /admin/services`, `GET /services`, `GET /services/:name`,
+  `POST /services/:name/deployments`, and `GET /services/:name/deployments`
+  (see [Services and deploy markers](#services-and-deploy-markers)).
 
 Two authorization boundaries:
 
@@ -179,6 +182,9 @@ Two authorization boundaries:
   as a SHA-256 verifier, compared in constant time, bound to one host id, and
   individually rotatable and revocable. Rotating a revoked host clears the
   revocation.
+- **Deploy scripts** send a service's deploy token, in the same format and
+  stored the same way, only to `POST /api/v1/services/:name/deployments`.
+  That route never checks Access or Tailscale identity, like ingest.
 
 Revocation keeps the host row, verifier, and telemetry, so history stays
 readable. Purge deletes the host row, raw samples, and rollups in one
@@ -396,6 +402,84 @@ Features that read Cloudflare are off. The project registry is empty, so
 dashboard shows no projects. `/api/observe/*` answers
 `503 {"error":{"code":"unavailable"}}` after auth. No cron runs.
 
+## Services and deploy markers
+
+A service is a named set of agent hosts that deploy scripts report releases
+for. Services are rows in the Installation database, created through the admin
+API on either target, so adding one needs no redeploy. The code is
+`src/core/installation/services.ts`, and both targets reach it through
+`handleStatsRequest` in `src/core/http.ts`.
+
+`POST /api/v1/admin/services` takes `{ name, hostIds, healthUrl?, unit? }`
+as `application/json`, at most 8 KiB, and needs the target's human auth:
+
+| Field | Rule |
+| --- | --- |
+| `name` | The project id charset: `^[a-z][a-z0-9-]{0,31}$`. A taken name answers `409 conflict`. |
+| `hostIds` | 1 to 64 distinct ids of existing, non-revoked hosts, stored sorted. |
+| `healthUrl` | Optional. `https:`, or `http:` on a host ending in `.ts.net`, with no credentials or fragment, at most 2048 characters. |
+| `unit` | Optional. A systemd unit or container name: `^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$`. |
+
+It answers `201` with the service and a new deploy `token`. The token is in
+that response only. The server keeps its SHA-256 verifier in
+`services.token_hash`, and the token cannot be read back or rotated in this
+version. `GET /api/v1/services` answers `{ "services": [...] }`, and
+`GET /api/v1/services/:name` answers one service; neither carries the token.
+
+`POST /api/v1/services/:name/deployments` records a deploy marker. Its only
+credential is `Authorization: Bearer <deploy token>`. It skips Access and
+Tailscale identity, so a CI runner or a deploy script on any host can reach it,
+as an agent reaches ingest. Rejections, all before any write:
+
+| Check | Answer |
+| --- | --- |
+| No bearer token in the token format | `401 unauthorized` |
+| `Origin` or `Sec-Fetch-Site` names another site | `403 forbidden` |
+| `Content-Type` is not `application/json` | `415 unsupported_media_type` |
+| Body over 8 KiB, declared or streamed | `413 too_large` |
+| Unknown service, or a token that is not the service's | `401 unauthorized`; the two are indistinguishable |
+| Bad JSON, an unknown key, or a field outside its rule | `400 invalid_request` |
+| A host outside the service, or unknown or revoked | `400 invalid_request` |
+
+The body is `{ markerId, version, message?, hostIds }`:
+
+- `markerId` is the client's idempotency key, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`.
+- `version` is what was deployed, `^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$`, such as a commit or a semver.
+- `message` is at most 1000 characters; control characters become spaces, as Cloudflare deployment messages do.
+- `hostIds` is a non-empty subset of the service's hosts.
+
+A new marker answers `201` with
+`{ service, markerId, hostIds, deployment }`. `deployment` is a `Deployment`
+from `src/deployments/model.ts`:
+
+- `id` is a UUID derived from SHA-256 of the service name and `markerId`;
+- `atMs` is the server receive time;
+- `source` is `"marker"`;
+- `versions` is `[{ id: version, percentage: 100 }]`;
+- `deferred` is `false`.
+
+A marker is unique on `(service, markerId)`. A repeat with the same
+`version`, `message`, and set of hosts answers `200` with the stored marker,
+its original `atMs` included. A repeat that differs in any of them answers
+`409 conflict` and changes nothing. A deploy script can therefore retry a
+marker safely.
+
+`GET /api/v1/services/:name/deployments` answers the project deployments
+route's `DeploymentHistory` shape. `projectId` and `worker` are the service
+name, `enabled` is `true`, `sync` is `null`, and `versions` is `[]`. The added
+`markers` array maps each deployment id to its `markerId` and `hostIds`.
+Deployments are newest first, at most 1000 from the last 30 days. Ties at the
+same millisecond list the later-recorded first. The alarm deletes markers
+older than 30 days in batches of 1000.
+
+Two parts of the stack still assume Cloudflare deployments.
+`decodeDeploymentHistory` in `src/deployments/decode.ts` requires UUID
+version ids, so it rejects a marker version such as a commit. The Cloudflare
+zone's Access applications also challenge the marker path at the edge unless a
+path-scoped Bypass covers `/api/v1/services/*/deployments`, as one covers
+`/ingest/*`. With that Bypass the Worker still verifies Access on the route's
+`GET`.
+
 ## Storage and rollups
 
 One Durable Object per installation holds the host tables below and the project
@@ -412,6 +496,10 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
   does not reach storage, and duplicates compare this text.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 30 days.
+- `services`: one row per service, with its deploy token verifier and its
+  host ids as a sorted JSON array (schema version 8).
+- `service_deployments`: deploy markers keyed by `(service, markerId)`, with
+  the `Deployment` JSON and the marker's host ids, for 30 days.
 
 Rollups store counter delta sums with the interval each device covered and
 gauge sums with counts; they never average counters. A device rate divides by

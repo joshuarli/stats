@@ -67,7 +67,7 @@ function text(value: unknown, maximum: number): string {
   return value;
 }
 
-function annotation(value: unknown, maximum: number): string | null {
+export function annotation(value: unknown, maximum: number): string | null {
   // Messages can contain line breaks. Keep them as plain text, never HTML or URLs.
   if (value === undefined || value === null) return null;
   if (typeof value !== "string" || value.length > maximum) throw new Error("invalid deployment annotation");

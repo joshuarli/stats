@@ -31,7 +31,7 @@ export class ProjectConfigError extends Error {
   override readonly name = "ProjectConfigError";
 }
 
-const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
+export const PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
 const PROBE_NAME_PATTERN = /^[a-z][a-z0-9-]{0,31}$/;
 const WORKER_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;

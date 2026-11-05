@@ -17,7 +17,7 @@ import { collectedPoints, purgeExpired, recordRun, upsertPoints, type CollectorR
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "../../deployments/compare.ts";
 import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deployments/model.ts";
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
-import { readLimitedBytes } from "../../body.ts";
+import { readLimitedBytes, readLimitedText } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";
 import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, rowsWrittenBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
 import type { Clock, Scheduler } from "../ports.ts";
@@ -25,6 +25,7 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
+import { authenticateService, createService, listServices, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker } from "./services.ts";
 
 const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
@@ -429,7 +430,10 @@ export class InstallationCore {
   async alarm(): Promise<void> {
     const operation = this.operationRun();
     try {
-      try { purgeDeployments(operation.sql, this.now()); }
+      try {
+        purgeDeployments(operation.sql, this.now());
+        purgeServiceDeployments(operation.sql, this.now());
+      }
       catch (error) {
         reportError("deployments.retention", error);
         console.error(JSON.stringify({ event: "deployment_retention_failed" }));
@@ -679,12 +683,40 @@ export class InstallationCore {
       if (revoke !== null && request.method === "DELETE") return (await this.revokeHost(revoke[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
       if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
+      if (path === "/admin/services" && request.method === "POST") {
+        const result = await createService(sql, await readLimitedText(request, MAX_SERVICE_BODY_BYTES), this.now());
+        return result.ok ? json(result.value, 201) : failure(result.code, result.message, result.status);
+      }
+      if (path === "/services" && request.method === "GET") return json({ services: listServices(sql) });
+      const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);
+      if (service !== null) return await this.serviceRoute(request, sql, service[1]!, service[2] !== undefined);
       return failure("not_found", "unknown object route", 404);
     } catch (error) {
       reportError("installation.request", error);
       console.error(JSON.stringify({ event: "request_failed", code: "internal" }));
       return failure("internal", "internal error", 500);
     }
+  }
+
+  private async serviceRoute(request: Request, sql: SqlDatabase, name: string, deployments: boolean): Promise<Response> {
+    if (deployments && request.method === "POST") return this.markDeployment(request, sql, name);
+    if (request.method !== "GET") return failure("invalid_request", "method not allowed", 405);
+    const service = readService(sql, name);
+    if (service === null) return failure("not_found", "service not found", 404);
+    if (!deployments) return json(service);
+    if ([...new URL(request.url).searchParams].length !== 0) return failure("invalid_request", "unexpected query parameters", 400);
+    return json(readServiceDeployments(sql, service, this.now()));
+  }
+
+  private async markDeployment(request: Request, sql: SqlDatabase, name: string): Promise<Response> {
+    const rejected = (code: ErrorCode, message: string, status: number) => {
+      console.error(JSON.stringify({ event: "deploy_mark_rejected", code }));
+      return failure(code, message, status);
+    };
+    if (!await authenticateService(sql, name, bearerToken(request.headers.get("authorization")))) return rejected("unauthorized", "deploy credential rejected", 401);
+    const result = await recordMarker(sql, name, await readLimitedText(request, MAX_MARKER_BODY_BYTES), this.now());
+    if (!result.ok) return rejected(result.code, result.message, result.status);
+    return json(result.value.marker, result.value.created ? 201 : 200);
   }
 
   private async deploymentsApi(request: Request, url: URL, match: RegExpExecArray, operation: OperationRun): Promise<Response> {

@@ -1,5 +1,6 @@
 import type { SqlDatabase } from "../sql.ts";
 import { PROJECT_STATEMENTS } from "../../projects/store.ts";
+import { SERVICE_STATEMENTS } from "./services.ts";
 
 const HOSTS = `CREATE TABLE IF NOT EXISTS hosts (
   host_id TEXT PRIMARY KEY,
@@ -74,7 +75,8 @@ const MIGRATIONS: readonly Migration[] = [
   { version: 4, statements: PROJECT_STATEMENTS },
   { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY },
   { version: 6, statements: FORGET_UNCORRECTED_RUNS },
-  { version: 7, statements: [HOST_HISTORY_VERSIONS, "INSERT OR IGNORE INTO host_history_versions (host_id, version) SELECT host_id, 0 FROM hosts"] }
+  { version: 7, statements: [HOST_HISTORY_VERSIONS, "INSERT OR IGNORE INTO host_history_versions (host_id, version) SELECT host_id, 0 FROM hosts"] },
+  { version: 8, statements: SERVICE_STATEMENTS }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
