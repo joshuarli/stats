@@ -33,7 +33,7 @@ its stated values, with the malformed acknowledgments rejected. The Node suite
 with the sources, checks that delta and absolute encodings store the same
 content, rejects every frame in `malformed.json` with its code and every
 strict prefix of every golden frame, runs 20,000 seeded byte mutations, and
-checks that the test-only frame builder (`test/support/stb2.ts`, used by the
+checks that the frame encoder (`src/ingest/encode.ts`, used by the
 workerd tests for ad hoc batches) reproduces the agent's golden bytes. The
 workerd suite posts every golden and malformed frame through the public route.
 After a deliberate format or corpus change, `make fixtures-write` regenerates

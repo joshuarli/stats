@@ -83,7 +83,7 @@ export interface LedgerInput {
   readonly workerBilling: WorkerBilling;
 }
 
-export function workerRequestPrice(billing: WorkerBilling): number {
+function workerRequestPrice(billing: WorkerBilling): number {
   return billing === "cpu-only" ? 0 : LIST_PRICE_PER_MILLION.workerRequests;
 }
 

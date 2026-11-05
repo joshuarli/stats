@@ -518,9 +518,9 @@ use bound parameters, so request data does not create series. The dataset
 reports every statement the database ran, so a backfill or a migration shows
 up here as its own statements.
 
-The project page opens with a cost ledger (`cloudflare/src/client/pages/project/cost-ledger.ts`
+The project page opens with a cost ledger (`cloudflare/src/cost/ledger.ts`
 builds it, `CostLedger.tsx` draws it). It prices collected usage at the list
-prices in `cloudflare/src/client/pricing.ts` and projects each line to 30 days.
+prices in `cloudflare/src/cost/pricing.ts` and projects each line to 30 days.
 The lines are Worker requests and CPU split by route; Durable Object requests
 plus duration at 128 MB, split by method; D1 rows read and written split by
 statement, plus D1 storage; and R2 storage per bucket. GB is 10^9 bytes, and
