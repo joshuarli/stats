@@ -29,11 +29,12 @@ ssh "$host" "docker build -q -t stats-node:$commit -f ~/stats-node-build/$commit
 ssh "$host" "if docker container inspect stats-node >/dev/null 2>&1; then docker stop -t 20 stats-node >/dev/null && docker rm stats-node >/dev/null; fi"
 ssh "$host" "docker run -d --name stats-node --restart unless-stopped --network none --cgroup-parent=/stats.slice/stats-node.slice -v \$HOME/.local/share/stats-node:/data -v \$HOME/.local/share/stats-node-run:/run/stats -e STATS_ALLOWED_LOGINS='$logins' stats-node:$commit"
 ssh "$host" "for n in 1 2 3 4 5 6 7 8 9 10; do docker exec stats-node node -e \"require('node:http').get({socketPath:'/run/stats/stats.sock',path:'/health'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\" >/dev/null 2>&1 && exit 0; sleep 1; done; docker logs --tail 20 stats-node; exit 1"
+deployed_at=$(date -u +%Y%m%dT%H%M%SZ)
 echo "deploy/node: stats-node:$commit is serving on $host unix:\$HOME/.local/share/stats-node-run/stats.sock"
 
 credential=.work/credentials/stats-node-deploy.json
 if test -f "$credential"; then
-  pnpm --dir cloudflare -s statsctl deploy mark --service stats-node --version "$commit" --message "make node-deploy" --token-file "$credential" --origin "${STATS_NODE_ORIGIN:-http://threadripper.tailcf741.ts.net:18790}"
+  pnpm --dir cloudflare -s statsctl deploy mark --service stats-node --version "$commit" --marker-id "d-$commit-$deployed_at" --message "make node-deploy" --token-file "$credential" --origin "${STATS_NODE_ORIGIN:-http://threadripper.tailcf741.ts.net:18790}"
 else
   echo "deploy/node: no $credential, so this deploy is not marked; create the stats-node service as described in docs/operations.md (Services and deploy markers)"
 fi

@@ -456,7 +456,10 @@ pnpm --dir cloudflare -s statsctl service deployments --service stats-node --ori
 Replace `COMMIT` with the version, such as `git rev-parse --short=12 HEAD`.
 `make node-deploy` runs the first command itself after the health wait when
 `.work/credentials/stats-node-deploy.json` exists, against `STATS_NODE_ORIGIN`
-(default `http://threadripper.tailcf741.ts.net:18790`).
+(default `http://threadripper.tailcf741.ts.net:18790`), with the marker id
+`d-<commit>-<UTC deploy time>`. Each deploy of a commit therefore gets its own
+marker, and a later rollback to an already-marked commit still shows on the
+timeline. With the `v-<version>` default, that repeat would be a no-op.
 
 A new marker answers 201. Sending the same marker again answers 200 with the
 stored one, so a retry is safe; `deploy mark` exits 0 for both. The same

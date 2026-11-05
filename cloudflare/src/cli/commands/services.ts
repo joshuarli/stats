@@ -120,7 +120,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   description: [
     "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds} to /ingest/services/NAME/deployments and prints the stored marker.",
     "The service deploy token comes from the token file, the JSON returned once when the service was created, and is sent only to the configured origin in the Authorization header. No Access or other credential is sent, on either target.",
-    "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, or host set exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version.",
+    "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, or host set exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version, such as a rollback to it; with the default, that rollback records nothing and the newer marker stays latest.",
     "Exit 3 when the token file or the token is refused, or when an Access challenge intercepts the request (access_challenge). Exit 4 on transport failure."
   ],
   access: "mutation",
