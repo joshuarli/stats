@@ -70,6 +70,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
       assert.equal(response.status, 200);
     }
     assert.equal((await harness.stats("/health")).status, 200);
+    assert.equal((await harness.stats("/api/v1/nonexistent-page", { headers: await accessHeaders() })).status, 404);
     assert.equal((await harness.stats("/api/v1/projects", { headers: await accessHeaders() })).status, 200);
     const after = await until(() => workerTraces(harness), items => items.some(item => item.label === "GET /api/v1/projects"), "the sentinel request");
     assert.equal(after.length, before + 1, "polling the observability API stores nothing");
@@ -79,6 +80,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     const stored = storedText(harness.persist);
     assert.ok(stored.length > 0, `no observation store under ${harness.persist}: ${listing(harness.persist).join(", ")}`);
     assert.ok(stored.includes("POST /ingest/v2/batches") && stored.includes("deployments.poll"), "the scan reads the stored invocations and occurrences");
+    assert.ok(stored.includes("excluded-status:404"), "the 404 is counted as an outcome");
     for (const secret of [host.token, SECRET_QUERY, "SECRET_COOKIE", "SECRET_DEPLOY_TOKEN", "REDACTED", "cf-access-jwt-assertion", HOST_NAME]) {
       assert.ok(!stored.includes(secret), `stored telemetry contains ${secret}`);
     }
@@ -104,6 +106,7 @@ await test("a second service's invocations land in its own store with its own op
     const health = await harness.observeService("usr-memories", "/health") as { writes: { accepted: number; ingestRows: number } };
     assert.equal(health.writes.accepted, 2);
     const perInvocation = health.writes.ingestRows / health.writes.accepted;
+    console.log("MEASURE", health.writes.ingestRows, health.writes.accepted);
     assert.ok(perInvocation <= 6, `billed rows per invocation ${perInvocation}`);
   } finally {
     await harness.dispose();
@@ -152,7 +155,7 @@ await test("a crashing or missing collector leaves stats responses unchanged", a
 
 const DEPLOYMENT = "0b5b2c1e-0f0a-4c4a-9d8e-1a2b3c4d5e6f";
 const DEPLOYED_VERSION = "2221f9c2-9bd2-4011-bebb-52133d498752";
-const STATS_PROJECT = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+const STATS_PROJECT = { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
 
 await test("a polled Cloudflare deployment reaches the store as a rollout, readable only through Access", async () => {
   const atMs = Number(VARS["TEST_NOW_MS"]) - 3_600_000;

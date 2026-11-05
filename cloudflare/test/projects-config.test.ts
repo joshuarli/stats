@@ -5,6 +5,7 @@ const valid = {
   id: "stuff",
   name: "stuff",
   worker: "stuff",
+  workerBilling: "requests-and-cpu" as const,
   buckets: ["stuff-mycrates", "stuff-mynpm"],
   durableObjectNamespaces: [], d1Databases: [],
   probes: [{ name: "npm", url: "https://npm.17166969.xyz/current/" }],
@@ -41,6 +42,14 @@ describe("project registry", () => {
     const withoutProbes = Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "probes"));
     expect(rejection(withoutProbes)).toContain("projects[0].probes: missing");
     expect(rejection({ ...valid, probes: [{ name: "npm", url: valid.probes[0]?.url, method: "POST" }] })).toContain("probes[0].method: unknown key");
+  });
+
+  it("accepts the closed worker billing values and rejects anything else", () => {
+    expect(parseProjects(JSON.stringify([{ ...valid, workerBilling: "cpu-only" }]))[0]?.workerBilling).toBe("cpu-only");
+    expect(rejection({ ...valid, workerBilling: "free" })).toContain("projects[0].workerBilling: expected one of requests-and-cpu, cpu-only");
+    expect(rejection({ ...valid, workerBilling: null })).toContain("projects[0].workerBilling: expected one of");
+    const without = Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "workerBilling"));
+    expect(rejection(without)).toContain("projects[0].workerBilling: missing");
   });
 
   it("rejects duplicate project ids", () => {

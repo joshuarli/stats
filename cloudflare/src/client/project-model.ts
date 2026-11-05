@@ -1,3 +1,5 @@
+import { WORKER_BILLINGS, type WorkerBilling } from "../projects/config.ts";
+
 type Fields = Readonly<Record<string, unknown>>;
 
 function fail(what: string): never {
@@ -53,11 +55,18 @@ export interface ProjectSummary {
   readonly id: string;
   readonly name: string;
   readonly worker: string;
+  readonly workerBilling: WorkerBilling;
   readonly buckets: readonly string[];
   readonly durableObjectNamespaces: readonly string[];
   readonly d1Databases: readonly string[];
   readonly probes: readonly ProbeTarget[];
   readonly collector: CollectorState;
+}
+
+function workerBilling(value: unknown): WorkerBilling {
+  const found = WORKER_BILLINGS.find(billing => billing === value);
+  if (found === undefined) fail("project workerBilling");
+  return found;
 }
 
 function project(value: unknown, what: string): ProjectSummary {
@@ -68,6 +77,7 @@ function project(value: unknown, what: string): ProjectSummary {
     id: text(fields["id"], "project id", 32),
     name: text(fields["name"], "project name", 128),
     worker: text(fields["worker"], "project worker", 63),
+    workerBilling: workerBilling(fields["workerBilling"]),
     buckets: strings("buckets"),
     durableObjectNamespaces: strings("durableObjectNamespaces"),
     d1Databases: strings("d1Databases"),

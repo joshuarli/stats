@@ -24,22 +24,6 @@ const window = (values: string, fallback: string): OptionSpecs => ({ window: { t
 
 export const plannedCommands: readonly Command[] = [
   planned({
-    name: "deployments",
-    summary: "list a project's deployments with their version ids",
-    description: ["Lists deployments from the server's recorded history, newest first, with versions and sync state. Use the ids with `compare` and `verify`."],
-    options: requiredProject,
-    examples: ["statsctl deployments --project stats --json"],
-    limitations: ["`latest` resolves once to an immutable deployment id."]
-  }),
-  planned({
-    name: "compare",
-    summary: "compare one deployment against the window before it",
-    description: ["Reports the server comparison for one exact deployment: before and after windows, invocations, per-metric deltas, and the verdict with its reasons."],
-    options: { ...requiredProject, deployment: { type: "string", placeholder: "ID", required: true, description: "deployment id from `statsctl deployments`" }, ...window("1h, 6h, 24h", "1h") },
-    examples: ["statsctl compare --project stats --deployment DEPLOYMENT_ID --window 1h --json"],
-    limitations: ["Global, project-wide metrics only; operation-scoped metrics belong to `verify`."]
-  }),
-  planned({
     name: "verify",
     summary: "decide whether a deployment used fewer resources for the same work",
     description: [
@@ -57,49 +41,5 @@ export const plannedCommands: readonly Command[] = [
     },
     examples: ["statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --wait --timeout 2h --json"],
     limitations: ["A full verify makes at most 60 requests."]
-  }),
-  planned({
-    name: "observe routes",
-    summary: "rank routes by CPU with latency percentiles over a window",
-    description: ["Reads the observe service for the stats project. Read-only."],
-    options: { project: { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" }, ...window("1h, 6h, 24h, 7d", "24h") },
-    examples: ["statsctl observe routes --project stats --window 1h --json"],
-    limitations: ["Observe retention is 7 days."]
-  }),
-  planned({
-    name: "observe traces",
-    summary: "list recent traces, slowest or failed first",
-    description: ["Reads trace summaries from the observe service. Read-only."],
-    options: { project: { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" }, ...window("1h, 6h, 24h, 7d", "24h"), route: { type: "string", placeholder: "LABEL", description: "only this route label" }, failed: { type: "boolean", description: "only failed invocations" } },
-    examples: ["statsctl observe traces --project stats --window 1h --failed --json"],
-    limitations: ["Resolving, reopening, and source-map registration are not exposed; use `pnpm observe`."]
-  }),
-  planned({
-    name: "observe issues",
-    summary: "list observed error groups",
-    description: ["Reads issue groups from the observe service. Read-only."],
-    options: { project: { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" }, state: { type: "string", placeholder: "STATE", description: "open or resolved" }, "introduced-in": { type: "string", placeholder: "VERSION", description: "only issues first seen in this version" } },
-    examples: ["statsctl observe issues --project stats --state open --json"],
-    limitations: ["Stack frames are never written to snapshots."]
-  }),
-  planned({
-    name: "observe deployment",
-    summary: "show new issues and failure rates for one rollout",
-    description: ["Reads the observe impact report for one rollout. Read-only."],
-    options: { project: { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" }, deployment: { type: "string", placeholder: "ID", required: true, description: "rollout or deployment id" } },
-    examples: ["statsctl observe deployment --project stats --deployment DEPLOYMENT_ID --json"],
-    limitations: ["Exploratory: whole-retention scan by version; `verify` does not use it."]
-  }),
-  planned({
-    name: "check ingest",
-    summary: "send one known sample through production ingest and read it back",
-    description: [
-      "MUTATION: writes one real sample. Encodes one sample with a fresh sequence and time, POSTs it, expects accepted 1, reads it back from host history, re-POSTs the identical bytes and expects duplicate 1, and confirms the stored count did not change.",
-      "Use only with the synthetic-check host credential."
-    ],
-    access: "mutation",
-    options: { "credential-file": { type: "string", placeholder: "FILE", required: true, description: "host credential JSON, mode 0600; never passed in argv" } },
-    examples: ["statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json"],
-    limitations: ["Synthetic samples carry a synthetic flag and are excluded from organic metrics, but their cost stays in totals."]
   })
 ];

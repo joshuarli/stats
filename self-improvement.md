@@ -4,9 +4,9 @@
 
 - **Goal:** build `statsctl`, an agent-facing TypeScript CLI that shares the dashboard's cost engine. Give it the telemetry it needs to answer one question: did this version use fewer resources for the same useful work, without losing data or degrading service, and is the evidence complete? Then use it on production stats for at most three deployed optimization candidates.
 - **Baseline:** `00e18d2` on `master`. All loop commands are green (see **Baseline**).
-- **Accepted:** G1 (`4b27de9`), D1 (`04b443e`), E1a: the encoder half of E1 (`92830b1`), T1 (`c521efe`), C1 (`e7013f2`). **Red:** none. **Parked:** none.
-- **In flight:** L1, C2, T2, T3 (`campaign/<id>` in `.work/wt/<id>`).
-- **Next:** L2 and L3 after L1 and C2; T4 after T3; P1x after T2; the `check ingest` half of E1 after L1.
+- **Accepted:** G1, D1, E1 (E1a `92830b1`, E1b `acaddf1`), T1 (`c521efe`), C1 (`e7013f2`), L1 (`db4353a`), C2 (`8370f7a`), L3 (`68a29a9`). **Red:** none. **Parked:** none.
+- **In flight:** T2, T3 (revision: rare outcome classes only, event-time buckets, lag on operation rows), L2.
+- **Next:** T4 after T3; P1x after T2; L4 after L2 and T4; then H1 and O0.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
@@ -115,20 +115,19 @@ Each decision gives its reason, and what would reverse it.
     - **Row accounting.** `src/sql-account.ts` provides an accountant. Each operation passes its own instance through the code it runs. The accountant runs `exec`, fully consumes the cursor, then adds the cursor's `rowsRead` and `rowsWritten`, which are final only after consumption and include index-row writes. Never subtract shared counters, never count returned arrays, and never estimate index amplification.
     - **One publish per invocation.** An instrumented entry point publishes exactly one `operation` message, carrying trace context, in a `finally`. It replaces `markInvocation()` for that invocation, which keeps the observability campaign's limit of one in-process publish per invocation. Entry points without instrumentation keep `markInvocation()`.
     - **Timing.** No `performance.now()` or `Date.now()` around synchronous code; production timers advance only on I/O. CPU comes from the tail event's `cpuTime`.
-    - **Storage.** Observe stores summaries in an additive `observe_operations` table, one row per (5-minute receipt bucket, version, operation, workloadClass, synthetic flag). Each row holds summed fields plus `count`, `failed`, `cpuMsSum`, and `wallMsSum`. Use µs integers if the tail `cpuTime` has fractional precision; otherwise record that it is quantized to ms. Retention is 7 days. Rows are bounded by the closed sets.
+    - **Storage.** Observe stores summaries in an additive `observe_operations` table, one row per (5-minute event-time bucket, version, operation, workloadClass, synthetic flag), with receipt lag (`lag_count`, `lag_ms_max`, `lag_ms_sum`). Each row holds summed fields plus `count`, `failed`, `cpuMsSum`, and `wallMsSum`. Use µs integers if the tail `cpuTime` has fractional precision; otherwise record that it is quantized to ms. Retention is 7 days. Rows are bounded by the closed sets.
     - **Deploy order.** The tail reducer rejects any channel message kind it does not know (`tail.ts` `readChannel`). So the reducer that accepts `operation` deploys and is verified before any producer emits one. Never roll `stats-observe` back below that version while stats emits `operation`.
 13. **Outcome coverage.** This separates accounting coverage from diagnostic retention.
-    - **Outcome counts.** The tail worker counts every received event in an additive `observe_outcomes` table, per (5-minute receipt bucket, version, stage, outcome class, route label or `other`). The outcome classes are:
-      - `observed`;
+    - **Outcome counts.** Production tail batches hold one event each, so a per-batch row for every event would double observe writes. Observed events are counted from `observe_invocations`, one row each, which already exists. The tail worker counts every other event in an additive `observe_outcomes` table, per (5-minute event-time bucket, version, stage, outcome class, route label or `other`, at most 32 routes per key). The outcome classes are:
       - `excluded-status:401|403|404`;
       - `excluded-route`;
       - `rejected-invalid`;
-      - `unknown-service`.
-    - **What doesn't change.** The existing diagnostic filter (`EXCLUDED_STATUSES`, `tail.ts:25`) and the `observe_invocations` contents stay as they are.
-    - **Receipt lag.** Each outcome bucket records the max and summed receipt lag (receipt time minus event timestamp). `observed_at` stays as it is.
+      - `unknown-service`, stored in the `stats` store.
+    - **What doesn't change.** The diagnostic filter (`EXCLUDED_STATUSES`, `tail.ts:25`) and the `observe_invocations` contents stay as they are.
+    - **Receipt lag.** The lag is receipt time minus event timestamp. It is recorded on `observe_operations` rows, and on outcome rows for the rare classes. `observed_at` stays as it is.
     - **Revision.** `OBSERVE_FILTER_REVISION` is a constant stored with each bucket.
     - **Coverage state** of a window is computed, never assumed. It is:
-      - `reconciled` when the observe event total (all classes, both stages) is within 5% of `worker.invocations` from `project_samples` for the same 5-minute buckets;
+      - `reconciled` when the observe event total (observed invocations plus all outcome classes, both stages) is within 5% of `worker.invocations` from `project_samples` for the same 5-minute buckets;
       - `partial` when the difference is larger, or buckets are missing;
       - `unknown` when either source lacks the window.
 

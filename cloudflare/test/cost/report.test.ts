@@ -9,7 +9,7 @@ const T0 = 100 * H;
 const WINDOW = { fromMs: T0, toMs: T0 + 2 * H };
 const NOW = T0 + 3 * H;
 const MONTH_FACTOR = (30 * 24) / 2;
-const PROJECT = { id: "p", name: "P", worker: "w", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+const PROJECT = { id: "p", name: "P", worker: "w", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
 
 function report(parts: Partial<CostReportInput> & Pick<CostReportInput, "current">): CostReport {
   return buildCostReport({ nowMs: NOW, pricingRevision: PRICING_REVISION, project: PROJECT, windows: { current: WINDOW, previous: previousWindowOf(WINDOW) }, previous: undefined, objectMethods: undefined, planMonth: undefined, ...parts });
@@ -41,6 +41,29 @@ await test("a measured zero is a verified price of zero, distinct from unavailab
   assert.deepEqual(worker.price, { kind: "priced", monthly: { now: 0, before: null }, bound: "estimate" });
   assert.equal(worker.confidence, "verified");
   assert.deepEqual(built.total.pricedMeters, ["workerCpuMs", "workerRequests"]);
+});
+
+await test("a cpu-only Worker keeps its request counts but prices and bills only CPU, and lists requests as excluded", () => {
+  const current = histories(T0, { worker: { "worker.invocations": [1_000_000, 1_000_000, 9e9], "worker.cpuMsSum": [5_000_000, 5_000_000, 9e9] } });
+  const settledMs = T0 + 2 * H;
+  const planMonth = { histories: current, settledMs };
+  const billed = report({ current, planMonth });
+  const tail = report({ current, planMonth, project: { ...PROJECT, workerBilling: "cpu-only" } });
+  const worker = find(tail.lines, "worker");
+  near(find(billed.lines, "worker").parts.find(part => part.label === "requests")!.monthly, 216);
+  near(worker.parts.find(part => part.label === "requests")!.monthly, 0);
+  near(tail.total.monthly.now, 72);
+  assert.deepEqual(worker.usage, { kind: "requests", calls: { now: 720_000_000, before: null }, cpuMs: { now: 3_600_000_000, before: null } });
+  assert.ok(warned(tail, "tail-requests-unpriced", "worker"));
+  assert.ok(!warned(billed, "tail-requests-unpriced", "worker"));
+  assert.deepEqual(tail.total.pricedMeters, ["workerCpuMs"]);
+  assert.deepEqual(tail.total.excluded, [{ meter: "workerRequests", reason: "tail-cpu-only" }]);
+  assert.equal(tail.planBill.kind, "isolated");
+  if (tail.planBill.kind === "isolated" && billed.planBill.kind === "isolated") {
+    assert.equal(tail.planBill.usage.workerRequests, 0);
+    assert.ok(billed.planBill.usage.workerRequests > 0);
+    assert.ok(tail.planBill.projectedMonthEnd < billed.planBill.projectedMonthEnd);
+  }
 });
 
 await test("a partially covered window gives a qualified run rate with its denominator, never verified", () => {

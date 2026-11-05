@@ -12,7 +12,7 @@ const MONTH_FACTOR = (30 * 24) / 2;
 const WINDOW = { fromMs: T0, toMs: T0 + 2 * H };
 
 function input(current: LedgerHistories, previous: LedgerHistories | undefined, extra: Partial<LedgerInput> = {}): LedgerInput {
-  return { current, previous, window: WINDOW, previousWindow: previousWindowOf(WINDOW), buckets: [], databases: [], objectMethods: undefined, ...extra };
+  return { current, previous, window: WINDOW, previousWindow: previousWindowOf(WINDOW), buckets: [], databases: [], objectMethods: undefined, workerBilling: "requests-and-cpu", ...extra };
 }
 
 const line = (lines: readonly CostLine[], id: string) => lines.find(entry => entry.id === id)!;
@@ -138,7 +138,7 @@ await test("bills only usage beyond the Workers Paid allowances, bucket by bucke
     worker: { "worker.invocations": [6_000_000, 6_000_000, 9e9], "worker.cpuMsSum": [0, 0, 9e9] },
     d1: { "d1.rowsRead": [0, 0, 9e9], "d1.rowsWritten": [1_000_000, 0, 9e9], "d1.queries": [1, 0, 9e9], [`d1.${database}.storageBytes`]: [10e9, 10e9, 10e9] }
   });
-  const bill = planBill(current, WINDOW, [], [database]);
+  const bill = planBill(current, WINDOW, [], [database], "requests-and-cpu");
   assert.deepEqual(bill.billed.times, [T0, T0 + H, T0 + 2 * H]);
   assert.equal(bill.billed.values[1], 0);
   near(bill.billed.values[2]!, 2 * 0.3, 9);
@@ -187,8 +187,8 @@ const MEASURED: Record<string, unknown> = {
 for (const name of ["stats", "stuff", "usr-memories"]) {
   await test(`plan bill and projection on the ${name} capture are unchanged`, () => {
     const { project, set, window } = capture(name);
-    const bill = planBill(set, window, project.buckets, project.d1Databases);
-    const ledger = buildLedger({ current: set, previous: undefined, window, previousWindow: previousWindowOf(window), buckets: project.buckets, databases: project.d1Databases, objectMethods: undefined });
+    const bill = planBill(set, window, project.buckets, project.d1Databases, "requests-and-cpu");
+    const ledger = buildLedger({ current: set, previous: undefined, window, previousWindow: previousWindowOf(window), buckets: project.buckets, databases: project.d1Databases, objectMethods: undefined, workerBilling: "requests-and-cpu" });
     const monthly = monthlyUsage(ledger);
     const scaled = Object.fromEntries(Object.entries(monthly).map(([meter, value]) => [meter, value * 1000])) as typeof monthly;
     const observed = {

@@ -4,6 +4,7 @@ import { metricTrack, type MetricHistory } from "../client/history.ts";
 import { BYTES_PER_GB, DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_GB_MONTH, LIST_PRICE_PER_MILLION, WORKERS_PAID_INCLUDED } from "./pricing.ts";
 import type { ObjectMethodStats } from "../observe/core/store.ts";
 import { holdLast } from "../client/math.ts";
+import type { WorkerBilling } from "../projects/config.ts";
 
 export const MONTH_MS = 30 * 86_400_000;
 const UNATTRIBUTED_SHARE = 0.01;
@@ -54,6 +55,7 @@ export interface Ledger {
   readonly monthly: Amount;
   readonly uncompared: readonly string[];
   readonly lines: readonly CostLine[];
+  readonly workerBilling: WorkerBilling;
 }
 
 export interface LedgerHistories {
@@ -78,6 +80,11 @@ export interface LedgerInput {
   readonly buckets: readonly string[];
   readonly databases: readonly string[];
   readonly objectMethods: ObjectMethods | undefined;
+  readonly workerBilling: WorkerBilling;
+}
+
+export function workerRequestPrice(billing: WorkerBilling): number {
+  return billing === "cpu-only" ? 0 : LIST_PRICE_PER_MILLION.workerRequests;
 }
 
 export function previousWindowOf(window: TimeWindow): TimeWindow {
@@ -193,13 +200,14 @@ function routeNames(history: MetricHistory): string[] {
 }
 
 function workerLine(input: LedgerInput, sample: Sampler): CostLine {
+  const requestPrice = workerRequestPrice(input.workerBilling);
   const worker = (history: LedgerHistories) => history.worker;
   const routes = (history: LedgerHistories) => history.routes;
   const callsNow = sample.now(input.current, worker, "worker.invocations");
   const cpuNow = sample.now(input.current, worker, "worker.cpuMsSum");
   const callsBefore = sample.before(worker, "worker.invocations");
   const cpuBefore = sample.before(worker, "worker.cpuMsSum");
-  const cost = (calls: number, cpu: number) => perMillion(calls, LIST_PRICE_PER_MILLION.workerRequests) + perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs);
+  const cost = (calls: number, cpu: number) => perMillion(calls, requestPrice) + perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs);
   const beforeCost = (calls: number | null, cpu: number | null) => calls === null || cpu === null ? null : cost(calls, cpu);
   const stepMs = input.current.worker.stepMs;
   const children: CostLine[] = routeNames(input.current.routes).map(route => {
@@ -214,9 +222,9 @@ function workerLine(input: LedgerInput, sample: Sampler): CostLine {
     return {
       id: `route:${route}`, kind: "route", label: route,
       price: priced(cost(calls, cpu), beforeCost(before.calls, before.cpu)),
-      parts: [{ label: "requests", monthly: perMillion(calls, LIST_PRICE_PER_MILLION.workerRequests), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
+      parts: [{ label: "requests", monthly: perMillion(calls, requestPrice), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
       usage: { kind: "requests", calls: { now: calls, before: before.calls }, cpuMs: { now: cpu, before: before.cpu } },
-      trend: sumTracks([trendOf(callsTrack, stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerRequests)), trendOf(cpuTrack, stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerCpuMs))]),
+      trend: sumTracks([trendOf(callsTrack, stepMs, value => perMillion(value, requestPrice)), trendOf(cpuTrack, stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerCpuMs))]),
       children: []
     } satisfies CostLine;
   }).filter(line => line.usage.kind === "requests" && (line.usage.calls.now > 0 || (line.usage.calls.before ?? 0) > 0));
@@ -234,10 +242,10 @@ function workerLine(input: LedgerInput, sample: Sampler): CostLine {
   return {
     id: "worker", kind: "worker", label: "Worker",
     price: priced(total, beforeCost(callsBefore, cpuBefore)),
-    parts: [{ label: "requests", monthly: perMillion(callsNow, LIST_PRICE_PER_MILLION.workerRequests), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpuNow, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
+    parts: [{ label: "requests", monthly: perMillion(callsNow, requestPrice), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpuNow, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
     usage: { kind: "requests", calls: { now: callsNow, before: callsBefore }, cpuMs: { now: cpuNow, before: cpuBefore } },
     trend: sumTracks([
-      trendOf(metricTrack(input.current.worker, "worker.invocations"), stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerRequests)),
+      trendOf(metricTrack(input.current.worker, "worker.invocations"), stepMs, value => perMillion(value, requestPrice)),
       trendOf(metricTrack(input.current.worker, "worker.cpuMsSum"), stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerCpuMs))
     ]),
     children: byCost(children)
@@ -495,9 +503,9 @@ export interface PlanBill {
   readonly usage: MeterUsage;
 }
 
-export function planBill(histories: LedgerHistories, window: TimeWindow, buckets: readonly string[], databases: readonly string[]): PlanBill {
+export function planBill(histories: LedgerHistories, window: TimeWindow, buckets: readonly string[], databases: readonly string[], workerBilling: WorkerBilling): PlanBill {
   const accruals = [
-    ...counterAccruals("workerRequests", histories.worker, "worker.invocations", window),
+    ...(workerBilling === "cpu-only" ? [] : counterAccruals("workerRequests", histories.worker, "worker.invocations", window)),
     ...counterAccruals("workerCpuMs", histories.worker, "worker.cpuMsSum", window),
     ...counterAccruals("durableObjectRequests", histories.durableObjects, "do.invocations", window),
     ...counterAccruals("durableObjectGbSeconds", histories.durableObjects, "do.wallMsSum", window, DURABLE_OBJECT_MEMORY_GB / 1000),
@@ -524,7 +532,7 @@ export function monthlyUsage(ledger: Ledger): MeterUsage {
   const stored = (line: CostLine | undefined) => (line?.usage.kind === "stored" ? line.usage.bytes.now / BYTES_PER_GB : 0);
   for (const line of ledger.lines) {
     const kind = line.usage;
-    if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = kind.calls.now; usage.workerCpuMs = kind.cpuMs.now; }
+    if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = ledger.workerBilling === "cpu-only" ? 0 : kind.calls.now; usage.workerCpuMs = kind.cpuMs.now; }
     if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls.now; usage.durableObjectGbSeconds = (kind.wallMs.now / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
     if (kind.kind === "rows") { usage.d1RowsRead = kind.read.now; usage.d1RowsWritten = kind.written.now; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
     if (line.kind === "r2") usage.r2Storage = stored(line);
@@ -553,5 +561,5 @@ export function buildLedger(input: LedgerInput): Ledger {
   const compared = entries.filter(entry => entry.amount !== null && entry.amount.before !== null);
   const change = compared.reduce((sum, entry) => sum + (entry.amount!.now - entry.amount!.before!), 0);
   const uncompared = entries.filter(entry => entry.amount !== null && entry.amount.before === null).map(entry => entry.line.label);
-  return { window: input.window, previousWindow: input.previousWindow, monthly: { now, before: compared.length === 0 ? null : now - change }, uncompared, lines };
+  return { window: input.window, previousWindow: input.previousWindow, monthly: { now, before: compared.length === 0 ? null : now - change }, uncompared, lines, workerBilling: input.workerBilling };
 }

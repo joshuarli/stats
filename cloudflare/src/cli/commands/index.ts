@@ -1,8 +1,12 @@
 import { Registry } from "../registry.ts";
+import { checkIngestCommand } from "./check.ts";
+import { compareCommand } from "./compare.ts";
 import { costCommand } from "./cost.ts";
+import { deploymentsCommand } from "./deployments.ts";
 import { healthCommand } from "./health.ts";
+import { observeDeploymentCommand, observeIssuesCommand, observeRoutesCommand, observeTracesCommand } from "./observe.ts";
 import { plannedCommands } from "./planned.ts";
 import { projectsCommand } from "./projects.ts";
 import { snapshotCommand } from "./snapshot.ts";
 
-export const REGISTRY = new Registry([projectsCommand, healthCommand, costCommand, snapshotCommand, ...plannedCommands]);
+export const REGISTRY = new Registry([projectsCommand, healthCommand, costCommand, snapshotCommand, deploymentsCommand, compareCommand, observeRoutesCommand, observeTracesCommand, observeIssuesCommand, observeDeploymentCommand, checkIngestCommand, ...plannedCommands]);

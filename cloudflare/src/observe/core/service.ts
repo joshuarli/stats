@@ -1,4 +1,4 @@
-import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, type ObservedRollout, type Preparation, type VersionLabel } from "./model.ts";
+import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, type ObservedRollout, type OutcomeEvent, type Preparation, type VersionLabel } from "./model.ts";
 import { representativeFrame, sha256Hex } from "./grouping.ts";
 import { createSymbolicator } from "./symbolicate.ts";
 import {
@@ -29,7 +29,7 @@ export interface ObserveService {
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
 
 export interface MaintainedService extends ObserveService {
-  ingest(preparations: readonly Preparation[]): IngestResult;
+  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[]): IngestResult;
   cleanup(): { readonly cleaned: CleanupResult; readonly nextAtMs: number | null };
 }
 
@@ -82,7 +82,7 @@ export function createObserveService(db: SqlDatabase, clock: ServiceClock): Main
       if (problem !== null) return { problem };
       return { result: recordArtifact(db, { ...artifact, digest: await sha256Hex(artifact.map) }, clock.now()) };
     },
-    ingest: preparations => ingest(db, preparations, clock.now()),
+    ingest: (preparations, outcomes) => ingest(db, preparations, clock.now(), outcomes),
     cleanup: () => {
       const now = clock.now();
       const cleaned = cleanup(db, now);
