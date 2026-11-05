@@ -365,12 +365,19 @@ the plan's included allowances are not subtracted, so the ledger ranks where
 spend comes from and is not a bill. Worker requests count the entrypoint only,
 so an ingest is one Worker request and one Durable Object request.
 
-The ledger reads its own two history windows. The current window is the
-selected range ending at the last settled bucket, and the previous window is
-the same length immediately before it. Each window is projected from the time
+The ledger reads its own two history windows. The current window is the last
+hour ending at the last settled bucket, whatever range the page shows, so the
+projection follows the current rate instead of averaging in an incident the
+range still holds. A zoomed view replaces it with the zoomed window. The
+previous window is the same length immediately before it. Each window is projected from the time
 it actually covers, so a collector gap is not read as savings. A previous
 window that starts after the history's retention has no baseline, and its
 lines show no change.
+
+Below the total, a chart shows this UTC calendar month's list-price spend so far
+as a solid line, read from a third history window that starts at the month's
+first instant, and a dashed line from there to the month's end at the ledger's
+projected rate. Storage accrues for the time it was held at its GB-month price.
 
 Durable Object duration is billed per object while it is active, and
 overlapping requests share one meter. Summed request wall time is therefore

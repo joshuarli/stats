@@ -5,7 +5,8 @@ import { errorMessage } from "../../format";
 import type { MetricHistory, ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
-import { buildLedger, previousWindowOf, type Ledger, type LedgerHistories, type ObjectMethods } from "./cost-ledger";
+import type { Track } from "../../columns";
+import { buildLedger, previousWindowOf, spendOf, type Ledger, type LedgerHistories, type ObjectMethods } from "./cost-ledger";
 import { provisionalFromMs } from "./series";
 
 export type Baseline =
@@ -103,4 +104,34 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     return loaded?.baseline.kind === "failed" ? loaded.baseline.message : null;
   };
   return { ledger, error, baselineError };
+}
+
+export function monthOf(atMs: number): TimeWindow {
+  const at = new Date(atMs);
+  return { fromMs: Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1), toMs: Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1) };
+}
+
+export interface MonthSpend {
+  readonly month: TimeWindow;
+  readonly spent: Track;
+}
+
+export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {
+  const [spend, setSpend] = createSignal<MonthSpend | null>(null);
+  const [error, setError] = createSignal<string | null>(null);
+  createEffect(() => `${project().id}:${settledMs()}:${refreshKey()}`, () => {
+    const month = monthOf(settledMs());
+    const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, settledMs()) };
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    getProjectHistories(project().id, window, historyKinds(project()), controller.signal).then(histories => {
+      if (controller.signal.aborted) return;
+      const ledger = buildLedger({ current: ledgerHistories(histories), previous: undefined, window, previousWindow: previousWindowOf(window), buckets: project().buckets, databases: project().d1Databases, objectMethods: undefined });
+      setSpend({ month, spent: spendOf(ledger) });
+      setError(null);
+    }).catch((cause: unknown) => {
+      if (!controller.signal.aborted) setError(errorMessage(cause));
+    });
+  });
+  return { spend, error };
 }

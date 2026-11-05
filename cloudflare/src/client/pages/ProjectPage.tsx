@@ -23,7 +23,8 @@ import { hasAnyValue, silenceMinutes, type ProjectData } from "./project/series"
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel, type Observability } from "./project/Observe";
 import { RequestExplorerWidget } from "./project/Requests";
-import { createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
+import { createMonthSpend, createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
+import { HOUR_MS } from "../../limits";
 import { CostLedger } from "./project/CostLedger";
 import "./project/project.css";
 import { readParam, writeParam } from "../urlState";
@@ -131,10 +132,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   };
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
 
-  const ledgerWindow = createMemo((): TimeWindow => settledWindow(worker(), rangeMs[range()], view()));
+  const ledgerWindow = createMemo((): TimeWindow => settledWindow(worker(), HOUR_MS, view()));
   const windowLabel = () => view() !== null
     ? "Zoomed window, up to the last settled bucket, vs the window before it"
-    : `Settled ${range()} ending ${age(ledgerWindow().toMs, now())} vs the ${range()} before`;
+    : `Settled hour ending ${age(ledgerWindow().toMs, now())} vs the hour before`;
   const service = isObservedService(props.project.worker) ? props.project.worker : null;
   const observeWindow = () => {
     const zoomed = view();
@@ -148,6 +149,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     () => props.project, ledgerWindow, () => `${projectTick()}:${manualTick()}`,
     observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now }
   );
+  const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
+  const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
 
   const toggleSection = (section: SectionId) => {
     setSections(current => {
@@ -223,8 +226,11 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               <Show when={baselineError()}>{message => (
                 <Notice tone="warn">{`The previous window could not be read, so changes are not shown: ${message()}`}</Notice>
               )}</Show>
+              <Show when={monthSpend.error()}>{message => (
+                <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
+              )}</Show>
               <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
-                {current => <CostLedger ledger={current().ledger} histories={current().histories} windowLabel={windowLabel()} />}
+                {current => <CostLedger ledger={current().ledger} histories={current().histories} windowLabel={windowLabel()} spend={monthSpend.spend()} />}
               </Show>
             </Show>
           </Loading>

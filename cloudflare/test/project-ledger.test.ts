@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Table } from "../src/client/columns";
 import type { MetricHistory } from "../src/client/history";
-import { buildLedger, monthlyOf, previousWindowOf, type CostLine, type LedgerHistories, type LedgerInput } from "../src/client/pages/project/cost-ledger";
+import { buildLedger, monthlyOf, previousWindowOf, spendOf, type CostLine, type LedgerHistories, type LedgerInput } from "../src/client/pages/project/cost-ledger";
 import { tableView, type Cell } from "./support/history";
 
 const H = 3_600_000;
@@ -145,5 +145,19 @@ describe("project cost ledger", () => {
     const ledger = buildLedger(input(current, undefined, { buckets: ["media"] }));
     expect(ledger.lines.map(entry => entry.id)).toEqual(["r2", "worker"]);
     expect(ledger.monthly.now).toBeCloseTo(ledger.lines.reduce((sum, entry) => sum + now(entry), 0), 9);
+  });
+
+  it("accrues spend bucket by bucket inside the window, with storage billed for the time it was held", () => {
+    const database = "9870c4da-3758-4f0c-ab6d-2372eb34009b";
+    const current = histories(T0, {
+      worker: { "worker.invocations": [1_000_000, 1_000_000, 9e9], "worker.cpuMsSum": [0, 0, 9e9] },
+      d1: { "d1.rowsRead": [0, 0, 9e9], "d1.rowsWritten": [1_000_000, 0, 9e9], "d1.queries": [1, 0, 9e9], [`d1.${database}.storageBytes`]: [10e9, 10e9, 10e9] }
+    });
+    const spend = spendOf(buildLedger(input(current, undefined, { databases: [database] })));
+    const storagePerHour = (10 * 0.75) / (30 * 24);
+    expect(spend.times).toEqual([T0, T0 + H, T0 + 2 * H]);
+    expect(spend.values[0]).toBe(0);
+    expect(spend.values[1]).toBeCloseTo(0.3 + 1 + storagePerHour, 9);
+    expect(spend.values[2]).toBeCloseTo(0.6 + 1 + 2 * storagePerHour, 9);
   });
 });

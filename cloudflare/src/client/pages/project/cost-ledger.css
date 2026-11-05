@@ -67,3 +67,4 @@
   .ledger-basis { margin-left: 0; }
   .ledger-detail { padding-left: var(--inset); }
 }
+.ledger-month { display: flex; flex-direction: column; gap: var(--space-xs); }

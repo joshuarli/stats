@@ -750,7 +750,7 @@ test("the project page refreshes on the collector cadence, not every live tick",
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(ledgerRow(page, "worker")).toBeVisible();
   const projectHistory = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?range=")).length;
-  await expect.poll(() => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?from=")).length).toBe(2);
+  await expect.poll(() => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?from=")).length).toBe(3);
   const initial = projectHistory();
   expect(initial).toBe(1);
 
@@ -791,9 +791,12 @@ test("the project page leads with a cost ledger and keeps every other section cl
   await expect(page.locator(".widget")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("project.png"), fullPage: true });
 
+  await expect(ledger.getByRole("img", { name: /^Spend this month;/u })).toBeVisible();
+  await expect(ledger.locator(".ledger-month")).toContainText(/^This month: \$[\d.,]+ so far, \$[\d.,]+ by month end at the rate above/u);
+
   await page.getByRole("button", { name: "24h", exact: true }).click();
-  await expect(ledgerRow(page, "worker")).toContainText("576,000 req");
-  expect(requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);
+  await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);
+  await expect(ledgerRow(page, "worker")).toContainText("288,000 req");
 });
 
 test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {
@@ -806,7 +809,7 @@ test("the ledger compares each line with the window before, and says when that w
   await page.route(/\/projects\/stuff\/history\?from=/u, route => Number(new URL(route.request().url()).searchParams.get("to")) < now - 90 * 60_000
     ? route.fulfill({ status: 500, json: { error: { code: "internal", message: "store unavailable" } } })
     : route.fallback());
-  await page.getByRole("button", { name: "6h", exact: true }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText(/The previous window could not be read/u)).toBeVisible();
   await expect(ledgerRow(page, "worker").locator(".ledger-delta")).toHaveText("—");
 });
@@ -844,11 +847,11 @@ test("an elevated Worker 5xx share marks the health pill, which opens the charts
 test("the ledger reads a full window of settled buckets and one equal window before it", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff");
-  await expect(page.locator(".ledger-basis")).toContainText(/^Settled 1h ending \d+m ago vs the 1h before/u);
+  await expect(page.locator(".ledger-basis")).toContainText(/^Settled hour ending \d+m ago vs the hour before/u);
   const windows = () => requests.filter(request => request.startsWith("/api/v1/projects/stuff/history?from=")).map(request => {
     const params = new URLSearchParams(request.slice(request.indexOf("?") + 1));
     return { fromMs: Number(params.get("from")), toMs: Number(params.get("to")) };
-  }).sort((left, right) => right.toMs - left.toMs);
+  }).filter(window => window.toMs - window.fromMs === 3_600_000).sort((left, right) => right.toMs - left.toMs);
   await expect.poll(() => windows().length).toBe(2);
   const [current, previous] = windows();
   expect(current!.toMs - current!.fromMs).toBe(3_600_000);

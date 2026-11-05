@@ -382,10 +382,13 @@ function d1Line(input: LedgerInput, sample: Sampler): CostLine | null {
       { label: "storage", monthly: storageNow, bound: "estimate" }
     ],
     usage: { kind: "rows", read, written, queries },
-    trend: trendOf(sumTracks([
-      { times: metricTrack(history, "d1.rowsRead").times, values: metricTrack(history, "d1.rowsRead").values.map(value => (value === null ? null : perMillion(value, LIST_PRICE_PER_MILLION.d1RowsRead))) },
-      { times: metricTrack(history, "d1.rowsWritten").times, values: metricTrack(history, "d1.rowsWritten").values.map(value => (value === null ? null : perMillion(value, LIST_PRICE_PER_MILLION.d1RowsWritten))) }
-    ]), history.stepMs, value => value),
+    trend: sumTracks([
+      trendOf(sumTracks([
+        { times: metricTrack(history, "d1.rowsRead").times, values: metricTrack(history, "d1.rowsRead").values.map(value => (value === null ? null : perMillion(value, LIST_PRICE_PER_MILLION.d1RowsRead))) },
+        { times: metricTrack(history, "d1.rowsWritten").times, values: metricTrack(history, "d1.rowsWritten").values.map(value => (value === null ? null : perMillion(value, LIST_PRICE_PER_MILLION.d1RowsWritten))) }
+      ]), history.stepMs, value => value),
+      ...storage.map(line => line.trend).filter(track => track !== null)
+    ]),
     children: [...byCost(statementLines), ...byCost(storage), ...children.filter(isResidual)]
   };
 }
@@ -413,6 +416,35 @@ function r2Line(input: LedgerInput): CostLine | null {
     trend: sumTracks(buckets.map(line => line.trend).filter(track => track !== null)),
     children: byCost(buckets)
   };
+}
+
+function accrued(track: Track, window: TimeWindow): Track {
+  const times: number[] = [];
+  const values: number[] = [];
+  let total = 0;
+  track.times.forEach((time, index) => {
+    const start = Math.max(time, window.fromMs);
+    const end = Math.min(track.times[index + 1] ?? window.toMs, window.toMs);
+    const rate = track.values[index];
+    if (end <= start || rate === null || rate === undefined) return;
+    total += (rate * (end - start)) / MONTH_MS;
+    times.push(end);
+    values.push(total);
+  });
+  return { times, values };
+}
+
+export function spendOf(ledger: Ledger): Track {
+  const tracks = ledger.lines.map(line => line.trend).filter(track => track !== null).map(track => accrued(track, ledger.window));
+  const times = [...new Set([ledger.window.fromMs, ...tracks.flatMap(track => track.times)])].sort((left, right) => left - right);
+  const cursors = tracks.map(() => -1);
+  const values = times.map(time => tracks.reduce((sum, track, index) => {
+    let cursor = cursors[index]!;
+    while (cursor + 1 < track.times.length && track.times[cursor + 1]! <= time) cursor += 1;
+    cursors[index] = cursor;
+    return sum + (cursor < 0 ? 0 : track.values[cursor] ?? 0);
+  }, 0));
+  return { times, values };
 }
 
 export function buildLedger(input: LedgerInput): Ledger {
