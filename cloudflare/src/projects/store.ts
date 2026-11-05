@@ -1,5 +1,6 @@
 import { DAY_MS, HOUR_MS, HOUR_RETENTION_MS } from "../limits.ts";
 import { aggregationOf, type MetricPoint } from "./parse.ts";
+import { BUCKET_MS } from "./queries.ts";
 
 export const PROJECT_SAMPLE_RETENTION_MS = 7 * DAY_MS;
 export const PROJECT_HOUR_RETENTION_MS = HOUR_RETENTION_MS;
@@ -50,9 +51,16 @@ export type CollectorRun = {
   readonly rowsRead: number;
   readonly durationMs: number;
 } & (
-  | { readonly ok: true; readonly collected: readonly ProjectPoints[] }
+  | { readonly ok: true; readonly collected: readonly ProjectPoints[]; readonly storeOwners: readonly string[] }
   | { readonly ok: false }
 );
+
+export const STORE_SIZE_METRIC = "do.storageBytes";
+
+export function collectedPoints(run: CollectorRun & { readonly ok: true }, storeSizeBytes: number): readonly ProjectPoints[] {
+  const size: MetricPoint = { metric: STORE_SIZE_METRIC, bucketMs: Math.floor(run.atMs / BUCKET_MS) * BUCKET_MS, value: storeSizeBytes };
+  return run.collected.map((entry) => (run.storeOwners.includes(entry.project) ? { project: entry.project, points: [...entry.points, size] } : entry));
+}
 
 export function upsertPoints(sql: SqlStorage, project: string, points: readonly MetricPoint[]): number {
   let written = 0;

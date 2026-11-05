@@ -23,7 +23,7 @@ const WORKER_METRICS = [
   "worker.status.5xx",
   "worker.status.other",
 ];
-const DURABLE_OBJECT_METRICS = ["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum"];
+const DURABLE_OBJECT_METRICS = ["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum", "do.storageBytes"];
 const D1_METRICS = ["d1.queries", "d1.rowsRead", "d1.rowsWritten"];
 const R2_SUFFIXES = ["ops.success", "ops.userError", "ops.other", "storageBytes", "objects"];
 

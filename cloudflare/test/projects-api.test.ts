@@ -28,7 +28,7 @@ async function history(range: string, kind: string): Promise<{ stepMs: number; f
 }
 
 function metricRun(atMs: number, points: { metric: string; bucketMs: number; value: number }[]): CollectorRun {
-  return { ok: true, atMs, detail: "ok", rowsRead: 1, durationMs: 1, collected: [{ project: "stuff", points }] };
+  return { ok: true, atMs, detail: "ok", rowsRead: 1, durationMs: 1, collected: [{ project: "stuff", points }], storeOwners: [] };
 }
 
 function failedRun(atMs: number): CollectorRun {

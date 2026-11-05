@@ -92,6 +92,7 @@ describe("route and Durable Object history", () => {
       detail: "ok",
       rowsRead: 1,
       durationMs: 1,
+      storeOwners: [],
       collected: [
         {
           project: "stuff",
@@ -118,7 +119,7 @@ describe("route and Durable Object history", () => {
     ]);
 
     const durableObjects = await history("durable-objects");
-    expect(durableObjects.series.map((entry) => entry.metric)).toEqual(["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum"]);
+    expect(durableObjects.series.map((entry) => entry.metric)).toEqual(["do.invocations", "do.errors", "do.cpuMsSum", "do.cpuMsMax", "do.wallMsSum", "do.storageBytes"]);
     expect(durableObjects.series[0]?.values.filter((value) => value === 7)).toHaveLength(1);
     expect(durableObjects.series[3]?.values.every((value) => value === null)).toBe(true);
   });

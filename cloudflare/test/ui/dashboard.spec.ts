@@ -71,7 +71,7 @@ interface ProjectWindow {
   readonly scale: number;
 }
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], window?: ProjectWindow) {
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow) {
   const fromMs = window === undefined ? now - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
   const toMs = window?.toMs ?? now;
   const points = Math.max(1, Math.ceil((toMs - fromMs) / PROJECT_STEP));
@@ -116,7 +116,8 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
         { metric: "do.errors", values: column(() => 0) },
         { metric: "do.cpuMsSum", values: column(() => 4000 * scale) },
         { metric: "do.cpuMsMax", values: column(() => 38) },
-        { metric: "do.wallMsSum", values: column(() => 12_000 * scale) }
+        { metric: "do.wallMsSum", values: column(() => 12_000 * scale) },
+        { metric: "do.storageBytes", values: column(() => objectStorageBytes) }
       ]
     };
   }
@@ -199,7 +200,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -218,7 +219,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
         fromMs: Number(from), toMs: Number(to),
         scale: (Number(to) - Number(from) > 6 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
       };
-      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, window);
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
       return fulfillHistory(route, body(kind));
     }
@@ -896,9 +897,23 @@ test("Durable Objects price requests and a duration bound, and their charts appe
   await expect(objects).toContainText("requests $0.52 · duration ≤ $0.17");
   await expect(objects).toContainText("30 ms wall/call");
   await objects.click();
-  await expect(ledgerRow(page, "object:storage")).toContainText("not collected");
+  await expect(ledgerRow(page, "object:sqlite")).toContainText("SQLite rows and storage");
+  await expect(ledgerRow(page, "object:sqlite")).toContainText("not collected");
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object average CPU time;/u })).toBeVisible();
+  await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object SQLite storage;/u })).toHaveCount(0);
   expect(requests.some(request => request.includes("kinds=") && request.includes("durable-objects"))).toBe(true);
+});
+
+test("an object that reports its own SQLite size gets a storage chart and a priced storage line", async ({ page }) => {
+  await mock(page, { durableObjects: true, objectStorageBytes: 5e9 });
+  await page.goto("/#/project/stuff?open=signals");
+  const objects = ledgerRow(page, "objects");
+  await expect(objects).toContainText("requests $0.52 · duration ≤ $0.17 · storage $1.00");
+  await objects.click();
+  await expect(ledgerRow(page, "object:storage")).toContainText("$1.00");
+  await expect(ledgerRow(page, "object:sqlite")).toContainText("SQLite rows");
+  await expect(ledgerRow(page, "object:sqlite")).not.toContainText("storage");
+  await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object SQLite storage;/u })).toBeVisible();
 });
 
 test("a project without namespaces has no Durable Object line or widget and makes no request for one", async ({ page }) => {

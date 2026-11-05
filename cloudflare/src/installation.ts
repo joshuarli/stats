@@ -13,7 +13,7 @@ import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINU
 import type { ErrorCode } from "./codes";
 import { parseProjects, type ProjectConfig } from "./projects/config";
 import { latestCollectorRunId, projectKind, projectKindsValue, readCollectorHistory, readMetricHistory, readProjectHistories, summarizeCollector } from "./projects/history";
-import { PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
+import { collectedPoints, PROJECT_STATEMENTS, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "./projects/store";
 import { readLimitedBytes } from "./body";
 import { reportError } from "./observe/producer/report";
 
@@ -514,7 +514,7 @@ export class Installation extends DurableObject<Env> {
     let metricRowsWritten = 0;
     this.ctx.storage.transactionSync(() => {
       if (run.ok) {
-        for (const entry of run.collected) metricRowsWritten += upsertPoints(this.ctx.storage.sql, entry.project, entry.points);
+        for (const entry of collectedPoints(run, this.ctx.storage.sql.databaseSize)) metricRowsWritten += upsertPoints(this.ctx.storage.sql, entry.project, entry.points);
       }
       recordRun(this.ctx.storage.sql, run);
     });

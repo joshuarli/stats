@@ -88,6 +88,20 @@ describe("project cost ledger", () => {
     expect(objects.price.kind === "priced" && objects.price.bound).toBe("upper");
     expect(now(line(objects.children, "object:Installation GET /hosts"))).toBeCloseTo(requests * 0.25 + duration * 0.75, 6);
     expect(objects.children.filter(child => child.kind === "object-method").reduce((sum, child) => sum + now(child), 0)).toBeCloseTo(now(objects), 6);
+    expect(objects.children.at(-1)!).toMatchObject({ label: "SQLite rows and storage", price: { kind: "uncollected", cause: "no-source" } });
+  });
+
+  it("adds the object's self-reported SQLite storage to the Durable Object total and leaves only rows uncollected", () => {
+    const calls = { "do.invocations": [1_000_000, 1_000_000, 0], "do.wallMsSum": [0, 0, 0], "do.cpuMsSum": [0, 0, 0] };
+    const current = histories(T0, { durableObjects: { ...calls, "do.storageBytes": [4e9, null, 9e9] } });
+    const previous = histories(T0 - 2 * H, { durableObjects: { "do.invocations": [0, 0], "do.wallMsSum": [0, 0], "do.cpuMsSum": [0, 0], "do.storageBytes": [1e9, 2e9] } });
+    const objects = line(buildLedger(input(current, previous)).lines, "objects");
+    const requests = 2 * 0.15 * MONTH_FACTOR;
+    expect(monthlyOf(line(objects.children, "object:storage"))).toEqual({ now: 4 * 0.2, before: 2 * 0.2 });
+    expect(now(objects)).toBeCloseTo(requests + 4 * 0.2, 6);
+    expect(monthlyOf(objects)!.before).toBeCloseTo(2 * 0.2, 6);
+    expect(objects.parts.map(part => part.label)).toEqual(["requests", "duration", "storage"]);
+    expect(objects.children.map(child => child.label)).toEqual(["SQLite storage", "SQLite rows"]);
     expect(objects.children.at(-1)!.price).toEqual({ kind: "uncollected", cause: "no-source" });
   });
 

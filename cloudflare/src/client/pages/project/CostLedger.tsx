@@ -95,7 +95,7 @@ function partsText(line: CostLine): string {
 function noteFor(line: CostLine): string {
   if (line.price.kind === "uncollected") {
     return line.price.cause === "no-source"
-      ? "Durable Object SQLite rows and stored bytes have no collector source yet, so they are not in the total."
+      ? `Durable Object ${line.label} have no collector source, so they are not in the total.`
       : "Nothing was collected for this component in the window, so it is left out of the total rather than counted as zero.";
   }
   return "The component total minus what its per-route or per-statement analytics account for.";
@@ -164,6 +164,12 @@ function Detail(props: { readonly line: CostLine; readonly histories: LedgerHist
       return <div class="ledger-charts">
         <PanelLabel>Stored bytes</PanelLabel>
         <PanelChart label="Stored bytes" area series={[{ label: "stored", color: "aqua", track: holdLast(metricTrack(props.histories.r2, `r2.${current.label}.storageBytes`)) }]} format={bytes} min={0} stepMs={props.histories.r2.stepMs} compact />
+      </div>;
+    }
+    if (current.kind === "object-storage" && props.histories.durableObjects !== undefined) {
+      return <div class="ledger-charts">
+        <PanelLabel>Stored bytes, as the object reports its own database size</PanelLabel>
+        <PanelChart label="Stored bytes" area series={[{ label: "stored", color: "aqua", track: holdLast(metricTrack(props.histories.durableObjects, "do.storageBytes")) }]} format={bytes} min={0} stepMs={props.histories.durableObjects.stepMs} compact />
       </div>;
     }
     return <></>;

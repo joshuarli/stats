@@ -52,7 +52,7 @@ const noProbes: ProbeFetch = async () => {
 };
 
 function collect(store: ReturnType<typeof stub>, analytics: AnalyticsQuery, now = NOW) {
-  return runCollector({ analytics, store, projectsJson: PROJECTS, now, probeFetch: noProbes });
+  return runCollector({ analytics, store, projectsJson: PROJECTS, storeWorker: "stats", now, probeFetch: noProbes });
 }
 
 function inside<T>(store: ReturnType<typeof stub>, body: (sql: SqlStorage) => T): Promise<T> {
@@ -117,11 +117,27 @@ describe("collector", () => {
       analytics,
       store: stub(),
       projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] }]),
+      storeWorker: "elsewhere",
       now: NOW,
       probeFetch: noProbes,
     });
     expect(result.queries).toBe(2);
     expect(analytics.calls.map((call) => call.query).join(" ")).not.toContain("r2Combined");
+  });
+
+  it("records the object's own SQLite size for the project whose Worker owns it, and for no other", async () => {
+    const store = stub();
+    const owner = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+    const other = { ...owner, id: "stuff", name: "stuff", worker: "stuff" };
+    await runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: JSON.stringify([owner, other]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
+    await inside(store, (sql) => {
+      const sizes = (project: typeof owner) => readMetricHistory(sql, project, { range: "1h" }, "durable-objects", NOW).series.find((series) => series.metric === "do.storageBytes")!.values;
+      const recorded = sizes(owner).filter((value) => value !== null);
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]).toBeGreaterThan(0);
+      expect(recorded[0]).toBeLessThanOrEqual(sql.databaseSize);
+      expect(sizes(other).every((value) => value === null)).toBe(true);
+    });
   });
 
   it("collects D1 totals and ranks statements by billed cost, folding whitespace and keeping ten", async () => {
@@ -147,7 +163,7 @@ describe("collector", () => {
     };
     const store = stub();
     const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
-    const result = await runCollector({ analytics, store, projectsJson, now: NOW, probeFetch: noProbes });
+    const result = await runCollector({ analytics, store, projectsJson, storeWorker: "stats", now: NOW, probeFetch: noProbes });
     expect(result.queries).toBe(5);
     await inside(store, (sql) => {
       const project = { id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
@@ -196,7 +212,7 @@ describe("collector", () => {
     const rows = fixtureRows();
     rows.worker.push({ day: "2026-11-01" });
     await expect(collect(store, fakeAnalytics(rows))).rejects.toThrow(TypeError);
-    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: "{", now: NOW, probeFetch: noProbes })).rejects.toThrow("not valid JSON");
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: "{", storeWorker: "stats", now: NOW, probeFetch: noProbes })).rejects.toThrow("not valid JSON");
     await inside(store, (sql) => {
       expect(sql.exec("SELECT count(*) AS total FROM project_samples").one().total).toBe(0);
       expect(sql.exec("SELECT count(*) AS total FROM collector_runs WHERE ok = 0").one().total).toBe(2);
@@ -217,7 +233,7 @@ describe("collector failure reporting", () => {
         throw new Error("storage unavailable");
       },
     };
-    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows(), { failOn: "operations" }), store, projectsJson: PROJECTS, now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("analytics unavailable");
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows(), { failOn: "operations" }), store, projectsJson: PROJECTS, storeWorker: "stats", now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("analytics unavailable");
     expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "collector_run_unrecorded" }));
   });
 
@@ -231,7 +247,7 @@ describe("collector failure reporting", () => {
         return { metricRowsWritten: 0 };
       },
     };
-    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: PROJECTS, now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("commit failed");
+    await expect(runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: PROJECTS, storeWorker: "stats", now: NOW, probeFetch: noProbesFetch })).rejects.toThrow("commit failed");
     expect(recorded).toEqual([true, false]);
   });
 });

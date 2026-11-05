@@ -336,7 +336,11 @@ routes outside the top 15 are dropped, not pooled. Durable Objects, summed over
 the project's namespaces: `do.invocations`, `do.errors` (status other than
 success), `do.cpuMsSum`, `do.cpuMsMax` (approximate), `do.wallMsSum`. The
 dataset reports no script name, so a namespace id is the only link to a
-project, and it has no storage-size source. Worker CPU is
+project, and it has no storage-size source. `do.storageBytes` is therefore
+self-reported: on each successful collector run the Installation object reads
+its own `ctx.storage.sql.databaseSize` and records it, in the run's bucket, for
+every project whose `worker` is the `WORKER_NAME` binding. Other projects'
+objects have no size. Worker CPU is
 CPU time per invocation, not latency; the SQL source has no quantiles. R2
 `userError` (mostly 404s) is shown but never scored.
 
@@ -373,8 +377,11 @@ overlapping requests share one meter. Summed request wall time is therefore
 an upper bound, and the ledger marks it with `≤`. For an observed service, the
 per-method split comes from the observability store's `GET /objects`: summed
 wall time, CPU, and call counts per object-stage label. The ledger attributes
-the Durable Object total by each method's share. SQLite rows and storage have
-no source (STA-34), so the ledger lists them as not collected. A residual line
+the Durable Object total by each method's share. Where `do.storageBytes` was
+recorded, the ledger prices it as SQLite storage at the list price per GB-month
+and adds it to the Durable Object total. SQLite rows read and written have no
+source, so the ledger lists them, and storage for an object that reports no
+size, as not collected. A residual line
 ("not attributed to a route" or "to a statement") holds whatever the
 per-route or per-statement analytics do not account for.
 

@@ -9,7 +9,8 @@ export const LIST_PRICE_PER_MILLION = {
 
 export const LIST_PRICE_PER_GB_MONTH = {
   r2Storage: 0.015,
-  d1Storage: 0.75
+  d1Storage: 0.75,
+  durableObjectStorage: 0.2
 } as const;
 
 export const DURABLE_OBJECT_MEMORY_GB = 0.128;

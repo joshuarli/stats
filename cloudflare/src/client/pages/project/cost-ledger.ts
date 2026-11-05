@@ -7,6 +7,7 @@ import { holdLast } from "./math";
 
 export const MONTH_MS = 30 * 86_400_000;
 const UNATTRIBUTED_SHARE = 0.01;
+const OBJECT_STORAGE_METRIC = "do.storageBytes";
 const ROUTE_PREFIX = "route.";
 const STATEMENT_PREFIX = "d1q.";
 
@@ -34,7 +35,7 @@ export type Usage =
   | { readonly kind: "stored"; readonly bytes: Amount }
   | { readonly kind: "none" };
 
-export type LineKind = "worker" | "route" | "unrouted" | "objects" | "object-method" | "d1" | "statement" | "d1-storage" | "r2" | "bucket" | "uncollected";
+export type LineKind = "worker" | "route" | "unrouted" | "objects" | "object-method" | "d1" | "statement" | "d1-storage" | "object-storage" | "r2" | "bucket" | "uncollected";
 
 export interface CostLine {
   readonly id: string;
@@ -286,17 +287,29 @@ function objectsLine(input: LedgerInput, sample: Sampler): CostLine | null {
     before: MONTH_MS / Math.max(1, input.previousWindow.toMs - input.previousWindow.fromMs)
   };
   const methods = input.objectMethods === undefined || input.objectMethods.now.length === 0 ? [] : methodLines(input.objectMethods, requests, duration, scale);
-  const uncollected: CostLine = { id: "object:storage", kind: "uncollected", label: "SQLite rows and storage", price: { kind: "uncollected", cause: "no-source" }, parts: [], usage: { kind: "none" }, trend: null, children: [] };
+  const storage = storedLine(
+    "object:storage", "object-storage", "SQLite storage",
+    metricTrack(history, OBJECT_STORAGE_METRIC),
+    input.previous?.durableObjects === undefined ? undefined : metricTrack(input.previous.durableObjects, OBJECT_STORAGE_METRIC),
+    input, LIST_PRICE_PER_GB_MONTH.durableObjectStorage
+  );
+  const stored = storage === null ? null : monthlyOf(storage);
+  const uncollected: CostLine = {
+    id: "object:sqlite", kind: "uncollected", label: storage === null ? "SQLite rows and storage" : "SQLite rows",
+    price: { kind: "uncollected", cause: "no-source" }, parts: [], usage: { kind: "none" }, trend: null, children: []
+  };
+  const storageParts: CostPart[] = stored === null ? [] : [{ label: "storage", monthly: stored.now, bound: "estimate" }];
   return {
     id: "objects", kind: "objects", label: "Durable Objects",
-    price: priced(requests.now + duration.now, before, "upper"),
-    parts: [{ label: "requests", monthly: requests.now, bound: "estimate" }, { label: "duration", monthly: duration.now, bound: "upper" }],
+    price: priced(requests.now + duration.now + (stored?.now ?? 0), before === null || stored?.before === null ? null : before + (stored?.before ?? 0), "upper"),
+    parts: [{ label: "requests", monthly: requests.now, bound: "estimate" }, { label: "duration", monthly: duration.now, bound: "upper" }, ...storageParts],
     usage: { kind: "objects", calls, wallMs: wall, cpuMs: cpu, latency: null },
     trend: sumTracks([
       trendOf(metricTrack(history, "do.invocations"), history.stepMs, requestCost),
-      trendOf(metricTrack(history, "do.wallMsSum"), history.stepMs, durationCost)
+      trendOf(metricTrack(history, "do.wallMsSum"), history.stepMs, durationCost),
+      ...(storage?.trend ? [storage.trend] : [])
     ]),
-    children: [...byCost(methods), uncollected]
+    children: [...byCost(methods), ...(storage === null ? [] : [storage]), uncollected]
   };
 }
 
@@ -306,7 +319,7 @@ function statementNames(history: MetricHistory): string[] {
 
 const rowsCost = (read: number, written: number) => perMillion(read, LIST_PRICE_PER_MILLION.d1RowsRead) + perMillion(written, LIST_PRICE_PER_MILLION.d1RowsWritten);
 
-function storedLine(id: string, kind: "bucket" | "d1-storage", label: string, track: Track, previous: Track | undefined, input: LedgerInput, pricePerGb: number): CostLine | null {
+function storedLine(id: string, kind: "bucket" | "d1-storage" | "object-storage", label: string, track: Track, previous: Track | undefined, input: LedgerInput, pricePerGb: number): CostLine | null {
   const now = heldAt(track, input.window);
   if (now === null) return null;
   const before = previous === undefined ? heldAt(track, input.previousWindow) : heldAt(previous, input.previousWindow) ?? heldAt(track, input.previousWindow);

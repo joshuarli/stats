@@ -37,6 +37,7 @@ const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
   "do.cpuMsSum": "sum",
   "do.cpuMsMax": "max",
   "do.wallMsSum": "sum",
+  "do.storageBytes": "max",
   "d1.queries": "sum",
   "d1.rowsRead": "sum",
   "d1.rowsWritten": "sum",

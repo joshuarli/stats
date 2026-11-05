@@ -57,6 +57,7 @@ export default defineConfig({
       ASSETS: bindings.assets(),
       ANALYTICS_SQL: bindings.analytics(),
       PROJECTS: bindings.text(PROJECTS_JSON),
+      WORKER_NAME: bindings.text(WORKER_NAME),
       OBSERVE: bindings.worker({ worker: "stats-observe" })
     },
     triggers: [triggers.scheduled({ schedule: "*/5 * * * *" })],

@@ -153,7 +153,7 @@ export default {
     markInvocation();
     const store = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
     const [metrics] = await Promise.allSettled([
-      runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
+      runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, storeWorker: env.WORKER_NAME, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
       (async () => {
         try {
           await collectDeployments({

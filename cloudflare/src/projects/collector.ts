@@ -32,6 +32,7 @@ interface CollectorInput {
   readonly analytics: AnalyticsQuery;
   readonly store: CollectorStore;
   readonly projectsJson: string;
+  readonly storeWorker: string;
   readonly now: number;
   readonly probeFetch: ProbeFetch;
 }
@@ -67,6 +68,7 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
       rowsRead,
       durationMs: elapsed(),
       collected,
+      storeOwners: projects.filter((project) => project.worker === input.storeWorker).map((project) => project.id),
     });
     return { queries, metricRowsWritten };
   } catch (error) {

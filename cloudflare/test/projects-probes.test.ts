@@ -128,7 +128,7 @@ describe("probes in a collector run", () => {
   }
 
   it("stores probe results next to the analytics metrics", async () => {
-    await runCollector({ analytics: analytics(false), store: store(), projectsJson: json, now: NOW, probeFetch: fetchWith({ [probes[1]!.url]: 500 }) });
+    await runCollector({ analytics: analytics(false), store: store(), projectsJson: json, storeWorker: "stats", now: NOW, probeFetch: fetchWith({ [probes[1]!.url]: 500 }) });
     await runInDurableObject(store(), async (_instance, state) => {
       const rows = state.storage.sql.exec<{ metric: string; value: number }>("SELECT metric, value FROM project_samples WHERE metric LIKE 'probe.%' ORDER BY metric").toArray();
       expect(rows.map((row) => row.metric)).toEqual(["probe.crates.ms", "probe.crates.up", "probe.npm.ms", "probe.npm.up"]);
@@ -139,7 +139,7 @@ describe("probes in a collector run", () => {
   it("leaves probes absent, not down, when the collector fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const seen: string[] = [];
-    await expect(runCollector({ analytics: analytics(true), store: store(), projectsJson: json, now: NOW, probeFetch: fetchWith({}, seen) })).rejects.toThrow("analytics unavailable");
+    await expect(runCollector({ analytics: analytics(true), store: store(), projectsJson: json, storeWorker: "stats", now: NOW, probeFetch: fetchWith({}, seen) })).rejects.toThrow("analytics unavailable");
     await runInDurableObject(store(), async (_instance, state) => {
       expect(state.storage.sql.exec("SELECT count(*) AS total FROM project_samples WHERE metric LIKE 'probe.%'").one().total).toBe(0);
     });

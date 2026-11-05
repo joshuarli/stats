@@ -1,14 +1,17 @@
+import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { count, milliseconds } from "../../format";
+import { bytes, count, milliseconds } from "../../format";
 import { MIN_SCORED_EVENTS } from "../../health";
 import { Widget } from "../../components/ui";
 import { Term } from "../../components/Info";
 import { PanelLabel, PanelChart } from "../host/shared";
-import { durableObjectCpuAverage, durableObjectWallAverage, provisionalFromMs, type ProjectData } from "./series";
+import { durableObjectCpuAverage, durableObjectWallAverage, hasAnyValue, provisionalFromMs, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
+import { holdLast } from "./math";
 
 export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX.Element {
   const history = () => props.data.durableObjects;
+  const storage = () => metricTrack(history()!, "do.storageBytes");
   return (
     <Widget id="durable-objects" title="Durable Objects" expandable>
       {history() === undefined ? null : (
@@ -52,6 +55,16 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
+          <Show when={hasAnyValue(storage())}>
+            <PanelLabel><Term hint="The object that stores this dashboard's history reports its own SQLite database size on each collector run. Cloudflare publishes no Durable Object storage dataset, so other projects' objects have no size here.">SQLite storage</Term></PanelLabel>
+            <PanelChart
+              label="Durable Object SQLite storage"
+              series={[{ label: "stored", color: "aqua", scored: false, track: holdLast(storage()) }]}
+              format={bytes}
+              min={0}
+              stepMs={history()!.stepMs}
+            />
+          </Show>
         </>
       )}
     </Widget>

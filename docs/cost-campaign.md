@@ -84,8 +84,8 @@ lane is by evidence, not effort.
 
 ### A. Instrument what is still blind
 
-- Durable Object storage size has no source (STA-34), and the estimate omits
-  Durable Object duration, which is billed.
+- Durable Object storage is self-reported by the `stats` object as
+  `do.storageBytes`; SQLite rows read and written still have no source.
 - R2 operations cannot be split into Class A and Class B, which are priced about
   12 times apart: `events.r2CombinedOperations` has no action-type column
   (checked 2026-11-01). Approximate from the route mix (reads and heads are

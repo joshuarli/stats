@@ -64,15 +64,6 @@ Next: 47
 - **Fix with:** make-it-fast
 - **Effort:** M
 
-### STA-34 · P3 · The Durable Object's own SQLite size is not tracked
-
-- **Area:** Operability
-- **Where:** `cloudflare/cloudflare.config.ts:34`, `cloudflare/src/projects/collector.ts`
-- **Problem:** The `stats` project has no storage chart because it lists no R2 bucket and the analytics catalogue has no Durable Object storage dataset; only R2, D1, KV, Vectorize and Cache Reserve have `states.*` datasets. The object's size is the figure that matters for the retention limits, and nothing reports it.
-- **Recommendation:** Have the collector record `ctx.storage.sql.databaseSize` (in the workers types) as a gauge metric such as `do.storageBytes` for the project that owns the object, show it as a storage chart, and document that it is self-reported.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-36 · P3 · Re-run the Worker parity check after a day of data
 
 - **Area:** Tests

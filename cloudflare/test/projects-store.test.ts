@@ -139,7 +139,7 @@ describe("project storage", () => {
   it("keeps the newest runs only", async () => {
     await inside((sql) => {
       for (let i = 0; i < COLLECTOR_RUNS_KEPT + 3; i += 1) {
-        const outcome = i % 2 === 0 ? { ok: true as const, collected: [] } : { ok: false as const };
+        const outcome = i % 2 === 0 ? { ok: true as const, collected: [], storeOwners: [] } : { ok: false as const };
         recordRun(sql, { atMs: i, detail: "d", rowsRead: 0, durationMs: 1, ...outcome });
       }
       const rows = sql.exec<{ at_ms: number }>("SELECT at_ms FROM collector_runs ORDER BY id").toArray();
@@ -153,12 +153,12 @@ describe("collector run commit", () => {
   it("stores metrics with the run, and a failed run stores the run alone", async () => {
     await runInDurableObject(stub(), async (instance: Installation, state) => {
       const ok = await instance.recordCollectorRun({
-        ok: true, atMs: 1, detail: "ok", rowsRead: 5, durationMs: 9,
+        ok: true, atMs: 1, detail: "ok", rowsRead: 5, durationMs: 9, storeOwners: [],
         collected: [{ project: "p", points: [point("worker.invocations", HOUR, 3)] }],
       });
       expect(ok.metricRowsWritten).toBeGreaterThan(0);
       const again = await instance.recordCollectorRun({
-        ok: true, atMs: 2, detail: "ok", rowsRead: 5, durationMs: 9,
+        ok: true, atMs: 2, detail: "ok", rowsRead: 5, durationMs: 9, storeOwners: [],
         collected: [{ project: "p", points: [point("worker.invocations", HOUR, 3)] }],
       });
       expect(again.metricRowsWritten).toBe(0);
