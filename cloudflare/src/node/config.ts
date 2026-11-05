@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { isIP } from "node:net";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
-export const DEFAULT_LISTEN = "127.0.0.1:18791";
+const DEFAULT_LISTEN = "127.0.0.1:18791";
 export const DATABASE_FILE = "stats.sqlite";
 
 export type Listen =

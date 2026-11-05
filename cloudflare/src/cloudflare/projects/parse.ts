@@ -6,7 +6,7 @@ const ROUTE_KEY_MAX_LENGTH = 80;
 const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
 const ALARM_LABEL_PATTERN = /^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2}/;
 const API_VERSION_SEGMENT = /^v\d+$/;
-export const MAX_D1_STATEMENTS_PER_PROJECT = 10;
+const MAX_D1_STATEMENTS_PER_PROJECT = 10;
 const D1_STATEMENT_KEY_MAX_LENGTH = 60;
 const MAX_PLAIN_SEGMENT_LENGTH = 24;
 const MAX_DISTINCT_CHILDREN = 10;
@@ -187,7 +187,7 @@ export function parseD1StorageRows(rows: readonly unknown[]): MetricPoint[] {
   return points.list();
 }
 
-export function d1StatementKey(statement: string): string {
+function d1StatementKey(statement: string): string {
   const collapsed = statement.replace(/\s+/g, " ").trim().replace(/[^\x20-\x7e]/g, "?");
   return collapsed.slice(0, Math.min(D1_STATEMENT_KEY_MAX_LENGTH, D1_STATEMENT_PREFIX_LENGTH));
 }

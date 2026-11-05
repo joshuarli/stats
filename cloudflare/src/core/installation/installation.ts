@@ -26,9 +26,9 @@ import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
 
-export const ONLINE_WINDOW_MS = 45_000;
+const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
-export const MAX_REQUESTS_PER_WINDOW = 6;
+const MAX_REQUESTS_PER_WINDOW = 6;
 
 const HISTORY_WINDOWS_KEPT = 4;
 const RETENTION_BACKLOG_ROWS = 1000;

@@ -1,10 +1,10 @@
 import type { AuthDecision } from "../core/http.ts";
 
-export const TAILSCALE_LOGIN_HEADER = "Tailscale-User-Login";
+const TAILSCALE_LOGIN_HEADER = "Tailscale-User-Login";
 
 const MAPPED_IPV4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/iu;
 
-export function isLoopback(address: string | undefined): boolean {
+function isLoopback(address: string | undefined): boolean {
   if (address === undefined) return false;
   if (address === "::1") return true;
   const ipv4 = MAPPED_IPV4.exec(address)?.[1] ?? address;
