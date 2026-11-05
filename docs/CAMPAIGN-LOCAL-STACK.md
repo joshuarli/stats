@@ -3,10 +3,10 @@
 ## Status
 
 - **Goal:** the whole `stats` Cloudflare topology (the `stats` Worker, `stats-observe`, their Durable Objects, tail wiring, and the dashboard assets) runs and verifies itself on this machine with no Cloudflare login and no network. The one hosted dependency with no local implementation, the `ANALYTICS_SQL` binding, is replaced at its binding boundary by an offline provider, so the real scheduled handler, collector, parsers, Durable Object, history frames, cost report, `statsctl`, and dashboard all run on a successful collection.
-- **State:** L1 accepted at `8dfbc86`. `make cloudflare-test` is green in 33 s (vitest 307, node 36, local 6, observe-e2e 10, others unchanged); `make smoke-local` and `make lint` are green.
-- **Accepted:** L1. **Red:** none. **Parked:** none.
-- **Next:** L2. `cloudflare/local/topology.ts` takes the provider as `analytics: { service, entrypoint }` plus the provider worker in `extraWorkers`; text overrides must name an existing text binding and secrets must not shadow one.
-- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item L2. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
+- **State:** L1 to L3 accepted; M1 (full suite) green in 82 s at `7514c02`. `test:local` is 18 tests in 3 s.
+- **Accepted:** L1, L2, L3. **Red:** none. **Parked:** none.
+- **Next:** L4. Use `cloudflare/local/stack.ts` (`startStack`, `restart`, `collect`, `runAlarm`, `cliEnv`) rather than a new setup.
+- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item L4. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
 
@@ -50,6 +50,12 @@ Prescribed (executor may not reopen without new evidence):
 8. **Clock.** Scenarios pin `TEST_NOW_MS` at start. `dev-local` leaves it unset (real clock), and the launcher fires `scheduled` every 5 minutes itself, because local development does not run Cron Triggers. Scenarios that advance time restart the stack on the same persistence directory with a later `TEST_NOW_MS`, which also proves restart.
 9. **Scope.** The Node target is already a complete local target (`make node-e2e`) and has no collector, so no Node work. The stack is the Cloudflare topology only. The recorded provider data shapes are `cloudflare/test/fixtures/analytics/{worker,r2-operations,r2-storage}.json`; generated rows use the same columns.
 10. **`make integration-local` joins `make check` only if it runs in 60 s or less.** Otherwise it stays a standalone target and `docs/testing.md` says so.
+
+Found during execution (later slices depend on these):
+
+15. Miniflare's `scheduled()` resolves `{ outcome: "exception" }` instead of rejecting; "rejects" in S4 means that outcome.
+16. Retention runs only on the Installation alarm, armed 10 real minutes ahead, and RPC reserves `alarm()`. The stack loads the bundle behind an entry module whose Durable Object subclasses add a `runAlarm()` RPC (topology option `alarms: "rpc"`).
+17. An identical rerun rewrites probe latencies (including an implicit `stats` health probe) and the store's own size, so the production registry always makes outbound probe requests: `crates`, `npm`, `pypi`, and `stuff` on `17166969.xyz`, plus `stats.17166969.xyz/health`. L6 declares them.
 
 Delegated (executor decides inside the bound and records it in the commit body):
 
