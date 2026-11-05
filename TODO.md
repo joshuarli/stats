@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 55
+Next: 56
+
+### STA-55 · P3 · Rejected-invalid events from a sampled service are not capped
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/cloudflare/tail.ts` (`prepareTailItems`), `cloudflare/src/observe/core/always-kept-cap.ts`
+- **Problem:** STA-52 caps always-kept invocations at 10 per isolate per bucket, but an event rejected as invalid (for example one carrying two operation messages, which STA-50 makes likely under overlapping RPCs) is still stored as a rejection with its outcome row, about 3 rows each, with no bound.
+- **Recommendation:** Count rejections past the same cap in the bucket's counts instead of writing an outcome row per event, keeping the rejected total exact.
+- **Fix with:** none
+- **Effort:** S
 
 ### STA-54 · P3 · Two workerd tests fail under load and pass alone
 
