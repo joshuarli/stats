@@ -1,33 +1,25 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { join } from "node:path";
+import { Miniflare } from "miniflare";
 import { accessToken } from "../access-token.ts";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, miniflareOptions, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
 
-export const ROOT = resolve(import.meta.dirname, "../..");
-const STATS_BUNDLE = join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js");
-const OBSERVE_BUNDLE = join(ROOT, "observe-worker/.cloudflare/output/v0/workers/default/bundle/index.js");
-const WRANGLER_TEST = readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8");
-export const VARS = (JSON.parse(WRANGLER_TEST) as { vars: Record<string, string> }).vars;
+export const ROOT = CLOUDFLARE_ROOT;
+const STATS = readBuiltWorker(STATS_OUTPUT);
+const OBSERVE = readBuiltWorker(OBSERVE_OUTPUT);
+export const VARS = readTestVars();
 export const BATCH = JSON.parse(readFileSync(join(ROOT, "../fixtures/v2/sources/linux-normal.json"), "utf8")) as SourceBatch;
 export const ORIGIN = "https://stats.example";
 export const HOST_NAME = "host-name-QXZ";
 export const SECRET_QUERY = "SECRET_IN_QUERY_7d1f";
-const COMPAT = { compatibilityDate: "2026-10-30", compatibilityFlags: ["nodejs_compat"] };
+const COMPAT = { compatibilityDate: OBSERVE.compatibilityDate, compatibilityFlags: [...OBSERVE.compatibilityFlags] };
 const CRASHING_CONSUMER = "export default { tail() { throw new Error('collector down'); }, fetch() { throw new Error('collector down'); } };";
-function namedCollector(scriptName: string): string {
-  return `import collector, { ObservationStore } from "./index.js";
-export { ObservationStore };
-export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(scriptName)} })), env, ctx); } };`;
-}
 
 export function collectorModules(scriptName: string) {
-  return [
-    { type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: namedCollector(scriptName) },
-    { type: "ESModule" as const, path: join(ROOT, "observe-worker/index.js"), contents: readFileSync(OBSERVE_BUNDLE, "utf8") }
-  ];
+  return builtCollectorModules(OBSERVE, scriptName);
 }
 
 const MEMORIES_PRODUCER = `
@@ -68,27 +60,21 @@ const UNAVAILABLE: Outbound = () => new Response("upstream unavailable", { statu
 
 export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE): Promise<Harness> {
   const persist = mkdtempSync(join(tmpdir(), "observe-e2e-"));
-  const statsWorker = {
-    name: "stats",
-    modules: true,
-    scriptPath: STATS_BUNDLE,
-    ...COMPAT,
-    bindings: { ...VARS, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN", ...bindings },
-    durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } },
-    outboundService: outbound,
-    ...(collector === "absent" ? {} : { serviceBindings: { OBSERVE: "stats-observe" }, tails: ["stats-observe"] })
-  };
-  const observeWorker = collector === "crashing"
-    ? { name: "stats-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
-    : { name: "stats-observe", modules: collectorModules("stats"), ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } } };
+  const { ENVIRONMENT, PROJECTS, WORKER_NAME, ...secrets } = VARS;
+  const statsCollector: TopologyCollector = collector === "crashing" ? { kind: "replaced", script: CRASHING_CONSUMER } : { kind: collector };
   const memoriesCollector = collector === "crashing"
     ? { name: "memories-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
-    : { name: "memories-observe", modules: collectorModules("usr-memories"), ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", scriptName: "stats-observe", useSQLite: true } } };
+    : collectorWorker(OBSERVE, "memories-observe", "usr-memories");
   const memoriesWorker = { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) };
-  const mf = new Miniflare({
-    ...convertV4MiniflareOptions({ workers: collector === "absent" ? [statsWorker, memoriesWorker] : [statsWorker, observeWorker, memoriesCollector, memoriesWorker] }),
-    resourcePersistencePath: persist
-  });
+  const mf = new Miniflare(miniflareOptions(STATS, OBSERVE, {
+    text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME!, ...bindings },
+    secrets: { ...secrets, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
+    analytics: "unbound",
+    collector: statsCollector,
+    outbound,
+    persist,
+    extraWorkers: collector === "absent" ? [memoriesWorker] : [memoriesCollector, memoriesWorker]
+  }));
   const stats = await mf.getWorker("stats");
   let stopped = false;
   const stop = async (): Promise<void> => {

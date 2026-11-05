@@ -7,7 +7,7 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:ingest && pnpm run test:deployments && pnpm run test:cost && pnpm run test:cli && pnpm run test:observe && vite build && pnpm run build:observe && pnpm run test:observe-e2e && pnpm run test:node && vitest run",
+    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:ingest && pnpm run test:deployments && pnpm run test:cost && pnpm run test:cli && pnpm run test:observe && vite build && pnpm run build:observe && pnpm run test:observe-e2e && pnpm run test:local && pnpm run test:node && vitest run",
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments && pnpm run typecheck:observe",
@@ -28,6 +28,7 @@
     "test:observe": "node --experimental-strip-types --test test/observe/*.test.ts",
     "test:observe-e2e": "node --experimental-strip-types --test test/observe-e2e/*.test.ts",
     "test:node": "node --experimental-strip-types --test test/node/*.test.ts",
+    "test:local": "node --experimental-strip-types --test test/local/*.test.ts",
     "bench:workerd": "vitest run --config vitest.bench.config.mjs --disableConsoleIntercept",
     "typecheck:observe": "tsrs -p observe.tsconfig.json --noEmit --fast"
   },

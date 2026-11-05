@@ -1,33 +1,42 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { Miniflare } from "miniflare";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, readBuiltWorker, readTestVars, rejectAndRecord } from "../local/topology.ts";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const vars = JSON.parse(readFileSync(join(root, "wrangler.test.jsonc"), "utf8")).vars;
 const command = process.argv.slice(2);
 if (command.length === 0) {
   console.error("usage: node scripts/local-worker.mjs <command> [args...]  (runs the command with STATS_URL pointing at the built Worker)");
   process.exit(2);
 }
+const scratch = join(CLOUDFLARE_ROOT, "../.work/tmp");
+mkdirSync(scratch, { recursive: true });
+const persist = mkdtempSync(join(scratch, "local-worker-"));
+const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON } = readTestVars();
+const outbound = rejectAndRecord();
 const mf = new Miniflare({
-  ...convertV4MiniflareOptions({
-    workers: [{
-      name: "stats",
-      modules: true,
-      scriptPath: join(root, ".cloudflare/output/v0/workers/default/bundle/index.js"),
-      compatibilityDate: "2026-10-30",
-      compatibilityFlags: ["nodejs_compat"],
-      bindings: { ...vars, TEST_NOW_MS: String(Date.now()) },
-      durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } }
-    }]
+  ...miniflareOptions(readBuiltWorker(STATS_OUTPUT), readBuiltWorker(OBSERVE_OUTPUT), {
+    text: { ENVIRONMENT: "test" },
+    secrets: { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON, TEST_NOW_MS: String(Date.now()) },
+    analytics: "unbound",
+    collector: { kind: "attached" },
+    outbound: outbound.handler,
+    persist
   }),
   host: "127.0.0.1",
   port: 0
 });
-const origin = (await mf.ready).origin;
-const { spawn } = await import("node:child_process");
-const child = spawn(command[0], command.slice(1), { stdio: "inherit", env: { ...process.env, STATS_URL: origin } });
-const code = await new Promise(resolve => child.on("exit", resolve));
-await mf.dispose();
-process.exit(code ?? 1);
+let code = 1;
+try {
+  const origin = (await mf.ready).origin;
+  const child = spawn(command[0], command.slice(1), { stdio: "inherit", env: { ...process.env, STATS_URL: origin } });
+  code = await new Promise(resolve => child.on("exit", status => resolve(status ?? 1)));
+} finally {
+  await mf.dispose();
+  rmSync(persist, { recursive: true, force: true });
+}
+if (outbound.requests.length > 0) {
+  console.error(`local-worker: unexpected outbound requests: ${outbound.requests.join(", ")}`);
+  if (code === 0) code = 1;
+}
+process.exit(code);

@@ -45,3 +45,14 @@ await test("no module outside src/cloudflare/ and src/observe/cloudflare/ import
   const core = sources(join(ROOT, "src")).filter(path => !isAdapter(path));
   assert.deepEqual(core.flatMap(adapterImports), []);
 });
+
+function localStackImports(path: string): string[] {
+  return [...readFileSync(path, "utf8").matchAll(SPECIFIER)]
+    .map(match => match[1] ?? match[2] ?? match[3]!)
+    .filter(specifier => specifier.startsWith(".") && repoPath(resolveRelative(path, specifier)).startsWith("local/"))
+    .map(specifier => `${repoPath(path)} -> ${specifier}`);
+}
+
+await test("no module under src/ imports the local stack in local/", () => {
+  assert.deepEqual(sources(join(ROOT, "src")).flatMap(localStackImports), []);
+});
