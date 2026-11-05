@@ -151,7 +151,7 @@ Each row is registered before its deploy, with its policy in `bench/policies/`, 
 
 | ID | Hypothesis | Policy | Code | Deployment | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| O1 | Writing the 1m and 1h rollups in place (`ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`) and merging the two `hosts` updates cuts `host.ingest` SQLite rows written per persisted sample by at least 15%. Offline in workerd: 10.53 to 7.83 (-25.7%), stored rows, frames, and ETags byte-identical. | `bench/policies/o1-ingest-rollup-upsert.json` | `campaign/o1` (`e5576c3`) | pending | pending |
+| O1 | Writing the 1m and 1h rollups in place (`ON CONFLICT DO UPDATE` instead of `INSERT OR REPLACE`) and merging the two `hosts` updates cuts `host.ingest` SQLite rows written per persisted sample by at least 15%. Offline in workerd: 10.53 to 7.83 (-25.7%), stored rows, frames, and ETags byte-identical. | `bench/policies/o1-ingest-rollup-upsert.json` | `campaign/o1` (`e5576c3`), merged `3f6411d` | `e233b271` (version `bbbb4bb3`, 2026-11-05 09:54Z) | pending |
 
 ## Stop rule
 
