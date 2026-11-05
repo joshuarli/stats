@@ -1,4 +1,4 @@
-import type { HistoryKind } from "../limits";
+import type { HistoryKind } from "../limits.ts";
 import { decodeColumns, isPresent, type ColumnView, type FrameView, type TableView } from "./columns.ts";
 
 export const HISTORY_CONTENT_TYPE = "application/vnd.stats.history.v1";

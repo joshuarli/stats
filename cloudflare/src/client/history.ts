@@ -1,6 +1,6 @@
-import type { BundleView, HistoryView, HostField, HostKind, ObjectValue, ProjectMetricKind, SingleView, SummaryField } from "../binary/history";
-import { RANGES, type RangeKey } from "../limits";
-import { gridAxis, hostAxis, Table, type Track } from "./columns";
+import type { BundleView, HistoryView, HostField, HostKind, ObjectValue, ProjectMetricKind, SingleView, SummaryField } from "../binary/history.ts";
+import { RANGES, type RangeKey } from "../limits.ts";
+import { gridAxis, hostAxis, Table, type Track } from "./columns.ts";
 
 export interface HostMeta {
   readonly hostId: string;

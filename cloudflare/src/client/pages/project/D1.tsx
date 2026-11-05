@@ -4,7 +4,7 @@ import type { TimeWindow } from "../../chart-data";
 import { bytes, count } from "../../format";
 import { Widget } from "../../components/ui";
 import { PanelLabel, PanelChart, seriesColor } from "../host/shared";
-import { holdLast } from "./math";
+import { holdLast } from "../../math.ts";
 import { provisionalFromMs, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
 

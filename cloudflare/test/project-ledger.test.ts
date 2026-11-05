@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Table } from "../src/client/columns";
 import type { MetricHistory } from "../src/client/history";
-import { buildLedger, monthlyOf, planBill, previousWindowOf, projectedBill, type CostLine, type LedgerHistories, type LedgerInput } from "../src/client/pages/project/cost-ledger";
+import { buildLedger, monthlyOf, planBill, previousWindowOf, projectedBill, type CostLine, type LedgerHistories, type LedgerInput } from "../src/cost/ledger.ts";
 import { tableView, type Cell } from "./support/history";
 
 const H = 3_600_000;

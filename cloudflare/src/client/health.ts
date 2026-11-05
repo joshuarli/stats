@@ -1,4 +1,4 @@
-import { clock } from "./format";
+import { clock } from "./format.ts";
 
 export type Health = "ok" | "elevated" | "critical";
 

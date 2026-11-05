@@ -5,7 +5,7 @@ import { errorMessage } from "../../format";
 import type { MetricHistory, ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
-import { buildLedger, planBill, previousWindowOf, type Ledger, type LedgerHistories, type ObjectMethods, type PlanBill } from "./cost-ledger";
+import { buildLedger, planBill, previousWindowOf, type Ledger, type LedgerHistories, type ObjectMethods, type PlanBill } from "../../../cost/ledger.ts";
 import { provisionalFromMs } from "./series";
 
 export type Baseline =

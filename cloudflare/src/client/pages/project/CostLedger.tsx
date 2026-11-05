@@ -5,9 +5,9 @@ import { metricTrack } from "../../history";
 import { Segmented } from "../../components/ui";
 import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
-import { holdLast } from "./math";
-import { WORKERS_PAID_MONTHLY_FEE } from "../../pricing";
-import { isResidual, MONTH_MS, monthlyOf, monthlyUsage, projectedBill, type Amount, type CostLine, type Ledger, type LedgerHistories } from "./cost-ledger";
+import { holdLast } from "../../math.ts";
+import { WORKERS_PAID_MONTHLY_FEE } from "../../../cost/pricing.ts";
+import { isResidual, MONTH_MS, monthlyOf, monthlyUsage, projectedBill, type Amount, type CostLine, type Ledger, type LedgerHistories } from "../../../cost/ledger.ts";
 import type { MonthSpend } from "./ledger-load";
 import "./cost-ledger.css";
 

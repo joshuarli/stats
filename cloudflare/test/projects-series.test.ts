@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Track } from "../src/client/columns";
-import { holdLast, ratio } from "../src/client/pages/project/math";
+import { holdLast, ratio } from "../src/client/math.ts";
 
 const MINUTE = 60_000;
 const track = (times: number[], values: (number | null)[]): Track => ({ times, values });

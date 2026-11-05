@@ -1,4 +1,4 @@
-import { LIST_PRICE_PER_MILLION } from "../client/pricing.ts";
+import { LIST_PRICE_PER_MILLION } from "../cost/pricing.ts";
 import { singleVersion, type Deployment } from "./model.ts";
 
 export const DEPLOYMENT_BUCKET_MS = 300_000;
