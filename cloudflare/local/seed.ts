@@ -6,7 +6,7 @@ import { scenario } from "./scenario.ts";
 import { productionProjects, type Stack } from "./stack.ts";
 import { CLOUDFLARE_ROOT } from "./topology.ts";
 
-export const SEED_HOST_NAME = "local-stack-host";
+const SEED_HOST_NAME = "local-stack-host";
 const BATCH = JSON.parse(readFileSync(join(CLOUDFLARE_ROOT, "../fixtures/v2/sources/linux-normal.json"), "utf8")) as SourceBatch;
 
 export interface Host {

@@ -281,7 +281,7 @@ export function workers(stats: BuiltWorker, observe: BuiltWorker, options: Stack
   return [statsWorker(stats, observe, options), ...collector, ...(options.extraWorkers ?? [])];
 }
 
-export function miniflareOptions(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions): MiniflareOptions {
+function miniflareOptions(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions): MiniflareOptions {
   const converted = convertV4MiniflareOptions({ workers: workers(stats, observe, options) });
   return options.persist === "memory" ? converted : { ...converted, resourcePersistencePath: options.persist.directory };
 }

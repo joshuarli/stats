@@ -41,7 +41,7 @@ export interface Scenario {
 export const RECORDED_AT_MS = Date.UTC(2026, 10, 1, 16, 35);
 const STORAGE_BUCKET_MS = 2 * BUCKET_MS;
 
-export function allModes(mode: Mode): Readonly<Record<Dataset, Mode>> {
+function allModes(mode: Mode): Readonly<Record<Dataset, Mode>> {
   return Object.fromEntries(DATASETS.map(dataset => [dataset, mode])) as Record<Dataset, Mode>;
 }
 
@@ -92,7 +92,7 @@ function phase(slotMs: number): number {
 }
 
 export const WORKER_STATUSES = [200, 404] as const;
-export const ROUTE_LABELS = ["GET /api/v1/items", "POST /api/v1/items"] as const;
+const ROUTE_LABELS = ["GET /api/v1/items", "POST /api/v1/items"] as const;
 export const R2_ACTIONS = ["success", "userError"] as const;
 export const D1_STATEMENTS = ["SELECT * FROM items WHERE id = ?", "INSERT INTO items (id, body) VALUES (?, ?)"] as const;
 
