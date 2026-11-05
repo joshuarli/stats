@@ -41,7 +41,7 @@ export default {
     await Promise.all([...batches].map(([service, batch]) => POLICIES[service].sampling.kind === "all"
       ? store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts)
       : deliverSampled({
-        buffer: bufferOf(service), batch, nowMs, sink: store(env, service), defer: work => ctx.waitUntil(work),
+        buffer: bufferOf(service), batch, nowMs, now: () => Date.now(), sink: store(env, service), defer: work => ctx.waitUntil(work),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         onDeferredFailure: error => console.error(JSON.stringify({ event: "observe_count_flush_failed", service, message: error instanceof Error ? error.message : "unknown" }))
       })));

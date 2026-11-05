@@ -233,9 +233,16 @@ buffer to the service's store in one call when it is older than
 five-minute bucket than the event now arriving. If the event that finds the
 buffer due has invocations or outcomes of its own, the buffer rides on that
 call; otherwise it goes alone. A kept event that finds a young buffer writes
-only itself. An isolate that receives no further event arms one timer when its
-buffer first fills, through `ctx.waitUntil`, and flushes then. Each flush adds one
-to the `flush` counter.
+only itself. Cloudflare cancels `ctx.waitUntil` work that has not settled 30
+seconds after the invocation ends
+(<https://developers.cloudflare.com/workers/runtime-apis/context/>, read
+2026-11-04), so an idle isolate cannot sleep a whole flush interval there. Instead
+each batch that buffers counts arms a timer through `ctx.waitUntil` unless a
+timer armed within the last 10 seconds already covers it; the timer sleeps
+`IDLE_FLUSH_MS` (20 s) and flushes only if no batch has added counts for 10
+seconds. Counts left in an isolate that receives no further event are therefore
+flushed within 20 s of the last batch, and a busy isolate flushes by the interval
+rule above. Each flush adds one to the `flush` counter.
 
 Counts are exact for every event that reaches the collector and is flushed.
 A flush is at most once: the buffer is emptied before the store call, so a

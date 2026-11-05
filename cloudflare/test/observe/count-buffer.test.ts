@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { CountBuffer, deliverSampled, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
+import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
 import { ingest } from "../../src/observe/core/store.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import type { CountDelta, OutcomeEvent, Preparation } from "../../src/observe/core/model.ts";
@@ -45,8 +45,10 @@ interface Harness {
   readonly buffer: CountBuffer;
   readonly calls: Call[];
   readonly timers: (() => void)[];
+  readonly sleeps: number[];
   deliver(items: readonly TailItem[], nowMs: number): Promise<void>;
-  fire(): Promise<void>;
+  fire(atMs?: number): Promise<void>;
+  fireNext(atMs: number): Promise<void>;
 }
 
 function harness(inner: CountSink | null = null, failure: { error: unknown } | null = null): Harness {
@@ -54,18 +56,27 @@ function harness(inner: CountSink | null = null, failure: { error: unknown } | n
   const calls: Call[] = [];
   const timers: (() => void)[] = [];
   const pending: Promise<void>[] = [];
+  const sleeps: number[] = [];
+  let clock = 0;
   const sink = recorder(calls, inner);
   return {
-    buffer, calls, timers,
+    buffer, calls, timers, sleeps,
     deliver: async (items, nowMs) => {
+      clock = nowMs;
       await deliverSampled({
-        buffer, batch: await prepareTailItems(items, SHOP, nowMs), nowMs, sink,
+        buffer, batch: await prepareTailItems(items, SHOP, nowMs), nowMs, now: () => clock, sink,
         defer: work => { pending.push(work); },
-        sleep: () => new Promise<void>(resolve => { timers.push(resolve); }),
+        sleep: ms => new Promise<void>(resolve => { sleeps.push(ms); timers.push(resolve); }),
         onDeferredFailure: error => { if (failure !== null) failure.error = error; }
       });
     },
-    fire: async () => {
+    fireNext: async atMs => {
+      clock = atMs;
+      timers.shift()?.();
+      await pending.shift();
+    },
+    fire: async atMs => {
+      if (atMs !== undefined) clock = atMs;
       for (const resolve of timers.splice(0)) resolve();
       await Promise.all(pending.splice(0));
     }
@@ -102,12 +113,14 @@ await test("a buffer is flushed when an event arrives in a later five-minute buc
   assert.deepEqual(h.calls, [{ preparations: 0, outcomes: 0, counts: 2 }]);
 });
 
-await test("an idle isolate flushes by timer, and a flush by an event makes the timer do nothing", async () => {
+await test("an idle isolate flushes by a timer that fits the waitUntil limit, and a flush by an event makes the timer do nothing", async () => {
   const idle = harness();
   await idle.deliver([quietItem(1, START)], START + 1_000);
   await idle.deliver([quietItem(5, START + 1)], START + 2_000);
-  assert.equal(idle.timers.length, 1, "one timer per buffered interval");
-  await idle.fire();
+  assert.equal(idle.timers.length, 1, "a second batch inside half the idle period shares the first timer");
+  assert.deepEqual(idle.sleeps, [IDLE_FLUSH_MS]);
+  assert.ok(IDLE_FLUSH_MS < 30_000, "the sleep must end before Cloudflare cancels waitUntil work");
+  await idle.fire(START + 1_000 + IDLE_FLUSH_MS);
   assert.deepEqual(idle.calls, [{ preparations: 0, outcomes: 0, counts: 1 }]);
   assert.equal(idle.buffer.size, 0);
 
@@ -115,17 +128,32 @@ await test("an idle isolate flushes by timer, and a flush by an event makes the 
   await busy.deliver([quietItem(1, START)], START + 1_000);
   await busy.deliver([quietItem(5, START + 1)], START + 1_000 + INTERVAL);
   assert.equal(busy.calls.length, 1);
-  await busy.fire();
+  await busy.fire(START + 1_000 + INTERVAL + IDLE_FLUSH_MS);
   assert.equal(busy.calls.length, 1, "the stale timer sends nothing");
   await busy.deliver([quietItem(9, START + 2)], START + 3_000 + INTERVAL);
   assert.equal(busy.timers.length, 1, "a new buffered interval arms a new timer");
 });
 
+await test("a timer that wakes while batches are still arriving leaves the flush to the timer armed after them", async () => {
+  const h = harness();
+  const first = START + 1_000;
+  await h.deliver([quietItem(1, first)], first);
+  await h.deliver([quietItem(2, first + IDLE_FLUSH_MS / 2)], first + IDLE_FLUSH_MS / 2);
+  await h.deliver([quietItem(3, first + 0.75 * IDLE_FLUSH_MS)], first + 0.75 * IDLE_FLUSH_MS);
+  assert.equal(h.timers.length, 2, "one timer per half idle period of buffering");
+  await h.fireNext(first + IDLE_FLUSH_MS);
+  assert.deepEqual(h.calls, [], "the first timer finds the buffer fed less than half an idle period ago");
+  assert.equal(h.buffer.size, 1);
+  await h.fireNext(first + 1.5 * IDLE_FLUSH_MS);
+  assert.deepEqual(h.calls, [{ preparations: 0, outcomes: 0, counts: 1 }]);
+  assert.equal(h.buffer.size, 0);
+});
+
 await test("a failed flush loses the drained counts, a failed timer is reported, and a failed kept write leaves the buffer", async () => {
   const dead: CountSink = { ingest: async () => { throw new Error("store down"); } };
   const never = () => new Promise<void>(() => undefined);
-  const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = []) => prepareTailItems(items, SHOP, nowMs).then(batch => deliverSampled({
-    buffer, batch, nowMs, sink: dead, defer: work => { deferred.push(work); }, sleep, onDeferredFailure: error => { reported.push(error); }
+  const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs).then(batch => deliverSampled({
+    buffer, batch, nowMs, now: () => wakeMs, sink: dead, defer: work => { deferred.push(work); }, sleep, onDeferredFailure: error => { reported.push(error); }
   }));
 
   const flushed = new CountBuffer(INTERVAL);
@@ -137,7 +165,7 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
   const timed = new CountBuffer(INTERVAL);
   const deferred: Promise<void>[] = [];
   const reported: unknown[] = [];
-  await deliverTo(timed, [quietItem(1, START)], START + 1_000, async () => undefined, deferred, reported);
+  await deliverTo(timed, [quietItem(1, START)], START + 1_000, async () => undefined, deferred, reported, START + 1_000 + IDLE_FLUSH_MS);
   await Promise.all(deferred);
   assert.equal(reported.length, 1);
   assert.equal(timed.size, 0);
@@ -177,7 +205,7 @@ await test("10,000 seeded events, delivered one per tail batch with buffering on
     }
     clock += 2 * INTERVAL;
     await h.deliver([item(total, clock, 500)], clock);
-    await h.fire();
+    await h.fire(clock);
     const row = db.rows<{ observed: number }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_counts")[0]!;
     assert.equal(row.observed, total + 1);
     const keptRows = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n;
