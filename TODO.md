@@ -4,7 +4,7 @@ Next: 55
 ### STA-54 · P3 · Two workerd tests fail under load and pass alone
 
 - **Area:** Tests
-- **Where:** `cloudflare/test/operations.test.ts` ("records the expiry sweep with the rows it removed"), `cloudflare/src/installation.ts` (`alarm`, `ensureAlarm`)
+- **Where:** `cloudflare/test/operations.test.ts` ("records the expiry sweep with the rows it removed"), `cloudflare/src/core/installation/installation.ts` (`alarm`, `ensureAlarm`)
 - **Problem:** On 2026-11-05 at `425fb3e`, `make check` failed once: after `runDurableObjectAlarm`, no `cleanup.retention` message with `expired > 0` was published (expected 1, got 0). The same test passed 3 times alone and in 2 full `vitest run`s, and in the merge check at `f62f5c9`. The alarm is set 10 minutes ahead inside ingest, so a real timer firing early is not the cause. The cause is not established.
 - **Also:** `cloudflare/test/observe-e2e/sampling.test.ts` ("a sampled service is counted exactly…") failed about half the time inside `make cloudflare-test`, right after the fresh builds, on master `996397b` (3 of 4) and on `campaign/portable` (2 of 3). It passed 3 of 3 alone on `803faa6`. That test reads real time and the 20 s idle flush.
 - **Recommendation:** Rerun under load (`make check`, or vitest beside a cargo build) with the published messages and the return value of `runDurableObjectAlarm` logged, to tell "no alarm ran" from "the sweep ran but published late or with nothing expired". For the sampling test, log the flush times against its waits.
@@ -14,7 +14,7 @@ Next: 55
 ### STA-53 · P3 · Collector runs go missing or fail about one time in nine
 
 - **Area:** Projects
-- **Where:** `cloudflare/src/projects/collector.ts`, the stats `scheduled` handler
+- **Where:** `cloudflare/src/cloudflare/projects/collector.ts`, the stats `scheduled` handler
 - **Problem:** From 08:50 to 11:00Z on 2026-11-05, 3 of 26 five-minute collector runs left no probe sample. The 09:35 and 09:40Z crons recorded no run at all, and the 10:05Z run recorded `collector_failed` after 5.2 s with 32M analytics rows read. Each gap removes a probe sample and delays settled coverage. Until `68396b7`, any one gap voided the probe guardrail, which is why O1 first came back `insufficient-data`.
 - **Recommendation:** Read the stats-observe traces for the scheduled invocations at those times to tell a skipped cron from one that died before recording its run, and record the failing step of `collector_failed`. Fix the cause if it is ours; if Cloudflare skipped the crons, document the rate.
 - **Fix with:** root-cause
@@ -41,7 +41,7 @@ Next: 55
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
 - **Area:** Ingest
-- **Where:** `cloudflare/src/installation.ts`, `docs/binary-ingest.md`
+- **Where:** `cloudflare/src/core/installation/installation.ts`, `docs/binary-ingest.md`
 - **Problem:** A misbehaving host token can make the server store about 143 KB of canonical JSON per v2 request, against about 64 KB under v1. Rows per request and request rate are unchanged, and the real agent stores the same bytes as before.
 - **Recommendation:** Decide whether to reject a batch whose decoded canonical JSON would exceed the old 64 KB bound, or accept the documented limit. If capped, add a conformance fixture and a Worker test for the boundary.
 - **Fix with:** none
@@ -77,7 +77,7 @@ Next: 55
 ### STA-41 · P2 · Watch the usr-memories D1 size against the 10 GB cap
 
 - **Area:** Operability
-- **Where:** `cloudflare/src/projects/collector.ts`, `~/usr/agent-memory/cloudflare/src/db.ts`
+- **Where:** `cloudflare/src/cloudflare/projects/collector.ts`, `~/usr/agent-memory/cloudflare/src/db.ts`
 - **Problem:** On 2026-11-01 after the backfill the database grew about 39 MB an hour (168, 208, and 246 MB at 20:00, 21:00, and 22:00 UTC) regardless of whether the hour wrote 226k or 819k rows, so rows written do not explain it. At that rate D1's 10 GB cap is about ten days away, and a database at the cap rejects writes. Unproven: whether the growth continues once the object pull and the snapshot bursts settle, and what the extra bytes are (snapshot rows, indexes, or free pages).
 - **Recommendation:** Read the D1 size chart for a day. If growth continues, find which tables grow by running `SELECT name, SUM(pgsize) FROM dbstat GROUP BY name` through `cf d1` and compare with the per-snapshot `snapshot_object` rows, then decide between pruning old snapshots sooner and storing the object list once per change. Either is a stored-format or retention change and needs a yes first.
 - **Fix with:** make-it-fast
@@ -95,7 +95,7 @@ Next: 55
 ### STA-33 · P3 · Ingest CPU tail of 35 to 47 ms is unexplained
 
 - **Area:** Performance
-- **Where:** `cloudflare/src/installation.ts:431`
+- **Where:** `cloudflare/src/core/installation/installation.ts:479` (`ingest`)
 - **Problem:** The slowest HTTP calls with 49-byte (ingest) responses took 33 to 47 ms of CPU on 2026-11-01, against 5.3 ms for the average HTTP call. A Node microbenchmark of the pure-JS phases on the v1 `batch-full.json` fixture (now `bench/legacy-v1/`) came to about 0.8 ms per ingest, 0.64 ms of it the hour rebuild, so the tail is not JS. SQLite work or a cold wake is the suspect. Unproven.
 - **Recommendation:** Compare the SQLite statement spans (query, rows read and written) of slow and fast ingest traces, now that the Worker samples traces, and compare their wall time against CPU. Do not move the hour rebuild until that shows it matters, because deferring it changes how fresh the 30-day charts are.
 - **Fix with:** make-it-fast
@@ -113,7 +113,7 @@ Next: 55
 ### STA-42 · P3 · Decide whether hosts should upload every 10 seconds
 
 - **Area:** Operability
-- **Where:** `agent/src/config.rs:150`, `README.md:66`, `cloudflare/src/installation.ts:14`, `deploy/hosts.json`
+- **Where:** `agent/src/config.rs:150`, `README.md:66`, `cloudflare/src/core/installation/installation.ts:29`, `deploy/hosts.json`
 - **Problem:** The default `uploadIntervalMs` is 30000 with `sampleIntervalMs` 15000, so each upload carries two samples and a host sends two ingest requests a minute. The allowed floor is 10000, which sends one sample per request at about four requests a minute. It buys about 20 s of delivery freshness, keeps `ONLINE_WINDOW_MS` (45 s) from flapping when one upload fails, and does not improve chart resolution, because raw history steps at 15 s and the 1m and 1h rollups sit on top. It doubles the request footprint: measured 2026-11-02, `stats` had 1,740 stateless entrypoint invocations in six hours, 760 of them `POST /ingest/v1/batches`, against `MAX_REQUESTS_PER_WINDOW` 6 per host per fixed minute, the free plan's 100,000 Worker requests a day, and the zone rule of 20 `/ingest/*` requests per 10 s per IP per colo. At 10 s one host is about 5,760 ingest requests a day, and a shared egress IP supports about 20 hosts before the zone rule, against about 34 and 60 at 30 s. Unproven: how often one missed upload actually pushes a host past the online window today.
 - **Recommendation:** Leave the default at 30 s. If one host should feel live, set `"uploadIntervalMs": 10000` in its `/etc/stats/agent.json`, which a host deploy preserves, and read the 429 and `ingest_rejected` counts for a day. Revisit the default only when the fleet is known to stay small or the account leaves the free plan.
 - **Fix with:** none
@@ -122,7 +122,7 @@ Next: 55
 ### STA-37 · P4 · Approximate maximum CPU reads several times too high
 
 - **Area:** Operability
-- **Where:** `cloudflare/src/projects/queries.ts:24`, `cloudflare/src/projects/parse.ts`, `cloudflare/src/client/pages/project/Routes.tsx`
+- **Where:** `cloudflare/src/projects/queries.ts:24`, `cloudflare/src/cloudflare/projects/parse.ts`, `cloudflare/src/client/pages/project/Routes.tsx`
 - **Problem:** `APPROX_MAX` returned 436 ms for `do.cpuMsMax` in an hour where the raw invocations peaked at 91 ms. The charts say "approximate" but a reader will take a spike as real. The Worker maximum uses the same function.
 - **Recommendation:** Either drop the maximum charts, or label them as a sketch estimate that can read high, or derive the maximum from `SUM(cpuTimeUs * sampleInterval)` bounds, whichever the owner prefers.
 - **Fix with:** none

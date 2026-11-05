@@ -25,7 +25,7 @@ measurements, and the negative storage result.
   field, rounding to three decimals, and composes frames for one history or a
   bundle. A non-finite value is absent, never zero. The Durable Object keeps the
   columns of its last four windows and serializes them per request.
-- `cloudflare/src/index.ts`: `Content-Encoding` (`br`, else `gzip`) and
+- `cloudflare/src/cloudflare/index.ts`: `Content-Encoding` (`br`, else `gzip`) and
   `Vary: Accept-Encoding` for history routes.
 - `cloudflare/src/client/columns.ts`, `history.ts`: the dashboard model. A
   `Table` is a time axis plus named columns; `cells(name)` converts a column to

@@ -74,8 +74,8 @@ and surface a fixed error code. Ordinary telemetry and deployment polling are
 independent; a failure in one does not suppress execution of the other.
 
 The deployment routes, polls, and retention live in `src/core/installation/`
-with the host logic. `src/installation.ts` is the Durable Object that builds its
-ports and is exported under the `Installation` name in `src/index.ts`. The binding,
+with the host logic. `src/cloudflare/installation.ts` is the Durable Object that builds its
+ports and is exported under the `Installation` name in `src/cloudflare/index.ts`. The binding,
 Durable Object namespace and fixed `installation` object id are unchanged. Additive
 `CREATE TABLE IF NOT EXISTS` initialization adds four tables to the same SQLite
 database without changing existing host schema versions:

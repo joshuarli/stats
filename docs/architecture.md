@@ -9,6 +9,30 @@ configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
 served through the same Worker, reads that API behind Cloudflare Access. The wire contract between agent and Worker is in
 [`protocol.md`](protocol.md).
 
+## Source layout
+
+`cloudflare/src/` is split into a portable core and Cloudflare adapters.
+
+- **Adapters** are `src/cloudflare/` and `src/observe/cloudflare/`. The first
+  holds the stats Worker entry (`index.ts`, with its routing table and
+  scheduled handler), the `Installation` Durable Object wrapper
+  (`installation.ts`), Access verification (`access.ts`), the Analytics
+  collector and its row parsers (`projects/`), the Cloudflare API deployment
+  collector (`deployments/`), and the `ctx.storage.sql`, clock, alarm, and
+  operation-mark adapters for the core's ports. The second holds the
+  `stats-observe` Worker, the `ObservationStore` Durable Object, the tail
+  reducer, and the service policies.
+- **Core** is everything else under `src/`. `src/core/installation/` is the
+  host, history, project, and deployment logic, written against the ports in
+  `src/core/sql.ts` (`SqlStatements`, the `SqlDatabase` that extends it, and
+  `SqlScopes`) and `src/core/ports.ts` (`Clock`, `Scheduler`). The observation
+  store takes the same `SqlStatements`. `src/node/` implements the ports on
+  `node:sqlite` and timers.
+
+`test/node/boundary.test.ts` fails when any core file imports from an adapter
+directory, `cloudflare:*`, or `@cloudflare/*`, so the core and `src/node/`
+load in plain Node.
+
 ## Agent
 
 `agent/src/main.rs` parses the command line, `config.rs` loads and validates
@@ -59,7 +83,7 @@ and keeps `seq` unique.
 
 ## Worker
 
-`cloudflare/src/index.ts` is the whole routing table. `/health` is public.
+`cloudflare/src/cloudflare/index.ts` is the whole routing table. `/health` is public.
 `POST /ingest/v2/batches` with a token-shaped bearer, the STB2 media type, no
 content encoding, and a declared length within the cap is forwarded to the
 Durable Object unread; the object reads the body as bounded bytes, decodes it
@@ -69,7 +93,7 @@ and answers with an STA2 acknowledgment (`src/ingest/ack.ts`). Any request to
 the retired `/ingest/v1/batches` answers `410 Gone`.
 
 Every other path that serves assets or data first passes
-`verifyAccess` in `access.ts`. Assets run through the Worker
+`verifyAccess` in `src/cloudflare/access.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `/api/observe/<service>/*` passes the same Access check and is then proxied
@@ -106,7 +130,7 @@ over the same binding.
 The observability code under `cloudflare/src/observe/` is layered so only
 one folder knows about Cloudflare. `core/` holds the model, grouping, SQL
 store, and `service.ts`, which implements every API operation over any
-SQLite database and a clock. `http/api.ts` turns Web-standard requests into
+`SqlStatements` database and a clock. `http/api.ts` turns Web-standard requests into
 service calls. `client/` holds the response decoders and the `pnpm observe`
 CLI, and `producer/` the diagnostics-channel contract that application code
 reports through. `cloudflare/` holds the adapters: the `stats-observe`
