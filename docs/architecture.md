@@ -163,6 +163,10 @@ operation did: persisted, duplicate and rejected samples and input bytes for
 ingest; points, cells, output bytes and cache result for history (with a
 `workloadClass` such as `1m:summary`); runs, metric rows, hour rollups and
 upstream queries for the collector; expired rows and backlog for retention.
+Retention's `expired` is the sum of `rowsWritten` deltas of its delete
+statements, so it includes index rows, and `backlog` counts categories; neither
+is a logical row count, and `statsctl verify` does not accept
+`cleanup.retention`.
 `stats-observe` must accept `operation` before `stats` emits it. A tail that
 does not know the kind rejects the whole invocation as `rejected-invalid`, so
 never roll `stats-observe` back below the version that accepts `operation`

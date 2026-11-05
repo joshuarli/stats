@@ -3,7 +3,7 @@ import { decodeDeploymentHistory } from "../../deployments/decode.ts";
 import { UUID } from "../../deployments/model.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import type { HttpClient } from "../http.ts";
-import { decide, type Decision, type Reason, type SafetyRecord, type VerifyVerdict } from "./decide.ts";
+import { decide, isPending, type Decision, type Reason, type SafetyRecord, type VerifyVerdict } from "./decide.ts";
 import { BudgetExhausted, POLL_INTERVAL_MS, gatherEvidence, requestBudget } from "./gather.ts";
 import { policyHash, type Policy } from "./policy.ts";
 import { STATE_SCHEMA, decodeState, readStateText, statePath, writeState, type VerifyState } from "./state.ts";
@@ -108,7 +108,8 @@ export async function runVerification(deps: LoopDeps, request: VerificationReque
     const decision = decide(state.policy, evidence, state.safety, evaluatedAtMs);
     state = save({ ...state, etags: gathered.etags, polls: state.polls + 1, evidence, last: { evaluatedAtMs, verdict: decision.verdict } });
     const extraReasons = exhausted === null ? [] : [budgetReason(exhausted)];
-    if (decision.verdict !== "pending" || !request.wait || exhausted !== null) return finished({ extraReasons });
+    const waiting = decision.verdict === "pending" || (decision.verdict !== "regressed" && isPending(evidence.comparison, evaluatedAtMs));
+    if (!waiting || !request.wait || exhausted !== null) return finished({ extraReasons });
 
     const wakeAtMs = evaluatedAtMs < evidence.comparison.readyAtMs ? evidence.comparison.readyAtMs : evaluatedAtMs + POLL_INTERVAL_MS;
     if (wakeAtMs > deadline) return finished({ timedOut: true });

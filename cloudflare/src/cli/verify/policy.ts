@@ -13,11 +13,11 @@ export const GUARDRAIL_IDS = ["safety-check", "failed-share", "new-issue-group",
 export type GuardrailId = typeof GUARDRAIL_IDS[number];
 export const UNWAIVABLE: readonly GuardrailId[] = ["safety-check", "coverage"];
 
-const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record", "cleanup.retention"];
+const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record"];
 const CLASSED_OPERATIONS: readonly ComparableOperation[] = ["host.history", "project.history"];
 
 export const DEFAULT_OPERATION_FLOORS: MetricFloors = {
-  cpuMsPerUnit: 0.05,
+  cpuMsPerUnit: 0.5,
   wallMsPerUnit: 0.5,
   rowsReadPerUnit: 0.5,
   rowsWrittenPerUnit: 0.5,
@@ -142,6 +142,7 @@ export function parsePolicy(value: unknown): Policy {
   const hypothesis = text(fields["hypothesis"], "hypothesis", 10, 500);
   const project = text(fields["project"], "project", 1, 32);
   if (!/^[a-z][a-z0-9-]{0,31}$/u.test(project)) fail("project must be a project id such as stats");
+  if (fields["operation"] === "cleanup.retention") fail("operation cleanup.retention cannot be verified: its expired count is the rows written by expiry deletes, index rows included, so rowsWrittenPerUnit would compare rows written to itself");
   const operation = oneOf(fields["operation"], [...COMPARABLE_OPERATIONS, "global"] as const, "operation");
   const direction = oneOf(fields["direction"], ["decrease", "increase"] as const, "direction");
   const minChangePercent = number(fields["minChangePercent"], "minChangePercent");

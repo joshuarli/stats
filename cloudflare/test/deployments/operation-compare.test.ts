@@ -147,14 +147,21 @@ await test("the failed-share guardrail keeps a clean baseline clean and otherwis
   assert.equal(failedShareGuardrail(side(0), side(0, 99)).status, "insufficient-data");
 });
 
-await test("the ingest persistence guardrail fails only when persisted over accepted-for-processing falls", () => {
-  const side = (persisted: number, received: number, rejected: number) => ({ persisted, received, rejected });
-  assert.equal(ingestPersistenceGuardrail(side(90, 100, 0), side(90, 100, 0)).status, "pass");
-  assert.equal(ingestPersistenceGuardrail(side(90, 100, 0), side(95, 100, 0)).status, "pass");
-  assert.equal(ingestPersistenceGuardrail(side(90, 100, 0), side(89, 100, 0)).status, "regressed");
-  assert.equal(ingestPersistenceGuardrail(side(90, 100, 10), side(89, 100, 10)).status, "regressed");
-  assert.equal(ingestPersistenceGuardrail(side(80, 100, 20), side(80, 100, 20)).status, "pass");
-  assert.equal(ingestPersistenceGuardrail(side(0, 10, 10), side(1, 10, 0)).status, "insufficient-data");
+await test("the ingest persistence guardrail regresses when the stored share of received samples falls by more than a point", () => {
+  const side = (persisted: number, duplicate: number, received: number) => ({ persisted, duplicate, received });
+  assert.equal(ingestPersistenceGuardrail(side(1000, 0, 1000), side(500, 0, 1000)).status, "regressed");
+  assert.equal(ingestPersistenceGuardrail(side(900, 100, 1000), side(500, 500, 1000)).status, "pass");
+  assert.equal(ingestPersistenceGuardrail(side(1000, 0, 1000), side(990, 0, 1000)).status, "pass");
+  assert.equal(ingestPersistenceGuardrail(side(1000, 0, 1000), side(989, 0, 1000)).status, "regressed");
+  assert.equal(ingestPersistenceGuardrail(side(900, 0, 1000), side(950, 0, 1000)).status, "pass");
+  assert.equal(ingestPersistenceGuardrail(side(0, 0, 0), side(1, 0, 1)).status, "insufficient-data");
+});
+
+await test("rejected samples alone regress an ingest comparison even when work drift stays within bounds", () => {
+  const comparison = global(false);
+  const result = compareOperation(ingestInput(comparison, opRows("before", id(101)), opRows("after", id(102), { work: { persisted: 120, rejectedInvalidSample: 80 } })));
+  assert.deepEqual(result.blockedBy, []);
+  assert.equal(result.guardrails.find(item => item.name === "ingest-persistence")!.status, "regressed");
 });
 
 const FROM = AT, TO = AT + 12 * B;

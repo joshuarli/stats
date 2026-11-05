@@ -1,9 +1,9 @@
-import { decodeDeploymentComparison } from "../../deployments/decode.ts";
+import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../deployments/decode.ts";
 import { decodeIssues, decodeStatsWindow } from "../../observe/client/decode.ts";
 import type { StatsWindow } from "../../observe/core/store.ts";
 import { scopeSpec, windowQuery, type ComparisonScope } from "../../compare/spec.ts";
 import { transportError } from "../exit.ts";
-import type { Fetched, HttpClient } from "../http.ts";
+import { HISTORY_BODY_LIMIT, type Fetched, type HttpClient } from "../http.ts";
 import { decodeProjects } from "../decode.ts";
 import { isPending, type Evidence, type IssueCheck } from "./decide.ts";
 import { isOperationPolicy, type Policy } from "./policy.ts";
@@ -29,7 +29,7 @@ export class BudgetExhausted extends Error {
 export interface RequestBudget {
   beginPoll(): void;
   total(): number;
-  json<T>(path: string, decode: (value: unknown) => T, ifNoneMatch?: string): Promise<Fetched<T>>;
+  json<T>(path: string, decode: (value: unknown) => T, ifNoneMatch?: string, bodyLimit?: number): Promise<Fetched<T>>;
 }
 
 export function requestBudget(http: HttpClient, priorRequests: number, runStart: number): RequestBudget {
@@ -38,10 +38,10 @@ export function requestBudget(http: HttpClient, priorRequests: number, runStart:
   return {
     beginPoll: () => { pollStart = http.requests(); },
     total,
-    async json(path, decode, ifNoneMatch) {
+    async json(path, decode, ifNoneMatch, bodyLimit) {
       if (http.requests() - pollStart >= POLL_REQUEST_LIMIT) throw new BudgetExhausted("poll");
       if (total() >= TOTAL_REQUEST_LIMIT) throw new BudgetExhausted("total");
-      return http.getJson(path, decode, ifNoneMatch === undefined ? {} : { ifNoneMatch });
+      return http.getJson(path, decode, { ...(ifNoneMatch === undefined ? {} : { ifNoneMatch }), ...(bodyLimit === undefined ? {} : { bodyLimit }) });
     }
   };
 }
@@ -72,9 +72,9 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
   const previous = state.evidence;
   const etags: Record<string, string> = { ...state.etags };
 
-  async function conditional<T>(path: string, decode: (value: unknown) => T, base: T | undefined): Promise<T> {
+  async function conditional<T>(path: string, decode: (value: unknown) => T, base: T | undefined, bodyLimit?: number): Promise<T> {
     const etag = base === undefined ? undefined : etags[path];
-    const fetched = await budget.json(path, decode, etag);
+    const fetched = await budget.json(path, decode, etag, bodyLimit);
     if (fetched.kind === "ok") {
       if (fetched.etag === null) delete etags[path];
       else etags[path] = fetched.etag;
@@ -87,7 +87,8 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
   let evidence: Evidence | null = previous === null ? null : { ...previous, windows: null, issues: null };
   try {
     const comparison = await conditional(path, value => decodeDeploymentComparison(value, deploymentId, window), previous?.comparison);
-    evidence = { comparison, windows: null, issues: null, probes: previous?.probes ?? null };
+    const deployedAtMs = previous?.deployedAtMs ?? await deploymentTime(budget, project, deploymentId);
+    evidence = { comparison, deployedAtMs, windows: null, issues: null, probes: previous?.probes ?? null };
     if (isPending(comparison, nowMs) || project !== OBSERVED_PROJECT) return { evidence, etags, exhausted: null };
 
     if (evidence.probes === null && policy.guardrails.includes("probe-failure-share")) {
@@ -100,7 +101,7 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
     const scoped = scopedSpec(policy, comparison.spec);
     const read = (side: "before" | "after", base: StatsWindow | undefined) => {
       const query = windowQuery(scoped, side);
-      return conditional(observeWindowPath(query.fromMs, query.toMs, query.operation), decodeStatsWindow, base);
+      return conditional(observeWindowPath(query.fromMs, query.toMs, query.operation), decodeStatsWindow, base, HISTORY_BODY_LIMIT);
     };
     const before = await read("before", previous?.windows?.before);
     const after = await read("after", previous?.windows?.after);
@@ -120,6 +121,15 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
     if (error instanceof BudgetExhausted && evidence !== null) return { evidence, etags, exhausted: error };
     throw error;
   }
+}
+
+async function deploymentTime(budget: RequestBudget, project: string, deploymentId: string): Promise<number> {
+  const path = `/api/v1/projects/${encodeURIComponent(project)}/deployments`;
+  const fetched = await budget.json(path, value => decodeDeploymentHistory(value, project));
+  if (fetched.kind !== "ok") return notModifiedWithoutBase(path);
+  const found = fetched.value.deployments.find(item => item.id === deploymentId);
+  if (found === undefined) throw transportError("deployment_missing", `${path} does not list deployment ${deploymentId}`);
+  return found.atMs;
 }
 
 function scopedSpec(policy: Policy, spec: Evidence["comparison"]["spec"]): Evidence["comparison"]["spec"] {

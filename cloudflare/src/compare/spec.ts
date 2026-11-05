@@ -4,7 +4,7 @@ import type { OperationId } from "../observe/producer/channel.ts";
 
 export const MEASUREMENT_REVISION = 1;
 
-export type ComparableOperation = Exclude<OperationId, "deployments.poll">;
+export type ComparableOperation = Exclude<OperationId, "deployments.poll" | "cleanup.retention">;
 export type ClasslessOperation = Exclude<ComparableOperation, "host.history" | "project.history">;
 export type ClassedOperation = Exclude<ComparableOperation, ClasslessOperation>;
 

@@ -32,7 +32,7 @@ export interface ReadinessPayload {
 export interface VerdictPayload {
   readonly kind: "verdict";
   readonly verdict: VerifyVerdict;
-  readonly policy: { readonly id: string; readonly hash: string; readonly hypothesis: string };
+  readonly policy: { readonly id: string; readonly hash: string; readonly hypothesis: string; readonly operation: Policy["operation"]; readonly metric: string };
   readonly deployment: { readonly requested: string; readonly id: string };
   readonly window: ComparisonWindow;
   readonly spec: ComparisonSpec | null;
@@ -57,9 +57,9 @@ const POLICY_FIELD_HELP: readonly (readonly [string, string])[] = [
   ["id", "short name, lowercase letters, digits, hyphens; names the experiment in saved JSON"],
   ["hypothesis", "one sentence, registered before the deploy: what should change and why"],
   ["project", "project id; operation summaries and issues exist only for stats"],
-  ["operation", `host.ingest, host.history, project.history, collector.record, cleanup.retention, or "global" for a project-wide metric`],
+  ["operation", `host.ingest, host.history, project.history, collector.record, or "global" for a project-wide metric`],
   ["workloadClass", "required for host.history and project.history, forbidden otherwise; the class label from the observe window"],
-  ["metric", "operation policies: cpuMsPerUnit, wallMsPerUnit, rowsReadPerUnit, rowsWrittenPerUnit, statementsPerUnit (per work unit: persisted sample, request, run, row expired). Global: worker.cpu, worker.errors, do.cpu, do.wall, d1.read, d1.write, cost, r2.<bucket>, probe.<name>.ms, probe.<name>.failure"],
+  ["metric", "cpuMsPerUnit comes from tail cpuTime, rounded to whole milliseconds per invocation (default floor 0.5 ms, warning cpu-quantized-ms in every output). Operation policies: cpuMsPerUnit, wallMsPerUnit, rowsReadPerUnit, rowsWrittenPerUnit, statementsPerUnit (per work unit: persisted sample, request, run, row expired). Global: worker.cpu, worker.errors, do.cpu, do.wall, d1.read, d1.write, cost, r2.<bucket>, probe.<name>.ms, probe.<name>.failure"],
   ["direction", "decrease or increase: which way the metric must move for the change to count as improved"],
   ["minChangePercent", `smallest relative change that counts as material, at least ${MIN_CHANGE_PERCENT}`],
   ["floor", `smallest absolute change that counts as material, at least the metric default (operation defaults: ${Object.entries(DEFAULT_OPERATION_FLOORS).map(([name, value]) => `${name} ${value}`).join(", ")})`],
@@ -75,7 +75,7 @@ const GUARDRAIL_HELP: readonly (readonly [string, string])[] = [
   ["new-issue-group", "no observe issue group whose first version is the candidate"],
   ["probe-failure-share", "no probe failure share rose by 1 point or more; not applicable when the project defines no probes"],
   ["coverage", "observe events reconcile with analytics invocations within 5% on both sides"],
-  ["ingest-persistence", "persisted / (received - rejected) does not fall (host.ingest only)"]
+  ["ingest-persistence", "(persisted + duplicate) / received, in percent, does not fall by more than 1 point; rejected samples stay in the denominator (host.ingest only)"]
 ];
 
 function pad(rows: readonly (readonly [string, string])[]): string[] {
@@ -91,11 +91,14 @@ function resumeCommand(context: CommandContext, deploymentId: string, policyFile
   return parts.join(" ");
 }
 
+const CPU_QUANTIZED_WARNING = "cpu-quantized-ms";
+
 function verdictMeta(payload: VerdictPayload, project: string): ResultMeta {
   const spec = payload.spec;
   const decision = payload.decision;
   const versionIds = spec === null ? [] : [...new Set([...spec.before.versionIds, ...spec.after.versionIds])];
   const warnings: Warning[] = (decision?.warnings ?? []).map(message => ({ code: "comparison-warning", message }));
+  if (payload.policy.operation !== "global" && payload.policy.metric === "cpuMsPerUnit") warnings.push({ code: CPU_QUANTIZED_WARNING, message: "tail cpuTime is rounded to whole milliseconds per invocation, so a cpuMsPerUnit change below the rounding error is not resolvable; its floor is at least 0.5 ms" });
   return {
     project,
     windows: spec === null ? [] : [{ fromMs: spec.before.fromMs, toMs: spec.before.toMs }, { fromMs: spec.after.fromMs, toMs: spec.after.toMs }],
@@ -113,7 +116,7 @@ function verdictPayload(outcome: Outcome, context: CommandContext, input: { read
   return {
     kind: "verdict",
     verdict: outcome.verdict,
-    policy: { id: state.policy.id, hash: state.policyHash, hypothesis: state.policy.hypothesis },
+    policy: { id: state.policy.id, hash: state.policyHash, hypothesis: state.policy.hypothesis, operation: state.policy.operation, metric: state.policy.metric },
     deployment: { requested: input.requested, id: state.deploymentId },
     window: state.window,
     spec: state.evidence?.comparison.spec ?? null,

@@ -30,6 +30,7 @@ export interface IssueCheck {
 
 export interface Evidence {
   readonly comparison: DeploymentComparison;
+  readonly deployedAtMs: number;
   readonly windows: { readonly before: StatsWindow; readonly after: StatsWindow } | null;
   readonly issues: IssueCheck | null;
   readonly probes: readonly string[] | null;
@@ -111,11 +112,11 @@ function fromComparison(result: GuardrailResult | undefined, id: GuardrailId, mi
   return { id, status: result.status, detail, before: result.before, after: result.after };
 }
 
-function safetyGuardrail(safety: SafetyRecord | null, comparison: DeploymentComparison): GuardrailReport {
+function safetyGuardrail(safety: SafetyRecord | null, comparison: DeploymentComparison, deployedAtMs: number): GuardrailReport {
   const id = "safety-check";
   if (safety === null) return { id, status: "insufficient-data", detail: "no safety check is recorded; run `statsctl check ingest` inside the deployment warm-up and pass --safety-check-file", before: null, after: null };
   if (!safety.ok) return { id, status: "regressed", detail: `check ingest failed at step ${safety.failedStep ?? "unknown"}`, before: null, after: null };
-  if (safety.atMs < comparison.before.toMs) return { id, status: "insufficient-data", detail: "the safety check ran before the deployment, so it did not exercise the candidate", before: null, after: null };
+  if (safety.atMs < deployedAtMs) return { id, status: "insufficient-data", detail: "the safety check ran before the deployment, so it did not exercise the candidate", before: null, after: null };
   const inside = safety.atMs >= comparison.after.fromMs;
   return { id, status: "pass", detail: inside ? "passed, but ran inside the after window rather than the warm-up interval" : "passed inside the deployment warm-up interval", before: null, after: null };
 }
@@ -196,14 +197,14 @@ export function decide(policy: Policy, evidence: Evidence, safety: SafetyRecord 
   const unreadCoverage: CoverageReport = { before: null, after: null, state: null };
 
   if (pending) {
-    const guardrails: GuardrailReport[] = checked(["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"]).map(id => id === "safety-check" ? safetyGuardrail(safety, comparison) : pendingReport(id));
+    const guardrails: GuardrailReport[] = checked(["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"]).map(id => id === "safety-check" ? safetyGuardrail(safety, comparison, evidence.deployedAtMs) : pendingReport(id));
     return finish(emptyTarget("pending"), guardrails, unreadCoverage, empty);
   }
 
   const { windows } = evidence;
   if (windows === null) {
     reasons.push({ code: "windows-missing", message: "the observe windows were not read" });
-    const guardrails = checked(["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"]).map(id => id === "safety-check" ? safetyGuardrail(safety, comparison) : { id, status: "insufficient-data" as const, detail: "the observe windows were not read", before: null, after: null });
+    const guardrails = checked(["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"]).map(id => id === "safety-check" ? safetyGuardrail(safety, comparison, evidence.deployedAtMs) : { id, status: "insufficient-data" as const, detail: "the observe windows were not read", before: null, after: null });
     return finish(emptyTarget("insufficient-data"), guardrails, unreadCoverage, empty);
   }
 
@@ -211,7 +212,7 @@ export function decide(policy: Policy, evidence: Evidence, safety: SafetyRecord 
   const after = sideCoverage(windows.after, comparison.analyticsInvocations.after);
   const coverage: CoverageReport = { before, after, state: combineCoverage(before.state, after.state) };
   const common = (): GuardrailReport[] => [
-    safetyGuardrail(safety, comparison),
+    safetyGuardrail(safety, comparison, evidence.deployedAtMs),
     issueGuardrail(evidence.issues),
     probeGuardrail(evidence.probes, comparison),
     coverageGuardrail(coverage)
@@ -220,7 +221,8 @@ export function decide(policy: Policy, evidence: Evidence, safety: SafetyRecord 
   if (!isOperationPolicy(policy)) {
     const row = comparison.metrics.find(item => item.metric === policy.metric);
     if (row === undefined) reasons.push({ code: "metric-absent", message: `the comparison has no ${policy.metric} metric` });
-    const blocking = comparison.reasonCodes.filter(code => !DATA_CODES.includes(code));
+    const deferred = comparison.deferredObjects && (policy.metric.startsWith("do.") || policy.metric === "cost");
+    const blocking: string[] = [...comparison.reasonCodes.filter(code => !DATA_CODES.includes(code)), ...(deferred ? ["deferred"] : [])];
     const source = row === undefined ? { before: null, after: null, verdict: "insufficient-data" as const } : { before: row.before, after: row.after, verdict: row.verdict === "confounded" && blocking.length === 0 ? "insufficient-data" as const : row.verdict };
     const guardrails = [...common(), globalFailedShare(comparison)];
     return finish(judgeTarget(policy, source), listed(guardrails), coverage, { ...empty, blockedBy: blocking });
