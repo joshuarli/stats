@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { canonicalJson } from "../../src/protocol.ts";
+import { encodeFrame, type SourceBatch as EncoderBatch } from "../../src/ingest/encode.ts";
 import { decodeFrame } from "../../src/ingest/frame.ts";
 import { normalizeSystem, validateSample } from "../../src/ingest/sample.ts";
 import { batches, readBytes, readJson, type SourceBatch } from "./corpus.ts";
@@ -40,10 +41,9 @@ await test("delta and absolute encodings of one batch decode to identical canoni
   }
 });
 
-await test("the test-only frame builder agrees with the agent's golden bytes, so ad hoc workerd batches follow the spec", async () => {
-  const { encodeFrame } = await import("../support/stb2.ts");
+await test("the production encoder reproduces every golden frame byte for byte, delta and absolute", () => {
   for (const entry of batches()) {
-    const source = readJson<SourceBatch>(entry.source) as Parameters<typeof encodeFrame>[0];
+    const source = readJson<SourceBatch>(entry.source) as EncoderBatch;
     assert.deepEqual(encodeFrame(source), readBytes(entry.frame), entry.name);
     assert.deepEqual(encodeFrame(source, { delta: false }), readBytes(entry.frame.replace(/\.stb2$/u, ".absolute.stb2")), `${entry.name} absolute`);
   }

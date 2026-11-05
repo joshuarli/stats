@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { encodeFrame, type SourceBatch } from "./support/stb2.ts";
+import { encodeFrame, type SourceBatch } from "../src/ingest/encode.ts";
 
 const files: Record<string, string> = JSON.parse(env.FIXTURES ?? "{}");
 

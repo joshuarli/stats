@@ -1,3 +1,5 @@
+import { FS_TYPES, MEMORY_PRESSURE_LEVELS } from "../protocol.ts";
+
 export interface SourceBatch {
   readonly hostId: string;
   readonly bootId: string;
@@ -9,8 +11,6 @@ type Json = Readonly<Record<string, unknown>>;
 
 const GROUPS = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"] as const;
 const UNAVAILABLE = { cpu: 0, load: 1, mem: 2, uptime: 3, disks: 5, nets: 6, psi: 7, filesystems: 8, gpu: 10, power: 11 } as const;
-const FS = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"];
-const PRESSURE = ["normal", "warn", "critical"];
 const text = new TextEncoder();
 
 function object(value: unknown): Json {
@@ -28,10 +28,25 @@ function str(value: unknown): string {
   return value;
 }
 
+function ordinal(names: readonly string[], name: string): number {
+  const index = names.indexOf(name);
+  if (index < 0) throw new Error(`unknown name ${name}`);
+  return index;
+}
+
 function u64(value: unknown): bigint {
-  if (typeof value === "number") return BigInt(value);
+  if (typeof value === "bigint") {
+    if (value < 0n || value > 0xffff_ffff_ffff_ffffn) throw new Error(`u64 out of range: ${value}`);
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`expected a non-negative safe integer, got ${value}`);
+    return BigInt(value);
+  }
   if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/u.test(value)) throw new Error(`expected a decimal string, got ${String(value)}`);
-  return BigInt(value);
+  const parsed = BigInt(value);
+  if (parsed > 0xffff_ffff_ffff_ffffn) throw new Error(`u64 out of range: ${value}`);
+  return parsed;
 }
 
 function scaled(value: unknown, digits: number): bigint {
@@ -140,7 +155,7 @@ function writeSample(out: Writer, sample: Json, previous: Json | undefined, dict
     out.byte((swap === undefined ? 0 : 1) | (mem.pressure === undefined ? 0 : 2) | (base === undefined ? 0 : 4));
     for (const key of ["total", "available", "swapTotal", "swapFree"]) out.varint(u64(mem[key]));
     swap?.forEach((value, index) => out.varint(base === undefined ? value : value - base[index]!));
-    if (mem.pressure !== undefined) out.byte(PRESSURE.indexOf(str(mem.pressure)));
+    if (mem.pressure !== undefined) out.byte(ordinal(MEMORY_PRESSURE_LEVELS, str(mem.pressure)));
   }
   if (sample.uptimeMs !== undefined) counterRecord(out, 0, 1, [u64(sample.uptimeMs)], previous?.uptimeMs === undefined ? undefined : [u64(previous.uptimeMs)], delta);
   if (sample.cpuCount !== undefined) out.varint(u64(sample.cpuCount));
@@ -197,7 +212,7 @@ function writeSample(out: Writer, sample: Json, previous: Json | undefined, dict
     for (const filesystem of filesystems) {
       if (reference(out, dictionaries.filesystems, `${str(filesystem.id)}\u0000${str(filesystem.type)}`)) {
         out.text(str(filesystem.id));
-        out.byte(FS.indexOf(str(filesystem.type)));
+        out.byte(ordinal(FS_TYPES, str(filesystem.type)));
       }
       out.varint(u64(filesystem.total));
       out.varint(u64(filesystem.available));

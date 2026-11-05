@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { accessToken } from "../access-token.ts";
-import { encodeFrame, type SourceBatch } from "../support/stb2.ts";
+import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
 const STATS_BUNDLE = join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js");
