@@ -14,6 +14,7 @@
     "lint": "oxlint --type-aware src test bench observe-worker vite.config.ts playwright.config.ts",
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",
+    "statsctl": "node --experimental-strip-types src/cli/statsctl.ts",
     "observe": "node --experimental-strip-types src/observe/client/cli.ts",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
     "test:ingest": "node --experimental-strip-types --test test/ingest/*.test.ts",
