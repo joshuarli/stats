@@ -200,7 +200,7 @@ function MonthChart(props: { readonly spend: MonthSpend; readonly ledger: Ledger
   );
 }
 
-export function CostLedger(props: { readonly ledger: Ledger; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spend: MonthSpend | null }): JSX.Element {
+export function CostLedger(props: { readonly ledger: Ledger; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spend: MonthSpend | null; readonly spendPending: boolean }): JSX.Element {
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
     const top = props.ledger.lines[0];
     const first = top?.children.find(child => !isResidual(child));
@@ -300,7 +300,7 @@ export function CostLedger(props: { readonly ledger: Ledger; readonly histories:
             </button>
           )}</For>
         </div>
-        <Show when={props.spend}>{spend => <MonthChart spend={spend()} ledger={props.ledger} />}</Show>
+        <Show when={props.spend} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : null}>{spend => <MonthChart spend={spend()} ledger={props.ledger} />}</Show>
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">

@@ -214,7 +214,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       </Show>
       <div class="project-page">
         <Errored fallback={(error) => <ErrorState error={error()} compact />}>
-          <Loading fallback={<Skeleton rows={4} chart />}>
+          <Loading fallback={<Skeleton rows={4} chart class="skeleton-ledger" />}>
             <Show
               when={hasData()}
               fallback={
@@ -229,8 +229,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               <Show when={monthSpend.error()}>{message => (
                 <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
               )}</Show>
-              <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
-                {current => <CostLedger ledger={current().ledger} histories={current().histories} windowLabel={windowLabel()} spend={monthSpend.spend()} />}
+              <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} class="skeleton-ledger" /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
+                {current => <CostLedger ledger={current().ledger} histories={current().histories} windowLabel={windowLabel()} spend={monthSpend.spend()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
               </Show>
             </Show>
           </Loading>
@@ -238,7 +238,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
 
         <Section id="deploys" title="Deployments" open={sections().has("deploys")} onToggle={() => toggleSection("deploys")}
           summary={<Show when={latest()} fallback={deployments.historyError() ?? "none recorded"}>{deployment => <>{deployments.title(deployment())} · {age(deployment().atMs, now())}{deployment().message === null ? "" : ` · ${deployment().message}`}</>}</Show>}>
-          <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart />}>
+          <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart class="skeleton-deployments" />}>
             <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
               <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
               <div class="project-main">
@@ -265,7 +265,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         <Section id="signals" title="Signals" open={sections().has("signals")} onToggle={() => toggleSection("signals")}
           summary={["requests", "status", "CPU", ...(hasBuckets() ? ["R2"] : []), ...(hasDatabases() ? ["D1"] : []), ...(props.project.probes.length > 0 ? ["endpoints"] : []), ...(hasNamespaces() ? ["Durable Objects"] : []), "collector"].join(" · ")}>
           <Errored fallback={(error) => <ErrorState error={error()} compact />}>
-            <Loading fallback={<Skeleton rows={4} chart />}>
+            <Loading fallback={<Skeleton rows={4} chart class="skeleton-signals" />}>
               <section class="charts" aria-label="Charts">
                 <RequestsWidget data={data()} />
                 <StatusWidget data={data()} />

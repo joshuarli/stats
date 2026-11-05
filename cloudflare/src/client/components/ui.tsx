@@ -190,9 +190,9 @@ export function ErrorState(props: { readonly error: unknown; readonly retry?: ((
   );
 }
 
-export function Skeleton(props: { readonly rows?: number | undefined; readonly chart?: boolean | undefined }): JSX.Element {
+export function Skeleton(props: { readonly rows?: number | undefined; readonly chart?: boolean | undefined; readonly class?: string | undefined }): JSX.Element {
   return (
-    <div class="skeleton" aria-hidden="true">
+    <div class={props.class === undefined ? "skeleton" : `skeleton ${props.class}`} aria-hidden="true">
       {Array.from({ length: props.rows ?? 3 }, () => <span class="skeleton-line" />)}
       {props.chart === true ? <span class="skeleton-chart" /> : null}
     </div>
