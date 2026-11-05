@@ -1,5 +1,6 @@
 import { MAX_ARTIFACT_BYTES, MAX_ERRORS_PER_INVOCATION, MAX_LABEL_BYTES, MAX_MESSAGE_BYTES, MAX_NAME_BYTES, MAX_STACK_BYTES } from "./limits.ts";
 import { parseStack, type StackFrame } from "./stack.ts";
+import type { OperationSummary } from "../producer/channel.ts";
 import { fingerprint, sha256Hex } from "./grouping.ts";
 
 export type Stage = "worker" | "object";
@@ -31,6 +32,7 @@ export interface ObservedInvocation {
   readonly wallMs: number;
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
+  readonly operation?: OperationSummary;
   readonly errors: readonly ObservedError[];
 }
 
@@ -65,6 +67,7 @@ export interface PreparedInvocation {
   readonly wallMs: number;
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
+  readonly operation?: OperationSummary;
   readonly errorCount: number;
   readonly errors: readonly PreparedError[];
 }
@@ -97,6 +100,7 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
     wallMs: input.wallMs,
     eventAtMs: input.eventAtMs,
     trace: input.trace,
+    ...(input.operation === undefined ? {} : { operation: input.operation }),
     errorCount: input.errors.length,
     errors
   };

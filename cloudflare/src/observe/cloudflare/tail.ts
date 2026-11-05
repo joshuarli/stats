@@ -1,4 +1,4 @@
-import { OBSERVE_CHANNEL } from "../producer/channel.ts";
+import { OBSERVE_CHANNEL, OPERATION_IDS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
 import type { InvocationKind, ObservedError, ObservedInvocation, Stage, TraceContext } from "../core/model.ts";
 
@@ -52,6 +52,7 @@ export function reduceTailItem(item: TailItem, policy: ServicePolicy): Reduction
       wallMs: Math.round(item.wallTime),
       eventAtMs: item.eventTimestamp,
       trace: channel.trace,
+      ...(channel.operation === null ? {} : { operation: channel.operation }),
       errors: [...uncaught, ...channel.errors]
     }
   };
@@ -93,8 +94,9 @@ function pathOf(url: string): string | null {
   }
 }
 
-function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: ReadonlySet<string>): { trace: TraceContext | null; errors: ObservedError[] } | null {
+function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: ReadonlySet<string>): { trace: TraceContext | null; operation: OperationSummary | null; errors: ObservedError[] } | null {
   let trace: TraceContext | null = null;
+  let summary: OperationSummary | null = null;
   const errors: ObservedError[] = [];
   for (const event of events) {
     if (event.channel !== OBSERVE_CHANNEL) continue;
@@ -105,6 +107,13 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: R
       const spanId = text(field(message, "spanId"));
       if (traceId === null || spanId === null) return null;
       trace ??= { traceId, spanId };
+    } else if (kind === "operation") {
+      const traceId = text(field(message, "traceId"));
+      const spanId = text(field(message, "spanId"));
+      const parsed = readOperation(message);
+      if (traceId === null || spanId === null || parsed === null || summary !== null) return null;
+      trace ??= { traceId, spanId };
+      summary = parsed;
     } else if (kind === "error") {
       const operation = field(message, "operation");
       const name = text(field(message, "name"));
@@ -116,7 +125,64 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: R
       return null;
     }
   }
-  return { trace, errors };
+  return { trace, operation: summary, errors };
+}
+
+const REJECTION_CODES = ["invalid_sample", "too_old", "conflict"] as const;
+
+function readOperation(message: unknown): OperationSummary | null {
+  const id = field(message, "operation");
+  const synthetic = field(message, "synthetic");
+  const rows = readRows(field(message, "rows"));
+  const work = field(message, "work");
+  if (typeof id !== "string" || !(OPERATION_IDS as readonly string[]).includes(id) || typeof synthetic !== "boolean" || rows === null) return null;
+  const common = { synthetic, rows };
+  switch (id as OperationId) {
+    case "host.ingest": {
+      const rejected = field(work, "rejected");
+      const [received, persisted, duplicate, inputBytes] = counts(work, ["received", "persisted", "duplicate", "inputBytes"]);
+      const codes = counts(rejected, REJECTION_CODES);
+      if (received === undefined || persisted === undefined || duplicate === undefined || inputBytes === undefined || codes.includes(undefined) || hasExtra(rejected, REJECTION_CODES)) return null;
+      const [invalidSample, tooOld, conflict] = codes as [number, number, number];
+      return { ...common, operation: "host.ingest", work: { received, persisted, duplicate, rejected: { invalid_sample: invalidSample, too_old: tooOld, conflict }, inputBytes } };
+    }
+    case "host.history":
+    case "project.history": {
+      const workloadClass = field(message, "workloadClass");
+      const cache = field(work, "cache");
+      const [points, cells, outputBytes] = counts(work, ["points", "cells", "outputBytes"]);
+      if (typeof workloadClass !== "string" || !WORKLOAD_CLASS.test(workloadClass) || (cache !== "hit-304" && cache !== "rebuilt") || points === undefined || cells === undefined || outputBytes === undefined) return null;
+      return { ...common, operation: id as "host.history" | "project.history", workloadClass, work: { points, cells, outputBytes, cache } };
+    }
+    case "collector.record": {
+      const [runs, metricRows, hourRollups, upstreamQueries] = counts(work, ["runs", "metricRows", "hourRollups", "upstreamQueries"]);
+      if (runs === undefined || metricRows === undefined || hourRollups === undefined || upstreamQueries === undefined) return null;
+      return { ...common, operation: "collector.record", work: { runs, metricRows, hourRollups, upstreamQueries } };
+    }
+    case "cleanup.retention": {
+      const [expired, backlog] = counts(work, ["expired", "backlog"]);
+      if (expired === undefined || backlog === undefined) return null;
+      return { ...common, operation: "cleanup.retention", work: { expired, backlog } };
+    }
+    case "deployments.poll":
+      return work === undefined ? { ...common, operation: "deployments.poll" } : null;
+  }
+}
+
+function readRows(value: unknown): RowAccount | null {
+  const [read, written, statements] = counts(value, ["read", "written", "statements"]);
+  return read === undefined || written === undefined || statements === undefined ? null : { read, written, statements };
+}
+
+function counts(value: unknown, keys: readonly string[]): (number | undefined)[] {
+  return keys.map(key => {
+    const count = field(value, key);
+    return typeof count === "number" && Number.isSafeInteger(count) && count >= 0 ? count : undefined;
+  });
+}
+
+function hasExtra(value: unknown, keys: readonly string[]): boolean {
+  return typeof value === "object" && value !== null && Object.keys(value).some(key => !keys.includes(key));
 }
 
 function field(value: unknown, key: string): unknown {

@@ -1,7 +1,8 @@
-import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS } from "./limits.ts";
+import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS } from "./limits.ts";
 import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, RolloutPreparation, Stage, VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
+import { OPERATION_IDS, type OperationSummary } from "../producer/channel.ts";
 
 export type SqlValue = string | number | null;
 
@@ -254,6 +255,14 @@ export interface Health {
   readonly writes: WriteCost;
 }
 
+const OPERATION_WORK_COLUMNS = [
+  "received", "persisted", "duplicate", "rejected_invalid_sample", "rejected_too_old", "rejected_conflict", "input_bytes",
+  "points", "cells", "output_bytes", "cache_hit_304", "cache_rebuilt",
+  "runs", "metric_rows", "hour_rollups", "upstream_queries", "expired", "backlog_remaining"
+] as const;
+
+type OperationWorkColumn = typeof OPERATION_WORK_COLUMNS[number];
+
 const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS observe_invocations (
     key TEXT PRIMARY KEY,
@@ -346,6 +355,22 @@ const STATEMENTS = [
     invocations INTEGER NOT NULL,
     rows_written INTEGER NOT NULL,
     PRIMARY KEY (bucket_at, phase)
+  ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_operations (
+    bucket_at INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK (operation IN (${OPERATION_IDS.map(id => `'${id}'`).join(", ")})),
+    workload_class TEXT NOT NULL,
+    synthetic INTEGER NOT NULL CHECK (synthetic IN (0, 1)),
+    count INTEGER NOT NULL,
+    failed INTEGER NOT NULL,
+    cpu_ms_sum INTEGER NOT NULL,
+    wall_ms_sum INTEGER NOT NULL,
+    rows_read INTEGER NOT NULL,
+    rows_written INTEGER NOT NULL,
+    statements INTEGER NOT NULL,
+    ${OPERATION_WORK_COLUMNS.map(column => `${column} INTEGER NOT NULL DEFAULT 0`).join(",\n    ")},
+    PRIMARY KEY (bucket_at, version, operation, workload_class, synthetic)
   ) WITHOUT ROWID`
 ];
 
@@ -417,6 +442,7 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
 export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
+  const operations = new Map<string, OperationBucket>();
   const cutoff = nowMs - RETENTION_MS;
   db.transaction(() => {
     const writtenBefore = db.rowsWritten();
@@ -439,15 +465,88 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
         continue;
       }
       insertInvocation(db, invocation, observedAt);
+      if (invocation.operation !== undefined) accumulateOperation(operations, invocation, invocation.operation);
       for (const error of invocation.errors) {
         if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) { result.issueCapacity++; events.push({ counter: "issue_capacity", reason: "issues_full", example: error.name }); }
       }
       result.accepted++;
     }
+    recordOperations(db, nowMs, operations);
     recordHealth(db, nowMs, events);
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
   return result;
+}
+
+interface OperationBucket {
+  readonly version: string;
+  readonly summary: OperationSummary;
+  count: number;
+  failed: number;
+  cpuMs: number;
+  wallMs: number;
+  rowsRead: number;
+  rowsWritten: number;
+  statements: number;
+  work: Record<OperationWorkColumn, number>;
+}
+
+function workloadClass(summary: OperationSummary): string {
+  return "workloadClass" in summary ? summary.workloadClass : "";
+}
+
+function operationWork(summary: OperationSummary): Partial<Record<OperationWorkColumn, number>> {
+  switch (summary.operation) {
+    case "host.ingest": {
+      const { received, persisted, duplicate, rejected, inputBytes } = summary.work;
+      return { received, persisted, duplicate, rejected_invalid_sample: rejected.invalid_sample, rejected_too_old: rejected.too_old, rejected_conflict: rejected.conflict, input_bytes: inputBytes };
+    }
+    case "host.history":
+    case "project.history": {
+      const { points, cells, outputBytes, cache } = summary.work;
+      return { points, cells, output_bytes: outputBytes, cache_hit_304: cache === "hit-304" ? 1 : 0, cache_rebuilt: cache === "rebuilt" ? 1 : 0 };
+    }
+    case "collector.record": {
+      const { runs, metricRows, hourRollups, upstreamQueries } = summary.work;
+      return { runs, metric_rows: metricRows, hour_rollups: hourRollups, upstream_queries: upstreamQueries };
+    }
+    case "cleanup.retention":
+      return { expired: summary.work.expired, backlog_remaining: summary.work.backlog };
+    case "deployments.poll":
+      return {};
+  }
+}
+
+function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: PreparedInvocation, summary: OperationSummary): void {
+  const version = invocation.version ?? "";
+  const key = [version, summary.operation, workloadClass(summary), summary.synthetic ? 1 : 0].join("\u0000");
+  let bucket = buckets.get(key);
+  if (bucket === undefined) {
+    bucket = { version, summary, count: 0, failed: 0, cpuMs: 0, wallMs: 0, rowsRead: 0, rowsWritten: 0, statements: 0, work: Object.fromEntries(OPERATION_WORK_COLUMNS.map(column => [column, 0])) as Record<OperationWorkColumn, number> };
+    buckets.set(key, bucket);
+  }
+  bucket.count++;
+  bucket.failed += isFailed(invocation) ? 1 : 0;
+  bucket.cpuMs += invocation.cpuMs;
+  bucket.wallMs += invocation.wallMs;
+  bucket.rowsRead += summary.rows.read;
+  bucket.rowsWritten += summary.rows.written;
+  bucket.statements += summary.rows.statements;
+  for (const [column, value] of Object.entries(operationWork(summary))) bucket.work[column as OperationWorkColumn] += value;
+}
+
+function recordOperations(db: SqlDatabase, nowMs: number, buckets: ReadonlyMap<string, OperationBucket>): void {
+  const bucketAt = nowMs - (nowMs % OPERATION_BUCKET_MS);
+  const additions = ["count", "failed", "cpu_ms_sum", "wall_ms_sum", "rows_read", "rows_written", "statements", ...OPERATION_WORK_COLUMNS];
+  const update = additions.map(column => `${column} = ${column} + excluded.${column}`).join(", ");
+  for (const bucket of buckets.values()) {
+    const values = [bucket.count, bucket.failed, bucket.cpuMs, bucket.wallMs, bucket.rowsRead, bucket.rowsWritten, bucket.statements, ...OPERATION_WORK_COLUMNS.map(column => bucket.work[column])];
+    db.run(
+      `INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, ${additions.join(", ")}) VALUES (?, ?, ?, ?, ?, ${additions.map(() => "?").join(", ")})
+       ON CONFLICT (bucket_at, version, operation, workload_class, synthetic) DO UPDATE SET ${update}`,
+      bucketAt, bucket.version, bucket.summary.operation, workloadClass(bucket.summary), bucket.summary.synthetic ? 1 : 0, ...values
+    );
+  }
 }
 
 const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
@@ -539,6 +638,11 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     db.run("DELETE FROM observe_issues WHERE NOT EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = observe_issues.fingerprint AND o.observed_at > ?)", cutoff);
     db.run("DELETE FROM observe_health_events WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
     db.run("DELETE FROM observe_write_cost WHERE bucket_at + ? <= ?", HEALTH_BUCKET_MS, cutoff);
+    db.run("DELETE FROM observe_operations WHERE bucket_at <= ?", cutoff - OPERATION_BUCKET_MS);
+    const operationExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_operations") - MAX_RETAINED_OPERATION_ROWS, CLEANUP_BATCH);
+    if (operationExcess > 0) {
+      db.run("DELETE FROM observe_operations WHERE (bucket_at, version, operation, workload_class, synthetic) IN (SELECT bucket_at, version, operation, workload_class, synthetic FROM observe_operations ORDER BY bucket_at LIMIT ?)", operationExcess);
+    }
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -548,7 +652,8 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     const evicted = evict(db);
     recordHealth(db, nowMs, [
       ...Array.from({ length: evicted.invocations }, (): HealthEvent => ({ counter: "evicted", reason: "invocations", example: null })),
-      ...Array.from({ length: evicted.occurrences }, (): HealthEvent => ({ counter: "evicted", reason: "occurrences", example: null }))
+      ...Array.from({ length: evicted.occurrences }, (): HealthEvent => ({ counter: "evicted", reason: "occurrences", example: null })),
+      ...Array.from({ length: Math.max(operationExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "operations", example: null }))
     ]);
     recordWriteCost(db, nowMs, "cleanup", Math.min(expiredInvocations, CLEANUP_BATCH) + evicted.invocations, db.rowsWritten() - writtenBefore);
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
