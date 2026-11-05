@@ -47,4 +47,4 @@ export function nanoshopWorkerRoute(path: string): string | null {
   return null;
 }
 
-export const NANOSHOP_SAMPLING = sampled({ keepPerMillion: 10_000, slowWallMs: 100, slowCpuMs: 10 });
+export const NANOSHOP_SAMPLING = sampled({ keepPerMillion: 2_000, slowWallMs: 1_000, slowCpuMs: 50 });
