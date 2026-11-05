@@ -1,0 +1,14 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "o2-portable-core-refactor",
+  "hypothesis": "Moving Installation onto ports, the shared request router, and the review fixes leave host.ingest SQLite rows written per persisted sample unchanged (offline: 7.762 before and after, every SQL statement identical), so the verdict is unchanged rather than improved, with no loss of persisted samples.",
+  "project": "stats",
+  "operation": "host.ingest",
+  "metric": "rowsWrittenPerUnit",
+  "direction": "decrease",
+  "minChangePercent": 15,
+  "floor": 0.5,
+  "guardrails": ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"],
+  "window": "1h",
+  "maxWaitMs": 14400000
+}
