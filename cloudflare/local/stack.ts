@@ -23,6 +23,7 @@ export interface StackStart {
   readonly port?: number;
   readonly localExplorer?: true;
   readonly statsOutput?: string;
+  readonly observeOutput?: string;
 }
 
 export interface Stack {
@@ -144,7 +145,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
 
 export async function startStack(start: StackStart): Promise<Stack> {
   const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
-  const observe = readBuiltWorker(OBSERVE_OUTPUT);
+  const observe = readBuiltWorker(start.observeOutput ?? OBSERVE_OUTPUT);
   mkdirSync(SCRATCH, { recursive: true });
   const persist = start.persist ?? mkdtempSync(join(SCRATCH, "stack-"));
   mkdirSync(persist, { recursive: true });

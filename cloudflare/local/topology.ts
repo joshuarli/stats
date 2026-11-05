@@ -165,8 +165,12 @@ export * from "./${mainModule}";
 export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(producer)} })), env, ctx); } };`;
 }
 
+function observeProject(observe: BuiltWorker): string {
+  return resolve(observe.output, "../../../../..");
+}
+
 export function collectorModules(observe: BuiltWorker, producer: string): V4ModuleDefinition[] {
-  const project = resolve(observe.output, "../../../../..");
+  const project = observeProject(observe);
   return [
     { type: "ESModule", path: join(project, "collector-entry.js"), contents: tailScriptNameWrapper(producer, observe.mainModule) },
     { type: "ESModule", path: join(project, observe.mainModule), contents: readFileSync(bundlePath(observe), "utf8") }
@@ -177,7 +181,7 @@ export function collectorWorker(observe: BuiltWorker, name: string, producer: st
   for (const [key, value] of observe.env) {
     if (value.type !== "durable-object") throw new TypeError(`${observe.name} env.${key} is a ${value.type} binding, which the local collector does not map`);
   }
-  return { name, modules: collectorModules(observe, producer), ...compat(observe), durableObjects: durableObjects(observe, name) };
+  return { name, modules: collectorModules(observe, producer), modulesRoot: observeProject(observe), ...compat(observe), durableObjects: durableObjects(observe, name) };
 }
 
 function alarmModules(worker: BuiltWorker): V4ModuleDefinition[] {
