@@ -283,6 +283,19 @@ describe("history", () => {
     expect(retentionDelayMs({ raw: 999, minute: 999, hour: 0 })).toBe(600_000);
   });
 
+  it("arms retention ten minutes after the platform's now, not the installation clock's", async () => {
+    const fresh = env.INSTALLATION.get(env.INSTALLATION.idFromName("retention-arming"));
+    const before = Date.now();
+    const alarm = await runInDurableObject(fresh, async (instance: Installation, state: DurableObjectState) => {
+      await instance.recordCollectorRun({ ok: false, atMs: now, detail: "query_failed", rowsRead: 0, durationMs: 1, upstreamQueries: 0 });
+      return state.storage.getAlarm();
+    });
+    const after = Date.now();
+    expect(alarm).not.toBeNull();
+    expect(alarm!).toBeGreaterThanOrEqual(before + 10 * 60 * 1000);
+    expect(alarm!).toBeLessThanOrEqual(after + 10 * 60 * 1000);
+  });
+
   it("expires raw and rolled rows on the alarm", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);

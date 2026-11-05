@@ -10,16 +10,6 @@ Next: 56
 - **Fix with:** none
 - **Effort:** S
 
-### STA-54 · P3 · Two workerd tests fail under load and pass alone
-
-- **Area:** Tests
-- **Where:** `cloudflare/test/operations.test.ts` ("records the expiry sweep with the rows it removed"), `cloudflare/src/core/installation/installation.ts` (`alarm`, `ensureAlarm`)
-- **Problem:** On 2026-11-05 at `425fb3e`, `make check` failed once: after `runDurableObjectAlarm`, no `cleanup.retention` message with `expired > 0` was published (expected 1, got 0). The same test passed 3 times alone and in 2 full `vitest run`s, and in the merge check at `f62f5c9`. The alarm is set 10 minutes ahead inside ingest, so a real timer firing early is not the cause. The cause is not established.
-- **Also:** `cloudflare/test/observe-e2e/sampling.test.ts` ("a sampled service is counted exactly…") failed about half the time inside `make cloudflare-test`, right after the fresh builds, on master `996397b` (3 of 4) and on `campaign/portable` (2 of 3). It passed 3 of 3 alone on `803faa6`. That test reads real time and the 20 s idle flush.
-- **Recommendation:** Rerun under load (`make check`, or vitest beside a cargo build) with the published messages and the return value of `runDurableObjectAlarm` logged, to tell "no alarm ran" from "the sweep ran but published late or with nothing expired". For the sampling test, log the flush times against its waits.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-53 · P3 · Collector runs go missing or fail about one time in nine
 
 - **Area:** Projects

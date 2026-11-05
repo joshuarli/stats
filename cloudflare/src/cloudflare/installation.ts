@@ -14,8 +14,9 @@ export class Installation extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    const clock = cloudflareClock(() => this.env);
     this.core = new InstallationCore(
-      { sql: cloudflareSqlScopes(ctx.storage), clock: cloudflareClock(() => this.env), scheduler: cloudflareScheduler(ctx.storage), operations: cloudflareOperations },
+      { sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations },
       { projects: () => this.env.PROJECTS, deploymentsEnabled: () => deploymentsEnabled(this.env) }
     );
     void ctx.blockConcurrencyWhile(async () => {

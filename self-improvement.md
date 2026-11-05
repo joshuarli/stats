@@ -67,7 +67,6 @@ The run cost 14 of 60 requests and 5 polls.
 - **STA-50:** overlapping RPC marks.
 - **STA-51:** tail isolate lifetime in production.
 - **STA-53:** collector runs missing or failing about 1 in 9.
-- **STA-54:** two workerd tests fail under load.
 - **STA-55:** rejected-invalid events are not capped by STA-52.
 
 **Master is ahead of production:** master now carries portable-core P1 and P2 (`docs/portable-core-campaign.md`), so the next stats deploy ships that refactor. Its parity, fixture, and bundle-export checks pass locally.
