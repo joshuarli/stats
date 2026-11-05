@@ -446,7 +446,7 @@ Nanoshop (`~/d/nanoshop`, read-only) will run `nanoshop-storied` with `stats-obs
     - tail CPU at $0.02 per million ms;
     - store duration at $12.50 per million GB-s.
   - **Setting the rate.** Choose `keepPerMillion` and the flush interval as the largest rate and shortest interval that fit the budget. A pure projection function computes the bill from the measured per-event figures, and the workerd test fails when the projection exceeds the budget.
-  - Acceptance: `cd cloudflare && pnpm exec vitest run test/observe/budget.test.ts`.
+  - Acceptance: `cd cloudflare && node --experimental-strip-types --test test/observe/budget.test.ts`.
 - **N4** (S, `campaign`): write `docs/observe-billing.md` for Nanoshop to cite. For each fact, give the official source URL and the date it was read:
   - Tail Worker billing;
   - store requests per tail batch;

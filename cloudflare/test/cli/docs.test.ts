@@ -12,7 +12,7 @@ const RUNNER_PREFIXES = [
 ];
 const SHORT_PREFIX = "statsctl ";
 
-const DOCUMENTS = ["cloudflare/public/llms.txt", "AGENTS.md", "docs/operations.md"];
+const DOCUMENTS = ["cloudflare/public/llms.txt", "AGENTS.md", "docs/operations.md", "docs/observe-billing.md"];
 
 function invocationArguments(text: string, short: boolean): string[] | undefined {
   const trimmed = text.trim();
