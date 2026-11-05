@@ -1,5 +1,32 @@
 Prefix: STA
-Next: 58
+Next: 61
+
+### STA-60 · P3 · A host-metric service policy stops answering once cgroup data arrives
+
+- **Area:** Services
+- **Where:** `cloudflare/src/deployments/service-compare.ts` (the replacement filter), `cloudflare/src/cli/verify/service.ts`, `bench/policies/service-example.json`
+- **Problem:** When a service has cgroup data in both windows, `service.*` replaces `host.cpu`, `host.memory`, and `host.disk` in `metrics`. A policy that targets a host metric, including the shipped example, then returns insufficient-data on every run. `stats-node` on threadripper gets there with its next marked deploy.
+- **Recommendation:** Keep the replaced host rows in the response and mark them as superseded, so the page still leads with cgroup and a policy on `host.*` stays answerable. Alternatively, move the example policy to `service.cpu`.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-59 · P3 · An empty io.stat reads as measured zero service I/O
+
+- **Area:** Agent
+- **Where:** `agent/src/cgroup.rs` (`parse_io_stat`), `cloudflare/src/deployments/service-compare.ts`
+- **Problem:** An empty `io.stat` parses as all-zero counters, and that zero `service.io` then replaces `host.disk`. On a filesystem that does not charge writeback to cgroups, a deploy that adds disk I/O would read as unchanged. This is unproven: threadripper reported nonzero io bytes on its first sample.
+- **Recommendation:** Check on threadripper whether `io.stat` ever stays empty while the host disk is busy. If it does, send io as absent when `io.stat` has no device lines.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-58 · P3 · A 24h service comparison loads every 1m rollup for every marker host
+
+- **Area:** Services
+- **Where:** `cloudflare/src/core/installation/installation.ts` (service comparison read)
+- **Problem:** A 24h window parses about 2,890 one-minute rollups per host, and up to 64 hosts, in one Durable Object request, which could exceed memory or CPU limits for a large service. Not measured; today's one-host use is far from it.
+- **Recommendation:** Measure a 64-host, 24h comparison in workerd before any service has more than a few hosts, and read hourly rollups for windows longer than 6h if it is over budget.
+- **Fix with:** none
+- **Effort:** M
 
 ### STA-57 · P3 · A refactor makes a pre-existing error look like a new issue group
 
