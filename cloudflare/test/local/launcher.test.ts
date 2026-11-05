@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -82,6 +82,25 @@ try {
     const result = await finish(launch(["run", "--", "sh", "-c", script]));
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(codes, "utf8"), "false 3\nmulti-line 3\n");
+  });
+
+  await test("SIGTERM to run reaches its command and leaves no process or scratch state", async () => {
+    const before = new Set(readdirSync(SCRATCH).filter(name => name.startsWith("stack-")));
+    const child = launch(["run", "--", "sh", "-c", "echo started; exec sleep 60"]);
+    const done = finish(child);
+    let output = "";
+    child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
+    const deadline = Date.now() + 20_000;
+    while (!output.includes("started")) {
+      if (Date.now() > deadline || child.exitCode !== null) throw new Error(`run did not start its command: ${output}`);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const pids = [child.pid!, ...descendants(child.pid!)];
+    child.kill("SIGTERM");
+    assert.equal((await done).status, 128 + 15);
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.deepEqual(pids.filter(alive), []);
+    assert.deepEqual(readdirSync(SCRATCH).filter(name => name.startsWith("stack-") && !before.has(name)), []);
   });
 
   await test("dev serves the stack from its state, survives a restart, and leaves no process after SIGTERM or SIGINT", async () => {

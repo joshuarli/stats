@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
+import { constants } from "node:os";
 import { join } from "node:path";
+const osConstants = constants;
 import { BUCKET_MS } from "../src/projects/queries.ts";
 import { collectAt, seed } from "../local/seed.ts";
 import { cliEnv, startStack } from "../local/stack.ts";
@@ -27,12 +30,14 @@ async function run(command) {
   try {
     await seed(stack, Date.now());
     const child = spawn(command[0], command.slice(1), { stdio: "inherit", env: { ...process.env, ...cliEnv(stack.origin) } });
+    // Miniflare's exit hook exits 128 + signal on SIGINT and SIGTERM, so the child is signalled first and the scratch state removed on exit.
     const forward = signal => child.kill(signal);
-    process.on("SIGINT", forward);
-    process.on("SIGTERM", forward);
+    process.prependListener("SIGINT", forward);
+    process.prependListener("SIGTERM", forward);
+    process.on("exit", () => rmSync(stack.persist, { recursive: true, force: true }));
     code = await new Promise((resolve, reject) => {
       child.once("error", reject);
-      child.once("exit", (status, signal) => resolve(status ?? (signal === null ? 1 : 128)));
+      child.once("exit", (status, signal) => resolve(status ?? (signal === null ? 1 : 128 + osConstants.signals[signal])));
     });
   } finally {
     await stack.dispose();

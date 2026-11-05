@@ -183,4 +183,6 @@ node-e2e: work-ready node-ready worker-bundle
 
 release: agent-build
 
-check: fixtures agent-test release cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint integration-local
+OFFLINE_SANDBOX_CHECK := $(if $(filter Darwin,$(shell uname -s)),integration-local,)
+
+check: fixtures agent-test release cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)

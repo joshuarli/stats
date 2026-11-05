@@ -21,7 +21,6 @@ done
 profile='(version 1)
 (allow default)
 (deny network-outbound)
-(allow network-outbound (remote ip "localhost:*"))
-(allow network-outbound (remote unix-socket))'
+(allow network-outbound (remote ip "localhost:*"))'
 
 exec sandbox-exec -p "$profile" "$@"

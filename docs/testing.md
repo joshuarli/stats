@@ -55,7 +55,7 @@ Cloudflare login and no network. It needs `pnpm build` and
   `dispose()` throws naming any URL the scenario did not declare. A scenario
   declares the probe URLs in its registry. `scripts/offline-run.sh` adds the
   OS layer: it removes `CLOUDFLARE_*` and `CF_*` and runs its command under
-  `sandbox-exec` with only loopback and unix-socket network.
+  `sandbox-exec` with only loopback network, so DNS lookups fail too.
 - **Launcher.** `cloudflare/scripts/local-stack.mjs run -- CMD` runs `CMD`
   against an ephemeral seeded stack with `STATS_URL`, `STATSCTL_AUTH_COMMAND`,
   and `STATSCTL_AUTH_HEADER` set, so `statsctl` reads it without `cf`. `dev`
@@ -69,7 +69,9 @@ live-measured points: probe latencies and the store's own size.
 Limits: fixtures cannot show that Cloudflare still accepts the fixed queries or
 returns the recorded columns; run `node cloudflare/scripts/check-analytics-sql.mjs`
 after changing `src/projects/queries.ts`. `scripts/offline-run.sh` exits 2 off
-macOS until a Linux sandbox is verified. Nothing here measures billable CPU.
+macOS until a Linux sandbox is verified, so `make check` runs
+`make integration-local` only on macOS; elsewhere `make cloudflare-test` still
+runs `test:local` with the app-level outbound check. Nothing here measures billable CPU.
 
 ## Ingest conformance
 
