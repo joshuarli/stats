@@ -216,6 +216,7 @@ export function scenarioComparison(scenario: Scenario, deploymentId: string, win
   return {
     deploymentId, window, before: { fromMs: end - span, toMs: end }, after: { fromMs: end + 10 * M, toMs: end + 10 * M + span },
     readyAtMs: end + 10 * M + span, beforeInvocations: null, afterInvocations: null,
-    reasons: ["The scenario has no collected Worker metrics to compare."], warnings: [], metrics: []
+    spec: { before: { deploymentId: null, versionIds: [], fromMs: end - span, toMs: end }, after: { deploymentId, versionIds: [], fromMs: end + 10 * M, toMs: end + 10 * M + span }, scope: null, measurementRevision: { measurement: 1, observeFilter: 1, pricing: "2026-11-05" } },
+    reasons: ["The scenario has no collected Worker metrics to compare."], reasonCodes: ["unsettled"], deferredObjects: false, analyticsInvocations: { before: [], after: [] }, warnings: [], metrics: []
   };
 }
