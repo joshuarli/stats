@@ -12,6 +12,7 @@ export interface ServicePolicy {
   readonly sampling: Sampling;
 }
 
+const SERVICE_MARKER_PATH = /^\/ingest\/services\/[^/]+\/deployments$/u;
 const HOST_ID = /^h_[0-9a-f]{32}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -21,6 +22,7 @@ function statsTemplate(path: string): string {
     if (HOST_ID.test(segment)) return ":host";
     if (UUID.test(segment)) return ":id";
     if (index > 0 && segments[index - 1] === "projects") return ":project";
+    if (index > 0 && segments[index - 1] === "services") return ":service";
     return segment;
   }).join("/");
 }
@@ -28,6 +30,7 @@ function statsTemplate(path: string): string {
 function statsWorkerRoute(path: string): string | null {
   if (path === INGEST_PATH || RETIRED_INGEST_PATHS.has(path)) return path;
   if (path.startsWith("/api/v1/")) return `/api/v1${statsTemplate(path.slice("/api/v1".length))}`;
+  if (SERVICE_MARKER_PATH.test(path)) return statsTemplate(path);
   return null;
 }
 

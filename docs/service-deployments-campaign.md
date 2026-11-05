@@ -9,9 +9,7 @@
   - Routes: admin create (token returned once), list and get, a marker post authenticated only by the deploy token (8 KiB limit, idempotent on `(service, markerId)`, conflicting repeats get 409), and history in the project `DeploymentHistory` shape plus `markers`. Markers expire after 30 days.
   - Tests: vitest 305, node suites green, node-e2e 5, `test/node/http-parity.test.ts` byte-identical on about 30 service exchanges, bench 7.762.
 - **Red:** none. **Parked:** none.
-- **Open, owner (Cloudflare only):** Access challenges `POST /api/v1/services/*/deployments` at the edge until a path-scoped Bypass application like `/ingest/*` exists. Markers work on Node now.
 - **Next:** S2. Carry-overs:
-  - `decodeDeploymentHistory` requires UUID version ids, so `statsctl` needs a service history decoder that accepts commit and tag versions.
   - Deploy tokens have no rotate or revoke yet.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
@@ -76,7 +74,7 @@ Forbidden:
 - Add a schema for `services` and `service_deployments`, additive tables in the Installation database, created idempotently.
 - Add `POST /api/v1/admin/services`, which creates a service and returns its token once.
 - Add `GET /api/v1/services` and `GET /api/v1/services/<name>`.
-- Add `POST /api/v1/services/<name>/deployments`, authenticated with the deploy bearer token, never Access or Tailscale identity. It takes JSON `{ markerId, version, message?, hostIds }`, has a size limit, and is idempotent on repeat.
+- Add `POST /ingest/services/<name>/deployments` (under `/ingest/` so the zone's existing `/ingest/*` Access Bypass covers it while the `GET` stays behind Access; Access matches by path, not method), authenticated with the deploy bearer token, never Access or Tailscale identity. It takes JSON `{ markerId, version, message?, hostIds }`, has a size limit, and is idempotent on repeat.
 - Add `GET /api/v1/services/<name>/deployments`, in the same shape the project deployments route returns.
 - Both targets use the same routes. On Node, admin and read routes need Tailscale identity, as other `/api/v1` routes do.
 - Tests: create, mark, a repeat marker is a no-op, an unknown host or wrong token is rejected before any write, and a token never appears in a response other than creation. Extend the parity test with these routes on workerd and Node.

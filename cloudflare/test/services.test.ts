@@ -28,7 +28,7 @@ async function createService(body: unknown): Promise<Response> {
 }
 
 function mark(name: string, token: string | null, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return SELF.fetch(`${ORIGIN}/api/v1/services/${name}/deployments`, {
+  return SELF.fetch(`${ORIGIN}/ingest/services/${name}/deployments`, {
     method: "POST",
     headers: { ...(token === null ? {} : { Authorization: `Bearer ${token}` }), "Content-Type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body)
@@ -193,8 +193,10 @@ describe("services", () => {
       expect(response.status, `${name} ${JSON.stringify(body).slice(0, 80)} ${JSON.stringify(headers ?? {})}`).toBe(status);
     }
     const streamed = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new TextEncoder().encode(JSON.stringify({ ...valid, message: "x".repeat(9000) }))); controller.close(); } });
-    const unsized = await SELF.fetch(`${ORIGIN}/api/v1/services/shop/deployments`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: streamed, duplex: "half" } as RequestInit);
+    const unsized = await SELF.fetch(`${ORIGIN}/ingest/services/shop/deployments`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: streamed, duplex: "half" } as RequestInit);
     expect(unsized.status).toBe(413);
+    const underAccess = await admin("/services/shop/deployments", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(valid) });
+    expect(underAccess.status).toBe(405);
     expect(await markerRows("shop")).toBe(0);
     expect(await markerRows("absent")).toBe(0);
     for (const call of log.mock.calls) {

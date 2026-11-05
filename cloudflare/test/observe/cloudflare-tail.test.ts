@@ -34,6 +34,8 @@ await test("worker routes become low-cardinality templates", () => {
   assert.equal(label(fetchItem("https://stats.example/ingest/v1/batches?token=SECRET_IN_QUERY", 410)), "POST /ingest/v1/batches");
   assert.equal(label(fetchItem(`https://stats.example/api/v1/hosts/h_${"a".repeat(32)}/history?range=1h`, 200)), "GET /api/v1/hosts/:host/history");
   assert.equal(label(fetchItem("https://stats.example/api/v1/projects/stuff/deployments/0b5b2c1e-0f0a-4c4a-9d8e-1a2b3c4d5e6f/comparison", 200)), "GET /api/v1/projects/:project/deployments/:id/comparison");
+  assert.equal(label(fetchItem("https://stats.example/ingest/services/any-name/deployments", 201)), "POST /ingest/services/:service/deployments");
+  assert.equal(label(fetchItem("https://stats.example/api/v1/services/any-name/deployments", 200)), "GET /api/v1/services/:service/deployments");
 });
 
 await test("health, assets, the observability API, and unauthorized or unmatched requests are excluded", () => {

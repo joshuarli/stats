@@ -139,10 +139,10 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
     await both("/api/v1/services/absent/deployments");
 
     const marker = { markerId: "ci-1", version: "1.0.0", message: "first", hostIds: [first] };
-    const mark = (credential: string | null, body: string, headers: Record<string, string> = json) => both("/api/v1/services/web/deployments", { method: "POST", headers: { ...headers, ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }) }, body }, false);
+    const mark = (credential: string | null, body: string, headers: Record<string, string> = json) => both("/ingest/services/web/deployments", { method: "POST", headers: { ...headers, ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }) }, body }, false);
     await mark(null, JSON.stringify(marker));
     await mark(`nft_${"A".repeat(43)}`, JSON.stringify(marker));
-    await both("/api/v1/services/absent/deployments", { method: "POST", headers: { ...json, Authorization: `Bearer ${token}` }, body: JSON.stringify(marker) }, false);
+    await both("/ingest/services/absent/deployments", { method: "POST", headers: { ...json, Authorization: `Bearer ${token}` }, body: JSON.stringify(marker) }, false);
     await mark(token, JSON.stringify(marker), { "Content-Type": "text/plain" });
     await mark(token, JSON.stringify({ ...marker, message: "x".repeat(9000) }));
     await mark(token, JSON.stringify({ ...marker, hostIds: [foreign] }));

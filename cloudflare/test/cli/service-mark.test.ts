@@ -68,7 +68,7 @@ await test("deploy mark against a fake origin", async t => {
       assert.deepEqual(bodies[0], { markerId: "v-9df651c", version: "9df651c", hostIds: [HOST_A, HOST_B] });
       const seen = origin.seen[0]!;
       assert.equal(seen.method, "POST");
-      assert.equal(seen.url, "/api/v1/services/web/deployments");
+      assert.equal(seen.url, "/ingest/services/web/deployments");
       assert.equal(seen.headers["authorization"], `Bearer ${SECRET}`);
       assert.equal(seen.headers["cf-access-token"], undefined);
       assert.ok(!existsSync(credentialRan), "the Access credential command ran");

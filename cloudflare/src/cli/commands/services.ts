@@ -77,7 +77,7 @@ function errorCode(body: Uint8Array): string {
 }
 
 async function postMarker(context: CommandContext, service: string, token: string, body: string): Promise<{ readonly status: number; readonly value: DeployMarkPayload }> {
-  const path = `/api/v1/services/${service}/deployments`;
+  const path = `/ingest/services/${service}/deployments`;
   const target = new URL(path, context.origin);
   if (target.origin !== context.origin) throw new TypeError("request would leave the configured origin");
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
@@ -118,7 +118,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   name: "deploy mark",
   summary: "record a deployment marker for a service",
   description: [
-    "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds} to /api/v1/services/NAME/deployments and prints the stored marker.",
+    "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds} to /ingest/services/NAME/deployments and prints the stored marker.",
     "The service deploy token comes from the token file, the JSON returned once when the service was created, and is sent only to the configured origin in the Authorization header. No Access or other credential is sent, on either target.",
     "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, or host set exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version.",
     "Exit 3 when the token file or the token is refused, or when an Access challenge intercepts the request (access_challenge). Exit 4 on transport failure."
@@ -136,7 +136,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   examples: ["statsctl deploy mark --service stats-node --version 9df651c1a2b3 --message 'make node-deploy' --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790"],
   limitations: [
     "Markers older than 30 days are dropped by the server.",
-    "On Cloudflare the marker path must bypass Access, as /ingest/* does; otherwise the request fails with access_challenge."
+    "On Cloudflare the marker path is under /ingest/*, which must bypass Access; otherwise the request fails with access_challenge."
   ],
   async run(context) {
     const service = requireService(context);

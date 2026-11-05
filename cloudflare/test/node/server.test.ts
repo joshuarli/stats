@@ -285,7 +285,7 @@ await test("a deploy marker needs only its service token, from any peer and with
       assert.equal(created.status, 201);
       const { token } = await created.json() as { token: string };
       const marker = { markerId: "m1", version: "1.0.0", hostIds: [host.value.hostId] };
-      const post = (credential: string | null) => served.fetch("/api/v1/services/svc/deployments", { method: "POST", headers: { ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }), "Content-Type": "application/json" }, body: JSON.stringify(marker) });
+      const post = (credential: string | null) => served.fetch("/ingest/services/svc/deployments", { method: "POST", headers: { ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }), "Content-Type": "application/json" }, body: JSON.stringify(marker) });
       assert.equal((await post(null)).status, 401);
       assert.equal((await post(`nft_${"A".repeat(43)}`)).status, 401);
       const rows = () => (served.harness.db.prepare("SELECT COUNT(*) AS count FROM service_deployments").get() as { count: number }).count;

@@ -464,13 +464,12 @@ stored one, so a retry is safe; `deploy mark` exits 0 for both. The same
 `deploy mark` reports as `marker_conflict` with exit 2. A 401 or 403 exits 3,
 and so does an Access challenge (`access_challenge`).
 
-On Cloudflare the marker `POST` must reach the Worker without an Access
-challenge. Before marking production services, add a path-scoped
-Bypass/Everyone Access application for
-`stats.17166969.xyz/api/v1/services/*/deployments`, like the one for
-`/ingest/*`. The Worker still verifies Access on that path's `GET`. The Node
-target needs nothing extra: the marker route ignores Tailscale identity, so
-any process that can reach the tailnet origin can mark with the token.
+The marker `POST` goes to `/ingest/services/NAME/deployments`, so on
+Cloudflare the existing `/ingest/*` Bypass application lets it reach the
+Worker; no other Access application is needed. Access matches by path, not
+method, so the readback stays on `/api/v1`, behind Access. The Node target
+needs nothing extra: the marker route ignores Tailscale identity, so any
+process that can reach the tailnet origin can mark with the token.
 
 ## Verified environments
 

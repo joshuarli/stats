@@ -30,7 +30,8 @@ const SECURITY: Record<string, string> = {
 const ASSET_CACHE = "private, max-age=31536000, immutable";
 const OBSERVE_PREFIX = "/api/observe";
 const MAX_OBSERVE_BODY_BYTES = 256;
-const SERVICE_MARKER_PATH = /^\/api\/v1\/services\/[^/]+\/deployments$/u;
+const SERVICE_MARKER_PATH = /^\/ingest\/services\/[^/]+\/deployments$/u;
+const SERVICE_DEPLOYMENTS_SUFFIX = /^\/services\/[^/]+\/deployments$/u;
 
 function secure(response: Response, cacheControl = "no-store"): Response {
   const headers = new Headers(response.headers);
@@ -110,7 +111,7 @@ async function markDeployment(request: Request, target: StatsTarget, path: strin
     logMarkerRejection("too_large");
     return error(413, "too_large", "marker exceeds the body cap");
   }
-  return secure(await target.installation(internal(request, path.slice("/api/v1".length))));
+  return secure(await target.installation(internal(request, path.slice("/ingest".length))));
 }
 
 async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {
@@ -163,6 +164,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
     if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
+    if (request.method === "POST" && SERVICE_DEPLOYMENTS_SUFFIX.test(suffix)) return error(405, "invalid_request", "post deploy markers to /ingest/services/NAME/deployments");
     if (request.method === "POST" && (suffix === "/admin/hosts" || suffix === "/admin/services") && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
     const response = await target.installation(internal(request, suffix));
     return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);

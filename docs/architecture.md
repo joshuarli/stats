@@ -167,8 +167,8 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
   `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
 - `POST /admin/services`, `GET /services`, `GET /services/:name`,
-  `POST /services/:name/deployments`, and `GET /services/:name/deployments`
-  (see [Services and deploy markers](#services-and-deploy-markers)).
+  and `GET /services/:name/deployments`; the marker `POST` is
+  `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)).
 
 Two authorization boundaries:
 
@@ -183,7 +183,7 @@ Two authorization boundaries:
   individually rotatable and revocable. Rotating a revoked host clears the
   revocation.
 - **Deploy scripts** send a service's deploy token, in the same format and
-  stored the same way, only to `POST /api/v1/services/:name/deployments`.
+  stored the same way, only to `POST /ingest/services/:name/deployments`.
   That route never checks Access or Tailscale identity, like ingest.
 
 Revocation keeps the host row, verifier, and telemetry, so history stays
@@ -426,10 +426,14 @@ that response only. The server keeps its SHA-256 verifier in
 version. `GET /api/v1/services` answers `{ "services": [...] }`, and
 `GET /api/v1/services/:name` answers one service; neither carries the token.
 
-`POST /api/v1/services/:name/deployments` records a deploy marker. Its only
+`POST /ingest/services/:name/deployments` records a deploy marker. Its only
 credential is `Authorization: Bearer <deploy token>`. It skips Access and
 Tailscale identity, so a CI runner or a deploy script on any host can reach it,
-as an agent reaches ingest. Rejections, all before any write:
+as an agent reaches ingest. It lives under `/ingest/` because Access matches
+applications by path, not method: the zone's `/ingest/*` Bypass lets the
+marker through, while `GET /api/v1/services/:name/deployments` stays behind
+Access. A `POST` to that `/api/v1` path answers `405`. Rejections, all before
+any write:
 
 | Check | Answer |
 | --- | --- |
@@ -472,13 +476,10 @@ Deployments are newest first, at most 1000 from the last 30 days. Ties at the
 same millisecond list the later-recorded first. The alarm deletes markers
 older than 30 days in batches of 1000.
 
-Two parts of the stack still assume Cloudflare deployments.
 `decodeDeploymentHistory` in `src/deployments/decode.ts` requires UUID
-version ids, so it rejects a marker version such as a commit. The Cloudflare
-zone's Access applications also challenge the marker path at the edge unless a
-path-scoped Bypass covers `/api/v1/services/*/deployments`, as one covers
-`/ingest/*`. With that Bypass the Worker still verifies Access on the route's
-`GET`.
+version ids, so service histories go through
+`decodeServiceDeploymentHistory` in `src/deployments/service-decode.ts`, which
+accepts marker versions such as a commit.
 
 ## Storage and rollups
 
