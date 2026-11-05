@@ -8,9 +8,16 @@
   - Schema version 8 adds the `services` and `service_deployments` tables.
   - Routes: admin create (token returned once), list and get, a marker post authenticated only by the deploy token (8 KiB limit, idempotent on `(service, markerId)`, conflicting repeats get 409), and history in the project `DeploymentHistory` shape plus `markers`. Markers expire after 30 days.
   - Tests: vitest 305, node suites green, node-e2e 5, `test/node/http-parity.test.ts` byte-identical on about 30 service exchanges, bench 7.762.
+- **Accepted:** S2 (`e719a5a`, `dd3050f`, `0cbd55e`):
+  - `statsctl deploy mark`, `services`, and `service deployments` on both targets; the token file is checked like the `check ingest` credential file.
+  - The marker `POST` moved to `/ingest/services/<name>/deployments`, so the zone's existing `/ingest/*` Bypass covers it on Cloudflare and no Access change is needed. A `POST` to the `/api/v1` path answers 405.
+  - Live: `make node-deploy` of `0cbd55e3575d` recorded marker `v-0cbd55e3575d` (deployment `0b1a438a`), `statsctl service deployments` on the tailnet origin lists it, and a repeat answers `created: false`.
+  - On the threadripper instance: host `threadripper` (`h_a191bab6…`, token in `.work/credentials/node-threadripper-host.json`) and service `stats-node`. No agent reports to that host yet.
+  - Tests: test:cli 124, test:node 27, node-e2e 5, vitest 305, lint clean.
 - **Red:** none. **Parked:** none.
-- **Next:** S2. Carry-overs:
+- **Next:** S3. Carry-overs:
   - Deploy tokens have no rotate or revoke yet.
+  - S3's live comparison needs data for `stats-node`: the threadripper host has no agent reporting to the Node instance (agent rollout is the owner's call), and the container has no network for probes. Until one exists, the live comparison reports every source unavailable.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
 ## Charter
