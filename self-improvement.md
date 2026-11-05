@@ -25,6 +25,9 @@
   - any path that prices missing data as zero.
 
   Record anything smaller in `TODO.md` (prefix STA, next number in the file) and leave it.
+- Watch costs (owner, 2026-11-05). Before every deploy, and at every wakeup while a campaign deployment is live, run `statsctl cost --all --window 1h --json`. The baseline at 06:57Z on 2026-11-05 projects, at list price per month: stats $0.21, stats-observe $0.04, stuff $0.15. usr-memories is $2 on the hour after its fix; its 24 h figure still includes the failure before the fix.
+  - If stats plus stats-observe projects above $2 a month for two consecutive settled hours after a campaign deploy, roll that deploy back (P4 step 8 rules) and park the item.
+  - If any other project projects above $20 a month, record it in **Status** for the owner and change nothing outside this repo.
 - One writer by default. Parallel lanes only for the pairs named in **Sequence**, in worktrees at `.work/wt/<lane>`, following `orchestrate`'s worktree lifecycle. Scratch and `TMPDIR` go in `.work/tmp`.
 - Commits are Conventional Commits whose scope is the workstream (`cost`, `cli`, `telemetry`, `deploy`, `campaign`). The item ID goes in the body. A contract change takes `!`. Never amend a deployed commit. Measurements go in a later `docs(campaign)` commit, so deployment-to-SHA mappings stay valid. Code comments never cite this doc.
 - After each accepted slice, run the parent steering checkpoint from `orchestrate`'s campaign reference. Then update **Status** in place: accepted, red, parked, next. Do not append a log; git history is the log.
@@ -521,7 +524,7 @@ Distinct success and failure conditions for each deliverable:
 **Forbidden:**
 - pushing;
 - `make deploy`, or any host deploy or rollback;
-- deploying other projects, or modifying other repositories except N6's three Nanoshop changes;
+- deploying other projects, including `nanoshop-storied`, which stays undeployed (owner, 2026-11-05), or modifying other repositories except N6's three Nanoshop changes;
 - changing account plans, Access policies, tokens, or permissions;
 - deleting resources or data, including host purge, revoke, or rotate;
 - `ALTER` or `DROP` on any existing table, and any Installation schema change;
