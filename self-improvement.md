@@ -42,7 +42,8 @@ The run cost 14 of 60 requests and 5 polls.
 | stats | `e233b271` / `bbbb4bb3` | O1 |
 | stats | `a65a6058` / `edb4ba9f` | probe averaging over the samples present (`68396b7`) |
 | stats | `28370338` / `31f2f398` | N1–N4 (merge `f62f5c9`) |
-| stats | `d0fb1f45` / `8ba50543` | O2, the portable-core refactor: `regressed` on a regrouped issue, kept, live |
+| stats | `d0fb1f45` / `8ba50543` | O2, the portable-core refactor: `regressed` on a regrouped issue, kept |
+| stats | version `8234b238` | service deployments S1–S3 (`docs/service-deployments-campaign.md`), live |
 | stats-observe | `dc041292` / `f30bbdac` | O0 |
 | stats-observe | `e542f0f7` / `b0a0a12d` | N1–N4 |
 | stats-observe | version `c32833bc` | each service finishes its tail delivery (`425fb3e`) |

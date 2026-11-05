@@ -20,6 +20,7 @@
   - `statsctl verify --service NAME --deployment ID|latest --policy FILE`, level metrics only, with the Decision 6 caveat; `#/services` and `#/service/NAME` pages with WebP goldens.
   - Tests: `make cloudflare-test lint dashboard-test node-e2e` green (Playwright 120, test:node 33, test:cli 129).
   - Live: a marked `make node-deploy` at or after 17:20Z, then the comparison after about 18:35Z.
+- **On Cloudflare (owner-approved, 18:02:44Z):** `make stats-deploy` of master `52975f4` carries S1 to S3. It is `stats` version `8234b238`, with rollback to `d0fb1f45` (version `8ba50543`). Smoke passed, `check ingest` passed all five steps, and `statsctl services` answers `no services configured`. An unauthenticated marker `POST` gets the Worker's 401, not an Access redirect. No service exists on Cloudflare yet.
 - **Red:** none. **Parked:** none.
 - **Next:** S3 live comparison, then S4. Carry-overs:
   - Deploy tokens have no rotate or revoke yet.
@@ -76,7 +77,7 @@ Allowed without asking:
 - creating one service, `stats-node`, on the threadripper instance and marking its deploys.
 
 Forbidden:
-- Cloudflare deploys (a Worker deploy that carries S1 to S3 to production needs the owner);
+- Cloudflare deploys beyond the owner-approved `make stats-deploy` of S1 to S3 (done 18:02Z);
 - pushes;
 - changing the existing STB2 sections or the acknowledgment format;
 - rolling out a new agent to hosts. S4 deploys the decoder first, and agent rollout is the owner's call.
