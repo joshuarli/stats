@@ -2,6 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../src/installation";
 import { readMetricHistory } from "../src/projects/history";
+import { SqlAccount } from "../src/sql-account";
 
 function stub(name: string) {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName(name));
@@ -81,7 +82,7 @@ describe("schema migrations", () => {
       sql.exec("INSERT INTO collector_runs (at_ms, ok, detail, rows_read, duration_ms) VALUES (1793571349204, 1, 'ok', 1, 1)");
       sql.exec("UPDATE schema_version SET version = 5");
       const valueAt = () => {
-        const history = readMetricHistory(sql, project, { range: "6h" }, "worker", now);
+        const history = readMetricHistory(new SqlAccount(sql), project, { range: "6h" }, "worker", now);
         const invocations = history.series.find(series => series.metric === "worker.invocations");
         return invocations?.values[(purgedBucket - history.fromMs) / 300000];
       };

@@ -67,6 +67,7 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
       detail: "ok",
       rowsRead,
       durationMs: elapsed(),
+      upstreamQueries: queries,
       collected,
       storeOwners: projects.filter((project) => project.worker === input.storeWorker).map((project) => project.id),
     });
@@ -80,6 +81,7 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
         detail: "collector_failed",
         rowsRead,
         durationMs: elapsed(),
+        upstreamQueries: queries,
       });
     } catch (recordError) {
       reportError("collector.record", recordError);
