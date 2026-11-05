@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/projects/parse";
+import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/cloudflare/projects/parse";
 import { durableObjectQuery } from "../src/projects/queries";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";

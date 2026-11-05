@@ -1,19 +1,19 @@
 import { verifyAccess } from "./access";
-import { bearerToken } from "./auth";
-import { HISTORY_CONTENT_TYPE } from "./binary/history";
+import { bearerToken } from "../auth";
+import { HISTORY_CONTENT_TYPE } from "../binary/history";
 import { Installation } from "./installation";
 import { collectDeployments } from "./deployments/collector";
-import { parseProjects } from "./projects/config";
-import { MAX_BODY_BYTES } from "./limits";
+import { parseProjects } from "../projects/config";
+import { MAX_BODY_BYTES } from "../limits";
 import { runCollector } from "./projects/collector";
-import { markInvocation } from "./observe/cloudflare/mark";
-import { reportError } from "./observe/producer/report";
-import { readLimitedText } from "./body";
-import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "./ingest/http.ts";
-import { isObservedService } from "./observe/services";
-import { MAX_ARTIFACT_BYTES } from "./observe/core/limits";
-import { rolloutsFromDeployments } from "./observe/cloudflare/rollouts";
-import { decodeDeploymentHistory } from "./deployments/decode";
+import { markInvocation } from "../observe/cloudflare/mark";
+import { reportError } from "../observe/producer/report";
+import { readLimitedText } from "../body";
+import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "../ingest/http.ts";
+import { isObservedService } from "../observe/services";
+import { MAX_ARTIFACT_BYTES } from "../observe/core/limits";
+import { rolloutsFromDeployments } from "../observe/cloudflare/rollouts";
+import { decodeDeploymentHistory } from "../deployments/decode";
 
 export { Installation };
 

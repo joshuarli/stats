@@ -18,7 +18,7 @@ await test("a throw site in the built stats bundle maps back to the source line 
   const column = before.at(-1)!.length + 1;
   const [frame] = createSymbolicator(() => map)([{ fn: null, file: "index.js", line, column }], "any-version");
   assert.ok(frame?.original !== null && frame?.original !== undefined, "the frame resolves");
-  assert.equal(frame.original.file, "src/deployments/collector.ts");
+  assert.equal(frame.original.file, "src/cloudflare/deployments/collector.ts");
   const sourceLine = readFileSync(join(ROOT, frame.original.file), "utf8").split("\n")[frame.original.line - 1] ?? "";
   assert.ok(sourceLine.includes("invalid_response"), `line ${frame.original.line} is "${sourceLine.trim()}"`);
 });

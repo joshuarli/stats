@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { parseDeployment, parseVersion, DEPLOYMENT_RETENTION_MS, type DeploymentPoll } from "../../src/deployments/model.ts";
 import { comparisonBounds, compareDeployment, DEPLOYMENT_BUCKET_MS as B, type ComparisonWindow, type DeploymentComparison, type MetricRow } from "../../src/deployments/compare.ts";
-import { collectDeployments, type DeploymentFetch } from "../../src/deployments/collector.ts";
+import { collectDeployments, type DeploymentFetch } from "../../src/cloudflare/deployments/collector.ts";
 import { decodeDeploymentHistory, decodeDeploymentComparison } from "../../src/deployments/decode.ts";
 import type { SqlDatabase } from "../../src/core/sql.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";

@@ -1,5 +1,5 @@
 import { bindings, defineConfig, exports, triggers } from "cf/config";
-import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
+import * as entrypoint from "./src/cloudflare/index.ts" with { type: "cf-worker" };
 import { parseProjects, type ProjectConfig } from "./src/projects/config.ts";
 
 const domain = process.env.STATS_DOMAIN;

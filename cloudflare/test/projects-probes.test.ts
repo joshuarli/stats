@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runCollector, type AnalyticsQuery } from "../src/projects/collector";
+import { runCollector, type AnalyticsQuery } from "../src/cloudflare/projects/collector";
 import { isUp, runProbes, type ProbeFetch } from "../src/projects/probes";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
 import r2StorageBody from "./fixtures/analytics/r2-storage.json";

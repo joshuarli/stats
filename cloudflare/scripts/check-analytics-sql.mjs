@@ -8,7 +8,7 @@ import {
   parseR2StorageRows,
   parseRouteRows,
   parseWorkerRows,
-} from "../src/projects/parse.ts";
+} from "../src/cloudflare/projects/parse.ts";
 import {
   BUCKET_MS,
   d1Query,

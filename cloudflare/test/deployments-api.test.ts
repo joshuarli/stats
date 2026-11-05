@@ -1,10 +1,10 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { accessToken } from "./access-token";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import type { DeploymentHistory } from "../src/deployments/model";
 import type { DeploymentComparison } from "../src/deployments/compare";
-import { collectDeployments } from "../src/deployments/collector";
+import { collectDeployments } from "../src/cloudflare/deployments/collector";
 
 const NOW = 1_793_510_415_000;
 const ID = "00000000-0000-4000-8000-000000000002";

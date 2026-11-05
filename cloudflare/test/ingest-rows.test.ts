@@ -2,7 +2,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { combineRollups, rollupFromRaw, type RawRow, type RollupPayload } from "../src/aggregate";
 import { parseDelta } from "../src/delta";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { HOUR_MS, MINUTE_MS } from "../src/limits";
 import type { Sample } from "../src/protocol";
 import { arrivalMs, captureOperations, createLoadHost, HOST_ID, ingestBatch, MIXED_SEQUENCE, runSequence, stub, SYSTEM_INFO, type Ingested } from "./ingest-load";

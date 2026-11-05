@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { HOUR_MS } from "../src/limits";
 import type { MetricPoint } from "../src/projects/metrics";
 import {

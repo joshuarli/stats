@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { expect, it } from "vitest";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { encodeFrame, type SourceBatch } from "../src/ingest/encode.ts";
 
 const files = JSON.parse(env.FIXTURES ?? "{}") as Record<string, string>;

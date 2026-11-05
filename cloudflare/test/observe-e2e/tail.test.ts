@@ -58,7 +58,7 @@ await test("real stats traffic is stored as linked traces, grouped issues, and n
     const issues = (await (await harness.stats("/api/observe/stats/issues", { headers: await accessHeaders() })).json()) as Page<IssueSummary>;
     const poll = issues.items.find(issue => issue.operation === "deployments.poll");
     assert.ok(poll, `issues: ${issues.items.map(issue => `${issue.operation}:${issue.name}`).join(", ")}`);
-    assert.ok(poll.frame?.includes("src/deployments/collector.ts") || poll.frame?.includes("index.js"), poll.frame ?? "no frame");
+    assert.ok(poll.frame?.includes("src/cloudflare/deployments/collector.ts") || poll.frame?.includes("index.js"), poll.frame ?? "no frame");
     assert.ok(issues.items.some(issue => issue.operation === null && issue.name === "TypeError"), "the collector's uncaught failure is its own issue");
     assert.ok(scheduled.traceId !== null);
     const scheduledDetail = (await (await harness.stats(`/api/observe/stats/traces/${scheduled.traceId}`, { headers: await accessHeaders() })).json()) as TraceDetail;

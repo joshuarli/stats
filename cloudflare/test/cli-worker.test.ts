@@ -11,7 +11,7 @@ import type { CommandContext } from "../src/cli/registry";
 import { encodeSnapshot, parseSnapshot, serializeSnapshot } from "../src/cli/snapshot-format";
 import { previousWindowOf } from "../src/cost/ledger";
 import { HOUR_MS } from "../src/limits";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
 

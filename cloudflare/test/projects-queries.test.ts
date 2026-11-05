@@ -6,7 +6,7 @@ import {
   parseWorkerRows,
   statusClass,
   workerBucketMs,
-} from "../src/projects/parse";
+} from "../src/cloudflare/projects/parse";
 import {
   d1Query,
   d1StatementQuery,

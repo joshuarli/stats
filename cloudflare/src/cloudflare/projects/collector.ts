@@ -1,5 +1,5 @@
-import { parseProjects, type ProjectConfig } from "./config.ts";
-import { runProbes, type ProbeFetch } from "./probes.ts";
+import { parseProjects, type ProjectConfig } from "../../projects/config.ts";
+import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 import {
   parseD1Rows,
   parseD1StatementRows,
@@ -10,10 +10,10 @@ import {
   parseRouteRows,
   parseWorkerRows,
 } from "./parse.ts";
-import { windowStartMs, type MetricPoint } from "./metrics.ts";
-import { d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
-import type { CollectorRun, ProjectPoints } from "./store.ts";
-import { reportError } from "../observe/producer/report.ts";
+import { windowStartMs, type MetricPoint } from "../../projects/metrics.ts";
+import { d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "../../projects/queries.ts";
+import type { CollectorRun, ProjectPoints } from "../../projects/store.ts";
+import { reportError } from "../../observe/producer/report.ts";
 
 export interface AnalyticsQuery {
   query(request: BoundQuery): Promise<{

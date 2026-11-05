@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { canonicalJson } from "../src/protocol";
 import { ACK_TYPE, INGEST_TYPE, INGEST_URL, fixtureBytes, fixtureText, frame, frameFor, post, readAck, source } from "./ingest-worker";
 import type { SourceBatch } from "../src/ingest/encode.ts";

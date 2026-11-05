@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGES } from "../src/limits";
 import { bucketWidthMs } from "../src/projects/history";

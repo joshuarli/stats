@@ -1,13 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
-import { cloudflareOperations } from "./cloudflare/operations.ts";
-import { cloudflareClock, cloudflareScheduler } from "./cloudflare/ports.ts";
-import { cloudflareSqlScopes } from "./cloudflare/sql.ts";
-import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "./core/installation/installation.ts";
+import { cloudflareOperations } from "./operations.ts";
+import { cloudflareClock, cloudflareScheduler } from "./ports.ts";
+import { cloudflareSqlScopes } from "./sql.ts";
+import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
 import { deploymentsEnabled } from "./deployments/collector.ts";
-import type { DeploymentPoll } from "./deployments/model.ts";
-import type { OperationRun } from "./operations.ts";
-import type { CollectorRun } from "./projects/store.ts";
-import type { SystemInfo } from "./protocol.ts";
+import type { DeploymentPoll } from "../deployments/model.ts";
+import type { OperationRun } from "../operations.ts";
+import type { CollectorRun } from "../projects/store.ts";
+import type { SystemInfo } from "../protocol.ts";
 
 export class Installation extends DurableObject<Env> {
   private readonly core: InstallationCore;

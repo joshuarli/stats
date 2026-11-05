@@ -2,7 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import diagnostics from "node:diagnostics_channel";
 import { tokenHash } from "../src/auth";
 import { encodeFrame, type SourceBatch } from "../src/ingest/encode.ts";
-import type { Installation } from "../src/installation";
+import type { Installation } from "../src/cloudflare/installation";
 import { OBSERVE_CHANNEL, type ChannelMessage } from "../src/observe/producer/channel";
 import { INGEST_TYPE, readAck, source, type DecodedAck } from "./ingest-worker";
 

@@ -1,6 +1,6 @@
 {
   "name": "stats-worker-test",
-  "main": "src/index.ts",
+  "main": "src/cloudflare/index.ts",
   "compatibility_date": "2026-10-30",
   "compatibility_flags": [
     "nodejs_compat"

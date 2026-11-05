@@ -1,5 +1,5 @@
-import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE, type Aggregation, type MetricPoint } from "./metrics.ts";
-import { BUCKET_MS, D1_STATEMENT_PREFIX_LENGTH } from "./queries.ts";
+import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE, type Aggregation, type MetricPoint } from "../../projects/metrics.ts";
+import { BUCKET_MS, D1_STATEMENT_PREFIX_LENGTH } from "../../projects/queries.ts";
 
 export const MAX_ROUTES_PER_PROJECT = 15;
 const ROUTE_KEY_MAX_LENGTH = 80;

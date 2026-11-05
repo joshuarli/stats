@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { verifyAccess } from "../src/access";
+import { verifyAccess } from "../src/cloudflare/access";
 import { accessToken, b64url } from "./access-token";
 
 const audience = "test-aud";
