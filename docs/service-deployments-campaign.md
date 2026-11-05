@@ -3,9 +3,16 @@
 ## Status
 
 - **Goal:** track and compare deployments of services on ordinary hosts, with the same deployments timeline, before/after table, and guardrails the project page has for Cloudflare Workers. It must work on both targets (Worker and Node).
-- **Starts after:** `docs/portable-core-campaign.md` closes (X accepted).
-- **Accepted:** none. **Red:** none. **Parked:** none.
-- **Next:** S1.
+- **Started** 2026-11-05 after the portable-core campaign closed.
+- **Accepted:** S1 (`a5918ea`):
+  - Schema version 8 adds the `services` and `service_deployments` tables.
+  - Routes: admin create (token returned once), list and get, a marker post authenticated only by the deploy token (8 KiB limit, idempotent on `(service, markerId)`, conflicting repeats get 409), and history in the project `DeploymentHistory` shape plus `markers`. Markers expire after 30 days.
+  - Tests: vitest 305, node suites green, node-e2e 5, `test/node/http-parity.test.ts` byte-identical on about 30 service exchanges, bench 7.762.
+- **Red:** none. **Parked:** none.
+- **Open, owner (Cloudflare only):** Access challenges `POST /api/v1/services/*/deployments` at the edge until a path-scoped Bypass application like `/ingest/*` exists. Markers work on Node now.
+- **Next:** S2. Carry-overs:
+  - `decodeDeploymentHistory` requires UUID version ids, so `statsctl` needs a service history decoder that accepts commit and tag versions.
+  - Deploy tokens have no rotate or revoke yet.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
 ## Charter
