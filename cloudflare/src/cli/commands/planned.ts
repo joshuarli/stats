@@ -124,17 +124,5 @@ export const plannedCommands: readonly Command[] = [
     options: { project: { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" }, deployment: { type: "string", placeholder: "ID", required: true, description: "rollout or deployment id" } },
     examples: ["statsctl observe deployment --project stats --deployment DEPLOYMENT_ID --json"],
     limitations: ["Exploratory: whole-retention scan by version; `verify` does not use it."]
-  }),
-  planned({
-    name: "check ingest",
-    summary: "send one known sample through production ingest and read it back",
-    description: [
-      "MUTATION: writes one real sample. Encodes one sample with a fresh sequence and time, POSTs it, expects accepted 1, reads it back from host history, re-POSTs the identical bytes and expects duplicate 1, and confirms the stored count did not change.",
-      "Use only with the synthetic-check host credential."
-    ],
-    access: "mutation",
-    options: { "credential-file": { type: "string", placeholder: "FILE", required: true, description: "host credential JSON, mode 0600; never passed in argv" } },
-    examples: ["statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json"],
-    limitations: ["Synthetic samples carry a synthetic flag and are excluded from organic metrics, but their cost stays in totals."]
   })
 ];
