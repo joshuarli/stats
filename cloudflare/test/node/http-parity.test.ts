@@ -157,6 +157,23 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
     const history = await both("/api/v1/services/web/deployments");
     assert.equal(history.status, 200);
     await both("/api/v1/services/web/deployments?window=1h");
+    const listed = (JSON.parse(unhex(history.body)) as { deployments: { id: string }[] }).deployments;
+    assert.equal(listed.length, 2);
+    const comparison = (id: string, search = "") => `/api/v1/services/web/deployments/${id}/comparison${search}`;
+    for (const { id } of listed) {
+      const pending = await both(comparison(id));
+      assert.equal(pending.status, 200);
+      assert.ok((JSON.parse(unhex(pending.body)) as { reasonCodes: string[] }).reasonCodes.includes("not-ready"));
+      await both(comparison(id, "?window=6h"));
+      await both(comparison(id, "?window=24h"));
+    }
+    await both(comparison(listed[0]!.id, "?window=2h"));
+    await both(comparison(listed[0]!.id, "?window=1h&window=6h"));
+    await both(comparison(listed[0]!.id, "?other=1"));
+    await both(comparison("not-a-uuid"));
+    await both(comparison("00000000-0000-4000-8000-000000000000"));
+    await both(`/api/v1/services/absent/deployments/${listed[0]!.id}/comparison`);
+    await both(comparison(listed[0]!.id), { method: "POST", headers: json, body: "{}" });
     await both("/api/v1/services/web/deployments", { method: "DELETE" });
   } finally {
     server.closeAllConnections();
