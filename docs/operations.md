@@ -480,7 +480,7 @@ the deployments timeline and the before and after table. A source the service
 lacks (no health URL, no host data in a window) shows as unavailable, never zero.
 
 ```sh
-pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/stats-node-cpu.json --origin http://threadripper.tailcf741.ts.net:18790 --json
+pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/service-example.json --origin http://threadripper.tailcf741.ts.net:18790 --json
 ```
 
 The policy is strict JSON, schema `statsctl-policy/1`, with `id`, `hypothesis`,

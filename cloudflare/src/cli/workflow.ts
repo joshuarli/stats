@@ -85,7 +85,7 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    a marker id reused with different content exits 2 (marker_conflict).
    Compare a marker with the one before it (resource levels only, never "fewer resources for
    the same work"; Cloudflare and Node origins, exit codes as verify):
-   pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/stats-node-cpu.json --origin http://threadripper.tailcf741.ts.net:18790 --json
+   pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment latest --policy bench/policies/service-example.json --origin http://threadripper.tailcf741.ts.net:18790 --json
 
 Why a lower monthly estimate is not necessarily a win
    cost projects a month from one window, so it moves with traffic, time of day, and which
