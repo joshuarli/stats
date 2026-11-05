@@ -69,4 +69,7 @@
 }
 .ledger-month { display: flex; flex-direction: column; gap: var(--space-xs); }
 .ledger-month-pending { min-height: 201px; }
+@media (max-width: 640px) {
+  .ledger-month-pending { min-height: 251px; }
+}
 .ledger-month-note { color: var(--muted); font-size: var(--fs-meta); }

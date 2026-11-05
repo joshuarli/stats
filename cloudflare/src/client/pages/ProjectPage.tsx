@@ -194,7 +194,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         title={props.project.name}
         titleExtra={<><Badge tone={status().tone} dot>{status().label}</Badge><Show when={collectorNote()}>{(note) => <Info title="Collector status">{note()}</Info>}</Show></>}
       >
-        <Loading fallback={null}>
+        <Loading fallback={<div class="project-pills project-pills-pending" aria-hidden="true" />}>
         <div class="project-pills" aria-label="Project health">
           <button type="button" class={`project-pill tone-${serverErrorTone()}`} onClick={() => openSection("signals")}>5xx {serverErrors() === undefined ? "—" : percent(Number((serverErrors() ?? 0).toPrecision(2)))}</button>
           <Show when={openIssues() !== undefined}>

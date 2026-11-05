@@ -18,3 +18,10 @@
 .skeleton.skeleton-ledger { min-height: 1162px; }
 .skeleton.skeleton-deployments { min-height: 477px; }
 .skeleton.skeleton-signals { min-height: 1466px; }
+.project-pills-pending { min-height: var(--control-sm); }
+@media (max-width: 640px) {
+  .project-pills, .project-pills-pending { flex-basis: 100%; justify-content: flex-end; }
+  .skeleton.skeleton-ledger { min-height: 1581px; }
+  .skeleton.skeleton-deployments { min-height: 966px; }
+  .skeleton.skeleton-signals { min-height: 2734px; }
+}

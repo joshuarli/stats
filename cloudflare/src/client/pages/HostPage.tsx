@@ -93,7 +93,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         title={props.host.name}
         mark={
           <Errored fallback={null}>
-            <Loading fallback={null}>
+            <Loading fallback={<span class="os-logo-tile" aria-hidden="true" />}>
               <Show when={system()?.system.os}>
                 {(os) => <OsLogo os={os()} size={17} tile labelled />}
               </Show>
