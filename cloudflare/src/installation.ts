@@ -105,6 +105,8 @@ const HOST_HISTORY_VERSIONS = `CREATE TABLE IF NOT EXISTS host_history_versions 
   host_id TEXT PRIMARY KEY,
   version INTEGER NOT NULL
 ) STRICT`;
+const UPSERT_ROLLUP = `INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT (host_id, resolution, bucket_ms) DO UPDATE SET coverage_ms = excluded.coverage_ms, partial = excluded.partial, payload = excluded.payload`;
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
 
 const WEIGHTED_HISTORY_ENDS_MS = 1793565600000;
@@ -396,7 +398,7 @@ export class Installation extends DurableObject<Env> {
       sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms = ?", hostId, bucketMs);
       return;
     }
-    sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1m', ?, ?, ?, ?)", hostId, bucketMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
+    sql.exec(UPSERT_ROLLUP, hostId, "1m", bucketMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
   }
 
   private rebuildHour(sql: SqlAccount, hostId: string, hourMs: number): void {
@@ -407,7 +409,7 @@ export class Installation extends DurableObject<Env> {
       sql.exec("DELETE FROM rollups WHERE host_id = ? AND resolution = '1h' AND bucket_ms = ?", hostId, hourMs);
       return;
     }
-    sql.exec("INSERT OR REPLACE INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, '1h', ?, ?, ?, ?)", hostId, hourMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
+    sql.exec(UPSERT_ROLLUP, hostId, "1h", hourMs, payload.coverageMs, payload.partial ? 1 : 0, JSON.stringify(payload));
   }
 
   private rebuildRollups(sql: SqlAccount, hostId: string, minutes: readonly number[]): void {
@@ -645,6 +647,7 @@ export class Installation extends DurableObject<Env> {
     const window = Math.floor(now / WINDOW_MS) * WINDOW_MS;
     let limited = false;
     let rejectedCredential = false;
+    let count = 0;
     this.ctx.storage.transactionSync(() => {
       const current = this.host(sql, parsed.hostId);
       if (current === undefined || current.revoked_at_ms !== null || !constantTimeEqual(current.token_hash, hash)) {
@@ -655,8 +658,7 @@ export class Installation extends DurableObject<Env> {
         limited = true;
         return;
       }
-      const count = current.window_start_ms === window ? current.window_count + 1 : 1;
-      sql.exec("UPDATE hosts SET window_start_ms = ?, window_count = ? WHERE host_id = ?", window, count, parsed.hostId);
+      count = current.window_start_ms === window ? current.window_count + 1 : 1;
     });
     if (rejectedCredential) return this.reject("unauthorized", "host credential rejected", 401, parsed.hostId);
     if (limited) return this.reject("rate_limited", "host request rate exceeded", 429, parsed.hostId, { "Retry-After": "60" });
@@ -712,8 +714,9 @@ export class Installation extends DurableObject<Env> {
         }
         accepted += 1;
       }
-      if (accepted + duplicates > 0) {
-        sql.exec("UPDATE hosts SET last_received_at_ms = ? WHERE host_id = ?", now, parsed.hostId);
+      if (accepted + duplicates === 0) sql.exec("UPDATE hosts SET window_start_ms = ?, window_count = ? WHERE host_id = ?", window, count, parsed.hostId);
+      else {
+        sql.exec("UPDATE hosts SET window_start_ms = ?, window_count = ?, last_received_at_ms = ? WHERE host_id = ?", window, count, now, parsed.hostId);
         sql.exec("INSERT INTO host_history_versions (host_id, version) VALUES (?, 1) ON CONFLICT(host_id) DO UPDATE SET version = version + 1", parsed.hostId);
       }
       if (accepted + duplicates > 0 && parsed.system !== undefined) sql.exec("INSERT OR REPLACE INTO host_system (host_id, reported_at_ms, payload) VALUES (?, ?, ?)", parsed.hostId, now, canonicalJson(normalizeSystem(parsed.system)));
