@@ -35,11 +35,7 @@
 - `cloudflare/test/ingest-load.ts` takes its sample sequence from `cloudflare/local/samples.ts`.
 - The bench is `cloudflare/bench/local.ts`, not `local.workerd.ts`, because `bench:workerd` runs every `*.workerd.ts` inside workerd.
 
-**Review findings left open (P3).**
-- A restart can lose its port to a parallel stack.
-- Failure paths leak a scratch directory or a `workerd` when startup throws after `ready`.
-- `dev` and `openStatsWorker` never report unexpected outbound requests.
-- The Local Explorer in `dev` reads state without Access, on loopback only.
+**Review findings (P3).** The follow-up on `fix/local-stack-p3` fixes the restart port race, the leaks when startup fails, and the silent 503s in `dev` and `openStatsWorker`. It also fixes a flake in the analytics completeness case (one run in three). The Local Explorer in `dev` stays as Decision 13 set it: it reads local state without Access, on loopback only.
 
 ## Charter
 
