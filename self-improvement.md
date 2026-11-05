@@ -10,7 +10,9 @@
 - **M3:** the review of `00e18d2..4ca5419` found 1 P1 and 9 P2; all are fixed (`1c07472`, `1d2f2f7`, `725e393`, `de69070`).
 - **P6 (Nanoshop):** N1 and N2 accepted on `campaign/nanoshop` (N2 ends at `37f7b45`; `make cloudflare-test lint dashboard-test` green). Nanoshop pins `695bdd8`. N2 found that overlapping RPCs on one Durable Object mix up diagnostics-channel messages in local workerd (STA-50), and that `ctx.id.name` resolves the store's policy (STA-51; documented as available, Durable Object ID page, updated 2026-05-27). N3 measured that the counts table, with one row per key per bucket, puts the budget out of reach even with no sampling ($1.145/month at 3 isolates). The fix is being redone on the branch: one row per bucket, a 5-minute flush, and a budget test. Merge after N3 and N4 are accepted. N5 deploys `stats-observe` with 75 minutes clear after the last stats deploy (12:03Z).
 - **Red:** none. **Parked:** none.
-- **Next:** re-rank for O2 with `statsctl cost` (no stats experiment window is open); review N3.
+- **P4 stopped after O1 (12:15Z, executor's call under the stop rule):** after O1, `statsctl cost --project stats --window 6h` puts stats at $0.20/month list price and $0 on the invoice (inside the Workers Paid allowances). Each remaining component is under 10% of that, except the ingest route, which shrinks only if collection cadence drops (forbidden), and the Durable Object ingest O1 just cut. The best remaining lead is `knownDeploymentVersions`, which parses up to 2,000 version payloads to read their ids, worth about $0.006/month. It has no observed operation for `verify` to target, so proving it would take an instrumentation deploy plus an experiment. O2 and O3 are not run.
+- **X2 not met:** no candidate ended `unchanged`, `regressed`, or reverted, so the reject path is unproven in production and the unattended loop is not scheduled.
+- **Next:** review N3; N4; merge `campaign/nanoshop`; N5 after 13:19Z; N6; X1 (24 h coverage record at 2026-11-06 05:55Z).
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
