@@ -9,10 +9,10 @@ const MAX_SERVICE_HOSTS = 64;
 const MAX_HEALTH_URL_LENGTH = 2048;
 const MAX_MARKER_MESSAGE_LENGTH = 1000;
 const MARKERS_LISTED = 1000;
-const HOST_ID = /^h_[0-9a-f]{32}$/u;
+export const HOST_ID = /^h_[0-9a-f]{32}$/u;
 const UNIT = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/u;
-const MARKER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
-const VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/u;
+export const MARKER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+export const MARKER_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/u;
 const TAILNET_SUFFIX = ".ts.net";
 
 export const SERVICE_STATEMENTS: readonly string[] = [
@@ -159,7 +159,7 @@ function parseMarker(body: unknown): ServiceResult<MarkerRequest> {
   const markerId = record["markerId"];
   if (typeof markerId !== "string" || !MARKER_ID.test(markerId)) return invalid("markerId must be 1-128 letters, digits, or ._:- starting with a letter or digit");
   const version = record["version"];
-  if (typeof version !== "string" || !VERSION.test(version)) return invalid("version must be 1-128 letters, digits, or ._:+- starting with a letter or digit");
+  if (typeof version !== "string" || !MARKER_VERSION.test(version)) return invalid("version must be 1-128 letters, digits, or ._:+- starting with a letter or digit");
   const message = record["message"];
   if (message !== undefined && message !== null && (typeof message !== "string" || message.length > MAX_MARKER_MESSAGE_LENGTH)) return invalid(`message must be at most ${MAX_MARKER_MESSAGE_LENGTH} characters`);
   const hostIds = hostIdList(record["hostIds"]);

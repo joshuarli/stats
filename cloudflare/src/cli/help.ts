@@ -25,8 +25,9 @@ const AUTH_LINES = [
   "targets:",
   "  An origin whose host ends in .ts.net, or is a bare name with no dot (http or https), is a Node",
   "  origin behind tailscale serve: statsctl sends no credential there. Any other origin is Cloudflare.",
-  "  Only `check ingest` works on a Node origin. Every other command reads Cloudflare telemetry and",
-  "  exits 2 with unsupported_on_target before any request."
+  "  `check ingest`, `deploy mark`, `services`, and `service deployments` work on a Node origin. Every",
+  "  other command reads Cloudflare telemetry and exits 2 with unsupported_on_target before any request.",
+  "  `deploy mark` sends only its service deploy token, on both targets, never the Access credential."
 ];
 
 function optionLine(name: string, spec: OptionSpec): readonly [string, string] {

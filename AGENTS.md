@@ -45,7 +45,7 @@ go under `.work/tmp`.
 - Every non-ingest, non-health path that serves assets or data passes the target's auth adapter: Access JWT verification on Cloudflare, Tailscale identity from loopback on Node. A request that fails it is rejected before any data is read.
 - Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
 - Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
-- `statsctl` read commands never mutate. `check ingest` is the only mutation, and it writes one flagged sample only to the `synthetic-check` host.
+- `statsctl` read commands never mutate. `check ingest` and `deploy mark` are the only mutations: `check ingest` writes one flagged sample only to the `synthetic-check` host, and `deploy mark` writes one deployment marker for the named service.
 - The baseline agent never loads BPF and needs no root, service manager, or runtime. On Linux it links no dynamic libraries; on macOS it links only system libraries and frameworks.
 
 ## Docs

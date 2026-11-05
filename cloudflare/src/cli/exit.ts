@@ -12,8 +12,8 @@ export type ExitCode = typeof EXIT[keyof typeof EXIT];
 
 export const EXIT_MEANING: readonly (readonly [ExitCode, string])[] = [
   [EXIT.ok, "read succeeded, or verification improved"],
-  [EXIT.usage, "usage error"],
-  [EXIT.auth, "authentication: no credential, a login page, a redirect, 401, or 403"],
+  [EXIT.usage, "usage error, or a deploy marker id already recorded with different content"],
+  [EXIT.auth, "authentication: no credential, a login page, an Access challenge, a redirect, 401, or 403"],
   [EXIT.transport, "transport or contract failure, or a command that is not implemented"],
   [EXIT.pending, "verification is pending or has insufficient data"],
   [EXIT.unchanged, "verification is unchanged or confounded"],

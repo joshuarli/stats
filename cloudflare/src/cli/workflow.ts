@@ -76,6 +76,14 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    Writes one real, flagged sample. Run it only with the synthetic-check credential and
    only inside the excluded deployment and warm-up interval.
 
+10. Record and read service deployments (mutation, Cloudflare and Node origins)
+   pnpm --dir cloudflare -s statsctl deploy mark --service stats-node --version COMMIT --message release --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790
+   pnpm --dir cloudflare -s statsctl services --origin http://threadripper.tailcf741.ts.net:18790
+   pnpm --dir cloudflare -s statsctl service deployments --service stats-node --origin http://threadripper.tailcf741.ts.net:18790
+   The token file is the JSON returned once when the service was created, mode 0600. The
+   marker id defaults to v-VERSION, so repeating a deploy exits 0 and records nothing new;
+   a marker id reused with different content exits 2 (marker_conflict).
+
 Why a lower monthly estimate is not necessarily a win
    cost projects a month from one window, so it moves with traffic, time of day, and which
    meters were collected. A candidate can look cheaper because load fell, because a meter
@@ -89,4 +97,4 @@ Authentication
    sh -c) and STATSCTL_AUTH_HEADER. It never starts a login; if it fails, run
    cf access login <origin>. The credential is sent only to the configured origin.
    A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: no credential is
-   sent, and only check ingest works there.`;
+   sent, and only check ingest, deploy mark, services, and service deployments work there.`;

@@ -1,20 +1,18 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { decodeAck, AckDecodeError } from "../../ingest/ack-decode.ts";
 import { ACK_MEDIA_TYPE, type Ack } from "../../ingest/ack.ts";
 import { encodeFrame } from "../../ingest/encode.ts";
 import { openHistory } from "../../binary/history.ts";
 import { decodeSummary } from "../../client/history.ts";
 import { MINUTE_MS } from "../../limits.ts";
+import { credentialToken, readCredentialJson } from "../credential-file.ts";
 import { authError, CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { defineCommand, type CommandContext } from "../registry.ts";
-import { resolveInvocationPath } from "../verify/files.ts";
 import { table } from "../text.ts";
 
 export const INGEST_MEDIA_TYPE = "application/vnd.stats.ingest.v2";
 export const INGEST_TIMEOUT_MS = 15_000;
 const HOST_ID = /^h_[0-9a-f]{32}$/u;
-const MAX_CREDENTIAL_FILE_BYTES = 4096;
 const MAX_INGEST_REPLY_BYTES = 64 * 1024;
 
 export const STEP_NAMES = ["encode", "ingest", "ack", "latest", "history", "replay", "stored-count"] as const;
@@ -42,32 +40,10 @@ interface HostCredential {
 }
 
 export function readCredentialFile(file: string): HostCredential {
-  const path = resolveInvocationPath(file);
-  let descriptor: number;
-  try {
-    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  } catch {
-    throw authError("credential_file_unreadable", `cannot open the credential file ${path}`);
-  }
-  try {
-    const stat = fstatSync(descriptor);
-    if (!stat.isFile()) throw authError("credential_file_unreadable", `${path} is not a regular file`);
-    if ((stat.mode & 0o077) !== 0) throw authError("credential_file_mode", `${path} must not be readable by group or others; run: chmod 600 ${path}`);
-    if (stat.size > MAX_CREDENTIAL_FILE_BYTES) throw authError("credential_file_invalid", `${path} is larger than ${MAX_CREDENTIAL_FILE_BYTES} bytes`);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(readFileSync(descriptor, "utf8"));
-    } catch {
-      throw authError("credential_file_invalid", `${path} is not valid JSON`);
-    }
-    if (typeof parsed !== "object" || parsed === null) throw authError("credential_file_invalid", `${path} must be a JSON object with hostId and token`);
-    const { hostId, token } = parsed as Record<string, unknown>;
-    if (typeof hostId !== "string" || !HOST_ID.test(hostId)) throw authError("credential_file_invalid", `${path} has no valid hostId`);
-    if (typeof token !== "string" || token === "" || /[^!-~]/u.test(token)) throw authError("credential_file_invalid", `${path} has no valid token`);
-    return { hostId, token };
-  } finally {
-    closeSync(descriptor);
-  }
+  const credential = readCredentialJson(file, "hostId and token");
+  const { hostId } = credential.fields;
+  if (typeof hostId !== "string" || !HOST_ID.test(hostId)) throw authError("credential_file_invalid", `${credential.path} has no valid hostId`);
+  return { hostId, token: credentialToken(credential) };
 }
 
 function bootIdFor(hostId: string): string {

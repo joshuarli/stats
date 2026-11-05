@@ -394,9 +394,9 @@ local instance.
 
 `statsctl` picks its target from the origin. A host ending in `.ts.net`, or a
 bare name with no dot, is a Node origin: statsctl sends no credential, because
-`tailscale serve` adds the identity. Only `check ingest` works there; every
-other command reads Cloudflare telemetry and exits 2 with
-`unsupported_on_target` before any request. Store the `synthetic-check` host
+`tailscale serve` adds the identity. `check ingest`, `deploy mark`, `services`, and
+`service deployments` work there; every other command reads Cloudflare
+telemetry and exits 2 with `unsupported_on_target` before any request. Store the `synthetic-check` host
 credential (`{hostId, name, token}`, mode 0600) and run:
 
 ```sh
@@ -409,8 +409,8 @@ A service names the hosts a deployable runs on. A deploy script records each
 release with a marker, authenticated by the service's deploy token. Routes,
 rules, and responses are in `docs/architecture.md`
 ([Services and deploy markers](architecture.md#services-and-deploy-markers)).
-`statsctl` gains a `deploy mark` command in a later change; until then use
-`curl`.
+The statsctl commands `deploy mark`, `services`, and `service deployments`
+record and read markers.
 
 Create a service once with a human credential. The 201 response is the only
 place the deploy token appears, so write it straight to an owner-only file.
@@ -440,21 +440,29 @@ curl -sS http://threadripper.tailcf741.ts.net:18790/api/v1/admin/services \
   > .work/credentials/stats-node-deploy.json
 ```
 
-Record a deploy after it succeeds. The token goes in a header read from a
-file, never in argv:
+Record a deploy after it succeeds. The token file is the creation response
+saved above. `statsctl` checks it like the `check ingest` credential file
+(mode 0600, read from the invocation directory, `name` must equal `--service`),
+sends the token only in the `Authorization` header, and sends no Access
+credential on either target. `--host` defaults to the service's `hostIds` from
+the file, and `--marker-id` defaults to `v-<version>`, so repeating a deploy is
+idempotent:
 
 ```sh
-curl -sS http://threadripper.tailcf741.ts.net:18790/api/v1/services/stats-node/deployments \
-  -H @<(jaq -r '"Authorization: Bearer " + .token' .work/credentials/stats-node-deploy.json) \
-  -H 'Content-Type: application/json' \
-  -d "{\"markerId\":\"$(git rev-parse HEAD)\",\"version\":\"$(git rev-parse --short=12 HEAD)\",\"hostIds\":[\"h_...\"]}"
+pnpm --dir cloudflare -s statsctl deploy mark --service stats-node --version COMMIT --message release --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790
+pnpm --dir cloudflare -s statsctl service deployments --service stats-node --origin http://threadripper.tailcf741.ts.net:18790
 ```
 
+Replace `COMMIT` with the version, such as `git rev-parse --short=12 HEAD`.
+`make node-deploy` runs the first command itself after the health wait when
+`.work/credentials/stats-node-deploy.json` exists, against `STATS_NODE_ORIGIN`
+(default `http://threadripper.tailcf741.ts.net:18790`).
+
 A new marker answers 201. Sending the same marker again answers 200 with the
-stored one, so a retry is safe. The same `markerId` with a different version,
-message, or host set answers 409. Read the timeline back with
-`GET /api/v1/services/<name>/deployments`, using the same credentials as
-other reads.
+stored one, so a retry is safe; `deploy mark` exits 0 for both. The same
+`markerId` with a different version, message, or host set answers 409, which
+`deploy mark` reports as `marker_conflict` with exit 2. A 401 or 403 exits 3,
+and so does an Access challenge (`access_challenge`).
 
 On Cloudflare the marker `POST` must reach the Worker without an Access
 challenge. Before marking production services, add a path-scoped

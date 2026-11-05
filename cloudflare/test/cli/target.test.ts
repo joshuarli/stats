@@ -1,17 +1,16 @@
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, request, type IncomingMessage, type Server } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { spawn, type ChildProcess } from "node:child_process";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_ORIGIN, resolveOrigin, targetOf } from "../../src/cli/auth.ts";
 import { REGISTRY } from "../../src/cli/commands/index.ts";
+import { identityProxy, startNode } from "./node-server.ts";
 import { fakeOrigin, runCli } from "./support.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const SCRATCH = resolve(ROOT, "../.work/tmp");
-const LOGIN = "target-test@example.com";
 
 await test("the origin decides the target", () => {
   assert.equal(targetOf(DEFAULT_ORIGIN), "cloudflare");
@@ -46,46 +45,6 @@ await test("a Cloudflare-only command against a Node origin exits 2 before any r
     await origin.close();
   }
 });
-
-interface Node {
-  readonly child: ChildProcess;
-  readonly port: number;
-}
-
-async function startNode(dataDir: string): Promise<Node> {
-  const child = spawn(process.execPath, ["--experimental-strip-types", "src/node/main.ts"], {
-    cwd: ROOT,
-    env: { PATH: process.env["PATH"] ?? "", STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: LOGIN },
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-  let output = "";
-  child.stderr!.on("data", chunk => { output += String(chunk); });
-  const port = await new Promise<number>((resolvePort, reject) => {
-    const timer = setTimeout(() => reject(new Error(`server did not report a port: ${output}`)), 10_000);
-    child.stdout!.on("data", chunk => {
-      output += String(chunk);
-      const match = /"event":"listening","host":"127\.0\.0\.1","port":(\d+)/u.exec(output);
-      if (match === null) return;
-      clearTimeout(timer);
-      resolvePort(Number(match[1]));
-    });
-    child.once("exit", code => reject(new Error(`server exited with ${code}: ${output}`)));
-  });
-  return { child, port };
-}
-
-function identityProxy(port: number, seen: IncomingMessage["headers"][]): Promise<Server> {
-  const server = createServer((incoming, outgoing) => {
-    seen.push(incoming.headers);
-    const forwarded = request({ host: "127.0.0.1", port, path: incoming.url, method: incoming.method, headers: { ...incoming.headers, "tailscale-user-login": LOGIN } }, reply => {
-      outgoing.writeHead(reply.statusCode ?? 502, reply.headers);
-      reply.pipe(outgoing);
-    });
-    forwarded.on("error", () => outgoing.destroy());
-    incoming.pipe(forwarded);
-  });
-  return new Promise(resolveListen => server.listen(0, "localhost", () => resolveListen(server)));
-}
 
 await test("check ingest passes against the Node server behind an identity-adding proxy and sends no credential", async () => {
   const dataDir = mkdtempSync(join(SCRATCH, "target-node-"));
