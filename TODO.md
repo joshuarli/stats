@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 56
+Next: 57
+
+### STA-56 · P3 · Explore hides a sampled route that has no kept invocation
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/core/store.ts` (explore), `cloudflare/src/client/` (route table)
+- **Problem:** For a sampled service, explore lists only routes with at least one kept invocation, although the counts table holds every route's exact count. At 2,000 per million, a route with 1,000 requests in the window has about a 13.5% chance of no kept invocation, so quiet routes disappear from explore in production, and failures are the only kept rows a route is guaranteed.
+- **Recommendation:** List every counted route with its exact `observed` count, and make the latency and CPU fields `null` with a sampled-out reason when nothing was kept. That changes the explore response and the dashboard route table, so update the decoder, the CLI, and the goldens together.
+- **Fix with:** none
+- **Effort:** S
 
 ### STA-55 · P3 · Rejected-invalid events from a sampled service are not capped
 
