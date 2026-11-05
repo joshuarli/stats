@@ -21,6 +21,15 @@ async function read<T>(what: "Deployment history" | "Deployment comparison", pat
   catch (cause) { throw new ApiFailure(0, `Invalid ${what.toLowerCase()} response`, cause); }
 }
 
+export function loadDeploymentHistory(projectId: string, signal: AbortSignal): Promise<DeploymentHistory> {
+  return read("Deployment history", `/api/v1/projects/${encodeURIComponent(projectId)}/deployments`, signal, value => decodeDeploymentHistory(value, projectId));
+}
+
+export function deploymentTitle(history: DeploymentHistory, deployment: Deployment): string {
+  const tag = (id: string) => history.versions.find(version => version.id === id)?.tag ?? id.slice(0, 8);
+  return deployment.versions.map(version => deployment.versions.length === 1 ? tag(version.id) : `${tag(version.id)} ${version.percentage}%`).join(" / ");
+}
+
 function figure(value: number | null, unit = ""): string {
   if (value === null) return "—";
   return value.toLocaleString(undefined, { maximumFractionDigits: unit === "USD" ? 6 : 3 });
@@ -80,7 +89,7 @@ export function createProjectDeployments(projectId: () => string, range: () => R
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; linkPending = true; }
-    void read("Deployment history", `/api/v1/projects/${encodeURIComponent(project)}/deployments`, controller.signal, value => decodeDeploymentHistory(value, project)).then(value => {
+    void loadDeploymentHistory(project, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);
       setHistoryError(null);
@@ -110,7 +119,10 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   const versions = createMemo(() => new Map((history()?.versions ?? []).map(version => [version.id, version])));
   const tag = (id: string) => versions().get(id)?.tag ?? id.slice(0, 8);
   const name = (deployment: Deployment) => deployment.versions.map(version => `${tag(version.id)} ${version.percentage}%`).join(" / ");
-  const title = (deployment: Deployment) => deployment.versions.map(version => deployment.versions.length === 1 ? tag(version.id) : `${tag(version.id)} ${version.percentage}%`).join(" / ");
+  const title = (deployment: Deployment) => {
+    const value = history();
+    return value === null ? deployment.id.slice(0, 8) : deploymentTitle(value, deployment);
+  };
   const select = (id: string) => {
     setSelected(id);
     writeParam("deployment", id);

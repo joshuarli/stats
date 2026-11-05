@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createMemo, createSignal, Errored, Loading, refresh, Show } from "solid-js";
 import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
@@ -18,16 +18,15 @@ import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget } from "./project/DurableObjects";
-import { metricTrack, type ProjectHistories } from "../history";
-import { hasAnyValue, provisionalFromMs, silenceMinutes, type ProjectData } from "./project/series";
+import { metricTrack } from "../history";
+import { hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel, type Observability } from "./project/Observe";
 import { RequestExplorerWidget } from "./project/Requests";
-import { buildLedger, previousWindowOf, type LedgerHistories, type ObjectMethods } from "./project/cost-ledger";
+import { createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
 import { CostLedger } from "./project/CostLedger";
 import "./project/project.css";
 import { readParam, writeParam } from "../urlState";
-import { decodeObjectMethods } from "../../observe/client/decode";
 import { LIMITS } from "../health";
 import { RETENTION_MS } from "../../observe/core/limits";
 import { isObservedService } from "../../observe/services";
@@ -36,18 +35,6 @@ import type { TimeWindow } from "../chart-data";
 type SectionId = "deploys" | "errors" | "requests" | "signals";
 const SECTION_IDS: readonly SectionId[] = ["deploys", "errors", "requests", "signals"];
 const LINKED_SECTIONS: readonly (readonly [string, SectionId])[] = [["deployment", "deploys"], ["issue", "errors"], ["issues", "errors"], ["introduced", "errors"], ["route", "requests"], ["band", "requests"], ["traces", "requests"], ["trace", "requests"]];
-
-interface LedgerLoad {
-  readonly window: TimeWindow;
-  readonly previous: TimeWindow;
-  readonly current: ProjectHistories;
-  readonly baseline: Baseline;
-  readonly objectMethods: ObjectMethods | undefined;
-}
-
-type Baseline =
-  | { readonly kind: "loaded"; readonly histories: ProjectHistories }
-  | { readonly kind: "failed"; readonly message: string };
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();
@@ -83,10 +70,6 @@ function initialSections(): ReadonlySet<SectionId> {
   return new Set([...listed, ...linked]);
 }
 
-function ledgerHistories(histories: ProjectHistories): LedgerHistories {
-  return { worker: histories.worker, routes: histories.routes, r2: histories.r2, durableObjects: histories["durable-objects"], d1: histories.d1, d1Statements: histories["d1-statements"] };
-}
-
 function Section(props: ParentProps<{ readonly id: SectionId; readonly title: string; readonly summary: JSX.Element; readonly open: boolean; readonly onToggle: () => void }>): JSX.Element {
   return (
     <section class={`project-section${props.open ? " open" : ""}`} id={`section-${props.id}`}>
@@ -109,7 +92,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const hasBuckets = () => props.project.buckets.length > 0;
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
   const hasDatabases = () => props.project.d1Databases.length > 0;
-  const kinds = () => ({ durableObjects: hasNamespaces(), d1: hasDatabases(), probes: props.project.probes.length > 0 });
+  const kinds = () => historyKinds(props.project);
   const histories = createMemo(() => loadQuery(signal => getProjectHistories(id(), query(), kinds(), signal)));
   const worker = () => histories().worker;
   const collector = () => histories().collector;
@@ -148,12 +131,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   };
   const hasData = createMemo(() => hasAnyValue(metricTrack(data().worker, "worker.invocations"), ...props.project.buckets.map(bucket => metricTrack(data().r2, `r2.${bucket}.storageBytes`))));
 
-  const ledgerWindow = createMemo((): TimeWindow => {
-    const settled = provisionalFromMs(worker());
-    const zoomed = view();
-    if (zoomed !== null) return { fromMs: zoomed.fromMs, toMs: Math.max(zoomed.fromMs, Math.min(zoomed.toMs, settled)) };
-    return { fromMs: settled - rangeMs[range()], toMs: settled };
-  });
+  const ledgerWindow = createMemo((): TimeWindow => settledWindow(worker(), rangeMs[range()], view()));
   const windowLabel = () => view() !== null
     ? "Zoomed window, up to the last settled bucket, vs the window before it"
     : `Settled ${range()} ending ${age(ledgerWindow().toMs, now())} vs the ${range()} before`;
@@ -166,52 +144,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   };
   const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
   const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => sections().has("requests")) : null;
-  const [ledgerLoad, setLedgerLoad] = createSignal<LedgerLoad | null>(null);
-  const [ledgerLoadError, setLedgerLoadError] = createSignal<string | null>(null);
-  createEffect(() => {
-    const window = ledgerWindow();
-    return `${window.fromMs}:${window.toMs}:${projectTick()}:${manualTick()}`;
-  }, () => {
-    const window = ledgerWindow();
-    const previous = previousWindowOf(window);
-    const controller = new AbortController();
-    onCleanup(() => controller.abort());
-    const span = (bounds: TimeWindow) => new URLSearchParams({ from: String(Math.round(bounds.fromMs)), to: String(Math.round(bounds.toMs)) });
-    const methods = observe === null || !hasNamespaces() ? Promise.resolve(undefined) : Promise.all([
-      observe.read(`/objects?${span(window)}`, controller.signal, decodeObjectMethods),
-      previous.fromMs >= now() - RETENTION_MS ? observe.read(`/objects?${span(previous)}`, controller.signal, decodeObjectMethods) : Promise.resolve(null)
-    ]).then(([current, before]): ObjectMethods => ({ now: current.methods, before: before?.methods ?? null }), () => undefined);
-    void Promise.all([
-      getProjectHistories(id(), window, kinds(), controller.signal),
-      getProjectHistories(id(), previous, kinds(), controller.signal)
-        .then((loaded): Baseline => ({ kind: "loaded", histories: loaded }), (error: unknown): Baseline => ({ kind: "failed", message: errorMessage(error) })),
-      methods
-    ]).then(([current, baseline, objectMethods]) => {
-      if (controller.signal.aborted) return;
-      setLedgerLoad({ window, previous, current, baseline, objectMethods });
-      setLedgerLoadError(null);
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setLedgerLoadError(errorMessage(error));
-    });
-  });
-  const baselineError = () => {
-    const load = ledgerLoad();
-    return load?.baseline.kind === "failed" ? load.baseline.message : null;
-  };
-  const ledger = createMemo(() => {
-    const load = ledgerLoad();
-    if (load === null) return null;
-    const histories = ledgerHistories(load.current);
-    return { histories, ledger: buildLedger({
-      current: histories,
-      previous: load.baseline.kind === "loaded" ? ledgerHistories(load.baseline.histories) : undefined,
-      window: load.window,
-      previousWindow: load.previous,
-      buckets: props.project.buckets,
-      databases: props.project.d1Databases,
-      objectMethods: load.objectMethods
-    }) };
-  });
+  const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
+    () => props.project, ledgerWindow, () => `${projectTick()}:${manualTick()}`,
+    observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now }
+  );
 
   const toggleSection = (section: SectionId) => {
     setSections(current => {

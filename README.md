@@ -184,7 +184,10 @@ read/write and network in/out drawn as mirrored pairs, so the state of the
 fleet reads without opening a host.
 
 The Projects page (`#/projects`) lists each configured Cloudflare project with
-its collector state. A project page (`#/project/<id>`) opens with a cost
+its requests, 5xx share, CPU, and projected list-price cost for the settled
+range, each against the range before it, plus its last deploy and collector
+state; a row expands to its request, CPU per request, 5xx, and endpoint or
+storage trends. A project page (`#/project/<id>`) opens with a cost
 ledger: the projected monthly list-price cost, its change from the window
 before, and a tree you can expand from component (Worker, Durable Objects,
 D1, R2 storage) to route, method, statement, or bucket, with calls, CPU or wall

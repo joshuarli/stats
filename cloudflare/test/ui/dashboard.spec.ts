@@ -562,12 +562,31 @@ test("the projects page lists projects and each row opens its page", async ({ pa
   await page.goto("/#/projects");
   const table = page.getByRole("table", { name: "Projects" });
   await expect(table).toContainText("stuff");
-  await expect(table).toContainText("3");
+  await expect(table).toContainText("$3.12/mo");
   await expect(table).toContainText("collecting");
   await expect(page.getByRole("table", { name: "Fleet hosts" })).toHaveCount(0);
   await table.getByRole("link", { name: "stuff" }).click();
   await expect(page).toHaveURL(/#\/project\/stuff$/u);
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+});
+
+test("the projects table compares each project's settled window with the one before and expands to its trends", async ({ page }) => {
+  await mock(page, { baselineScale: 0.5, probes: true });
+  await page.goto("/#/projects");
+  const row = page.locator(".projects-row", { hasText: "stuff" });
+  await expect(row).toContainText("288,000");
+  await expect(row).toContainText("2.0×");
+  await expect(row).toContainText("$3.12/mo");
+  await expect(row).toContainText("+$1.56");
+  await expect(row).toContainText("incl. 858.3 MiB R2");
+  await expect(row).toContainText("v42");
+  await expect(page.locator(".projects-detail")).toHaveCount(0);
+  await row.getByRole("button", { name: "Show stuff trends" }).click();
+  const detail = page.locator(".projects-detail");
+  await expect(detail.getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  await expect(detail.getByRole("img", { name: /^crates response time;/u })).toBeVisible();
+  await row.getByRole("button", { name: "Hide stuff trends" }).click();
+  await expect(detail).toHaveCount(0);
 });
 
 test("a stale collector is flagged on the projects page and the project page", async ({ page }) => {
