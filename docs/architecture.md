@@ -200,14 +200,28 @@ the same Access check as every observe route.
 The coverage rule (`src/compare/coverage.ts`) decides whether the observed
 counts can support a verdict. For each side of a comparison it sums the
 invocations plus every outcome class the tail saw, per five-minute event-time
-bucket, over both stages (`worker` and `object`), and compares that sum with
-the analytics `worker.invocations` the comparison route returns in
-`analyticsInvocations`. The state is `reconciled` when no bucket in the window
-is missing from either source and the totals differ by at most 5% of the
-analytics total; `partial` when a bucket is missing or the difference is larger;
-and `unknown` when either source lacks the window, so absent data is never
-counted as zero. A comparison is `reconciled` only if both sides are. The bound
-is 5%; `docs/cost-campaign.md` records the measured spread.
+bucket, at the `worker` stage only, because the analytics source counts only
+stateless Worker events. It compares that sum with the analytics
+`worker.invocations` the comparison route returns in `analyticsInvocations`.
+
+That analytics source is Workers Logs, which the stats Worker samples at
+`headSamplingRate: 0.1`. At stats' traffic of about 22 Worker invocations per
+bucket, each bucket rests on about two sampled events. So a bucket missing from
+analytics means that no event was sampled, and it counts as zero. The bound is
+the larger of 5% of the analytics total and three standard errors of the
+sampled estimate, `3 × sqrt(observed × (1 − p) / p)`. For one hour of stats
+traffic that is about ±50%, so coverage catches gross loss, not a few percent.
+
+The state is:
+
+- `reconciled` when no observed bucket is missing and the totals differ by at
+  most the bound;
+- `partial` otherwise;
+- `unknown` when either source lacks the window.
+
+A comparison is `reconciled` only if both sides are. On 2026-11-05 from 06:05
+to 06:50 UTC, 246 Worker events were observed against an analytics estimate of
+220: a spread of 11.8%, inside a bound of 64%.
 
 ## Storage and rollups
 

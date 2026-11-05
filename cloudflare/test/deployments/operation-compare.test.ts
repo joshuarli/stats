@@ -4,7 +4,8 @@ import { parseDeployment } from "../../src/deployments/model.ts";
 import { comparisonBounds, compareDeployment, DEPLOYMENT_BUCKET_MS as B, type DeploymentComparison, type MetricRow } from "../../src/deployments/compare.ts";
 import { decodeDeploymentComparison } from "../../src/deployments/decode.ts";
 import { measurementIdentity, scopeSpec, windowQuery, type ComparisonScope } from "../../src/compare/spec.ts";
-import { computeCoverage, observedEventTotals, type BucketCount } from "../../src/compare/coverage.ts";
+import { readFileSync } from "node:fs";
+import { ANALYTICS_COUNTED_STAGES, computeCoverage, observedEventTotals, STATS_ANALYTICS_SAMPLE_RATE, type BucketCount } from "../../src/compare/coverage.ts";
 import { compareOperation, failedShareGuardrail, ingestPersistenceGuardrail, type MetricFloors, type OperationComparisonInput, type ScopedSpec } from "../../src/compare/operation.ts";
 import type { OperationWindowRow, OperationWorkTotals } from "../../src/observe/core/store.ts";
 
@@ -180,26 +181,26 @@ const FROM = AT, TO = AT + 12 * B;
 const counts = (value: number, skip = -1): BucketCount[] => Array.from({ length: 12 }, (_, n) => ({ atMs: FROM + n * B, value })).filter((_, n) => n !== skip);
 
 await test("coverage reconciles within 5 percent inclusive and is partial beyond it", () => {
-  const exact = computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(95), analytics: counts(100) });
+  const exact = computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(95), analytics: counts(100) });
   assert.equal(exact.state, "reconciled");
   assert.equal(exact.spread, 0.05);
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(105), analytics: counts(100) }).state, "reconciled");
-  const over = computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(94), analytics: counts(100) });
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(105), analytics: counts(100) }).state, "reconciled");
+  const over = computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(94), analytics: counts(100) });
   assert.equal(over.state, "partial");
   assert.ok(over.spread! > 0.05);
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(106), analytics: counts(100) }).state, "partial");
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(106), analytics: counts(100) }).state, "partial");
 });
 
 await test("coverage treats a bucket missing from either source as partial, and a source without the window as unknown", () => {
-  assert.deepEqual(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(100, 3), analytics: counts(100) }).missingBuckets, 1);
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(100, 3), analytics: counts(100) }).state, "partial");
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(100), analytics: counts(100, 11) }).state, "partial");
+  assert.deepEqual(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(100, 3), analytics: counts(100) }).missingBuckets, 1);
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(100, 3), analytics: counts(100) }).state, "partial");
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(100), analytics: counts(100, 11) }).state, "partial");
   for (const [observed, analytics] of [[null, counts(100)], [counts(100), null], [[], counts(100)], [counts(100), []]] as const) {
-    assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed, analytics }).state, "unknown");
+    assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed, analytics }).state, "unknown");
   }
   const outside = counts(100).map(item => ({ ...item, atMs: item.atMs + 24 * B }));
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: outside, analytics: counts(100) }).state, "unknown");
-  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, observed: counts(0), analytics: counts(0) }).state, "partial");
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: outside, analytics: counts(100) }).state, "unknown");
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(0), analytics: counts(0) }).state, "partial");
 });
 
 await test("observed event totals add every outcome class to the retained invocations of the chosen stages", () => {
@@ -212,4 +213,34 @@ await test("observed event totals add every outcome class to the retained invoca
   };
   assert.deepEqual(observedEventTotals(window, ["worker"]), [{ atMs: FROM, value: 96 }, { atMs: FROM + B, value: 4 }]);
   assert.deepEqual(observedEventTotals(window, ["worker", "object"]), [{ atMs: FROM, value: 136 }, { atMs: FROM + B, value: 4 }]);
+});
+
+await test("coverage compares only the stages the analytics source counts, and that source counts stateless Worker events", () => {
+  assert.deepEqual(ANALYTICS_COUNTED_STAGES, ["worker"]);
+  const queries = readFileSync(new URL("../../src/projects/queries.ts", import.meta.url), "utf8");
+  assert.match(queries, /WORKER_ENTRYPOINT = "attributes\['\$workers\.executionModel'\] = 'stateless'"/u);
+});
+
+await test("the stats analytics sample rate matches the Workers Logs head sampling rate the stats Worker deploys with", () => {
+  const config = readFileSync(new URL("../../cloudflare.config.ts", import.meta.url), "utf8");
+  const rate = /logs:\s*\{[^}]*headSamplingRate:\s*([0-9.]+)/u.exec(config);
+  assert.ok(rate !== null);
+  assert.equal(Number(rate[1]), STATS_ANALYTICS_SAMPLE_RATE);
+});
+
+await test("a sampled analytics source widens the bound to three standard errors and counts an absent bucket as zero sampled events", () => {
+  const sampled = (values: readonly number[]): BucketCount[] => values.map((value, n) => ({ atMs: FROM + n * B, value })).filter(item => item.value > 0);
+  const observed = counts(22);
+  const analytics = sampled([20, 30, 80, 0, 20, 20, 10, 10, 30, 20, 20, 30]);
+  const noisy = computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 0.1, observed, analytics });
+  assert.equal(noisy.missingBuckets, 0);
+  assert.equal(noisy.state, "reconciled");
+  assert.equal(noisy.observed, 264);
+  assert.equal(noisy.analytics, 290);
+  assert.equal(noisy.bound, 3 * Math.sqrt(264 * 0.9 / 0.1));
+  const lost = computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 0.1, observed: counts(10), analytics });
+  assert.equal(lost.state, "partial");
+  assert.equal(computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 0.1, observed: counts(22, 3), analytics }).state, "partial");
+  const exact = computeCoverage({ fromMs: FROM, toMs: TO, analyticsSampleRate: 1, observed: counts(95), analytics: counts(100) });
+  assert.equal(exact.bound, 60);
 });

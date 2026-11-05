@@ -1,5 +1,5 @@
 import { compareOperation, type GuardrailResult, type OperationComparison, type OperationReason } from "../../compare/operation.ts";
-import { computeCoverage, observedEventTotals, type Coverage, type CoverageState } from "../../compare/coverage.ts";
+import { ANALYTICS_COUNTED_STAGES, computeCoverage, observedEventTotals, STATS_ANALYTICS_SAMPLE_RATE, type Coverage, type CoverageState } from "../../compare/coverage.ts";
 import { scopeSpec, type ComparisonScope } from "../../compare/spec.ts";
 import type { DeploymentComparison, ReasonCode } from "../../deployments/compare.ts";
 import type { StatsWindow } from "../../observe/core/store.ts";
@@ -11,7 +11,6 @@ export type GuardrailStatus = "pass" | "regressed" | "insufficient-data" | "pend
 
 export const PENDING_CODES: readonly ReasonCode[] = ["not-ready", "unsettled", "stale-history"];
 const DATA_CODES: readonly string[] = ["disabled", "expired", "truncated", "invocations-missing", "invocations-floor"];
-export const COVERAGE_STAGES = ["worker", "object"] as const;
 export const PROBE_FAILURE_RISE_POINTS = 1;
 
 export interface SafetyRecord {
@@ -90,7 +89,7 @@ export function combineCoverage(before: CoverageState, after: CoverageState): Co
 }
 
 function sideCoverage(window: StatsWindow, analytics: DeploymentComparison["analyticsInvocations"]["before"]): Coverage {
-  return computeCoverage({ fromMs: window.fromMs, toMs: window.toMs, observed: observedEventTotals(window, COVERAGE_STAGES), analytics });
+  return computeCoverage({ fromMs: window.fromMs, toMs: window.toMs, analyticsSampleRate: STATS_ANALYTICS_SAMPLE_RATE, observed: observedEventTotals(window, ANALYTICS_COUNTED_STAGES), analytics });
 }
 
 function judgeTarget(policy: Policy, source: { readonly before: number | null; readonly after: number | null; readonly verdict: VerifyVerdict }): TargetReport {
@@ -154,7 +153,7 @@ function globalFailedShare(comparison: DeploymentComparison): GuardrailReport {
 
 function coverageGuardrail(coverage: CoverageReport): GuardrailReport {
   const id = "coverage";
-  const describe = (side: Coverage | null) => side === null ? "unread" : `${side.state}${side.spread === null ? "" : ` (spread ${(side.spread * 100).toFixed(1)}%)`}`;
+  const describe = (side: Coverage | null) => side === null ? "unread" : `${side.state}${side.spread === null || side.bound === null || side.analytics === null || side.analytics === 0 ? "" : ` (spread ${(side.spread * 100).toFixed(1)}%, bound ${(side.bound / side.analytics * 100).toFixed(1)}%)`}`;
   const detail = `before ${describe(coverage.before)}, after ${describe(coverage.after)}`;
   return { id, status: coverage.state === "reconciled" ? "pass" : "insufficient-data", detail, before: coverage.before?.spread ?? null, after: coverage.after?.spread ?? null };
 }
