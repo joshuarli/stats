@@ -156,6 +156,8 @@ await test("failures past the per-bucket cap are counted as failed but not store
   const shop = await startShop();
   try {
     const failures = 30;
+    const intoBucket = Date.now() % COUNT_BUCKET_MS;
+    if (intoBucket > COUNT_BUCKET_MS - 60_000) await new Promise(resolve => setTimeout(resolve, COUNT_BUCKET_MS - intoBucket + 1_000));
     await sendAll(shop, Array.from({ length: failures }, () => ["/cart", "GET"] as const));
     await until(() => shop.observe<Health>("/health"), value => value.liveInvocations >= ALWAYS_KEPT_PER_BUCKET, "the stored failures");
     let triggers = 0;
