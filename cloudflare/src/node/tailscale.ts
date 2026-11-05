@@ -11,8 +11,10 @@ export function isLoopback(address: string | undefined): boolean {
   return /^127\.\d+\.\d+\.\d+$/u.test(ipv4);
 }
 
-export function tailscaleDecision(peer: string | undefined, headers: Headers, allowedLogins: ReadonlySet<string>): AuthDecision {
-  if (!isLoopback(peer)) return { ok: false, status: 401, message: "requests must arrive through tailscale serve on loopback" };
+export type Peer = { readonly kind: "tcp"; readonly address: string | undefined } | { readonly kind: "unix" };
+
+export function tailscaleDecision(peer: Peer, headers: Headers, allowedLogins: ReadonlySet<string>): AuthDecision {
+  if (peer.kind === "tcp" && !isLoopback(peer.address)) return { ok: false, status: 401, message: "requests must arrive through tailscale serve on loopback" };
   const login = headers.get(TAILSCALE_LOGIN_HEADER);
   if (login === null || login === "") return { ok: false, status: 401, message: "a Tailscale identity is required" };
   if (!allowedLogins.has(login)) return { ok: false, status: 401, message: "this Tailscale login is not allowed" };

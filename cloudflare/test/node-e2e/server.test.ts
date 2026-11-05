@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -148,5 +148,58 @@ await test("a second Node server on the same data directory exits 2 and leaves t
     assert.equal(await first.exited(), 0, first.output());
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+function socketServer(dataDir: string, socket: string) {
+  return launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: `unix:${socket}`, STATS_ALLOWED_LOGINS: LOGIN });
+}
+
+function overSocket(socket: string, path: string, headers: Record<string, string> = {}): Promise<number> {
+  return new Promise((resolveStatus, reject) => {
+    const outgoing = httpRequest({ socketPath: socket, path, headers }, response => {
+      response.resume();
+      resolveStatus(response.statusCode ?? 0);
+    });
+    outgoing.on("error", reject);
+    outgoing.end();
+  });
+}
+
+async function listening(launched: ReturnType<typeof launch>): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!launched.output().includes('"event":"listening"')) {
+    if (Date.now() > deadline) throw new Error(`server did not listen: ${launched.output()}`);
+    await new Promise(resolveWait => setTimeout(resolveWait, 25));
+  }
+}
+
+await test("the Node server on a Unix socket serves health and an authorized route, owns the socket 0600, replaces a stale one, refuses a live one, and unlinks it on SIGTERM", async () => {
+  const dir = mkdtempSync(join(SCRATCH, "ns-"));
+  const socket = join(dir, "s.sock");
+  try {
+    const first = socketServer(dir, socket);
+    await listening(first);
+    assert.equal(statSync(socket).mode & 0o777, 0o600);
+    assert.equal(await overSocket(socket, "/health"), 200);
+    assert.equal(await overSocket(socket, "/api/v1/hosts"), 401);
+    assert.equal(await overSocket(socket, "/api/v1/hosts", { "Tailscale-User-Login": LOGIN }), 200);
+
+    const second = socketServer(mkdtempSync(join(dir, "other-")), socket);
+    assert.equal(await second.exited(), 2, second.output());
+    assert.match(second.output(), /stats: STATS_LISTEN .* is in use by another server/u);
+    assert.equal(await overSocket(socket, "/health"), 200);
+
+    first.child.kill("SIGKILL");
+    await first.exited();
+    assert.ok(existsSync(socket), "a killed server leaves its socket behind");
+    const replacement = socketServer(mkdtempSync(join(dir, "again-")), socket);
+    await listening(replacement);
+    assert.equal(await overSocket(socket, "/health"), 200);
+    replacement.child.kill("SIGTERM");
+    assert.equal(await replacement.exited(), 0, replacement.output());
+    assert.ok(!existsSync(socket), "the socket is removed on shutdown");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

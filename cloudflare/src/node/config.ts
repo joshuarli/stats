@@ -1,14 +1,13 @@
 import { statSync } from "node:fs";
 import { isIP } from "node:net";
-import { join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 export const DEFAULT_LISTEN = "127.0.0.1:18791";
 export const DATABASE_FILE = "stats.sqlite";
 
-export interface Listen {
-  readonly host: string;
-  readonly port: number;
-}
+export type Listen =
+  | { readonly kind: "tcp"; readonly host: string; readonly port: number }
+  | { readonly kind: "unix"; readonly path: string };
 
 export interface NodeConfig {
   readonly databasePath: string;
@@ -33,15 +32,29 @@ function dataDirectory(value: string | undefined): string {
   return directory;
 }
 
+function unixListen(path: string): Listen {
+  if (!isAbsolute(path)) throw new NodeConfigError(`STATS_LISTEN unix path must be absolute, got ${JSON.stringify(path)}`);
+  const directory = dirname(path);
+  let isDirectory: boolean;
+  try {
+    isDirectory = statSync(directory).isDirectory();
+  } catch {
+    isDirectory = false;
+  }
+  if (!isDirectory) throw new NodeConfigError(`STATS_LISTEN socket directory ${directory} does not exist`);
+  return { kind: "unix", path };
+}
+
 function listen(value: string | undefined): Listen {
   const text = value === undefined || value === "" ? DEFAULT_LISTEN : value;
+  if (text.startsWith("unix:")) return unixListen(text.slice("unix:".length));
   const match = /^(?:\[([0-9a-fA-F:.]+)\]|([0-9.]+)):(\d{1,5})$/u.exec(text);
   const host = match?.[1] ?? match?.[2];
   const port = Number(match?.[3]);
   if (host === undefined || isIP(host) === 0 || !Number.isInteger(port) || port > 65_535) {
-    throw new NodeConfigError(`STATS_LISTEN must be IPV4:PORT or [IPV6]:PORT, got ${JSON.stringify(text)}`);
+    throw new NodeConfigError(`STATS_LISTEN must be IPV4:PORT, [IPV6]:PORT, or unix:/absolute/path.sock, got ${JSON.stringify(text)}`);
   }
-  return { host, port };
+  return { kind: "tcp", host, port };
 }
 
 function allowedLogins(value: string | undefined): ReadonlySet<string> {

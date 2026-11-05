@@ -1,10 +1,21 @@
-import type { ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { Server, ServerResponse } from "node:http";
 import { dirname } from "node:path";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
-import { nodeConfig, NodeConfigError } from "./config.ts";
+import { nodeConfig, NodeConfigError, type Listen } from "./config.ts";
 import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
 import { createStatsServer } from "./server.ts";
+import { listenOnSocket } from "./socket.ts";
+
+function listenOn(server: Server, listen: Listen): Promise<void> {
+  if (listen.kind === "unix") return listenOnSocket(server, listen.path);
+  return new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(listen.port, listen.host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+}
 
 async function main(): Promise<void> {
   const config = nodeConfig(process.env);
@@ -16,7 +27,7 @@ async function main(): Promise<void> {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
   }
-  const server = createStatsServer({ installation: request => installation.core.fetch(request), assets, allowedLogins: config.allowedLogins });
+  const server = createStatsServer({ installation: request => installation.core.fetch(request), assets, allowedLogins: config.allowedLogins, transport: config.listen.kind === "unix" ? "unix" : "tcp" });
   let draining = false;
   const inFlight = new Set<ServerResponse>();
   server.on("request", (_incoming, outgoing: ServerResponse) => {
@@ -27,15 +38,14 @@ async function main(): Promise<void> {
       if (draining) setImmediate(() => server.closeIdleConnections());
     });
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(config.listen.port, config.listen.host, () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  const address = server.address() as AddressInfo;
-  console.log(JSON.stringify({ event: "listening", host: address.address, port: address.port }));
+  try {
+    await listenOn(server, config.listen);
+  } catch (error) {
+    installation.close();
+    throw error;
+  }
+  const address = server.address();
+  console.log(JSON.stringify(typeof address === "string" || address === null ? { event: "listening", socket: address } : { event: "listening", host: address.address, port: address.port }));
   const stop = (signal: NodeJS.Signals) => {
     if (draining) return;
     draining = true;

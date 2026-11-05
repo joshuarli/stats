@@ -3,7 +3,7 @@ import { request as httpRequest, type IncomingMessage, type ServerResponse } fro
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { test } from "node:test";
 import { decodeAck } from "../../src/ingest/ack-decode.ts";
@@ -38,7 +38,7 @@ function joined(chunks: readonly Uint8Array[]): Uint8Array {
   return bytes;
 }
 
-async function serve(peer: string | null = null): Promise<Served & { harness: ReturnType<typeof openHarness>; assets: string }> {
+async function serve(peer: string | null = null, socket = false): Promise<Served & { harness: ReturnType<typeof openHarness>; assets: string }> {
   const harness = openHarness();
   const assets = scratchDirectory("node-assets");
   mkdirSync(join(assets, "assets"));
@@ -46,18 +46,19 @@ async function serve(peer: string | null = null): Promise<Served & { harness: Re
   writeFileSync(join(assets, "assets", "app-123.js"), "export {};");
   writeFileSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), "secret");
   symlinkSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), join(assets, "escape.txt"));
-  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), allowedLogins: new Set([ALLOWED, "second@example.com"]) });
+  const listener = statsRequestListener({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), allowedLogins: new Set([ALLOWED, "second@example.com"]), transport: socket ? "unix" : "tcp" });
+  const socketPath = join(scratchDirectory("sock"), "s.sock");
   const server = createServer((incoming: IncomingMessage, outgoing: ServerResponse) => {
     if (peer !== null) Object.defineProperty(incoming.socket, "remoteAddress", { value: peer, configurable: true });
     listener(incoming, outgoing);
   });
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address() as AddressInfo;
+  await new Promise<void>(resolve => (socket ? server.listen(socketPath, resolve) : server.listen(0, "127.0.0.1", resolve)));
+  const port = socket ? 0 : (server.address() as AddressInfo).port;
   return {
     harness,
     assets,
     fetch: (path, init = {}) => new Promise((resolve, reject) => {
-      const outgoing = httpRequest({ host: "127.0.0.1", port, path, method: init.method ?? "GET", headers: init.headers ?? {} }, incoming => {
+      const outgoing = httpRequest({ ...(socket ? { socketPath } : { host: "127.0.0.1", port }), path, method: init.method ?? "GET", headers: init.headers ?? {} }, incoming => {
         const chunks: Uint8Array[] = [];
         incoming.on("data", (chunk: Uint8Array) => chunks.push(chunk));
         incoming.on("end", () => {
@@ -74,6 +75,7 @@ async function serve(peer: string | null = null): Promise<Served & { harness: Re
       harness.close();
       rmSync(join(assets, "..", `${assets.split("/").at(-1)}-secret`), { force: true });
       rmSync(assets, { recursive: true, force: true });
+      rmSync(dirname(socketPath), { recursive: true, force: true });
     }
   };
 }
@@ -146,6 +148,26 @@ await test("cross-site writes to /api/v1 are rejected before any host is created
     assert.equal((await create({ "Content-Type": "application/json", Host: "stats.example.ts.net", "X-Forwarded-Proto": "https", Origin: "https://stats.example.ts.net", "Sec-Fetch-Site": "same-origin" })).status, 201);
     assert.equal((await create({ "Content-Type": "application/json", Host: "stats.example.ts.net", "X-Forwarded-Proto": "https", Origin: "http://stats.example.ts.net" })).status, 403);
     assert.equal((await create({ "Content-Type": "application/json" })).status, 201);
+  } finally {
+    await served.close();
+  }
+});
+
+await test("on a Unix socket an allowed login is served, a missing or unlisted login is rejected, and ingest still needs its bearer", async () => {
+  const served = await serve(null, true);
+  try {
+    const created = await served.fetch("/api/v1/admin/hosts", { method: "POST", headers: { ...login(ALLOWED), "Content-Type": "application/json" }, body: JSON.stringify({ name: "socket-host" }) });
+    assert.equal(created.status, 201);
+    assert.equal((await served.fetch("/api/v1/hosts", { headers: login(ALLOWED) })).status, 200);
+    assert.equal((await served.fetch("/", { headers: login("second@example.com") })).status, 200);
+    for (const headers of [{}, login(""), login("intruder@example.com")]) {
+      const reply = await served.fetch("/api/v1/hosts", { headers });
+      assert.equal(reply.status, 401);
+      assert.equal(errorCode(reply), "unauthorized");
+    }
+    const ingest = await served.fetch(INGEST_PATH, { method: "POST", headers: { ...login(ALLOWED), "Content-Type": INGEST_MEDIA_TYPE }, body: "x" });
+    assert.equal(ingest.status, 401);
+    assert.equal((await served.fetch("/health")).status, 200);
   } finally {
     await served.close();
   }
@@ -230,15 +252,18 @@ await test("the Node configuration fails loudly on a missing or invalid value an
     const valid = { STATS_DATA_DIR: directory, STATS_ALLOWED_LOGINS: `${ALLOWED}, second@example.com` };
     const config = nodeConfig(valid);
     assert.equal(config.databasePath, join(directory, DATABASE_FILE));
-    assert.deepEqual(config.listen, { host: "127.0.0.1", port: 18791 });
+    assert.deepEqual(config.listen, { kind: "tcp", host: "127.0.0.1", port: 18791 });
     assert.deepEqual([...config.allowedLogins], [ALLOWED, "second@example.com"]);
-    assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: "[::1]:0" }).listen, { host: "::1", port: 0 });
+    assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: "[::1]:0" }).listen, { kind: "tcp", host: "::1", port: 0 });
+    assert.deepEqual(nodeConfig({ ...valid, STATS_LISTEN: `unix:${join(directory, "s.sock")}` }).listen, { kind: "unix", path: join(directory, "s.sock") });
     for (const [env, message] of [
       [{ ...valid, STATS_DATA_DIR: undefined }, /STATS_DATA_DIR is required/u],
       [{ ...valid, STATS_DATA_DIR: join(directory, "absent") }, /does not exist/u],
       [{ ...valid, STATS_LISTEN: "localhost:18791" }, /STATS_LISTEN/u],
       [{ ...valid, STATS_LISTEN: "127.0.0.1:70000" }, /STATS_LISTEN/u],
       [{ ...valid, STATS_LISTEN: "127.0.0.1" }, /STATS_LISTEN/u],
+      [{ ...valid, STATS_LISTEN: "unix:relative.sock" }, /absolute/u],
+      [{ ...valid, STATS_LISTEN: `unix:${join(directory, "absent", "s.sock")}` }, /directory .* does not exist/u],
       [{ ...valid, STATS_ALLOWED_LOGINS: undefined }, /STATS_ALLOWED_LOGINS is required/u],
       [{ ...valid, STATS_ALLOWED_LOGINS: `${ALLOWED},,x@example.com` }, /no empty entries/u]
     ] as const) {

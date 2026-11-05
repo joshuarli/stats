@@ -48,7 +48,7 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
   const harness = openHarness(VARS["PROJECTS"]!);
   const assets = scratchDirectory("parity-assets");
   writeFileSync(join(assets, "index.html"), "<!doctype html>");
-  const server = createStatsServer({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), allowedLogins: new Set([LOGIN]) });
+  const server = createStatsServer({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), allowedLogins: new Set([LOGIN]), transport: "tcp" });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const workerOrigin = (await mf.ready).origin;

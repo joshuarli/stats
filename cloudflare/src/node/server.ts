@@ -5,12 +5,13 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliCompress, createGzip } from "node:zlib";
 import { handleStatsRequest, type StatsTarget } from "../core/http.ts";
 import type { AssetReader } from "./assets.ts";
-import { tailscaleDecision } from "./tailscale.ts";
+import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: AssetReader;
   readonly allowedLogins: ReadonlySet<string>;
+  readonly transport: "tcp" | "unix";
 }
 
 const FALLBACK_ORIGIN = "http://stats.internal";
@@ -66,7 +67,7 @@ function failed(outgoing: ServerResponse, error: unknown): void {
 export function statsRequestListener(options: NodeStatsOptions): (incoming: IncomingMessage, outgoing: ServerResponse) => void {
   const shared = { installation: options.installation, assets: options.assets, observe: null };
   return (incoming, outgoing) => {
-    const peer = incoming.socket.remoteAddress;
+    const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = { ...shared, authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers, options.allowedLogins)) };
     void (async () => {
       let request: Request;
