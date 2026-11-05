@@ -30,13 +30,40 @@
   - threadripper (OpenRC, Docker cgroupfs) runs the container with `--cgroup-parent=/stats.slice/stats-node.slice` (owner-approved, 2026-11-05), so the unit `stats-node.slice` names a stable cgroup whose counters include the container. A trial run there counted CPU in that cgroup.
 - **Red:** none. **Parked:** none.
 - **Rolled out on threadripper (owner-approved, 18:51Z):** `make node-deploy` of `22beebb` marked `v-22beebbaa250` (deployment `8d9c23ac`, 18:46:51Z) and runs the container under `/stats.slice/stats-node.slice`. `stats-node-agent` runs its own binary, `/usr/local/bin/stats-node-agent` (2,845,520 bytes, built from `22beebb`), with `services: [{ name: "stats-node", unit: "stats-node.slice" }]`. `/usr/local/bin/stats`, used by the Cloudflare-reporting `stats` service, is unchanged. The Node instance stores the group: the newest sample carried `stats-node` with `cpuUsec`, `memoryCurrent` (39.0 MB), `memoryPeak`, and the io counters. A stale binary first installed from the main checkout's `agent/dist` rejected the `services` field and crashed the agent, so host data has a gap from about 18:48Z to 18:51Z. Marker `8d9c23ac` has no cgroup data in its before window, so the first cgroup-sourced comparison is the next marked deploy.
-- **Next:** X. Carry-overs:
+- **Accepted:** X (master `9ceabb0`):
+  - Dead code: the one unused new export, `levelMetricNames`, is deleted (`4311b81`). Every other new export has a caller.
+  - Review of `e58e988..dfcdc35`: no P1. The P2 was that a redeploy of an already-marked commit (a rollback) recorded nothing, so the newer marker stayed latest. It is fixed in `b1ec7ac`: `make node-deploy` sends `d-<commit>-<UTC time>`, live as `d-9ceabb033c87-20261105T185833Z`. The P3s are STA-58 to STA-60.
+  - The report is in **Result**.
+- **Closed** 2026-11-05. Carry-overs:
   - The Cloudflare Worker runs S3 (`8234b238`), which rejects a frame with bit 12 set. Deploy the Worker before any host that reports to Cloudflare configures `services`.
   - Deploy tokens have no rotate or revoke yet.
   - Host network and disk throughput, and cgroup levels, are averaged across a marker's hosts, not summed; level values are unrounded.
   - `io.stat` is summed over every device it lists; stacked devices (dm, md) may count one I/O twice. `memoryPeak` is stored but not compared.
   - Host data for `stats-node` (owner, 2026-11-05): a second agent, the OpenRC service `stats-node-agent` (`/etc/init.d/stats-node-agent`, user `stats`, `/etc/stats-node-agent/agent.json`, log `/var/log/stats-node-agent.log`, in the default runlevel), reports host `threadripper` to `https://threadripper.tailcf741.ts.net:18791`, a `tailscale serve --https` entry on the Node socket. `/etc/hosts` maps that name to `100.98.145.91`, because the host's local resolver does not forward `*.ts.net`. The container has no network, so probes stay unavailable.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
+
+## Result
+
+**What runs where.**
+- **Node, threadripper:**
+  - Container `stats-node` (master `9ceabb0`) serves services, markers, comparisons, and the Services pages, and probes services that have a `healthUrl`.
+  - It runs under `/stats.slice/stats-node.slice`, so the cgroup and its counters persist across deploys.
+  - `stats-node-agent` (`/usr/local/bin/stats-node-agent`, an OpenRC service) reports host `threadripper` and the `stats-node` service's cgroup.
+- **Cloudflare:**
+  - The `stats` Worker (version `8234b238`) has S1 to S3: routes and comparison, but no probes and no S4 decoder.
+  - No service is defined there.
+
+**Adding a service and marking a deploy** (`docs/operations.md`, Services and deploy markers):
+1. `POST /api/v1/admin/services` with `{ name, hostIds, healthUrl?, unit? }` returns the deploy token once. Save it, mode 0600, under `.work/credentials/`.
+2. After each deploy, run `statsctl deploy mark --service NAME --version V --marker-id ID --token-file FILE`. Use one id per deploy: the default `v-<version>` makes repeating a version a no-op. `make node-deploy` does this itself.
+3. For cgroup metrics, add `services: [{ name, unit }]` to the agent config on each host. The `unit` is a systemd service, scope, or slice (`README.md`). Deploy the target's decoder first: the Cloudflare Worker still rejects this group.
+
+**What a comparison can claim.** `GET .../comparison?window=1h|6h|24h` and `statsctl verify --service` report how resource levels changed between the windows before and after a marker:
+- CPU, memory, network, disk, and pressure for the marker's hosts;
+- the service's own CPU, memory, and I/O when its cgroup has data in both windows;
+- probe latency and failure share when it has a health URL.
+
+They cannot show fewer resources for the same work, because a service reports no work counts. Host metrics include every process on the host, so S3's live verdict (`host.cpu` +23.2% on shared threadripper) is noise. A marker within the window of another is gated as an overlap. The first cgroup-sourced comparison on threadripper is the first marker whose before window starts after 18:51Z and does not overlap another marker. That means a marked deploy after 20:00Z, read 75 minutes later.
 
 ## Charter
 
