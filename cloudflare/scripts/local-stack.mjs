@@ -20,10 +20,6 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function reportOutbound(stack) {
-  if (stack.outbound.requests.length > 0) console.error(`local-stack: outbound requests answered 503: ${[...new Set(stack.outbound.requests)].join(", ")}`);
-}
-
 async function run(command) {
   if (command.length === 0) usage("run needs a command after --");
   const stack = await startStack({ nowMs: null });
@@ -39,7 +35,6 @@ async function run(command) {
       child.once("exit", (status, signal) => resolve(status ?? (signal === null ? 1 : 128)));
     });
   } finally {
-    reportOutbound(stack);
     await stack.dispose();
   }
   return code;

@@ -4,7 +4,8 @@ import { Miniflare } from "miniflare";
 import { accessToken } from "../test/access-token.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, readBuiltWorker, readTestVars, rejectAndRecord, RUN_ALARM_METHOD, type BuiltWorker, type Collector, type RecordingOutbound } from "./topology.ts";
+import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, type BuiltWorker, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 export const ACCESS_HEADER = "cf-access-jwt-assertion";
@@ -21,6 +22,7 @@ export interface StackStart {
   readonly collector?: Collector;
   readonly port?: number;
   readonly localExplorer?: true;
+  readonly statsOutput?: string;
 }
 
 export interface Stack {
@@ -28,7 +30,7 @@ export interface Stack {
   readonly persist: string;
   readonly stats: BuiltWorker;
   readonly analytics: OfflineAnalytics;
-  readonly outbound: RecordingOutbound;
+  readonly outbound: OfflineOutbound;
   readonly mf: Miniflare;
   collect(model: Scenario): Promise<ScheduledOutcome>;
   fetch(path: string, init?: DispatchInit): Promise<DispatchResponse>;
@@ -58,7 +60,7 @@ interface Shared {
   readonly stats: BuiltWorker;
   readonly observe: BuiltWorker;
   readonly analytics: OfflineAnalytics;
-  readonly outbound: RecordingOutbound;
+  readonly outbound: OfflineOutbound;
   readonly ephemeral: boolean;
 }
 
@@ -84,7 +86,13 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     port: start.port ?? 0,
     ...(start.localExplorer === true ? { unsafeLocalExplorer: true } : {})
   });
-  const origin = (await mf.ready).origin.replace(/\/$/u, "");
+  let origin: string;
+  try {
+    origin = (await mf.ready).origin.replace(/\/$/u, "");
+  } catch (error) {
+    await mf.dispose();
+    throw error;
+  }
   const worker = await mf.getWorker(shared.stats.name);
   let stopped = false;
   const stop = async (): Promise<void> => {
@@ -101,6 +109,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     mf,
     collect: async model => {
       shared.analytics.use(model);
+      shared.outbound.scenario = `collection at ${new Date(model.nowMs).toISOString()}`;
       return (await worker.scheduled({ cron: shared.stats.crons[0]!, scheduledTime: new Date(model.nowMs) })).outcome;
     },
     fetch: async (path, init = {}) => mf.dispatchFetch(`${origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers as HeadersInit | undefined)), [ACCESS_HEADER]: await accessToken() } }),
@@ -119,15 +128,18 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     dispose: async () => {
       await stop();
       if (shared.ephemeral) rmSync(start.persist, { recursive: true, force: true });
+      const unexpected = shared.outbound.unexpected();
+      if (unexpected.length > 0) throw new Error(describeUnexpected(unexpected));
     }
   };
 }
 
 export async function startStack(start: StackStart): Promise<Stack> {
-  const stats = readBuiltWorker(STATS_OUTPUT);
+  const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
   const observe = readBuiltWorker(OBSERVE_OUTPUT);
   mkdirSync(SCRATCH, { recursive: true });
   const persist = start.persist ?? mkdtempSync(join(SCRATCH, "stack-"));
   mkdirSync(persist, { recursive: true });
-  return launch({ stats, observe, analytics: offlineAnalytics(stats), outbound: rejectAndRecord(), ephemeral: start.persist === undefined }, { ...start, persist });
+  const outbound = offlineOutbound(probeUrls(start.projectsJson ?? productionProjects(stats)));
+  return launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, ephemeral: start.persist === undefined }, { ...start, persist });
 }

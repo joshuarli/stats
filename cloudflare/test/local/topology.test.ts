@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { offlineOutbound } from "../../local/outbound.ts";
 import { Miniflare } from "miniflare";
 import { accessToken } from "../access-token.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, parseBuiltWorker, readBuiltWorker, readTestVars, rejectAndRecord, workers, type BuiltWorker, type StackOptions } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, parseBuiltWorker, readBuiltWorker, readTestVars, workers, type BuiltWorker, type StackOptions } from "../../local/topology.ts";
 
 const STATS_CONFIG = readFileSync(join(STATS_OUTPUT, "worker.config.json"), "utf8");
 const STATS = readBuiltWorker(STATS_OUTPUT);
@@ -18,7 +19,7 @@ function options(persist: string): StackOptions {
     secrets: { ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!, ACCESS_AUD: ACCESS_AUD!, ACCESS_JWKS_JSON: ACCESS_JWKS_JSON! },
     analytics: { service: "analytics-provider", entrypoint: "Analytics" },
     collector: { kind: "attached" },
-    outbound: rejectAndRecord().handler,
+    outbound: offlineOutbound([]).handler,
     persist,
     alarms: "platform"
   };

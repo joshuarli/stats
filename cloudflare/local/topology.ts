@@ -123,22 +123,6 @@ export function readTestVars(): Readonly<Record<string, string>> {
 
 export type Outbound = (request: MiniflareRequest) => MiniflareResponse | Promise<MiniflareResponse>;
 
-export interface RecordingOutbound {
-  readonly handler: Outbound;
-  readonly requests: readonly string[];
-}
-
-export function rejectAndRecord(): RecordingOutbound {
-  const requests: string[] = [];
-  return {
-    requests,
-    handler: request => {
-      requests.push(request.url);
-      return new Response(`offline: ${request.url} is not reachable from the local stack`, { status: 503 }) as unknown as MiniflareResponse;
-    }
-  };
-}
-
 export type Collector =
   | { readonly kind: "attached" }
   | { readonly kind: "replaced"; readonly script: string }
@@ -247,7 +231,7 @@ function statsWorker(stats: BuiltWorker, observe: BuiltWorker, options: StackOpt
   }
   return {
     name: stats.name,
-    ...(options.alarms === "rpc" ? { modules: alarmModules(stats) } : { modules: true, scriptPath: bundlePath(stats) }),
+    ...(options.alarms === "rpc" ? { modules: alarmModules(stats), modulesRoot: join(stats.output, "bundle") } : { modules: true, scriptPath: bundlePath(stats) }),
     ...compat(stats),
     bindings,
     durableObjects: durableObjects(stats, stats.name),
