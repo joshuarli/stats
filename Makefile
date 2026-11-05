@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local agent-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local agent-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper smoke-deployed release check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -93,7 +93,9 @@ observe-deploy: auth-ready node-ready
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
 
-worker-deploy: auth-ready work-ready worker-bundle observe-deploy
+worker-deploy: auth-ready work-ready worker-bundle observe-deploy stats-deploy
+
+stats-deploy: auth-ready work-ready worker-bundle
 	@set -eu; \
 	log='$(CURDIR)/.work/tmp/stats-deploy.log'; \
 	status=0; (cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')) > "$$log" 2>&1 || status=$$?; \
