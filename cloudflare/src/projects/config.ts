@@ -8,6 +8,9 @@ import {
 
 export const MAX_PROBES_PER_PROJECT = 8;
 
+export const WORKER_BILLINGS = ["requests-and-cpu", "cpu-only"] as const;
+export type WorkerBilling = (typeof WORKER_BILLINGS)[number];
+
 export interface ProbeConfig {
   readonly name: string;
   readonly url: string;
@@ -17,6 +20,7 @@ export interface ProjectConfig {
   readonly id: string;
   readonly name: string;
   readonly worker: string;
+  readonly workerBilling: WorkerBilling;
   readonly buckets: readonly string[];
   readonly durableObjectNamespaces: readonly string[];
   readonly d1Databases: readonly string[];
@@ -33,7 +37,7 @@ const WORKER_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const DISPLAY_NAME_MAX = 64;
 
-const PROJECT_KEYS = ["id", "name", "worker", "buckets", "durableObjectNamespaces", "d1Databases", "probes"];
+const PROJECT_KEYS = ["id", "name", "worker", "workerBilling", "buckets", "durableObjectNamespaces", "d1Databases", "probes"];
 const PROBE_KEYS = ["name", "url"];
 
 export function parseProjects(text: string): ProjectConfig[] {
@@ -80,6 +84,7 @@ function parseProject(entry: unknown, path: string): ProjectConfig {
     id: matching(record["id"], PROJECT_ID_PATTERN, `${path}.id`),
     name: displayName(record["name"], `${path}.name`),
     worker: matching(record["worker"], WORKER_NAME_PATTERN, `${path}.worker`),
+    workerBilling: workerBilling(record["workerBilling"], `${path}.workerBilling`),
     buckets: unique(
       buckets.map((bucket, index) => matching(bucket, BUCKET_NAME_PATTERN, `${path}.buckets[${index}]`)),
       `${path}.buckets`,
@@ -141,6 +146,14 @@ function matching(value: unknown, pattern: RegExp, path: string): string {
     throw new ProjectConfigError(`${path}: does not match ${pattern.source}`);
   }
   return value;
+}
+
+function workerBilling(value: unknown, path: string): WorkerBilling {
+  const found = WORKER_BILLINGS.find(billing => billing === value);
+  if (found === undefined) {
+    throw new ProjectConfigError(`${path}: expected one of ${WORKER_BILLINGS.join(", ")}`);
+  }
+  return found;
 }
 
 function displayName(value: unknown, path: string): string {

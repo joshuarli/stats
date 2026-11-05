@@ -57,7 +57,7 @@ const DATABASES = ["9870c4da-3758-4f0c-ab6d-2372eb34009b"];
 
 function projects(collector: keyof typeof projectCollector, withProbes: boolean, buckets: readonly string[], durableObjectNamespaces: readonly string[], d1Databases: readonly string[]) {
   return [{
-    id: "stuff", name: "stuff", worker: "stuff", buckets, durableObjectNamespaces, d1Databases, probes: withProbes ? probeTargets : [],
+    id: "stuff", name: "stuff", worker: "stuff", workerBilling: "requests-and-cpu", buckets, durableObjectNamespaces, d1Databases, probes: withProbes ? probeTargets : [],
     collector: projectCollector[collector]
   }];
 }

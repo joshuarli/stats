@@ -10,6 +10,7 @@ const PROJECTS: readonly ProjectConfig[] = [
     id: "stuff",
     name: "stuff",
     worker: "stuff",
+    workerBilling: "requests-and-cpu",
     buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"],
     durableObjectNamespaces: [],
     d1Databases: [],
@@ -24,6 +25,7 @@ const PROJECTS: readonly ProjectConfig[] = [
     id: "usr-memories",
     name: "usr-memories",
     worker: "usr-memories",
+    workerBilling: "requests-and-cpu",
     buckets: ["usr-memories"],
     durableObjectNamespaces: [],
     d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"],
@@ -33,10 +35,21 @@ const PROJECTS: readonly ProjectConfig[] = [
     id: "stats",
     name: "stats",
     worker: WORKER_NAME,
+    workerBilling: "requests-and-cpu",
     buckets: [],
     durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"],
     d1Databases: [],
     probes: domain === undefined ? [] : [{ name: "health", url: `https://${domain}/health` }]
+  },
+  {
+    id: "stats-observe",
+    name: "stats-observe",
+    worker: "stats-observe",
+    workerBilling: "cpu-only",
+    buckets: [],
+    durableObjectNamespaces: ["ac72b89f443a4c8783b59755101cd1e5"],
+    d1Databases: [],
+    probes: []
   }
 ];
 const PROJECTS_JSON = JSON.stringify(PROJECTS);
