@@ -115,6 +115,18 @@ await test("a workload-class share moving more than 20 points blocks a classed o
   assert.ok(shifted.metrics.every(metric => metric.verdict === "confounded"));
 });
 
+await test("a history comparison is confounded when the 304 share moves more than 20 points, and not for 20", () => {
+  const comparison = global(false);
+  const spec = scoped(comparison, { operation: "host.history", workloadClass: "1h:cpu" });
+  const history = (side: "before" | "after", version: string, hit: number, rebuilt: number) => opRows(side, version, { work: { cacheHit304: hit, cacheRebuilt: rebuilt } }, "host.history", "1h:cpu");
+  const input = (before: OperationWindowRow[], after: OperationWindowRow[]): OperationComparisonInput => ({ spec, before, after, coverage: "reconciled", globalReasonCodes: [], deferredObjects: false, floors: FLOORS });
+  const shifted = compareOperation(input(history("before", id(101), 10, 10), history("after", id(102), 16, 4)));
+  assert.deepEqual(shifted.blockedBy, ["cache-mix"]);
+  assert.ok(shifted.metrics.every(metric => metric.verdict === "confounded"));
+  assert.deepEqual(compareOperation(input(history("before", id(101), 10, 10), history("after", id(102), 14, 6))).blockedBy, []);
+  assert.deepEqual(compareOperation(input(history("before", id(101), 0, 0), history("after", id(102), 16, 4))).blockedBy, []);
+});
+
 await test("partial or unknown coverage gives insufficient-data, and blockers still win", () => {
   const comparison = global(false);
   for (const coverage of ["partial", "unknown"] as const) {

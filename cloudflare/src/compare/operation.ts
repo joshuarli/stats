@@ -17,7 +17,7 @@ export type ScopedSpec = ComparisonSpec & { readonly scope: ComparisonScope };
 
 type NonBlocking = "route-mix" | "invocations-missing" | "invocations-floor";
 type Blocking = Exclude<ReasonCode, NonBlocking>;
-export type OperationReason = "deferred" | "version-mismatch" | "work-drift" | "share-drift" | Blocking;
+export type OperationReason = "deferred" | "version-mismatch" | "work-drift" | "share-drift" | "cache-mix" | Blocking;
 const NON_BLOCKING: readonly NonBlocking[] = ["route-mix", "invocations-missing", "invocations-floor"];
 const isBlocking = (code: ReasonCode): code is Blocking => !(NON_BLOCKING as readonly ReasonCode[]).includes(code);
 
@@ -72,6 +72,8 @@ interface SideTotals {
   readonly persisted: number;
   readonly duplicate: number;
   readonly classShare: number;
+  readonly cacheHit304: number;
+  readonly cacheRebuilt: number;
   readonly foreignVersion: boolean;
   readonly numerators: Readonly<Record<OperationMetric, number>>;
 }
@@ -94,6 +96,7 @@ function sideTotals(rows: readonly OperationWindowRow[], scope: ComparisonScope,
     operations, workUnits, failed: sum(row => row.failed),
     received: sum(row => row.work.received), persisted: sum(row => row.work.persisted),
     duplicate: sum(row => row.work.duplicate),
+    cacheHit304: sum(row => row.work.cacheHit304), cacheRebuilt: sum(row => row.work.cacheRebuilt),
     classShare: all === 0 ? 0 : operations / all,
     foreignVersion: scoped.some(row => !side.versionIds.includes(row.version)),
     numerators: { cpuMsPerUnit: sum(row => row.cpuMsSum), wallMsPerUnit: sum(row => row.wallMsSum), rowsReadPerUnit: sum(row => row.rowsRead), rowsWrittenPerUnit: sum(row => row.rowsWritten), statementsPerUnit: sum(row => row.statements) }
@@ -127,6 +130,15 @@ export function ingestPersistenceGuardrail(before: IngestSide, after: IngestSide
   return { name: "ingest-persistence", status: left - right > STORED_SHARE_FALL_POINTS ? "regressed" : "pass", before: left, after: right };
 }
 
+function isHistory(operation: ScopedSpec["scope"]["operation"]): boolean {
+  return operation === "host.history" || operation === "project.history";
+}
+
+function hitShare(totals: SideTotals): number | null {
+  const answered = totals.cacheHit304 + totals.cacheRebuilt;
+  return answered === 0 ? null : totals.cacheHit304 / answered;
+}
+
 function drifted(before: number, after: number): boolean {
   return before > 0 && after > 0 && (after / before > OPERATION_DRIFT_FACTOR || after / before < 1 / OPERATION_DRIFT_FACTOR);
 }
@@ -141,6 +153,10 @@ export function compareOperation(input: OperationComparisonInput): OperationComp
   if (before.foreignVersion || after.foreignVersion) blockedBy.push("version-mismatch");
   if (before.operations >= OPERATION_MIN_COUNT && after.operations >= OPERATION_MIN_COUNT && drifted(before.workUnits / before.operations, after.workUnits / after.operations)) blockedBy.push("work-drift");
   if (Math.abs(after.classShare - before.classShare) > OPERATION_SHARE_DRIFT) blockedBy.push("share-drift");
+  if (isHistory(spec.scope.operation)) {
+    const left = hitShare(before), right = hitShare(after);
+    if (left !== null && right !== null && Math.abs(right - left) > OPERATION_SHARE_DRIFT) blockedBy.push("cache-mix");
+  }
   const blocked = blockedBy.length > 0;
   const metrics = OPERATION_METRICS.map((metric): MetricComparison => {
     const left = perUnit(before, metric), right = perUnit(after, metric);

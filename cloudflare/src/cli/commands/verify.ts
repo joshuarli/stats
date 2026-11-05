@@ -138,7 +138,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "Applies a pre-registered policy to the exact before and after windows of one deployment and prints a verdict: improved, unchanged, confounded, insufficient-data, pending, or regressed.",
       "Read-only. It never runs `check ingest`; run that yourself inside the deployment warm-up and pass its saved --json output with --safety-check-file. A missing, failed, or pre-deploy check never passes.",
       "",
-      "Verdict precedence: regressed (any guardrail regressed, or the target metric moved the wrong way materially) > confounded (overlap, split or deferred rollout, workload drift, or a global comparison reason) > insufficient-data (a side lacks operations, coverage is not reconciled, or any guardrail has no evidence) > pending (the after window has not settled) > improved or unchanged.",
+      "Verdict precedence: regressed (any guardrail regressed, or the target metric moved the wrong way materially) > confounded (overlap, split or deferred rollout, workload drift, a history 304-share move above 20 points (cache-mix), or a global comparison reason) > insufficient-data (a side lacks operations, coverage is not reconciled, or any guardrail has no evidence) > pending (the after window has not settled) > improved or unchanged.",
       "An insufficient guardrail is never a pass. Missing data is never zero. Exit codes: 0 improved, 5 pending or insufficient-data, 6 unchanged or confounded, 7 regressed.",
       "",
       "--deployment latest resolves once to an immutable id, pinned in .work/statsctl/verify/<deployment-id>.json together with the policy hash, the exact comparison spec, the safety check, poll and request counts, and the evidence behind the last verdict.",
