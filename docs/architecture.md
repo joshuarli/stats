@@ -161,7 +161,7 @@ It names an operation id (`host.ingest`, `host.history`, `project.history`,
 was the synthetic check, the invocation's SQLite row account, and the work that
 operation did: persisted, duplicate and rejected samples and input bytes for
 ingest; points, cells, output bytes and cache result for history (with a
-`workloadClass` such as `1m:summary`); runs, metric rows, hour rollups and
+`workloadClass` such as `1m:summary`); successful runs, metric rows, hour rollups and
 upstream queries for the collector; expired rows and backlog for retention.
 Retention's `expired` is the sum of `rowsWritten` deltas of its delete
 statements, so it includes index rows, and `backlog` counts categories; neither

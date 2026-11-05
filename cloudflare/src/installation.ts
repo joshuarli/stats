@@ -549,7 +549,7 @@ export class Installation extends DurableObject<Env> {
     let metricRowsWritten = 0;
     let metricRows = 0;
     let hourRollups = 0;
-    operation.describe(() => ({ operation: "collector.record", synthetic: false, work: { runs: 1, metricRows, hourRollups, upstreamQueries: run.upstreamQueries } }));
+    operation.describe(() => ({ operation: "collector.record", synthetic: false, work: { runs: run.ok ? 1 : 0, metricRows, hourRollups, upstreamQueries: run.upstreamQueries } }));
     this.ctx.storage.transactionSync(() => {
       let written = 0;
       let samples = 0;

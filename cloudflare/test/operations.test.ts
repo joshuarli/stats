@@ -208,6 +208,12 @@ describe("background operations", () => {
     expect(repeat).toMatchObject({ work: { runs: 1, metricRows: 0, hourRollups: 0, upstreamQueries: 3 } });
   });
 
+  it("counts a failed collector run as zero runs and still publishes its rows", async () => {
+    const failed = only((await invoke(async instance => instance.recordCollectorRun({ ...run({ points: [] }), ok: false, detail: "upstream refused" }))).published);
+    expect(failed).toMatchObject({ operation: "collector.record", work: { runs: 0, metricRows: 0, hourRollups: 0, upstreamQueries: 3 } });
+    expect(failed.rows.written).toBeGreaterThan(0);
+  });
+
   it("records the expiry sweep with the rows it removed", async () => {
     const host = await createHost("retained");
     await ingest(host.token, frameFor("linux-normal", host.hostId));
