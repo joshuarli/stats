@@ -8,6 +8,7 @@ import { decodeSummary } from "../../client/history.ts";
 import { MINUTE_MS } from "../../limits.ts";
 import { authError, CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { defineCommand, type CommandContext } from "../registry.ts";
+import { resolveInvocationPath } from "../verify/files.ts";
 import { table } from "../text.ts";
 
 export const INGEST_MEDIA_TYPE = "application/vnd.stats.ingest.v2";
@@ -40,7 +41,8 @@ interface HostCredential {
   readonly token: string;
 }
 
-export function readCredentialFile(path: string): HostCredential {
+export function readCredentialFile(file: string): HostCredential {
+  const path = resolveInvocationPath(file);
   let descriptor: number;
   try {
     descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);

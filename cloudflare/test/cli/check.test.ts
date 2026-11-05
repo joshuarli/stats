@@ -109,3 +109,16 @@ await test("check ingest against the built Worker", async t => {
     await stop();
   }
 });
+
+await test("a relative credential path resolves from the directory statsctl was invoked in, as verify's files do", async () => {
+  mkdirSync(SCRATCH_ROOT, { recursive: true });
+  const invoked = mkdtempSync(join(SCRATCH_ROOT, "check-relative-"));
+  try {
+    writeFileSync(join(invoked, "shared.json"), JSON.stringify({ hostId: "h_0", token: "t" }));
+    chmodSync(join(invoked, "shared.json"), 0o644);
+    const run = await runCli(["check", "ingest", "--credential-file", "shared.json", "--origin", "http://127.0.0.1:9", "--json"], { ...accessEnv(), INIT_CWD: invoked });
+    assert.equal((JSON.parse(run.stdout) as { error: { code: string } }).error.code, "credential_file_mode", run.stdout + run.stderr);
+  } finally {
+    rmSync(invoked, { recursive: true, force: true });
+  }
+});
