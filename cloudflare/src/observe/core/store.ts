@@ -1,5 +1,5 @@
-import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS } from "./limits.ts";
-import type { InvocationKind, Preparation, PreparedError, PreparedInvocation, RolloutPreparation, Stage, VersionLabel } from "./model.ts";
+import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
+import { OTHER_ROUTE, OUTCOME_CLASSES, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 import { OPERATION_IDS, type OperationSummary } from "../producer/channel.ts";
@@ -371,6 +371,19 @@ const STATEMENTS = [
     statements INTEGER NOT NULL,
     ${OPERATION_WORK_COLUMNS.map(column => `${column} INTEGER NOT NULL DEFAULT 0`).join(",\n    ")},
     PRIMARY KEY (bucket_at, version, operation, workload_class, synthetic)
+  ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_outcomes (
+    bucket_at INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    stage TEXT NOT NULL CHECK (stage IN ('worker', 'object', 'unknown')),
+    outcome TEXT NOT NULL CHECK (outcome IN (${OUTCOME_CLASSES.map(outcome => `'${outcome}'`).join(", ")})),
+    route TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    lag_count INTEGER NOT NULL,
+    lag_ms_max INTEGER NOT NULL,
+    lag_ms_sum INTEGER NOT NULL,
+    filter_revision INTEGER NOT NULL,
+    PRIMARY KEY (bucket_at, version, stage, outcome, route)
   ) WITHOUT ROWID`
 ];
 
@@ -439,7 +452,7 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
   return differing.length === 0 ? "errors" : differing.sort().join(", ");
 }
 
-export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number): IngestResult {
+export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = []): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
   const operations = new Map<string, OperationBucket>();
@@ -472,10 +485,57 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
       result.accepted++;
     }
     recordOperations(db, nowMs, operations);
+    recordOutcomes(db, nowMs, outcomes);
     recordHealth(db, nowMs, events);
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
   return result;
+}
+
+interface OutcomeBucket {
+  readonly event: OutcomeEvent;
+  count: number;
+  lagCount: number;
+  lagMax: number;
+  lagSum: number;
+}
+
+export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly OutcomeEvent[]): void {
+  if (events.length === 0) return;
+  const bucketAt = nowMs - (nowMs % OUTCOME_BUCKET_MS);
+  const routes = new Map<string, Set<string>>();
+  const buckets = new Map<string, OutcomeBucket>();
+  for (const event of events) {
+    const group = [event.version, event.stage, event.outcome].join("\u0000");
+    let known = routes.get(group);
+    if (known === undefined) {
+      known = new Set(db.rows<{ route: string }>("SELECT route FROM observe_outcomes WHERE bucket_at = ? AND version = ? AND stage = ? AND outcome = ?", bucketAt, event.version, event.stage, event.outcome).map(row => row.route));
+      routes.set(group, known);
+    }
+    const route = known.has(event.route) || known.size < MAX_OUTCOME_ROUTES_PER_CLASS ? event.route : OTHER_ROUTE;
+    known.add(route);
+    const key = `${group}\u0000${route}`;
+    let bucket = buckets.get(key);
+    if (bucket === undefined) {
+      bucket = { event: { ...event, route }, count: 0, lagCount: 0, lagMax: 0, lagSum: 0 };
+      buckets.set(key, bucket);
+    }
+    bucket.count++;
+    if (event.eventAtMs !== null) {
+      const lag = Math.max(0, nowMs - event.eventAtMs);
+      bucket.lagCount++;
+      bucket.lagMax = Math.max(bucket.lagMax, lag);
+      bucket.lagSum += lag;
+    }
+  }
+  for (const { event, count, lagCount, lagMax, lagSum } of buckets.values()) {
+    db.run(
+      `INSERT INTO observe_outcomes (bucket_at, version, stage, outcome, route, count, lag_count, lag_ms_max, lag_ms_sum, filter_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (bucket_at, version, stage, outcome, route) DO UPDATE SET count = count + excluded.count, lag_count = lag_count + excluded.lag_count,
+         lag_ms_max = MAX(lag_ms_max, excluded.lag_ms_max), lag_ms_sum = lag_ms_sum + excluded.lag_ms_sum, filter_revision = excluded.filter_revision`,
+      bucketAt, event.version, event.stage, event.outcome, event.route, count, lagCount, lagMax, lagSum, OBSERVE_FILTER_REVISION
+    );
+  }
 }
 
 interface OperationBucket {
@@ -643,6 +703,11 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     if (operationExcess > 0) {
       db.run("DELETE FROM observe_operations WHERE (bucket_at, version, operation, workload_class, synthetic) IN (SELECT bucket_at, version, operation, workload_class, synthetic FROM observe_operations ORDER BY bucket_at LIMIT ?)", operationExcess);
     }
+    db.run("DELETE FROM observe_outcomes WHERE bucket_at <= ?", cutoff - OUTCOME_BUCKET_MS);
+    const outcomeExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_outcomes") - MAX_RETAINED_OUTCOME_ROWS, CLEANUP_BATCH);
+    if (outcomeExcess > 0) {
+      db.run("DELETE FROM observe_outcomes WHERE (bucket_at, version, stage, outcome, route) IN (SELECT bucket_at, version, stage, outcome, route FROM observe_outcomes ORDER BY bucket_at LIMIT ?)", outcomeExcess);
+    }
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -653,7 +718,8 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     recordHealth(db, nowMs, [
       ...Array.from({ length: evicted.invocations }, (): HealthEvent => ({ counter: "evicted", reason: "invocations", example: null })),
       ...Array.from({ length: evicted.occurrences }, (): HealthEvent => ({ counter: "evicted", reason: "occurrences", example: null })),
-      ...Array.from({ length: Math.max(operationExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "operations", example: null }))
+      ...Array.from({ length: Math.max(operationExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "operations", example: null })),
+      ...Array.from({ length: Math.max(outcomeExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "outcomes", example: null }))
     ]);
     recordWriteCost(db, nowMs, "cleanup", Math.min(expiredInvocations, CLEANUP_BATCH) + evicted.invocations, db.rowsWritten() - writtenBefore);
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);

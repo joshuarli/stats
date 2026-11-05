@@ -1,6 +1,7 @@
 import { OBSERVE_CHANNEL, OPERATION_IDS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
-import type { InvocationKind, ObservedError, ObservedInvocation, Stage, TraceContext } from "../core/model.ts";
+import { OTHER_ROUTE, prepareInvocation, VERSION, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
+import { MAX_LABEL_BYTES } from "../core/limits.ts";
 
 export interface TailItem {
   readonly event: unknown;
@@ -19,22 +20,28 @@ export interface TailItem {
 
 export type Reduction =
   | { readonly kind: "observed"; readonly invocation: ObservedInvocation }
-  | { readonly kind: "excluded" }
+  | { readonly kind: "excluded"; readonly outcome: ExcludedOutcome; readonly stage: Stage; readonly route: string }
   | { readonly kind: "rejected" };
 
+export type ExcludedOutcome = "excluded-status:401" | "excluded-status:403" | "excluded-status:404" | "excluded-route";
+
+const POLICY: MessagePolicy = { safeNames: new Set() };
 const EXCLUDED_STATUSES = new Set([401, 403, 404]);
 const METHOD = /^[A-Z]{3,7}$/u;
 const RPC_METHOD = /^[A-Za-z][A-Za-z0-9]{0,63}$/u;
 const CRON = /^[0-9*/,\- ]{1,64}$/u;
-const EXCLUDED: Reduction = { kind: "excluded" };
 const REJECTED: Reduction = { kind: "rejected" };
 
+export function stageOf(item: Pick<TailItem, "executionModel">): Stage | null {
+  return item.executionModel === "stateless" ? "worker" : item.executionModel === "durableObject" ? "object" : null;
+}
+
 export function reduceTailItem(item: TailItem, policy: ServicePolicy): Reduction {
-  const stage: Stage | null = item.executionModel === "stateless" ? "worker" : item.executionModel === "durableObject" ? "object" : null;
+  const stage = stageOf(item);
   if (stage === null || item.eventTimestamp === null) return REJECTED;
   const entry = describeEvent(item.event, stage, item.entrypoint ?? "Object", policy);
   if (entry === null) return REJECTED;
-  if (entry === "excluded") return EXCLUDED;
+  if ("excluded" in entry) return { kind: "excluded", outcome: entry.excluded, stage, route: entry.route };
   const channel = readChannel(item.diagnosticsChannelEvents, policy.operations);
   if (channel === null) return REJECTED;
   const uncaught: ObservedError[] = item.exceptions.map(exception => ({ source: "uncaught", operation: null, name: exception.name, message: exception.message, stack: exception.stack ?? null }));
@@ -58,13 +65,44 @@ export function reduceTailItem(item: TailItem, policy: ServicePolicy): Reduction
   };
 }
 
+export function outcomeOf(item: TailItem, outcome: OutcomeClass, route: string, stage = stageOf(item)): OutcomeEvent {
+  const version = item.scriptVersion?.id;
+  return { version: version !== undefined && VERSION.test(version) ? version : "", stage: stage ?? "unknown", outcome, route, eventAtMs: item.eventTimestamp };
+}
+
+export async function prepareTailItems(items: readonly TailItem[], policy: ServicePolicy): Promise<{ preparations: Preparation[]; outcomes: OutcomeEvent[] }> {
+  const preparations: Preparation[] = [];
+  const outcomes: OutcomeEvent[] = [];
+  for (const item of items) {
+    const reduction = reduceTailItem(item, policy);
+    if (reduction.kind === "excluded") {
+      outcomes.push(outcomeOf(item, reduction.outcome, reduction.route, reduction.stage));
+      continue;
+    }
+    if (reduction.kind === "rejected") {
+      preparations.push({ ok: false, reason: "invalid_event" });
+      outcomes.push(outcomeOf(item, "rejected-invalid", OTHER_ROUTE));
+      continue;
+    }
+    const preparation = await prepareInvocation(reduction.invocation, POLICY);
+    preparations.push(preparation);
+    outcomes.push(outcomeOf(item, preparation.ok ? "observed" : "rejected-invalid", routeLabel(reduction.invocation.label)));
+  }
+  return { preparations, outcomes };
+}
+
 interface Entry {
   readonly kind: InvocationKind;
   readonly label: string;
   readonly status: number | null;
 }
 
-function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy: ServicePolicy): Entry | "excluded" | null {
+interface Excluded {
+  readonly excluded: ExcludedOutcome;
+  readonly route: string;
+}
+
+function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy: ServicePolicy): Entry | Excluded | null {
   const request = field(event, "request");
   if (request !== undefined) {
     const url = text(field(request, "url"));
@@ -72,11 +110,12 @@ function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy:
     if (url === null || method === null || !METHOD.test(method)) return null;
     const statusValue = field(field(event, "response"), "status");
     const status = typeof statusValue === "number" ? statusValue : null;
-    if (status !== null && EXCLUDED_STATUSES.has(status)) return "excluded";
     const path = pathOf(url);
+    const route = path === null ? null : stage === "worker" ? policy.workerRoute(path) : policy.objectRoute(path);
+    const label = route === null ? null : stage === "worker" ? `${method} ${route}` : `${entrypoint} ${method} ${route}`;
+    if (status !== null && EXCLUDED_STATUSES.has(status)) return { excluded: `excluded-status:${status}` as ExcludedOutcome, route: routeLabel(label) };
     if (path === null) return null;
-    const route = stage === "worker" ? policy.workerRoute(path) : policy.objectRoute(path);
-    return route === null ? "excluded" : { kind: "fetch", label: stage === "worker" ? `${method} ${route}` : `${entrypoint} ${method} ${route}`, status };
+    return label === null ? { excluded: "excluded-route", route: OTHER_ROUTE } : { kind: "fetch", label, status };
   }
   const rpcMethod = text(field(event, "rpcMethod"));
   if (rpcMethod !== null) return RPC_METHOD.test(rpcMethod) ? { kind: "rpc", label: `${entrypoint}.${rpcMethod}`, status: null } : null;
@@ -84,6 +123,10 @@ function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy:
   const cron = text(field(event, "cron"));
   if (cron !== null) return CRON.test(cron) ? { kind: "scheduled", label: `scheduled ${cron}`, status: null } : null;
   return { kind: "alarm", label: `${entrypoint}.alarm`, status: null };
+}
+
+export function routeLabel(label: string | null): string {
+  return label === null || label.length > MAX_LABEL_BYTES ? OTHER_ROUTE : label;
 }
 
 function pathOf(url: string): string | null {

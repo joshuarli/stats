@@ -1,43 +1,35 @@
-import { prepareInvocation, type MessagePolicy, type Preparation } from "../core/model.ts";
+import { OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
 import { isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
 import { POLICIES } from "./policies.ts";
-import { reduceTailItem } from "./tail.ts";
+import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { ObservationStore, type ObserveEnv } from "./store-object.ts";
 
 export { ObservationStore };
 
-const POLICY: MessagePolicy = { safeNames: new Set() };
+const UNKNOWN_SERVICE_HOME: ObservedService = "stats";
 const SERVICE_PATH = /^\/([a-z][a-z0-9-]{0,31})(\/.*)$/u;
 
 function store(env: ObserveEnv, service: ObservedService): DurableObjectStub<ObservationStore> {
   return env.STORE.getByName(service);
 }
 
-async function prepare(items: readonly TraceItem[], service: ObservedService): Promise<Preparation[]> {
-  const preparations: Preparation[] = [];
-  for (const item of items) {
-    const reduction = reduceTailItem(item, POLICIES[service]);
-    if (reduction.kind === "excluded") continue;
-    preparations.push(reduction.kind === "rejected" ? { ok: false, reason: "invalid_event" } : await prepareInvocation(reduction.invocation, POLICY));
-  }
-  return preparations;
-}
-
 export default {
   async tail(events: TraceItem[], env: ObserveEnv): Promise<void> {
     const byService = new Map<ObservedService, TraceItem[]>();
-    let unknown = 0;
+    const unknown: OutcomeEvent[] = [];
     for (const item of events) {
       const service = item.scriptName ?? "";
-      if (!isObservedService(service)) { unknown++; continue; }
+      if (!isObservedService(service)) { unknown.push(outcomeOf(item, "unknown-service", OTHER_ROUTE)); continue; }
       byService.set(service, [...byService.get(service) ?? [], item]);
     }
-    if (unknown > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown }));
-    await Promise.all([...byService].map(async ([service, items]) => {
-      const preparations = await prepare(items, service);
-      if (preparations.length > 0) await store(env, service).ingest(preparations);
-    }));
+    if (unknown.length > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown.length }));
+    const batches = new Map(await Promise.all([...byService].map(async ([service, items]) => [service, await prepareTailItems(items, POLICIES[service])] as const)));
+    if (unknown.length > 0) {
+      const home = batches.get(UNKNOWN_SERVICE_HOME) ?? { preparations: [], outcomes: [] };
+      batches.set(UNKNOWN_SERVICE_HOME, { preparations: home.preparations, outcomes: [...home.outcomes, ...unknown] });
+    }
+    await Promise.all([...batches].map(([service, batch]) => store(env, service).ingest(batch.preparations, batch.outcomes)));
   },
 
   async scheduled(_controller: ScheduledController, env: ObserveEnv): Promise<void> {
