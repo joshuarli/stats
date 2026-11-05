@@ -3,10 +3,10 @@
 ## Status
 
 - **Goal:** the whole `stats` Cloudflare topology (the `stats` Worker, `stats-observe`, their Durable Objects, tail wiring, and the dashboard assets) runs and verifies itself on this machine with no Cloudflare login and no network. The one hosted dependency with no local implementation, the `ANALYTICS_SQL` binding, is replaced at its binding boundary by an offline provider, so the real scheduled handler, collector, parsers, Durable Object, history frames, cost report, `statsctl`, and dashboard all run on a successful collection.
-- **State:** ready for execution; no slice started. Baseline `ea7b2c6`. `make cloudflare-test` is green in 31 s (vitest 307 of 307, test:cli 130, test:observe 138, test:node 35, observe-e2e 10, binary 217, ingest 10, deployments 74, cost 38). Playwright is 120 passing in 23 s.
-- **Accepted:** none. **Red:** none. **Parked:** none.
-- **Next:** L1.
-- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item L1. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
+- **State:** L1 accepted at `8dfbc86`. `make cloudflare-test` is green in 33 s (vitest 307, node 36, local 6, observe-e2e 10, others unchanged); `make smoke-local` and `make lint` are green.
+- **Accepted:** L1. **Red:** none. **Parked:** none.
+- **Next:** L2. `cloudflare/local/topology.ts` takes the provider as `analytics: { service, entrypoint }` plus the provider worker in `extraWorkers`; text overrides must name an existing text binding and secrets must not shadow one.
+- **Resume:** `Execute docs/CAMPAIGN-LOCAL-STACK.md from item L2. Read the item, own only its files, and finish on its acceptance command.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
 
