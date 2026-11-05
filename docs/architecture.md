@@ -77,12 +77,22 @@ over the `OBSERVE` service binding to `stats-observe`, the observability
 collector in `docs/observability-campaign.md`. The only writes it passes are
 an issue's resolve or reopen and a source-map upload, and both must be
 same-origin. That Worker is the tail consumer of every observed service
-(`stats` and `usr-memories`, listed in `src/observe/services.ts`), has no
+(`stats`, `usr-memories`, and `nanoshop-storied`, listed in
+`src/observe/services.ts`), has no
 route of its own, and keeps each service's data in its own
 `ObservationStore` Durable Object named after the service. It routes each
 tail event by the producer's script name; each service's route templates
 and closed set of error operations live in `src/observe/cloudflare/policies.ts`,
-and an event from any other script is dropped with a fixed log line. After
+and an event from any other script is dropped with a fixed log line.
+`nanoshop-storied` generates its templates from exported route data in
+Nanoshop's own notation (`/products/{handle}` becomes `/products/:handle`);
+`/static`, `/assets`, and unmatched paths are excluded, and its storefront
+object has no public route. An unrouted Worker request that carries an
+uncaught exception, a channel error report, or a status of at least 500 is
+not excluded: it is observed as `<METHOD> unmatched`. Each service's
+`operation` channel message is read by that service's decoder: stats' typed
+summaries, or a generic `{operation, synthetic, rows}` message for the
+others. After
 each deployment poll, the scheduled handler forwards every observed
 project's stored deployments and version tags to its service as rollouts
 over the same binding.

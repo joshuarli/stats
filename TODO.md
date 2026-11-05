@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 48
+Next: 50
 
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
@@ -116,4 +116,13 @@ Next: 48
 - **Problem:** The loop fetches `worker r2 probes collector` only. `captures/stuff/routes-1h.json` was assembled by hand from a live `cf sql query` run through `parseRouteRows`, so the next capture will not reproduce it and the replay breaks.
 - **Recommendation:** Add `routes` and `durable-objects` to the loop, make the replay serve `durable-objects` captures for projects that have namespaces, and replace the hand-built file with a real capture.
 - **Fix with:** none
+- **Effort:** S
+
+### STA-49 · P4 · Nanoshop does not check its routes and operations against Stats' lists
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/observe/cloudflare/nanoshop-policy.ts` (`NANOSHOP_ROUTES`, `NANOSHOP_RPC_METHODS`, `NANOSHOP_OPERATIONS`); Nanoshop's `src/routes/routes.ts` and `src/cloudflare/observe/operations.ts`
+- **Problem:** Stats generates its matcher and operation set from exported data, but the data is copied by hand from Nanoshop. Nothing fails when Nanoshop adds a route or an error operation: the new route is excluded and the new operation is rejected, losing data silently.
+- **Recommendation:** In Nanoshop's Stats integration tests, compare its `ROUTES` patterns and `ErrorOperation` set with the exported Stats lists.
+- **Fix with:** single-source-of-truth
 - **Effort:** S
