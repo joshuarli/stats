@@ -209,7 +209,7 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
     <>
       <p class="deployment-windows">
         <Term hint={windows()}>{`${props.comparison.window} each side`}</Term>
-        <Show when={sourcesOf(props.comparison)} fallback={<>{count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
+        <Show when={sourcesOf(props.comparison)} fallback={<> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
           <For each={sources()}>{source => <span class={`deployment-source ${source.status}`}>{source.source === "hosts" ? "Hosts" : "Health probe"}: {source.status === "available" ? source.detail : `unavailable, ${source.detail}`}</span>}</For>
         )}</Show>
       </p>
