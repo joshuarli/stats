@@ -500,7 +500,8 @@ project `DeploymentComparison` (invocation counts are `null` and
 `analyticsInvocations` is empty) plus:
 
 - `hostIds`, the hosts named in the marker, which are the hosts compared;
-- `sources`, `[{ source: "hosts" | "probe", status: "available" | "unavailable", detail }]`.
+- `sources`, `[{ source: "hosts" | "cgroup" | "probe", status: "available" | "unavailable", detail }]`,
+  always in that order; an available `cgroup` names the metrics it supplied.
 
 Metrics are levels, each the mean of five-minute buckets in the window, and a
 bucket counts only when every compared host reported at least 150 s of it:
@@ -510,7 +511,16 @@ bucket counts only when every compared host reported at least 150 s of it:
 | `host.cpu` (user + system, %), `host.memory` (used, %) | host one-minute rollups |
 | `host.pressure.cpu`, `.memory`, `.io` (PSI some, 60 s average, %) | host one-minute rollups |
 | `host.net` (rx + tx excluding `lo`, B/s), `host.disk` (read + write, B/s) | host one-minute rollups |
+| `service.cpu` (cores), `service.memory` (`memory.current`, B), `service.io` (read + write, B/s) | the service's cgroup in host one-minute rollups, from agents configured with the service |
 | `probe.health.ms`, `probe.health.failure` (%) | service health probes, only when `healthUrl` is set |
+
+A cgroup metric replaces its host counterpart (`service.cpu` for `host.cpu`,
+`service.memory` for `host.memory`, `service.io` for `host.disk`) only when it
+has a value in both windows; otherwise the host metric stays and the cgroup
+metric is left out, so an agent rolled out between the windows never yields a
+cgroup comparison against nothing. A cgroup bucket also needs 150 s of cgroup
+counter coverage. Network and pressure have no cgroup counterpart and stay
+host-level.
 
 Hosts are averaged, so a host that has no bucket makes that bucket absent. A
 window needs 75% of its buckets, as probe metrics do for projects. A metric
@@ -518,8 +528,9 @@ with no value in a window is `null`, never zero, and its verdict is
 `insufficient-data`. When no metric has a value on both sides, the comparison
 carries the reason code `no-data`. The warnings always include that the
 comparison shows resource levels, not fewer resources for the same work,
-because a service does not report its own work counts, and that host rollups
-include every process on the host.
+because a service does not report its own work counts, and that host metrics
+include every process on the host (and, when cgroup metrics were used, that
+those cover only the service's unit).
 
 Probes on the Node target run on the scheduler port every five minutes, on the
 bucket boundary (`src/node/probes.ts`), with `runProbes` from

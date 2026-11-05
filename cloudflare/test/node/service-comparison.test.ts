@@ -79,10 +79,71 @@ await test("a service comparison reports host level changes around a marker and 
     assert.equal(metric(result, "host.pressure.memory").before, null);
     assert.equal(metric(result, "host.pressure.memory").verdict, "insufficient-data");
     assert.equal(metric(result, "probe.health.ms").before, null);
-    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["probe", "unavailable"]]);
-    assert.match(result.sources[1]!.detail, /no health URL/u);
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "unavailable"], ["probe", "unavailable"]]);
+    assert.ok(result.metrics.every(entry => !entry.metric.startsWith("service.")));
+    assert.match(result.sources[2]!.detail, /no health URL/u);
     assert.ok(result.warnings.some(warning => /fewer resources for the same work/u.test(warning)));
     assert.deepEqual(result.hostIds, [host.hostId]);
+  } finally {
+    harness.close();
+  }
+});
+
+await test("a service's cgroup series replaces the host series it covers when both windows have it, and the sources say which was used", async () => {
+  const harness = openHarness();
+  try {
+    const host = await createHost(harness, "api-1");
+    const token = await createService(harness, { name: "api", hostIds: [host.hostId], unit: "api.service" });
+    await mark(harness, "api", token, "v1", "1.0.0", [host.hostId], FIRST_MARKER_AT_MS);
+    const deploymentId = await mark(harness, "api", token, "v2", "1.1.0", [host.hostId], SECOND_MARKER_AT_MS);
+    const { before, after } = comparisonBounds(SECOND_MARKER_AT_MS, "1h");
+    const cgroup = { name: "api", cpuCores: 0.5, memoryBytes: 100_000_000, ioBytesPerSec: 0 };
+    const series = new HostSeries(host.hostId);
+    await ingestWindow(harness, host, before, () => ({ ...BEFORE, service: cgroup }), series);
+    await ingestWindow(harness, host, after, () => ({ ...AFTER, service: { ...cgroup, cpuCores: 0.25, memoryBytes: 200_000_000 } }), series);
+    harness.setNow(NOW_MS);
+
+    const result = await comparison(harness, "api", deploymentId);
+    assert.deepEqual(result.reasonCodes, []);
+    assert.deepEqual(result.metrics.map(entry => entry.metric), ["service.cpu", "service.memory", "host.pressure.cpu", "host.pressure.memory", "host.pressure.io", "host.net", "service.io", "probe.health.ms", "probe.health.failure"]);
+    assert.ok(Math.abs(metric(result, "service.cpu").before! - 0.5) < 0.01);
+    assert.ok(Math.abs(metric(result, "service.cpu").after! - 0.25) < 0.01);
+    assert.equal(metric(result, "service.cpu").verdict, "improved");
+    assert.equal(metric(result, "service.memory").verdict, "regressed");
+    assert.equal(metric(result, "service.io").before, 0);
+    assert.equal(metric(result, "service.io").verdict, "unchanged");
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "available"], ["probe", "unavailable"]]);
+    assert.match(result.sources[1]!.detail, /^api cgroup on 1 host, used for service\.cpu, service\.memory, service\.io$/u);
+    assert.ok(result.warnings.some(warning => /cgroup metrics cover only the processes in the service's unit/u.test(warning)));
+
+    const other = await createService(harness, { name: "other", hostIds: [host.hostId] });
+    await mark(harness, "other", other, "v1", "1.0.0", [host.hostId], FIRST_MARKER_AT_MS);
+    const otherId = await mark(harness, "other", other, "v2", "1.1.0", [host.hostId], SECOND_MARKER_AT_MS);
+    harness.setNow(NOW_MS);
+    const hostOnly = await comparison(harness, "other", otherId);
+    assert.equal(metric(hostOnly, "host.cpu").verdict, "regressed");
+    assert.equal(hostOnly.sources[1]!.status, "unavailable");
+  } finally {
+    harness.close();
+  }
+});
+
+await test("a cgroup that reports in only one window leaves the host series in place, never a zero baseline", async () => {
+  const harness = openHarness();
+  try {
+    const host = await createHost(harness, "rollout-1");
+    const token = await createService(harness, { name: "rollout", hostIds: [host.hostId] });
+    await mark(harness, "rollout", token, "v1", "1.0.0", [host.hostId], FIRST_MARKER_AT_MS);
+    const deploymentId = await mark(harness, "rollout", token, "v2", "1.1.0", [host.hostId], SECOND_MARKER_AT_MS);
+    const { before, after } = comparisonBounds(SECOND_MARKER_AT_MS, "1h");
+    const series = new HostSeries(host.hostId);
+    await ingestWindow(harness, host, before, () => BEFORE, series);
+    await ingestWindow(harness, host, after, () => ({ ...AFTER, service: { name: "rollout", cpuCores: 0.25, memoryBytes: 1, ioBytesPerSec: 0 } }), series);
+    harness.setNow(NOW_MS);
+    const result = await comparison(harness, "rollout", deploymentId);
+    assert.equal(metric(result, "host.cpu").verdict, "regressed");
+    assert.ok(result.metrics.every(entry => !entry.metric.startsWith("service.")));
+    assert.equal(result.sources[1]!.status, "unavailable");
   } finally {
     harness.close();
   }
@@ -99,7 +160,7 @@ await test("a service comparison with no host data says so and invents no values
     const result = await comparison(harness, "quiet", deploymentId);
     assert.ok(result.reasonCodes.includes("no-data"));
     assert.ok(result.metrics.every(entry => entry.before === null && entry.after === null && entry.verdict === "insufficient-data"));
-    assert.deepEqual(result.sources.map(source => source.status), ["unavailable", "unavailable"]);
+    assert.deepEqual(result.sources.map(source => source.status), ["unavailable", "unavailable", "unavailable"]);
   } finally {
     harness.close();
   }
@@ -156,7 +217,7 @@ await test("probe results land in the comparison, and a failing probe after the 
     assert.equal(metric(result, "probe.health.failure").before, 0);
     assert.equal(metric(result, "probe.health.failure").after, 100);
     assert.equal(metric(result, "probe.health.failure").verdict, "regressed");
-    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["probe", "available"]]);
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "unavailable"], ["probe", "available"]]);
   } finally {
     harness.close();
   }

@@ -17,8 +17,9 @@ const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 10, 5, 12, 0, 0);
 const FIRST_AT = NOW - 4 * HOUR;
 const SECOND_AT = NOW - 2 * HOUR;
-const BEFORE: HostLevels = { cpuPercent: 20, memoryUsedPercent: 40, netBytesPerSec: 1_000_000, diskBytesPerSec: 500_000, cpuPressure: 1 };
-const AFTER: HostLevels = { ...BEFORE, cpuPercent: 50, netBytesPerSec: 2_000_000 };
+const WEB_CGROUP = { name: "web", cpuCores: 0.2, memoryBytes: 268_435_456, ioBytesPerSec: 100_000 };
+const BEFORE: HostLevels = { cpuPercent: 20, memoryUsedPercent: 40, netBytesPerSec: 1_000_000, diskBytesPerSec: 500_000, cpuPressure: 1, service: WEB_CGROUP };
+const AFTER: HostLevels = { ...BEFORE, cpuPercent: 50, netBytesPerSec: 2_000_000, service: { ...WEB_CGROUP, cpuCores: 0.5 } };
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 test.use({ extraHTTPHeaders: { "Tailscale-User-Login": LOGIN }, timezoneId: "UTC", locale: "en-US", bypassCSP: true });
@@ -131,14 +132,17 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   await expect(page.locator("main.content")).toHaveScreenshot("services-list.webp");
 });
 
-test("a service page compares host levels and probes around a marker", async ({ page }) => {
+test("a service page compares its cgroup in place of host levels, labels the source, and keeps host-only metrics", async ({ page }) => {
   await page.goto(`${ORIGIN}/#/service/web`);
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });
-  const cpu = comparison.getByRole("row", { name: /Host CPU used/u });
-  await expect(cpu).toContainText("20");
-  await expect(cpu).toContainText("50");
+  const cpu = comparison.getByRole("row", { name: /Service CPU used \(cgroup\)/u });
+  await expect(cpu).toContainText("0.2");
+  await expect(cpu).toContainText("0.5 cores");
   await expect(cpu).toContainText("regressed");
-  await expect(comparison.getByRole("row", { name: /Host memory used/u })).toContainText("unchanged");
+  await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toHaveCount(0);
+  await expect(comparison.getByRole("row", { name: /Service memory used \(cgroup\)/u })).toContainText("unchanged");
+  await expect(comparison.getByRole("row", { name: /Host network throughput/u })).toContainText("regressed");
+  await expect(page.getByText("Service cgroup: web cgroup on 1 host, used for service.cpu, service.memory, service.io")).toBeVisible();
   await expect(comparison.getByRole("row", { name: /Health probe mean response time/u })).toContainText("40");
   await expect(comparison.getByRole("row", { name: /Host memory pressure/u })).toContainText("unavailable");
   await expect(page.getByText("resource levels", { exact: false }).first()).toBeAttached();
@@ -152,6 +156,7 @@ test("a service with no host data and no health URL shows every source unavailab
   await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toContainText("unavailable");
   await expect(page.getByText("No verdict")).toBeVisible();
   await expect(page.getByText("Health probe: unavailable, The service has no health URL.")).toBeVisible();
+  await expect(page.getByText("Service cgroup: unavailable, No host reported the service's cgroup in both windows; host metrics are used.")).toBeVisible();
   await expect(page.locator("main.content")).toHaveScreenshot("service-batch.webp");
 });
 

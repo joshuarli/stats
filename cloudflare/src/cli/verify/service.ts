@@ -1,7 +1,7 @@
 import type { ComparisonSpec } from "../../compare/spec.ts";
 import { UUID } from "../../deployments/model.ts";
 import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../deployments/service-decode.ts";
-import { SERVICE_LEVEL_CAVEAT, SERVICE_LEVEL_METRICS, type ServiceComparison, type SourceStatus } from "../../deployments/service-compare.ts";
+import { replacementFor, SERVICE_LEVEL_CAVEAT, SERVICE_LEVEL_METRICS, type ServiceComparison, type SourceStatus } from "../../deployments/service-compare.ts";
 import type { ComparisonWindow } from "../../deployments/compare.ts";
 import { transportError, usageError } from "../exit.ts";
 import type { HttpClient } from "../http.ts";
@@ -47,7 +47,10 @@ export function decideService(policy: ServicePolicy, comparison: ServiceComparis
   const target = judgeTarget(policy, source);
   if (pending) reasons.push({ code: "pending", message: comparison.reasons.find((_, index) => PENDING_CODES.includes(comparison.reasonCodes[index]!)) ?? "waiting for the after window to settle" });
   if (target.verdict === "confounded") reasons.push({ code: "confounded", message: `the comparison is blocked by ${blocking.join(", ")}` });
-  if (target.verdict === "insufficient-data") {
+  const replacement = replacementFor(policy.metric);
+  if (target.verdict === "insufficient-data" && row === undefined && !pending && replacement !== undefined && comparison.metrics.some(item => item.metric === replacement)) {
+    reasons.push({ code: "target-insufficient", message: `${policy.metric} is not compared: the service's cgroup reported in both windows, so ${replacement} replaces it` });
+  } else if (target.verdict === "insufficient-data") {
     const status = comparison.sources.find(item => item.source === sourceOf(policy.metric));
     reasons.push({ code: "target-insufficient", message: `${policy.metric} has no usable value on both sides${status?.status === "unavailable" ? `: ${status.source} unavailable, ${status.detail}` : ""}` });
   }

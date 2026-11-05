@@ -490,8 +490,12 @@ The policy is strict JSON, schema `statsctl-policy/1`, with `id`, `hypothesis`,
 guardrails and no waiting. It makes one read. Exit 0 improved, 5 pending (the
 after window has not settled; run it again) or insufficient-data (a source is
 unavailable), 6 unchanged or confounded, 7 regressed. Every output states that
-it shows resource levels changed, not fewer resources for the same work, and the
-host rollups include every process on the hosts the marker names.
+it shows resource levels changed, not fewer resources for the same work. Host
+metrics include every process on the hosts the marker names; when the agents
+on those hosts report the service's cgroup in both windows, `service.cpu`,
+`service.memory`, and `service.io` replace `host.cpu`, `host.memory`, and
+`host.disk`, and a policy on a replaced host metric is insufficient-data with
+a reason naming its replacement.
 
 The Node server probes each service's `healthUrl` every five minutes. A Node
 container with no network sees every probe fail, so its probe failure share is

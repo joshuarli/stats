@@ -9,7 +9,7 @@ import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../../deployments/service-decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
-import type { ServiceComparison } from "../../../deployments/service-compare";
+import type { ServiceComparison, SourceName } from "../../../deployments/service-compare";
 import { rolloutWindow } from "./rollout";
 import type { ComparisonWindow, DeploymentComparison, MetricComparison } from "../../../deployments/compare";
 import "./deployments.css";
@@ -198,6 +198,8 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   return { history, listed, selected, select, focus, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem, subject: routes.subject };
 }
 
+const SOURCE_LABELS: Record<SourceName, string> = { hosts: "Hosts", cgroup: "Service cgroup", probe: "Health probe" };
+
 function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | null {
   return "sources" in comparison ? comparison.sources : null;
 }
@@ -210,7 +212,7 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
       <p class="deployment-windows">
         <Term hint={windows()}>{`${props.comparison.window} each side`}</Term>
         <Show when={sourcesOf(props.comparison)} fallback={<> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
-          <For each={sources()}>{source => <span class={`deployment-source ${source.status}`}>{source.source === "hosts" ? "Hosts" : "Health probe"}: {source.status === "available" ? source.detail : `unavailable, ${source.detail}`}</span>}</For>
+          <For each={sources()}>{source => <span class={`deployment-source ${source.status}`}>{SOURCE_LABELS[source.source]}: {source.status === "available" ? source.detail : `unavailable, ${source.detail}`}</span>}</For>
         )}</Show>
       </p>
       <Show when={props.comparison.reasons.length > 0}>

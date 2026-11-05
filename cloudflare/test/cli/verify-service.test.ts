@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS, type MetricRow } from "../../src/deployments/compare.ts";
 import type { Deployment } from "../../src/deployments/model.ts";
-import { compareServiceDeployment, SERVICE_LEVEL_CAVEAT } from "../../src/deployments/service-compare.ts";
+import { compareServiceDeployment, SERVICE_LEVEL_CAVEAT, type MinuteRollup } from "../../src/deployments/service-compare.ts";
 import { parseServicePolicyText } from "../../src/cli/verify/policy.ts";
 import { fakeOrigin, runCli, sendJson, tokenEnv } from "./support.ts";
 
@@ -28,7 +28,7 @@ function probeRows(window: { fromMs: number; toMs: number }, ms: number, up: num
 function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, hasHealthUrl = true) {
   const { before, after } = comparisonBounds(deployment.atMs, "1h");
   const rows = hasHealthUrl ? [...probeRows(before, beforeMs, 1), ...probeRows(after, afterMs, 1)] : [];
-  return compareServiceDeployment({ deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: new Map(), probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false });
+  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: new Map(), probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false });
 }
 
 function policyFile(name: string, over: Record<string, unknown> = {}): string {
@@ -71,7 +71,7 @@ await test("verify --service reads one comparison and judges resource levels wit
   assert.equal(improved.document.payload?.caveat, SERVICE_LEVEL_CAVEAT);
   assert.deepEqual(improved.urls, [`/api/v1/services/web/deployments/${CANDIDATE.id}/comparison?window=1h`]);
   assert.ok(improved.document.warnings?.some(warning => warning.code === "resource-levels-only"));
-  assert.deepEqual(improved.document.payload?.sources.map(source => source.status), ["unavailable", "available"]);
+  assert.deepEqual(improved.document.payload?.sources.map(source => source.status), ["unavailable", "unavailable", "available"]);
 
   const regressed = await verify(comparisonFor(CANDIDATE, now, 40, 400), []);
   assert.equal(regressed.run.code, 7);
@@ -107,6 +107,29 @@ await test("a source the service lacks is insufficient-data with the reason, nev
   const hostMetric = await verify(comparisonFor(CANDIDATE, now, 40, 40), [], policyFile("host.json", { metric: "host.cpu", floor: 2 }));
   assert.equal(hostMetric.run.code, 5);
   assert.match(hostMetric.document.payload?.reasons[0]?.message ?? "", /hosts unavailable/u);
+});
+
+function cgroupRollups(deployment: Deployment, beforeCores: number, afterCores: number): Map<string, MinuteRollup[]> {
+  const { before, after } = comparisonBounds(deployment.atMs, "1h");
+  const minutes: MinuteRollup[] = [];
+  for (const [window, cores] of [[before, beforeCores], [after, afterCores]] as const) {
+    for (let bucketMs = window.fromMs; bucketMs < window.toMs; bucketMs += 60_000) {
+      minutes.push({ bucketMs, payload: { v: 1, bucketMs, samples: 4, coverageMs: 60_000, partial: false, gauges: {}, psi: {}, disks: {}, nets: {}, filesystems: {}, services: { web: { cpu: { usec: String(cores * 60_000_000), coveredMs: 60_000 } } } } });
+    }
+  }
+  return new Map([[HOST, minutes]]);
+}
+
+await test("a host policy whose metric the service's cgroup replaced says so, and the cgroup metric is judged", async () => {
+  const now = AT + 3 * HOUR;
+  const body = compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: cgroupRollups(CANDIDATE, 1, 0.5), probeRows: [], hasHealthUrl: false, window: "1h", now, truncated: false });
+  const replaced = await verify(body, [], policyFile("replaced.json", { metric: "host.cpu", floor: 2 }));
+  assert.equal(replaced.run.code, 5);
+  assert.match(replaced.document.payload?.reasons[0]?.message ?? "", /host\.cpu is not compared: .* service\.cpu replaces it/u);
+  const cgroup = await verify(body, [], policyFile("cgroup.json", { metric: "service.cpu", floor: 0.02 }));
+  assert.equal(cgroup.run.code, 0, cgroup.run.stdout);
+  assert.equal(cgroup.document.payload?.verdict, "improved");
+  assert.deepEqual(cgroup.document.payload?.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "available"], ["probe", "unavailable"]]);
 });
 
 await test("a window that has not settled is pending and exits 5", async () => {

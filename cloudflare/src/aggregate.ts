@@ -337,12 +337,13 @@ function mergeServices(target: Record<string, ServiceRollup>, source: Readonly<R
   for (const [name, value] of Object.entries(source)) target[name] = addService(target[name], value);
 }
 
-export function serviceLevels(payload: RollupPayload, name: string): ServiceLevels {
+export function serviceLevels(payload: RollupPayload, name: string, minCoveredMs: number): ServiceLevels {
   const service = payload.services?.[name];
   if (service === undefined) return {};
-  const cpu = service.cpu === undefined || service.cpu.coveredMs <= 0 ? undefined : Number(service.cpu.usec) / (service.cpu.coveredMs * 1000);
+  const covered = Math.max(1, minCoveredMs);
+  const cpu = service.cpu === undefined || service.cpu.coveredMs < covered ? undefined : Number(service.cpu.usec) / (service.cpu.coveredMs * 1000);
   const memory = service.memoryCurrent === undefined || service.memoryCurrent.count === 0 ? undefined : service.memoryCurrent.sum / service.memoryCurrent.count;
-  const io = service.io === undefined || service.io.coveredMs <= 0 ? undefined : (Number(service.io.readBytes) + Number(service.io.writeBytes)) * 1000 / service.io.coveredMs;
+  const io = service.io === undefined || service.io.coveredMs < covered ? undefined : (Number(service.io.readBytes) + Number(service.io.writeBytes)) * 1000 / service.io.coveredMs;
   return { ...(cpu === undefined ? {} : { cpuCores: cpu }), ...(memory === undefined ? {} : { memoryBytes: memory }), ...(io === undefined ? {} : { ioBytesPerSec: io }) };
 }
 

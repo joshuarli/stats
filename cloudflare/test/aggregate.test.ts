@@ -278,23 +278,24 @@ describe("service cgroup levels", () => {
 
   it("turns cgroup counters into cores and bytes per second over the intervals they covered, and averages memory", () => {
     const payload = rollupFromRaw(rows([at(0, [web(0, 100, 0)]), at(15_000, [web(7_500_000, 300, 15_000)]), at(30_000, [web(22_500_000, 200, 30_000)])]), 0, 60_000)!;
-    const levels = serviceLevels(payload, "web");
+    const levels = serviceLevels(payload, "web", 0);
     expect(levels.cpuCores).toBeCloseTo(0.75, 9);
     expect(levels.memoryBytes).toBeCloseTo(200, 9);
     expect(levels.ioBytesPerSec).toBeCloseTo(2000, 9);
+    expect(serviceLevels(payload, "web", 30_001)).toEqual({ memoryBytes: 200 });
     const hour = combineRollups([payload, rollupFromRaw(rows([at(60_000, [web(0, 400, 0)]), at(75_000, [web(15_000_000, 400, 0)])]), 60_000, 60_000)!], 0, 3_600_000)!;
-    expect(serviceLevels(hour, "web").cpuCores).toBeCloseTo(37_500_000 / 45_000_000, 9);
-    expect(serviceLevels(hour, "web").memoryBytes).toBeCloseTo(280, 9);
+    expect(serviceLevels(hour, "web", 0).cpuCores).toBeCloseTo(37_500_000 / 45_000_000, 9);
+    expect(serviceLevels(hour, "web", 0).memoryBytes).toBeCloseTo(280, 9);
   });
 
   it("leaves a gap, never zero or a negative rate, when the cgroup was recreated, unavailable, or never reported", () => {
     const regressed = rollupFromRaw(rows([at(0, [web(9_000_000, 100, 9)]), at(15_000, [web(1_000, 100, 0)])]), 0, 60_000)!;
-    expect(serviceLevels(regressed, "web").cpuCores).toBeUndefined();
-    expect(serviceLevels(regressed, "web").ioBytesPerSec).toBeUndefined();
-    expect(serviceLevels(regressed, "web").memoryBytes).toBe(100);
+    expect(serviceLevels(regressed, "web", 0).cpuCores).toBeUndefined();
+    expect(serviceLevels(regressed, "web", 0).ioBytesPerSec).toBeUndefined();
+    expect(serviceLevels(regressed, "web", 0).memoryBytes).toBe(100);
     const unavailable = rollupFromRaw(rows([at(0, [web(0, 100, 0)]), at(15_000, [{ name: "web", unavailable: true }]), at(30_000, [web(15_000_000, 100, 0)])]), 0, 60_000)!;
-    expect(serviceLevels(unavailable, "web").cpuCores).toBeUndefined();
-    expect(serviceLevels(unavailable, "db")).toEqual({});
+    expect(serviceLevels(unavailable, "web", 0).cpuCores).toBeUndefined();
+    expect(serviceLevels(unavailable, "db", 0)).toEqual({});
     const hostOnly = rollupFromRaw(rows([{ seq: "1", atMs: "0", monoMs: "0", uptimeMs: "0" }, { seq: "2", atMs: "15000", monoMs: "15000", uptimeMs: "15000" }]), 0, 60_000)!;
     expect(hostOnly.services).toBeUndefined();
   });

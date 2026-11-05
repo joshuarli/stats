@@ -9,12 +9,20 @@ const BOOT_ID = FIXTURE.bootId;
 export const SAMPLE_STEP_MS = 25_000;
 export const SAMPLES_PER_BUCKET = 12;
 
+export interface ServiceCgroupLevels {
+  readonly name: string;
+  readonly cpuCores: number;
+  readonly memoryBytes: number;
+  readonly ioBytesPerSec: number;
+}
+
 export interface HostLevels {
   readonly cpuPercent: number;
   readonly memoryUsedPercent: number;
   readonly netBytesPerSec: number;
   readonly diskBytesPerSec: number;
   readonly cpuPressure: number;
+  readonly service?: ServiceCgroupLevels;
 }
 
 const TOTAL_MEMORY = 8_589_934_592;
@@ -30,6 +38,8 @@ export class HostSeries {
   private bytes = 0;
   private sectors = 0;
   private psiTotal = 0;
+  private serviceUsec = 0;
+  private serviceIoBytes = 0;
 
   constructor(hostId: string) {
     this.hostId = hostId;
@@ -42,6 +52,11 @@ export class HostSeries {
     this.bytes += Math.round(STEP_SECONDS * levels.netBytesPerSec / 2);
     this.sectors += Math.round(STEP_SECONDS * levels.diskBytesPerSec / 512 / 2);
     this.psiTotal += Math.round(STEP_SECONDS * 1000);
+    const service = levels.service;
+    if (service !== undefined) {
+      this.serviceUsec += Math.round(STEP_SECONDS * 1_000_000 * service.cpuCores);
+      this.serviceIoBytes += Math.round(STEP_SECONDS * service.ioBytesPerSec / 2);
+    }
     const user = Math.round(this.cpuBusy * 0.8);
     const rest = Object.fromEntries(Object.entries(TEMPLATE).filter(([key]) => key !== "block"));
     const index = this.index++;
@@ -56,7 +71,8 @@ export class HostSeries {
       mem: { ...(TEMPLATE["mem"] as Record<string, string>), available: String(Math.round(TOTAL_MEMORY * (100 - levels.memoryUsedPercent) / 100)), total: String(TOTAL_MEMORY) },
       nets: [{ id: "eth0", rxBytes: String(this.bytes), rxDrops: "0", rxErrors: "0", rxPackets: String(Math.round(this.bytes / 1000)), txBytes: String(this.bytes), txDrops: "0", txErrors: "0", txPackets: String(Math.round(this.bytes / 1000)) }],
       disks: [{ id: "8:0", ioMs: "0", name: "sda", readSectors: String(this.sectors), reads: String(Math.round(this.sectors / 8)), writeSectors: String(this.sectors), writes: String(Math.round(this.sectors / 8)) }],
-      psi: { cpu: { some10: levels.cpuPressure.toFixed(2), some60: levels.cpuPressure.toFixed(2), some300: levels.cpuPressure.toFixed(2), total: String(this.psiTotal) } }
+      psi: { cpu: { some10: levels.cpuPressure.toFixed(2), some60: levels.cpuPressure.toFixed(2), some300: levels.cpuPressure.toFixed(2), total: String(this.psiTotal) } },
+      ...(service === undefined ? {} : { services: [{ name: service.name, cpuUsec: String(this.serviceUsec), memoryCurrent: String(service.memoryBytes), ioReadBytes: String(this.serviceIoBytes), ioWriteBytes: String(this.serviceIoBytes), ioReads: "0", ioWrites: "0" }] })
     };
   }
 

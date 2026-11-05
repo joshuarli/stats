@@ -737,7 +737,7 @@ export class InstallationCore {
       "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (?, ?)",
       serviceProbeOwner(name), bounds.before.fromMs, bounds.after.toMs, `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`
     );
-    return json(compareServiceDeployment({ deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED }));
+    return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED }));
   }
 
   async collectServiceProbes(fetch: ProbeFetch): Promise<void> {
