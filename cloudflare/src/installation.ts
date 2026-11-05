@@ -3,7 +3,8 @@ import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHas
 import { canonicalJson, type Sample, type SystemInfo } from "./protocol";
 import { decodeFrame } from "./ingest/frame.ts";
 import { validateSample, normalizeSystem } from "./ingest/sample.ts";
-import { ACK_MEDIA_TYPE, encodeAck, type SampleRejection } from "./ingest/ack.ts";
+import { ACK_MEDIA_TYPE, encodeAck } from "./ingest/ack.ts";
+import type { SampleRejection } from "./observe/producer/channel.ts";
 import { mediaProblem } from "./ingest/http.ts";
 import { computeDelta, parseDelta } from "./delta";
 import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rollupPoints, rollupFromRaw, rowPoints, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload, type RowPoints } from "./aggregate";

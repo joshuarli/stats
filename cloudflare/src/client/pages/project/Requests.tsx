@@ -5,6 +5,7 @@ import { useTelemetry } from "../../state";
 import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
+import type { SamplingSummary } from "../../../observe/core/counts";
 import { duration, TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
 
@@ -22,9 +23,11 @@ function median(values: readonly number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)] ?? 0;
 }
 
-function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly selected: string | null; readonly onSelect: (route: string | null) => void }): JSX.Element {
+function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly sampling: SamplingSummary | undefined; readonly selected: string | null; readonly onSelect: (route: string | null) => void }): JSX.Element {
+  const sampled = () => props.sampling !== undefined;
+  const observed = (route: RouteStats) => route.observed ?? route.requests;
   const totalCpu = createMemo(() => Math.max(1, props.routes.reduce((sum, route) => sum + route.cpuMs, 0)));
-  const totals = createMemo(() => ({ requests: props.routes.reduce((sum, route) => sum + route.requests, 0), failed: props.routes.reduce((sum, route) => sum + route.failed, 0) }));
+  const totals = createMemo(() => ({ requests: props.routes.reduce((sum, route) => sum + observed(route), 0), failed: props.routes.reduce((sum, route) => sum + route.failed, 0) }));
   return (
     <div class="table-scroll route-table-scroll" role="region" aria-label="Routes">
       <table class="data-table compact route-table">
@@ -34,10 +37,10 @@ function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly se
             <th class="numeric">Requests</th>
             <th class="numeric">Failed</th>
             <th class="cpu-col">CPU share</th>
-            <th class="numeric">p50</th>
-            <th class="numeric">p95</th>
-            <th class="numeric">p99</th>
-            <th class="numeric">p95 CPU</th>
+            <th class="numeric">{sampled() ? "p50 (sampled)" : "p50"}</th>
+            <th class="numeric">{sampled() ? "p95 (sampled)" : "p95"}</th>
+            <th class="numeric">{sampled() ? "p99 (sampled)" : "p99"}</th>
+            <th class="numeric">{sampled() ? "p95 CPU (sampled)" : "p95 CPU"}</th>
           </tr>
         </thead>
         <tbody>
@@ -51,8 +54,8 @@ function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly se
           <For each={props.routes}>{route => (
             <tr class={props.selected === route.label ? "selected" : undefined}>
               <td><button type="button" class="route-pick" aria-pressed={props.selected === route.label ? "true" : "false"} onClick={() => props.onSelect(props.selected === route.label ? null : route.label)}><RouteLabel label={route.label} /></button></td>
-              <td class="numeric">{count(route.requests)}</td>
-              <td class={route.failed > 0 ? "numeric failed-cell" : "numeric"}>{route.failed === 0 ? "0" : percent((route.failed / route.requests) * 100)}</td>
+              <td class="numeric">{count(observed(route))}</td>
+              <td class={route.failed > 0 ? "numeric failed-cell" : "numeric"}>{route.failed === 0 ? "0" : percent((route.failed / observed(route)) * 100)}</td>
               <td class="cpu-col"><span class="share"><span class="share-bar" style={`width:${(route.cpuMs / totalCpu()) * 100}%`} /><span class="share-text">{percent((route.cpuMs / totalCpu()) * 100)}</span></span></td>
               <td class="numeric">{duration(route.p50WallMs)}</td>
               <td class="numeric strong">{duration(route.p95WallMs)}</td>
@@ -109,9 +112,12 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
       <Show when={o.error()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
       <Show when={exploration()} fallback={o.error() === null ? <Skeleton rows={6} chart /> : null}>{value => (
         <Show when={value().routes.length > 0} fallback={<p class="panel-label observe-empty">No requests were observed in this window.</p>}>
-          <RouteTable routes={value().routes} selected={value().route} onSelect={o.filterRoute} />
+          <Show when={value().sampling}>{sampling => (
+            <p class="panel-label observe-sampling" role="note">Sampled: {count(sampling().kept)} of {count(sampling().observed)} invocations are kept. Request and failure counts are exact; percentiles, CPU share, and the traces below come from the kept invocations only.</p>
+          )}</Show>
+          <RouteTable routes={value().routes} sampling={value().sampling} selected={value().route} onSelect={o.filterRoute} />
           <div class="explore-head">
-            <h3 class="observe-subhead">Latency · {value().route ?? "all routes"}</h3>
+            <h3 class="observe-subhead">Latency{value().sampling === undefined ? "" : " (sampled)"} · {value().route ?? "all routes"}</h3>
             <div class="explore-actions">
               <Segmented label="Trace outcome" value={o.traceFilter()} options={[["all", "All"], ["failed", "Failed"]]} onChange={o.filterTraces} />
               <Segmented label="Calls" value={band() === null ? "recent" : band()!.kind === "slow" ? "slow" : "cell"} options={[["recent", "Recent"], ["slow", value().route === null ? "Slowest" : "≥ p95"], ...(band()?.kind === "cell" ? [["cell", "Selected"] as ["cell", string]] : [])]} onChange={choice => { if (choice === "recent") o.chooseBand(null); else if (choice === "slow") o.chooseBand({ kind: "slow" }); }} />

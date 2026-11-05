@@ -77,12 +77,28 @@ over the `OBSERVE` service binding to `stats-observe`, the observability
 collector in `docs/observability-campaign.md`. The only writes it passes are
 an issue's resolve or reopen and a source-map upload, and both must be
 same-origin. That Worker is the tail consumer of every observed service
-(`stats` and `usr-memories`, listed in `src/observe/services.ts`), has no
+(`stats`, `usr-memories`, and `nanoshop-storied`, listed in
+`src/observe/services.ts`), has no
 route of its own, and keeps each service's data in its own
 `ObservationStore` Durable Object named after the service. It routes each
 tail event by the producer's script name; each service's route templates
 and closed set of error operations live in `src/observe/cloudflare/policies.ts`,
-and an event from any other script is dropped with a fixed log line. After
+and an event from any other script is dropped with a fixed log line.
+`nanoshop-storied` generates its templates from exported route data in
+Nanoshop's own notation (`/products/{handle}` becomes `/products/:handle`);
+`/static`, `/assets`, and unmatched paths are excluded, and its storefront
+object has no public route. An unrouted Worker request that carries an
+uncaught exception, a channel error report, or a status of at least 500 is
+not excluded: it is observed as `<METHOD> unmatched`. Each service's
+`operation` channel message is read by that service's decoder: stats' typed
+summaries, or a generic `{operation, synthetic, rows}` message for the
+others. Each policy also names a sampling mode: `stats` and `usr-memories` keep
+every observed invocation (`{ kind: "all" }`), and `nanoshop-storied` is
+`sampled` with a keep rate in parts per million and slow-wall and slow-CPU
+thresholds. Its thresholds sit well above Nanoshop's documented request
+latency, which has a local p99 under 20 ms, and above its 2 to 5 ms CPU
+assumption, so only abnormal invocations are kept for being slow; the rate is
+provisional until the cost budget sets it. After
 each deployment poll, the scheduled handler forwards every observed
 project's stored deployments and version tags to its service as rollouts
 over the same binding.
@@ -191,6 +207,80 @@ in five-minute buckets and bounded to 100,000 rows:
   `excluded-route`, `rejected-invalid`, `unknown-service`. Each bucket, version,
   stage and outcome keeps at most 32 routes, then folds the rest into one `other` route. Each row
   records the `filter_revision` that excluded it.
+
+A third additive table, `observe_counts`, is written only for a service whose
+policy samples. It holds one row per five-minute event-time bucket, so a flush
+writes one row per bucket it touches however many keys it carries, and
+retention deletes one row per bucket. The row's `entries` column is a JSON array
+with one element per `(version, stage, outcome, route, operation)` key holding
+`kept`, `sampledOut`, `cpuMsSum` and `wallMsSum`, merged in the store
+transaction; the `untraced` and `flushes` columns count the sampling events of
+the calls that wrote the row. The view `observe_count_entries` presents the
+elements as rows for reads. An element's `outcome` is `ok`, `failed`,
+or one of the four `excluded-*` classes; the operation is the generic operation
+name that stats-style summaries do not carry, empty when an event has none. The
+store counts a kept invocation in the same transaction that stores it, so a
+duplicate is never counted twice. The tail counts everything it does not keep
+(a sampled-out invocation is always `ok`, because every failure is kept, and an
+excluded event is never kept) and sends those counts with the batch. Each
+bucket, version, stage and outcome keeps at most 32 routes, then folds the rest
+into `other`. For a sampled service the window's invocation rows and its
+excluded outcome rows come from this table, so they total every event, kept or
+not. The table has no row for a service that keeps everything, so `stats` and
+`usr-memories` write and answer exactly as before.
+
+A sampled-out event costs no store request of its own. The tail Worker counts
+each sampled service's sampled-out and excluded events in a per-isolate buffer
+(`src/observe/core/count-buffer.ts`) keyed like `observe_counts`, and sends the
+buffer to the service's store in one call when it is older than
+`COUNT_FLUSH_INTERVAL_MS` (the five-minute bucket width) or its oldest count falls in an earlier
+five-minute bucket than the event now arriving. If the event that finds the
+buffer due has invocations or outcomes of its own, the buffer rides on that
+call; otherwise it goes alone. A kept event that finds a young buffer writes
+only itself. Cloudflare cancels `ctx.waitUntil` work that has not settled 30
+seconds after the invocation ends
+(<https://developers.cloudflare.com/workers/runtime-apis/context/>, read
+2026-11-04), so an idle isolate cannot sleep a whole flush interval there. Instead
+each batch that buffers counts arms a timer through `ctx.waitUntil` unless a
+timer armed within the last 10 seconds already covers it; the timer sleeps
+`IDLE_FLUSH_MS` (20 s) and flushes only if no batch has added counts for 10
+seconds. Counts left in an isolate that receives no further event are therefore
+flushed within 20 s of the last batch, and a busy isolate flushes by the interval
+rule above. Each flush adds one to the bucket row's `flushes` column.
+
+Counts are exact for every event that reaches the collector and is flushed.
+A flush is at most once: the buffer is emptied before the store call, so a
+failed call loses what it carried, and the failure is logged or thrown. An
+isolate that is evicted, or that never gets its timer, loses at most one flush
+interval of sampled-out and excluded counts. Kept invocations are never lost this
+way, because the store counts them in the transaction that stores them. The loss
+shows as coverage below `reconciled` against analytics `worker.invocations`.
+Exactness across eviction would take one durable write per event, which is the
+cost buffering removes; the owner accepted that trade. A service that keeps
+everything is not buffered.
+
+Sampling relies on each invocation's tail event carrying exactly one `operation`
+message. In local workerd, when RPCs overlap on one Durable Object instance
+(even two at a time), diagnostics-channel messages land on other invocations'
+tail events: 200 sequential RPCs each carried one message, but 200 RPCs five
+at a time produced events carrying zero to four, and RPCs on distinct
+instances were unaffected. An object event with no message has no trace, so it
+is kept and counted `untraced`; one with two operation messages is rejected as
+`rejected-invalid`. Worker events were unaffected. Whether production behaves
+the same is unverified.
+
+For a sampled service, health adds a `sampling` object: the policy, and over
+the retained days, the invocations `kept`, the ok invocations `sampledOut`, the
+`excluded` events, the `untraced` invocations, and the count `flushes` (batches
+that carried counts). The window, explore, objects, traces, trace and rollout
+impact responses add `sampling: { keepPerMillion, kept, observed }`, where
+`observed` is exact and counts kept plus sampled-out ok and failed invocations
+of the response's stage over the whole buckets it overlaps. Explore routes add an
+exact `observed` count, and a rollout's request and failure counts come from the
+counts table. Every percentile and the CPU share in those responses are computed
+from the kept invocations only: `statsctl observe --project nanoshop-storied` and
+the dashboard label them sampled, and a service that keeps everything returns
+none of these fields.
 
 `GET /api/observe/stats/window?from=<ms>&to=<ms>[&operation=<id>][&class=<name>]`
 returns one half-open window: operation rows, outcome rows, invocation rows and

@@ -50,6 +50,16 @@ const PROJECTS: readonly ProjectConfig[] = [
     durableObjectNamespaces: ["ac72b89f443a4c8783b59755101cd1e5"],
     d1Databases: [],
     probes: []
+  },
+  {
+    id: "nanoshop-storied",
+    name: "nanoshop-storied",
+    worker: "nanoshop-storied",
+    workerBilling: "requests-and-cpu",
+    buckets: [],
+    durableObjectNamespaces: [],
+    d1Databases: [],
+    probes: []
   }
 ];
 const PROJECTS_JSON = JSON.stringify(PROJECTS);

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { encodeAck, type SampleRejection } from "../../src/ingest/ack.ts";
+import { encodeAck } from "../../src/ingest/ack.ts";
+import type { SampleRejection } from "../../src/observe/producer/channel.ts";
 import { AckDecodeError, decodeAck } from "../../src/ingest/ack-decode.ts";
 import { fixtureRoot, fromHex, readBytes, readJson } from "./corpus.ts";
 

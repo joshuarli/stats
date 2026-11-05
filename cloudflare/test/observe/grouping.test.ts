@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareInvocation, truncateUtf8, type MessagePolicy, type ObservedError, type PreparedInvocation } from "../../src/observe/core/model.ts";
 import { parseStack } from "../../src/observe/core/stack.ts";
+import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { BUNDLE_STACK, DO_STACK, worker } from "./support.ts";
 
 const SAFE: MessagePolicy = { safeNames: new Set(["ValidationError"]) };
@@ -103,4 +104,18 @@ await test("an invocation without trace context gets a stable key from its ident
   assert.equal(a.invocation.key, b.invocation.key);
   assert.notEqual(a.invocation.key, c.invocation.key);
   assert.match(a.invocation.key, /^[0-9a-f]{32}$/u);
+});
+
+await test("every operation any service policy allows passes invocation validation", async () => {
+  for (const [service, policy] of Object.entries(POLICIES)) {
+    assert.ok(policy.operations.size > 0, service);
+    for (const operation of policy.operations) {
+      const result = await prepareInvocation(worker(1, { errors: [{ source: "caught", operation, name: "AppError", message: "boom", stack: null }], outcome: "exception" }), SAFE);
+      assert.ok(result.ok, `${service} ${operation}`);
+    }
+  }
+  for (const operation of ["Request.cart", "1request", "request cart", "request.cart/x", `r${"a".repeat(64)}`]) {
+    const result = await prepareInvocation(worker(1, { errors: [{ source: "caught", operation, name: "AppError", message: "boom", stack: null }] }), SAFE);
+    assert.deepEqual(result, { ok: false, reason: "invalid_operation" }, operation);
+  }
 });

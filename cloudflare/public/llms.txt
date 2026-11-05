@@ -17,7 +17,7 @@ A missing or invalid token answers 401. Errors are `{"error":{"code","message"}}
     GET /api/v1/projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|probes|collector
     GET /api/v1/projects/:id/history?range=1h&kinds=worker,r2,collector
 
-`/projects` lists each project with its Worker, buckets, probes, and `collector.lastRunAtMs`, `lastSuccessAtMs`, `lastError`, `stale`. Project ids today: stuff, usr-memories, stats, stats-observe. `/projects` also gives each project `workerBilling`: `requests-and-cpu`, or `cpu-only` for `stats-observe`, whose tail invocations are priced by CPU alone. `kinds` replaces `kind` and returns the selected histories as one bundle, decoded `{projectId, histories: {kind: history}}`. History responses carry `ETag`; send `If-None-Match` to receive `304` when no collector run has changed the data.
+`/projects` lists each project with its Worker, buckets, probes, and `collector.lastRunAtMs`, `lastSuccessAtMs`, `lastError`, `stale`. Project ids today: stuff, usr-memories, stats, stats-observe, nanoshop-storied. `/projects` also gives each project `workerBilling`: `requests-and-cpu`, or `cpu-only` for `stats-observe`, whose tail invocations are priced by CPU alone. `kinds` replaces `kind` and returns the selected histories as one bundle, decoded `{projectId, histories: {kind: history}}`. History responses carry `ETag`; send `If-None-Match` to receive `304` when no collector run has changed the data.
 
 Decoded, a response for any kind except `collector` is:
 

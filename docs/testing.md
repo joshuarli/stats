@@ -58,6 +58,15 @@ once per producer to supply the name production sends. `TEST_NOW_MS` pins the st
 `Installation`'s retention alarm fires repeatedly there; the test waits for
 the invocations it caused rather than for quiet.
 
+`test/observe/sampling-parity.test.ts` pins the rows written per batch and the
+absence of sampling fields for `stats` and `usr-memories`; it passes unchanged on
+the commit before sampling. `test/observe/counts.test.ts` sums 10,000 seeded
+events against the counts table, and `count-buffer.test.ts` does the same with
+buffering on and a final flush. `test/observe-e2e/trace-determinism.test.ts` shows
+that a Durable Object invocation reports its caller's trace id, and
+`sampling.test.ts` drives a Nanoshop-shaped producer through the real tail
+handler and store, moving the collector's clock forward to force the final flush.
+
 `cloudflare/test/ui/observe.spec.ts` drives the route explorer, the Errors
 card, the deployment impact panel, and the ledger's Durable Object split on
 the `stats` project page, and checks that with every section open nothing on

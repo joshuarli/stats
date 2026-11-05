@@ -5,7 +5,9 @@ import { fingerprint, sha256Hex } from "./grouping.ts";
 
 export type Stage = "worker" | "object";
 export type OutcomeStage = Stage | "unknown";
-export const OUTCOME_CLASSES = ["excluded-status:401", "excluded-status:403", "excluded-status:404", "excluded-route", "rejected-invalid", "unknown-service"] as const;
+export const EXCLUDED_OUTCOMES = ["excluded-status:401", "excluded-status:403", "excluded-status:404", "excluded-route"] as const;
+export type ExcludedOutcome = typeof EXCLUDED_OUTCOMES[number];
+export const OUTCOME_CLASSES = [...EXCLUDED_OUTCOMES, "rejected-invalid", "unknown-service"] as const;
 export type OutcomeClass = typeof OUTCOME_CLASSES[number];
 export const OTHER_ROUTE = "other";
 
@@ -15,6 +17,21 @@ export interface OutcomeEvent {
   readonly outcome: OutcomeClass;
   readonly route: string;
   readonly eventAtMs: number | null;
+}
+export const COUNT_OUTCOMES = ["ok", "failed", ...EXCLUDED_OUTCOMES] as const;
+export type CountOutcome = typeof COUNT_OUTCOMES[number];
+
+export interface CountDelta {
+  readonly bucketAt: number;
+  readonly version: string;
+  readonly stage: Stage;
+  readonly route: string;
+  readonly operation: string;
+  readonly outcome: CountOutcome;
+  readonly kept: number;
+  readonly sampledOut: number;
+  readonly cpuMsSum: number;
+  readonly wallMsSum: number;
 }
 export type InvocationKind = "fetch" | "rpc" | "alarm" | "scheduled";
 export type ErrorSource = "uncaught" | "caught";
@@ -45,6 +62,7 @@ export interface ObservedInvocation {
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
   readonly operation?: OperationSummary;
+  readonly operationName?: string;
   readonly errors: readonly ObservedError[];
 }
 
@@ -80,6 +98,7 @@ export interface PreparedInvocation {
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
   readonly operation?: OperationSummary;
+  readonly operationName?: string;
   readonly errorCount: number;
   readonly errors: readonly PreparedError[];
 }
@@ -94,7 +113,7 @@ export const VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u;
 const SOURCE = /^[a-z][a-z0-9_-]{0,31}$/u;
 const OBJECT_ID = /^[0-9a-f]{64}$/u;
 const OUTCOME = /^[A-Za-z]{1,32}$/u;
-const OPERATION = /^[a-z][a-z0-9_.]{0,63}$/u;
+export const OPERATION = /^[a-z][A-Za-z0-9_.-]{0,63}$/u;
 
 export async function prepareInvocation(input: ObservedInvocation, policy: MessagePolicy): Promise<Preparation> {
   const reason = rejection(input);
@@ -120,10 +139,10 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
     ? (await sha256Hex(["observe.key.v1", input.version ?? "", input.objectId ?? "", input.kind, input.label, String(input.eventAtMs)].join("\u0000"))).slice(0, 32)
     : input.trace.spanId;
   const digest = await sha256Hex(JSON.stringify(fields));
-  return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields } };
+  return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields, ...(input.operationName === undefined ? {} : { operationName: input.operationName }) } };
 }
 
-function rejection(input: ObservedInvocation): Rejection | null {
+export function rejection(input: ObservedInvocation): Rejection | null {
   if (input.trace !== null && (!TRACE_ID.test(input.trace.traceId) || !SPAN_ID.test(input.trace.spanId))) return "invalid_trace";
   if (input.version !== null && !VERSION.test(input.version)) return "invalid_version";
   if ((input.stage === "object") !== (input.objectId !== null) || (input.objectId !== null && !OBJECT_ID.test(input.objectId))) return "invalid_object";
@@ -132,6 +151,7 @@ function rejection(input: ObservedInvocation): Rejection | null {
   if (!OUTCOME.test(input.outcome)) return "invalid_outcome";
   if (![input.cpuMs, input.wallMs].every(ms => Number.isSafeInteger(ms) && ms >= 0) || !Number.isSafeInteger(input.eventAtMs) || input.eventAtMs <= 0) return "invalid_timing";
   if (input.errors.some(error => error.operation !== null && !OPERATION.test(error.operation))) return "invalid_operation";
+  if (input.operationName !== undefined && !OPERATION.test(input.operationName)) return "invalid_operation";
   return null;
 }
 

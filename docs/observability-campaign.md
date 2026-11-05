@@ -319,7 +319,7 @@ Goal: answer the Phase 5 questions from the stack itself, and prove the core
 serves more than one service.
 
 - **Services:** `src/observe/services.ts` lists the observed services,
-  `stats` and `usr-memories`. Each has its own `ObservationStore` instance
+  `stats`, `usr-memories`, and `nanoshop-storied`. Each has its own `ObservationStore` instance
   named after it, so the core stays single-service and nothing is shared
   between their rows. The collector routes each tail event by the
   producer's script name and drops any other script with a fixed log line.

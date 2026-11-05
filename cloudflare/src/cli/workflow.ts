@@ -17,6 +17,8 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    pnpm --dir cloudflare -s statsctl observe traces --project stats --window 1h --failed --json
    Read the biggest priced line in cost, then the routes that spend CPU. Totals name their
    priced meters, excluded meters, and residuals; uncollected means no data, never zero.
+   For a sampled service (observe --project nanoshop-storied) the payload carries "sampling":
+   percentiles, kept counts and CPU come from the kept invocations only, and "observed" is exact.
 
 3. Save a snapshot and replay it offline
    pnpm --dir cloudflare -s statsctl snapshot --project stats --window 24h --out .work/statsctl/snapshots/stats-24h.json

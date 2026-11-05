@@ -10,6 +10,33 @@ Next: 54
 - **Fix with:** root-cause
 - **Effort:** S
 
+### STA-52 · P2 · Always-kept Nanoshop invocations have no bound
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/core/sampling.ts` (`keepReason`), `cloudflare/src/observe/core/budget.ts` (`NANOSHOP_ASSUMPTIONS`)
+- **Problem:** Failures, rejected events, untraced events, and slow events are kept whatever `keepPerMillion` says, and each costs one store request and 3 (rejected) to 12 (failed) rows written, retention included. The budget test assumes 500 failed, 1,000 slow, 45 untraced, and 45 rejected per million; those take $0.38 of the $1.10 budget before any sampled-in event. A bad deploy that fails 5% of requests keeps 1.5M events a month and projects to about $19 a month. STA-50 can make untraced object events common for the same reason.
+- **Recommendation:** Before Nanoshop deploys with `stats-observe` as its tail consumer, cap always-kept invocations per service per count bucket and count the overflow as sampled out with its class, so failure totals stay exact while detail is bounded. Measure the real slow and untraced shares in workerd under Nanoshop load first.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-51 · P2 · Two production behaviors that sampling relies on are unverified
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/cloudflare/store-object.ts` (`samplingOf`), `cloudflare/src/observe/cloudflare/worker.ts` (`tail`)
+- **Problem:** The store reads its service from `ctx.id.name`, which local workerd sets in the constructor and in an alarm after a restart. Production is unchecked, and an unnamed object makes every observe call for that service throw. The idle flush holds a timer in `ctx.waitUntil` for 20 s, inside the 30 s documented for HTTP-triggered Workers, which the tail handler is not; whether a tail isolate lives long enough between batches for its buffer to flush is unchecked.
+- **Recommendation:** Before the first sampled deploy, read `GET /api/observe/stats/health` and `statsctl observe routes --project stats` after the deploy, and watch `flushes` in a sampled service's health. If an object is unnamed, pass the service on each call; if the timer is cut short, drop it and accept that an idle isolate flushes on its next event.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/cloudflare/tail.ts` (`readChannel`), `docs/architecture.md` (Sampling relies on each invocation's tail event)
+- **Problem:** In local workerd, when RPCs overlap on one Durable Object instance, diagnostics-channel messages land on other invocations' tail events: five at a time produced events with zero to four messages. An object event with none is untraced, so a sampled service always keeps it. One with two operation messages is rejected as `rejected-invalid`. Nanoshop's one `TenantStore` object per shop is exactly this shape. Production is unmeasured.
+- **Recommendation:** Measure the share of untraced and rejected object events once Nanoshop runs locally under load. If it is high, find a mark that does not travel by diagnostics channel, or sample object events by a key that does not need the trace.
+- **Fix with:** none
+- **Effort:** M
+
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
 - **Area:** Ingest
@@ -125,4 +152,13 @@ Next: 54
 - **Problem:** The loop fetches `worker r2 probes collector` only. `captures/stuff/routes-1h.json` was assembled by hand from a live `cf sql query` run through `parseRouteRows`, so the next capture will not reproduce it and the replay breaks.
 - **Recommendation:** Add `routes` and `durable-objects` to the loop, make the replay serve `durable-objects` captures for projects that have namespaces, and replace the hand-built file with a real capture.
 - **Fix with:** none
+- **Effort:** S
+
+### STA-49 · P4 · Nanoshop does not check its routes and operations against Stats' lists
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/observe/cloudflare/nanoshop-policy.ts` (`NANOSHOP_ROUTES`, `NANOSHOP_RPC_METHODS`, `NANOSHOP_OPERATIONS`); Nanoshop's `src/routes/routes.ts` and `src/cloudflare/observe/operations.ts`
+- **Problem:** Stats generates its matcher and operation set from exported data, but the data is copied by hand from Nanoshop. Nothing fails when Nanoshop adds a route or an error operation: the new route is excluded and the new operation is rejected, losing data silently.
+- **Recommendation:** In Nanoshop's Stats integration tests, compare its `ROUTES` patterns and `ErrorOperation` set with the exported Stats lists.
+- **Fix with:** single-source-of-truth
 - **Effort:** S

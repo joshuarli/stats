@@ -1,7 +1,9 @@
 import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
-import { OTHER_ROUTE, OUTCOME_CLASSES, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
+import { OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
+import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
+import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 
 export type SqlValue = string | number | null;
@@ -107,6 +109,7 @@ export interface RolloutImpact {
   readonly regressions: readonly IssueRef[];
   readonly versions: readonly VersionStats[];
   readonly routes: readonly RouteComparison[];
+  readonly sampling?: SamplingSummary;
 }
 
 export interface Occurrence {
@@ -141,6 +144,10 @@ export interface InvocationSummary {
   readonly errorCount: number;
 }
 
+export interface TracePage extends Page<TraceSummary> {
+  readonly sampling?: SamplingSummary;
+}
+
 export interface TraceSummary extends InvocationSummary {
   readonly objectInvocations: number;
   readonly objectCpuMs: number;
@@ -152,6 +159,7 @@ export interface TraceDetail {
   readonly truncated: boolean;
   readonly invocations: readonly InvocationSummary[];
   readonly occurrences: readonly Occurrence[];
+  readonly sampling?: SamplingSummary;
 }
 
 export type TraceOrder = "recent" | "slowest";
@@ -179,6 +187,7 @@ export interface RouteStats {
   readonly p99WallMs: number;
   readonly p50CpuMs: number;
   readonly p95CpuMs: number;
+  readonly observed?: number;
 }
 
 export interface ObjectMethodStats {
@@ -206,12 +215,14 @@ export interface Exploration {
   readonly route: string | null;
   readonly routes: readonly RouteStats[];
   readonly heatmap: Heatmap;
+  readonly sampling?: SamplingSummary;
 }
 
 export interface ObjectMethods {
   readonly fromMs: number;
   readonly toMs: number;
   readonly methods: readonly ObjectMethodStats[];
+  readonly sampling?: SamplingSummary;
 }
 
 export const DURATION_EDGES: readonly number[] = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
@@ -253,6 +264,7 @@ export interface Health {
   readonly evicted: number;
   readonly reasons: readonly HealthReason[];
   readonly writes: WriteCost;
+  readonly sampling?: SamplingHealth;
 }
 
 const OPERATION_WORK_COLUMNS = [
@@ -387,7 +399,8 @@ const STATEMENTS = [
     lag_ms_sum INTEGER NOT NULL,
     filter_revision INTEGER NOT NULL,
     PRIMARY KEY (bucket_at, version, stage, outcome, route)
-  ) WITHOUT ROWID`
+  ) WITHOUT ROWID`,
+  ...COUNT_STATEMENTS
 ];
 
 export function initializeStore(db: SqlDatabase): void {
@@ -455,9 +468,18 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
   return differing.length === 0 ? "errors" : differing.sort().join(", ");
 }
 
-export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = []): IngestResult {
+export interface Counting {
+  readonly sampling: Sampling;
+  readonly counts: readonly CountDelta[];
+}
+
+const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
+
+export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
+  const counts: CountDelta[] = [...counting.counts];
+  let untraced = 0;
   const operations = new Map<string, OperationBucket>();
   const cutoff = nowMs - RETENTION_MS;
   db.transaction(() => {
@@ -481,6 +503,10 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
         continue;
       }
       insertInvocation(db, invocation, observedAt);
+      if (counting.sampling.kind === "sampled") {
+        counts.push(keptCount(invocation, nowMs));
+        if (invocation.trace === null) untraced++;
+      }
       if (invocation.operation !== undefined) accumulateOperation(operations, invocation, invocation.operation, nowMs);
       for (const error of invocation.errors) {
         if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) { result.issueCapacity++; events.push({ counter: "issue_capacity", reason: "issues_full", example: error.name }); }
@@ -489,15 +515,20 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
     }
     recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
+    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 });
+    for (let n = 0; n < recorded.invalid; n++) events.push({ counter: "rejected", reason: "invalid_count", example: null });
+    for (let n = 0; n < recorded.expired; n++) events.push({ counter: "expired", reason: "counts", example: null });
     recordHealth(db, nowMs, events);
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
   return result;
 }
 
-function eventBucket(eventAtMs: number | null, nowMs: number, widthMs: number): number {
-  const at = eventAtMs === null ? nowMs : Math.min(eventAtMs, nowMs);
-  return at - (at % widthMs);
+function keptCount(invocation: PreparedInvocation, nowMs: number): CountDelta {
+  return {
+    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "",
+    outcome: isFailed(invocation) ? "failed" : "ok", kept: 1, sampledOut: 0, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
+  };
 }
 
 interface OutcomeBucket {
@@ -723,6 +754,7 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     if (outcomeExcess > 0) {
       db.run("DELETE FROM observe_outcomes WHERE (bucket_at, version, stage, outcome, route) IN (SELECT bucket_at, version, stage, outcome, route FROM observe_outcomes ORDER BY bucket_at LIMIT ?)", outcomeExcess);
     }
+    cleanupCounts(db, cutoff);
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -753,8 +785,10 @@ function evict(db: SqlDatabase): { readonly invocations: number; readonly occurr
 export function nextCleanupAt(db: SqlDatabase, nowMs: number, cleaned: CleanupResult): number | null {
   if (cleaned.more) return nowMs;
   const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences)")[0]?.at ?? null;
-  if (oldest === null) return null;
-  return Math.max(oldest + RETENTION_MS, nowMs + CLEANUP_INTERVAL_MS);
+  const counted = oldestCountExpiryMs(db);
+  const expiry = oldest === null ? counted : counted === null ? oldest + RETENTION_MS : Math.min(oldest + RETENTION_MS, counted);
+  if (expiry === null) return null;
+  return Math.max(expiry, nowMs + CLEANUP_INTERVAL_MS);
 }
 
 function count(db: SqlDatabase, query: string, ...params: SqlValue[]): number {
@@ -899,7 +933,7 @@ function routeComparisons(db: SqlDatabase, cutoff: number, versions: readonly st
     .slice(0, IMPACT_ROUTES);
 }
 
-export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string): RolloutImpact | null {
+export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string, sampling: Sampling = KEEP_ALL): RolloutImpact | null {
   const rollout = db.rows<{ id: string; at_ms: number }>("SELECT id, at_ms FROM observe_rollouts WHERE id = ?", rolloutId)[0];
   if (rollout === undefined) return null;
   const cutoff = nowMs - RETENTION_MS;
@@ -940,7 +974,7 @@ export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string)
     cutoff, rollout.at_ms, introducedJson, rollout.at_ms, IMPACT_ISSUES
   ).map(issueRef);
   const compared = [...new Set([...previousShares, ...current])];
-  const counts = new Map(db.rows<{ version: string; requests: number; failed: number }>(
+  const counts = sampling.kind === "sampled" ? versionRequests(db, nowMs, compared) : new Map(db.rows<{ version: string; requests: number; failed: number }>(
     "SELECT version, COUNT(*) AS requests, SUM(failed) AS failed FROM observe_invocations WHERE stage = 'worker' AND observed_at > ? AND version IN (SELECT value FROM json_each(?)) GROUP BY version",
     cutoff, JSON.stringify(compared)
   ).map(row => [row.version, row]));
@@ -1004,7 +1038,7 @@ function invocationSummary(row: InvocationRow): InvocationSummary {
   };
 }
 
-function window(nowMs: number, fromMs: number | undefined, toMs: number | undefined): { fromMs: number; toMs: number } {
+export function eventWindow(nowMs: number, fromMs: number | undefined, toMs: number | undefined): { fromMs: number; toMs: number } {
   const from = Math.max(fromMs ?? nowMs - RETENTION_MS, nowMs - RETENTION_MS);
   const to = Math.min(toMs ?? nowMs, nowMs);
   if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from >= to) throw new RangeError("invalid time window");
@@ -1013,7 +1047,7 @@ function window(nowMs: number, fromMs: number | undefined, toMs: number | undefi
 
 export function listTraces(db: SqlDatabase, nowMs: number, filter: TraceFilter = {}): Page<TraceSummary> {
   const cutoff = nowMs - RETENTION_MS;
-  const { fromMs, toMs } = window(nowMs, filter.fromMs, filter.toMs);
+  const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
   const failed = filter.failed === undefined ? null : filter.failed ? 1 : 0;
@@ -1050,7 +1084,7 @@ function durationBin(wallMs: number): number {
 
 export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string } = {}): Exploration {
   const cutoff = nowMs - RETENTION_MS;
-  const { fromMs, toMs } = window(nowMs, filter.fromMs, filter.toMs);
+  const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const rows = db.rows<{ label: string; observed_at: number; wall_ms: number; failed: number; cpu_ms: number }>(
     `SELECT r.label, r.observed_at, r.wall_ms, r.failed, r.cpu_ms + COALESCE(c.cpu_ms, 0) AS cpu_ms
      FROM observe_invocations r
@@ -1088,7 +1122,7 @@ export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromM
 
 export function objectMethods(db: SqlDatabase, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number } = {}): ObjectMethods {
   const cutoff = nowMs - RETENTION_MS;
-  const { fromMs, toMs } = window(nowMs, filter.fromMs, filter.toMs);
+  const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const objectRows = db.rows<{ label: string; wall_ms: number; failed: number; cpu_ms: number }>(
     "SELECT label, wall_ms, failed, cpu_ms FROM observe_invocations WHERE stage = 'object' AND observed_at > ? AND observed_at >= ? AND observed_at <= ?",
     cutoff, fromMs, toMs
@@ -1124,7 +1158,7 @@ export function readTrace(db: SqlDatabase, nowMs: number, traceId: string): Trac
   return { traceId, rootPresent: invocations.some(invocation => invocation.stage === "worker"), truncated: rows.length > MAX_TRACE_INVOCATIONS, invocations, occurrences };
 }
 
-export function health(db: SqlDatabase, nowMs: number): Health {
+export function health(db: SqlDatabase, nowMs: number, sampling: Sampling = KEEP_ALL): Health {
   const cutoff = nowMs - RETENTION_MS;
   const live = db.rows<{ n: number; oldest: number | null; newest: number | null }>(
     "SELECT COUNT(*) AS n, MIN(observed_at) AS oldest, MAX(observed_at) AS newest FROM observe_invocations WHERE observed_at > ?", cutoff
@@ -1159,7 +1193,8 @@ export function health(db: SqlDatabase, nowMs: number): Health {
     issueCapacity: total("issue_capacity"),
     evicted: total("evicted"),
     reasons: reasons.slice(0, MAX_HEALTH_REASONS).map(({ counter, reason, count, example }) => ({ counter, reason, count, example })),
-    writes: { ingestBatches: ingestCost?.runs ?? 0, accepted: ingestCost?.invocations ?? 0, ingestRows: ingestCost?.rows_written ?? 0, cleanupRows: cleanupCost?.rows_written ?? 0 }
+    writes: { ingestBatches: ingestCost?.runs ?? 0, accepted: ingestCost?.invocations ?? 0, ingestRows: ingestCost?.rows_written ?? 0, cleanupRows: cleanupCost?.rows_written ?? 0 },
+    ...(sampling.kind === "sampled" ? { sampling: samplingHealth(db, nowMs, sampling) } : {})
   };
 }
 
@@ -1235,6 +1270,7 @@ export interface StatsWindow {
   readonly outcomes: readonly OutcomeWindowRow[];
   readonly invocations: readonly InvocationWindowRow[];
   readonly lag: { readonly operations: LagTotals; readonly outcomes: LagTotals };
+  readonly sampling?: SamplingSummary;
 }
 
 interface StoredOperationRow {
@@ -1242,12 +1278,16 @@ interface StoredOperationRow {
   cpu_ms_sum: number; wall_ms_sum: number; rows_read: number; rows_written: number; statements: number; lag_count: number; lag_ms_max: number; lag_ms_sum: number;
 }
 
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function lagTotals(rows: readonly { readonly lagCount: number; readonly lagMsMax: number; readonly lagMsSum: number }[]): LagTotals {
   return { count: rows.reduce((sum, row) => sum + row.lagCount, 0), maxMs: rows.reduce((max, row) => Math.max(max, row.lagMsMax), 0), sumMs: rows.reduce((sum, row) => sum + row.lagMsSum, 0) };
 }
 
 /** Exact half-open event-time window; no rollout or version history is consulted, so a reused version carries only what it produced inside the bounds. */
-export function statsWindow(db: SqlDatabase, query: WindowQuery): StatsWindow {
+export function statsWindow(db: SqlDatabase, query: WindowQuery, sampling: Sampling = KEEP_ALL): StatsWindow {
   const columns = Object.keys(WORK_FIELDS) as OperationWorkColumn[];
   const filters = ["bucket_at >= ?", "bucket_at < ?"];
   const params: SqlValue[] = [query.fromMs, query.toMs];
@@ -1272,12 +1312,15 @@ export function statsWindow(db: SqlDatabase, query: WindowQuery): StatsWindow {
     `SELECT bucket_at, version, stage, outcome, SUM(count) AS count, SUM(lag_count) AS lag_count, MAX(lag_ms_max) AS lag_ms_max, SUM(lag_ms_sum) AS lag_ms_sum, filter_revision
      FROM observe_outcomes WHERE bucket_at >= ? AND bucket_at < ? GROUP BY bucket_at, version, stage, outcome, filter_revision ORDER BY bucket_at, version, stage, outcome, filter_revision`, query.fromMs, query.toMs
   ).map((row): OutcomeWindowRow => ({ bucketAt: row.bucket_at, version: row.version, stage: row.stage, outcome: row.outcome, count: row.count, lagCount: row.lag_count, lagMsMax: row.lag_ms_max, lagMsSum: row.lag_ms_sum, filterRevision: row.filter_revision }));
-  const invocations = db.rows<{ bucket_at: number; version: string | null; stage: Stage; count: number }>(
+  const counted = sampling.kind === "sampled" ? countWindow(db, query.fromMs, query.toMs) : null;
+  const invocations = counted !== null ? counted.invocations.map((row): InvocationWindowRow => ({ ...row })) : db.rows<{ bucket_at: number; version: string | null; stage: Stage; count: number }>(
     `SELECT observed_at - observed_at % ? AS bucket_at, COALESCE(version, '') AS version, stage, COUNT(*) AS count
      FROM observe_invocations WHERE observed_at >= ? AND observed_at < ? GROUP BY bucket_at, version, stage ORDER BY bucket_at, version, stage`, OPERATION_BUCKET_MS, query.fromMs, query.toMs
   ).map((row): InvocationWindowRow => ({ bucketAt: row.bucket_at, version: row.version ?? "", stage: row.stage, count: row.count }));
+  const allOutcomes = counted === null ? outcomes : [...outcomes, ...counted.excluded.map((row): OutcomeWindowRow => ({ ...row, lagCount: 0, lagMsMax: 0, lagMsSum: 0, filterRevision: OBSERVE_FILTER_REVISION }))]
+    .sort((a, b) => a.bucketAt - b.bucketAt || compareText(a.version, b.version) || compareText(a.stage, b.stage) || compareText(a.outcome, b.outcome) || a.filterRevision - b.filterRevision);
   return {
     fromMs: query.fromMs, toMs: query.toMs, bucketMs: OPERATION_BUCKET_MS, operation: query.operation ?? null, workloadClass: query.workloadClass ?? null,
-    filterRevision: OBSERVE_FILTER_REVISION, operations, outcomes, invocations, lag: { operations: lagTotals(operations), outcomes: lagTotals(outcomes) }
+    filterRevision: OBSERVE_FILTER_REVISION, operations, outcomes: allOutcomes, invocations, lag: { operations: lagTotals(operations), outcomes: lagTotals(allOutcomes) }
   };
 }

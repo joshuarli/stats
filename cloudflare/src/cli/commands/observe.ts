@@ -1,23 +1,24 @@
 import { decodeExploration, decodeImpact, decodeIssues, decodeTraces } from "../../observe/client/decode.ts";
-import type { Exploration, IssueSummary, Page, RolloutImpact, RouteStats, TraceSummary } from "../../observe/core/store.ts";
+import type { Exploration, IssueSummary, Page, RolloutImpact, RouteStats, TracePage } from "../../observe/core/store.ts";
 import { VERSION } from "../../observe/core/model.ts";
+import type { SamplingSummary } from "../../observe/core/counts.ts";
+import { isObservedService, OBSERVED_SERVICES } from "../../observe/services.ts";
 import type { Window } from "../envelope.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { defineCommand, type CommandContext, type OptionSpec } from "../registry.ts";
 import { table, timeText } from "../text.ts";
-import { OBSERVED_PROJECT } from "./health.ts";
 import { TEXT_ROWS } from "./deployments.ts";
 
 const WINDOWS: Readonly<Record<string, number>> = { "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000, "7d": 604_800_000 };
 const ISSUE_STATES = ["open", "resolved"];
 
-const project: OptionSpec = { type: "string", placeholder: "ID", required: true, description: "only `stats` is observed" };
+const project: OptionSpec = { type: "string", placeholder: "ID", required: true, description: `an observed service: ${OBSERVED_SERVICES.join(", ")}` };
 const window: OptionSpec = { type: "string", placeholder: "SPAN", default: "24h", description: "trailing window, one of 1h, 6h, 24h, 7d; UTC, half-open [from, to)" };
 
 function observedProject(context: CommandContext): string {
   const value = context.option("project");
   if (value === undefined) throw usageError("missing required option --project");
-  if (value !== OBSERVED_PROJECT) throw new CommandError(EXIT.usage, "not_observed", `only ${OBSERVED_PROJECT} is observed, not ${value}`);
+  if (!isObservedService(value)) throw new CommandError(EXIT.usage, "not_observed", `only ${OBSERVED_SERVICES.join(", ")} are observed, not ${value}`);
   return value;
 }
 
@@ -29,14 +30,20 @@ function trailingWindow(context: CommandContext): Window & { readonly span: stri
   return { fromMs: toMs - length, toMs, span };
 }
 
-async function read<T>(context: CommandContext, path: string, decode: (value: unknown) => T): Promise<T> {
-  const fetched = await context.http.getJson(`/api/observe/${OBSERVED_PROJECT}${path}`, decode);
+async function read<T>(context: CommandContext, service: string, path: string, decode: (value: unknown) => T): Promise<T> {
+  const fetched = await context.http.getJson(`/api/observe/${service}${path}`, decode);
   if (fetched.kind !== "ok") throw transportError("contract", `${path} answered not-modified to an unconditional request`);
   return fetched.value;
 }
 
 function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`;
+}
+
+function samplingNote(sampling: SamplingSummary | undefined, what: string): string[] {
+  if (sampling === undefined) return [];
+  const share = sampling.observed === 0 ? "none" : `${((sampling.kept / sampling.observed) * 100).toFixed(2)}%`;
+  return [`sampled: ${what} come from ${sampling.kept} kept of ${sampling.observed} observed invocations (${share}; keep rate ${sampling.keepPerMillion} per million). Counts of observed invocations are exact.`];
 }
 
 function omitted(total: number): string[] {
@@ -48,6 +55,7 @@ export interface RoutesPayload {
   readonly fromMs: number;
   readonly toMs: number;
   readonly routes: readonly RouteStats[];
+  readonly sampling?: SamplingSummary;
 }
 
 export const observeRoutesCommand = defineCommand<RoutesPayload>({
@@ -57,22 +65,29 @@ export const observeRoutesCommand = defineCommand<RoutesPayload>({
   access: "read",
   options: { project, window },
   examples: ["statsctl observe routes --project stats --window 1h --json"],
-  limitations: ["Observe retention is 7 days.", `Text shows the top ${TEXT_ROWS} routes by CPU.`],
+  limitations: [
+    "Observe retention is 7 days.",
+    `Text shows the top ${TEXT_ROWS} routes by CPU.`,
+    "For a sampled service the payload carries `sampling`; its percentiles, requests, failed and cpu come from the kept invocations only, and `observed` is the exact count."
+  ],
   async run(context) {
     const name = observedProject(context);
     const { fromMs, toMs, span } = trailingWindow(context);
-    const exploration: Exploration = await read(context, `/explore?${new URLSearchParams({ from: String(fromMs), to: String(toMs) })}`, decodeExploration);
+    const exploration: Exploration = await read(context, name, `/explore?${new URLSearchParams({ from: String(fromMs), to: String(toMs) })}`, decodeExploration);
     const routes = [...exploration.routes].sort((a, b) => b.cpuMs - a.cpuMs);
-    return { project: name, windows: [{ fromMs, toMs }], payload: { span, fromMs, toMs, routes } };
+    return { project: name, windows: [{ fromMs, toMs }], payload: { span, fromMs, toMs, routes, ...(exploration.sampling === undefined ? {} : { sampling: exploration.sampling }) } };
   },
-  render({ span, fromMs, toMs, routes }) {
+  render({ span, fromMs, toMs, routes, sampling }) {
     const lines = [`observe routes, last ${span}: [${timeText(fromMs)}, ${timeText(toMs)})`];
-    if (routes.length === 0) return [...lines, "no routes retained in this window"];
+    if (routes.length === 0) return [...lines, "no routes retained in this window", ...samplingNote(sampling, "kept counts")];
     const total = Math.max(1, routes.reduce((sum, route) => sum + route.cpuMs, 0));
-    return [...lines, ...table([
-      ["route", "requests", "failed", "cpu", "p50", "p95", "p99", "p95 cpu"],
-      ...routes.slice(0, TEXT_ROWS).map(route => [route.label, String(route.requests), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`, ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)])
-    ]), ...omitted(routes.length)];
+    const percentiles = sampling === undefined ? ["p50", "p95", "p99", "p95 cpu"] : ["p50 (sampled)", "p95 (sampled)", "p99 (sampled)", "p95 cpu (sampled)"];
+    const head = sampling === undefined ? ["route", "requests", "failed", "cpu", ...percentiles] : ["route", "kept", "observed", "failed", "cpu", ...percentiles];
+    const row = (route: RouteStats) => [
+      route.label, String(route.requests), ...(sampling === undefined ? [] : [String(route.observed ?? 0)]), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`,
+      ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)
+    ];
+    return [...lines, ...samplingNote(sampling, "the kept, failed, cpu and percentile columns"), ...table([head, ...routes.slice(0, TEXT_ROWS).map(row)]), ...omitted(routes.length)];
   }
 });
 
@@ -80,7 +95,7 @@ export interface TracesPayload {
   readonly span: string;
   readonly fromMs: number;
   readonly toMs: number;
-  readonly traces: Page<TraceSummary>;
+  readonly traces: TracePage;
 }
 
 export const observeTracesCommand = defineCommand<TracesPayload>({
@@ -95,7 +110,11 @@ export const observeTracesCommand = defineCommand<TracesPayload>({
     failed: { type: "boolean", description: "only failed invocations" }
   },
   examples: ["statsctl observe traces --project stats --window 1h --failed --json"],
-  limitations: ["Resolving, reopening, and source-map registration are not exposed; use `pnpm observe`.", `Reads one page of at most ${TEXT_ROWS} traces; --json carries the next cursor.`],
+  limitations: [
+    "Resolving, reopening, and source-map registration are not exposed; use `pnpm observe`.",
+    `Reads one page of at most ${TEXT_ROWS} traces; --json carries the next cursor.`,
+    "For a sampled service only kept invocations are listed, and `traces.sampling` says how many were observed."
+  ],
   async run(context) {
     const name = observedProject(context);
     const { fromMs, toMs, span } = trailingWindow(context);
@@ -103,11 +122,11 @@ export const observeTracesCommand = defineCommand<TracesPayload>({
     const route = context.option("route");
     if (route !== undefined) query.set("label", route);
     if (context.flag("failed")) query.set("failed", "true");
-    const traces = await read(context, `/traces?${query}`, decodeTraces);
+    const traces = await read(context, name, `/traces?${query}`, decodeTraces);
     return { project: name, windows: [{ fromMs, toMs }], identities: { versionIds: [...new Set(traces.items.flatMap(item => item.version === null ? [] : [item.version]))] }, payload: { span, fromMs, toMs, traces } };
   },
   render({ span, fromMs, toMs, traces }) {
-    const lines = [`observe traces, last ${span}: [${timeText(fromMs)}, ${timeText(toMs)}), slowest first`];
+    const lines = [`observe traces, last ${span}: [${timeText(fromMs)}, ${timeText(toMs)}), slowest first`, ...samplingNote(traces.sampling, "the listed traces")];
     if (traces.items.length === 0) return [...lines, "no traces match"];
     return [...lines, ...table([
       ["trace", "route", "status", "wall", "cpu", "at"],
@@ -142,7 +161,7 @@ export const observeIssuesCommand = defineCommand<IssuesPayload>({
       if (!VERSION.test(introducedIn)) throw usageError("--introduced-in must be a version id");
       query.set("introducedIn", introducedIn);
     }
-    const issues = await read(context, `/issues?${query}`, decodeIssues);
+    const issues = await read(context, name, `/issues?${query}`, decodeIssues);
     return { project: name, payload: { issues } };
   },
   render({ issues }) {
@@ -171,12 +190,15 @@ export const observeDeploymentCommand = defineCommand<DeploymentImpactPayload>({
   access: "read",
   options: { project, deployment: { type: "string", placeholder: "ID", required: true, description: "rollout or deployment id" } },
   examples: ["statsctl observe deployment --project stats --deployment DEPLOYMENT_ID --json"],
-  limitations: ["Exploratory: whole-retention scan by version; `verify` does not use it."],
+  limitations: [
+    "Exploratory: whole-retention scan by version; `verify` does not use it.",
+    "For a sampled service request and failed counts are exact, and the per-route CPU comparisons in --json come from kept invocations (`impact.sampling`)."
+  ],
   async run(context) {
     const name = observedProject(context);
     const id = context.option("deployment") ?? "";
     if (!VERSION.test(id)) throw usageError("--deployment must be a rollout or deployment id");
-    const impact = await read(context, `/rollouts/${encodeURIComponent(id)}/impact`, value => decodeImpact(value, id));
+    const impact = await read(context, name, `/rollouts/${encodeURIComponent(id)}/impact`, value => decodeImpact(value, id));
     return { project: name, identities: { deploymentIds: [impact.rolloutId], versionIds: impact.introduced }, payload: { impact } };
   },
   render({ impact }) {
@@ -186,6 +208,7 @@ export const observeDeploymentCommand = defineCommand<DeploymentImpactPayload>({
     return [
       `rollout ${impact.rolloutId} at ${timeText(impact.atMs)}`,
       `failed requests ${failureRate(impact, false)} -> ${failureRate(impact, true)}`,
+      ...samplingNote(impact.sampling, "per-route CPU comparisons"),
       ...(changed.length === 0 ? ["no new or regressed issues"] : changed.slice(0, TEXT_ROWS)),
       ...omitted(changed.length)
     ];

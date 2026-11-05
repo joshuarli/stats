@@ -23,7 +23,7 @@ export { ObservationStore };
 export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(scriptName)} })), env, ctx); } };`;
 }
 
-function collectorModules(scriptName: string) {
+export function collectorModules(scriptName: string) {
   return [
     { type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: namedCollector(scriptName) },
     { type: "ESModule" as const, path: join(ROOT, "observe-worker/index.js"), contents: readFileSync(OBSERVE_BUNDLE, "utf8") }
