@@ -92,6 +92,7 @@ describe("route and Durable Object history", () => {
       detail: "ok",
       rowsRead: 1,
       durationMs: 1,
+      upstreamQueries: 1,
       storeOwners: [],
       collected: [
         {

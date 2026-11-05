@@ -2,6 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
 import { readMetricHistory } from "../src/projects/history";
+import { SqlAccount } from "../src/sql-account";
 import type { ProbeFetch } from "../src/projects/probes";
 import type { BoundQuery } from "../src/projects/queries";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
@@ -131,7 +132,7 @@ describe("collector", () => {
     const other = { ...owner, id: "stuff", name: "stuff", worker: "stuff" };
     await runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: JSON.stringify([owner, other]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
     await inside(store, (sql) => {
-      const sizes = (project: typeof owner) => readMetricHistory(sql, project, { range: "1h" }, "durable-objects", NOW).series.find((series) => series.metric === "do.storageBytes")!.values;
+      const sizes = (project: typeof owner) => readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "durable-objects", NOW).series.find((series) => series.metric === "do.storageBytes")!.values;
       const recorded = sizes(owner).filter((value) => value !== null);
       expect(recorded).toHaveLength(1);
       expect(recorded[0]).toBeGreaterThan(0);
@@ -168,16 +169,16 @@ describe("collector", () => {
     await inside(store, (sql) => {
       const project = { id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
       const withDatabase = { ...project, d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"] };
-      const sizes = readMetricHistory(sql, withDatabase, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
+      const sizes = readMetricHistory(new SqlAccount(sql), withDatabase, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
       expect(Math.max(...(sizes?.values ?? []).map((value) => value ?? 0))).toBe(245_923_840);
-      const totals = readMetricHistory(sql, project, { range: "1h" }, "d1", NOW).series;
+      const totals = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1", NOW).series;
       const written = totals.find((series) => series.metric === "d1.rowsWritten")?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
       expect(written).toBe(3_078);
-      const ranked = readMetricHistory(sql, project, { range: "1h" }, "d1-statements", NOW).series.filter((series) => series.metric.endsWith(".rowsWritten")).map((series) => series.metric);
+      const ranked = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1-statements", NOW).series.filter((series) => series.metric.endsWith(".rowsWritten")).map((series) => series.metric);
       expect(ranked).toHaveLength(10);
       expect(ranked[0]).toBe("d1q.UPDATE hot SET a = ?.rowsWritten");
       expect(ranked[1]).toBe("d1q.SELECT * FROM big_read.rowsWritten");
-      const hot = readMetricHistory(sql, project, { range: "1h" }, "d1-statements", NOW).series.find((series) => series.metric === "d1q.UPDATE hot SET a = ?.rowsWritten");
+      const hot = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1-statements", NOW).series.find((series) => series.metric === "d1q.UPDATE hot SET a = ?.rowsWritten");
       expect(hot?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0)).toBe(3_000);
     });
   });
