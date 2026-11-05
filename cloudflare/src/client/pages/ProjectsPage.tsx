@@ -13,8 +13,8 @@ import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
 import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
 import { createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
-import { MONTH_MS, type Amount, type LedgerHistories } from "./project/cost-ledger";
-import { ratio } from "./project/math";
+import { MONTH_MS, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
+import { ratio } from "../math.ts";
 import { provisionalFromMs } from "./project/series";
 import "./project/projects.css";
 

@@ -1,4 +1,4 @@
-import type { Track } from "../../columns";
+import type { Track } from "./columns.ts";
 
 const MINUTE_MS = 60_000;
 const HOLD_MAX_MS = 60 * MINUTE_MS;

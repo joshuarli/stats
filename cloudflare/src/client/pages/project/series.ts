@@ -2,7 +2,7 @@ import type { Track } from "../../columns";
 import { count } from "../../format";
 import { metricTrack, type CollectorHistory, type MetricHistory } from "../../history";
 import { MIN_SCORED_EVENTS } from "../../health";
-import { addAll, ratio } from "./math";
+import { addAll, ratio } from "../../math.ts";
 import { PROJECT_SETTLE_MS } from "../../../limits";
 
 const MINUTE_MS = 60_000;

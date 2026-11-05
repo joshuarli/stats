@@ -7,7 +7,7 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:ingest && pnpm run test:deployments && pnpm run test:observe && vite build && pnpm run build:observe && pnpm run test:observe-e2e && vitest run",
+    "test": "node scripts/check-config.mjs && pnpm run test:binary && pnpm run test:ingest && pnpm run test:deployments && pnpm run test:cost && pnpm run test:observe && vite build && pnpm run build:observe && pnpm run test:observe-e2e && vitest run",
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments && pnpm run typecheck:observe",
@@ -20,6 +20,7 @@
     "test:agent-e2e": "node --experimental-strip-types --test test/agent-e2e/*.test.ts",
     "typecheck:binary": "tsrs -p binary.tsconfig.json --noEmit --fast",
     "test:deployments": "node --experimental-strip-types --test test/deployments/*.test.ts",
+    "test:cost": "node --experimental-strip-types --test test/cost/*.test.ts",
     "typecheck:deployments": "tsrs -p deployments.tsconfig.json --noEmit --fast",
     "test:observe": "node --experimental-strip-types --test test/observe/*.test.ts",
     "test:observe-e2e": "node --experimental-strip-types --test test/observe-e2e/*.test.ts",

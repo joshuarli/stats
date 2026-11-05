@@ -7,7 +7,7 @@ import { Term } from "../../components/Info";
 import { PanelLabel, PanelChart } from "../host/shared";
 import { durableObjectCpuAverage, durableObjectWallAverage, hasAnyValue, provisionalFromMs, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
-import { holdLast } from "./math";
+import { holdLast } from "../../math.ts";
 
 export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX.Element {
   const history = () => props.data.durableObjects;

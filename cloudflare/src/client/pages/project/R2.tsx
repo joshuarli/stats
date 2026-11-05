@@ -5,7 +5,7 @@ import { PanelLabel, seriesColor, PanelChart } from "../host/shared";
 
 import { Widget } from "../../components/ui";
 import { Term } from "../../components/Info";
-import { holdLast } from "./math";
+import { holdLast } from "../../math.ts";
 import { bucketOutcome, otherShare, provisionalFromMs, r2Metric, type ProjectData } from "./series";
 import { metricTrack } from "../../history";
 

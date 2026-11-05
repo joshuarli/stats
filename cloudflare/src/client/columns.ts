@@ -1,4 +1,4 @@
-import { isPresent, type ColumnView, type TableView } from "../binary/columns";
+import { isPresent, type ColumnView, type TableView } from "../binary/columns.ts";
 
 export type Times = readonly number[];
 export type Cells = readonly (number | null)[];

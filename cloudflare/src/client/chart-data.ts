@@ -1,5 +1,5 @@
-import type { Cells, Times, Track } from "./columns";
-import type { Limits } from "./health";
+import type { Cells, Times, Track } from "./columns.ts";
+import type { Limits } from "./health.ts";
 
 export interface TimeWindow {
   readonly fromMs: number;
