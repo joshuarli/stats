@@ -21,7 +21,8 @@ const mf = new Miniflare({
     analytics: "unbound",
     collector: { kind: "attached" },
     outbound: outbound.handler,
-    persist
+    persist,
+    alarms: "platform"
   }),
   host: "127.0.0.1",
   port: 0

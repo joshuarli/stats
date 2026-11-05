@@ -19,7 +19,8 @@ function options(persist: string): StackOptions {
     analytics: { service: "analytics-provider", entrypoint: "Analytics" },
     collector: { kind: "attached" },
     outbound: rejectAndRecord().handler,
-    persist
+    persist,
+    alarms: "platform"
   };
 }
 

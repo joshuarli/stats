@@ -32,6 +32,7 @@ const mf = new Miniflare(miniflareOptions(STATS, OBSERVE, {
   collector: { kind: "absent" },
   outbound: rejectAndRecord().handler,
   persist,
+  alarms: "platform",
   extraWorkers: [provider.worker, { name: "analytics-caller", modules: true, script: CALLER, compatibilityDate: STATS.compatibilityDate, serviceBindings: { ANALYTICS_SQL: { name: provider.binding.service, entrypoint: provider.binding.entrypoint } } }]
 }));
 await mf.ready;

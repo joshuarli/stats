@@ -73,6 +73,7 @@ export async function start(collector: Collector, bindings: Record<string, strin
     collector: statsCollector,
     outbound,
     persist,
+    alarms: "platform",
     extraWorkers: collector === "absent" ? [memoriesWorker] : [memoriesCollector, memoriesWorker]
   }));
   const stats = await mf.getWorker("stats");

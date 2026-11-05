@@ -154,7 +154,10 @@ export interface StackOptions {
   readonly outbound: Outbound;
   readonly persist: string;
   readonly extraWorkers?: readonly V4WorkerOptions[];
+  readonly alarms: "platform" | "rpc";
 }
+
+export const RUN_ALARM_METHOD = "runAlarm";
 
 function compat(worker: BuiltWorker): Pick<V4WorkerOptions, "compatibilityDate" | "compatibilityFlags"> {
   return { compatibilityDate: worker.compatibilityDate, compatibilityFlags: [...worker.compatibilityFlags] };
@@ -189,6 +192,16 @@ export function collectorWorker(observe: BuiltWorker, name: string, producer: st
     if (value.type !== "durable-object") throw new TypeError(`${observe.name} env.${key} is a ${value.type} binding, which the local collector does not map`);
   }
   return { name, modules: collectorModules(observe, producer), ...compat(observe), durableObjects: durableObjects(observe, name) };
+}
+
+function alarmModules(worker: BuiltWorker): V4ModuleDefinition[] {
+  const main = `./${worker.mainModule}`;
+  const subclasses = worker.sqliteDurableObjects.map(name => `export class ${name} extends bundle.${name} { async ${RUN_ALARM_METHOD}() { return this.alarm(); } }`);
+  const entry = [`import * as bundle from "${main}";`, `export * from "${main}";`, `export { default } from "${main}";`, ...subclasses].join("\n");
+  return [
+    { type: "ESModule", path: join(worker.output, "bundle", "alarm-entry.js"), contents: entry },
+    { type: "ESModule", path: bundlePath(worker), contents: readFileSync(bundlePath(worker), "utf8") }
+  ];
 }
 
 function statsWorker(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions): V4WorkerOptions {
@@ -234,8 +247,7 @@ function statsWorker(stats: BuiltWorker, observe: BuiltWorker, options: StackOpt
   }
   return {
     name: stats.name,
-    modules: true,
-    scriptPath: bundlePath(stats),
+    ...(options.alarms === "rpc" ? { modules: alarmModules(stats) } : { modules: true, scriptPath: bundlePath(stats) }),
     ...compat(stats),
     bindings,
     durableObjects: durableObjects(stats, stats.name),
