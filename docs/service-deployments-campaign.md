@@ -21,10 +21,18 @@
   - Tests: `make cloudflare-test lint dashboard-test node-e2e` green (Playwright 120, test:node 33, test:cli 129).
   - Live: a marked `make node-deploy` at or after 17:20Z, then the comparison after about 18:35Z.
 - **On Cloudflare (owner-approved, 18:02:44Z):** `make stats-deploy` of master `52975f4` carries S1 to S3. It is `stats` version `8234b238`, with rollback to `d0fb1f45` (version `8ba50543`). Smoke passed, `check ingest` passed all five steps, and `statsctl services` answers `no services configured`. An unauthenticated marker `POST` gets the Worker's 401, not an Access redirect. No service exists on Cloudflare yet.
+- **Merged-ready, not merged:** S4 (`893a65b`..`178a06c`, plus this Status commit) on `campaign/services`:
+  - Protocol: STB2 `present`/`unavailable` bit 12 is `services` (count 0-16; per service a dictionary ref and `name` str(32), then a head u8 `MEMORY`/`PEAK`/`IO`/`DELTA`/`UNAVAILABLE`, then `cpuUsec`, `memoryCurrent`, `memoryPeak`, and four io counters). Existing golden frames and acks are byte-identical; `present-reserved-bit` now probes bit 13. Fixtures `services` and `services-boundaries` and 11 malformed service cases.
+  - Storage: deltas and one-minute rollups carry per-service `cpuUsec` and io bytes with covered intervals and `memoryCurrent` as a gauge; host-only rows are unchanged.
+  - Agent: `services = [{ name, unit }]`; `name.service` maps to `system.slice/<unit>`, template instances to `system.slice/system-<template>.slice/<unit>`, `docker-<id>.scope` to `system.slice`, `libpod-`/`machine-` scopes to `machine.slice`. No cgroup v2 root marks the group unavailable.
+  - Comparison: `service.cpu` (cores), `service.memory`, `service.io` replace `host.cpu`, `host.memory`, `host.disk` only when present in both windows; `sources` is `hosts`, `cgroup`, `probe`. Service-page goldens refreshed for that change only.
+  - Checks: `make fixtures agent-test agent-build cloudflare-test lint agent-e2e node-e2e` green (fixtures 39 batches and 65 malformed frames, agent 100 + 5, vitest 307, test:cli 130, test:node 35, agent-e2e 1, node-e2e 5). `dashboard-test` 119 of 120: `dashboard.spec.ts` "leads with a cost ledger" fails on the real clock (projected `$0.0016` on Nov 5) with S4's only client change reverted, so it predates S4. Agent musl size: x86_64 2,819,728 to 2,843,808 bytes (+24,080), aarch64 2,471,664 to 2,494,736 (+23,072); no new dependency.
+  - Unverified: real cgroup reads on a live Linux host. threadripper runs OpenRC with Docker's cgroupfs driver (containers under `/sys/fs/cgroup/docker/<id>`), which no mapping covers, so `stats-node` there cannot be configured yet.
 - **Red:** none. **Parked:** none.
-- **Next:** S3 live comparison, then S4. Carry-overs:
+- **Next:** S3 live comparison, merge S4, then agent rollout (owner's call) and X. Carry-overs:
   - Deploy tokens have no rotate or revoke yet.
-  - Host network and disk throughput are averaged across a marker's hosts, not summed; level values are unrounded.
+  - Host network and disk throughput, and cgroup levels, are averaged across a marker's hosts, not summed; level values are unrounded.
+  - `io.stat` is summed over every device it lists; stacked devices (dm, md) may count one I/O twice. `memoryPeak` is stored but not compared.
   - Host data for `stats-node` (owner, 2026-11-05): a second agent, the OpenRC service `stats-node-agent` (`/etc/init.d/stats-node-agent`, user `stats`, `/etc/stats-node-agent/agent.json`, log `/var/log/stats-node-agent.log`, in the default runlevel), reports host `threadripper` to `https://threadripper.tailcf741.ts.net:18791`, a `tailscale serve --https` entry on the Node socket. `/etc/hosts` maps that name to `100.98.145.91`, because the host's local resolver does not forward `*.ts.net`. The container has no network, so probes stay unavailable.
 - **Resume:** `Execute docs/service-deployments-campaign.md from its Status block.` First command: `git log --oneline -1 && make check`.
 
