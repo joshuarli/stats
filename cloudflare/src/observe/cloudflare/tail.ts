@@ -86,7 +86,7 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
     }
     const preparation = await prepareInvocation(reduction.invocation, POLICY);
     preparations.push(preparation);
-    outcomes.push(outcomeOf(item, preparation.ok ? "observed" : "rejected-invalid", routeLabel(reduction.invocation.label)));
+    if (!preparation.ok) outcomes.push(outcomeOf(item, "rejected-invalid", routeLabel(reduction.invocation.label)));
   }
   return { preparations, outcomes };
 }

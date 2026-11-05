@@ -5,7 +5,7 @@ import { fingerprint, sha256Hex } from "./grouping.ts";
 
 export type Stage = "worker" | "object";
 export type OutcomeStage = Stage | "unknown";
-export const OUTCOME_CLASSES = ["observed", "excluded-status:401", "excluded-status:403", "excluded-status:404", "excluded-route", "rejected-invalid", "unknown-service"] as const;
+export const OUTCOME_CLASSES = ["excluded-status:401", "excluded-status:403", "excluded-status:404", "excluded-route", "rejected-invalid", "unknown-service"] as const;
 export type OutcomeClass = typeof OUTCOME_CLASSES[number];
 export const OTHER_ROUTE = "other";
 

@@ -363,6 +363,9 @@ const STATEMENTS = [
     workload_class TEXT NOT NULL,
     synthetic INTEGER NOT NULL CHECK (synthetic IN (0, 1)),
     count INTEGER NOT NULL,
+    lag_count INTEGER NOT NULL DEFAULT 0,
+    lag_ms_max INTEGER NOT NULL DEFAULT 0,
+    lag_ms_sum INTEGER NOT NULL DEFAULT 0,
     failed INTEGER NOT NULL,
     cpu_ms_sum INTEGER NOT NULL,
     wall_ms_sum INTEGER NOT NULL,
@@ -478,13 +481,13 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
         continue;
       }
       insertInvocation(db, invocation, observedAt);
-      if (invocation.operation !== undefined) accumulateOperation(operations, invocation, invocation.operation);
+      if (invocation.operation !== undefined) accumulateOperation(operations, invocation, invocation.operation, nowMs);
       for (const error of invocation.errors) {
         if (!insertOccurrence(db, invocation, error, observedAt, cutoff)) { result.issueCapacity++; events.push({ counter: "issue_capacity", reason: "issues_full", example: error.name }); }
       }
       result.accepted++;
     }
-    recordOperations(db, nowMs, operations);
+    recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
     recordHealth(db, nowMs, events);
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
@@ -492,7 +495,13 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
   return result;
 }
 
+function eventBucket(eventAtMs: number | null, nowMs: number, widthMs: number): number {
+  const at = eventAtMs === null ? nowMs : Math.min(eventAtMs, nowMs);
+  return at - (at % widthMs);
+}
+
 interface OutcomeBucket {
+  readonly bucketAt: number;
   readonly event: OutcomeEvent;
   count: number;
   lagCount: number;
@@ -502,11 +511,11 @@ interface OutcomeBucket {
 
 export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly OutcomeEvent[]): void {
   if (events.length === 0) return;
-  const bucketAt = nowMs - (nowMs % OUTCOME_BUCKET_MS);
   const routes = new Map<string, Set<string>>();
   const buckets = new Map<string, OutcomeBucket>();
   for (const event of events) {
-    const group = [event.version, event.stage, event.outcome].join("\u0000");
+    const bucketAt = eventBucket(event.eventAtMs, nowMs, OUTCOME_BUCKET_MS);
+    const group = [bucketAt, event.version, event.stage, event.outcome].join("\u0000");
     let known = routes.get(group);
     if (known === undefined) {
       known = new Set(db.rows<{ route: string }>("SELECT route FROM observe_outcomes WHERE bucket_at = ? AND version = ? AND stage = ? AND outcome = ?", bucketAt, event.version, event.stage, event.outcome).map(row => row.route));
@@ -517,7 +526,7 @@ export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly 
     const key = `${group}\u0000${route}`;
     let bucket = buckets.get(key);
     if (bucket === undefined) {
-      bucket = { event: { ...event, route }, count: 0, lagCount: 0, lagMax: 0, lagSum: 0 };
+      bucket = { bucketAt, event: { ...event, route }, count: 0, lagCount: 0, lagMax: 0, lagSum: 0 };
       buckets.set(key, bucket);
     }
     bucket.count++;
@@ -528,7 +537,7 @@ export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly 
       bucket.lagSum += lag;
     }
   }
-  for (const { event, count, lagCount, lagMax, lagSum } of buckets.values()) {
+  for (const { bucketAt, event, count, lagCount, lagMax, lagSum } of buckets.values()) {
     db.run(
       `INSERT INTO observe_outcomes (bucket_at, version, stage, outcome, route, count, lag_count, lag_ms_max, lag_ms_sum, filter_revision) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (bucket_at, version, stage, outcome, route) DO UPDATE SET count = count + excluded.count, lag_count = lag_count + excluded.lag_count,
@@ -539,9 +548,12 @@ export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly 
 }
 
 interface OperationBucket {
+  readonly bucketAt: number;
   readonly version: string;
   readonly summary: OperationSummary;
   count: number;
+  lagMax: number;
+  lagSum: number;
   failed: number;
   cpuMs: number;
   wallMs: number;
@@ -577,15 +589,19 @@ function operationWork(summary: OperationSummary): Partial<Record<OperationWorkC
   }
 }
 
-function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: PreparedInvocation, summary: OperationSummary): void {
+function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: PreparedInvocation, summary: OperationSummary, nowMs: number): void {
   const version = invocation.version ?? "";
-  const key = [version, summary.operation, workloadClass(summary), summary.synthetic ? 1 : 0].join("\u0000");
+  const bucketAt = eventBucket(invocation.eventAtMs, nowMs, OPERATION_BUCKET_MS);
+  const key = [bucketAt, version, summary.operation, workloadClass(summary), summary.synthetic ? 1 : 0].join("\u0000");
   let bucket = buckets.get(key);
   if (bucket === undefined) {
-    bucket = { version, summary, count: 0, failed: 0, cpuMs: 0, wallMs: 0, rowsRead: 0, rowsWritten: 0, statements: 0, work: Object.fromEntries(OPERATION_WORK_COLUMNS.map(column => [column, 0])) as Record<OperationWorkColumn, number> };
+    bucket = { bucketAt, version, summary, count: 0, lagMax: 0, lagSum: 0, failed: 0, cpuMs: 0, wallMs: 0, rowsRead: 0, rowsWritten: 0, statements: 0, work: Object.fromEntries(OPERATION_WORK_COLUMNS.map(column => [column, 0])) as Record<OperationWorkColumn, number> };
     buckets.set(key, bucket);
   }
+  const lag = Math.max(0, nowMs - invocation.eventAtMs);
   bucket.count++;
+  bucket.lagMax = Math.max(bucket.lagMax, lag);
+  bucket.lagSum += lag;
   bucket.failed += isFailed(invocation) ? 1 : 0;
   bucket.cpuMs += invocation.cpuMs;
   bucket.wallMs += invocation.wallMs;
@@ -595,16 +611,15 @@ function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: 
   for (const [column, value] of Object.entries(operationWork(summary))) bucket.work[column as OperationWorkColumn] += value;
 }
 
-function recordOperations(db: SqlDatabase, nowMs: number, buckets: ReadonlyMap<string, OperationBucket>): void {
-  const bucketAt = nowMs - (nowMs % OPERATION_BUCKET_MS);
-  const additions = ["count", "failed", "cpu_ms_sum", "wall_ms_sum", "rows_read", "rows_written", "statements", ...OPERATION_WORK_COLUMNS];
-  const update = additions.map(column => `${column} = ${column} + excluded.${column}`).join(", ");
+function recordOperations(db: SqlDatabase, buckets: ReadonlyMap<string, OperationBucket>): void {
+  const additions = ["count", "lag_count", "lag_ms_sum", "failed", "cpu_ms_sum", "wall_ms_sum", "rows_read", "rows_written", "statements", ...OPERATION_WORK_COLUMNS];
+  const update = [...additions.map(column => `${column} = ${column} + excluded.${column}`), "lag_ms_max = MAX(lag_ms_max, excluded.lag_ms_max)"].join(", ");
   for (const bucket of buckets.values()) {
-    const values = [bucket.count, bucket.failed, bucket.cpuMs, bucket.wallMs, bucket.rowsRead, bucket.rowsWritten, bucket.statements, ...OPERATION_WORK_COLUMNS.map(column => bucket.work[column])];
+    const values = [bucket.count, bucket.count, bucket.lagSum, bucket.failed, bucket.cpuMs, bucket.wallMs, bucket.rowsRead, bucket.rowsWritten, bucket.statements, ...OPERATION_WORK_COLUMNS.map(column => bucket.work[column])];
     db.run(
-      `INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, ${additions.join(", ")}) VALUES (?, ?, ?, ?, ?, ${additions.map(() => "?").join(", ")})
+      `INSERT INTO observe_operations (bucket_at, version, operation, workload_class, synthetic, lag_ms_max, ${additions.join(", ")}) VALUES (?, ?, ?, ?, ?, ?, ${additions.map(() => "?").join(", ")})
        ON CONFLICT (bucket_at, version, operation, workload_class, synthetic) DO UPDATE SET ${update}`,
-      bucketAt, bucket.version, bucket.summary.operation, workloadClass(bucket.summary), bucket.summary.synthetic ? 1 : 0, ...values
+      bucket.bucketAt, bucket.version, bucket.summary.operation, workloadClass(bucket.summary), bucket.summary.synthetic ? 1 : 0, bucket.lagMax, ...values
     );
   }
 }

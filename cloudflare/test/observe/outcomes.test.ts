@@ -10,7 +10,7 @@ import { MAX_OUTCOME_ROUTES_PER_CLASS, MAX_RETAINED_OUTCOME_ROWS, OBSERVE_FILTER
 import { T0, VERSION, database, wrap, worker } from "./support.ts";
 
 const POLICY: MessagePolicy = { safeNames: new Set() };
-const NOW = T0 + 2 * OUTCOME_BUCKET_MS + 1_234;
+const NOW = T0 + 2 * OUTCOME_BUCKET_MS + 10_000;
 const BUCKET = NOW - (NOW % OUTCOME_BUCKET_MS);
 const CONTEXT = { traceId: "7bcf42a3d155dee9563e537e144790e4", spanId: "1b1e95b0d4dcde81" };
 
@@ -50,7 +50,7 @@ await test("an unmapped path is excluded-route under other, and an unmapped 404 
   assert.deepEqual(outcomes(db).map(row => [row.outcome, row.route, row.count]), [["excluded-route", OTHER_ROUTE, 2], ["excluded-status:404", OTHER_ROUTE, 1]]);
 });
 
-await test("invalid events and invalid invocations are counted rejected-invalid; observed ones carry their route label", async () => {
+await test("invalid events and invalid invocations are counted rejected-invalid, and observed events write no outcome row", async () => {
   const db = database();
   const badStage = fetchItem("https://stats.example/ingest/v2/batches", 200, { executionModel: "other" });
   const noTimestamp = fetchItem("https://stats.example/ingest/v2/batches", 200, { eventTimestamp: null });
@@ -58,24 +58,31 @@ await test("invalid events and invalid invocations are counted rejected-invalid;
   const good = fetchItem("https://stats.example/ingest/v2/batches", 200);
   await receive(db, [badStage, noTimestamp, badTrace, good]);
   assert.deepEqual(outcomes(db).map(row => [row.stage, row.outcome, row.route, row.count, row.lag_count]), [
-    ["worker", "observed", "GET /ingest/v2/batches", 1, 1],
     ["unknown", "rejected-invalid", OTHER_ROUTE, 1, 1],
     ["worker", "rejected-invalid", OTHER_ROUTE, 2, 1]
-  ].sort((a, b) => String(a[1]).localeCompare(String(b[1])) || String(a[2]).localeCompare(String(b[2])) || String(a[0]).localeCompare(String(b[0]))));
+  ]);
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, 1);
 });
 
-await test("receipt lag keeps the max and sum, clamps negatives, and skips events without a timestamp", async () => {
+await test("a batch of only observed invocations writes no outcome row", async () => {
   const db = database();
-  await receive(db, [
-    fetchItem("https://stats.example/ingest/v2/batches", 200, { eventTimestamp: NOW - 4_000 }),
-    fetchItem("https://stats.example/ingest/v2/batches", 200, { eventTimestamp: NOW + 90_000 }),
-    fetchItem("https://stats.example/ingest/v2/batches", 200, { eventTimestamp: NOW - 1_000 })
+  const batch = await prepareTailItems([fetchItem("https://stats.example/ingest/v2/batches", 200)], POLICIES.stats);
+  assert.deepEqual(batch.outcomes, []);
+  ingest(db, batch.preparations, NOW, batch.outcomes);
+  assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
+});
+
+await test("outcomes bucket by event time capped at receipt, and lag keeps the max and sum, clamps negatives, and skips events without a timestamp", async () => {
+  const db = database();
+  const missing = (at: number | null) => fetchItem("https://stats.example/favicon.ico", 200, { eventTimestamp: at });
+  await receive(db, [missing(NOW - 4_000), missing(NOW + 90_000), missing(NOW - 1_000), missing(NOW - OUTCOME_BUCKET_MS - 500)]);
+  await receive(db, [missing(NOW - 9_000), missing(null)], NOW + 10_000);
+  const rows = outcomes(db);
+  assert.deepEqual(rows.map(row => [row.bucket_at, row.count, row.lag_count, row.lag_ms_max, row.lag_ms_sum, row.filter_revision]), [
+    [BUCKET - OUTCOME_BUCKET_MS, 1, 1, OUTCOME_BUCKET_MS + 500, OUTCOME_BUCKET_MS + 500, OBSERVE_FILTER_REVISION],
+    [BUCKET, 4, 4, 19_000, 4_000 + 0 + 1_000 + 19_000, OBSERVE_FILTER_REVISION],
+    [BUCKET, 1, 0, 0, 0, OBSERVE_FILTER_REVISION]
   ]);
-  await receive(db, [fetchItem("https://stats.example/ingest/v2/batches", 200, { eventTimestamp: NOW - 9_000 }), fetchItem("https://stats.example/x", 200, { eventTimestamp: null, executionModel: "other" })], NOW + 10_000);
-  const [observed, rejected] = outcomes(db);
-  assert.deepEqual([observed!.bucket_at, observed!.version, observed!.count, observed!.lag_count, observed!.lag_ms_max, observed!.lag_ms_sum, observed!.filter_revision], [BUCKET, VERSION, 4, 4, 19_000, 4_000 + 0 + 1_000 + 19_000, OBSERVE_FILTER_REVISION]);
-  assert.deepEqual([rejected!.count, rejected!.lag_count, rejected!.lag_ms_max, rejected!.lag_ms_sum], [1, 0, 0, 0]);
 });
 
 await test("one upsert per bucket key per batch bounds the rows written", async () => {
@@ -127,13 +134,13 @@ await test("opening a store populated before outcomes adds the table and keeps e
 
 await test("cleanup expires outcome buckets with the retention window and caps the table", () => {
   const db = database();
-  const event: OutcomeEvent = { version: VERSION, stage: "worker", outcome: "observed", route: "GET /x", eventAtMs: NOW };
+  const event: OutcomeEvent = { version: VERSION, stage: "worker", outcome: "excluded-route", route: OTHER_ROUTE, eventAtMs: NOW };
   ingest(db, [], NOW, [event]);
   cleanup(db, NOW + RETENTION_MS - OUTCOME_BUCKET_MS);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 1);
   cleanup(db, NOW + RETENTION_MS + OUTCOME_BUCKET_MS * 2);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
-  db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < ${MAX_RETAINED_OUTCOME_ROWS + 50}) INSERT INTO observe_outcomes (bucket_at, version, stage, outcome, route, count, lag_count, lag_ms_max, lag_ms_sum, filter_revision) SELECT ${NOW} + i, 'v', 'worker', 'observed', 'r', 1, 0, 0, 0, 1 FROM n`);
+  db.run(`WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < ${MAX_RETAINED_OUTCOME_ROWS + 50}) INSERT INTO observe_outcomes (bucket_at, version, stage, outcome, route, count, lag_count, lag_ms_max, lag_ms_sum, filter_revision) SELECT ${NOW} + i, 'v', 'worker', 'excluded-route', 'r', 1, 0, 0, 0, 1 FROM n`);
   cleanup(db, NOW);
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_outcomes")[0]!.n, MAX_RETAINED_OUTCOME_ROWS);
 });

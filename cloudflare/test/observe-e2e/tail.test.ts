@@ -107,7 +107,7 @@ await test("a second service's invocations land in its own store with its own op
     assert.equal(health.writes.accepted, 2);
     const perInvocation = health.writes.ingestRows / health.writes.accepted;
     console.log("MEASURE", health.writes.ingestRows, health.writes.accepted);
-    assert.ok(perInvocation <= 7, `billed rows per invocation ${perInvocation}`);
+    assert.ok(perInvocation <= 6, `billed rows per invocation ${perInvocation}`);
   } finally {
     await harness.dispose();
   }
