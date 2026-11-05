@@ -2,17 +2,17 @@
   "version": 1,
   "id": "storied",
   "workerName": "nanoshop-storied",
-  "host": "storied.localhost:64366",
+  "host": "storied.localhost:62345",
   "origin": {
     "scheme": "http",
-    "host": "storied.localhost:64366"
+    "host": "storied.localhost:62345"
   },
   "imageHosts": [
     "images.alpha.test"
   ],
   "contractIdentity": "fc4e26613dac49e75a3e3a74bd87960ca3a34cb6af13f9717582e328a568dcac",
   "revision": {
-    "id": "ed919caba80e4d68a23b543494bd68f290c3b6b9f01a2adf401c7f0003d237ef",
+    "id": "3ea2564d2fa11fc6f56d679806e7f9ddd53fdfac963bdb50ccc90fa7d78cf6a6",
     "themeName": "default",
     "themeIdentity": "7a6afc3ac51ae6e7cf5017439a50ea98ef233ef9aae2495cf7a718c3c10c1f35",
     "settingsIdentity": "f7479c9244ed7c1b69a550280b37b788f605bd7be702cfa2e6c53a93c2b200b5",

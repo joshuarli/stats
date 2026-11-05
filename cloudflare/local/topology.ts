@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions, type MiniflareOptions, type Request as MiniflareRequest, type Response as MiniflareResponse, type V4DurableObject, type V4ModuleDefinition, type V4WorkerOptions, type WorkerOptions } from "miniflare";
 import type { ProducerExport } from "./producer.ts";
+import { loopbackPassthrough } from "./outbound.ts";
 
 export const CLOUDFLARE_ROOT = resolve(import.meta.dirname, "..");
 export const STATS_OUTPUT = join(CLOUDFLARE_ROOT, ".cloudflare/output/v0/workers/default");
@@ -142,6 +143,7 @@ export interface StackOptions {
   readonly persist: Persistence;
   readonly extraWorkers?: readonly V4WorkerOptions[];
   readonly producers?: readonly ProducerExport[];
+  readonly producerTail?: V4WorkerOptions;
   readonly alarms: "platform" | "rpc";
 }
 
@@ -288,11 +290,12 @@ function producerCollectorName(producer: ProducerExport): string {
   return `${producer.service}-observe`;
 }
 
-function producerWorker(producer: ProducerExport, observe: BuiltWorker, outbound: Outbound): WorkerOptions {
+function producerWorker(producer: ProducerExport, observe: BuiltWorker, outbound: Outbound, extraTail: string | undefined): WorkerOptions {
   if (producer.tailConsumers.length !== 1 || producer.tailConsumers[0] !== observe.name) throw new TypeError(`${producer.service} tails into ${producer.tailConsumers.join(", ") || "nothing"}, but the stack hosts only ${observe.name}`);
+  const tails = [producerCollectorName(producer), ...(extraTail === undefined ? [] : [extraTail])].map(worker => ({ worker, streaming: false }));
   return {
-    config: { ...producer.config, tailConsumers: [{ worker: producerCollectorName(producer), streaming: false }] } as WorkerOptions["config"],
-    dev: { unsafeDirectSockets: [{ host: "127.0.0.1", port: producer.port }], outboundService: { type: "fetcher", handler: outbound } }
+    config: { ...producer.config, tailConsumers: tails } as WorkerOptions["config"],
+    dev: { unsafeDirectSockets: [{ host: "127.0.0.1", port: producer.port }], outboundService: { type: "fetcher", handler: loopbackPassthrough(producer.providers, outbound) } }
   };
 }
 
@@ -300,8 +303,8 @@ function miniflareOptions(stats: BuiltWorker, observe: BuiltWorker, options: Sta
   const producers = options.producers ?? [];
   if (producers.length > 0 && options.collector.kind !== "attached") throw new TypeError("producers need the attached collector; their tail events have nowhere else to go");
   const collectors = producers.map(producer => collectorWorker(observe, producerCollectorName(producer), producer.service, producer.versionId));
-  const converted = convertV4MiniflareOptions({ workers: [...workers(stats, observe, options), ...collectors] });
-  const withProducers = { ...converted, workers: [...converted.workers, ...producers.map(producer => producerWorker(producer, observe, options.outbound))] };
+  const converted = convertV4MiniflareOptions({ workers: [...workers(stats, observe, options), ...collectors, ...(options.producerTail === undefined ? [] : [options.producerTail])] });
+  const withProducers = { ...converted, workers: [...converted.workers, ...producers.map(producer => producerWorker(producer, observe, options.outbound, options.producerTail?.name))] };
   return options.persist === "memory" ? withProducers : { ...withProducers, resourcePersistencePath: options.persist.directory };
 }
 

@@ -26,7 +26,7 @@ function shellQuote(value) {
 }
 
 function producerLines(stack) {
-  return stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`);
+  return stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its outbound requests reach only ${producer.providers.map(origin => origin.origin).join(", ")}, which you start; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`);
 }
 
 async function run(producers, command) {

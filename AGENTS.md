@@ -20,6 +20,7 @@ make agent-e2e         # the real agent binary against the built Worker in worke
 make node-e2e          # the smoke and the real agent binary against the Node server
 make smoke-local       # deploy/deployed-smoke.sh against the built Workers in workerd
 make integration-local # the offline local stack (collection, statsctl, dashboard) under a no-network sandbox
+make integration-producer # a checkout through the recorded Nanoshop producer export, read back by statsctl; needs NANOSHOP_DIR
 make dev-local         # a persistent local stack on http://127.0.0.1:8789, collecting every 5 minutes
 make reset-local       # delete the dev-local state in .work/local/state
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements

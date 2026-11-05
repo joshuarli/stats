@@ -1,11 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import type { Miniflare } from "miniflare";
+import type { Miniflare, V4WorkerOptions } from "miniflare";
 import { accessToken } from "../test/access-token.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
 import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
-import { readProducerExport, seedProducerState, type ProducerExport } from "./producer.ts";
+import { readProducerExport, refuseCollisions, seedProducerState, type ProducerExport } from "./producer.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, FETCH_AT_METHOD, type BuiltWorker, type FetchedAt, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
@@ -26,6 +26,7 @@ export interface StackStart {
   readonly statsOutput?: string;
   readonly observeOutput?: string;
   readonly producers?: readonly string[];
+  readonly producerTail?: V4WorkerOptions;
 }
 
 export interface Stack {
@@ -117,6 +118,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     persist: { directory: start.persist },
     extraWorkers: [shared.analytics.worker],
     producers: shared.producers,
+    ...(start.producerTail === undefined ? {} : { producerTail: start.producerTail }),
     alarms: "rpc"
   }, { port: start.port ?? 0, localExplorer: start.localExplorer === true });
   let origin: string;
@@ -191,6 +193,7 @@ export async function startStack(start: StackStart): Promise<Stack> {
   const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
   const observe = readBuiltWorker(start.observeOutput ?? OBSERVE_OUTPUT);
   const producers = (start.producers ?? []).map(readProducerExport);
+  refuseCollisions(producers, [stats.name, observe.name], start.port ?? 0);
   mkdirSync(SCRATCH, { recursive: true });
   const persist = start.persist ?? mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)));
   mkdirSync(persist, { recursive: true });

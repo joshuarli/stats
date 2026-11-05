@@ -27,6 +27,8 @@ export interface ProducerExport {
   readonly persistSeed: string;
   readonly objectState: string;
   readonly config: Readonly<Record<string, unknown>>;
+  readonly providers: readonly URL[];
+  readonly buckets: readonly string[];
 }
 
 type Json = Record<string, unknown>;
@@ -72,6 +74,28 @@ export function producerExportDigest(root: string): string {
   return `sha256:${hash.digest("hex")}`;
 }
 
+const LOOPBACK_NAME = /^(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/u;
+
+function providerOrigin(value: unknown, path: string): URL {
+  const origin = new URL(text(value, path));
+  if (origin.protocol !== "http:" || origin.port === "" || !LOOPBACK_NAME.test(origin.hostname) || origin.href !== `${origin.origin}/`) {
+    throw new TypeError(`${path} ${origin.href} is not an http loopback origin with a port; the stack forwards producer requests only to 127.0.0.1`);
+  }
+  return origin;
+}
+
+const MAPPED_BINDINGS = new Set(["text", "durable-object", "assets", "r2"]);
+
+function buckets(config: Json, service: string, path: string): string[] {
+  return Object.entries(record(config["env"] ?? {}, `${path}.env`)).flatMap(([key, value]) => {
+    const binding = record(value, `${path}.env.${key}`);
+    const type = binding["type"];
+    if (typeof type !== "string" || !MAPPED_BINDINGS.has(type)) throw new TypeError(`${path}.env.${key} has binding type ${JSON.stringify(type)}, which the stack does not map`);
+    if (type === "durable-object" && binding["worker"] !== service) throw new TypeError(`${path}.env.${key} binds a Durable Object of ${String(binding["worker"])}, not of ${service}`);
+    return type === "r2" ? [text(binding["name"], `${path}.env.${key}.name`)] : [];
+  });
+}
+
 function workerConfig(root: string, value: unknown, path: string): Json {
   const config = structuredClone(record(value, path));
   const manifest = record(config["manifest"], `${path}.manifest`);
@@ -114,6 +138,12 @@ export function readProducerExport(dir: string): ProducerExport {
   const persistSeed = inside(root, text(manifest["persistSeedDir"], `${manifestPath} persistSeedDir`), `${manifestPath} persistSeedDir`);
   const objectState = relative(persistSeed, inside(root, text(tenant["durableObjectDir"], `${manifestPath} tenants[0].durableObjectDir`), `${manifestPath} tenants[0].durableObjectDir`));
   if (objectState === "" || objectState.startsWith("..")) throw new TypeError(`${manifestPath} tenants[0].durableObjectDir is not inside persistSeedDir`);
+  const origins = record(manifest["origins"], `${manifestPath} origins`);
+  const providers = [
+    providerOrigin(tenant["stripeOrigin"], `${manifestPath} tenants[0].stripeOrigin`),
+    providerOrigin(origins["mailboxApi"], `${manifestPath} origins.mailboxApi`),
+    providerOrigin(origins["identity"], `${manifestPath} origins.identity`)
+  ];
   return {
     dir: root,
     digest,
@@ -125,8 +155,26 @@ export function readProducerExport(dir: string): ProducerExport {
     tailConsumers: texts(tenant["tailConsumers"], `${manifestPath} tenants[0].tailConsumers`),
     persistSeed,
     objectState,
-    config
+    config,
+    providers,
+    buckets: buckets(config, service, `${manifestPath} tenants[0].worker`)
   };
+}
+
+export function refuseCollisions(producers: readonly ProducerExport[], workerNames: readonly string[], stackPort: number): void {
+  const claims = new Map<string, string>();
+  const claim = (resource: string, producer: ProducerExport, why: string): void => {
+    const holder = claims.get(resource);
+    if (holder !== undefined) throw new TypeError(`${producer.dir} and ${holder} both ${why}; one stack cannot host both, so export them from envs that do not share it`);
+    claims.set(resource, producer.dir);
+  };
+  for (const producer of producers) {
+    if (workerNames.includes(producer.service)) throw new TypeError(`${producer.dir} exports ${producer.service}, which the stack already runs`);
+    claim(`service ${producer.service}`, producer, `export ${producer.service}, whose Worker, collector copy, and Durable Object state would be one`);
+    if (producer.port === stackPort) throw new TypeError(`${producer.dir} listens on 127.0.0.1:${producer.port}, the stack's own port`);
+    claim(`port ${producer.port}`, producer, `listen on 127.0.0.1:${producer.port}`);
+    for (const bucket of producer.buckets) claim(`bucket ${bucket}`, producer, `bind R2 bucket ${bucket}, whose stored objects would be shared`);
+  }
 }
 
 function databaseOf(path: string): string {

@@ -9,6 +9,7 @@ Run the narrowest target while iterating and `make check` before release.
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
 | `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
+| `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make check` does not run it |
 | `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
@@ -69,8 +70,13 @@ Cloudflare login and no network. It needs `pnpm build` and
     the sorted `path NUL sha256(file)` lines of every file except the manifest)
     and refuses an export whose files no longer match, before anything starts.
     It also refuses an export with more than one tenant, a service
-    `stats-observe` does not observe, and a tail consumer other than
-    `stats-observe`.
+    `stats-observe` does not observe, a tail consumer other than
+    `stats-observe`, a binding type other than `text`, `durable-object`,
+    `assets`, and `r2`, and a Stripe, mailbox, or identity origin that is not
+    an `http` loopback origin with a port. Two exports in one stack are
+    refused when they would share a service (its Worker, collector copy, and
+    Durable Object state), a shop port (or the stack's own port), or an R2
+    bucket; exports that share none of these run side by side.
   - **Worker.** The Worker is rebuilt from the manifest's
     `tenants[0].worker` with the module contents and assets directory read
     from the export. It listens on `127.0.0.1` at the port of its
@@ -88,32 +94,75 @@ Cloudflare login and no network. It needs `pnpm build` and
     find the producer's Durable Object directory and keep its state, so
     `make reset-local` (or a new `--state`) is the only way to take a newer
     export's data.
-  - **Network and cron.** The producer's outbound requests get the same
-    offline 503 as `stats`'s and fail the run as undeclared, so checkout
-    cannot reach a Stripe simulator. The launcher fires `scheduled` for
-    `stats` only and never the producer's cron, which Nanoshop's own local
-    stack fires.
+  - **Network and cron.** A producer's outbound request to one of the
+    origins its manifest declares (`tenants[0].stripeOrigin`,
+    `origins.mailboxApi`, `origins.identity`) is forwarded to `127.0.0.1` at
+    that origin's port with the origin's `Host`, because `*.localhost` does
+    not resolve inside the sandbox. The launcher starts none of them; a
+    request to one that is not listening fails in the producer. Every other
+    request gets the same offline 503 as `stats`'s and fails the run as
+    undeclared. The launcher fires `scheduled` for `stats` only and never the
+    producer's cron, which Nanoshop's own local stack fires.
 
   `fixtures/producers/nanoshop-storied/` is a recorded export: Nanoshop's
-  `storied` tenant seeded with its synthetic `alpha` catalog, with local test
-  secrets only. `test/local/launcher.test.ts` serves it with `dev`, sends
+  `storied` tenant seeded with its synthetic `alpha` catalog, with tax and
+  shipping set through its admin so it can check out, and local test secrets
+  only. `test/local/launcher.test.ts` serves it with `dev`, sends
   storefront requests, waits for the sampled counts to flush (about 20 s
   idle), and checks the producer's invocation count and version through the
   window API and a real `statsctl observe routes` process. The checks also
   cover a cart that survives a restart and a tampered copy that is refused.
   To regenerate the fixture, run these commands from a Nanoshop checkout,
   with `S` a scratch directory and `config.json` a one-tenant config for
-  `storied` on `http://storied.localhost:8080` with image host
+  `storied` on `http://storied.localhost:8080` with theme `themes/default`,
+  settings `tenants/storied/settings.json`, and image host
   `images.alpha.test`:
 
   ```sh
-  node src/main.ts local init --env s2 --root "$S" --config config.json --catalog storied=tests/fixtures/catalogs/alpha.json
-  node src/main.ts local export-producer --env s2 --root "$S" --out "$S/export"
+  node src/main.ts local init --env s3 --root "$S" --config config.json --catalog storied=tests/fixtures/catalogs/alpha.json
+  node src/main.ts local start --env s3 --root "$S"
   ```
 
-  Then replace the fixture directory with `$S/export`. The shop port is
-  chosen at `init` and recorded in the export, so it changes on every
-  regeneration, and the test fails if that port is already in use.
+  While it runs, sign in to the shop's `/admin` as `owner` through the test
+  identity it prints, and save the tax settings (rate table: WA 10% on
+  lines, OR 0% on lines and shipping) and the shipping settings (origin WA,
+  free over 100, local pickup on, zone `West` at 7 for WA, OR, and CA), the
+  values Nanoshop's own `tests/local/stack.test.ts` uses. Stop it with
+  Ctrl-C, then:
+
+  ```sh
+  node src/main.ts local export-producer --env s3 --root "$S" --out "$S/export"
+  ```
+
+  Then replace the fixture directory with `$S/export`. The export includes
+  the release's `.cloudflare/output`, which its digest covers, so
+  `.gitignore` re-includes `.cloudflare/` under `fixtures/producers/`;
+  without it a fresh checkout fails the digest check. The ports are chosen at
+  `init` and recorded in the export, so they change on every regeneration,
+  and the tests fail if one is already in use.
+
+- **Producer checkout.** `make integration-producer` runs
+  `test/producer/checkout.test.ts` under `scripts/offline-run.sh`. It runs
+  Nanoshop's Stripe simulator and mailbox as separate processes from
+  `NANOSHOP_DIR` (`src/simulator/stripe/main.ts`,
+  `src/simulator/mailbox/main.ts`; no install or build there) on the ports
+  the export declares, and fails with the preparation command when
+  `NANOSHOP_DIR` is unset. A fake provider would not do: the point is that
+  the producer's real Stripe calls, signed webhooks, and email pass through
+  the stack. The simulator posts webhooks to a relay in the test, which
+  forwards them to the shop with its `Host`. The test adds to cart, reviews,
+  accepts, and pays with the success card, then runs `statsctl observe
+  operations --project nanoshop-storied --json` until it reports exactly
+  what the test caused: one `request.cart-add`, `request.checkout-review`,
+  and `request.checkout-accept`; one `request.webhook` per webhook the shop
+  stored; one `store.rpc.commerceCommand` for the review, two for the accept
+  (accept and session record) and one per stored webhook; and as many
+  `store.alarm` as a second tail consumer recorded from workerd directly.
+  It also requires the confirmation email in the mailbox and no undeclared
+  outbound request. It takes about 40 s, mostly waiting: local workerd
+  delivered one Durable Object RPC's tail event about 20 s late when it
+  overlapped the alarm, and the collector flushes sampled counts about 20 s
+  after its last event.
 
 The stack loads the `stats` bundle behind an entry module that adds a
 `runAlarm()` RPC to each Durable Object, because Miniflare has no alarm

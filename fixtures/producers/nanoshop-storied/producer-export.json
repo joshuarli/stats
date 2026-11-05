@@ -2,25 +2,25 @@
   "version": 1,
   "kind": "nanoshop-producer-export",
   "label": "local",
-  "env": "s2",
-  "createdAt": "2026-11-05T23:06:50.757Z",
+  "env": "s3",
+  "createdAt": "2026-11-05T23:34:15.153Z",
   "releaseDir": "release",
   "persistSeedDir": "persist-seed",
   "secretsFile": "secrets.json",
-  "shopPort": 64366,
+  "shopPort": 62345,
   "includeFetchTriggers": false,
   "origins": {
-    "mailboxApi": "http://127.0.0.1:64368",
-    "mailboxViewer": "http://mail.localhost:64368",
-    "identity": "http://id.localhost:64367"
+    "mailboxApi": "http://127.0.0.1:62347",
+    "mailboxViewer": "http://mail.localhost:62347",
+    "identity": "http://id.localhost:62346"
   },
   "tenants": [
     {
       "tenant": "storied",
       "serviceName": "nanoshop-storied",
-      "host": "storied.localhost:64366",
-      "shopOrigin": "http://storied.localhost:64366",
-      "stripeOrigin": "http://stripe-sim.localhost:64369",
+      "host": "storied.localhost:62345",
+      "shopOrigin": "http://storied.localhost:62345",
+      "stripeOrigin": "http://stripe-sim.localhost:62348",
       "version": {
         "label": "local",
         "id": "10ca1000-0000-4000-8000-000000000000"
@@ -34,10 +34,10 @@
         "12 * * * *"
       ],
       "textBindings": {
-        "STRIPE_SECRET_KEY": "sk_test_local0ae9cd504f6d795d8c8ad2b9fa1cb80f72ce",
-        "STRIPE_WEBHOOK_SECRET": "whsec_localc4549e961a2080b157214d97976ee31cb8be",
-        "RESEND_API_KEY": "re_local53ccd04cf3a858cf66beea7e7c4386db2946",
-        "ORDER_ACCESS_KEY": "local-order-access-d2d10aa31e65829a23f51ecb60b23086dd66"
+        "STRIPE_SECRET_KEY": "sk_test_locale088edfe2ff21d4fa5de3a0d925c79c78445",
+        "STRIPE_WEBHOOK_SECRET": "whsec_localec8c4738d07a66027d0d483750fbc23fd356",
+        "RESEND_API_KEY": "re_local176debed628caa5c038d5983b0831e2f16cb",
+        "ORDER_ACCESS_KEY": "local-order-access-3133f0e114e67f843068f821f40779ce7265"
       },
       "worker": {
         "name": "nanoshop-storied",
@@ -86,23 +86,23 @@
           },
           "STRIPE_SECRET_KEY": {
             "type": "text",
-            "value": "sk_test_local0ae9cd504f6d795d8c8ad2b9fa1cb80f72ce"
+            "value": "sk_test_locale088edfe2ff21d4fa5de3a0d925c79c78445"
           },
           "STRIPE_WEBHOOK_SECRET": {
             "type": "text",
-            "value": "whsec_localc4549e961a2080b157214d97976ee31cb8be"
+            "value": "whsec_localec8c4738d07a66027d0d483750fbc23fd356"
           },
           "RESEND_API_KEY": {
             "type": "text",
-            "value": "re_local53ccd04cf3a858cf66beea7e7c4386db2946"
+            "value": "re_local176debed628caa5c038d5983b0831e2f16cb"
           },
           "ORDER_ACCESS_KEY": {
             "type": "text",
-            "value": "local-order-access-d2d10aa31e65829a23f51ecb60b23086dd66"
+            "value": "local-order-access-3133f0e114e67f843068f821f40779ce7265"
           }
         }
       }
     }
   ],
-  "digest": "sha256:c358fe238beb4ec1fc607a197e295d9b1e48a5fedaece77722e503e5953e6011"
+  "digest": "sha256:3f8388019277fa6a604e61147f5406f4be3c3ccf5b75cb26d7b9be934ba486b2"
 }
