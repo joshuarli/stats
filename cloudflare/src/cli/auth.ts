@@ -12,6 +12,13 @@ export interface Credential {
   readonly value: string;
 }
 
+export type Target = "cloudflare" | "node";
+
+export function targetOf(origin: string): Target {
+  const { hostname } = new URL(origin);
+  return hostname.endsWith(".ts.net") || !hostname.includes(".") && !hostname.includes(":") ? "node" : "cloudflare";
+}
+
 export function resolveOrigin(flag: string | undefined, env: NodeJS.ProcessEnv): string {
   const raw = flag ?? env["STATS_URL"] ?? DEFAULT_ORIGIN;
   let url: URL;
@@ -21,7 +28,7 @@ export function resolveOrigin(flag: string | undefined, env: NodeJS.ProcessEnv):
     throw new TypeError(`origin is not a URL: ${raw}`);
   }
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) throw new TypeError("origin must be https, or http on loopback");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && (loopback || targetOf(url.origin) === "node"))) throw new TypeError("origin must be https, or http on loopback or the tailnet");
   if (url.username !== "" || url.password !== "" || url.pathname !== "/" || url.search !== "" || url.hash !== "") throw new TypeError("origin must be a bare scheme, host, and port");
   return url.origin;
 }

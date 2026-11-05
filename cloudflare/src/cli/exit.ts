@@ -35,3 +35,5 @@ export class CommandError extends Error {
 export const usageError = (message: string) => new CommandError(EXIT.usage, "usage", message);
 export const authError = (code: string, message: string) => new CommandError(EXIT.auth, code, message);
 export const transportError = (code: string, message: string) => new CommandError(EXIT.transport, code, message);
+export const unsupportedOnTarget = (command: string, origin: string) =>
+  new CommandError(EXIT.usage, "unsupported_on_target", `${command} reads Cloudflare telemetry and is not available on the Node origin ${origin}`);

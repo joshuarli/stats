@@ -371,6 +371,17 @@ Provision a host through the tailnet origin as on the Worker, with
 `make node-e2e` runs `deploy/deployed-smoke.sh` and the real agent against a
 local instance.
 
+`statsctl` picks its target from the origin. A host ending in `.ts.net`, or a
+bare name with no dot, is a Node origin: statsctl sends no credential, because
+`tailscale serve` adds the identity. Only `check ingest` works there; every
+other command reads Cloudflare telemetry and exits 2 with
+`unsupported_on_target` before any request. Store the `synthetic-check` host
+credential (`{hostId, name, token}`, mode 0600) and run:
+
+```sh
+pnpm --dir cloudflare -s statsctl check ingest --origin http://threadripper.tailcf741.ts.net:18790 --credential-file .work/credentials/synthetic-check-node.json
+```
+
 ## Verified environments
 
 Recorded 2026-10-31:

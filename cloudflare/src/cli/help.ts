@@ -20,7 +20,13 @@ const AUTH_LINES = [
   "  The credential is the output of `cf access token <origin>` (no stdin, 20 s limit), sent",
   "  in the cf-access-token header to that origin only. Redirects are never followed.",
   "  Override with STATSCTL_AUTH_COMMAND (run with sh -c) and STATSCTL_AUTH_HEADER.",
-  "  statsctl never starts a login; on failure it exits 3 and says: run: cf access login <origin>."
+  "  statsctl never starts a login; on failure it exits 3 and says: run: cf access login <origin>.",
+  "",
+  "targets:",
+  "  An origin whose host ends in .ts.net, or is a bare name with no dot (http or https), is a Node",
+  "  origin behind tailscale serve: statsctl sends no credential there. Any other origin is Cloudflare.",
+  "  Only `check ingest` works on a Node origin. Every other command reads Cloudflare telemetry and",
+  "  exits 2 with unsupported_on_target before any request."
 ];
 
 function optionLine(name: string, spec: OptionSpec): readonly [string, string] {
@@ -76,6 +82,7 @@ export function commandHelp(command: Command): string {
     ...command.description,
     "",
     `access: ${command.access === "mutation" ? "MUTATION, it changes remote state" : "read-only"}`,
+    `targets: ${command.targets.length === 2 ? "Cloudflare origin and Node origin" : "Cloudflare origin only; exits 2 with unsupported_on_target on a Node origin"}`,
     "",
     ...optionBlock("options:", command.options),
     ...(rules.length === 0 ? [] : ["option rules (violations exit 2):", ...rules, ""]),

@@ -1,4 +1,5 @@
 import type { CommandResult } from "./envelope.ts";
+import type { Target } from "./auth.ts";
 import type { HttpClient } from "./http.ts";
 
 export type OptionSpec =
@@ -23,6 +24,7 @@ export interface CommandSpec<P> {
   readonly summary: string;
   readonly description: readonly string[];
   readonly access: Access;
+  readonly targets?: readonly Target[];
   readonly options: OptionSpecs;
   readonly exclusive?: readonly (readonly string[])[];
   readonly together?: readonly (readonly string[])[];
@@ -32,11 +34,14 @@ export interface CommandSpec<P> {
   render(payload: P): readonly string[];
 }
 
-export interface Command extends Omit<CommandSpec<unknown>, "run" | "render" | "exclusive" | "together"> {
+export interface Command extends Omit<CommandSpec<unknown>, "run" | "render" | "exclusive" | "together" | "targets"> {
+  readonly targets: readonly Target[];
   readonly exclusive: readonly (readonly string[])[];
   readonly together: readonly (readonly string[])[];
   execute(context: CommandContext): Promise<{ readonly result: CommandResult<unknown>; readonly text: readonly string[] }>;
 }
+
+const CLOUDFLARE_ONLY: readonly Target[] = ["cloudflare"];
 
 export function defineCommand<P>(spec: CommandSpec<P>): Command {
   return {
@@ -44,6 +49,7 @@ export function defineCommand<P>(spec: CommandSpec<P>): Command {
     summary: spec.summary,
     description: spec.description,
     access: spec.access,
+    targets: spec.targets ?? CLOUDFLARE_ONLY,
     options: spec.options,
     exclusive: spec.exclusive ?? [],
     together: spec.together ?? [],

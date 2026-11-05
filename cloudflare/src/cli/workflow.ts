@@ -87,4 +87,6 @@ Authentication
    statsctl runs \`cf access token <origin>\` with no stdin and a 20 s limit and sends the
    output in the cf-access-token header. Override with STATSCTL_AUTH_COMMAND (run with
    sh -c) and STATSCTL_AUTH_HEADER. It never starts a login; if it fails, run
-   cf access login <origin>. The credential is sent only to the configured origin.`;
+   cf access login <origin>. The credential is sent only to the configured origin.
+   A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: no credential is
+   sent, and only check ingest works there.`;

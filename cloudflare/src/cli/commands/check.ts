@@ -158,11 +158,12 @@ export const checkIngestCommand = defineCommand<CheckIngestPayload>({
   summary: "send one known sample through production ingest and read it back",
   description: [
     "MUTATION: writes one real sample. Encodes one sample with a fresh sequence and time, POSTs it, expects accepted 1, reads it back from the latest-sample route and the host history, re-POSTs the identical bytes and expects duplicate 1, and confirms the stored count did not change.",
-    "The host token comes from the credential file and is sent only to the configured origin, in the Authorization header of the two ingest requests. Reads use the usual Access credential.",
+    "The host token comes from the credential file and is sent only to the configured origin, in the Authorization header of the two ingest requests. Reads use the usual Access credential on the Cloudflare origin and no credential on a tailnet origin, where tailscale serve adds the identity.",
     "Exit 0 when every step passes, 7 when a step fails (the failing step and its reason code are printed), 3 when the credential file or the host token is refused, 4 on transport failure.",
     "Use only with the synthetic-check host credential."
   ],
   access: "mutation",
+  targets: ["cloudflare", "node"],
   options: {
     "credential-file": { type: "string", placeholder: "FILE", required: true, description: "host credential JSON {hostId, token} as returned by POST /api/v1/admin/hosts, mode 0600; never passed in argv" }
   },
