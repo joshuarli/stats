@@ -72,4 +72,7 @@
 @media (max-width: 640px) {
   .ledger-month-pending { min-height: 251px; }
 }
+@media (min-width: 641px) and (max-width: 865px) {
+  .ledger-month-pending { min-height: 218px; }
+}
 .ledger-month-note { color: var(--muted); font-size: var(--fs-meta); }
