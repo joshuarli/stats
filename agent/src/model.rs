@@ -19,6 +19,7 @@ pub enum Unavailable {
     Filesystems,
     Gpu,
     Power,
+    Services,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -431,6 +432,81 @@ pub struct Block {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceMemory {
+    #[deser(rename = "memoryCurrent", as = DisplayFromStr)]
+    pub current: u64,
+    #[deser(rename = "memoryPeak", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub peak: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceIo {
+    #[deser(rename = "ioReadBytes", as = DisplayFromStr)]
+    pub read_bytes: u64,
+    #[deser(rename = "ioWriteBytes", as = DisplayFromStr)]
+    pub write_bytes: u64,
+    #[deser(rename = "ioReads", as = DisplayFromStr)]
+    pub reads: u64,
+    #[deser(rename = "ioWrites", as = DisplayFromStr)]
+    pub writes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceUsage {
+    #[deser(rename = "cpuUsec", as = DisplayFromStr)]
+    pub cpu_usec: u64,
+    #[deser(flatten, skip_serializing_if = Option::is_none)]
+    pub memory: Option<ServiceMemory>,
+    #[deser(flatten, skip_serializing_if = Option::is_none)]
+    pub io: Option<ServiceIo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredService {
+    pub name: String,
+    #[deser(flatten)]
+    pub usage: ServiceUsage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[deser(deny_unknown_fields)]
+pub struct UnavailableService {
+    pub name: String,
+    pub unavailable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[deser(untagged)]
+pub enum Service {
+    Unavailable(UnavailableService),
+    Measured(MeasuredService),
+}
+
+impl Service {
+    pub fn measured(name: &str, usage: ServiceUsage) -> Self {
+        Self::Measured(MeasuredService { name: name.to_owned(), usage })
+    }
+
+    pub fn unavailable(name: &str) -> Self {
+        Self::Unavailable(UnavailableService { name: name.to_owned(), unavailable: true })
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Unavailable(service) => &service.name,
+            Self::Measured(service) => &service.name,
+        }
+    }
+
+    pub fn usage(&self) -> Option<&ServiceUsage> {
+        match self {
+            Self::Unavailable(_) => None,
+            Self::Measured(service) => Some(&service.usage),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[deser(deny_unknown_fields)]
 pub struct Sample {
     #[deser(as = DisplayFromStr)]
@@ -465,6 +541,8 @@ pub struct Sample {
     pub gpu: Option<Gpu>,
     #[deser(default, skip_serializing_if = Option::is_none)]
     pub power: Option<Power>,
+    #[deser(default, skip_serializing_if = Option::is_none)]
+    pub services: Option<Vec<Service>>,
 }
 
 pub fn sequence_for(mono_ms: u64) -> u64 {
@@ -490,6 +568,7 @@ impl Sample {
             block: None,
             gpu: None,
             power: None,
+            services: None,
         }
     }
 
@@ -505,6 +584,7 @@ impl Sample {
             || self.block.is_some()
             || self.gpu.is_some()
             || self.power.is_some()
+            || self.services.is_some()
     }
 
     pub fn mark_unavailable(&mut self, group: Unavailable) {

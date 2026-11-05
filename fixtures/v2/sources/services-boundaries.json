@@ -1,0 +1,138 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "services": [
+        {
+          "name": "a",
+          "cpuUsec": "18446744073709551614",
+          "memoryCurrent": "18446744073709551615",
+          "memoryPeak": "18446744073709551615",
+          "ioReadBytes": "18446744073709551614",
+          "ioWriteBytes": "9007199254740991",
+          "ioReads": "9007199254740992",
+          "ioWrites": "0"
+        },
+        {
+          "name": "s0123456789abcdef0123456789abcde",
+          "cpuUsec": "0",
+          "memoryCurrent": "0",
+          "memoryPeak": "0"
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "services": [
+        {
+          "name": "a",
+          "cpuUsec": "18446744073709551615",
+          "memoryCurrent": "0",
+          "ioReadBytes": "18446744073709551615",
+          "ioWriteBytes": "9007199254740992",
+          "ioReads": "9007199254740992",
+          "ioWrites": "0"
+        },
+        {
+          "name": "s0123456789abcdef0123456789abcde",
+          "cpuUsec": "0",
+          "memoryCurrent": "0",
+          "memoryPeak": "0"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "services": [
+        {
+          "name": "unit-00",
+          "cpuUsec": "0",
+          "memoryCurrent": "0"
+        },
+        {
+          "name": "unit-01",
+          "cpuUsec": "1000",
+          "memoryCurrent": "1"
+        },
+        {
+          "name": "unit-02",
+          "cpuUsec": "2000",
+          "memoryCurrent": "2"
+        },
+        {
+          "name": "unit-03",
+          "cpuUsec": "3000",
+          "memoryCurrent": "3"
+        },
+        {
+          "name": "unit-04",
+          "cpuUsec": "4000",
+          "memoryCurrent": "4"
+        },
+        {
+          "name": "unit-05",
+          "cpuUsec": "5000",
+          "memoryCurrent": "5"
+        },
+        {
+          "name": "unit-06",
+          "cpuUsec": "6000",
+          "memoryCurrent": "6"
+        },
+        {
+          "name": "unit-07",
+          "cpuUsec": "7000",
+          "memoryCurrent": "7"
+        },
+        {
+          "name": "unit-08",
+          "cpuUsec": "8000",
+          "memoryCurrent": "8"
+        },
+        {
+          "name": "unit-09",
+          "cpuUsec": "9000",
+          "memoryCurrent": "9"
+        },
+        {
+          "name": "unit-10",
+          "cpuUsec": "10000",
+          "memoryCurrent": "10"
+        },
+        {
+          "name": "unit-11",
+          "cpuUsec": "11000",
+          "memoryCurrent": "11"
+        },
+        {
+          "name": "unit-12",
+          "cpuUsec": "12000",
+          "memoryCurrent": "12"
+        },
+        {
+          "name": "unit-13",
+          "cpuUsec": "13000",
+          "memoryCurrent": "13"
+        },
+        {
+          "name": "unit-14",
+          "cpuUsec": "14000",
+          "memoryCurrent": "14"
+        },
+        {
+          "name": "unit-15",
+          "cpuUsec": "15000",
+          "memoryCurrent": "15"
+        }
+      ]
+    }
+  ]
+}

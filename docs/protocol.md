@@ -134,8 +134,9 @@ Group bits:
 | 9 | `block` | no |
 | 10 | `gpu` | yes |
 | 11 | `power` | yes |
+| 12 | `services` | yes |
 
-Bits 12 and above are reserved in both masks; bits 4 and 9 are reserved in
+Bits 13 and above are reserved in both masks; bits 4 and 9 are reserved in
 `unavailable`. A bit set in both masks rejects the frame. A group in neither
 mask is missing. A group in `unavailable` was attempted and could not be read.
 A device group present with count 0 is present and empty. A counter present
@@ -206,6 +207,29 @@ cumulative GPU energy in nanojoules), then `systemMwSum` and `systemReadings`
 (bit 1, a running sum of whole-system power readings in milliwatts and the
 count of readings). All counter varints.
 
+**services** — per-service cgroup v2 counters for the services named in the
+agent config. Count varint, 0–16, then per service:
+
+- ref varint; `0` defines a service entry inline: `name` str(32), which must
+  match `[a-z][a-z0-9-]{0,31}` (the service name the server knows).
+- head u8: bit 0 `MEMORY`, bit 1 `PEAK`, bit 2 `IO`, bit 3 `DELTA`, bit 4
+  `UNAVAILABLE`; bits 5–7 reserved. `PEAK` requires `MEMORY`. `UNAVAILABLE`
+  requires every other bit clear, and nothing follows it.
+- Unless `UNAVAILABLE`: `cpuUsec` (counter varint, `usage_usec` from
+  `cpu.stat`, microseconds); when `MEMORY`, `memoryCurrent` (gauge varint,
+  bytes, `memory.current`); when `PEAK`, `memoryPeak` (gauge varint, bytes,
+  `memory.peak`, the cgroup's high-water mark); when `IO`, `ioReadBytes`,
+  `ioWriteBytes`, `ioReads`, `ioWrites` (counter varints, `rbytes`, `wbytes`,
+  `rios`, `wios` from `io.stat` summed over its devices).
+
+`UNAVAILABLE` means the agent looked for the service's cgroup and could not
+read it: the unit is not running, or its cgroup does not exist. A service
+whose memory or io controller is not enabled has the matching bit clear, never
+zero. `DELTA` applies to `cpuUsec` and, with `IO`, to the four io counters;
+the memory values are always absolute. The service's identity is its name. The
+group itself is unavailable when the host has no cgroup v2 hierarchy, and
+absent when the agent config names no service.
+
 Paired fields (`swapIn`/`swapOut`, the four PSI `full` values,
 `systemMwSum`/`systemReadings`, GPU `active`/`total`) share one presence bit,
 so half a pair cannot be encoded.
@@ -213,7 +237,7 @@ so half a pair cannot be encoded.
 ### Dictionaries
 
 Dictionaries are batch-local and built in wire order. There is one per device
-kind (disks, interfaces, filesystems); each starts empty in every frame. An
+kind (disks, interfaces, filesystems, services); each starts empty in every frame. An
 entry is defined at its first use and referenced afterwards, so a frame cut
 after any sample is still a complete, decodable frame for that prefix.
 
@@ -221,8 +245,8 @@ after any sample is still a complete, decodable frame for that prefix.
   the frame. Two entries may share a device identity with different metadata:
   a disk renamed mid-batch gets a second entry with the same `major:minor`; a
   remounted filesystem gets a second entry with the same path and the new type.
-- Device identity is `major:minor` for disks, the name for interfaces, and the
-  path for filesystems. Two records with the same identity in one sample reject
+- Device identity is `major:minor` for disks, the name for interfaces and
+  services, and the path for filesystems. Two records with the same identity in one sample reject
   the frame.
 - The union of entries across a batch is bounded only by the record counts:
   at most 16 per sample, so at most 256 per kind.
@@ -230,12 +254,13 @@ after any sample is still a complete, decodable frame for that prefix.
 ### Counter deltas
 
 A counter record (the `cpu` group, the `mem` swap pair, `uptimeMs`, each disk,
-each interface, each PSI resource, `gpu`, `power`) is either absolute or, with
+each interface, each PSI resource, `gpu`, `power`, each service) is either absolute or, with
 its `DELTA` bit, a set of differences against the **immediately preceding
 sample record in this frame**. Its predecessor is the record of the same group
-— and, for devices, the same identity; for PSI, the same resource — in that
+— and, for devices and services, the same identity; for PSI, the same resource — in that
 previous sample. A delta record requires a predecessor with the same optional
-fields present (`iowait`/`steal`, `ioMs`, `txDrops`, `FULL`, `GPU_NJ`/`SYSTEM`).
+counters present (`iowait`/`steal`, `ioMs`, `txDrops`, `FULL`, `GPU_NJ`/`SYSTEM`,
+a service's `IO`); an `UNAVAILABLE` service is no predecessor.
 `DELTA` without such a predecessor rejects the frame.
 
 The decoder reconstructs each counter as `predecessor + delta`; a sum above
@@ -274,15 +299,17 @@ written. The code is:
   enum values; a truncated field or record; an overlong, non-canonical, or
   over-u64 varint; a string length outside its bound; invalid UTF-8; a device
   count above 16; an out-of-range dictionary reference; a duplicate dictionary
-  entry; a repeated device identity in one sample; a bit set in both
-  `present` and `unavailable`; an empty PSI or power mask; a `DELTA` without
+  entry; a repeated device or service identity in one sample; a bit set in both
+  `present` and `unavailable`; an empty PSI or power mask; a service head
+  with `PEAK` but not `MEMORY`, or `UNAVAILABLE` with another bit; a `DELTA` without
   a predecessor; delta overflow; bytes after the last sample.
 - `unknown_version`: the magic is `STB2` and the version byte is not 2.
 - `invalid_batch`: a sample count outside 1–16; a system record outside its
   semantic bounds; a dictionary entry outside its semantic bounds: a disk
   `major` above 4095 or `minor` above 1048575, a disk name outside
   `[A-Za-z0-9._-]{1,32}`, an interface name outside `[A-Za-z0-9_.:@-]{1,15}`,
-  a filesystem path that does not start with `/` or contains U+0000.
+  a filesystem path that does not start with `/` or contains U+0000, a
+  service name that does not match `[a-z][a-z0-9-]{0,31}`.
 - `too_large`: a body over 65,536 bytes, counted at the byte-reading boundary,
   so a streamed body without `Content-Length` is cut off at the cap.
 
@@ -322,7 +349,8 @@ minute), then each sample.
 The canonical content compared for duplicates is the decoded, reconstructed
 sample rendered as the stored JSON: u64 values as decimal strings, load as
 `d.ddd`, PSI averages as `d.dd`, `cpuCount` as a number, `unavailable` as
-group names in bit order, devices in wire order, keys sorted. A sample sent
+group names in bit order, devices and services in wire order, an unavailable
+service as `{ "name", "unavailable": true }`, keys sorted. A sample sent
 first in one batch and later in another, as an absolute record or a delta,
 with different dictionary indexes, or after a batch split, compares equal.
 

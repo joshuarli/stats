@@ -95,6 +95,24 @@ export interface Power {
   readonly systemReadings?: string;
 }
 
+export interface MeasuredService {
+  readonly name: string;
+  readonly cpuUsec: string;
+  readonly memoryCurrent?: string;
+  readonly memoryPeak?: string;
+  readonly ioReadBytes?: string;
+  readonly ioWriteBytes?: string;
+  readonly ioReads?: string;
+  readonly ioWrites?: string;
+}
+
+export interface UnavailableService {
+  readonly name: string;
+  readonly unavailable: true;
+}
+
+export type Service = MeasuredService | UnavailableService;
+
 export type UnavailableGroup = (typeof UNAVAILABLE_GROUPS)[number];
 
 export interface Sample {
@@ -114,6 +132,7 @@ export interface Sample {
   readonly block?: Block;
   readonly gpu?: Gpu;
   readonly power?: Power;
+  readonly services?: readonly Service[];
 }
 
 export interface CpuInfo {
@@ -133,7 +152,8 @@ export interface SystemInfo {
   readonly cpu: CpuInfo;
 }
 
-export const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power"] as const;
+export const UNAVAILABLE_GROUPS = ["cpu", "load", "mem", "uptime", "disks", "nets", "psi", "filesystems", "gpu", "power", "services"] as const;
+export const SERVICE_NAME = /^[a-z][a-z0-9-]{0,31}$/u;
 export const FS_TYPES = ["ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "vfat", "exfat", "ntfs3", "zfs", "tmpfs", "overlay", "apfs"] as const;
 
 export function canonicalJson(value: unknown): string {

@@ -1,4 +1,4 @@
-use crate::model::{BootId, Cpu, Disk, DiskId, FileSystem, FileSystemType, HostId, Mem, MemoryPressure, Net, Power, PsiGroup, Sample, SwapActivity, SystemInfo, Unavailable, BLOCK_BUCKETS};
+use crate::model::{BootId, Cpu, Disk, DiskId, FileSystem, FileSystemType, HostId, Mem, MemoryPressure, Net, Power, PsiGroup, Sample, Service, ServiceUsage, SwapActivity, SystemInfo, Unavailable, BLOCK_BUCKETS};
 use std::fmt;
 
 pub const REQUEST_MEDIA_TYPE: &str = "application/vnd.stats.ingest.v2";
@@ -26,6 +26,13 @@ const FILESYSTEMS: u32 = 1 << 8;
 const BLOCK: u32 = 1 << 9;
 const GPU: u32 = 1 << 10;
 const POWER: u32 = 1 << 11;
+const SERVICES: u32 = 1 << 12;
+
+const SERVICE_MEMORY: u8 = 1 << 0;
+const SERVICE_PEAK: u8 = 1 << 1;
+const SERVICE_IO: u8 = 1 << 2;
+const SERVICE_DELTA: u8 = 1 << 3;
+const SERVICE_UNAVAILABLE: u8 = 1 << 4;
 
 const AGENT_BYTES: usize = 128;
 const HOSTNAME_BYTES: usize = 256;
@@ -36,6 +43,7 @@ const MODEL_BYTES: usize = 512;
 const DISK_NAME_BYTES: usize = 32;
 const IFNAME_BYTES: usize = 15;
 const PATH_BYTES: usize = 255;
+const SERVICE_NAME_BYTES: usize = 32;
 
 fn unavailable_bit(group: Unavailable) -> u32 {
     match group {
@@ -49,6 +57,7 @@ fn unavailable_bit(group: Unavailable) -> u32 {
         Unavailable::Filesystems => FILESYSTEMS,
         Unavailable::Gpu => GPU,
         Unavailable::Power => POWER,
+        Unavailable::Services => SERVICES,
     }
 }
 
@@ -265,6 +274,7 @@ struct Dictionaries<'a> {
     disks: Vec<(DiskId, &'a str)>,
     nets: Vec<&'a str>,
     filesystems: Vec<(&'a str, FileSystemType)>,
+    services: Vec<&'a str>,
 }
 
 fn reference<T: PartialEq + Copy>(out: &mut Vec<u8>, entries: &mut Vec<T>, entry: T) -> bool {
@@ -300,6 +310,7 @@ fn write_sample<'a>(out: &mut Vec<u8>, sample: &'a Sample, previous: Option<&'a 
         (sample.block.is_some(), BLOCK),
         (sample.gpu.is_some(), GPU),
         (sample.power.is_some(), POWER),
+        (sample.services.is_some(), SERVICES),
     ]
     .iter()
     .filter(|(present, _)| *present)
@@ -416,6 +427,55 @@ fn write_sample<'a>(out: &mut Vec<u8>, sample: &'a Sample, previous: Option<&'a 
             return Err("power has no reading");
         }
         counter_record(out, shape, 1 << 2, &values, base.as_ref());
+    }
+    if let Some(services) = &sample.services {
+        if services.len() > MAX_DEVICES || !unique_ids(services.iter().map(Service::name)) {
+            return Err("services");
+        }
+        varint(out, services.len() as u64);
+        for service in services {
+            if reference(out, &mut dictionaries.services, service.name()) {
+                text(out, service.name(), SERVICE_NAME_BYTES, "service name")?;
+            }
+            let predecessor = previous.and_then(|previous| previous.services.as_ref()).and_then(|services| services.iter().find(|other| other.name() == service.name())).and_then(Service::usage);
+            write_service(out, service, predecessor)?;
+        }
+    }
+    Ok(())
+}
+
+fn service_counters(usage: &ServiceUsage) -> (u8, Counters) {
+    let io = usage.io.as_ref();
+    (u8::from(io.is_some()), Counters::new(&[usage.cpu_usec], &[io.map(|io| io.read_bytes), io.map(|io| io.write_bytes), io.map(|io| io.reads), io.map(|io| io.writes)]))
+}
+
+fn write_service(out: &mut Vec<u8>, service: &Service, previous: Option<&ServiceUsage>) -> Result<(), &'static str> {
+    let usage = match service {
+        Service::Unavailable(service) if service.unavailable => {
+            out.push(SERVICE_UNAVAILABLE);
+            return Ok(());
+        }
+        Service::Unavailable(_) => return Err("an unavailable service must say unavailable: true"),
+        Service::Measured(service) => &service.usage,
+    };
+    let (shape, values, base) = same_shape(service_counters(usage), previous.map(service_counters));
+    let base = values.deltable_from(base.as_ref());
+    let memory = usage.memory.as_ref();
+    let head = u8::from(memory.is_some()) * SERVICE_MEMORY
+        | u8::from(memory.is_some_and(|memory| memory.peak.is_some())) * SERVICE_PEAK
+        | shape * SERVICE_IO
+        | if base.is_some() { SERVICE_DELTA } else { 0 };
+    out.push(head);
+    let counter = |index: usize| values.values[index] - base.map_or(0, |base| base.values[index]);
+    varint(out, counter(0));
+    if let Some(memory) = memory {
+        varint(out, memory.current);
+        if let Some(peak) = memory.peak {
+            varint(out, peak);
+        }
+    }
+    if usage.io.is_some() {
+        (1..5).for_each(|index| varint(out, counter(index)));
     }
     Ok(())
 }
@@ -668,6 +728,23 @@ mod tests {
         let body = &batch.body[39..];
         assert_eq!(&body[5..8], [0x9f, 0x19, 0]);
         assert_eq!(&body[8..], [0, 1, 2, 3, 6, 120, 0xc8, 0x01, 0xb6, 0x02, 0b011, 8, 4, 2, 1, 10, 20, 2, 0, 1, 8, 0b100, 1, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 0b10, 3, 4]);
+    }
+
+    #[test]
+    fn services_carry_a_dictionary_name_a_head_and_counter_deltas_per_cgroup() {
+        use crate::model::{ServiceIo, ServiceMemory};
+        let (host, boot) = ids();
+        let usage = |cpu_usec: u64, io: Option<ServiceIo>| ServiceUsage { cpu_usec, memory: Some(ServiceMemory { current: 7, peak: Some(9) }), io };
+        let io = |read_bytes: u64| ServiceIo { read_bytes, write_bytes: 2, reads: 3, writes: 4 };
+        let with = |seq: u64, services: Vec<Service>| Sample { services: Some(services), ..Sample::empty(seq, seq, seq) };
+        let batch = encode_batch(&host, &boot, None, &[with(1, vec![Service::measured("web", usage(100, Some(io(1)))), Service::unavailable("db")]), with(2, vec![Service::measured("web", usage(105, Some(io(6))))]), with(3, vec![Service::measured("web", usage(5, None))])], MAX_BODY).unwrap();
+        let body = &batch.body[39..];
+        assert_eq!(&body[..6], [1, 1, 1, 0x80, 0x20, 0]);
+        assert_eq!(&body[6..25], [2, 0, 3, b'w', b'e', b'b', 0b0111, 100, 7, 9, 1, 2, 3, 4, 0, 2, b'd', b'b', 0b1_0000]);
+        assert_eq!(&body[25..41], [2, 2, 2, 0x80, 0x20, 0, 1, 1, 0b1111, 5, 7, 9, 5, 0, 0, 0]);
+        assert_eq!(&body[41..], [3, 3, 3, 0x80, 0x20, 0, 1, 1, 0b0011, 5, 7, 9]);
+        let invalid = Service::Unavailable(crate::model::UnavailableService { name: "db".into(), unavailable: false });
+        assert!(matches!(encode_batch(&host, &boot, None, &[with(1, vec![invalid])], MAX_BODY), Err(EncodeError::Unencodable(_))));
     }
 
     fn ack(parts: &[u8]) -> Vec<u8> {

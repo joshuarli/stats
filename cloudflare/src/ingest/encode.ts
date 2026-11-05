@@ -9,8 +9,8 @@ export interface SourceBatch {
 
 type Json = Readonly<Record<string, unknown>>;
 
-const GROUPS = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power"] as const;
-const UNAVAILABLE = { cpu: 0, load: 1, mem: 2, uptime: 3, disks: 5, nets: 6, psi: 7, filesystems: 8, gpu: 10, power: 11 } as const;
+const GROUPS = ["cpu", "load", "mem", "uptimeMs", "cpuCount", "disks", "nets", "psi", "filesystems", "block", "gpu", "power", "services"] as const;
+const UNAVAILABLE = { cpu: 0, load: 1, mem: 2, uptime: 3, disks: 5, nets: 6, psi: 7, filesystems: 8, gpu: 10, power: 11, services: 12 } as const;
 const text = new TextEncoder();
 
 function object(value: unknown): Json {
@@ -115,7 +115,32 @@ function sameShape(current: [number, bigint[]], previous: [number, bigint[]] | u
   return previous !== undefined && previous[0] === current[0] ? previous[1] : undefined;
 }
 
-interface Dictionaries { disks: string[]; nets: string[]; filesystems: string[] }
+interface Dictionaries { disks: string[]; nets: string[]; filesystems: string[]; services: string[] }
+
+const SERVICE_IO_FIELDS = ["ioReadBytes", "ioWriteBytes", "ioReads", "ioWrites"] as const;
+
+function serviceShape(service: Json): [number, bigint[]] {
+  const io = service.ioReadBytes !== undefined;
+  return [io ? 1 : 0, [service.cpuUsec, ...(io ? SERVICE_IO_FIELDS.map(field => service[field]) : [])].map(u64)];
+}
+
+function writeService(out: Writer, service: Json, previous: Json | undefined, delta: boolean): void {
+  if (service.unavailable === true) {
+    out.byte(1 << 4);
+    return;
+  }
+  const [shape, values] = serviceShape(service);
+  const prior = previous === undefined || previous.unavailable === true ? undefined : serviceShape(previous);
+  const before = prior !== undefined && prior[0] === shape ? prior[1] : undefined;
+  const base = delta && before !== undefined && values.every((value, index) => value >= before[index]!) ? before : undefined;
+  const memory = service.memoryCurrent !== undefined;
+  out.byte((memory ? 1 : 0) | (service.memoryPeak === undefined ? 0 : 2) | (shape === 1 ? 4 : 0) | (base === undefined ? 0 : 8));
+  const counter = (index: number) => out.varint(base === undefined ? values[index]! : values[index]! - base[index]!);
+  counter(0);
+  if (memory) out.varint(u64(service.memoryCurrent));
+  if (service.memoryPeak !== undefined) out.varint(u64(service.memoryPeak));
+  if (shape === 1) for (let index = 1; index < 5; index += 1) counter(index);
+}
 
 function reference(out: Writer, entries: string[], key: string): boolean {
   const index = entries.indexOf(key);
@@ -232,6 +257,14 @@ function writeSample(out: Writer, sample: Json, previous: Json | undefined, dict
     const current = powerShape(object(sample.power));
     counterRecord(out, current[0], 4, current[1], sameShape(current, previous?.power === undefined ? undefined : powerShape(object(previous.power))), delta);
   }
+  if (sample.services !== undefined) {
+    const services = list(sample.services);
+    out.varint(services.length);
+    for (const service of services) {
+      if (reference(out, dictionaries.services, str(service.name))) out.text(str(service.name));
+      writeService(out, service, previous?.services === undefined ? undefined : list(previous.services).find(other => other.name === service.name), delta);
+    }
+  }
 }
 
 function writeSystem(out: Writer, system: Json): void {
@@ -255,7 +288,7 @@ export function encodeFrame(batch: SourceBatch, options: { readonly delta?: bool
   out.hex(batch.bootId.replaceAll("-", ""));
   out.byte(batch.samples.length);
   if (batch.system !== undefined) writeSystem(out, batch.system);
-  const dictionaries: Dictionaries = { disks: [], nets: [], filesystems: [] };
+  const dictionaries: Dictionaries = { disks: [], nets: [], filesystems: [], services: [] };
   batch.samples.forEach((sample, index) => writeSample(out, sample, batch.samples[index - 1], dictionaries, options.delta ?? true));
   return new Uint8Array(out.bytes);
 }

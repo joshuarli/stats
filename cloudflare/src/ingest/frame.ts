@@ -1,4 +1,4 @@
-import { FS_TYPES, MAX_DEVICES, MAX_SAMPLES, MEMORY_PRESSURE_LEVELS, type MemoryPressure } from "../protocol.ts";
+import { FS_TYPES, MAX_DEVICES, MAX_SAMPLES, MEMORY_PRESSURE_LEVELS, SERVICE_NAME, type MemoryPressure } from "../protocol.ts";
 import { BLOCK_BUCKETS } from "../limits.ts";
 
 export type FrameRejectCode = "invalid_frame" | "unknown_version" | "invalid_batch";
@@ -19,6 +19,10 @@ export interface WireBlock { readonly buckets: readonly bigint[]; readonly count
 export interface WireGpu { readonly active: bigint; readonly total: bigint }
 export interface WireSystemPower { readonly milliwattSum: bigint; readonly readings: bigint }
 export interface WirePower { readonly gpuNj?: bigint; readonly system?: WireSystemPower }
+export interface WireServiceMemory { readonly current: bigint; readonly peak?: bigint }
+export interface WireServiceIo { readonly readBytes: bigint; readonly writeBytes: bigint; readonly reads: bigint; readonly writes: bigint }
+export interface WireServiceUsage { readonly cpuUsec: bigint; readonly memory?: WireServiceMemory; readonly io?: WireServiceIo }
+export interface WireService { readonly name: string; readonly usage?: WireServiceUsage }
 
 export interface WireSample {
   readonly seq: bigint;
@@ -37,6 +41,7 @@ export interface WireSample {
   readonly block?: WireBlock;
   readonly gpu?: WireGpu;
   readonly power?: WirePower;
+  readonly services?: readonly WireService[];
 }
 
 export interface WireSystem {
@@ -70,10 +75,12 @@ export const GROUP = {
   filesystems: 1 << 8,
   block: 1 << 9,
   gpu: 1 << 10,
-  power: 1 << 11
+  power: 1 << 11,
+  services: 1 << 12
 } as const;
 
-const PRESENT_MASK = (1 << 12) - 1;
+const SERVICE_HEAD = { memory: 1 << 0, peak: 1 << 1, io: 1 << 2, delta: 1 << 3, unavailable: 1 << 4 } as const;
+const PRESENT_MASK = (1 << 13) - 1;
 const UNAVAILABLE_MASK = PRESENT_MASK & ~GROUP.cpuCount & ~GROUP.block;
 const HEADER_BYTES = 39;
 const U64_MAX = (1n << 64n) - 1n;
@@ -432,7 +439,50 @@ function readPower(reader: Reader, previous: WirePower | undefined): WirePower {
   return { ...(gpuNj === undefined ? {} : { gpuNj }), ...((shape & 2) === 0 ? {} : { system: { milliwattSum: values[offset]!, readings: values[offset + 1]! } }) };
 }
 
-interface Dictionaries { readonly disks: DiskEntry[]; readonly nets: string[]; readonly filesystems: FileSystemEntry[] }
+function serviceValues(usage: WireServiceUsage): bigint[] {
+  return usage.io === undefined ? [usage.cpuUsec] : [usage.cpuUsec, usage.io.readBytes, usage.io.writeBytes, usage.io.reads, usage.io.writes];
+}
+
+function readServiceUsage(reader: Reader, head: number, previous: WireServiceUsage | undefined): WireServiceUsage {
+  if ((head & SERVICE_HEAD.peak) !== 0 && (head & SERVICE_HEAD.memory) === 0) structural("service peak memory without current memory");
+  const io = (head & SERVICE_HEAD.io) !== 0;
+  const before = previous !== undefined && (previous.io !== undefined) === io ? serviceValues(previous) : undefined;
+  const counted = base("service", (head & SERVICE_HEAD.delta) !== 0, before);
+  const [cpuUsec] = counters(reader, "service cpuUsec", 1, counted?.slice(0, 1));
+  const memory = (head & SERVICE_HEAD.memory) === 0 ? undefined : {
+    current: reader.varint("service memoryCurrent"),
+    ...((head & SERVICE_HEAD.peak) === 0 ? {} : { peak: reader.varint("service memoryPeak") })
+  };
+  const values = io ? counters(reader, "service io", 4, counted?.slice(1)) : undefined;
+  return {
+    cpuUsec: cpuUsec!,
+    ...(memory === undefined ? {} : { memory }),
+    ...(values === undefined ? {} : { io: { readBytes: values[0]!, writeBytes: values[1]!, reads: values[2]!, writes: values[3]! } })
+  };
+}
+
+function readServices(reader: Reader, entries: string[], previous: readonly WireService[] | undefined): WireService[] {
+  const services: WireService[] = [];
+  const total = count(reader, "services");
+  for (let index = 0; index < total; index += 1) {
+    const name = reference(reader, "service", entries, () => {
+      const value = reader.text("service name", 32);
+      if (!SERVICE_NAME.test(value)) semantic("service name is outside its bounds");
+      return value;
+    }, (left, right) => left === right);
+    if (services.some(service => service.name === name)) structural("a service appears twice in one sample");
+    const head = reader.mask("service head", 0b1_1111);
+    if ((head & SERVICE_HEAD.unavailable) !== 0) {
+      if (head !== SERVICE_HEAD.unavailable) structural("an unavailable service carries readings");
+      services.push({ name });
+      continue;
+    }
+    services.push({ name, usage: readServiceUsage(reader, head, previous?.find(service => service.name === name)?.usage) });
+  }
+  return services;
+}
+
+interface Dictionaries { readonly disks: DiskEntry[]; readonly nets: string[]; readonly filesystems: FileSystemEntry[]; readonly services: string[] }
 
 function readSample(reader: Reader, previous: WireSample | undefined, dictionaries: Dictionaries): WireSample {
   const seq = reader.varint("seq");
@@ -462,6 +512,7 @@ function readSample(reader: Reader, previous: WireSample | undefined, dictionari
   const block = on(GROUP.block) ? readBlock(reader) : undefined;
   const gpu = on(GROUP.gpu) ? readGpu(reader, previous?.gpu) : undefined;
   const power = on(GROUP.power) ? readPower(reader, previous?.power) : undefined;
+  const services = on(GROUP.services) ? readServices(reader, dictionaries.services, previous?.services) : undefined;
   return {
     seq, atMs, monoMs, unavailable,
     ...(cpu === undefined ? {} : { cpu }),
@@ -475,7 +526,8 @@ function readSample(reader: Reader, previous: WireSample | undefined, dictionari
     ...(filesystems === undefined ? {} : { filesystems }),
     ...(block === undefined ? {} : { block }),
     ...(gpu === undefined ? {} : { gpu }),
-    ...(power === undefined ? {} : { power })
+    ...(power === undefined ? {} : { power }),
+    ...(services === undefined ? {} : { services })
   };
 }
 
@@ -490,7 +542,7 @@ export function decodeFrame(bytes: Uint8Array): FrameResult {
     if (total < 1 || total > MAX_SAMPLES) semantic("sample count is outside 1-16");
     const reader = new Reader(bytes, HEADER_BYTES);
     const system = (flags & 1) !== 0 ? readSystem(reader) : undefined;
-    const dictionaries: Dictionaries = { disks: [], nets: [], filesystems: [] };
+    const dictionaries: Dictionaries = { disks: [], nets: [], filesystems: [], services: [] };
     const samples: WireSample[] = [];
     for (let index = 0; index < total; index += 1) samples.push(readSample(reader, samples[index - 1], dictionaries));
     if (reader.offset !== bytes.length) structural("bytes follow the last sample");

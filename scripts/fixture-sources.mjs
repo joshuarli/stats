@@ -314,6 +314,24 @@ for (const seed of [11, 23, 47, 89, 131, 257]) {
   define(`random-${String(seed).padStart(3, "0")}`, "synthetic", batch(samples, next() < 0.3 ? { system } : {}));
 }
 
+const service = (name, cpuUsec, extra = {}) => ({ name, cpuUsec: String(cpuUsec), ...extra });
+const serviceMemory = (current, peak) => ({ memoryCurrent: String(current), ...(peak === undefined ? {} : { memoryPeak: String(peak) }) });
+const serviceIo = (readBytes, writeBytes, reads, writes) => ({ ioReadBytes: String(readBytes), ioWriteBytes: String(writeBytes), ioReads: String(reads), ioWrites: String(writes) });
+define("services", "synthetic", batch([
+  sample(1, { cpu: cpu(1000), services: [service("stats-node", 1_000_000, { ...serviceMemory(52_428_800, 67_108_864), ...serviceIo(40_960, 81_920, 10, 20) }), service("web", 500), { name: "db", unavailable: true }] }),
+  sample(2, { cpu: cpu(1010), services: [service("stats-node", 1_250_000, { ...serviceMemory(53_000_000, 67_108_864), ...serviceIo(49_152, 98_304, 12, 24) }), service("web", 750, serviceIo(4096, 0, 1, 0)), service("db", 40, serviceMemory(1_048_576))] }),
+  sample(3, { cpu: cpu(1020), services: [service("stats-node", 9000, { ...serviceMemory(20_000_000), ...serviceIo(0, 0, 0, 0) }), service("web", 900, serviceIo(8192, 0, 2, 0))] }),
+  sample(4, { unavailable: ["services"], cpu: cpu(1030) }),
+  sample(5, { uptimeMs: "5000", services: [] }),
+  sample(6, { services: [{ name: "db", unavailable: true }] })
+]));
+const longName = `s${"0123456789abcdef0123456789abcde"}`;
+define("services-boundaries", "boundary", batch([
+  sample(1, { services: [service("a", U64_MAX - 1n, { ...serviceMemory(U64_MAX, U64_MAX), ...serviceIo(U64_MAX - 1n, SAFE, SAFE + 1n, 0) }), service(longName, 0, serviceMemory(0, 0))] }),
+  sample(2, { services: [service("a", U64_MAX, { ...serviceMemory(0), ...serviceIo(U64_MAX, SAFE + 1n, SAFE + 1n, 0) }), service(longName, 0, serviceMemory(0, 0))] }),
+  sample(3, { services: Array.from({ length: 16 }, (_, index) => service(`unit-${String(index).padStart(2, "0")}`, index * 1000, serviceMemory(index))) })
+]));
+
 const LATER_WORKLOADS = { presence: "missing-groups", "u64-boundaries": "large-counters" };
 const manifest = { version: 2, batches: cases.map(({ value, ...entry }) => ({ ...entry, ...(LATER_WORKLOADS[entry.name] === undefined ? {} : { workload: LATER_WORKLOADS[entry.name] }), source: `sources/${entry.name}.json`, frame: `frames/${entry.name}.stb2` })) };
 const files = new Map(cases.map(entry => [`sources/${entry.name}.json`, `${JSON.stringify(entry.value, null, 2)}\n`]));

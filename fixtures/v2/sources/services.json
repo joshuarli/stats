@@ -1,0 +1,143 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "cpu": {
+        "user": "1000",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "1100"
+      },
+      "services": [
+        {
+          "name": "stats-node",
+          "cpuUsec": "1000000",
+          "memoryCurrent": "52428800",
+          "memoryPeak": "67108864",
+          "ioReadBytes": "40960",
+          "ioWriteBytes": "81920",
+          "ioReads": "10",
+          "ioWrites": "20"
+        },
+        {
+          "name": "web",
+          "cpuUsec": "500"
+        },
+        {
+          "name": "db",
+          "unavailable": true
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "cpu": {
+        "user": "1010",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "1110"
+      },
+      "services": [
+        {
+          "name": "stats-node",
+          "cpuUsec": "1250000",
+          "memoryCurrent": "53000000",
+          "memoryPeak": "67108864",
+          "ioReadBytes": "49152",
+          "ioWriteBytes": "98304",
+          "ioReads": "12",
+          "ioWrites": "24"
+        },
+        {
+          "name": "web",
+          "cpuUsec": "750",
+          "ioReadBytes": "4096",
+          "ioWriteBytes": "0",
+          "ioReads": "1",
+          "ioWrites": "0"
+        },
+        {
+          "name": "db",
+          "cpuUsec": "40",
+          "memoryCurrent": "1048576"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "cpu": {
+        "user": "1020",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "1120"
+      },
+      "services": [
+        {
+          "name": "stats-node",
+          "cpuUsec": "9000",
+          "memoryCurrent": "20000000",
+          "ioReadBytes": "0",
+          "ioWriteBytes": "0",
+          "ioReads": "0",
+          "ioWrites": "0"
+        },
+        {
+          "name": "web",
+          "cpuUsec": "900",
+          "ioReadBytes": "8192",
+          "ioWriteBytes": "0",
+          "ioReads": "2",
+          "ioWrites": "0"
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "atMs": "1793510344000",
+      "monoMs": "4000",
+      "unavailable": [
+        "services"
+      ],
+      "cpu": {
+        "user": "1030",
+        "system": "10",
+        "idle": "50",
+        "iowait": "20",
+        "steal": "20",
+        "total": "1130"
+      }
+    },
+    {
+      "seq": "5",
+      "atMs": "1793510345000",
+      "monoMs": "5000",
+      "uptimeMs": "5000",
+      "services": []
+    },
+    {
+      "seq": "6",
+      "atMs": "1793510346000",
+      "monoMs": "6000",
+      "services": [
+        {
+          "name": "db",
+          "unavailable": true
+        }
+      ]
+    }
+  ]
+}

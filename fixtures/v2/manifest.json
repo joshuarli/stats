@@ -487,6 +487,31 @@
       ],
       "source": "sources/random-257.json",
       "frame": "frames/random-257.stb2"
+    },
+    {
+      "name": "services",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/services.json",
+      "frame": "frames/services.stb2"
+    },
+    {
+      "name": "services-boundaries",
+      "label": "boundary",
+      "samples": [
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/services-boundaries.json",
+      "frame": "frames/services-boundaries.stb2"
     }
   ]
 }

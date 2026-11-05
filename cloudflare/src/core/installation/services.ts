@@ -1,6 +1,6 @@
 import { constantTimeEqual, generateToken, tokenHash } from "../../auth.ts";
 import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory } from "../../deployments/model.ts";
-import { PROJECT_ID_PATTERN } from "../../projects/config.ts";
+import { SERVICE_NAME } from "../../protocol.ts";
 import type { SqlDatabase } from "../sql.ts";
 
 export const MAX_MARKER_BODY_BYTES = 8192;
@@ -144,7 +144,7 @@ function parseDefinition(body: unknown): ServiceResult<ServiceDefinition> {
   const record = exactObject(body, SERVICE_KEYS);
   if (record === null) return invalid("body must be an object with name, hostIds, and optional healthUrl and unit");
   const name = record["name"];
-  if (typeof name !== "string" || !PROJECT_ID_PATTERN.test(name)) return invalid("name must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
+  if (typeof name !== "string" || !SERVICE_NAME.test(name)) return invalid("name must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
   const hostIds = hostIdList(record["hostIds"]);
   if (hostIds === null) return invalid(`hostIds must be 1-${MAX_SERVICE_HOSTS} distinct host ids`);
   const url = healthUrl(record["healthUrl"]);

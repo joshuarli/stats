@@ -94,8 +94,8 @@
     {
       "name": "present-reserved-bit",
       "code": "invalid_frame",
-      "why": "present mask bit 12",
-      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078120000001020306"
+      "why": "present mask bit 13",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078140000001020306"
     },
     {
       "name": "unavailable-reserved-bit",
@@ -324,6 +324,72 @@
       "code": "invalid_frame",
       "why": "an empty string violates str(max) before any character bound applies",
       "hex": "5354423202010123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f010005302e312e3000016b01610001e8c7b3ac9934e80701000001020306"
+    },
+    {
+      "name": "service-head-reserved-bit",
+      "code": "invalid_frame",
+      "why": "service head bit 5",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100037765622005"
+    },
+    {
+      "name": "service-unavailable-with-readings",
+      "code": "invalid_frame",
+      "why": "an unavailable service sets a reading bit",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100037765621105"
+    },
+    {
+      "name": "service-peak-without-memory",
+      "code": "invalid_frame",
+      "why": "memoryPeak requires memoryCurrent",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807802000010003776562020507"
+    },
+    {
+      "name": "service-delta-without-predecessor",
+      "code": "invalid_frame",
+      "why": "a service delta in the first sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100037765620805"
+    },
+    {
+      "name": "service-delta-shape-mismatch",
+      "code": "invalid_frame",
+      "why": "a service delta whose predecessor has no io counters",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e807802000010003776562000502e9c7b3ac9934d00f80200001010c0101010101"
+    },
+    {
+      "name": "service-delta-overflow",
+      "code": "invalid_frame",
+      "why": "a service cpuUsec delta above 2^64-1",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0201e8c7b3ac9934e80780200001000377656200ffffffffffffffffff0102e9c7b3ac9934d00f80200001010801"
+    },
+    {
+      "name": "service-repeated-in-sample",
+      "code": "invalid_frame",
+      "why": "one service twice in one sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000200037765620005010006"
+    },
+    {
+      "name": "service-dictionary-duplicate",
+      "code": "invalid_frame",
+      "why": "a service entry defined twice",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e807802000020003776562000500037765620006"
+    },
+    {
+      "name": "service-count-17",
+      "code": "invalid_frame",
+      "why": "seventeen services in one sample",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780200011"
+    },
+    {
+      "name": "service-name-too-long",
+      "code": "invalid_frame",
+      "why": "a 33-byte service name",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100216161616161616161616161616161616161616161616161616161616161616161610005"
+    },
+    {
+      "name": "service-name-invalid",
+      "code": "invalid_batch",
+      "why": "a service name outside [a-z][a-z0-9-]{0,31}",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100035765620005"
     }
   ]
 }

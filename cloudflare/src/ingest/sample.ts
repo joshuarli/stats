@@ -1,5 +1,5 @@
-import { MAX_SAFE_INTEGER, UNAVAILABLE_GROUPS, type Block, type Cpu, type Disk, type FileSystem, type Mem, type Net, type Power, type Psi, type PsiGroup, type Sample, type SystemInfo } from "../protocol.ts";
-import { GROUP, type WireBlock, type WirePsiGroup, type WireSample, type WireSystem } from "./frame.ts";
+import { MAX_SAFE_INTEGER, UNAVAILABLE_GROUPS, type Block, type Cpu, type Disk, type FileSystem, type Mem, type Net, type Power, type Psi, type PsiGroup, type Sample, type Service, type SystemInfo } from "../protocol.ts";
+import { GROUP, type WireBlock, type WirePsiGroup, type WireSample, type WireService, type WireSystem } from "./frame.ts";
 
 export type SampleResult =
   | { readonly ok: true; readonly sample: Sample; readonly atMs: number; readonly monoMs: number }
@@ -7,7 +7,7 @@ export type SampleResult =
 
 const LOAD_MAX = 999_999_999n;
 const PSI_MAX = 99_999_999n;
-const UNAVAILABLE_BITS = [GROUP.cpu, GROUP.load, GROUP.mem, GROUP.uptime, GROUP.disks, GROUP.nets, GROUP.psi, GROUP.filesystems, GROUP.gpu, GROUP.power] as const;
+const UNAVAILABLE_BITS = [GROUP.cpu, GROUP.load, GROUP.mem, GROUP.uptime, GROUP.disks, GROUP.nets, GROUP.psi, GROUP.filesystems, GROUP.gpu, GROUP.power, GROUP.services] as const;
 
 function decimal(value: bigint): string {
   return value.toString();
@@ -28,6 +28,17 @@ function psiAverages(group: WirePsiGroup | undefined): readonly bigint[] {
   return [group.some10, group.some60, group.some300, ...(group.full === undefined ? [] : [group.full.avg10, group.full.avg60, group.full.avg300])];
 }
 
+function service(entry: WireService): Service {
+  const usage = entry.usage;
+  if (usage === undefined) return { name: entry.name, unavailable: true };
+  return {
+    name: entry.name, cpuUsec: decimal(usage.cpuUsec),
+    ...(usage.memory === undefined ? {} : { memoryCurrent: decimal(usage.memory.current) }),
+    ...(usage.memory?.peak === undefined ? {} : { memoryPeak: decimal(usage.memory.peak) }),
+    ...(usage.io === undefined ? {} : { ioReadBytes: decimal(usage.io.readBytes), ioWriteBytes: decimal(usage.io.writeBytes), ioReads: decimal(usage.io.reads), ioWrites: decimal(usage.io.writes) })
+  };
+}
+
 function blockProblem(block: WireBlock): string | null {
   const sum = block.buckets.reduce((total, bucket) => total + bucket, 0n);
   if (sum !== block.count) return "block count is not the sum of its buckets";
@@ -37,7 +48,7 @@ function blockProblem(block: WireBlock): string | null {
 
 function problem(sample: WireSample): string | null {
   if (sample.atMs > MAX_SAFE_INTEGER || sample.monoMs > MAX_SAFE_INTEGER || sample.seq > MAX_SAFE_INTEGER) return "seq, atMs, or monoMs exceeds 2^53-1";
-  const metric = sample.cpu ?? sample.load ?? sample.mem ?? sample.uptimeMs ?? sample.disks ?? sample.nets ?? sample.psi ?? sample.filesystems ?? sample.block ?? sample.gpu ?? sample.power;
+  const metric = sample.cpu ?? sample.load ?? sample.mem ?? sample.uptimeMs ?? sample.disks ?? sample.nets ?? sample.psi ?? sample.filesystems ?? sample.block ?? sample.gpu ?? sample.power ?? sample.services;
   if (metric === undefined) return "sample has no metric group";
   if (sample.load !== undefined && [sample.load.one, sample.load.five, sample.load.fifteen].some(value => value > LOAD_MAX)) return "load exceeds 999999.999";
   if (sample.psi !== undefined && [sample.psi.cpu, sample.psi.memory, sample.psi.io].flatMap(psiAverages).some(value => value > PSI_MAX)) return "psi average exceeds 999999.99";
@@ -94,7 +105,8 @@ function normalize(sample: WireSample): Sample {
     ...(filesystems === undefined ? {} : { filesystems }),
     ...(block === undefined ? {} : { block }),
     ...(sample.gpu === undefined ? {} : { gpu: { active: decimal(sample.gpu.active), total: decimal(sample.gpu.total) } }),
-    ...(power === undefined ? {} : { power })
+    ...(power === undefined ? {} : { power }),
+    ...(sample.services === undefined ? {} : { services: sample.services.map(service) })
   };
 }
 
