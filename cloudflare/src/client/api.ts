@@ -1,5 +1,6 @@
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history";
 import type { RangeKey } from "../limits";
+import { WORKER_BILLINGS, type WorkerBilling } from "../projects/config";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
 
 export interface Host {
@@ -51,6 +52,7 @@ export interface Project {
   readonly id: string;
   readonly name: string;
   readonly worker: string;
+  readonly workerBilling: WorkerBilling;
   readonly buckets: readonly string[];
   readonly durableObjectNamespaces: readonly string[];
   readonly d1Databases: readonly string[];
@@ -111,6 +113,12 @@ function decodeHost(value: unknown): Host {
   };
 }
 
+function workerBilling(value: unknown): WorkerBilling {
+  const found = WORKER_BILLINGS.find(billing => billing === value);
+  if (found === undefined) throw new Error("expected a worker billing");
+  return found;
+}
+
 function nullable<T>(value: unknown, decode: (entry: unknown) => T): T | null {
   return value === null ? null : decode(value);
 }
@@ -122,6 +130,7 @@ function decodeProject(value: unknown): Project {
     id: string(entry.id),
     name: string(entry.name),
     worker: string(entry.worker),
+    workerBilling: workerBilling(entry.workerBilling),
     buckets: array(entry.buckets, string),
     durableObjectNamespaces: array(entry.durableObjectNamespaces, string),
     d1Databases: array(entry.d1Databases, string),

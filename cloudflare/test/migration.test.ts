@@ -75,7 +75,7 @@ describe("schema migrations", () => {
   it("reports purged project history as unknown instead of filling it with zero", async () => {
     await runInDurableObject(stub("migration-unknown"), async (_instance, state) => {
       const sql = state.storage.sql;
-      const project = { id: "p", name: "p", worker: "p", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+      const project = { id: "p", name: "p", worker: "p", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
       const now = 1793572200000;
       const purgedBucket = 1793563800000;
       sql.exec("INSERT INTO collector_runs (at_ms, ok, detail, rows_read, duration_ms) VALUES (1793567500000, 1, 'ok', 1, 1)");

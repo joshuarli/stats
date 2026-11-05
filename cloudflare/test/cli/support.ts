@@ -74,7 +74,7 @@ export function sendJson(response: ServerResponse, body: unknown, status = 200):
 export const collector = { lastRunAtMs: 1_700_000_000_000, lastSuccessAtMs: 1_700_000_000_000, lastError: null, stale: false };
 
 export const projectEntry = (id: string, overrides: Record<string, unknown> = {}) => ({
-  id, name: id.toUpperCase(), worker: `${id}-worker`, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector, ...overrides
+  id, name: id.toUpperCase(), worker: `${id}-worker`, workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector, ...overrides
 });
 
 export const deploymentHistory = (projectId: string, overrides: Record<string, unknown> = {}) => ({

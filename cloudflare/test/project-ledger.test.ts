@@ -26,7 +26,7 @@ function histories(fromMs: number, parts: Partial<Record<keyof LedgerHistories, 
 }
 
 function input(current: LedgerHistories, previous: LedgerHistories | undefined, extra: Partial<LedgerInput> = {}): LedgerInput {
-  return { current, previous, window: WINDOW, previousWindow: previousWindowOf(WINDOW), buckets: [], databases: [], objectMethods: undefined, ...extra };
+  return { current, previous, window: WINDOW, previousWindow: previousWindowOf(WINDOW), buckets: [], databases: [], objectMethods: undefined, workerBilling: "requests-and-cpu", ...extra };
 }
 
 const line = (lines: readonly CostLine[], id: string) => lines.find(entry => entry.id === id)!;
@@ -153,7 +153,7 @@ describe("project cost ledger", () => {
       worker: { "worker.invocations": [6_000_000, 6_000_000, 9e9], "worker.cpuMsSum": [0, 0, 9e9] },
       d1: { "d1.rowsRead": [0, 0, 9e9], "d1.rowsWritten": [1_000_000, 0, 9e9], "d1.queries": [1, 0, 9e9], [`d1.${database}.storageBytes`]: [10e9, 10e9, 10e9] }
     });
-    const bill = planBill(current, WINDOW, [], [database]);
+    const bill = planBill(current, WINDOW, [], [database], "requests-and-cpu");
     expect(bill.billed.times).toEqual([T0, T0 + H, T0 + 2 * H]);
     expect(bill.billed.values[1]).toBe(0);
     expect(bill.billed.values[2]).toBeCloseTo(2 * 0.3, 9);

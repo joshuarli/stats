@@ -4,9 +4,9 @@ import { answer, buildScenario, scenarioComparison, scenarioStore, SCENARIO_ROLL
 
 const now = Date.UTC(2026, 10, 4, 2, 0);
 const collector = { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false };
-const STATS = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"], d1Databases: [], probes: [], collector };
-const STUFF = { id: "stuff", name: "stuff", worker: "stuff", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
-const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
+const STATS = { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"], d1Databases: [], probes: [], collector };
+const STUFF = { id: "stuff", name: "stuff", worker: "stuff", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
+const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memories", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector };
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 

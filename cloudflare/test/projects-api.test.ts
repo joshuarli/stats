@@ -67,7 +67,7 @@ describe("project API", () => {
   it("lists configured projects with collector state", async () => {
     const empty = await (await get("/projects")).json() as { id: string; buckets: string[]; collector: unknown }[];
     expect(empty).toHaveLength(1);
-    expect(empty[0]).toMatchObject({ id: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm"] });
+    expect(empty[0]).toMatchObject({ id: "stuff", worker: "stuff", workerBilling: "requests-and-cpu" as const, buckets: ["stuff-mycrates", "stuff-mynpm"] });
     expect(empty[0]?.collector).toEqual({ lastRunAtMs: null, lastSuccessAtMs: null, lastError: null, stale: true });
 
     await record(metricRun(NOW - 5 * 60_000, []));

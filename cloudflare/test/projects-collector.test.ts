@@ -11,7 +11,7 @@ import workerBody from "./fixtures/analytics/worker.json";
 
 const NOW = Date.UTC(2026, 10, 1, 16, 35);
 const PROJECTS = JSON.stringify([
-  { id: "stuff", name: "stuff", worker: "stuff", buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], durableObjectNamespaces: [], d1Databases: [], probes: [] },
+  { id: "stuff", name: "stuff", worker: "stuff", workerBilling: "requests-and-cpu" as const, buckets: ["stuff-mycrates", "stuff-mynpm", "stuff-mypypi"], durableObjectNamespaces: [], d1Databases: [], probes: [] },
 ]);
 
 type Rows = { worker: unknown[]; routes: unknown[]; durableObjects: unknown[]; operations: unknown[]; storage: unknown[] };
@@ -117,7 +117,7 @@ describe("collector", () => {
     const result = await runCollector({
       analytics,
       store: stub(),
-      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] }]),
+      projectsJson: JSON.stringify([{ id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] }]),
       storeWorker: "elsewhere",
       now: NOW,
       probeFetch: noProbes,
@@ -128,7 +128,7 @@ describe("collector", () => {
 
   it("records the object's own SQLite size for the project whose Worker owns it, and for no other", async () => {
     const store = stub();
-    const owner = { id: "stats", name: "stats", worker: "stats", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+    const owner = { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
     const other = { ...owner, id: "stuff", name: "stuff", worker: "stuff" };
     await runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: JSON.stringify([owner, other]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
     await inside(store, (sql) => {
@@ -163,11 +163,11 @@ describe("collector", () => {
       },
     };
     const store = stub();
-    const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
+    const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
     const result = await runCollector({ analytics, store, projectsJson, storeWorker: "stats", now: NOW, probeFetch: noProbes });
     expect(result.queries).toBe(5);
     await inside(store, (sql) => {
-      const project = { id: "memories", name: "memories", worker: "memories", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+      const project = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
       const withDatabase = { ...project, d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"] };
       const sizes = readMetricHistory(new SqlAccount(sql), withDatabase, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
       expect(Math.max(...(sizes?.values ?? []).map((value) => value ?? 0))).toBe(245_923_840);

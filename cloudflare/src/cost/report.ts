@@ -35,7 +35,7 @@ export interface ReportLine {
 }
 
 export type ExcludedMeter = Meter | "durableObjectSqliteRows" | "r2ClassAOperations" | "r2ClassBOperations";
-export type ExclusionReason = "no-data" | "no-source" | "no-action-column";
+export type ExclusionReason = "no-data" | "no-source" | "no-action-column" | "tail-cpu-only";
 
 export interface Exclusion {
   readonly meter: ExcludedMeter;
@@ -100,6 +100,7 @@ export type WarningCode =
   | "window-partial-coverage"
   | "duration-upper-bound-proxy"
   | "unattributed-residual"
+  | "tail-requests-unpriced"
   | "plan-month-unavailable";
 
 export interface Warning {
@@ -224,6 +225,7 @@ function metersOf(lines: readonly ReportLine[], project: ProjectConfig): { price
     if (!configured[component]) continue;
     const line = lines.find(entry => entry.id === component);
     for (const meter of COMPONENT_METERS[component]) {
+      if (meter === "workerRequests" && project.workerBilling === "cpu-only") { excluded.set(meter, "tail-cpu-only"); continue; }
       const storage = meter === "durableObjectStorage" || meter === "d1Storage";
       const hasStorage = line?.children.some(child => child.kind === "object-storage" || child.kind === "d1-storage") ?? false;
       if (line !== undefined && line.price.kind === "priced" && (!storage || hasStorage)) priced.add(meter);
@@ -270,6 +272,7 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
     if (input.previous !== undefined && line.price.monthly.before === null) warn("baseline-missing", line.id, `${line.label} has no baseline for the previous window.`);
     if (line.price.bound === "upper") warn("duration-upper-bound-proxy", line.id, `${line.label} duration is bounded above by summed request wall time, a proxy for billed duration.`);
   }
+  if (input.project.workerBilling === "cpu-only") warn("tail-requests-unpriced", "worker", "Worker invocations are billed by CPU time only, as Tail Worker invocations are; the few fetch and cron requests this Worker also serves are not priced.");
   for (const residual of residuals) warn("unattributed-residual", residual.lineId, `${residual.label} is the part of the total that per-item analytics do not account for.`);
   if (plan.kind === "unavailable") warn("plan-month-unavailable", "plan-bill", "Month-to-date histories were not supplied, so there is no plan bill.");
   return warnings;
@@ -279,7 +282,7 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   if (input.planMonth === undefined) return { kind: "unavailable", reason: "month-histories-not-supplied" };
   const month = utcMonthOf(input.planMonth.settledMs);
   const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, input.planMonth.settledMs) };
-  const bill = planBill(input.planMonth.histories, window, input.project.buckets, input.project.d1Databases);
+  const bill = planBill(input.planMonth.histories, window, input.project.buckets, input.project.d1Databases, input.project.workerBilling);
   const projected = projectedBill(bill, window.toMs, month.toMs, monthly);
   return {
     kind: "isolated", basis: "utc-month", assumption: "project-alone-on-account-allowances",
@@ -296,7 +299,7 @@ export function buildCostReport(input: CostReportInput): CostReport {
   }
   const ledger = buildLedger({
     current: input.current, previous: input.previous, window: input.windows.current, previousWindow: input.windows.previous,
-    buckets: input.project.buckets, databases: input.project.d1Databases, objectMethods: input.objectMethods
+    buckets: input.project.buckets, databases: input.project.d1Databases, objectMethods: input.objectMethods, workerBilling: input.project.workerBilling
   });
   const lines = ledger.lines.map(line => reportLine(line, null, input));
   const residuals = lines.flatMap(line => line.children.filter(child => child.kind === "unrouted")).map((line): Residual => ({ lineId: line.id, label: line.label, monthly: monthlyOf(line) ?? { now: 0, before: null } }));
