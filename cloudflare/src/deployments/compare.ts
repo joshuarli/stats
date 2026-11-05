@@ -75,6 +75,20 @@ function total(buckets: Buckets, bounds: WindowBounds, metric: string, absent: A
   return Number.isFinite(sum) ? sum : null;
 }
 
+export const PROBE_MIN_PRESENT_SHARE = 0.75;
+
+function probeMean(buckets: Buckets, bounds: WindowBounds, metric: string): number | null {
+  let sum = 0, present = 0, expected = 0;
+  for (let at = bounds.fromMs; at < bounds.toMs; at += DEPLOYMENT_BUCKET_MS) {
+    expected++;
+    const value = buckets.get(at)?.get(metric);
+    if (value === undefined) continue;
+    sum += value;
+    present++;
+  }
+  return present === 0 || present < expected * PROBE_MIN_PRESENT_SHARE || !Number.isFinite(sum) ? null : sum / present;
+}
+
 function ratio(buckets: Buckets, bounds: WindowBounds, absent: AbsentBucket, numerator: string, denominator: string, scale = 1, zeroWith?: string): number | null {
   const count = total(buckets, bounds, denominator, absent);
   const sum = total(buckets, bounds, numerator, absent, zeroWith);
@@ -190,10 +204,7 @@ export function compareDeployment(input: {
   }
   if ((input.buckets?.length ?? 0) > 0) warnings.push("R2 ratios include all clients of the configured bucket, not just this Worker.");
   for (const name of input.probes ?? []) {
-    const average = (bounds: WindowBounds, suffix: string): number | null => {
-      const sum = total(buckets, bounds, `probe.${name}.${suffix}`, "missing");
-      return sum === null ? null : sum / ((bounds.toMs - bounds.fromMs) / DEPLOYMENT_BUCKET_MS);
-    };
+    const average = (bounds: WindowBounds, suffix: string): number | null => probeMean(buckets, bounds, `probe.${name}.${suffix}`);
     metrics.push(result(`probe.${name}.ms`, `Probe ${name} mean edge response time`, "ms", average(before, "ms"), average(after, "ms"), 10, blocked));
     const failures = (bounds: WindowBounds) => { const up = average(bounds, "up"); return up === null ? null : (1 - up) * 100; };
     metrics.push(result(`probe.${name}.failure`, `Probe ${name} failure share`, "%", failures(before), failures(after), 1, blocked));

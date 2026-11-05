@@ -158,14 +158,17 @@ of averages, approximate maxima or manufactured percentiles. The deployment's
 mixed bucket and one whole warm-up bucket are excluded. Windows must fit within
 seven-day fine retention and have recorded settled coverage. Within covered
 windows an absent analytics counter bucket is an idle bucket and counts as zero,
-the same rule the history API uses; probe buckets are never zero-filled because
-probes are not re-collected. Coverage starts with this implementation: **backfilled deployment
+the same rule the history API uses. Probe buckets are never zero-filled, because
+probes are not re-collected: a probe's response time and failure share are means
+over the samples present, and a window with fewer than three quarters of its
+probe samples has none. A missing sample means the collector run failed, not the
+probe, since a probe that cannot be reached is recorded as down. Coverage starts with this implementation: **backfilled deployment
 events do not retroactively certify old metrics**. Some historical comparisons
 will remain unavailable even though charts contain numeric samples.
 
 A known stable single-version baseline is required. Split traffic, overlapping
 releases, a stale/truncated deployment history, material observed top-route mix
-changes, missing probe buckets and fewer than 100 Worker invocations suppress
+changes, too few probe samples and fewer than 100 Worker invocations suppress
 verdicts.
 Worker error-rate signals require 1,000 invocations on each side. Deferred Durable
 Object updates in either deployment suppress DO/cost attribution. Major traffic

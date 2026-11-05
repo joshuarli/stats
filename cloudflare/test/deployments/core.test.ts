@@ -173,12 +173,16 @@ await test("R2 absent buckets are idle only in proven windows", () => {
   assert.equal(metricOf(comparison({ rows: sparse, buckets: ["bucket"], metricsSettled: false }), "r2.bucket").before, null);
   assert.equal(metricOf(comparison({ rows: sparse, buckets: ["bucket"] }), "r2.bucket").before, 22_000 / 12_000);
 });
-await test("an absent probe bucket stays missing because probes are not re-collected", () => {
+await test("an absent probe sample counts as neither up nor down, and too few samples leave the window unknown", () => {
   const data = rows();
-  for (const row of data.slice()) if (row.metric === "worker.invocations" && row.bucket_ms !== AT - H) { data.push({ metric: "probe.health.up", bucket_ms: row.bucket_ms, value: 1 }); data.push({ metric: "probe.health.ms", bucket_ms: row.bucket_ms, value: 50 }); }
+  const before = data.filter(row => row.metric === "worker.invocations" && row.bucket_ms < AT).map(row => row.bucket_ms).sort((a, b) => a - b);
+  for (const row of data.slice()) if (row.metric === "worker.invocations" && row.bucket_ms !== before[0]) { data.push({ metric: "probe.health.up", bucket_ms: row.bucket_ms, value: row.bucket_ms === before[1] ? 0 : 1 }); data.push({ metric: "probe.health.ms", bucket_ms: row.bucket_ms, value: row.bucket_ms === before[1] ? 160 : 50 }); }
   const result = comparison({ rows: data, probes: ["health"] });
-  assert.equal(metricOf(result, "probe.health.ms").before, null);
-  assert.equal(metricOf(result, "probe.health.failure").before, null);
+  assert.ok(Math.abs((metricOf(result, "probe.health.failure").before ?? 0) - 100 / 11) < 1e-9);
+  assert.ok(Math.abs((metricOf(result, "probe.health.ms").before ?? 0) - 60) < 1e-9);
+  const sparse = data.filter(row => !(row.metric.startsWith("probe.") && before.slice(0, 4).includes(row.bucket_ms)));
+  assert.equal(metricOf(comparison({ rows: sparse, probes: ["health"] }), "probe.health.failure").before, null);
+  assert.equal(metricOf(comparison({ rows: sparse, probes: ["health"] }), "probe.health.ms").before, null);
 });
 await test("probe failures use failure share rather than pretending to be user latency", () => {
   const data = rows();
