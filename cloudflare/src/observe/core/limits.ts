@@ -21,3 +21,5 @@ export const ROLLOUT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const MAX_ROLLOUTS_PER_BATCH = 300;
 export const MAX_ARTIFACT_BYTES = 1_572_864;
 export const MAX_ARTIFACTS = 12;
+export const OPERATION_BUCKET_MS = 5 * 60 * 1000;
+export const MAX_RETAINED_OPERATION_ROWS = 100_000;
