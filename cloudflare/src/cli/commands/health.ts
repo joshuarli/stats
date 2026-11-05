@@ -1,10 +1,14 @@
 import { decodeDeploymentHistory } from "../../deployments/decode.ts";
-import { decodeHealth, type ObserveHealth } from "../../observe/client/decode.ts";
+import { decodeHealth, decodeStatsWindow, type ObserveHealth } from "../../observe/client/decode.ts";
 import type { Warning } from "../envelope.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { defineCommand, type CommandContext } from "../registry.ts";
-import { decodeProjects, type CollectorState } from "../decode.ts";
+import { decodeProjects, type CollectorState, type ProjectSummary } from "../decode.ts";
 import { table, timeText } from "../text.ts";
+import { readPolicyFile } from "../verify/files.ts";
+import { isOperationPolicy } from "../verify/policy.ts";
+import { readinessSignals, readinessWindow, type ReadinessSignal, type Source } from "../verify/readiness.ts";
+import { observeWindowPath } from "../verify/gather.ts";
 
 export const OBSERVED_PROJECT = "stats";
 export const OBSERVE_STALE_MS = 60 * 60 * 1000;
@@ -34,11 +38,7 @@ export interface DeploymentSyncData {
   } | null;
 }
 
-export interface ReadinessSignal {
-  readonly signal: string;
-  readonly status: "available" | `unavailable:${string}`;
-  readonly message: string;
-}
+export type { ReadinessSignal };
 
 export interface HealthPayload {
   readonly project: string;
@@ -63,6 +63,10 @@ async function fetchValue<T>(context: CommandContext, path: string, decode: (val
   const fetched = await context.http.getJson(path, decode);
   if (fetched.kind !== "ok") throw transportError("contract", `${path} answered not-modified to an unconditional request`);
   return fetched.value;
+}
+
+function asSource<T>(read: Read<T>): Source<T> {
+  return read.ok ? read : { ok: false, code: read.error.code, message: read.error.message };
 }
 
 function unavailable(error: CommandError): Section<never> {
@@ -129,16 +133,20 @@ export const healthCommand = defineCommand<HealthPayload>({
   ],
   access: "read",
   options: {
-    project: { type: "string", placeholder: "ID", required: true, description: "project id from `statsctl projects`" }
+    project: { type: "string", placeholder: "ID", required: true, description: "project id from `statsctl projects`" },
+    policy: { type: "string", placeholder: "FILE", description: "also list each signal this verify policy needs as available or unavailable:<code> under readiness" }
   },
-  examples: ["statsctl health --project stats", "statsctl health --project stats --json"],
+  examples: ["statsctl health --project stats", "statsctl health --project stats --json", "statsctl health --project stats --policy bench/policies/EXPERIMENT.json --json"],
   limitations: [
     "Thresholds are fixed: observe events older than 1 hour are stale.",
-    "readiness.signals is empty until a policy is given to a command that needs one."
+    "readiness.signals is empty unless --policy is given; with it the command makes one more request, for the operation window."
   ],
   async run(context) {
     const project = context.option("project");
     if (project === undefined || !PROJECT_ID.test(project)) throw usageError("--project must be a project id such as stats");
+    const policyFile = context.option("policy");
+    const policy = policyFile === undefined ? null : readPolicyFile(policyFile);
+    if (policy !== null && policy.project !== project) throw usageError(`the policy is for project ${policy.project}, not ${project}`);
     const observed = project === OBSERVED_PROJECT;
     const [projects, deployments, observe] = await Promise.all([
       attempt(() => fetchValue(context, "/api/v1/projects", decodeProjects)),
@@ -151,15 +159,31 @@ export const healthCommand = defineCommand<HealthPayload>({
     const first = failures[0];
     if (first !== undefined && !first.ok && failures.length === attempts.length) throw first.error;
     const warnings: Warning[] = failures.flatMap(read => read.ok ? [] : [{ code: read.error.code, message: read.error.message }]);
+    const collector = collectorSection(projects, project);
+    let readiness: HealthPayload["readiness"] = { policy: null, signals: [] };
+    if (policy !== null) {
+      const span = readinessWindow(context.now(), policy);
+      const window = observed ? await attempt(() => fetchValue(context, observeWindowPath(span.fromMs, span.toMs, isOperationPolicy(policy) ? policy.operation : undefined, policy.workloadClass ?? undefined), decodeStatsWindow)) : null;
+      const entry = projects.ok ? projects.value.find(candidate => candidate.id === project) : undefined;
+      const projectSource: Source<ProjectSummary> = !projects.ok ? asSource(projects) : entry === undefined ? { ok: false, code: "unknown_project", message: `unknown project ${project}` } : { ok: true, value: entry };
+      const signals = readinessSignals(policy, {
+        nowMs: context.now(),
+        project: projectSource,
+        observeHealth: observe === null ? null : asSource(observe),
+        window: window === null ? null : asSource(window),
+        history: asSource(deployments)
+      });
+      readiness = { policy: policy.id, signals };
+    }
     return {
       project,
       warnings,
       payload: {
         project,
-        collector: collectorSection(projects, project),
+        collector,
         deployments: deploymentsSection(deployments),
         observe: observeSection(observe, context.now()),
-        readiness: { policy: null, signals: [] }
+        readiness
       }
     };
   },
