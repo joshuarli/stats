@@ -194,7 +194,9 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
     deploymentId: DEPLOYMENT_ID, window,
     before: { fromMs: end - duration, toMs: end }, after: { fromMs: start, toMs: start + duration },
     readyAtMs: start + duration + 2_700_000, beforeInvocations: 12_000, afterInvocations: 11_800,
+    spec: { before: { deploymentId: null, versionIds: [], fromMs: end - duration, toMs: end }, after: { deploymentId: DEPLOYMENT_ID, versionIds: [], fromMs: start, toMs: start + duration }, scope: null, measurementRevision: { measurement: 1, observeFilter: 1, pricing: "2026-11-05" } },
     reasons: window === "24h" ? ["Another deployment overlaps the comparison windows."] : [],
+    reasonCodes: window === "24h" ? ["overlap"] : [], deferredObjects: false, analyticsInvocations: { before: [], after: [] },
     warnings: ["Heuristic signals, not significance tests or proof of causation."],
     metrics: [{ metric: "worker.cpu", label: "Worker CPU / invocation", unit: "ms", before: 2, after: 1.5, delta: -0.5, deltaPercent: -25, verdict: window === "24h" ? "confounded" : "improved" }]
   };

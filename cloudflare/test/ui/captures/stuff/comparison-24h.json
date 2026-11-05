@@ -12,7 +12,33 @@
   "readyAtMs": 1793742900000,
   "beforeInvocations": 297840,
   "afterInvocations": 287568,
+  "spec": {
+    "before": {
+      "deploymentId": null,
+      "versionIds": [],
+      "fromMs": 1793566800000,
+      "toMs": 1793653200000
+    },
+    "after": {
+      "deploymentId": "00000000-0000-4000-8000-000000000100",
+      "versionIds": [],
+      "fromMs": 1793653800000,
+      "toMs": 1793740200000
+    },
+    "scope": null,
+    "measurementRevision": {
+      "measurement": 1,
+      "observeFilter": 1,
+      "pricing": "2026-11-05"
+    }
+  },
   "reasons": [],
+  "reasonCodes": [],
+  "deferredObjects": false,
+  "analyticsInvocations": {
+    "before": [],
+    "after": []
+  },
   "warnings": [
     "Traffic volume changed by more than 2x; compare workload and cache behavior.",
     "Heuristic signals, not significance tests or proof of causation. Top-route coverage is incomplete; cache, background jobs and traffic can change."
