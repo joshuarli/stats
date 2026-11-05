@@ -4,9 +4,9 @@
 
 - **Goal:** build `statsctl`, an agent-facing TypeScript CLI that shares the dashboard's cost engine. Give it the telemetry it needs to answer one question: did this version use fewer resources for the same useful work, without losing data or degrading service, and is the evidence complete? Then use it on production stats for at most three deployed optimization candidates.
 - **Baseline:** `00e18d2` on `master`. All loop commands are green (see **Baseline**).
-- **Accepted:** G1 (`4b27de9`), D1 (`04b443e`). **Red:** none. **Parked:** none.
-- **In flight:** C1 (`campaign/c1`), T1 (`campaign/t1`), E1a encoder half of E1 (`campaign/e1`), each in `.work/wt/<id>`.
-- **Next:** L1 and C2 after C1; T3 and T2 after T1.
+- **Accepted:** G1 (`4b27de9`), D1 (`04b443e`), E1a: the encoder half of E1 (`92830b1`), T1 (`c521efe`), C1 (`e7013f2`). **Red:** none. **Parked:** none.
+- **In flight:** L1, C2, T2, T3 (`campaign/<id>` in `.work/wt/<id>`).
+- **Next:** L2 and L3 after L1 and C2; T4 after T3; P1x after T2; the `check ingest` half of E1 after L1.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
