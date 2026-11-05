@@ -10,8 +10,9 @@ import { cliEnv, startStack } from "../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../local/topology.ts";
 
 const USAGE = `usage:
-  node scripts/local-stack.mjs run -- <command> [args...]   run a command against an ephemeral, seeded stack
-  node scripts/local-stack.mjs dev [--state DIR] [--port N] serve a persistent stack until SIGINT or SIGTERM`;
+  node scripts/local-stack.mjs run [--producer DIR]... -- <command> [args...]       run a command against an ephemeral, seeded stack
+  node scripts/local-stack.mjs dev [--state DIR] [--port N] [--producer DIR]...    serve a persistent stack until SIGINT or SIGTERM
+  --producer DIR hosts a producer export's Worker beside stats, tailed by stats-observe and served on its own origin`;
 const DEFAULT_STATE = join(CLOUDFLARE_ROOT, "../.work/local/state");
 const DEFAULT_PORT = 8789;
 
@@ -24,9 +25,14 @@ function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-async function run(command) {
+function producerLines(stack) {
+  return stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`);
+}
+
+async function run(producers, command) {
   if (command.length === 0) usage("run needs a command after --");
-  const stack = await startStack({ nowMs: null });
+  const stack = await startStack({ nowMs: null, producers });
+  for (const line of producerLines(stack)) console.error(line);
   let code = 1;
   try {
     await seed(stack, Date.now());
@@ -46,21 +52,30 @@ async function run(command) {
   return code;
 }
 
-function option(args, name, fallback) {
-  const index = args.indexOf(name);
-  if (index === -1) return fallback;
-  const value = args[index + 1];
-  if (value === undefined) usage(`${name} needs a value`);
-  return value;
+function options(args, known) {
+  const values = new Map(known.map(name => [name, []]));
+  for (let index = 0; index < args.length; index += 2) {
+    const name = args[index];
+    const value = args[index + 1];
+    if (!values.has(name)) usage(`unknown option ${name}`);
+    if (value === undefined) usage(`${name} needs a value`);
+    values.get(name).push(value);
+  }
+  return values;
+}
+
+function single(values, name, fallback) {
+  const given = values.get(name);
+  if (given.length > 1) usage(`${name} is given more than once`);
+  return given[0] ?? fallback;
 }
 
 async function dev(args) {
-  const known = new Set(["--state", "--port"]);
-  for (let index = 0; index < args.length; index += 2) if (!known.has(args[index])) usage(`unknown option ${args[index]}`);
-  const state = option(args, "--state", DEFAULT_STATE);
-  const port = Number(option(args, "--port", String(DEFAULT_PORT)));
+  const values = options(args, ["--state", "--port", "--producer"]);
+  const state = single(values, "--state", DEFAULT_STATE);
+  const port = Number(single(values, "--port", String(DEFAULT_PORT)));
   if (!Number.isInteger(port) || port <= 0 || port > 65535) usage("--port must be a TCP port");
-  const stack = await startStack({ nowMs: null, persist: state, port, localExplorer: true });
+  const stack = await startStack({ nowMs: null, persist: state, port, localExplorer: true, producers: values.get("--producer") });
   const hosts = await (await stack.fetch("/api/v1/hosts")).json();
   let reported = 0;
   const reportUnexpected = () => {
@@ -87,6 +102,7 @@ async function dev(args) {
   console.log(`stats local stack: ${stack.origin}  (state ${state}, scheduled collection every 5 minutes)`);
   console.log(`local explorer: ${stack.origin}/cdn-cgi/local/explorer`);
   console.log(`statsctl environment:\n${Object.entries(env).map(([key, value]) => `  export ${key}=${shellQuote(value)}`).join("\n")}`);
+  for (const line of producerLines(stack)) console.log(line);
   console.log("ready");
   // Miniflare's exit hook disposes workerd and exits 128 + signal on SIGINT and SIGTERM.
   await new Promise(() => {});
@@ -94,8 +110,9 @@ async function dev(args) {
 
 const [mode, ...rest] = process.argv.slice(2);
 if (mode === "run") {
-  if (rest[0] !== "--") usage("run takes -- before the command");
-  process.exit(await run(rest.slice(1)));
+  const separator = rest.indexOf("--");
+  if (separator === -1) usage("run takes -- before the command");
+  process.exit(await run(options(rest.slice(0, separator), ["--producer"]).get("--producer"), rest.slice(separator + 1)));
 } else if (mode === "dev") {
   await dev(rest);
 } else {

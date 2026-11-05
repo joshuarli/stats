@@ -60,6 +60,60 @@ Cloudflare login and no network. It needs `pnpm build` and
   against an ephemeral seeded stack with `STATS_URL`, `STATSCTL_AUTH_COMMAND`,
   and `STATSCTL_AUTH_HEADER` set, so `statsctl` reads it without `cf`. `dev`
   serves a persistent stack and prints the same environment.
+- **Producer exports.** `run` and `dev` take `--producer DIR`, repeatable,
+  and `startStack` takes the same directories as `producers`. `DIR` is a
+  Nanoshop producer export (`producer-export.json` version 1, written by
+  `nanoshop local export-producer`). The launcher hosts each producer's
+  Worker in the same Miniflare as `stats` and `stats-observe`:
+  - **Refusals.** The launcher recomputes the export's digest (`sha256:` over
+    the sorted `path NUL sha256(file)` lines of every file except the manifest)
+    and refuses an export whose files no longer match, before anything starts.
+    It also refuses an export with more than one tenant, a service
+    `stats-observe` does not observe, and a tail consumer other than
+    `stats-observe`.
+  - **Worker.** The Worker is rebuilt from the manifest's
+    `tenants[0].worker` with the module contents and assets directory read
+    from the export. It listens on `127.0.0.1` at the port of its
+    `shopOrigin`, because the shop accepts only its exact `Host`. Send requests
+    to that port with the `Host` of `shopOrigin`: inside
+    `scripts/offline-run.sh`, `*.localhost` names do not resolve.
+  - **Tail labels.** Local workerd sends tail events with no script name or
+    version, so each producer tails into its own copy of the collector bundle
+    (`<service>-observe`, writing to the `stats-observe` store). That copy
+    labels the events with the export's service name and version id.
+  - **Persistence.** The first start copies `persist-seed/` into the stack's
+    persistence directory and skips `cache/`. When the directory already holds
+    a Miniflare namespace index (`metadata.sqlite`), the copy keeps the
+    existing one. Any other existing file stops the start. Later starts
+    find the producer's Durable Object directory and keep its state, so
+    `make reset-local` (or a new `--state`) is the only way to take a newer
+    export's data.
+  - **Network and cron.** The producer's outbound requests get the same
+    offline 503 as `stats`'s and fail the run as undeclared, so checkout
+    cannot reach a Stripe simulator. The launcher fires `scheduled` for
+    `stats` only and never the producer's cron, which Nanoshop's own local
+    stack fires.
+
+  `fixtures/producers/nanoshop-storied/` is a recorded export: Nanoshop's
+  `storied` tenant seeded with its synthetic `alpha` catalog, with local test
+  secrets only. `test/local/launcher.test.ts` serves it with `dev`, sends
+  storefront requests, waits for the sampled counts to flush (about 20 s
+  idle), and checks the producer's invocation count and version through the
+  window API and a real `statsctl observe routes` process. The checks also
+  cover a cart that survives a restart and a tampered copy that is refused.
+  To regenerate the fixture, run these commands from a Nanoshop checkout,
+  with `S` a scratch directory and `config.json` a one-tenant config for
+  `storied` on `http://storied.localhost:8080` with image host
+  `images.alpha.test`:
+
+  ```sh
+  node src/main.ts local init --env s2 --root "$S" --config config.json --catalog storied=tests/fixtures/catalogs/alpha.json
+  node src/main.ts local export-producer --env s2 --root "$S" --out "$S/export"
+  ```
+
+  Then replace the fixture directory with `$S/export`. The shop port is
+  chosen at `init` and recorded in the export, so it changes on every
+  regeneration, and the test fails if that port is already in use.
 
 The stack loads the `stats` bundle behind an entry module that adds a
 `runAlarm()` RPC to each Durable Object, because Miniflare has no alarm

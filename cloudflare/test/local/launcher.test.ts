@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { request } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,6 +10,7 @@ import { SCRATCH, ephemeralPrefix } from "../../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
 
 const LAUNCHER = join(CLOUDFLARE_ROOT, "scripts/local-stack.mjs");
+const PRODUCER_EXPORT = join(CLOUDFLARE_ROOT, "../fixtures/producers/nanoshop-storied");
 const STATSCTL = `${JSON.stringify(process.execPath)} --experimental-strip-types ${JSON.stringify(join(CLOUDFLARE_ROOT, "src/cli/statsctl.ts"))}`;
 mkdirSync(SCRATCH, { recursive: true });
 const work = mkdtempSync(join(SCRATCH, "launcher-"));
@@ -48,6 +50,40 @@ function alive(pid: number): boolean {
 function descendants(pid: number): number[] {
   const children = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" }).stdout.split("\n").filter(line => line !== "").map(Number);
   return children.flatMap(child => [child, ...descendants(child)]);
+}
+
+interface ShopResponse { readonly status: number; readonly cookie: string | null; readonly body: string }
+
+function shop(origin: string, path: string, init: { readonly method?: string; readonly cookie?: string; readonly form?: string } = {}): Promise<ShopResponse> {
+  const url = new URL(origin);
+  const headers: Record<string, string> = { host: url.host };
+  if (init.cookie !== undefined) headers["cookie"] = init.cookie;
+  if (init.form !== undefined) Object.assign(headers, { origin, "content-type": "application/x-www-form-urlencoded" });
+  return new Promise((resolve, reject) => {
+    const sent = request({ host: "127.0.0.1", port: Number(url.port), path, method: init.method ?? "GET", headers }, response => {
+      let body = "";
+      response.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, cookie: response.headers["set-cookie"]?.[0]?.split(";")[0] ?? null, body }));
+    });
+    sent.on("error", reject);
+    sent.end(init.form);
+  });
+}
+
+async function serveDev(args: readonly string[], ready: RegExp): Promise<{ child: ChildProcess; done: Promise<Finished>; output: string }> {
+  const child = launch(["dev", ...args]);
+  const done = finish(child);
+  let output = "";
+  child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf8"); });
+  const deadline = Date.now() + 30_000;
+  while (!ready.test(output)) {
+    if (Date.now() > deadline || child.exitCode !== null) {
+      child.kill("SIGTERM");
+      throw new Error(`dev did not become ready: ${output}\n${(await done).stderr}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return { child, done, output };
 }
 
 try {
@@ -150,6 +186,73 @@ try {
     const second = await serve();
     assert.deepEqual(await read(), before);
     await stopped(second, "SIGINT", 128 + 2);
+  });
+
+  await test("a producer export whose files changed since export is refused before the stack starts", async () => {
+    const tampered = join(work, "tampered");
+    cpSync(PRODUCER_EXPORT, tampered, { recursive: true });
+    appendFileSync(join(tampered, "release/cloudflare/storied/assets/_headers"), "\n");
+    const result = await finish(launch(["run", "--producer", tampered, "--", "true"]));
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /StaleProducerExportError: .* no longer matches its manifest digest/u);
+  });
+
+  await test("dev hosts a producer export whose tail events statsctl reads under its service and version, and keeps its state across a restart", async () => {
+    const manifest = JSON.parse(readFileSync(join(PRODUCER_EXPORT, "producer-export.json"), "utf8")) as { tenants: { serviceName: string; shopOrigin: string; version: { id: string } }[] };
+    const [{ serviceName, shopOrigin, version }] = manifest.tenants as [typeof manifest.tenants[0]];
+    const state = join(work, "producer-state");
+    const port = await freePort();
+    const origin = `http://127.0.0.1:${port}`;
+    const producerLine = new RegExp(`^producer ${serviceName}: ${shopOrigin.replaceAll(".", "\\.")}  \\(.*its cron .* is not fired here\\)$`, "mu");
+    const args = ["--state", state, "--port", String(port), "--producer", PRODUCER_EXPORT];
+    const first = await serveDev(args, /^ready$/mu);
+    assert.match(first.output, producerLine);
+
+    const reads = ["/", "/products/tee", "/products/tee", "/search?q=tee", "/cart"];
+    for (const path of reads) assert.equal((await shop(shopOrigin, path)).status, 200, path);
+    const added = await shop(shopOrigin, "/cart/items", { method: "POST", form: "variant_id=1&quantity=1" });
+    assert.equal(added.status, 303);
+    assert.notEqual(added.cookie, null);
+    const workerInvocations = reads.length + 1;
+
+    const now = Date.now();
+    const toMs = now - (now % 300_000) + 300_000;
+    const windowPath = `/api/observe/${serviceName}/window?from=${toMs - 3_600_000}&to=${toMs}`;
+    type Window = { invocations: { version: string; stage: string; count: number }[] };
+    const deadline = Date.now() + 45_000;
+    let window: Window;
+    for (;;) {
+      window = await (await fetch(`${origin}${windowPath}`, { headers: { "cf-access-jwt-assertion": await accessToken() } })).json() as Window;
+      const worker = window.invocations.filter(row => row.stage === "worker").reduce((sum, row) => sum + row.count, 0);
+      if (worker >= workerInvocations || Date.now() > deadline) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    assert.equal(window.invocations.filter(row => row.stage === "worker").reduce((sum, row) => sum + row.count, 0), workerInvocations);
+    assert.deepEqual([...new Set(window.invocations.map(row => row.version))], [version.id]);
+
+    const env = { ...process.env, STATS_URL: origin, STATSCTL_AUTH_COMMAND: `${JSON.stringify(process.execPath)} --experimental-strip-types ${JSON.stringify(join(CLOUDFLARE_ROOT, "local/token.ts"))}`, STATSCTL_AUTH_HEADER: "cf-access-jwt-assertion" };
+    const routes = await finish(spawn("sh", ["-c", `${STATSCTL} observe routes --project ${serviceName} --window 1h --json`], { env, stdio: ["ignore", "pipe", "pipe"] }));
+    assert.equal(routes.status, 0, routes.stderr);
+    const envelope = JSON.parse(routes.stdout) as { schema: string; project: string; payload: { routes: { label: string }[]; sampling: { kept: number; observed: number } } };
+    assert.equal(envelope.schema, "statsctl/1");
+    assert.equal(envelope.project, serviceName);
+    assert.equal(envelope.payload.sampling.observed, workerInvocations);
+    const sentLabels = new Set(["GET /", "GET /products/:handle", "GET /search", "GET /cart", "POST /cart/items"]);
+    assert.deepEqual(envelope.payload.routes.map(route => route.label).filter(label => !sentLabels.has(label)), []);
+
+    const cookie = added.cookie!;
+    assert.match((await shop(shopOrigin, "/cart", { cookie })).body, /Alpha Tee/u);
+    assert.doesNotMatch((await shop(shopOrigin, "/cart")).body, /Alpha Tee/u);
+    first.child.kill("SIGTERM");
+    assert.equal((await first.done).status, 128 + 15);
+
+    const second = await serveDev(args, /^ready$/mu);
+    try {
+      assert.match((await shop(shopOrigin, "/cart", { cookie })).body, /Alpha Tee/u);
+    } finally {
+      second.child.kill("SIGTERM");
+      await second.done;
+    }
   });
 } finally {
   rmSync(work, { recursive: true, force: true });

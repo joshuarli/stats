@@ -5,6 +5,7 @@ import { accessToken } from "../test/access-token.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
 import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
+import { readProducerExport, seedProducerState, type ProducerExport } from "./producer.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, FETCH_AT_METHOD, type BuiltWorker, type FetchedAt, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
@@ -24,6 +25,7 @@ export interface StackStart {
   readonly localExplorer?: true;
   readonly statsOutput?: string;
   readonly observeOutput?: string;
+  readonly producers?: readonly string[];
 }
 
 export interface Stack {
@@ -33,6 +35,7 @@ export interface Stack {
   readonly analytics: OfflineAnalytics;
   readonly outbound: OfflineOutbound;
   readonly mf: Miniflare;
+  readonly producers: readonly ProducerExport[];
   collect(model: Scenario): Promise<ScheduledOutcome>;
   fetch(path: string, init?: DispatchInit): Promise<DispatchResponse>;
   anonymous(path: string, init?: DispatchInit): Promise<DispatchResponse>;
@@ -94,6 +97,7 @@ interface Shared {
   readonly observe: BuiltWorker;
   readonly analytics: OfflineAnalytics;
   readonly outbound: OfflineOutbound;
+  readonly producers: readonly ProducerExport[];
   readonly ephemeral: boolean;
 }
 
@@ -112,6 +116,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     outbound: shared.outbound.handler,
     persist: { directory: start.persist },
     extraWorkers: [shared.analytics.worker],
+    producers: shared.producers,
     alarms: "rpc"
   }, { port: start.port ?? 0, localExplorer: start.localExplorer === true });
   let origin: string;
@@ -148,6 +153,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     analytics: shared.analytics,
     outbound: shared.outbound,
     mf,
+    producers: shared.producers,
     collect: async model => {
       shared.analytics.use(model);
       shared.outbound.scenario = `collection at ${new Date(model.nowMs).toISOString()}`;
@@ -184,13 +190,15 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
 export async function startStack(start: StackStart): Promise<Stack> {
   const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
   const observe = readBuiltWorker(start.observeOutput ?? OBSERVE_OUTPUT);
+  const producers = (start.producers ?? []).map(readProducerExport);
   mkdirSync(SCRATCH, { recursive: true });
   const persist = start.persist ?? mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)));
   mkdirSync(persist, { recursive: true });
   const outbound = offlineOutbound(probeUrls(start.projectsJson ?? productionProjects(stats)));
   const ephemeral = start.persist === undefined;
   try {
-    return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, ephemeral }, { ...start, persist });
+    for (const producer of producers) seedProducerState(producer, persist);
+    return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, producers, ephemeral }, { ...start, persist });
   } catch (error) {
     if (ephemeral) rmSync(persist, { recursive: true, force: true });
     throw error;

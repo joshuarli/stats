@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "kind": "nanoshop-producer-export",
+  "label": "local",
+  "env": "s2",
+  "createdAt": "2026-11-05T23:06:50.757Z",
+  "releaseDir": "release",
+  "persistSeedDir": "persist-seed",
+  "secretsFile": "secrets.json",
+  "shopPort": 64366,
+  "includeFetchTriggers": false,
+  "origins": {
+    "mailboxApi": "http://127.0.0.1:64368",
+    "mailboxViewer": "http://mail.localhost:64368",
+    "identity": "http://id.localhost:64367"
+  },
+  "tenants": [
+    {
+      "tenant": "storied",
+      "serviceName": "nanoshop-storied",
+      "host": "storied.localhost:64366",
+      "shopOrigin": "http://storied.localhost:64366",
+      "stripeOrigin": "http://stripe-sim.localhost:64369",
+      "version": {
+        "label": "local",
+        "id": "10ca1000-0000-4000-8000-000000000000"
+      },
+      "durableObjectDir": "persist-seed/do/nanoshop-storied-TenantStore",
+      "r2Dir": "persist-seed/r2",
+      "tailConsumers": [
+        "stats-observe"
+      ],
+      "scheduled": [
+        "12 * * * *"
+      ],
+      "textBindings": {
+        "STRIPE_SECRET_KEY": "sk_test_local0ae9cd504f6d795d8c8ad2b9fa1cb80f72ce",
+        "STRIPE_WEBHOOK_SECRET": "whsec_localc4549e961a2080b157214d97976ee31cb8be",
+        "RESEND_API_KEY": "re_local53ccd04cf3a858cf66beea7e7c4386db2946",
+        "ORDER_ACCESS_KEY": "local-order-access-d2d10aa31e65829a23f51ecb60b23086dd66"
+      },
+      "worker": {
+        "name": "nanoshop-storied",
+        "compatibilityDate": "2026-09-17",
+        "compatibilityFlags": [
+          "nodejs_compat"
+        ],
+        "manifest": {
+          "mainModule": "index.js",
+          "modulesRoot": "release/cloudflare/storied/worker",
+          "modules": {
+            "index.js": {
+              "type": "esm"
+            }
+          }
+        },
+        "assets": {
+          "directory": "release/cloudflare/storied/assets",
+          "hasUserWorker": true,
+          "htmlHandling": "none",
+          "notFoundHandling": "none",
+          "runWorkerFirst": [
+            "/*",
+            "!/static/*",
+            "!/assets/*"
+          ]
+        },
+        "exports": {
+          "TenantStore": {
+            "type": "durable-object",
+            "storage": "sqlite"
+          }
+        },
+        "env": {
+          "TENANT_STORE": {
+            "type": "durable-object",
+            "worker": "nanoshop-storied",
+            "exportName": "TenantStore"
+          },
+          "ASSETS": {
+            "type": "assets"
+          },
+          "MEDIA": {
+            "type": "r2",
+            "name": "nanoshop-media-storied"
+          },
+          "STRIPE_SECRET_KEY": {
+            "type": "text",
+            "value": "sk_test_local0ae9cd504f6d795d8c8ad2b9fa1cb80f72ce"
+          },
+          "STRIPE_WEBHOOK_SECRET": {
+            "type": "text",
+            "value": "whsec_localc4549e961a2080b157214d97976ee31cb8be"
+          },
+          "RESEND_API_KEY": {
+            "type": "text",
+            "value": "re_local53ccd04cf3a858cf66beea7e7c4386db2946"
+          },
+          "ORDER_ACCESS_KEY": {
+            "type": "text",
+            "value": "local-order-access-d2d10aa31e65829a23f51ecb60b23086dd66"
+          }
+        }
+      }
+    }
+  ],
+  "digest": "sha256:c358fe238beb4ec1fc607a197e295d9b1e48a5fedaece77722e503e5953e6011"
+}

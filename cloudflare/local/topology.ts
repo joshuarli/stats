@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { Miniflare, convertV4MiniflareOptions, type MiniflareOptions, type Request as MiniflareRequest, type Response as MiniflareResponse, type V4DurableObject, type V4ModuleDefinition, type V4WorkerOptions } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions, type MiniflareOptions, type Request as MiniflareRequest, type Response as MiniflareResponse, type V4DurableObject, type V4ModuleDefinition, type V4WorkerOptions, type WorkerOptions } from "miniflare";
+import type { ProducerExport } from "./producer.ts";
 
 export const CLOUDFLARE_ROOT = resolve(import.meta.dirname, "..");
 export const STATS_OUTPUT = join(CLOUDFLARE_ROOT, ".cloudflare/output/v0/workers/default");
@@ -140,6 +141,7 @@ export interface StackOptions {
   readonly outbound: Outbound;
   readonly persist: Persistence;
   readonly extraWorkers?: readonly V4WorkerOptions[];
+  readonly producers?: readonly ProducerExport[];
   readonly alarms: "platform" | "rpc";
 }
 
@@ -167,29 +169,30 @@ function durableObjects(worker: BuiltWorker, ownerScript: string): Record<string
     : []));
 }
 
-function tailScriptNameWrapper(producer: string, mainModule: string): string {
+function tailLabelWrapper(producer: string, versionId: string | null, mainModule: string): string {
+  const version = versionId === null ? "" : `, scriptVersion: event.scriptVersion ?? { id: ${JSON.stringify(versionId)} }`;
   return `import collector from "./${mainModule}";
 export * from "./${mainModule}";
-export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(producer)} })), env, ctx); } };`;
+export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(producer)}${version} })), env, ctx); } };`;
 }
 
 function observeProject(observe: BuiltWorker): string {
   return resolve(observe.output, "../../../../..");
 }
 
-export function collectorModules(observe: BuiltWorker, producer: string): V4ModuleDefinition[] {
+export function collectorModules(observe: BuiltWorker, producer: string, versionId: string | null = null): V4ModuleDefinition[] {
   const project = observeProject(observe);
   return [
-    { type: "ESModule", path: join(project, "collector-entry.js"), contents: tailScriptNameWrapper(producer, observe.mainModule) },
+    { type: "ESModule", path: join(project, "collector-entry.js"), contents: tailLabelWrapper(producer, versionId, observe.mainModule) },
     { type: "ESModule", path: join(project, observe.mainModule), contents: readFileSync(bundlePath(observe), "utf8") }
   ];
 }
 
-export function collectorWorker(observe: BuiltWorker, name: string, producer: string): V4WorkerOptions {
+export function collectorWorker(observe: BuiltWorker, name: string, producer: string, versionId: string | null = null): V4WorkerOptions {
   for (const [key, value] of observe.env) {
     if (value.type !== "durable-object") throw new TypeError(`${observe.name} env.${key} is a ${value.type} binding, which the local collector does not map`);
   }
-  return { name, modules: collectorModules(observe, producer), modulesRoot: observeProject(observe), ...compat(observe), durableObjects: durableObjects(observe, name) };
+  return { name, modules: collectorModules(observe, producer, versionId), modulesRoot: observeProject(observe), ...compat(observe), durableObjects: durableObjects(observe, name) };
 }
 
 function alarmModules(worker: BuiltWorker): V4ModuleDefinition[] {
@@ -281,9 +284,25 @@ export function workers(stats: BuiltWorker, observe: BuiltWorker, options: Stack
   return [statsWorker(stats, observe, options), ...collector, ...(options.extraWorkers ?? [])];
 }
 
+function producerCollectorName(producer: ProducerExport): string {
+  return `${producer.service}-observe`;
+}
+
+function producerWorker(producer: ProducerExport, observe: BuiltWorker, outbound: Outbound): WorkerOptions {
+  if (producer.tailConsumers.length !== 1 || producer.tailConsumers[0] !== observe.name) throw new TypeError(`${producer.service} tails into ${producer.tailConsumers.join(", ") || "nothing"}, but the stack hosts only ${observe.name}`);
+  return {
+    config: { ...producer.config, tailConsumers: [{ worker: producerCollectorName(producer), streaming: false }] } as WorkerOptions["config"],
+    dev: { unsafeDirectSockets: [{ host: "127.0.0.1", port: producer.port }], outboundService: { type: "fetcher", handler: outbound } }
+  };
+}
+
 function miniflareOptions(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions): MiniflareOptions {
-  const converted = convertV4MiniflareOptions({ workers: workers(stats, observe, options) });
-  return options.persist === "memory" ? converted : { ...converted, resourcePersistencePath: options.persist.directory };
+  const producers = options.producers ?? [];
+  if (producers.length > 0 && options.collector.kind !== "attached") throw new TypeError("producers need the attached collector; their tail events have nowhere else to go");
+  const collectors = producers.map(producer => collectorWorker(observe, producerCollectorName(producer), producer.service, producer.versionId));
+  const converted = convertV4MiniflareOptions({ workers: [...workers(stats, observe, options), ...collectors] });
+  const withProducers = { ...converted, workers: [...converted.workers, ...producers.map(producer => producerWorker(producer, observe, options.outbound))] };
+  return options.persist === "memory" ? withProducers : { ...withProducers, resourcePersistencePath: options.persist.directory };
 }
 
 export interface Listen {
