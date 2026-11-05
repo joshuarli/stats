@@ -147,6 +147,7 @@ over its devices, and sends them as the `services` group
 | `name@instance.service` | `system.slice/system-name.slice/name@instance.service` (`-` in `name` becomes `\x2d`) |
 | `docker-<id>.scope` (Docker with the systemd cgroup driver) | `system.slice/docker-<id>.scope` |
 | `libpod-<id>.scope` (Podman), `machine-<name>.scope` (machined) | `machine.slice/<unit>` |
+| `a-b.slice` (a slice, or a container started with `--cgroup-parent=/a.slice/a-b.slice` under Docker's cgroupfs driver) | `a.slice/a-b.slice`, one level per `-`; counters include every cgroup below it |
 
 A unit whose cgroup does not exist is sent as unavailable, never zero; a
 memory or io controller that is not enabled for it leaves those values

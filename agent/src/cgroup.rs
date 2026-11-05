@@ -23,6 +23,19 @@ pub fn unit_cgroup(unit: &str) -> Option<PathBuf> {
         let runtime_slice = if stem.starts_with("libpod-") || stem.starts_with("machine-") { "machine.slice" } else { "system.slice" };
         return (!stem.is_empty() && !stem.contains('@')).then(|| Path::new(runtime_slice).join(unit));
     }
+    if let Some(stem) = unit.strip_suffix(".slice") {
+        if stem.is_empty() || stem.starts_with('-') || stem.ends_with('-') || stem.contains("--") || stem.contains('@') {
+            return None;
+        }
+        let mut path = PathBuf::new();
+        let mut end = 0;
+        for part in stem.split('-') {
+            end += part.len();
+            path.push(format!("{}.slice", &stem[..end]));
+            end += 1;
+        }
+        return Some(path);
+    }
     let stem = unit.strip_suffix(".service").filter(|stem| !stem.is_empty())?;
     match stem.split_once('@') {
         None => Some(Path::new("system.slice").join(unit)),
@@ -124,7 +137,10 @@ mod tests {
         assert_eq!(path("docker-0123abcd.scope").as_deref(), Some("system.slice/docker-0123abcd.scope"));
         assert_eq!(path("libpod-0123abcd.scope").as_deref(), Some("machine.slice/libpod-0123abcd.scope"));
         assert_eq!(path("machine-web.scope").as_deref(), Some("machine.slice/machine-web.scope"));
-        for invalid in ["", "nginx", "nginx.socket", ".service", "../x.service", "a/b.service", "@x.service", "a@b@c.service", "x@y.scope", ".scope"] {
+        assert_eq!(path("stats.slice").as_deref(), Some("stats.slice"));
+        assert_eq!(path("stats-node.slice").as_deref(), Some("stats.slice/stats-node.slice"));
+        assert_eq!(path("a-b-c.slice").as_deref(), Some("a.slice/a-b.slice/a-b-c.slice"));
+        for invalid in ["", "nginx", "nginx.socket", ".service", "../x.service", "a/b.service", "@x.service", "a@b@c.service", "x@y.scope", ".scope", ".slice", "-.slice", "-a.slice", "a-.slice", "a--b.slice", "a@b.slice"] {
             assert_eq!(unit_cgroup(invalid), None, "{invalid}");
         }
         assert_eq!(unit_cgroup(&format!("{}.service", "a".repeat(121))), None);
