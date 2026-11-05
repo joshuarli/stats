@@ -8,6 +8,7 @@
 - **O0 in progress:** measurement deploy from `0f411be` after the M3 review fixes. `stats-observe` `dc041292` (version `f30bbdac`, 05:15Z) and `stats` `8d426e74` (version `e38f0726`, 05:52:15Z on 2026-11-05). The safety check passed at 05:52:20Z and is saved at `.work/statsctl/safety/8d426e74.json`. The rollback targets are stats `6340f145`, then `220698c9`, and observe `e78aec31`. `synthetic-check` is host `h_671f99496b24b9cfa91d34f7fa5b9284`. O0's 3 settled hours (06:05–09:05Z) are readable from 09:50Z; the 24 h coverage record closes 2026-11-06 05:55Z and is checked at X1.
 - **M3:** the review of `00e18d2..4ca5419` found 1 P1 and 9 P2; all are fixed (`1c07472`, `1d2f2f7`, `725e393`, `de69070`).
 - **Ready:** O1 on `campaign/o1` (`e5576c3`), offline -25.7% rows written per persisted sample; hypothesis and policy registered. Merge and deploy only after O0 is accepted.
+- **P6 (Nanoshop):** N1 to N4 are local on `campaign/nanoshop` and merge after O1 is deployed. N5 deploys in the gap after O1's verdict.
 - **Red:** none. **Parked:** none.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
@@ -393,6 +394,77 @@ Run at most three deployed candidates (O1–O3), one at a time.
 
 Acceptance per candidate: the committed policy, the verify JSON saved at `.work/statsctl/verify/<id>.json`, and its summary in `docs/cost-campaign.md`.
 
+### P6 — Observing Nanoshop within budget (added 2026-11-05 at the owner's request)
+
+Nanoshop (`~/d/nanoshop`, read-only) will run `nanoshop-storied` with `stats-observe` as its tail consumer. Its cost model (`~/d/nanoshop/docs/cost.md`, "Reference shop estimate") puts one shop at about $11 a month at 10 req/s (25.9M Worker invocations plus 3.5M Durable Object invocations, so about 29.4M tail events a month). Observing every invocation at today's store cost would take that to at least $160. P6 makes observation a small fraction of the shop it observes. It runs beside P4 and never interrupts it:
+
+- One writer, in `.work/wt/nanoshop` on `campaign/nanoshop`.
+- N1 to N4 are local.
+- `campaign/nanoshop` merges to master only after O1 is deployed, so `make stats-deploy` for O1 cannot carry it.
+- N5 is its only deploy. It runs after an O verdict is recorded and before the next O deploy, under P4 step 5's 75-minute rule.
+- `nanoshop-storied` is not deployed on the account (checked 2026-11-05), so every Nanoshop number before Nanoshop deploys is a workerd measurement.
+
+- **N1** (M, `telemetry`): register `nanoshop-storied` on master. Port the intent of `campaign/cloudflare` (`56c9ab5`, `c35a40b`, `6cb4f1f`, built on `d3ad048`) onto master's observe design; do not merge that branch.
+  - The `OBSERVED_SERVICES` entry; the service comes only from the tail item's `scriptName`.
+  - A policy whose Worker route templates are generated from a data list in Nanoshop's own notation (`/products/{handle}`) copied from `~/d/nanoshop/src/routes/routes.ts`. `/static/*`, `/assets/*`, and unmatched paths become `excluded-route` outcomes, which master already counts. The storefront object has no public route.
+  - The operation set, typed `as const`: `request.<route>` for the ten routes, `request.unmatched`, `catalog.load`, `catalog.rejected`, `store.rpc.<method>` for `syncCatalog`, `readCart`, `addToCart`, `setCartQuantity`, `removeCartItem` (Nanoshop's `ErrorOperation` in `src/cloudflare/observe/operations.ts`).
+  - The operation charset `^[a-z][A-Za-z0-9_.-]{0,63}$`. A test proves that every operation of every policy passes validation.
+  - Generic producer types: `ErrorReport<O>`, `reportError<O>`, and a generic `operation` message for services other than stats, `{ kind: "operation", traceId, spanId, operation: O, synthetic, rows: RowAccount | null }`. One publish per invocation carries the trace, so no separate invocation mark is needed. Stats keeps its typed summaries. Nanoshop's richer counters stay in Nanoshop; adding them later is additive.
+  - Nanoshop snapshots `producer/channel.ts`, `producer/report.ts`, and `cloudflare/mark.ts` byte for byte, so those three files import only each other, `node:diagnostics_channel`, and `cloudflare:workers`. Move `SampleRejection`'s codes into `channel.ts` and import them from `ingest/ack.ts`. A test fails on any other import.
+  - The tail reads each service's `operation` message with that service's decoder: the stats decoder stays, and other services accept any operation in their policy's set.
+  - STA-48: test first. An unrouted event that carries an uncaught exception, a channel error report, or a status of at least 500 is observed with the label `<METHOD> unmatched`. Only the rest are excluded.
+  - STA-49 (Stats half): the route data list and operation list are exported data, and the matcher is derived from them. Then rewrite STA-49 to the remaining Nanoshop-side equality check, which is Nanoshop's to add.
+  - The `PROJECTS` entry: `nanoshop-storied` with `buckets: []`, `durableObjectNamespaces: []`, `d1Databases: []`, `probes: []`, `workerBilling: "requests-and-cpu"`. Regenerate the affected goldens deliberately.
+  - Acceptance: `cd cloudflare && pnpm exec vitest run test/observe && pnpm run typecheck`, then `make lint dashboard-test`. Record the commit that Nanoshop should pin in **Status**.
+- **N2** (L, `telemetry`): observation sampling with exact totals.
+  - **Policy.** `ServicePolicy` gains `sampling: { kind: "all" } | { kind: "sampled"; keepPerMillion; slowWallMs; slowCpuMs }`. `stats` and `usr-memories` stay `all` unless a measurement gives a reason to change; a test pins that.
+  - **What is always kept:**
+    - uncaught exceptions and caught error reports;
+    - a status of at least 500;
+    - any `outcome` other than `ok`;
+    - wall or CPU time at or above the slow thresholds;
+    - any invocation with no trace, counted as `untraced` in health, because the decision cannot be made consistently without one.
+  - **Everything else** is kept when `fnv1a32(traceId) % 1_000_000 < keepPerMillion`. A Worker invocation and its Durable Object invocation are therefore kept or dropped together. First check in workerd that a Durable Object invocation's active span has its caller's trace id; if it does not, park N2 with that evidence.
+  - **Counting.** Every event of a sampled service, kept or not, is counted in a new additive table `observe_counts`, in 5-minute event-time buckets keyed by version, stage, route, operation, and class (`ok`, `failed`, `excluded`). Each row holds kept and sampled-out counts plus CPU and wall sums. For sampled services, totals, coverage, and outcome counts come from this table. Services set to `all` keep master's current tables and costs.
+  - **Buffering.** So that a sampled-out event costs no store request, the tail Worker counts in a per-isolate buffer.
+    - The buffer rides along on the next kept event's store call once it is older than the flush interval, or is flushed alone when an event finds it older than that interval.
+    - It flushes at least once per 5-minute bucket.
+    - Counts are exact for every event that reaches the collector and is flushed. A buffer lost to isolate eviction loses at most one flush interval of counts, and shows as coverage below `reconciled` against analytics `worker.invocations`.
+    - Exactness across eviction would need one durable write per event, which is the cost this item removes. State this limit in `docs/architecture.md`.
+  - **Visible sampling.** Health reports kept, sampled-out, untraced, and flushed-batch counts per window. Every route, explore, and trace response for a sampled service carries `sampling: { keepPerMillion, kept, observed }`. `statsctl observe` marks any percentile computed from kept invocations as sampled, so it is never presented as unsampled.
+  - Acceptance: workerd tests show that the decision is deterministic per trace, that every always-keep case holds, that counts summed over 10,000 events equal the input exactly, and that the stats and usr-memories store rows and responses are unchanged. Then `make cloudflare-test lint`.
+- **N3** (M, `telemetry`): measure cost per observed invocation, then set and gate the budget.
+  - **Workload.** A deterministic workerd test drives the real tail handler and store with a seeded Nanoshop workload: 70% page views, 20% search, 10% cart, with a cart Worker invocation followed by its Durable Object RPC. It reports separately for a kept event and a sampled-out event:
+    - billed rows written, from cursor totals, including index rows and the retention delete, measured by running cleanup after retention elapses;
+    - store requests, counted at the binding;
+    - flushes.
+  - **Collector CPU per event.** Measure it as a Node microbenchmark of reduce, decide, and count (10 or more interleaved runs; a Node number), and separately read `stats-observe` CPU per invocation from `statsctl cost --project stats-observe` (a Cloudflare number, in whole milliseconds). Keep the two apart.
+  - **Production store costs for stats.** Read rows per invocation from `stats-observe` health, and cleanup rows per expired invocation from `observe_write_cost`.
+  - **Budget.** At 29.4M tail events a month, assuming no allowance remains, Nanoshop's observation must cost at most $1.10 a month at list price (10% of the shop's $11). That sums:
+    - rows written at $1.00 per million, which must also stay at or below 1.0M a month, 2% of the shared 50M allowance;
+    - store requests at $0.15 per million;
+    - tail CPU at $0.02 per million ms;
+    - store duration at $12.50 per million GB-s.
+  - **Setting the rate.** Choose `keepPerMillion` and the flush interval as the largest rate and shortest interval that fit the budget. A pure projection function computes the bill from the measured per-event figures, and the workerd test fails when the projection exceeds the budget.
+  - Acceptance: `cd cloudflare && pnpm exec vitest run test/observe/budget.test.ts`.
+- **N4** (S, `campaign`): write `docs/observe-billing.md` for Nanoshop to cite. For each fact, give the official source URL and the date it was read:
+  - Tail Worker billing;
+  - store requests per tail batch;
+  - rows per kept and per sampled-out invocation, retention deletes included;
+  - collector CPU per event;
+  - Durable Object request, duration, and row prices;
+  - index and delete accounting.
+
+  Measured numbers name their command. A final section lists what is unverified: production batch size for Nanoshop until it deploys, whether tail CPU is billed at sub-millisecond precision, and tail isolate lifetime. Add the doc to `AGENTS.md`'s docs table.
+  - Acceptance: every fact has a URL with a date or a command, and `test/cli/docs.test.ts` still passes.
+- **N5** (S, `deploy`): after O1's verdict is recorded, with 75 minutes clear, run `make worker-deploy` from master, which now includes N1 to N4. Run `make smoke-deployed` and `statsctl check ingest`. The item is accepted when, over the next 3 settled hours:
+  - stats coverage is still `reconciled`;
+  - stats observe rows per invocation are within ±0.1 of the O0 reading;
+  - usr-memories health shows no new rejection reason;
+  - `statsctl observe` lists `nanoshop-storied` with zero events.
+
+  Record the deployment ids in **Status**. Nanoshop's own deploy, and the production confirmation of its batch size and rows, are Nanoshop's work.
+
 ### P5 — Close
 
 - **X1** (S): delete the dead code and prove it dead with `dead-code-archaeology`. This covers `src/client/pricing.ts`, the old `cost-ledger.ts` exports with no callers, `test/support/stb2.ts` if it was replaced, and `scripts/api.mjs`'s dependency on `test/support/history.ts` (now production decoders, or the script is deleted in favour of `statsctl`). Run the full set. Use `review` on the integrated diff and fix P1 and P2 findings. Write the final report: what was implemented, locally tested, deployed, production-verified, reverted, and pending; the commands to run next; the commits and deployment ids; the measured CLI and observer overhead; and the before/after table.
@@ -416,6 +488,9 @@ Distinct success and failure conditions for each deliverable:
 | End to end | E1 test, plus production `statsctl check ingest` | accept, readback, and duplicate replay all hold | an acknowledged sample is not readable |
 | Verify | L4 tests | each verdict precedence case holds; a timeout gives `pending` with a resume command | an insufficient signal passes |
 | Overhead | O0 health, plus `vite build` sizes before and after | ≤ 1.0 extra observe row per stats invocation; Worker bundle grows ≤ 5 KiB gzip; the dashboard entry chunk grows ≤ 2% gzip and all dashboard JS ≤ 3% (revised 2026-11-05 under the owner's grant of decision power: the required cost report adds 2.1% to the lazily loaded ledger chunk); one publish per invocation; `statsctl cost` makes ≤ 4 requests per project | any bound is exceeded |
+| Nanoshop registration | N1 tests | every Nanoshop operation and route template is accepted, and the producer files import nothing outside themselves | a Nanoshop error report is rejected, or a 500 on an unrouted path disappears |
+| Sampling | N2 tests | counts over all events are exact, the decision is per trace, and stats and usr-memories are unchanged | a sampled percentile is shown unmarked, or a sampled-out event costs a store request on its own |
+| Observation budget | `test/observe/budget.test.ts` | the projected Nanoshop observation is ≤ $1.10 a month and ≤ 1.0M rows | the projection exceeds either bound |
 | Dogfood | P4 records | each candidate has a pre-registered policy, saved verify JSON, and an honest scope | a claim is upgraded beyond its evidence |
 
 ## Needs environment
@@ -462,6 +537,10 @@ Distinct success and failure conditions for each deliverable:
 6. Pricing moves to `src/cost/pricing.ts` with a revision.
 7. A new `stats-observe` project in `/api/v1/projects`.
 8. `make stats-deploy`.
+9. A third observed service, `nanoshop-storied`, its `PROJECTS` entry, and the wider operation charset.
+10. Generic producer types (`ErrorReport<O>` and the generic `operation` message), and producer files that import nothing outside themselves.
+11. `ServicePolicy.sampling`, the `observe_counts` table, the sampled-out and untraced counts in health, and the `sampling` field on observe responses.
+12. STA-48: unrouted events with errors are observed instead of excluded.
 
 ## Reference
 
