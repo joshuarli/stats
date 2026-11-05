@@ -134,14 +134,14 @@ await test("a crashing or missing collector leaves stats responses unchanged", a
     const harness = await start(collector);
     try {
       const host = await createHost(harness);
-      const responses = [
-        await ingest(harness, host),
-        await ingest(harness, { ...host, token: "wrong" }),
-        await harness.stats("/api/v1/hosts", { headers: await accessHeaders() }),
-        await harness.stats("/api/v1/projects", { headers: await accessHeaders() }),
-        await harness.stats("/health")
+      const line = async (response: Awaited<ReturnType<typeof ingest>>): Promise<string> => `${response.status} ${response.headers.get("content-type") ?? ""} ${(await response.text()).replaceAll(host.hostId, "<host>")}`;
+      const lines = [
+        await line(await ingest(harness, host)),
+        await line(await ingest(harness, { ...host, token: "wrong" })),
+        await line(await harness.stats("/api/v1/hosts", { headers: await accessHeaders() })),
+        await line(await harness.stats("/api/v1/projects", { headers: await accessHeaders() })),
+        await line(await harness.stats("/health"))
       ];
-      const lines = await Promise.all(responses.map(async response => `${response.status} ${response.headers.get("content-type") ?? ""} ${(await response.text()).replaceAll(host.hostId, "<host>")}`));
       const outcome = await harness.scheduled().then(() => "resolved", (error: unknown) => `rejected ${String(error)}`);
       return [...lines, outcome];
     } finally {
