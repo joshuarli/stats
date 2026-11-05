@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { collectorModules, until, type Page, type TraceSummary } from "./harness.ts";
+import { collectorModules, ROOT, until, type Page, type TraceSummary } from "./harness.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import type { Health, Exploration, ObjectMethods, StatsWindow } from "../../src/observe/core/store.ts";
 
@@ -35,10 +35,26 @@ export default {
   }
 };`;
 
+const SKEWED_COLLECTOR = `import collector, { ObservationStore } from "./index.js";
+export { ObservationStore };
+const realNow = Date.now;
+let skewMs = 0;
+Date.now = () => realNow() + skewMs;
+export default {
+  ...collector,
+  tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(SERVICE)} })), env, ctx); },
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === "/clock-forward") { skewMs += Number(url.searchParams.get("ms")); return new Response("ok"); }
+    return collector.fetch(request, env, ctx);
+  }
+};`;
+
 interface Shop {
   readonly mf: Miniflare;
   send(path: string, method?: string): Promise<void>;
   observe<T>(path: string): Promise<T>;
+  collectorClockForward(ms: number): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -49,7 +65,7 @@ async function startShop(): Promise<Shop> {
       { name: SERVICE, modules: true, script: PRODUCER, ...COMPAT, tails: ["stats-observe"], durableObjects: { STORE: { className: "TenantStore", useSQLite: true } } },
       {
         name: "stats-observe",
-        modules: collectorModules(SERVICE),
+        modules: [{ type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: SKEWED_COLLECTOR }, collectorModules(SERVICE)[1]!],
         ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } }
       }
     ] }),
@@ -61,6 +77,7 @@ async function startShop(): Promise<Shop> {
     mf,
     send: async (path, method = "GET") => { await (await shop.fetch(`https://shop.example${path}`, { method })).arrayBuffer(); },
     observe: async <T>(path: string) => await (await collector.fetch(`https://observe/${SERVICE}${path}`)).json() as T,
+    collectorClockForward: async ms => { await (await collector.fetch(`https://observe/clock-forward?ms=${ms}`)).arrayBuffer(); },
     dispose: async () => { await mf.dispose(); rmSync(persist, { recursive: true, force: true }); }
   };
 }
@@ -81,25 +98,42 @@ await test("a sampled service is counted exactly, keeps a trace's Worker and Dur
     ];
     await sendAll(shop, requests);
     const events = 2 * carts + searches + failures + assets;
-    const health = await until(() => shop.observe<Health>("/health"), value => value.sampling !== undefined && value.sampling.kept + value.sampling.sampledOut + value.sampling.excluded >= events, "every tail event");
+    await until(() => shop.observe<Health>("/health"), value => value.liveInvocations >= failures, "the failures");
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    const beforeFlush = await shop.observe<Health>("/health");
+    assert.ok((beforeFlush.sampling?.sampledOut ?? 0) === 0, "sampled-out counts wait in the tail isolate");
+    assert.ok(beforeFlush.writes.ingestBatches < events / 20, `${beforeFlush.writes.ingestBatches} store calls for ${events} events`);
+
+    let triggers = 0;
+    let health = beforeFlush;
+    const total = (value: Health) => (value.sampling?.kept ?? 0) + (value.sampling?.sampledOut ?? 0) + (value.sampling?.excluded ?? 0);
+    while (total(health) !== events + triggers) {
+      assert.ok(triggers < 5, `flushed ${total(health)} of ${events + triggers} events`);
+      await shop.collectorClockForward(61_000);
+      await shop.send("/cart");
+      triggers++;
+      health = await until(() => shop.observe<Health>("/health"), value => total(value) >= events + triggers, "the flush").catch(() => shop.observe<Health>("/health"));
+    }
+    const observedEvents = events - assets + triggers;
     const sampling = health.sampling!;
-    assert.deepEqual([sampling.kept + sampling.sampledOut, sampling.excluded, sampling.untraced], [events - assets, assets, 0]);
+    assert.deepEqual([sampling.kept + sampling.sampledOut, sampling.excluded, sampling.untraced], [observedEvents, assets, 0]);
     assert.equal(health.liveInvocations, sampling.kept);
-    assert.ok(sampling.kept < (events - assets) / 10, `${sampling.kept} kept`);
+    assert.ok(sampling.kept < observedEvents / 10, `${sampling.kept} kept`);
     assert.deepEqual([sampling.policy.keepPerMillion, health.rejected], [10_000, 0]);
+    assert.ok(health.writes.ingestBatches < observedEvents / 20, `${health.writes.ingestBatches} store calls for ${observedEvents} events`);
 
     const bucket = Math.floor(Date.now() / COUNT_BUCKET_MS) * COUNT_BUCKET_MS;
     const window = await shop.observe<StatsWindow>(`/window?from=${bucket - COUNT_BUCKET_MS}&to=${bucket + 2 * COUNT_BUCKET_MS}`);
-    assert.equal(window.invocations.reduce((sum, row) => sum + row.count, 0), events - assets);
+    assert.equal(window.invocations.reduce((sum, row) => sum + row.count, 0), observedEvents);
     assert.equal(window.outcomes.filter(row => row.outcome === "excluded-route").reduce((sum, row) => sum + row.count, 0), assets);
-    assert.deepEqual(window.sampling, { keepPerMillion: 10_000, kept: sampling.kept, observed: events - assets });
+    assert.deepEqual(window.sampling, { keepPerMillion: 10_000, kept: sampling.kept, observed: observedEvents });
 
     const range = `from=${bucket - COUNT_BUCKET_MS}&to=${bucket + 2 * COUNT_BUCKET_MS}`;
     const explored = await shop.observe<Exploration>(`/explore?${range}`);
-    const workerEvents = carts + searches + failures;
+    const workerEvents = carts + searches + failures + triggers;
     assert.equal(explored.sampling?.observed, workerEvents);
     assert.equal(explored.routes.reduce((sum, route) => sum + route.requests, 0), explored.sampling?.kept);
-    assert.deepEqual(Object.fromEntries(explored.routes.map(route => [route.label, route.observed])), { "GET /cart": failures, "GET /search": searches, "POST /cart/items": carts });
+    assert.deepEqual(Object.fromEntries(explored.routes.map(route => [route.label, route.observed])), { "GET /cart": failures + triggers, "GET /search": searches, "POST /cart/items": carts });
     const traces = await shop.observe<Page<TraceSummary> & { sampling?: { observed: number; kept: number } }>("/traces?limit=100");
     assert.deepEqual([traces.sampling?.observed, traces.sampling?.kept], [workerEvents, explored.sampling?.kept]);
     const objects = await shop.observe<ObjectMethods>(`/objects?${range}`);
@@ -108,7 +142,7 @@ await test("a sampled service is counted exactly, keeps a trace's Worker and Dur
     assert.equal(objects.sampling?.observed, carts);
     assert.equal(objects.methods.find(method => method.label === "TenantStore.addToCart")?.requests, keptCarts.requests, "a kept cart request keeps its Durable Object invocation, and no other does");
     const failed = (await shop.observe<Page<TraceSummary>>("/traces?limit=100&failed=true")).items;
-    assert.equal(failed.length, failures);
+    assert.equal(failed.length, failures + triggers);
 
   } finally {
     await shop.dispose();

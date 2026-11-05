@@ -225,6 +225,29 @@ not. `observe_sampling_events` holds the hourly `untraced` and `flush`
 counters. Neither table has a row for a service that keeps everything, so
 `stats` and `usr-memories` write and answer exactly as before.
 
+A sampled-out event costs no store request of its own. The tail Worker counts
+each sampled service's sampled-out and excluded events in a per-isolate buffer
+(`src/observe/core/count-buffer.ts`) keyed like `observe_counts`, and sends the
+buffer to the service's store in one call when it is older than
+`COUNT_FLUSH_INTERVAL_MS` (60 s) or its oldest count falls in an earlier
+five-minute bucket than the event now arriving. If the event that finds the
+buffer due has invocations or outcomes of its own, the buffer rides on that
+call; otherwise it goes alone. A kept event that finds a young buffer writes
+only itself. An isolate that receives no further event arms one timer when its
+buffer first fills, through `ctx.waitUntil`, and flushes then. Each flush adds one
+to the `flush` counter.
+
+Counts are exact for every event that reaches the collector and is flushed.
+A flush is at most once: the buffer is emptied before the store call, so a
+failed call loses what it carried, and the failure is logged or thrown. An
+isolate that is evicted, or that never gets its timer, loses at most one flush
+interval of sampled-out and excluded counts. Kept invocations are never lost this
+way, because the store counts them in the transaction that stores them. The loss
+shows as coverage below `reconciled` against analytics `worker.invocations`.
+Exactness across eviction would take one durable write per event, which is the
+cost buffering removes; the owner accepted that trade. A service that keeps
+everything is not buffered.
+
 Sampling relies on each invocation's tail event carrying exactly one `operation`
 message. In local workerd, when RPCs overlap on one Durable Object instance
 (even two at a time), diagnostics-channel messages land on other invocations'
