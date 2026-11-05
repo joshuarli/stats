@@ -1,8 +1,8 @@
 export const ACK_MEDIA_TYPE = "application/vnd.stats.ingest-ack.v2";
 
-import { SAMPLE_REJECTIONS, type SampleRejection } from "../observe/producer/channel.ts";
+import type { SampleRejection } from "../observe/producer/channel.ts";
 
-export { SAMPLE_REJECTIONS, type SampleRejection };
+export const REJECTION_CODES = { invalid_sample: 1, too_old: 2, conflict: 3 } as const satisfies Record<SampleRejection, number>;
 
 export interface Ack {
   readonly accepted: number;
@@ -26,7 +26,7 @@ export function encodeAck(ack: Ack): Uint8Array<ArrayBuffer> {
   varint(out, BigInt(ack.rejected.length));
   for (const rejection of ack.rejected) {
     varint(out, rejection.seq);
-    out.push(SAMPLE_REJECTIONS[rejection.code]);
+    out.push(REJECTION_CODES[rejection.code]);
   }
   return new Uint8Array(out);
 }

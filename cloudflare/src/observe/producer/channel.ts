@@ -1,5 +1,5 @@
-export const SAMPLE_REJECTIONS = { invalid_sample: 1, too_old: 2, conflict: 3 } as const;
-export type SampleRejection = keyof typeof SAMPLE_REJECTIONS;
+export const SAMPLE_REJECTIONS = ["invalid_sample", "too_old", "conflict"] as const;
+export type SampleRejection = typeof SAMPLE_REJECTIONS[number];
 
 export const OBSERVE_CHANNEL = "stats.observe";
 

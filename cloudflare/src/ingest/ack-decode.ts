@@ -1,5 +1,6 @@
 import { MAX_SAMPLES } from "../protocol.ts";
-import { SAMPLE_REJECTIONS, type Ack, type SampleRejection } from "./ack.ts";
+import type { SampleRejection } from "../observe/producer/channel.ts";
+import { REJECTION_CODES, type Ack } from "./ack.ts";
 
 const MAX_ACK_BYTES = 512;
 const MAGIC = [0x53, 0x54, 0x41, 0x32] as const;
@@ -13,7 +14,7 @@ export class AckDecodeError extends Error {
   }
 }
 
-const CODE_NAMES = Object.fromEntries(Object.entries(SAMPLE_REJECTIONS).map(([name, code]) => [code, name])) as Readonly<Record<number, SampleRejection>>;
+const CODE_NAMES = Object.fromEntries(Object.entries(REJECTION_CODES).map(([name, code]) => [code, name])) as Readonly<Record<number, SampleRejection>>;
 
 class Reader {
   readonly #bytes: Uint8Array;

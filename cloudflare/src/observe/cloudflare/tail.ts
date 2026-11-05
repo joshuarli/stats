@@ -1,4 +1,4 @@
-import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type SampleRejection, type OperationSummary, type RowAccount } from "../producer/channel.ts";
+import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
 import { OTHER_ROUTE, prepareInvocation, VERSION, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
@@ -186,7 +186,6 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
   return { trace, operation: summary, errors };
 }
 
-const REJECTION_CODES = Object.keys(SAMPLE_REJECTIONS) as readonly SampleRejection[];
 
 function readStatsOperation(message: unknown): { readonly summary: OperationSummary } | null {
   const summary = readOperation(message);
@@ -211,8 +210,8 @@ function readOperation(message: unknown): OperationSummary | null {
     case "host.ingest": {
       const rejected = field(work, "rejected");
       const [received, persisted, duplicate, inputBytes] = counts(work, ["received", "persisted", "duplicate", "inputBytes"]);
-      const codes = counts(rejected, REJECTION_CODES);
-      if (received === undefined || persisted === undefined || duplicate === undefined || inputBytes === undefined || codes.includes(undefined) || hasExtra(rejected, REJECTION_CODES)) return null;
+      const codes = counts(rejected, SAMPLE_REJECTIONS);
+      if (received === undefined || persisted === undefined || duplicate === undefined || inputBytes === undefined || codes.includes(undefined) || hasExtra(rejected, SAMPLE_REJECTIONS)) return null;
       const [invalidSample, tooOld, conflict] = codes as [number, number, number];
       return { ...common, operation: "host.ingest", work: { received, persisted, duplicate, rejected: { invalid_sample: invalidSample, too_old: tooOld, conflict }, inputBytes } };
     }
