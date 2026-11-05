@@ -9,9 +9,48 @@
 - **P4 deployed, exposure parked (15:20Z):** `make node-deploy` (`619c238`) runs `stats-node:619c23856d11` on threadripper (host network, `127.0.0.1:18791`, data in `~/.local/share/stats-node`). Through an SSH tunnel to its loopback: `deploy/deployed-smoke.sh` passes; no `Tailscale-User-Login` or an unlisted login gets 401, `joshua.r.li.98@gmail.com` gets 200, and observe answers 503 `unavailable`; a `synthetic-check` host (`h_a11481203f5aabc848d66285601bc6a6`, token only at `.work/credentials/synthetic-check-node.json`, 0600) survives `docker restart` with a graceful stop. **Exposed (15:31Z):** the owner granted passwordless `doas` on threadripper, because operator rights cannot change a serve config that already holds the 8080 path entry. `doas tailscale serve --bg --http=18790 http://127.0.0.1:18791` added the entry and left 8080 unchanged. From this Mac over the tailnet, `http://threadripper.tailcf741.ts.net:18790` serves the dashboard and `/api/v1/hosts` (200, listing `synthetic-check`), and observe answers 503. `deployed-smoke.sh` reports its no-credentials check as a failure there, because `tailscale serve` attaches the caller's identity to every tailnet request; the rejection paths are covered by the tunnel run. P4 accepted. `niceforge-core` was recreated at 15:01:15Z by something other than this campaign, which touched only `stats-node`.
 - **P5 accepted** (`e4797c0`): `targetOf` in `src/cli/auth.ts` treats a `.ts.net` host or a bare name as the Node target, which gets no credential, and everything else as Cloudflare, which gets Access. `cost`, `verify`, `observe`, `projects`, `health`, `snapshot`, `deployments`, and `compare` read Cloudflare-only data and exit 2 with `unsupported_on_target` before any request, so `health` does not work on Node, contrary to the original P5 text. Over the tailnet, `statsctl check ingest --origin http://threadripper.tailcf741.ts.net:18790 --credential-file .work/credentials/synthetic-check-node.json` passes all seven steps, and the Cloudflare origin still passes. `test:cli` 112, `test:node` 23, `node-e2e` 3, lint clean. `make cloudflare-test` stopped twice on STA-54's sampling e2e test, which fails the same way on master.
 - **X in progress:** the review of `996397b..f1aca91` found no P1. Fixed: cross-site and non-JSON writes on `/api/v1` (`05eb483`), a second server on one database (`8f0f9c2`), and login validation in `deploy.sh` (`2ce9446`). Accepted: `localhost` counts as a Node origin, and nothing uses it. Owner decision: the server listens on a Unix socket (`6bb9995`, `d8192a0`). Redeployed as `stats-node:f6d05122f676` with `--network none` and `stats.sock` (0600) in a 0700 `~/.local/share/stats-node-run`. `doas tailscale serve --bg --http=18790 unix:/home/josh/.local/share/stats-node-run/stats.sock` replaced the TCP entry, and 8080 is unchanged. Over the tailnet, `check ingest` passes and the `synthetic-check` host survived the redeploy. A cross-site write gets 403 and a `text/plain` write 415. TCP 18791 on the host is refused. `make cloudflare-test lint dashboard-test node-e2e agent-e2e smoke-local` is green.
-- **Next:** merge the STA-54 root-cause fix when it lands, then the X report.
+- **X accepted:** dead code (`a94bbf5`), the review and its fixes, and the report in **Result**. The campaign is closed.
+- **Next:** `docs/service-deployments-campaign.md` S1.
 - **P4 notes:** Decided for P4 (executor, 2026-11-05, follows Decision 1): the container runs with `--network host` and `STATS_LISTEN=127.0.0.1:18791`, because on Docker's bridge network every request arrives from the gateway, not loopback, and Decision 1 trusts loopback only. Carry-overs: the server runs as `node --experimental-strip-types src/node/main.ts` from `cloudflare/` with Node 26.12.1 and the built assets at `cloudflare/.cloudflare/output/v0/workers/default/assets`; the agent accepts only `https://` or loopback `http://`, so pointing a remote agent at it needs `tailscale serve --https` (out of scope, Decision 2); the Node projects page still says projects are declared in `cloudflare.config.ts`.
 - **Resume:** `Execute docs/portable-core-campaign.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
+
+## Result
+
+Closed 2026-11-05.
+
+**What runs where:**
+
+| | Cloudflare (production, unchanged) | Node on threadripper |
+| --- | --- | --- |
+| Entry | `src/cloudflare/index.ts` Worker and the `Installation` Durable Object | `src/node/main.ts` in container `stats-node:f6d05122f676` |
+| Core | `src/core/` (routing in `http.ts`, `installation/`), shared | same |
+| Storage | Durable Object SQLite through `CloudflareSql` | `node:sqlite` file in `~/.local/share/stats-node`, one process per database |
+| Auth | Access JWT | an allowlisted `Tailscale-User-Login` on a Unix socket (or a loopback TCP peer in local runs) |
+| Reach | `https://stats.17166969.xyz` | `http://threadripper.tailcf741.ts.net:18790` through `tailscale serve`; the container has no network |
+| Cloudflare-only | project collector, deployment tracking, `stats-observe`, the cron | unavailable: projects empty, observe 503 |
+
+**Deploy and verify:**
+- **Node:** `STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy`, then `pnpm --dir cloudflare -s statsctl check ingest --origin http://threadripper.tailcf741.ts.net:18790 --credential-file .work/credentials/synthetic-check-node.json`.
+- **Cloudflare:** `make stats-deploy`, then `make smoke-deployed` and `statsctl check ingest`. The Worker deploy is unchanged.
+
+**What proves parity:**
+- **`test/node/parity.test.ts`:** acks, history bodies, and ETags for all 37 fixture batches are identical on workerd and `node:sqlite`.
+- **`test/node/http-parity.test.ts`:** status, headers, and bodies are identical for health, ingest, history, 304, projects, and deployments.
+- **`test/node/boundary.test.ts`:** core and Node code cannot import adapters.
+- **Rows bench:** `bench:workerd ingest-rows` still reads 7.762.
+- **Worker bundles:** exports and `worker.config.json` are unchanged.
+
+**Review:** no P1. All P2s are fixed except `localhost` counting as a Node origin, which nothing uses.
+
+**Flakes:** STA-54's two flakes are fixed. One was sampling luck in the test (`68223ae`); the other was a scheduler bug that handed the frozen test clock to `setAlarm` (`8a2af96`).
+
+**Not in production yet:** master's stats Worker carries P1 to P3 and the fixes. Production still runs `31f2f398`, so the next `make stats-deploy` ships the refactor; local parity covers it.
+
+**Left open:**
+- STA-55: uncapped rejected-invalid events.
+- STA-56: explore hiding sampled routes that have no kept invocation.
+- The Node projects page still says projects come from `cloudflare.config.ts`.
+- A remote agent needs `tailscale serve --https` to report to the Node instance (Decision 2).
 
 ## Charter
 
