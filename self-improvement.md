@@ -4,9 +4,10 @@
 
 - **Goal:** build `statsctl`, an agent-facing TypeScript CLI that shares the dashboard's cost engine. Give it the telemetry it needs to answer one question: did this version use fewer resources for the same useful work, without losing data or degrading service, and is the evidence complete? Then use it on production stats for at most three deployed optimization candidates.
 - **Baseline:** `00e18d2` on `master`. All loop commands are green (see **Baseline**).
-- **Accepted:** G1, D1, E1 (E1a `92830b1`, E1b `acaddf1`), T1 (`c521efe`), C1 (`e7013f2`), L1 (`db4353a`), C2 (`8370f7a`), L3 (`68a29a9`). **Red:** none. **Parked:** none.
-- **In flight:** T2, T3 (revision: rare outcome classes only, event-time buckets, lag on operation rows), L2.
-- **Next:** T4 after T3; P1x after T2; L4 after L2 and T4; then H1 and O0.
+- **Accepted:** G1, D1, E1, T1, C1, L1, C2, L3, T2, T3, P1x, T4, L2 (master `f441be0`, full set green).
+- **O0 in progress:** `stats-observe` `dc041292` (version `f30bbdac`) and `stats` `c9d4980e` (version `6340f145`) were deployed at 05:15–05:17Z on 2026-11-05 from `f441be0`. The previous versions, for rollback, are stats `220698c9` and observe `e78aec31`. `synthetic-check` is host `h_671f99496b24b9cfa91d34f7fa5b9284`; the production `check ingest` passed. The 24 h O0 window closes at 2026-11-06 05:20Z.
+- **Red:** none. **Parked:** none.
+- **In flight:** L4 (`campaign/l4`). **Next:** H1, then O0 acceptance, M3 review, P4.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
@@ -354,7 +355,7 @@ Parallel lanes in P2: T1, T3, then T4 form one lane. E1 and D1 may each run in t
 
 - **H1** (S, `campaign`): update `AGENTS.md` (commands and a doc-table row for this campaign), `docs/operations.md` (statsctl recipes), `docs/deployments.md` (it is deployed and syncing; refresh the verification record), `docs/architecture.md` (the operations and outcomes tables and the coverage rule), and `cloudflare/public/llms.txt`. Help text is the source of truth; documents link to `statsctl help workflow` instead of copying it. A test runs every command example in `help workflow` and `llms.txt` through the parser.
   - Acceptance: `cd cloudflare && node --experimental-strip-types --test test/cli/docs.test.ts`.
-- **O0** (M, `telemetry`; prerequisite M2). Deploy the measurement changes alone, with no optimization:
+- **O0** (M, `telemetry`; prerequisites T1–T4 and P1x, which record data; L4 and H1, which are client-side and docs, may land during the 24 h wait). Deploy the measurement changes alone, with no optimization:
   1. `make observe-deploy`;
   2. verify that `stats-observe` health still accepts events;
   3. `make stats-deploy`;
