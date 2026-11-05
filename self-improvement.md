@@ -132,8 +132,8 @@ Each decision gives its reason, and what would reverse it.
     - **Receipt lag.** The lag is receipt time minus event timestamp. It is recorded on `observe_operations` rows, and on outcome rows for the rare classes. `observed_at` stays as it is.
     - **Revision.** `OBSERVE_FILTER_REVISION` is a constant stored with each bucket.
     - **Coverage state** of a window is computed, never assumed. It is:
-      - `reconciled` when the observe event total (observed invocations plus all outcome classes, both stages) is within 5% of `worker.invocations` from `project_samples` for the same 5-minute buckets;
-      - `partial` when the difference is larger, or buckets are missing;
+      - `reconciled` when the observe event total at the `worker` stage (observed invocations plus all outcome classes) is within a bound of `worker.invocations` from `project_samples` for the same 5-minute buckets. The bound is the larger of 5% and three standard errors of the sampled estimate. Revised 2026-11-05: the source counts only stateless Worker events and is Workers Logs sampled at 0.1, so an analytics bucket with no sampled event counts as zero;
+      - `partial` when the difference is larger, or observed buckets are missing;
       - `unknown` when either source lacks the window.
 
       A fresh newest event never implies `reconciled`. The executor records the measured spread in `docs/architecture.md` once O0 has a day of data. If the spread on a known-quiet day exceeds 5%, widen the bound to the observed spread plus 1 point, and record why.
