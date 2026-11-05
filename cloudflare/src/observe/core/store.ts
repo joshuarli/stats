@@ -2,7 +2,7 @@ import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PA
 import { isFailedInvocation, OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
-import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
+import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
@@ -1257,6 +1257,7 @@ export interface StatsWindow {
   readonly outcomes: readonly OutcomeWindowRow[];
   readonly invocations: readonly InvocationWindowRow[];
   readonly lag: { readonly operations: LagTotals; readonly outcomes: LagTotals };
+  readonly counts?: readonly CountedRoute[];
   readonly sampling?: SamplingSummary;
 }
 
@@ -1308,6 +1309,7 @@ export function statsWindow(db: SqlStatements, query: WindowQuery, sampling: Sam
     .sort((a, b) => a.bucketAt - b.bucketAt || compareText(a.version, b.version) || compareText(a.stage, b.stage) || compareText(a.outcome, b.outcome) || a.filterRevision - b.filterRevision);
   return {
     fromMs: query.fromMs, toMs: query.toMs, bucketMs: OPERATION_BUCKET_MS, operation: query.operation ?? null, workloadClass: query.workloadClass ?? null,
-    filterRevision: OBSERVE_FILTER_REVISION, operations, outcomes: allOutcomes, invocations, lag: { operations: lagTotals(operations), outcomes: lagTotals(allOutcomes) }
+    filterRevision: OBSERVE_FILTER_REVISION, operations, outcomes: allOutcomes, invocations, lag: { operations: lagTotals(operations), outcomes: lagTotals(allOutcomes) },
+    ...(counted === null ? {} : { counts: countedRoutes(db, query.fromMs, query.toMs, query.operation) })
   };
 }

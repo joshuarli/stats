@@ -268,7 +268,7 @@ async function readiness(context: CommandContext, policy: Policy, requested: str
   const comparison = await source(() => fetchValue(comparisonPath(policy.project, deploymentId, policy.window), value => decodeDeploymentComparison(value, deploymentId, policy.window)));
   const observeHealth = observed ? await source(() => fetchValue(`/api/observe/${OBSERVED_PROJECT}/health`, decodeHealth)) : null;
   const span = readinessWindow(context.now(), policy);
-  const window = observed ? await source(() => fetchValue(observeWindowPath(span.fromMs, span.toMs, isOperationPolicy(policy) ? policy.operation : undefined, policy.workloadClass ?? undefined), decodeStatsWindow)) : null;
+  const window = observed ? await source(() => fetchValue(observeWindowPath(OBSERVED_PROJECT, span.fromMs, span.toMs, isOperationPolicy(policy) ? policy.operation : undefined, policy.workloadClass ?? undefined), decodeStatsWindow)) : null;
   const project = projects.ok
     ? (() => { const found = projects.value.find(item => item.id === policy.project); return found === undefined ? { ok: false as const, code: "unknown_project", message: `unknown project ${policy.project}` } : { ok: true as const, value: found }; })()
     : projects;

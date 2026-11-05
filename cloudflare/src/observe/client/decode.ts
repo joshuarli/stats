@@ -1,8 +1,9 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
 import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TracePage, VersionStats } from "../core/store.ts";
-import type { SamplingHealth, SamplingSummary } from "../core/counts.ts";
+import type { CountedRoute, SamplingHealth, SamplingSummary } from "../core/counts.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
-import { OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage } from "../core/model.ts";
+import { MAX_LABEL_BYTES } from "../core/limits.ts";
+import { OPERATION, OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage } from "../core/model.ts";
 import { OPERATION_IDS } from "../producer/channel.ts";
 
 export interface ObserveHealth extends Health {
@@ -397,6 +398,19 @@ function invocationWindowRow(value: unknown): InvocationWindowRow {
   return { bucketAt: integer(fields["bucketAt"], "bucketAt"), version: text(fields["version"], "version", 36), stage: oneOf(fields["stage"], ["worker", "object"] as const, "stage"), count: integer(fields["count"], "count") };
 }
 
+function countedRoute(value: unknown): CountedRoute {
+  const fields = record(value, "counted route");
+  const operation = text(fields["operation"], "counted operation", 64);
+  if (operation !== "" && !OPERATION.test(operation)) fail("counted operation");
+  const count = integer(fields["count"], "counted count");
+  const failed = integer(fields["failed"], "counted failed");
+  if (failed > count) fail("counted failed");
+  return {
+    version: text(fields["version"], "version", 36), stage: oneOf(fields["stage"], ["worker", "object"] as const, "stage"), route: text(fields["route"], "counted route label", MAX_LABEL_BYTES),
+    operation, count, failed, cpuMsSum: integer(fields["cpuMsSum"], "counted cpu"), wallMsSum: integer(fields["wallMsSum"], "counted wall")
+  };
+}
+
 function lagTotals(value: unknown): LagTotals {
   const fields = record(value, "lag");
   return { count: integer(fields["count"], "lag count"), maxMs: integer(fields["maxMs"], "lag max"), sumMs: integer(fields["sumMs"], "lag sum") };
@@ -417,6 +431,7 @@ export function decodeStatsWindow(value: unknown): StatsWindow {
     outcomes: list(fields["outcomes"], MAX_WINDOW_ROWS, outcomeWindowRow, "outcomes"),
     invocations: list(fields["invocations"], MAX_WINDOW_ROWS, invocationWindowRow, "invocations"),
     lag: { operations: lagTotals(lag["operations"]), outcomes: lagTotals(lag["outcomes"]) },
+    ...(fields["counts"] === undefined ? {} : { counts: list(fields["counts"], MAX_WINDOW_ROWS, countedRoute, "counts") }),
     ...withSampling(value)
   };
 }

@@ -1,4 +1,5 @@
 import { sampled } from "../core/sampling.ts";
+import type { Stage } from "../core/model.ts";
 
 export const NANOSHOP_ROUTES = [
   { name: "home", method: "GET", pattern: "/" },
@@ -109,6 +110,15 @@ export function nanoshopWorkerRoute(path: string): string | null {
     if (shape.segments.length === actual.length && shape.segments.every((expected, index) => PARAMETER.test(expected) ? actual[index] !== "" : actual[index] === expected)) return shape.template;
   }
   return null;
+}
+
+const ROUTE_OPERATIONS: ReadonlyMap<string, NanoshopOperation> = new Map(NANOSHOP_ROUTES.map((route, index) => [`${route.method} ${SHAPES[index]!.template}`, `request.${route.name}` as const]));
+const UNMATCHED_LABEL = /^[A-Z]{3,7} unmatched$/u;
+const RPC_OPERATIONS: ReadonlyMap<string, NanoshopOperation> = new Map([...NANOSHOP_RPC_METHODS.map(method => [method, `store.rpc.${method}`] as const), ["alarm", "store.alarm"]]);
+
+export function nanoshopLabelOperation(stage: Stage, label: string): NanoshopOperation | null {
+  if (stage === "worker") return UNMATCHED_LABEL.test(label) ? "request.unmatched" : ROUTE_OPERATIONS.get(label) ?? null;
+  return RPC_OPERATIONS.get(label.slice(label.lastIndexOf(".") + 1)) ?? null;
 }
 
 export const NANOSHOP_SAMPLING = sampled({ keepPerMillion: 2_000, slowWallMs: 1_000, slowCpuMs: 50 });

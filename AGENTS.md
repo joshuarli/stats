@@ -30,6 +30,7 @@ make stats-deploy      # deploy only the stats Worker, leaving stats-observe unt
 pnpm --dir cloudflare -s statsctl help workflow    # copy-pastable recipes for the commands below
 pnpm --dir cloudflare -s statsctl health --project stats --json    # are the telemetry sources fresh and complete
 pnpm --dir cloudflare -s statsctl cost --project stats --window 1h --json    # price a window, find the bottleneck
+pnpm --dir cloudflare -s statsctl observe operations --project nanoshop-storied --window 1h --json    # exact per-operation counts, failures, CPU and wall for any observed service
 pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a deployment use fewer resources for the same work
 pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a service's resource levels change after a marker (not "fewer for the same work")
 ```

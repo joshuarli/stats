@@ -163,7 +163,7 @@ export const healthCommand = defineCommand<HealthPayload>({
     let readiness: HealthPayload["readiness"] = { policy: null, signals: [] };
     if (policy !== null) {
       const span = readinessWindow(context.now(), policy);
-      const window = observed ? await attempt(() => fetchValue(context, observeWindowPath(span.fromMs, span.toMs, isOperationPolicy(policy) ? policy.operation : undefined, policy.workloadClass ?? undefined), decodeStatsWindow)) : null;
+      const window = observed ? await attempt(() => fetchValue(context, observeWindowPath(project, span.fromMs, span.toMs, isOperationPolicy(policy) ? policy.operation : undefined, policy.workloadClass ?? undefined), decodeStatsWindow)) : null;
       const entry = projects.ok ? projects.value.find(candidate => candidate.id === project) : undefined;
       const projectSource: Source<ProjectSummary> = !projects.ok ? asSource(projects) : entry === undefined ? { ok: false, code: "unknown_project", message: `unknown project ${project}` } : { ok: true, value: entry };
       const signals = readinessSignals(policy, {

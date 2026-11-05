@@ -42,6 +42,7 @@ await test("a rolled-back version inherits nothing from its earlier deployment",
   const before = statsWindow(db, { fromMs: START + H, toMs: START + 2 * H, operation: "host.ingest" });
   assert.deepEqual(before.operations.map(row => [row.version, row.count]), [[V2, 1]]);
   assert.deepEqual(statsWindow(db, { fromMs: START + 2 * H, toMs: START + 3 * H }).operations, []);
+  assert.equal("counts" in after, false, "a service that keeps everything has no counted routes");
 });
 
 await test("the window is half-open and sums operation, outcome and observed counts per bucket and version", async () => {

@@ -1,6 +1,7 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
-import { NANOSHOP_OPERATIONS, NANOSHOP_SAMPLING, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_SAMPLING, nanoshopLabelOperation, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import type { Stage } from "../core/model.ts";
 import { KEEP_ALL, type Sampling } from "../core/sampling.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
@@ -8,6 +9,7 @@ export interface ServicePolicy {
   readonly workerRoute: (path: string) => string | null;
   readonly objectRoute: (path: string) => string | null;
   readonly operations: ReadonlySet<string>;
+  readonly labelOperation: (stage: Stage, label: string) => string | null;
   readonly operationMessages: "stats" | "service";
   readonly sampling: Sampling;
 }
@@ -51,6 +53,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: statsWorkerRoute,
     objectRoute: path => path === "/" ? null : statsTemplate(path),
     operations: new Set(OPERATIONS),
+    labelOperation: () => null,
     operationMessages: "stats",
     sampling: KEEP_ALL
   },
@@ -58,6 +61,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: memoriesWorkerRoute,
     objectRoute: () => null,
     operations: new Set(MEMORIES_OPERATIONS),
+    labelOperation: () => null,
     operationMessages: "service",
     sampling: KEEP_ALL
   },
@@ -65,6 +69,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: nanoshopWorkerRoute,
     objectRoute: () => null,
     operations: new Set(NANOSHOP_OPERATIONS),
+    labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
     sampling: NANOSHOP_SAMPLING
   },
@@ -72,6 +77,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: nanoshopWorkerRoute,
     objectRoute: () => null,
     operations: new Set(NANOSHOP_OPERATIONS),
+    labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
     sampling: NANOSHOP_SAMPLING
   },
@@ -79,6 +85,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     workerRoute: nanoshopWorkerRoute,
     objectRoute: () => null,
     operations: new Set(NANOSHOP_OPERATIONS),
+    labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
     sampling: NANOSHOP_SAMPLING
   }

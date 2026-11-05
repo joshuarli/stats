@@ -29,7 +29,7 @@ await test("a Cloudflare-only command against a Node origin exits 2 before any r
   const marker = join(SCRATCH, `cf-ran-${process.pid}`);
   try {
     const cloudflareOnly = REGISTRY.commands.filter(command => !command.targets.includes("node"));
-    assert.deepEqual(cloudflareOnly.map(command => command.name).sort(), ["compare", "cost", "deployments", "health", "observe deployment", "observe issues", "observe routes", "observe traces", "projects", "snapshot"]);
+    assert.deepEqual(cloudflareOnly.map(command => command.name).sort(), ["compare", "cost", "deployments", "health", "observe deployment", "observe issues", "observe operations", "observe routes", "observe traces", "projects", "snapshot"]);
     for (const command of cloudflareOnly) {
       const argv = [...command.name.split(" "), "--origin", "http://threadripper:18790", "--json", ...Object.entries(command.options).flatMap(([name, spec]) => spec.type === "string" && spec.required === true ? [`--${name}`, "x"] : [])];
       const run = await runCli(argv, { STATSCTL_AUTH_COMMAND: `touch ${marker}` });

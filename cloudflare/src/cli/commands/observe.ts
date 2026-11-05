@@ -1,8 +1,11 @@
-import { decodeExploration, decodeImpact, decodeIssues, decodeTraces } from "../../observe/client/decode.ts";
-import type { Exploration, IssueSummary, Page, RolloutImpact, RouteStats, TracePage } from "../../observe/core/store.ts";
-import { VERSION } from "../../observe/core/model.ts";
+import { decodeExploration, decodeImpact, decodeIssues, decodeStatsWindow, decodeTraces } from "../../observe/client/decode.ts";
+import type { Exploration, IssueSummary, LagTotals, Page, RolloutImpact, RouteStats, StatsWindow, TracePage } from "../../observe/core/store.ts";
+import { OPERATION_BUCKET_MS } from "../../observe/core/limits.ts";
+import { POLICIES } from "../../observe/cloudflare/policies.ts";
+import { observeWindowPath } from "../verify/gather.ts";
+import { VERSION, type Stage } from "../../observe/core/model.ts";
 import type { SamplingSummary } from "../../observe/core/counts.ts";
-import { isObservedService, OBSERVED_SERVICES } from "../../observe/services.ts";
+import { isObservedService, OBSERVED_SERVICES, type ObservedService } from "../../observe/services.ts";
 import type { Window } from "../envelope.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
 import { defineCommand, type CommandContext, type OptionSpec } from "../registry.ts";
@@ -15,7 +18,7 @@ const ISSUE_STATES = ["open", "resolved"];
 const project: OptionSpec = { type: "string", placeholder: "ID", required: true, description: `an observed service: ${OBSERVED_SERVICES.join(", ")}` };
 const window: OptionSpec = { type: "string", placeholder: "SPAN", default: "24h", description: "trailing window, one of 1h, 6h, 24h, 7d; UTC, half-open [from, to)" };
 
-function observedProject(context: CommandContext): string {
+function observedProject(context: CommandContext): ObservedService {
   const value = context.option("project");
   if (value === undefined) throw usageError("missing required option --project");
   if (!isObservedService(value)) throw new CommandError(EXIT.usage, "not_observed", `only ${OBSERVED_SERVICES.join(", ")} are observed, not ${value}`);
@@ -212,5 +215,133 @@ export const observeDeploymentCommand = defineCommand<DeploymentImpactPayload>({
       ...(changed.length === 0 ? ["no new or regressed issues"] : changed.slice(0, TEXT_ROWS)),
       ...omitted(changed.length)
     ];
+  }
+});
+
+export interface SummarizedOperation {
+  readonly operation: string;
+  readonly workloadClass: string;
+  readonly synthetic: boolean;
+  readonly count: number;
+  readonly failed: number;
+  readonly cpuMsSum: number;
+  readonly wallMsSum: number;
+  readonly rowsRead: number;
+  readonly rowsWritten: number;
+  readonly statements: number;
+  readonly lag: LagTotals;
+}
+
+export interface CountedOperation {
+  readonly operation: string | null;
+  readonly stage: Stage;
+  readonly route: string;
+  readonly count: number;
+  readonly failed: number;
+  readonly cpuMsSum: number;
+  readonly wallMsSum: number;
+}
+
+interface OperationsWindow {
+  readonly span: string;
+  readonly fromMs: number;
+  readonly toMs: number;
+}
+
+export type OperationsPayload = OperationsWindow & (
+  | { readonly source: "summaries"; readonly operations: readonly SummarizedOperation[] }
+  | { readonly source: "counts"; readonly operations: readonly CountedOperation[] }
+);
+
+function byCost<T extends { readonly cpuMsSum: number; readonly count: number }>(key: (row: T) => string) {
+  return (a: T, b: T) => b.cpuMsSum - a.cpuMsSum || b.count - a.count || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+}
+
+function summarized(window: StatsWindow): SummarizedOperation[] {
+  const totals = new Map<string, { -readonly [K in keyof SummarizedOperation]: SummarizedOperation[K] } & { lag: { count: number; maxMs: number; sumMs: number } }>();
+  for (const row of window.operations) {
+    const key = [row.operation, row.workloadClass, row.synthetic].join("\u0000");
+    const total = totals.get(key) ?? { operation: row.operation, workloadClass: row.workloadClass, synthetic: row.synthetic, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0, rowsRead: 0, rowsWritten: 0, statements: 0, lag: { count: 0, maxMs: 0, sumMs: 0 } };
+    total.count += row.count;
+    total.failed += row.failed;
+    total.cpuMsSum += row.cpuMsSum;
+    total.wallMsSum += row.wallMsSum;
+    total.rowsRead += row.rowsRead;
+    total.rowsWritten += row.rowsWritten;
+    total.statements += row.statements;
+    total.lag.count += row.lagCount;
+    total.lag.maxMs = Math.max(total.lag.maxMs, row.lagMsMax);
+    total.lag.sumMs += row.lagMsSum;
+    totals.set(key, total);
+  }
+  return [...totals.values()].sort(byCost(row => `${row.operation}\u0000${row.workloadClass}`));
+}
+
+function counted(service: ObservedService, counts: NonNullable<StatsWindow["counts"]>): CountedOperation[] {
+  const totals = new Map<string, { -readonly [K in keyof CountedOperation]: CountedOperation[K] }>();
+  for (const row of counts) {
+    const operation = row.operation === "" ? POLICIES[service].labelOperation(row.stage, row.route) : row.operation;
+    const key = [row.stage, row.route, operation ?? ""].join("\u0000");
+    const total = totals.get(key) ?? { operation, stage: row.stage, route: row.route, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0 };
+    total.count += row.count;
+    total.failed += row.failed;
+    total.cpuMsSum += row.cpuMsSum;
+    total.wallMsSum += row.wallMsSum;
+    totals.set(key, total);
+  }
+  return [...totals.values()].sort(byCost(row => `${row.stage}\u0000${row.route}`));
+}
+
+function bucketWindow(context: CommandContext): OperationsWindow {
+  const { span, fromMs: trailingFromMs, toMs: nowMs } = trailingWindow(context);
+  const toMs = nowMs - (nowMs % OPERATION_BUCKET_MS) + OPERATION_BUCKET_MS;
+  return { span, fromMs: toMs - (nowMs - trailingFromMs), toMs };
+}
+
+export const observeOperationsCommand = defineCommand<OperationsPayload>({
+  name: "observe operations",
+  summary: "total each operation's invocations, failures, CPU and wall time over a window",
+  description: [
+    "Reads one exact observe window for an observed service and totals it by operation. Read-only.",
+    "The window ends at the end of the current five-minute bucket and spans --window before that, so it includes the bucket in progress.",
+    "source \"summaries\" (a service that keeps every invocation, such as stats): rows come from the operation summaries each invocation published, by operation, workload class and synthetic flag, with SQLite rows read and written, statements, and ingest lag.",
+    "source \"counts\" (a sampled service such as nanoshop-storied): rows come from the exact counts of every kept and sampled-out invocation, by stage and route. operation is the name the invocation published, or else the service policy's name for that route (request.<route>, store.rpc.<method>, store.alarm), or null. These rows carry no SQLite rows, statements, or lag, because the service publishes none."
+  ],
+  access: "read",
+  options: { project, window },
+  examples: ["statsctl observe operations --project stats --window 1h --json", "statsctl observe operations --project nanoshop-storied --window 1h --json"],
+  limitations: [
+    "Observe retention is 7 days.",
+    "Rows sum every version seen in the window.",
+    "A sampled service's counts reach the store when the collector flushes them, within about 20 s of its last event or five minutes on a busy isolate.",
+    `Text shows the top ${TEXT_ROWS} rows by CPU.`
+  ],
+  async run(context) {
+    const name = observedProject(context);
+    const span = bucketWindow(context);
+    const fetched = await context.http.getJson(observeWindowPath(name, span.fromMs, span.toMs), decodeStatsWindow);
+    if (fetched.kind !== "ok") throw transportError("contract", "the observe window answered not-modified to an unconditional request");
+    const window = fetched.value;
+    const versionIds = [...new Set([...window.invocations.map(row => row.version), ...window.operations.map(row => row.version)].filter(version => version !== ""))];
+    const meta = { project: name, windows: [{ fromMs: span.fromMs, toMs: span.toMs }], identities: { versionIds } };
+    if (window.counts !== undefined) return { ...meta, payload: { ...span, source: "counts", operations: counted(name, window.counts) } };
+    const operations = summarized(window);
+    const invocations = window.invocations.reduce((sum, row) => sum + row.count, 0);
+    const warnings = operations.length === 0 && invocations > 0 ? [{ code: "no_operation_summaries", message: `${invocations} invocations in the window published no operation summary, so ${name} has no per-operation rows` }] : [];
+    return { ...meta, warnings, payload: { ...span, source: "summaries", operations } };
+  },
+  render(payload) {
+    const lines = [`observe operations, last ${payload.span}: [${timeText(payload.fromMs)}, ${timeText(payload.toMs)})`];
+    if (payload.operations.length === 0) return [...lines, "no operations in this window"];
+    if (payload.source === "counts") {
+      return [...lines, "exact counts of every observed invocation; this service publishes no SQLite rows, statements, or lag", ...table([
+        ["operation", "stage", "route", "count", "failed", "cpu", "wall"],
+        ...payload.operations.slice(0, TEXT_ROWS).map(row => [row.operation ?? "-", row.stage, row.route, String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum)])
+      ]), ...omitted(payload.operations.length)];
+    }
+    return [...lines, ...table([
+      ["operation", "class", "count", "failed", "cpu", "wall", "rows read", "rows written", "statements", "lag max"],
+      ...payload.operations.slice(0, TEXT_ROWS).map(row => [`${row.operation}${row.synthetic ? " (synthetic)" : ""}`, row.workloadClass || "-", String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum), String(row.rowsRead), String(row.rowsWritten), String(row.statements), ms(row.lag.maxMs)])
+    ]), ...omitted(payload.operations.length)];
   }
 });

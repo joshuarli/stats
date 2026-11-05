@@ -134,6 +134,16 @@ await test("counts over 10,000 seeded events equal the input exactly, and kept r
   const window = statsWindow(db, { fromMs: START, toMs: START + 5 * COUNT_BUCKET_MS }, SHOP.sampling);
   const observed = window.invocations.reduce((sum, row) => sum + row.count, 0) + window.outcomes.reduce((sum, row) => sum + row.count, 0);
   assert.equal(observed, items.length);
+  const byRoute = new Map<string, { count: number; failed: number; cpuMsSum: number; wallMsSum: number }>();
+  for (const entry of expected) {
+    const [stage, outcome, route, operation] = entry.key.split("|");
+    if (outcome !== "ok" && outcome !== "failed") continue;
+    const key = [stage, route, operation].join("|");
+    const total = byRoute.get(key) ?? { count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0 };
+    byRoute.set(key, { count: total.count + 1, failed: total.failed + (outcome === "failed" ? 1 : 0), cpuMsSum: total.cpuMsSum + entry.cpu, wallMsSum: total.wallMsSum + entry.wall });
+  }
+  assert.deepEqual(new Map(window.counts?.map(row => [[row.stage, row.route, row.operation].join("|"), { count: row.count, failed: row.failed, cpuMsSum: row.cpuMsSum, wallMsSum: row.wallMsSum }])), byRoute);
+  assert.deepEqual(new Set(window.counts?.map(row => row.version)), new Set([VERSION]));
 });
 
 await test("every always-keep case is stored with its count, and an untraced invocation is counted untraced", async () => {
@@ -289,7 +299,9 @@ await test("the service answers a sampled window, explore, and traces with the p
   assert.deepEqual(decodeExploration(wire(explored)), explored);
   assert.deepEqual(decodeTraces(wire(await service.traces({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, summary);
   assert.deepEqual(decodeObjectMethods(wire(await service.objects({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, { keepPerMillion: 0, kept: 0, observed: 0 });
-  assert.deepEqual(decodeStatsWindow(wire(await service.window({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, summary);
+  const window = await service.window({ fromMs: START, toMs: START + COUNT_BUCKET_MS });
+  assert.deepEqual(decodeStatsWindow(wire(window)).sampling, summary);
+  assert.deepEqual(decodeStatsWindow(wire(window)).counts, [{ version: VERSION, stage: "worker", route: "GET /search", operation: "request.search", count: 8, failed: 1, cpuMsSum: 8, wallMsSum: 160 }]);
   assert.deepEqual(decodeTrace(wire(trace), hex(11, 32)).sampling, summary);
   assert.deepEqual(decodeHealth(wire(await service.health())).sampling, (await service.health()).sampling);
   assert.throws(() => decodeExploration(wire({ ...explored, sampling: { keepPerMillion: 2_000_000, kept: 0, observed: 0 } })));

@@ -226,6 +226,27 @@ export function countWindow(db: SqlStatements, fromMs: number, toMs: number): Co
   return { invocations, excluded };
 }
 
+export interface CountedRoute {
+  readonly version: string;
+  readonly stage: Stage;
+  readonly route: string;
+  readonly operation: string;
+  readonly count: number;
+  readonly failed: number;
+  readonly cpuMsSum: number;
+  readonly wallMsSum: number;
+}
+
+export function countedRoutes(db: SqlStatements, fromMs: number, toMs: number, operation?: string): CountedRoute[] {
+  return db.rows<{ version: string; stage: Stage; route: string; operation: string; count: number; failed: number; cpu_ms_sum: number; wall_ms_sum: number }>(
+    `SELECT version, stage, route, operation, SUM(kept + sampled_out) AS count, SUM(CASE WHEN outcome = 'failed' THEN kept + sampled_out ELSE 0 END) AS failed,
+       SUM(cpu_ms_sum) AS cpu_ms_sum, SUM(wall_ms_sum) AS wall_ms_sum
+     FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed') AND (? IS NULL OR operation = ?)
+     GROUP BY version, stage, route, operation ORDER BY version, stage, route, operation`,
+    ...windowParams(fromMs, toMs), operation ?? null, operation ?? null
+  ).map(row => ({ version: row.version, stage: row.stage, route: row.route, operation: row.operation, count: row.count, failed: row.failed, cpuMsSum: row.cpu_ms_sum, wallMsSum: row.wall_ms_sum }));
+}
+
 export function versionRequests(db: SqlStatements, nowMs: number, versions: readonly string[]): ReadonlyMap<string, { readonly requests: number; readonly failed: number }> {
   const rows = db.rows<{ version: string; requests: number; failed: number }>(
     `SELECT version, SUM(kept + sampled_out) AS requests, SUM(CASE WHEN outcome = 'failed' THEN kept + sampled_out ELSE 0 END) AS failed FROM observe_count_entries

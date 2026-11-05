@@ -19,6 +19,9 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    priced meters, excluded meters, and residuals; uncollected means no data, never zero.
    For a sampled service (observe --project nanoshop-storied) the payload carries "sampling":
    percentiles, kept counts and CPU come from the kept invocations only, and "observed" is exact.
+   pnpm --dir cloudflare -s statsctl observe operations --project nanoshop-storied --window 1h --json
+   observe operations totals one exact window by operation for any observed service: count,
+   failed, CPU and wall, plus rows, statements and lag where the service publishes them.
 
 3. Save a snapshot and replay it offline
    pnpm --dir cloudflare -s statsctl snapshot --project stats --window 24h --out .work/statsctl/snapshots/stats-24h.json

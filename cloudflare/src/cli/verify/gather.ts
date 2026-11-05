@@ -65,11 +65,11 @@ export function comparisonPath(project: string, deploymentId: string, window: st
   return `/api/v1/projects/${encodeURIComponent(project)}/deployments/${encodeURIComponent(deploymentId)}/comparison?window=${window}`;
 }
 
-export function observeWindowPath(fromMs: number, toMs: number, operation?: string, workloadClass?: string): string {
+export function observeWindowPath(service: string, fromMs: number, toMs: number, operation?: string, workloadClass?: string): string {
   const query = new URLSearchParams({ from: String(fromMs), to: String(toMs) });
   if (operation !== undefined) query.set("operation", operation);
   if (workloadClass !== undefined) query.set("class", workloadClass);
-  return `/api/observe/${OBSERVED_PROJECT}/window?${query}`;
+  return `/api/observe/${encodeURIComponent(service)}/window?${query}`;
 }
 
 function notModifiedWithoutBase(path: string): never {
@@ -111,7 +111,7 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
     const scoped = scopedSpec(policy, comparison.spec);
     const read = (side: "before" | "after", base: StatsWindow | undefined) => {
       const query = windowQuery(scoped, side);
-      return conditional(observeWindowPath(query.fromMs, query.toMs, query.operation), decodeStatsWindow, base, HISTORY_BODY_LIMIT);
+      return conditional(observeWindowPath(OBSERVED_PROJECT, query.fromMs, query.toMs, query.operation), decodeStatsWindow, base, HISTORY_BODY_LIMIT);
     };
     const before = await read("before", previous?.windows?.before);
     const after = await read("after", previous?.windows?.after);

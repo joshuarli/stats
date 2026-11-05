@@ -347,6 +347,25 @@ none of these fields.
 returns one half-open window: operation rows, outcome rows, invocation rows and
 lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes
 the same Access check as every observe route.
+For a sampled service it adds `counts`: one row per `(version, stage, route,
+operation)` with `count` (kept plus sampled-out), `failed`, `cpuMsSum` and
+`wallMsSum`, summed from `observe_count_entries` over the window's ok and
+failed outcomes, so the totals are exact for every flushed event. `operation`
+is the name the event's operation message carried, or empty. `operation` in
+the query filters these rows too. A service that keeps everything has no
+`counts`; its per-operation totals are the `operations` rows.
+
+`statsctl observe operations --project SERVICE --window 1h --json` reads this
+window for any observed service and totals it by operation. For `stats` the
+payload's `source` is `summaries`: one row per operation, workload class and
+synthetic flag with count, failed, CPU, wall, rows read and written,
+statements and ingest lag. For a sampled service `source` is `counts`: one row
+per stage, route and operation, where an empty operation takes the name the
+service policy gives the route (`labelOperation`; for Nanoshop
+`request.<route>`, `store.rpc.<method>`, `store.alarm`) or `null`. Nanoshop
+publishes invocation marks and caught-error reports but no operation messages,
+so its rows carry no SQLite rows, statements or lag; those exist only where
+the producer publishes an operation summary.
 
 The coverage rule (`src/compare/coverage.ts`) decides whether the observed
 counts can support a verdict. For each side of a comparison it sums the
