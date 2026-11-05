@@ -18,7 +18,7 @@ const FALLBACK_ORIGIN = "http://stats.internal";
 
 function originOf(headers: Headers): string {
   const host = headers.get("Host");
-  if (host === null || !/^[A-Za-z0-9.:\[\]-]+$/u.test(host)) return FALLBACK_ORIGIN;
+  if (host === null || !/^[A-Za-z0-9.:[\]-]+$/u.test(host)) return FALLBACK_ORIGIN;
   return `${headers.get("X-Forwarded-Proto") === "https" ? "https" : "http"}://${host}`;
 }
 
