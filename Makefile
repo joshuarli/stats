@@ -62,6 +62,7 @@ cloudflare-test: work-ready
 dashboard-test: work-ready
 	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build:observe
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:ui
 
 dashboard-bench: work-ready node-ready
