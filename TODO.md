@@ -1,5 +1,23 @@
 Prefix: STA
-Next: 50
+Next: 52
+
+### STA-51 · P2 · Two production behaviors that sampling relies on are unverified
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/cloudflare/store-object.ts` (`samplingOf`), `cloudflare/src/observe/cloudflare/worker.ts` (`tail`)
+- **Problem:** The store reads its service from `ctx.id.name`, which local workerd sets in the constructor and in an alarm after a restart. Production is unchecked, and an unnamed object makes every observe call for that service throw. The idle flush holds a timer in `ctx.waitUntil` for 60 s; whether production lets a tail invocation live that long is unchecked.
+- **Recommendation:** Before the first sampled deploy, read `GET /api/observe/stats/health` and `statsctl observe routes --project stats` after the deploy, and watch `flushes` in a sampled service's health. If an object is unnamed, pass the service on each call; if the timer is cut short, drop it and accept that an idle isolate flushes on its next event.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
+
+- **Area:** Observability
+- **Where:** `cloudflare/src/observe/cloudflare/tail.ts` (`readChannel`), `docs/architecture.md` (Sampling relies on each invocation's tail event)
+- **Problem:** In local workerd, when RPCs overlap on one Durable Object instance, diagnostics-channel messages land on other invocations' tail events: five at a time produced events with zero to four messages. An object event with none is untraced, so a sampled service always keeps it. One with two operation messages is rejected as `rejected-invalid`. Nanoshop's one `TenantStore` object per shop is exactly this shape. Production is unmeasured.
+- **Recommendation:** Measure the share of untraced and rejected object events once Nanoshop runs locally under load. If it is high, find a mark that does not travel by diagnostics channel, or sample object events by a key that does not need the trace.
+- **Fix with:** none
+- **Effort:** M
 
 ### STA-46 · P3 · Decide whether to cap stored JSON per ingest request
 
