@@ -7,6 +7,7 @@ import { OTHER_ROUTE, type CountDelta } from "../../src/observe/core/model.ts";
 import { cleanup, health, ingest, nextCleanupAt, statsWindow, type SqlDatabase } from "../../src/observe/core/store.ts";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { COUNT_BUCKET_MS, HEALTH_BUCKET_MS, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "../../src/observe/core/limits.ts";
+import { cleanupCounts, recordCounts } from "../../src/observe/core/counts.ts";
 import { sampled } from "../../src/observe/core/sampling.ts";
 import { decodeExploration, decodeHealth, decodeObjectMethods, decodeStatsWindow, decodeTrace, decodeTraces } from "../../src/observe/client/decode.ts";
 import { T0, VERSION, database, hex } from "./support.ts";
@@ -91,7 +92,7 @@ function generate(count: number, seed: number): Generated {
 
 function tally(db: SqlDatabase) {
   const rows = db.rows<{ stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu: number; wall: number }>(
-    "SELECT stage, outcome, route, operation, SUM(kept) AS kept, SUM(sampled_out) AS sampled_out, SUM(cpu_ms_sum) AS cpu, SUM(wall_ms_sum) AS wall FROM observe_counts GROUP BY stage, outcome, route, operation"
+    "SELECT stage, outcome, route, operation, SUM(kept) AS kept, SUM(sampled_out) AS sampled_out, SUM(cpu_ms_sum) AS cpu, SUM(wall_ms_sum) AS wall FROM observe_count_entries GROUP BY stage, outcome, route, operation"
   );
   return new Map(rows.map(row => [[row.stage, row.outcome, row.route, row.operation].join("|"), row]));
 }
@@ -151,10 +152,10 @@ await test("every always-keep case is stored with its count, and an untraced inv
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, cases.length);
   assert.equal(batch.counts.length, 0);
-  const row = db.rows<{ kept: number; sampled_out: number }>("SELECT SUM(kept) AS kept, SUM(sampled_out) AS sampled_out FROM observe_counts")[0]!;
+  const row = db.rows<{ kept: number; sampled_out: number }>("SELECT SUM(kept) AS kept, SUM(sampled_out) AS sampled_out FROM observe_count_entries")[0]!;
   assert.deepEqual([row.kept, row.sampled_out], [cases.length, 0]);
-  const untraced = db.rows<{ count: number }>("SELECT count FROM observe_sampling_events WHERE counter = 'untraced'");
-  assert.deepEqual(untraced.map(entry => entry.count), [1]);
+  const untraced = db.rows<{ untraced: number }>("SELECT untraced FROM observe_counts");
+  assert.deepEqual(untraced.map(entry => entry.untraced), [1]);
 });
 
 await test("an invalid event of a sampled service keeps today's rejection and is not counted", async () => {
@@ -183,7 +184,7 @@ await test("excluded events of a sampled service are counted by outcome, not sto
   ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, 0);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
-  assert.deepEqual(db.rows<{ outcome: string; route: string; sampled_out: number }>("SELECT outcome, route, SUM(sampled_out) AS sampled_out FROM observe_counts GROUP BY outcome, route ORDER BY outcome, route").map(row => ({ ...row })), [
+  assert.deepEqual(db.rows<{ outcome: string; route: string; sampled_out: number }>("SELECT outcome, route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY outcome, route ORDER BY outcome, route").map(row => ({ ...row })), [
     { outcome: "excluded-route", route: OTHER_ROUTE, sampled_out: 2 },
     { outcome: "excluded-status:401", route: "GET /cart", sampled_out: 1 },
     { outcome: "excluded-status:404", route: OTHER_ROUTE, sampled_out: 1 }
@@ -199,7 +200,7 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
   const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 1, wallMsSum: 1 };
   const counts = Array.from({ length: MAX_OUTCOME_ROUTES_PER_CLASS + 5 }, (_, n): CountDelta => ({ ...base, route: `GET /r${n}` }));
   ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts });
-  const routes = db.rows<{ route: string; sampled_out: number }>("SELECT route, SUM(sampled_out) AS sampled_out FROM observe_counts GROUP BY route");
+  const routes = db.rows<{ route: string; sampled_out: number }>("SELECT route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY route");
   assert.equal(routes.length, MAX_OUTCOME_ROUTES_PER_CLASS + 1);
   assert.equal(routes.find(row => row.route === OTHER_ROUTE)?.sampled_out, 5);
   const refused: CountDelta[] = [
@@ -213,7 +214,7 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
   ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: refused });
   const reasons = health(db, nowMs, SHOP.sampling).reasons.map(reason => [reason.counter, reason.reason, reason.count]);
   assert.deepEqual(reasons, [["rejected", "invalid_count", 5], ["expired", "counts", 1]]);
-  assert.equal(db.rows<{ n: number }>("SELECT SUM(sampled_out) AS n FROM observe_counts")[0]!.n, MAX_OUTCOME_ROUTES_PER_CLASS + 5);
+  assert.equal(db.rows<{ n: number }>("SELECT SUM(sampled_out) AS n FROM observe_count_entries")[0]!.n, MAX_OUTCOME_ROUTES_PER_CLASS + 5);
 });
 
 await test("a count with a future bucket lands in the current bucket", () => {
@@ -249,7 +250,7 @@ await test("a service that keeps everything writes nothing to the count tables, 
   const batch = await prepareTailItems(items, POLICIES["usr-memories"], nowMs);
   assert.deepEqual(batch.counts, []);
   ingest(all, batch.preparations, nowMs, batch.outcomes, { sampling: POLICIES["usr-memories"].sampling, counts: batch.counts });
-  assert.equal(all.rows("SELECT 1 FROM observe_counts").length + all.rows("SELECT 1 FROM observe_sampling_events").length, 0);
+  assert.equal(all.rows("SELECT 1 FROM observe_counts").length, 0);
 
   const db = database();
   const shop = await prepareTailItems(items, SHOP, nowMs);
@@ -257,7 +258,7 @@ await test("a service that keeps everything writes nothing to the count tables, 
   const later = nowMs + RETENTION_MS + 2 * HEALTH_BUCKET_MS;
   assert.ok(nextCleanupAt(db, nowMs, { deleted: 0, evicted: 0, more: false }) !== null);
   cleanup(db, later);
-  assert.equal(db.rows("SELECT 1 FROM observe_counts").length + db.rows("SELECT 1 FROM observe_sampling_events").length, 0);
+  assert.equal(db.rows("SELECT 1 FROM observe_counts").length, 0);
 });
 
 await test("the service answers a sampled window, explore, and traces with the policy's sampling summary and exact route counts", async () => {
@@ -290,4 +291,83 @@ await test("the service answers a sampled window, explore, and traces with the p
   assert.deepEqual(decodeTrace(wire(trace), hex(11, 32)).sampling, summary);
   assert.deepEqual(decodeHealth(wire(await service.health())).sampling, (await service.health()).sampling);
   assert.throws(() => decodeExploration(wire({ ...explored, sampling: { keepPerMillion: 2_000_000, kept: 0, observed: 0 } })));
+});
+
+function flushOf(random: () => number, bucketAt: number, keys: number, events: number): CountDelta[] {
+  const deltas: CountDelta[] = [];
+  for (let n = 0; n < events; n++) {
+    const key = Math.floor(random() * keys);
+    const failed = random() < 0.1;
+    deltas.push({
+      bucketAt, version: VERSION, stage: key % 2 === 0 ? "worker" : "object", route: `GET /r${key}`, operation: `request.r${key}`, outcome: failed ? "failed" : "ok",
+      kept: random() < 0.2 ? 1 : 0, sampledOut: 1, cpuMsSum: 1 + Math.floor(random() * 5), wallMsSum: 5 + Math.floor(random() * 60)
+    });
+  }
+  return deltas;
+}
+
+function totals(deltas: readonly CountDelta[]): Map<string, number[]> {
+  const sums = new Map<string, number[]>();
+  for (const delta of deltas) {
+    const key = [delta.bucketAt, delta.stage, delta.outcome, delta.route, delta.operation].join("|");
+    const sum = sums.get(key) ?? [0, 0, 0, 0];
+    sums.set(key, [sum[0]! + delta.kept, sum[1]! + delta.sampledOut, sum[2]! + delta.cpuMsSum, sum[3]! + delta.wallMsSum]);
+  }
+  return sums;
+}
+
+await test("many flushes from several isolates merge into one row per bucket and sum exactly", () => {
+  const db = database();
+  const next = random(31);
+  const nowMs = START + 3 * COUNT_BUCKET_MS + 10_000;
+  const sent: CountDelta[] = [];
+  let flushes = 0;
+  for (let round = 0; round < 40; round++) {
+    for (let isolate = 0; isolate < 3; isolate++) {
+      const buckets = [START + Math.floor(next() * 4) * COUNT_BUCKET_MS];
+      if (next() < 0.3) buckets.push(START + Math.floor(next() * 4) * COUNT_BUCKET_MS);
+      const flush = buckets.flatMap(bucketAt => flushOf(next, bucketAt, 14, 1 + Math.floor(next() * 200)));
+      const before = db.rowsWritten();
+      recordCounts(db, nowMs, flush, { untraced: 0, flush: 1 });
+      assert.equal(db.rowsWritten() - before, new Set(flush.map(delta => delta.bucketAt)).size, "a flush writes one row per bucket it touches, however many keys it carries");
+      sent.push(...flush);
+      flushes++;
+    }
+  }
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_counts")[0]!.n, 4);
+  assert.equal(db.rows<{ n: number }>("SELECT SUM(flushes) AS n FROM observe_counts")[0]!.n, flushes);
+  const stored = new Map(db.rows<{ bucket_at: number; stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu_ms_sum: number; wall_ms_sum: number }>(
+    "SELECT bucket_at, stage, outcome, route, operation, kept, sampled_out, cpu_ms_sum, wall_ms_sum FROM observe_count_entries"
+  ).map(row => [[row.bucket_at, row.stage, row.outcome, row.route, row.operation].join("|"), [row.kept, row.sampled_out, row.cpu_ms_sum, row.wall_ms_sum]]));
+  assert.deepEqual([...stored].sort(), [...totals(sent)].sort());
+  assert.equal(sent.reduce((sum, delta) => sum + delta.kept + delta.sampledOut, 0), db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries")[0]!.n);
+});
+
+await test("the route cap holds across flushes because the stored bucket remembers its routes", () => {
+  const db = database();
+  const nowMs = START + 10_000;
+  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, cpuMsSum: 0, wallMsSum: 0 };
+  for (let n = 0; n < MAX_OUTCOME_ROUTES_PER_CLASS + 5; n++) recordCounts(db, nowMs, [{ ...base, route: `GET /r${n}` }], { untraced: 0, flush: 1 });
+  recordCounts(db, nowMs, [{ ...base, route: "GET /r0" }], { untraced: 0, flush: 1 });
+  const rows = db.rows<{ route: string; sampled_out: number }>("SELECT route, sampled_out FROM observe_count_entries");
+  assert.equal(rows.length, MAX_OUTCOME_ROUTES_PER_CLASS + 1);
+  assert.equal(rows.find(row => row.route === OTHER_ROUTE)?.sampled_out, 5);
+  assert.equal(rows.find(row => row.route === "GET /r0")?.sampled_out, 2);
+});
+
+await test("retention deletes one row per expired bucket whatever its key count, and leaves newer totals alone", () => {
+  const db = database();
+  const next = random(5);
+  const old = START - 2 * COUNT_BUCKET_MS;
+  const fresh = START + RETENTION_MS;
+  const nowMs = fresh + 10_000;
+  recordCounts(db, old + RETENTION_MS - 60_000, [...flushOf(next, old, 14, 300), ...flushOf(next, old + COUNT_BUCKET_MS, 14, 300)], { untraced: 0, flush: 1 });
+  const kept = flushOf(next, fresh - (fresh % COUNT_BUCKET_MS), 14, 300);
+  recordCounts(db, nowMs, kept, { untraced: 0, flush: 1 });
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_counts")[0]!.n, 3);
+  const before = db.rowsWritten();
+  cleanupCounts(db, nowMs - RETENTION_MS);
+  assert.equal(db.rowsWritten() - before, 2);
+  assert.deepEqual(db.rows<{ bucket_at: number }>("SELECT bucket_at FROM observe_counts").map(row => row.bucket_at), [fresh - (fresh % COUNT_BUCKET_MS)]);
+  assert.equal(db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries")[0]!.n, kept.reduce((sum, delta) => sum + delta.kept + delta.sampledOut, 0));
 });

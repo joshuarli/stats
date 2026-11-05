@@ -54,7 +54,7 @@ for (const service of ["stats", "usr-memories"] as const) {
       rows.push(db.rowsWritten() - before);
     }
     assert.deepEqual(rows, SCENARIOS[service].rows);
-    assert.equal(db.rows("SELECT 1 FROM observe_counts").length + db.rows("SELECT 1 FROM observe_sampling_events").length, 0);
+    assert.equal(db.rows("SELECT 1 FROM observe_counts").length, 0);
     const api = createObserveService(db, { now: () => now + 1_000, databaseBytes: () => 0 });
     const from = T0 - 300_000;
     const to = T0 + 3_600_000;

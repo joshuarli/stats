@@ -206,10 +206,10 @@ await test("10,000 seeded events, delivered one per tail batch with buffering on
     clock += 2 * INTERVAL;
     await h.deliver([item(total, clock, 500)], clock);
     await h.fire(clock);
-    const row = db.rows<{ observed: number }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_counts")[0]!;
+    const row = db.rows<{ observed: number }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_count_entries")[0]!;
     assert.equal(row.observed, total + 1);
     const keptRows = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n;
-    const keptCount = db.rows<{ n: number }>("SELECT SUM(kept) AS n FROM observe_counts")[0]!.n;
+    const keptCount = db.rows<{ n: number }>("SELECT SUM(kept) AS n FROM observe_count_entries")[0]!.n;
     assert.equal(keptRows, keptCount);
     assert.ok(h.calls.length < (total + 1) * 0.05, `${h.calls.length} store calls for ${total + 1} events`);
     assert.equal(h.buffer.size, 0);
@@ -224,10 +224,10 @@ await test("an evicted isolate loses at most the counts buffered since its last 
   const first = harness(direct);
   let events = 0;
   for (let n = 0; n < 200; n++) { await first.deliver([quietItem(n, START)], START + n * 500); events++; }
-  const recorded = db.rows<{ observed: number | null }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_counts")[0]!.observed ?? 0;
+  const recorded = db.rows<{ observed: number | null }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_count_entries")[0]!.observed ?? 0;
     const second = harness(direct);
   await second.deliver([item(9_999, START + 100_000, 500)], START + 100_000);
-  const after = db.rows<{ observed: number }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_counts")[0]!.observed;
+  const after = db.rows<{ observed: number }>("SELECT SUM(kept + sampled_out) AS observed FROM observe_count_entries")[0]!.observed;
   assert.equal(after, recorded + 1, "the new isolate never sees the lost buffer");
   const lost = events - recorded;
   assert.ok(lost > 0 && lost <= INTERVAL / 500, `${lost} events lost, at most the ${INTERVAL / 500} that arrive in one flush interval`);

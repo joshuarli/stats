@@ -1,7 +1,8 @@
 import { addCount, countBucket } from "./counts.ts";
+import { COUNT_BUCKET_MS } from "./limits.ts";
 import type { CountDelta, OutcomeEvent, Preparation } from "./model.ts";
 
-export const COUNT_FLUSH_INTERVAL_MS = 60_000;
+export const COUNT_FLUSH_INTERVAL_MS = COUNT_BUCKET_MS;
 export const IDLE_FLUSH_MS = 20_000;
 export const MAX_BUFFERED_COUNT_KEYS = 1_000;
 

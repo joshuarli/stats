@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { collectorModules, ROOT, until, type Page, type TraceSummary } from "./harness.ts";
+import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
+import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
 import type { Health, Exploration, ObjectMethods, StatsWindow } from "../../src/observe/core/store.ts";
 
 const COMPAT = { compatibilityDate: "2026-10-30", compatibilityFlags: ["nodejs_compat"] };
@@ -109,7 +111,7 @@ await test("a sampled service is counted exactly, keeps a trace's Worker and Dur
     const total = (value: Health) => (value.sampling?.kept ?? 0) + (value.sampling?.sampledOut ?? 0) + (value.sampling?.excluded ?? 0);
     while (total(health) !== events + triggers) {
       assert.ok(triggers < 5, `flushed ${total(health)} of ${events + triggers} events`);
-      await shop.collectorClockForward(61_000);
+      await shop.collectorClockForward(COUNT_FLUSH_INTERVAL_MS + 1_000);
       await shop.send("/cart");
       triggers++;
       health = await until(() => shop.observe<Health>("/health"), value => total(value) >= events + triggers, "the flush").catch(() => shop.observe<Health>("/health"));
@@ -119,14 +121,14 @@ await test("a sampled service is counted exactly, keeps a trace's Worker and Dur
     assert.deepEqual([sampling.kept + sampling.sampledOut, sampling.excluded, sampling.untraced], [observedEvents, assets, 0]);
     assert.equal(health.liveInvocations, sampling.kept);
     assert.ok(sampling.kept < observedEvents / 10, `${sampling.kept} kept`);
-    assert.deepEqual([sampling.policy.keepPerMillion, health.rejected], [10_000, 0]);
+    assert.deepEqual([sampling.policy.keepPerMillion, health.rejected], [NANOSHOP_SAMPLING.keepPerMillion, 0]);
     assert.ok(health.writes.ingestBatches < observedEvents / 20, `${health.writes.ingestBatches} store calls for ${observedEvents} events`);
 
     const bucket = Math.floor(Date.now() / COUNT_BUCKET_MS) * COUNT_BUCKET_MS;
     const window = await shop.observe<StatsWindow>(`/window?from=${bucket - COUNT_BUCKET_MS}&to=${bucket + 2 * COUNT_BUCKET_MS}`);
     assert.equal(window.invocations.reduce((sum, row) => sum + row.count, 0), observedEvents);
     assert.equal(window.outcomes.filter(row => row.outcome === "excluded-route").reduce((sum, row) => sum + row.count, 0), assets);
-    assert.deepEqual(window.sampling, { keepPerMillion: 10_000, kept: sampling.kept, observed: observedEvents });
+    assert.deepEqual(window.sampling, { keepPerMillion: NANOSHOP_SAMPLING.keepPerMillion, kept: sampling.kept, observed: observedEvents });
 
     const range = `from=${bucket - COUNT_BUCKET_MS}&to=${bucket + 2 * COUNT_BUCKET_MS}`;
     const explored = await shop.observe<Exploration>(`/explore?${range}`);

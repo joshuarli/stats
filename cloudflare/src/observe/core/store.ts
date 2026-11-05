@@ -2,7 +2,7 @@ import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PA
 import { OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
-import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, recordSamplingEvents, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
+import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 
@@ -515,10 +515,9 @@ export function ingest(db: SqlDatabase, preparations: readonly Preparation[], no
     }
     recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
-    const recorded = recordCounts(db, nowMs, counts);
+    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 });
     for (let n = 0; n < recorded.invalid; n++) events.push({ counter: "rejected", reason: "invalid_count", example: null });
     for (let n = 0; n < recorded.expired; n++) events.push({ counter: "expired", reason: "counts", example: null });
-    recordSamplingEvents(db, nowMs, { untraced, flush: counting.counts.length > 0 ? 1 : 0 });
     recordHealth(db, nowMs, events);
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
@@ -755,7 +754,7 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
     if (outcomeExcess > 0) {
       db.run("DELETE FROM observe_outcomes WHERE (bucket_at, version, stage, outcome, route) IN (SELECT bucket_at, version, stage, outcome, route FROM observe_outcomes ORDER BY bucket_at LIMIT ?)", outcomeExcess);
     }
-    const countExcess = cleanupCounts(db, cutoff, CLEANUP_BATCH);
+    cleanupCounts(db, cutoff);
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -767,8 +766,7 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
       ...Array.from({ length: evicted.invocations }, (): HealthEvent => ({ counter: "evicted", reason: "invocations", example: null })),
       ...Array.from({ length: evicted.occurrences }, (): HealthEvent => ({ counter: "evicted", reason: "occurrences", example: null })),
       ...Array.from({ length: Math.max(operationExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "operations", example: null })),
-      ...Array.from({ length: Math.max(outcomeExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "outcomes", example: null })),
-      ...Array.from({ length: countExcess }, (): HealthEvent => ({ counter: "evicted", reason: "counts", example: null }))
+      ...Array.from({ length: Math.max(outcomeExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "outcomes", example: null }))
     ]);
     recordWriteCost(db, nowMs, "cleanup", Math.min(expiredInvocations, CLEANUP_BATCH) + evicted.invocations, db.rowsWritten() - writtenBefore);
     const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);

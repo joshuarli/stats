@@ -209,9 +209,14 @@ in five-minute buckets and bounded to 100,000 rows:
   records the `filter_revision` that excluded it.
 
 A third additive table, `observe_counts`, is written only for a service whose
-policy samples. It is keyed by `(bucket_at, version, stage, outcome, route,
-operation)` in the same five-minute event-time buckets, and holds `kept`,
-`sampled_out`, `cpu_ms_sum` and `wall_ms_sum`. Its `outcome` is `ok`, `failed`,
+policy samples. It holds one row per five-minute event-time bucket, so a flush
+writes one row per bucket it touches however many keys it carries, and
+retention deletes one row per bucket. The row's `entries` column is a JSON array
+with one element per `(version, stage, outcome, route, operation)` key holding
+`kept`, `sampledOut`, `cpuMsSum` and `wallMsSum`, merged in the store
+transaction; the `untraced` and `flushes` columns count the sampling events of
+the calls that wrote the row. The view `observe_count_entries` presents the
+elements as rows for reads. An element's `outcome` is `ok`, `failed`,
 or one of the four `excluded-*` classes; the operation is the generic operation
 name that stats-style summaries do not carry, empty when an event has none. The
 store counts a kept invocation in the same transaction that stores it, so a
@@ -221,15 +226,14 @@ excluded event is never kept) and sends those counts with the batch. Each
 bucket, version, stage and outcome keeps at most 32 routes, then folds the rest
 into `other`. For a sampled service the window's invocation rows and its
 excluded outcome rows come from this table, so they total every event, kept or
-not. `observe_sampling_events` holds the hourly `untraced` and `flush`
-counters. Neither table has a row for a service that keeps everything, so
-`stats` and `usr-memories` write and answer exactly as before.
+not. The table has no row for a service that keeps everything, so `stats` and
+`usr-memories` write and answer exactly as before.
 
 A sampled-out event costs no store request of its own. The tail Worker counts
 each sampled service's sampled-out and excluded events in a per-isolate buffer
 (`src/observe/core/count-buffer.ts`) keyed like `observe_counts`, and sends the
 buffer to the service's store in one call when it is older than
-`COUNT_FLUSH_INTERVAL_MS` (60 s) or its oldest count falls in an earlier
+`COUNT_FLUSH_INTERVAL_MS` (the five-minute bucket width) or its oldest count falls in an earlier
 five-minute bucket than the event now arriving. If the event that finds the
 buffer due has invocations or outcomes of its own, the buffer rides on that
 call; otherwise it goes alone. A kept event that finds a young buffer writes
@@ -242,7 +246,7 @@ timer armed within the last 10 seconds already covers it; the timer sleeps
 `IDLE_FLUSH_MS` (20 s) and flushes only if no batch has added counts for 10
 seconds. Counts left in an isolate that receives no further event are therefore
 flushed within 20 s of the last batch, and a busy isolate flushes by the interval
-rule above. Each flush adds one to the `flush` counter.
+rule above. Each flush adds one to the bucket row's `flushes` column.
 
 Counts are exact for every event that reaches the collector and is flushed.
 A flush is at most once: the buffer is emptied before the store call, so a
