@@ -4,8 +4,8 @@
 
 - **Goal:** the same stats core runs as a Cloudflare Worker (today's production, unchanged) and as a Node.js server in a container on `josh@threadripper`, reachable only on the tailnet. Cloudflare-only features become an adapter layer on top, as in Nanoshop.
 - **Baseline:** master `b9f8fb0`. Full set at `425fb3e` (code unchanged since): fixtures, agent-test, release, agent-e2e, smoke-local, dashboard-test (114), and lint pass; `cloudflare-test` 297 of 297 in 5 reruns, with one load-only failure (STA-54). `pnpm --dir cloudflare run bench:workerd ingest-rows` reads `writtenPerSample 7.762`, which P1 must reproduce exactly.
-- **Accepted:** P0. **Red:** none. **Parked:** none.
-- **Next:** P1, after STA-52 merges (both touch `observe/core/store.ts`).
+- **Accepted:** P0; P1 (`d1ecf35`..`8936b5d` on master): `Installation` runs on SQL, clock, scheduler, and operation-sink ports in `src/core/installation/`, with Cloudflare adapters in `src/cloudflare/` and `node:sqlite` ones in `src/node/`. Every SQL statement is unchanged (the full statement set over `src` compared), `bench:workerd ingest-rows` reads 7.762, and `test/node/parity.test.ts` finds the acks, history bodies, and ETags of all 37 fixture batches byte-identical between workerd and node:sqlite. `make cloudflare-test lint agent-e2e smoke-local fixtures` green after the rebase onto STA-52. **Red:** none. **Parked:** none.
+- **Next:** P2. Carry-overs from P1: core still imports `windowStartMs` from `projects/collector.ts` and the wrapper imports `deploymentsEnabled` from `deployments/collector.ts` (move both before moving the collectors); `observe/core/store.ts` keeps its own `SqlDatabase`, which P2 replaces with `core/sql.ts`; core imports `observe/producer/{channel,report}.ts`, which are portable and allowed by the import test.
 - **Resume:** `Execute docs/portable-core-campaign.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
 ## Charter
