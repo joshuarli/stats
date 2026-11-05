@@ -1,0 +1,133 @@
+import { bearerToken } from "../auth.ts";
+import { HISTORY_CONTENT_TYPE } from "../binary/history.ts";
+import { readLimitedText } from "../body.ts";
+import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "../ingest/http.ts";
+import { MAX_BODY_BYTES } from "../limits.ts";
+import { MAX_ARTIFACT_BYTES } from "../observe/core/limits.ts";
+
+export type AuthDecision =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly status: 401 | 503; readonly message: string };
+
+export type ObserveService = (target: string, init?: RequestInit) => Promise<Response>;
+
+export interface StatsTarget {
+  readonly authorize: (request: Request) => Promise<AuthDecision>;
+  readonly installation: (request: Request) => Promise<Response>;
+  readonly assets: (request: Request) => Promise<Response>;
+  readonly observe: ObserveService | null;
+}
+
+const SECURITY: Record<string, string> = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()"
+};
+
+const ASSET_CACHE = "private, max-age=31536000, immutable";
+const OBSERVE_PREFIX = "/api/observe";
+const MAX_OBSERVE_BODY_BYTES = 256;
+
+function secure(response: Response, cacheControl = "no-store"): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY)) headers.set(name, value);
+  headers.set("Cache-Control", cacheControl);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function acceptedCoding(header: string | null): "br" | "gzip" | null {
+  if (header === null) return null;
+  const weights = new Map<string, number>();
+  for (const part of header.split(",")) {
+    const [coding = "", ...parameters] = part.trim().toLowerCase().split(";");
+    const quality = parameters.map(parameter => parameter.trim()).find(parameter => parameter.startsWith("q="));
+    weights.set(coding.trim(), quality === undefined ? 1 : Number(quality.slice(2)));
+  }
+  const allows = (coding: string) => (weights.get(coding) ?? weights.get("*") ?? 0) > 0;
+  return allows("br") ? "br" : allows("gzip") ? "gzip" : null;
+}
+
+function negotiated(request: Request, response: Response): Response {
+  if (response.status !== 200 && response.status !== 304) return response;
+  const headers = new Headers(response.headers);
+  headers.append("Vary", "Accept-Encoding");
+  const coding = response.status === 200 && headers.get("Content-Type") === HISTORY_CONTENT_TYPE ? acceptedCoding(request.headers.get("Accept-Encoding")) : null;
+  if (coding !== null) headers.set("Content-Encoding", coding);
+  return new Response(response.status === 304 ? null : response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function error(status: number, code: string, message: string): Response {
+  return secure(Response.json({ error: { code, message } }, { status }));
+}
+
+function denied(decision: Extract<AuthDecision, { ok: false }>): Response {
+  return error(decision.status, decision.status === 503 ? "unavailable" : "unauthorized", decision.message);
+}
+
+function logIngestRejection(code: string): void {
+  console.error(JSON.stringify({ event: "ingest_rejected", code }));
+}
+
+function internal(request: Request, path: string): Request {
+  const url = new URL(request.url);
+  return new Request(`https://installation${path}${url.search}`, request);
+}
+
+async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {
+  const decision = await target.authorize(request);
+  if (!decision.ok) return denied(decision);
+  if (target.observe === null) return error(503, "unavailable", "observability is not available on this target");
+  const url = new URL(request.url);
+  const service = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
+  if (request.method === "GET") return secure(await target.observe(service));
+  const write = request.method === "POST" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/issues\/[0-9a-f]{64}\/state$/u.test(path) ? MAX_OBSERVE_BODY_BYTES
+    : request.method === "PUT" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/artifacts\/[^/]+\/[^/]+$/u.test(path) ? MAX_ARTIFACT_BYTES
+    : null;
+  if (write === null) return error(405, "invalid_request", "method not allowed");
+  if (request.headers.get("Origin") !== url.origin) return error(403, "forbidden", "cross-origin request");
+  const body = await readLimitedText(request, write);
+  if (body === null) return error(413, "too_large", "body exceeds the cap");
+  return secure(await target.observe(service, { method: request.method, headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }));
+}
+
+export async function handleStatsRequest(request: Request, target: StatsTarget): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
+  if (path.startsWith(`${OBSERVE_PREFIX}/`)) return observe(request, target, path);
+  if (RETIRED_INGEST_PATHS.has(path)) {
+    logIngestRejection("gone");
+    return error(410, "gone", "this ingest protocol was removed; upgrade the agent to one that posts to /ingest/v2/batches");
+  }
+  if (path === INGEST_PATH) {
+    if (request.method !== "POST") return error(405, "invalid_request", "POST required");
+    if (bearerToken(request.headers.get("authorization")) === null) {
+      logIngestRejection("unauthorized");
+      return error(401, "unauthorized", "a host bearer token is required");
+    }
+    const media = mediaProblem(request.headers);
+    if (media !== null) {
+      logIngestRejection("invalid_request");
+      return error(415, "invalid_request", media);
+    }
+    const declared = request.headers.get("content-length");
+    if (declared !== null && Number(declared) > MAX_BODY_BYTES) {
+      logIngestRejection("too_large");
+      return error(413, "too_large", "batch exceeds the body cap");
+    }
+    return secure(await target.installation(internal(request, "/ingest")));
+  }
+  if (path.startsWith("/api/v1/")) {
+    const decision = await target.authorize(request);
+    if (!decision.ok) return denied(decision);
+    const suffix = path.slice("/api/v1".length);
+    if (!/^\/(hosts|admin\/hosts|projects)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
+    const response = await target.installation(internal(request, suffix));
+    return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") return error(405, "invalid_request", "method not allowed");
+  const decision = await target.authorize(request);
+  if (!decision.ok) return denied(decision);
+  return secure(await target.assets(request), path.startsWith("/assets/") ? ASSET_CACHE : "no-store");
+}
