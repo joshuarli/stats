@@ -6,12 +6,15 @@ export interface SqlRows {
   readonly statements: number;
 }
 
-export interface SqlDatabase {
+export interface SqlStatements {
   rows<T>(query: string, ...params: SqlValue[]): T[];
-  each<T>(query: string, params: readonly SqlValue[], visit: (row: T) => void): void;
   run(query: string, ...params: SqlValue[]): void;
   transaction<T>(fn: () => T): T;
   rowsWritten(): number;
+}
+
+export interface SqlDatabase extends SqlStatements {
+  each<T>(query: string, params: readonly SqlValue[], visit: (row: T) => void): void;
   total(): SqlRows;
   databaseBytes(): number;
 }

@@ -1,9 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
-import type { SqlDatabase, SqlValue } from "../../src/observe/core/store.ts";
+import type { SqlStatements, SqlValue } from "../../src/core/sql.ts";
 import { initializeStore } from "../../src/observe/core/store.ts";
 import type { ObservedInvocation, Preparation, PreparedInvocation } from "../../src/observe/core/model.ts";
 
-export interface TestDatabase extends SqlDatabase {
+export interface TestDatabase extends SqlStatements {
   readonly db: DatabaseSync;
   failOnRun: ((query: string) => boolean) | null;
 }

@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type ObservedError, type ObservedInvocation, type Preparation, type PreparedInvocation } from "../../src/observe/core/model.ts";
-import { ingest, initializeStore, listIssues, recordRollouts, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { ingest, initializeStore, listIssues, recordRollouts, setIssueState } from "../../src/observe/core/store.ts";
+import type { SqlStatements } from "../../src/core/sql.ts";
 import { wrap } from "../observe/support.ts";
 import { createObserveService, type ObserveService } from "../../src/observe/core/service.ts";
 import { encode, type SourceMapSegment } from "@jridgewell/sourcemap-codec";
@@ -86,14 +87,14 @@ function bundleMap(version: string): string {
 }
 
 export interface Scenario {
-  readonly db: SqlDatabase;
+  readonly db: SqlStatements;
   readonly deployments: DeploymentHistory;
   readonly invocations: number;
 }
 
 export async function buildScenario(now: number): Promise<Scenario> {
   const raw = new DatabaseSync(":memory:");
-  const db: SqlDatabase = wrap(raw);
+  const db: SqlStatements = wrap(raw);
   initializeStore(db);
   const next = random(20261104);
   const plan = rollouts(now);

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, DURATION_EDGES, explore, health, objectMethods, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { cleanup, DURATION_EDGES, explore, health, objectMethods, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState } from "../../src/observe/core/store.ts";
+import type { SqlStatements } from "../../src/core/sql.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 
 const M = 60_000;
@@ -19,7 +20,7 @@ const uncaught: ObservedError = { source: "uncaught", operation: null, name: "Ty
 const propagated: ObservedError = { ...uncaught, stack: null };
 const caught: ObservedError = { source: "caught", operation: "ingest.store", name: "AppError", message: "cause a", stack: BUNDLE_STACK };
 
-function counts(db: SqlDatabase): { invocations: number; occurrences: number; issues: number } {
+function counts(db: SqlStatements): { invocations: number; occurrences: number; issues: number } {
   const n = (table: string): number => db.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)[0]!.n;
   return { invocations: n("observe_invocations"), occurrences: n("observe_occurrences"), issues: n("observe_issues") };
 }

@@ -1,7 +1,7 @@
 import { COUNT_BUCKET_MS, MAX_LABEL_BYTES, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "./limits.ts";
 import { COUNT_OUTCOMES, EXCLUDED_OUTCOMES, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage } from "./model.ts";
 import type { SampledPolicy } from "./sampling.ts";
-import type { SqlDatabase, SqlValue } from "./store.ts";
+import type { SqlStatements, SqlValue } from "../../core/sql.ts";
 
 export interface SamplingEvents {
   readonly untraced: number;
@@ -83,7 +83,7 @@ function routeGroup(delta: CountDelta): string {
   return [delta.version, delta.stage, delta.outcome].join("\u0000");
 }
 
-function loadBucket(db: SqlDatabase, bucketAt: number): BucketCounts {
+function loadBucket(db: SqlStatements, bucketAt: number): BucketCounts {
   const entries = new Map<string, CountDelta>();
   const routes = new Map<string, Set<string>>();
   const stored = db.rows<{ entries: string }>("SELECT entries FROM observe_counts WHERE bucket_at = ?", bucketAt)[0];
@@ -97,7 +97,7 @@ function loadBucket(db: SqlDatabase, bucketAt: number): BucketCounts {
   return { bucketAt, entries, routes };
 }
 
-function storeBucket(db: SqlDatabase, bucket: BucketCounts, events: SamplingEvents): void {
+function storeBucket(db: SqlStatements, bucket: BucketCounts, events: SamplingEvents): void {
   const entries = [...bucket.entries.values()].map((delta): StoredEntry => ({
     version: delta.version, stage: delta.stage, outcome: delta.outcome, route: delta.route, operation: delta.operation,
     kept: delta.kept, sampledOut: delta.sampledOut, capped: delta.capped, cpuMsSum: delta.cpuMsSum, wallMsSum: delta.wallMsSum
@@ -109,7 +109,7 @@ function storeBucket(db: SqlDatabase, bucket: BucketCounts, events: SamplingEven
   );
 }
 
-export function recordCounts(db: SqlDatabase, nowMs: number, deltas: readonly CountDelta[], events: SamplingEvents): CountsRecorded {
+export function recordCounts(db: SqlStatements, nowMs: number, deltas: readonly CountDelta[], events: SamplingEvents): CountsRecorded {
   let invalid = 0;
   let expired = 0;
   const newest = countBucket(nowMs, nowMs);
@@ -143,11 +143,11 @@ export function recordCounts(db: SqlDatabase, nowMs: number, deltas: readonly Co
   return { invalid, expired };
 }
 
-export function cleanupCounts(db: SqlDatabase, cutoff: number): void {
+export function cleanupCounts(db: SqlStatements, cutoff: number): void {
   db.run("DELETE FROM observe_counts WHERE bucket_at <= ?", cutoff - COUNT_BUCKET_MS);
 }
 
-export function oldestCountExpiryMs(db: SqlDatabase): number | null {
+export function oldestCountExpiryMs(db: SqlStatements): number | null {
   const oldest = db.rows<{ at: number | null }>("SELECT MIN(bucket_at) AS at FROM observe_counts")[0]?.at ?? null;
   return oldest === null ? null : oldest + COUNT_BUCKET_MS + RETENTION_MS;
 }
@@ -174,7 +174,7 @@ function windowParams(fromMs: number, toMs: number): [number, number] {
   return [fromMs - (fromMs % COUNT_BUCKET_MS), toMs];
 }
 
-export function samplingSummary(db: SqlDatabase, policy: SampledPolicy, fromMs: number, toMs: number, stage: Stage | null = null): SamplingSummary {
+export function samplingSummary(db: SqlStatements, policy: SampledPolicy, fromMs: number, toMs: number, stage: Stage | null = null): SamplingSummary {
   const row = db.rows<{ kept: number | null; observed: number | null }>(
     `SELECT SUM(kept) AS kept, SUM(kept + sampled_out) AS observed FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed') AND (? IS NULL OR stage = ?)`,
     ...windowParams(fromMs, toMs), stage, stage
@@ -182,7 +182,7 @@ export function samplingSummary(db: SqlDatabase, policy: SampledPolicy, fromMs: 
   return { keepPerMillion: policy.keepPerMillion, kept: row?.kept ?? 0, observed: row?.observed ?? 0 };
 }
 
-export function observedByRoute(db: SqlDatabase, fromMs: number, toMs: number, stage: Stage): ReadonlyMap<string, number> {
+export function observedByRoute(db: SqlStatements, fromMs: number, toMs: number, stage: Stage): ReadonlyMap<string, number> {
   const rows = db.rows<{ route: string; observed: number }>(
     `SELECT route, SUM(kept + sampled_out) AS observed FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed') AND stage = ? GROUP BY route`,
     ...windowParams(fromMs, toMs), stage
@@ -190,7 +190,7 @@ export function observedByRoute(db: SqlDatabase, fromMs: number, toMs: number, s
   return new Map(rows.map(row => [row.route, row.observed]));
 }
 
-export function samplingHealth(db: SqlDatabase, nowMs: number, policy: SampledPolicy): SamplingHealth {
+export function samplingHealth(db: SqlStatements, nowMs: number, policy: SampledPolicy): SamplingHealth {
   const cutoff = nowMs - RETENTION_MS;
   const totals = db.rows<{ kept: number | null; sampled_out: number | null; excluded: number | null }>(
     `SELECT SUM(CASE WHEN outcome IN ('ok', 'failed') THEN kept ELSE 0 END) AS kept,
@@ -213,7 +213,7 @@ export interface CountWindow {
   readonly excluded: readonly { readonly bucketAt: number; readonly version: string; readonly stage: Stage; readonly outcome: typeof EXCLUDED_OUTCOMES[number]; readonly count: number }[];
 }
 
-export function countWindow(db: SqlDatabase, fromMs: number, toMs: number): CountWindow {
+export function countWindow(db: SqlStatements, fromMs: number, toMs: number): CountWindow {
   const params: SqlValue[] = [...windowParams(fromMs, toMs)];
   const invocations = db.rows<{ bucket_at: number; version: string; stage: Stage; count: number }>(
     `SELECT bucket_at, version, stage, SUM(kept + sampled_out) AS count FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed')
@@ -226,7 +226,7 @@ export function countWindow(db: SqlDatabase, fromMs: number, toMs: number): Coun
   return { invocations, excluded };
 }
 
-export function versionRequests(db: SqlDatabase, nowMs: number, versions: readonly string[]): ReadonlyMap<string, { readonly requests: number; readonly failed: number }> {
+export function versionRequests(db: SqlStatements, nowMs: number, versions: readonly string[]): ReadonlyMap<string, { readonly requests: number; readonly failed: number }> {
   const rows = db.rows<{ version: string; requests: number; failed: number }>(
     `SELECT version, SUM(kept + sampled_out) AS requests, SUM(CASE WHEN outcome = 'failed' THEN kept + sampled_out ELSE 0 END) AS failed FROM observe_count_entries
      WHERE stage = 'worker' AND outcome IN ('ok', 'failed') AND bucket_at + ? > ? AND version IN (SELECT value FROM json_each(?)) GROUP BY version`,

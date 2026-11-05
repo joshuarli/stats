@@ -7,8 +7,9 @@ import { createSymbolicator } from "./symbolicate.ts";
 import {
   cleanup, eventWindow, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
   type ArtifactResult, type CleanupResult, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
-  type RolloutResult, type SqlDatabase, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
+  type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
 } from "./store.ts";
+import type { SqlStatements } from "../../core/sql.ts";
 
 export interface ServiceHealth extends Health {
   readonly databaseBytes: number;
@@ -42,7 +43,7 @@ export interface ServiceClock {
   readonly databaseBytes: () => number;
 }
 
-export function createObserveService(db: SqlDatabase, clock: ServiceClock, sampling: () => Sampling = () => KEEP_ALL): MaintainedService {
+export function createObserveService(db: SqlStatements, clock: ServiceClock, sampling: () => Sampling = () => KEEP_ALL): MaintainedService {
   const symbolicate = createSymbolicator((version, file) => readArtifact(db, version, file));
   const withSources = <T extends Occurrence>(occurrence: T): T => ({ ...occurrence, frames: symbolicate(occurrence.frames, occurrence.version) });
   const withFrame = <T extends { readonly fingerprint: string; readonly frame: string | null }>(issue: T): T => {

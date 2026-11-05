@@ -5,16 +5,7 @@ import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, versionRequests, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
-
-export type SqlValue = string | number | null;
-
-export interface SqlDatabase {
-  rows<T>(query: string, ...params: SqlValue[]): T[];
-  run(query: string, ...params: SqlValue[]): void;
-  transaction<T>(fn: () => T): T;
-  /** Cumulative rows the backend reports written by `run`, as the backend bills them. */
-  rowsWritten(): number;
-}
+import type { SqlStatements, SqlValue } from "../../core/sql.ts";
 
 export type IssueState = "open" | "resolved";
 
@@ -403,7 +394,7 @@ const STATEMENTS = [
   ...COUNT_STATEMENTS
 ];
 
-export function initializeStore(db: SqlDatabase): void {
+export function initializeStore(db: SqlStatements): void {
   db.transaction(() => {
     for (const statement of STATEMENTS) db.run(statement);
     if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
@@ -420,7 +411,7 @@ export function initializeStore(db: SqlDatabase): void {
 
 const LABEL_REFRESH_MS = 24 * 60 * 60 * 1000;
 
-export function recordRollouts(db: SqlDatabase, preparations: readonly RolloutPreparation[], labels: readonly VersionLabel[], nowMs: number): RolloutResult {
+export function recordRollouts(db: SqlStatements, preparations: readonly RolloutPreparation[], labels: readonly VersionLabel[], nowMs: number): RolloutResult {
   const result: RolloutResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, rejected: 0 };
   db.transaction(() => {
     for (const preparation of preparations) {
@@ -475,7 +466,7 @@ export interface Counting {
 
 const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
 
-export function ingest(db: SqlDatabase, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
+export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
   const counts: CountDelta[] = [...counting.counts];
@@ -540,7 +531,7 @@ interface OutcomeBucket {
   lagSum: number;
 }
 
-export function recordOutcomes(db: SqlDatabase, nowMs: number, events: readonly OutcomeEvent[]): void {
+export function recordOutcomes(db: SqlStatements, nowMs: number, events: readonly OutcomeEvent[]): void {
   if (events.length === 0) return;
   const routes = new Map<string, Set<string>>();
   const buckets = new Map<string, OutcomeBucket>();
@@ -642,7 +633,7 @@ function accumulateOperation(buckets: Map<string, OperationBucket>, invocation: 
   for (const [column, value] of Object.entries(operationWork(summary))) bucket.work[column as OperationWorkColumn] += value;
 }
 
-function recordOperations(db: SqlDatabase, buckets: ReadonlyMap<string, OperationBucket>): void {
+function recordOperations(db: SqlStatements, buckets: ReadonlyMap<string, OperationBucket>): void {
   const additions = ["count", "lag_count", "lag_ms_sum", "failed", "cpu_ms_sum", "wall_ms_sum", "rows_read", "rows_written", "statements", ...OPERATION_WORK_COLUMNS];
   const update = [...additions.map(column => `${column} = ${column} + excluded.${column}`), "lag_ms_max = MAX(lag_ms_max, excluded.lag_ms_max)"].join(", ");
   for (const bucket of buckets.values()) {
@@ -659,7 +650,7 @@ function isFailed(invocation: PreparedInvocation): boolean {
   return isFailedInvocation(invocation);
 }
 
-function insertInvocation(db: SqlDatabase, invocation: PreparedInvocation, observedAt: number): void {
+function insertInvocation(db: SqlStatements, invocation: PreparedInvocation, observedAt: number): void {
   db.run(
     "INSERT INTO observe_invocations (key, digest, observed_at, event_at, trace_id, stage, kind, label, object_id, version, status, outcome, failed, cpu_ms, wall_ms, error_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     invocation.key, invocation.digest, observedAt, invocation.eventAtMs, invocation.trace?.traceId ?? null, invocation.stage, invocation.kind, invocation.label,
@@ -667,7 +658,7 @@ function insertInvocation(db: SqlDatabase, invocation: PreparedInvocation, obser
   );
 }
 
-function insertOccurrence(db: SqlDatabase, invocation: PreparedInvocation, error: PreparedError, observedAt: number, cutoff: number): boolean {
+function insertOccurrence(db: SqlStatements, invocation: PreparedInvocation, error: PreparedError, observedAt: number, cutoff: number): boolean {
   const traceId = invocation.trace?.traceId ?? null;
   const hasStack = error.frames.length > 0;
   const sameError = "trace_id = ? AND name = ? AND message IS ? AND observed_at > ?";
@@ -685,7 +676,7 @@ function insertOccurrence(db: SqlDatabase, invocation: PreparedInvocation, error
   return upsertIssue(db, error, observedAt);
 }
 
-function upsertIssue(db: SqlDatabase, error: PreparedError, observedAt: number): boolean {
+function upsertIssue(db: SqlStatements, error: PreparedError, observedAt: number): boolean {
   const issue = db.rows<{ state: IssueState; state_at: number }>("SELECT state, state_at FROM observe_issues WHERE fingerprint = ?", error.fingerprint)[0];
   if (issue === undefined) {
     const count = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]?.n ?? 0;
@@ -703,7 +694,7 @@ function healthBucket(nowMs: number): number {
   return nowMs - (nowMs % HEALTH_BUCKET_MS);
 }
 
-function recordHealth(db: SqlDatabase, nowMs: number, events: readonly HealthEvent[]): void {
+function recordHealth(db: SqlStatements, nowMs: number, events: readonly HealthEvent[]): void {
   const grouped = new Map<string, { event: HealthEvent; count: number }>();
   for (const event of events) {
     const key = `${event.counter}\u0000${event.reason}`;
@@ -720,7 +711,7 @@ function recordHealth(db: SqlDatabase, nowMs: number, events: readonly HealthEve
   }
 }
 
-function recordWriteCost(db: SqlDatabase, nowMs: number, phase: "ingest" | "cleanup", invocations: number, rowsWritten: number): void {
+function recordWriteCost(db: SqlStatements, nowMs: number, phase: "ingest" | "cleanup", invocations: number, rowsWritten: number): void {
   if (invocations === 0 && rowsWritten === 0) return;
   db.run(
     `INSERT INTO observe_write_cost (bucket_at, phase, runs, invocations, rows_written) VALUES (?, ?, 1, ?, ?)
@@ -729,7 +720,7 @@ function recordWriteCost(db: SqlDatabase, nowMs: number, phase: "ingest" | "clea
   );
 }
 
-export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
+export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
   const cutoff = nowMs - RETENTION_MS;
   return db.transaction(() => {
     const writtenBefore = db.rowsWritten();
@@ -770,7 +761,7 @@ export function cleanup(db: SqlDatabase, nowMs: number): CleanupResult {
   });
 }
 
-function evict(db: SqlDatabase): { readonly invocations: number; readonly occurrences: number } {
+function evict(db: SqlStatements): { readonly invocations: number; readonly occurrences: number } {
   const invocationExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_invocations") - MAX_RETAINED_INVOCATIONS, CLEANUP_BATCH);
   if (invocationExcess > 0) db.run("DELETE FROM observe_invocations WHERE key IN (SELECT key FROM observe_invocations WHERE failed = 0 ORDER BY observed_at LIMIT ?)", invocationExcess);
   const occurrenceExcess = Math.min(count(db, "SELECT COUNT(*) AS n FROM observe_occurrences") - MAX_RETAINED_OCCURRENCES, CLEANUP_BATCH);
@@ -778,7 +769,7 @@ function evict(db: SqlDatabase): { readonly invocations: number; readonly occurr
   return { invocations: Math.max(invocationExcess, 0), occurrences: Math.max(occurrenceExcess, 0) };
 }
 
-export function nextCleanupAt(db: SqlDatabase, nowMs: number, cleaned: CleanupResult): number | null {
+export function nextCleanupAt(db: SqlStatements, nowMs: number, cleaned: CleanupResult): number | null {
   if (cleaned.more) return nowMs;
   const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences)")[0]?.at ?? null;
   const counted = oldestCountExpiryMs(db);
@@ -787,7 +778,7 @@ export function nextCleanupAt(db: SqlDatabase, nowMs: number, cleaned: CleanupRe
   return Math.max(expiry, nowMs + CLEANUP_INTERVAL_MS);
 }
 
-function count(db: SqlDatabase, query: string, ...params: SqlValue[]): number {
+function count(db: SqlStatements, query: string, ...params: SqlValue[]): number {
   return db.rows<{ n: number }>(query, ...params)[0]?.n ?? 0;
 }
 
@@ -817,7 +808,7 @@ interface IssueRow {
   occurrences: number; first_at: number; last_at: number; last_version: string | null; versions: number; first_version: string | null; first_version_label: string | null;
 }
 
-export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly fingerprint?: string; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
+export function listIssues(db: SqlStatements, nowMs: number, filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly fingerprint?: string; readonly cursor?: string; readonly limit?: number } = {}): Page<IssueSummary> {
   const cutoff = nowMs - RETENTION_MS;
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
@@ -843,7 +834,7 @@ export function listIssues(db: SqlDatabase, nowMs: number, filter: { readonly st
   return page(issues, size, issue => `${issue.lastAtMs}.${issue.fingerprint}`);
 }
 
-export function recordArtifact(db: SqlDatabase, artifact: { readonly version: string; readonly file: string; readonly map: string; readonly digest: string }, nowMs: number): ArtifactResult {
+export function recordArtifact(db: SqlStatements, artifact: { readonly version: string; readonly file: string; readonly map: string; readonly digest: string }, nowMs: number): ArtifactResult {
   return db.transaction(() => {
     const existing = db.rows<{ digest: string }>("SELECT digest FROM observe_artifacts WHERE version = ? AND file = ?", artifact.version, artifact.file)[0];
     if (existing !== undefined) return existing.digest === artifact.digest ? "duplicate" : "conflict";
@@ -852,11 +843,11 @@ export function recordArtifact(db: SqlDatabase, artifact: { readonly version: st
   });
 }
 
-export function readArtifact(db: SqlDatabase, version: string, file: string): string | null {
+export function readArtifact(db: SqlStatements, version: string, file: string): string | null {
   return db.rows<{ map: string }>("SELECT map FROM observe_artifacts WHERE version = ? AND file = ?", version, file)[0]?.map ?? null;
 }
 
-export function latestFrames(db: SqlDatabase, nowMs: number, fingerprint: string): { readonly version: string | null; readonly frames: readonly StackFrame[] } | null {
+export function latestFrames(db: SqlStatements, nowMs: number, fingerprint: string): { readonly version: string | null; readonly frames: readonly StackFrame[] } | null {
   const row = db.rows<{ version: string | null; frames: string }>(
     "SELECT version, frames FROM observe_occurrences WHERE fingerprint = ? AND propagated = 0 AND observed_at > ? ORDER BY observed_at DESC, id DESC LIMIT 1",
     fingerprint, nowMs - RETENTION_MS
@@ -864,11 +855,11 @@ export function latestFrames(db: SqlDatabase, nowMs: number, fingerprint: string
   return row === undefined ? null : { version: row.version, frames: readFrames(row.frames) };
 }
 
-export function readIssue(db: SqlDatabase, nowMs: number, fingerprint: string): IssueSummary | null {
+export function readIssue(db: SqlStatements, nowMs: number, fingerprint: string): IssueSummary | null {
   return listIssues(db, nowMs, { fingerprint, limit: 1 }).items[0] ?? null;
 }
 
-function versionLabels(db: SqlDatabase, versions: readonly (string | null)[]): Map<string, string> {
+function versionLabels(db: SqlStatements, versions: readonly (string | null)[]): Map<string, string> {
   const wanted = [...new Set(versions.filter((version): version is string => version !== null))];
   if (wanted.length === 0) return new Map();
   const rows = db.rows<{ version: string; label: string | null }>("SELECT version, label FROM observe_version_labels WHERE version IN (SELECT value FROM json_each(?))", JSON.stringify(wanted));
@@ -903,7 +894,7 @@ function routeVersionStats(version: string, cpu: ValueCounts, wall: ValueCounts)
   };
 }
 
-function routeComparisons(db: SqlDatabase, cutoff: number, versions: readonly string[]): RouteComparison[] {
+function routeComparisons(db: SqlStatements, cutoff: number, versions: readonly string[]): RouteComparison[] {
   const grouped = (column: "cpu_ms" | "wall_ms") => db.rows<{ stage: Stage; label: string; version: string; value: number; n: number }>(
     `SELECT stage, label, version, ${column} AS value, COUNT(*) AS n FROM observe_invocations
      WHERE observed_at > ? AND version IN (SELECT value FROM json_each(?)) GROUP BY stage, label, version, ${column} ORDER BY value`,
@@ -929,7 +920,7 @@ function routeComparisons(db: SqlDatabase, cutoff: number, versions: readonly st
     .slice(0, IMPACT_ROUTES);
 }
 
-export function rolloutImpact(db: SqlDatabase, nowMs: number, rolloutId: string, sampling: Sampling = KEEP_ALL): RolloutImpact | null {
+export function rolloutImpact(db: SqlStatements, nowMs: number, rolloutId: string, sampling: Sampling = KEEP_ALL): RolloutImpact | null {
   const rollout = db.rows<{ id: string; at_ms: number }>("SELECT id, at_ms FROM observe_rollouts WHERE id = ?", rolloutId)[0];
   if (rollout === undefined) return null;
   const cutoff = nowMs - RETENTION_MS;
@@ -997,7 +988,7 @@ function occurrence(row: OccurrenceRow): Occurrence {
   };
 }
 
-export function issueOccurrences(db: SqlDatabase, nowMs: number, fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number } = {}): Page<Occurrence> {
+export function issueOccurrences(db: SqlStatements, nowMs: number, fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number } = {}): Page<Occurrence> {
   const size = pageSize(filter.limit);
   const cursor = parseCursor(filter.cursor);
   const rows = db.rows<OccurrenceRow>(
@@ -1009,7 +1000,7 @@ export function issueOccurrences(db: SqlDatabase, nowMs: number, fingerprint: st
   return page(rows.map(occurrence), size, item => `${item.atMs}.${item.id.toString(16)}`);
 }
 
-export function setIssueState(db: SqlDatabase, nowMs: number, fingerprint: string, state: IssueState): boolean {
+export function setIssueState(db: SqlStatements, nowMs: number, fingerprint: string, state: IssueState): boolean {
   return db.transaction(() => {
     const visible = db.rows<{ one: number }>(
       "SELECT 1 AS one FROM observe_issues i WHERE i.fingerprint = ? AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)",
@@ -1041,7 +1032,7 @@ export function eventWindow(nowMs: number, fromMs: number | undefined, toMs: num
   return { fromMs: from, toMs: to };
 }
 
-export function listTraces(db: SqlDatabase, nowMs: number, filter: TraceFilter = {}): Page<TraceSummary> {
+export function listTraces(db: SqlStatements, nowMs: number, filter: TraceFilter = {}): Page<TraceSummary> {
   const cutoff = nowMs - RETENTION_MS;
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const size = pageSize(filter.limit);
@@ -1078,7 +1069,7 @@ function durationBin(wallMs: number): number {
   return index === -1 ? DURATION_EDGES.length : index;
 }
 
-export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string } = {}): Exploration {
+export function explore(db: SqlStatements, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string } = {}): Exploration {
   const cutoff = nowMs - RETENTION_MS;
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const rows = db.rows<{ label: string; observed_at: number; wall_ms: number; failed: number; cpu_ms: number }>(
@@ -1116,7 +1107,7 @@ export function explore(db: SqlDatabase, nowMs: number, filter: { readonly fromM
   return { fromMs, toMs, route, routes, heatmap: { fromMs, bucketMs, edges: DURATION_EDGES, cells, failed, p95WallMs } };
 }
 
-export function objectMethods(db: SqlDatabase, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number } = {}): ObjectMethods {
+export function objectMethods(db: SqlStatements, nowMs: number, filter: { readonly fromMs?: number; readonly toMs?: number } = {}): ObjectMethods {
   const cutoff = nowMs - RETENTION_MS;
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const objectRows = db.rows<{ label: string; wall_ms: number; failed: number; cpu_ms: number }>(
@@ -1138,7 +1129,7 @@ export function objectMethods(db: SqlDatabase, nowMs: number, filter: { readonly
 
 const TRACE_ID = /^[0-9a-f]{32}$/u;
 
-export function readTrace(db: SqlDatabase, nowMs: number, traceId: string): TraceDetail | null {
+export function readTrace(db: SqlStatements, nowMs: number, traceId: string): TraceDetail | null {
   if (!TRACE_ID.test(traceId)) throw new RangeError("invalid trace id");
   const cutoff = nowMs - RETENTION_MS;
   const rows = db.rows<InvocationRow>(
@@ -1154,7 +1145,7 @@ export function readTrace(db: SqlDatabase, nowMs: number, traceId: string): Trac
   return { traceId, rootPresent: invocations.some(invocation => invocation.stage === "worker"), truncated: rows.length > MAX_TRACE_INVOCATIONS, invocations, occurrences };
 }
 
-export function health(db: SqlDatabase, nowMs: number, sampling: Sampling = KEEP_ALL): Health {
+export function health(db: SqlStatements, nowMs: number, sampling: Sampling = KEEP_ALL): Health {
   const cutoff = nowMs - RETENTION_MS;
   const live = db.rows<{ n: number; oldest: number | null; newest: number | null }>(
     "SELECT COUNT(*) AS n, MIN(observed_at) AS oldest, MAX(observed_at) AS newest FROM observe_invocations WHERE observed_at > ?", cutoff
@@ -1283,7 +1274,7 @@ function lagTotals(rows: readonly { readonly lagCount: number; readonly lagMsMax
 }
 
 /** Exact half-open event-time window; no rollout or version history is consulted, so a reused version carries only what it produced inside the bounds. */
-export function statsWindow(db: SqlDatabase, query: WindowQuery, sampling: Sampling = KEEP_ALL): StatsWindow {
+export function statsWindow(db: SqlStatements, query: WindowQuery, sampling: Sampling = KEEP_ALL): StatsWindow {
   const columns = Object.keys(WORK_FIELDS) as OperationWorkColumn[];
   const filters = ["bucket_at >= ?", "bucket_at < ?"];
   const params: SqlValue[] = [query.fromMs, query.toMs];

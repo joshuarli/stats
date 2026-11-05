@@ -5,7 +5,8 @@ import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/al
 import { POLICIES, type ServicePolicy } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { OTHER_ROUTE, type CountDelta } from "../../src/observe/core/model.ts";
-import { cleanup, health, ingest, nextCleanupAt, statsWindow, type SqlDatabase } from "../../src/observe/core/store.ts";
+import { cleanup, health, ingest, nextCleanupAt, statsWindow } from "../../src/observe/core/store.ts";
+import type { SqlStatements } from "../../src/core/sql.ts";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { COUNT_BUCKET_MS, HEALTH_BUCKET_MS, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { cleanupCounts, recordCounts } from "../../src/observe/core/counts.ts";
@@ -91,7 +92,7 @@ function generate(count: number, seed: number): Generated {
   return { items, expected, failures };
 }
 
-function tally(db: SqlDatabase) {
+function tally(db: SqlStatements) {
   const rows = db.rows<{ stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu: number; wall: number }>(
     "SELECT stage, outcome, route, operation, SUM(kept) AS kept, SUM(sampled_out) AS sampled_out, SUM(cpu_ms_sum) AS cpu, SUM(wall_ms_sum) AS wall FROM observe_count_entries GROUP BY stage, outcome, route, operation"
   );
@@ -377,7 +378,7 @@ function failures(from: number, count: number, atMs: number): TailItem[] {
   return Array.from({ length: count }, (_, n) => workerItem(from + n, atMs + n, "/cart", "GET", 500, "request.cart"));
 }
 
-async function deliverInBatches(db: SqlDatabase, policy: ServicePolicy, cap: AlwaysKeptCap, items: readonly TailItem[], nowMs: number): Promise<void> {
+async function deliverInBatches(db: SqlStatements, policy: ServicePolicy, cap: AlwaysKeptCap, items: readonly TailItem[], nowMs: number): Promise<void> {
   for (let at = 0; at < items.length; at += 7) {
     const batch = await prepareTailItems(items.slice(at, at + 7), policy, nowMs, cap);
     ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: policy.sampling, counts: batch.counts });
@@ -400,7 +401,7 @@ await test("failures past the per-bucket cap are counted as failed and sampled o
   assert.equal(versionFailures(db), total);
 });
 
-function versionFailures(db: SqlDatabase): number {
+function versionFailures(db: SqlStatements): number {
   return db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries WHERE outcome = 'failed'")[0]!.n;
 }
 

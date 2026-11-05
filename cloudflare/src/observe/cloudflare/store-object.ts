@@ -1,34 +1,15 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Artifact, CountDelta, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
-import { initializeStore, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type SqlDatabase, type SqlValue, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery } from "../core/store.ts";
+import { initializeStore, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery } from "../core/store.ts";
 import { createObserveService, type ArtifactOutcome, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 import type { Sampling } from "../core/sampling.ts";
 import { isObservedService } from "../services.ts";
 import { POLICIES } from "./policies.ts";
+import { CloudflareSql } from "../../cloudflare/sql.ts";
 
 export interface ObserveEnv {
   readonly STORE: DurableObjectNamespace<ObservationStore>;
-}
-
-function sqlDatabase(storage: DurableObjectStorage): SqlDatabase {
-  let written = 0;
-  return {
-    rows<T>(query: string, ...params: SqlValue[]): T[] {
-      return storage.sql.exec(query, ...params).toArray() as T[];
-    },
-    run(query: string, ...params: SqlValue[]): void {
-      const cursor = storage.sql.exec(query, ...params);
-      cursor.toArray();
-      written += cursor.rowsWritten;
-    },
-    rowsWritten(): number {
-      return written;
-    },
-    transaction<T>(fn: () => T): T {
-      return storage.transactionSync(fn);
-    }
-  };
 }
 
 function samplingOf(name: string | undefined): Sampling {
@@ -41,8 +22,8 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
 
   constructor(ctx: DurableObjectState, env: ObserveEnv) {
     super(ctx, env);
-    const db = sqlDatabase(ctx.storage);
-    this.service = createObserveService(db, { now: () => Date.now(), databaseBytes: () => ctx.storage.sql.databaseSize }, () => samplingOf(ctx.id.name));
+    const db = new CloudflareSql(ctx.storage);
+    this.service = createObserveService(db, { now: () => Date.now(), databaseBytes: () => db.databaseBytes() }, () => samplingOf(ctx.id.name));
     void ctx.blockConcurrencyWhile(async () => { initializeStore(db); });
   }
 
