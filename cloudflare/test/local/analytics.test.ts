@@ -3,11 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { offlineOutbound } from "../../local/outbound.ts";
-import { Miniflare } from "miniflare";
 import { accessToken } from "../access-token.ts";
 import { offlineAnalytics, UNEXPECTED_QUERY, type OfflineAnalytics } from "../../local/analytics.ts";
 import { DATASETS, QUERY_KINDS, RECORDED_AT_MS, expectedQueries, queryKey, rows, scenario, type QueryKind } from "../../local/scenario.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, readBuiltWorker, readTestVars } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars } from "../../local/topology.ts";
 
 const STATS = readBuiltWorker(STATS_OUTPUT);
 const OBSERVE = readBuiltWorker(OBSERVE_OUTPUT);
@@ -26,16 +25,16 @@ const CALLER = `export default { async fetch(request, env) {
 mkdirSync(SCRATCH, { recursive: true });
 const persist = mkdtempSync(join(SCRATCH, "analytics-"));
 const provider: OfflineAnalytics = offlineAnalytics(STATS);
-const mf = new Miniflare(miniflareOptions(STATS, OBSERVE, {
+const mf = openWorkers(STATS, OBSERVE, {
   text: { ENVIRONMENT: "test" },
   secrets: { ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!, ACCESS_AUD: ACCESS_AUD!, ACCESS_JWKS_JSON: ACCESS_JWKS_JSON!, TEST_NOW_MS: String(RECORDED_AT_MS) },
   analytics: provider.binding,
   collector: { kind: "absent" },
   outbound: offlineOutbound([]).handler,
-  persist,
+  persist: { directory: persist },
   alarms: "platform",
   extraWorkers: [provider.worker, { name: "analytics-caller", modules: true, script: CALLER, compatibilityDate: STATS.compatibilityDate, serviceBindings: { ANALYTICS_SQL: { name: provider.binding.service, entrypoint: provider.binding.entrypoint } } }]
-}));
+});
 await mf.ready;
 
 function byText(left: string, right: string): number {

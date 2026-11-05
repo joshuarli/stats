@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { convertV4MiniflareOptions, type MiniflareOptions, type Request as MiniflareRequest, type Response as MiniflareResponse, type V4DurableObject, type V4ModuleDefinition, type V4WorkerOptions } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions, type MiniflareOptions, type Request as MiniflareRequest, type Response as MiniflareResponse, type V4DurableObject, type V4ModuleDefinition, type V4WorkerOptions } from "miniflare";
 
 export const CLOUDFLARE_ROOT = resolve(import.meta.dirname, "..");
 export const STATS_OUTPUT = join(CLOUDFLARE_ROOT, ".cloudflare/output/v0/workers/default");
@@ -128,6 +128,8 @@ export type Collector =
   | { readonly kind: "replaced"; readonly script: string }
   | { readonly kind: "absent" };
 
+export type Persistence = { readonly directory: string } | "memory";
+
 export type AnalyticsProvider = "unbound" | { readonly service: string; readonly entrypoint: string };
 
 export interface StackOptions {
@@ -136,7 +138,7 @@ export interface StackOptions {
   readonly analytics: AnalyticsProvider;
   readonly collector: Collector;
   readonly outbound: Outbound;
-  readonly persist: string;
+  readonly persist: Persistence;
   readonly extraWorkers?: readonly V4WorkerOptions[];
   readonly alarms: "platform" | "rpc";
 }
@@ -252,5 +254,18 @@ export function workers(stats: BuiltWorker, observe: BuiltWorker, options: Stack
 }
 
 export function miniflareOptions(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions): MiniflareOptions {
-  return { ...convertV4MiniflareOptions({ workers: workers(stats, observe, options) }), resourcePersistencePath: options.persist };
+  const converted = convertV4MiniflareOptions({ workers: workers(stats, observe, options) });
+  return options.persist === "memory" ? converted : { ...converted, resourcePersistencePath: options.persist.directory };
+}
+
+export interface Listen {
+  readonly port: number;
+  readonly localExplorer: boolean;
+}
+
+export function openWorkers(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions, listen: Listen | null = null): Miniflare {
+  return new Miniflare({
+    ...miniflareOptions(stats, observe, options),
+    ...(listen === null ? {} : { host: "127.0.0.1", port: listen.port, ...(listen.localExplorer ? { unsafeLocalExplorer: true } : {}) })
+  });
 }

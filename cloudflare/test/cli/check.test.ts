@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import type { Miniflare } from "miniflare";
+import { openStatsWorker } from "../../local/stack.ts";
 import { accessToken } from "../access-token.ts";
 import { runCli } from "./support.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const BUNDLE = join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js");
-const VARS = (JSON.parse(readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8")) as { vars: Record<string, string> }).vars;
 const SCRATCH_ROOT = resolve(ROOT, "../.work/tmp");
 
 interface CheckDocument {
@@ -23,22 +22,7 @@ let jwt: string;
 let host: { hostId: string; token: string };
 
 async function start(): Promise<void> {
-  if (!existsSync(BUNDLE)) throw new Error(`the Worker bundle is missing at ${BUNDLE}; run \`pnpm build\` in cloudflare/ first`);
-  mf = new Miniflare({
-    ...convertV4MiniflareOptions({
-      workers: [{
-        name: "stats",
-        modules: true,
-        scriptPath: BUNDLE,
-        compatibilityDate: "2026-10-30",
-        compatibilityFlags: ["nodejs_compat"],
-        bindings: { ...VARS, TEST_NOW_MS: String(Date.now()) },
-        durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } }
-      }]
-    }),
-    host: "127.0.0.1",
-    port: 0
-  });
+  mf = openStatsWorker(String(Date.now()));
   origin = (await mf.ready).origin;
   jwt = await accessToken();
   mkdirSync(SCRATCH_ROOT, { recursive: true });

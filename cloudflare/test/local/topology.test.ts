@@ -3,9 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { offlineOutbound } from "../../local/outbound.ts";
-import { Miniflare } from "miniflare";
 import { accessToken } from "../access-token.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, parseBuiltWorker, readBuiltWorker, readTestVars, workers, type BuiltWorker, type StackOptions } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, parseBuiltWorker, readBuiltWorker, readTestVars, workers, type BuiltWorker, type StackOptions } from "../../local/topology.ts";
 
 const STATS_CONFIG = readFileSync(join(STATS_OUTPUT, "worker.config.json"), "utf8");
 const STATS = readBuiltWorker(STATS_OUTPUT);
@@ -20,7 +19,7 @@ function options(persist: string): StackOptions {
     analytics: { service: "analytics-provider", entrypoint: "Analytics" },
     collector: { kind: "attached" },
     outbound: offlineOutbound([]).handler,
-    persist,
+    persist: { directory: persist },
     alarms: "platform"
   };
 }
@@ -86,7 +85,7 @@ await test("wrangler.test.jsonc runs the built config's compatibility settings a
 await test("the stack serves the dashboard at / only with an Access assertion", async () => {
   mkdirSync(SCRATCH, { recursive: true });
   const persist = mkdtempSync(join(SCRATCH, "topology-"));
-  const mf = new Miniflare(miniflareOptions(STATS, OBSERVE, { ...options(persist), analytics: "unbound" }));
+  const mf = openWorkers(STATS, OBSERVE, { ...options(persist), analytics: "unbound" });
   try {
     const page = await mf.dispatchFetch("https://stats.example/", { headers: { "cf-access-jwt-assertion": await accessToken() } });
     assert.equal(page.status, 200);

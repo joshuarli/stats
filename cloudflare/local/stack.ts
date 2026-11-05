@@ -1,11 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { Miniflare } from "miniflare";
+import type { Miniflare } from "miniflare";
 import { accessToken } from "../test/access-token.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
 import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, miniflareOptions, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, type BuiltWorker, type Collector } from "./topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, type BuiltWorker, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 export const ACCESS_HEADER = "cf-access-jwt-assertion";
@@ -42,6 +42,19 @@ export interface Stack {
   dispose(): Promise<void>;
 }
 
+export function openStatsWorker(testNowMs: string): Miniflare {
+  const { ENVIRONMENT, PROJECTS, WORKER_NAME, TEST_NOW_MS: _fixed, ...secrets } = readTestVars();
+  return openWorkers(readBuiltWorker(STATS_OUTPUT), readBuiltWorker(OBSERVE_OUTPUT), {
+    text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME! },
+    secrets: { ...secrets, TEST_NOW_MS: testNowMs },
+    analytics: "unbound",
+    collector: { kind: "absent" },
+    outbound: offlineOutbound(probeUrls(PROJECTS!)).handler,
+    persist: "memory",
+    alarms: "platform"
+  }, { port: 0, localExplorer: false });
+}
+
 export function productionProjects(stats: BuiltWorker): string {
   const binding = stats.env.get("PROJECTS");
   if (binding?.type !== "text") throw new TypeError(`${stats.name} has no PROJECTS text binding`);
@@ -66,26 +79,21 @@ interface Shared {
 
 async function launch(shared: Shared, start: StackStart & { readonly persist: string }): Promise<Stack> {
   const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON } = readTestVars();
-  const mf = new Miniflare({
-    ...miniflareOptions(shared.stats, shared.observe, {
-      text: { ENVIRONMENT: "test", ...(start.projectsJson === undefined ? {} : { PROJECTS: start.projectsJson }) },
-      secrets: {
-        ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!,
-        ACCESS_AUD: ACCESS_AUD!,
-        ACCESS_JWKS_JSON: ACCESS_JWKS_JSON!,
-        ...(start.nowMs === null ? {} : { TEST_NOW_MS: String(start.nowMs) })
-      },
-      analytics: shared.analytics.binding,
-      collector: start.collector ?? { kind: "attached" },
-      outbound: shared.outbound.handler,
-      persist: start.persist,
-      extraWorkers: [shared.analytics.worker],
-      alarms: "rpc"
-    }),
-    host: "127.0.0.1",
-    port: start.port ?? 0,
-    ...(start.localExplorer === true ? { unsafeLocalExplorer: true } : {})
-  });
+  const mf = openWorkers(shared.stats, shared.observe, {
+    text: { ENVIRONMENT: "test", ...(start.projectsJson === undefined ? {} : { PROJECTS: start.projectsJson }) },
+    secrets: {
+      ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!,
+      ACCESS_AUD: ACCESS_AUD!,
+      ACCESS_JWKS_JSON: ACCESS_JWKS_JSON!,
+      ...(start.nowMs === null ? {} : { TEST_NOW_MS: String(start.nowMs) })
+    },
+    analytics: shared.analytics.binding,
+    collector: start.collector ?? { kind: "attached" },
+    outbound: shared.outbound.handler,
+    persist: { directory: start.persist },
+    extraWorkers: [shared.analytics.worker],
+    alarms: "rpc"
+  }, { port: start.port ?? 0, localExplorer: start.localExplorer === true });
   let origin: string;
   try {
     origin = (await mf.ready).origin.replace(/\/$/u, "");

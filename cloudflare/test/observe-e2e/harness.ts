@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Miniflare } from "miniflare";
+import type { Miniflare } from "miniflare";
 import { accessToken } from "../access-token.ts";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, miniflareOptions, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, openWorkers, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
 
 export const ROOT = CLOUDFLARE_ROOT;
 const STATS = readBuiltWorker(STATS_OUTPUT);
@@ -66,16 +66,16 @@ export async function start(collector: Collector, bindings: Record<string, strin
     ? { name: "memories-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
     : collectorWorker(OBSERVE, "memories-observe", "usr-memories");
   const memoriesWorker = { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) };
-  const mf = new Miniflare(miniflareOptions(STATS, OBSERVE, {
+  const mf = openWorkers(STATS, OBSERVE, {
     text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME!, ...bindings },
     secrets: { ...secrets, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
     analytics: "unbound",
     collector: statsCollector,
     outbound,
-    persist,
+    persist: { directory: persist },
     alarms: "platform",
     extraWorkers: collector === "absent" ? [memoriesWorker] : [memoriesCollector, memoriesWorker]
-  }));
+  });
   const stats = await mf.getWorker("stats");
   let stopped = false;
   const stop = async (): Promise<void> => {

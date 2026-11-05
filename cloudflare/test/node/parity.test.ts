@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { openStatsWorker } from "../../local/stack.ts";
 import { HISTORY_KINDS } from "../../src/limits.ts";
 import { accessToken } from "../access-token.ts";
 import { fixtureBytes, manifest, openHarness, ROOT, withHost } from "./support.ts";
@@ -28,21 +28,7 @@ async function observe(response: Response): Promise<Observed> {
 }
 
 await test("the same fixture frames give identical acknowledgment bytes, history frame bytes, and stored host rows in the Worker on workerd and the core on node:sqlite", async () => {
-  const mf = new Miniflare({
-    ...convertV4MiniflareOptions({
-      workers: [{
-        name: "stats",
-        modules: true,
-        scriptPath: join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js"),
-        compatibilityDate: "2026-10-30",
-        compatibilityFlags: ["nodejs_compat"],
-        bindings: VARS,
-        durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } }
-      }]
-    }),
-    host: "127.0.0.1",
-    port: 0
-  });
+  const mf = openStatsWorker(VARS["TEST_NOW_MS"]!);
   const node = openHarness(VARS["PROJECTS"]!);
   try {
     const origin = (await mf.ready).origin;

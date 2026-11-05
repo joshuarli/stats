@@ -3,7 +3,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { openStatsWorker } from "../../local/stack.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../src/ingest/http.ts";
 import { openAssets } from "../../src/node/assets.ts";
 import { createStatsServer } from "../../src/node/server.ts";
@@ -39,21 +39,7 @@ async function observed(response: Response): Promise<{ status: number; headers: 
 }
 
 await test("the Worker on workerd and the Node server answer health, ingest, host, history, project, service, and rejection routes with identical status, headers, and body bytes", async () => {
-  const mf = new Miniflare({
-    ...convertV4MiniflareOptions({
-      workers: [{
-        name: "stats",
-        modules: true,
-        scriptPath: join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js"),
-        compatibilityDate: "2026-10-30",
-        compatibilityFlags: ["nodejs_compat"],
-        bindings: VARS,
-        durableObjects: { INSTALLATION: { className: "Installation", useSQLite: true } }
-      }]
-    }),
-    host: "127.0.0.1",
-    port: 0
-  });
+  const mf = openStatsWorker(VARS["TEST_NOW_MS"]!);
   const harness = openHarness(VARS["PROJECTS"]!);
   const assets = scratchDirectory("parity-assets");
   writeFileSync(join(assets, "index.html"), "<!doctype html>");
