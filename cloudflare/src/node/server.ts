@@ -13,13 +13,20 @@ export interface NodeStatsOptions {
   readonly allowedLogins: ReadonlySet<string>;
 }
 
-const ORIGIN = "http://stats.internal";
+const FALLBACK_ORIGIN = "http://stats.internal";
+
+function originOf(headers: Headers): string {
+  const host = headers.get("Host");
+  if (host === null || !/^[A-Za-z0-9.:\[\]-]+$/u.test(host)) return FALLBACK_ORIGIN;
+  return `${headers.get("X-Forwarded-Proto") === "https" ? "https" : "http"}://${host}`;
+}
 
 function requestFrom(incoming: IncomingMessage): Request {
   const headers = new Headers();
   for (let index = 0; index + 1 < incoming.rawHeaders.length; index += 2) headers.append(incoming.rawHeaders[index]!, incoming.rawHeaders[index + 1]!);
-  const target = new URL(incoming.url ?? "/", ORIGIN);
-  const url = new URL(`${target.pathname}${target.search}`, ORIGIN);
+  const origin = originOf(headers);
+  const target = new URL(incoming.url ?? "/", origin);
+  const url = new URL(`${target.pathname}${target.search}`, origin);
   const method = incoming.method ?? "GET";
   if (method === "GET" || method === "HEAD") return new Request(url, { method, headers });
   const init = { method, headers, body: Readable.toWeb(incoming) as ReadableStream<Uint8Array>, duplex: "half" };

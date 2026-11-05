@@ -130,6 +130,27 @@ await test("a Tailscale login outside the allowlist is rejected, including a cas
   }
 });
 
+await test("cross-site writes to /api/v1 are rejected before any host is created, while same-origin and header-less JSON writes succeed", async () => {
+  const served = await serve();
+  try {
+    const create = (headers: Record<string, string>) => served.fetch("/api/v1/admin/hosts", { method: "POST", headers: { ...login(ALLOWED), ...headers }, body: JSON.stringify({ name: "csrf" }) });
+    const crossOrigin = await create({ "Content-Type": "text/plain", Origin: "https://evil.example" });
+    assert.equal(crossOrigin.status, 403);
+    assert.equal(errorCode(crossOrigin), "forbidden");
+    assert.equal((await create({ "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" })).status, 403);
+    assert.equal((await served.fetch("/api/v1/admin/hosts/h_00000000000000000000000000000000", { method: "DELETE", headers: { ...login(ALLOWED), Origin: "https://evil.example" } })).status, 403);
+    const text = await create({ "Content-Type": "text/plain" });
+    assert.equal(text.status, 415);
+    assert.equal(errorCode(text), "unsupported_media_type");
+    assert.deepEqual(await served.harness.core.listHosts(), []);
+    assert.equal((await create({ "Content-Type": "application/json", Host: "stats.example.ts.net", "X-Forwarded-Proto": "https", Origin: "https://stats.example.ts.net", "Sec-Fetch-Site": "same-origin" })).status, 201);
+    assert.equal((await create({ "Content-Type": "application/json", Host: "stats.example.ts.net", "X-Forwarded-Proto": "https", Origin: "http://stats.example.ts.net" })).status, 403);
+    assert.equal((await create({ "Content-Type": "application/json" })).status, 201);
+  } finally {
+    await served.close();
+  }
+});
+
 await test("an allowed login from loopback provisions a host, reads its data, and gets the dashboard", async () => {
   const served = await serve();
   try {

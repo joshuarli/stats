@@ -378,6 +378,10 @@ it plugs into the handler:
   before any data is read. The server is meant to sit behind
   `tailscale serve`, which sets that header for tailnet users. Ingest ignores
   Tailscale headers and requires the host bearer token, as on the Worker.
+  On both targets a non-GET, non-HEAD, non-OPTIONS `/api/v1` request is
+  rejected with `403 forbidden` when its `Origin` is not its own origin or
+  its `Sec-Fetch-Site` is `cross-site`; the Node server derives its own origin
+  from `Host` and `X-Forwarded-Proto`.
 - **Assets.** `src/node/assets.ts` serves the Vite output in
   `cloudflare/.cloudflare/output/v0/workers/default/assets`, with `/` as
   `index.html` and no path outside that directory.

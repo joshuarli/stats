@@ -338,6 +338,16 @@ tailnet users:
 tailscale serve --bg --http=18790 http://127.0.0.1:18791
 ```
 
+Because `tailscale serve` attaches the identity to every request from a
+user's device, a page on another site could otherwise drive writes. Every
+`/api/v1` request that is not `GET`, `HEAD`, or `OPTIONS` is rejected with
+`403 forbidden` when its `Origin` differs from the request's own origin
+(`Host`, with `X-Forwarded-Proto: https` for TLS) or its `Sec-Fetch-Site` is
+`cross-site`. Clients that send neither header, such as `curl` and
+`statsctl`, are unaffected. `POST /api/v1/admin/hosts` also requires
+`Content-Type: application/json` and answers `415 unsupported_media_type`
+otherwise. The Worker applies the same rule behind Access.
+
 ### In a container on threadripper
 
 ```sh

@@ -121,6 +121,25 @@ describe("Access authorization", () => {
     expect((await missing.json() as { error: { code: string } }).error.code).toBe("not_found");
   });
 
+  it("rejects cross-site writes and non-JSON admin bodies, and allows same-origin and header-less clients", async () => {
+    const token = await accessToken();
+    const base = { "Cf-Access-Jwt-Assertion": token };
+    const create = (headers: Record<string, string>) => SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers: { ...base, ...headers }, body: JSON.stringify({ name: "csrf" }) });
+    const crossOrigin = await create({ "Content-Type": "text/plain", Origin: "https://evil.example" });
+    expect(crossOrigin.status).toBe(403);
+    expect((await crossOrigin.json() as { error: { code: string } }).error.code).toBe("forbidden");
+    expect((await create({ "Content-Type": "application/json", "Sec-Fetch-Site": "cross-site" })).status).toBe(403);
+    const rotate = await SELF.fetch("https://example.com/api/v1/admin/hosts/h_00000000000000000000000000000000/rotate", { method: "POST", headers: { ...base, Origin: "https://evil.example" } });
+    expect(rotate.status).toBe(403);
+    const revoke = await SELF.fetch("https://example.com/api/v1/admin/hosts/h_00000000000000000000000000000000", { method: "DELETE", headers: { ...base, "Sec-Fetch-Site": "cross-site" } });
+    expect(revoke.status).toBe(403);
+    const text = await create({ "Content-Type": "text/plain" });
+    expect(text.status).toBe(415);
+    expect((await text.json() as { error: { code: string } }).error.code).toBe("unsupported_media_type");
+    expect((await create({ "Content-Type": "application/json", Origin: "https://example.com", "Sec-Fetch-Site": "same-origin" })).status).toBe(201);
+    expect((await create({ "Content-Type": "application/json" })).status).toBe(201);
+  });
+
   it("provisions, rotates, and revokes a host", async () => {
     const token = await accessToken();
     const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };

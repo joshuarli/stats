@@ -75,6 +75,17 @@ function internal(request: Request, path: string): Request {
   return new Request(`https://installation${path}${url.search}`, request);
 }
 
+function crossSiteWrite(request: Request): boolean {
+  if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") return false;
+  const origin = request.headers.get("Origin");
+  if (origin !== null && origin !== new URL(request.url).origin) return true;
+  return request.headers.get("Sec-Fetch-Site") === "cross-site";
+}
+
+function isJson(request: Request): boolean {
+  return (request.headers.get("Content-Type") ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
+}
+
 async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {
   const decision = await target.authorize(request);
   if (!decision.ok) return denied(decision);
@@ -121,8 +132,10 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
   if (path.startsWith("/api/v1/")) {
     const decision = await target.authorize(request);
     if (!decision.ok) return denied(decision);
+    if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
     if (!/^\/(hosts|admin\/hosts|projects)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
+    if (request.method === "POST" && suffix === "/admin/hosts" && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
     const response = await target.installation(internal(request, suffix));
     return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
   }
