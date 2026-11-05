@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route, type TestInfo } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
 
 const captureDirectory = new URL("./captures", import.meta.url).pathname;
@@ -80,9 +80,14 @@ async function freeze(page: Page, capturedAtMs: number): Promise<void> {
   });
 }
 
-async function replay(page: Page, capture: HostCapture): Promise<void> {
+function pause(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function replay(page: Page, capture: HostCapture, delayMs = 0): Promise<void> {
   await freeze(page, capture.capturedAtMs);
   await page.route("**/api/v1/**", async route => {
+    await pause(delayMs);
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
     const kind = url.searchParams.get("kind") ?? "summary";
@@ -113,12 +118,15 @@ async function replay(page: Page, capture: HostCapture): Promise<void> {
   });
 }
 
-async function replayProject(page: Page, name: string, capturedAtMs: number): Promise<void> {
+async function replayProject(page: Page, name: string, capturedAtMs: number, delayMs = 0): Promise<void> {
   await freeze(page, capturedAtMs);
   await page.route("**/api/v1/**", async route => {
+    await pause(delayMs);
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
+    const otherProject = /^\/api\/v1\/projects\/([^/]+)\//u.exec(url.pathname);
+    if (otherProject !== null && otherProject[1] !== name) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "project is not captured" } } });
     if (url.pathname === `/api/v1/projects/${name}/deployments`) return route.fulfill({ path: captureFile(name, "deployments.json"), contentType: "application/json" });
     const deploymentsPrefix = `/api/v1/projects/${name}/deployments/`;
     if (url.pathname.startsWith(deploymentsPrefix) && url.pathname.endsWith("/comparison")) {
@@ -201,3 +209,80 @@ for (const range of ["1h", "6h"]) {
     await expect(card).toHaveScreenshot(`stuff-deployments-${range}.webp`);
   });
 }
+
+interface LayoutShiftBudget { readonly desktop: number; readonly mobile: number }
+
+const LAYOUT_SHIFT_BUDGET = {
+  fleet: { desktop: 0.01, mobile: 0.01 },
+  host: { desktop: 0.025, mobile: 0.04 },
+  projects: { desktop: 0.01, mobile: 0.01 },
+  project: { desktop: 0.01, mobile: 0.11 }
+} satisfies Record<string, LayoutShiftBudget>;
+const LAYOUT_DATA_DELAY_MS = 1200;
+
+declare global {
+  interface Window {
+    layoutShift: { total: number };
+  }
+}
+
+async function trackLayoutShift(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const layoutShift = { total: 0 };
+    Object.defineProperty(window, "layoutShift", { value: layoutShift });
+    new PerformanceObserver(list => {
+      for (const entry of list.getEntries() as (PerformanceEntry & { readonly value: number; readonly hadRecentInput: boolean })[]) {
+        if (!entry.hadRecentInput) layoutShift.total += entry.value;
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
+}
+
+async function expectStableLayout(page: Page, testInfo: TestInfo, name: string, budget: LayoutShiftBudget): Promise<void> {
+  await expect(page.locator(".skeleton")).toHaveCount(0);
+  await page.waitForTimeout(300);
+  const total = await page.evaluate(() => window.layoutShift.total);
+  const limit = testInfo.project.name === "mobile" ? budget.mobile : budget.desktop;
+  testInfo.annotations.push({ type: "layout-shift", description: `${name} ${testInfo.project.name} ${total.toFixed(4)} (budget ${limit})` });
+  expect(total, `${name} cumulative layout shift`).toBeLessThanOrEqual(limit);
+}
+
+test("the fleet page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  const host = hostCaptures().find(entry => entry.name === "lisa");
+  if (host === undefined) throw new Error("no lisa capture");
+  await trackLayoutShift(page);
+  await replay(page, host, LAYOUT_DATA_DELAY_MS);
+  await page.goto("/");
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: host.name })).toBeVisible();
+  await expectStableLayout(page, testInfo, "fleet", LAYOUT_SHIFT_BUDGET.fleet);
+});
+
+test("a host page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  const host = hostCaptures().find(entry => entry.name === "lisa");
+  if (host === undefined) throw new Error("no lisa capture");
+  await trackLayoutShift(page);
+  await replay(page, host, LAYOUT_DATA_DELAY_MS);
+  await page.goto(`/#/host/${host.hostId}`);
+  await expect(page.getByRole("heading", { name: host.name, level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Charts" })).toBeVisible();
+  await expectStableLayout(page, testInfo, "host", LAYOUT_SHIFT_BUDGET.host);
+});
+
+test("the projects page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  await trackLayoutShift(page);
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_DATA_DELAY_MS);
+  await page.goto("/#/projects");
+  await expect(page.getByRole("table", { name: "Projects" })).toBeVisible();
+  await expectStableLayout(page, testInfo, "projects", LAYOUT_SHIFT_BUDGET.projects);
+});
+
+test("the stuff project page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
+  await trackLayoutShift(page);
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_DATA_DELAY_MS);
+  await page.goto("/#/project/stuff?open=deploys,signals");
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  await expect(page.locator(".ledger-month")).toBeVisible();
+  await expect(page.locator("#deployments")).toBeVisible();
+  await expect(page.locator(".charts > .widget").first()).toBeVisible();
+  await expectStableLayout(page, testInfo, "stuff project", LAYOUT_SHIFT_BUDGET.project);
+});
