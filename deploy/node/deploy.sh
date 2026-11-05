@@ -3,6 +3,9 @@ set -eu
 
 host=${1:?usage: deploy/node/deploy.sh USER@HOST}
 logins=${STATS_ALLOWED_LOGINS:?set STATS_ALLOWED_LOGINS to the tailnet logins allowed to read the dashboard}
+case $logins in
+  *[!A-Za-z0-9._%+@,-]* | , | ,* | *, | *,,*) echo "deploy/node: STATS_ALLOWED_LOGINS must be comma-separated logins of letters, digits and . _ % + @ -" >&2; exit 1 ;;
+esac
 root=$(git rev-parse --show-toplevel)
 cd "$root"
 test -z "$(git status --porcelain --untracked-files=no)" || { echo "deploy/node: commit tracked changes first, so the image tag names its contents" >&2; exit 1; }
