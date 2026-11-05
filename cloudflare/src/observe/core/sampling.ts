@@ -32,7 +32,6 @@ export function fnv1a32(text: string): number {
   return hash;
 }
 
-/** `null` means the invocation is counted but not kept. Every failure is kept, so a sampled-out invocation is always an ok one. */
 export function keepReason(subject: SamplingSubject, sampling: Sampling): KeepReason | null {
   if (sampling.kind === "all") return "all";
   if (subject.errors.some(error => error.source === "uncaught")) return "uncaught";

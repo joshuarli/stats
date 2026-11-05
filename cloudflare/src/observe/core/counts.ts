@@ -108,10 +108,6 @@ function storeBucket(db: SqlDatabase, bucket: BucketCounts, events: SamplingEven
   );
 }
 
-/**
- * Merges the deltas into one row per count bucket, so a flush writes one row however many keys it carries. The sampling events
- * ride on the newest bucket the call touches.
- */
 export function recordCounts(db: SqlDatabase, nowMs: number, deltas: readonly CountDelta[], events: SamplingEvents): CountsRecorded {
   let invalid = 0;
   let expired = 0;

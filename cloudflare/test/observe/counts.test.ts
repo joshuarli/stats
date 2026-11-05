@@ -339,7 +339,7 @@ await test("many flushes from several isolates merge into one row per bucket and
   const stored = new Map(db.rows<{ bucket_at: number; stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu_ms_sum: number; wall_ms_sum: number }>(
     "SELECT bucket_at, stage, outcome, route, operation, kept, sampled_out, cpu_ms_sum, wall_ms_sum FROM observe_count_entries"
   ).map(row => [[row.bucket_at, row.stage, row.outcome, row.route, row.operation].join("|"), [row.kept, row.sampled_out, row.cpu_ms_sum, row.wall_ms_sum]]));
-  assert.deepEqual([...stored].sort(), [...totals(sent)].sort());
+  assert.deepEqual(stored, totals(sent));
   assert.equal(sent.reduce((sum, delta) => sum + delta.kept + delta.sampledOut, 0), db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries")[0]!.n);
 });
 

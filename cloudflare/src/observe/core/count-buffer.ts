@@ -67,13 +67,6 @@ export interface SampledDelivery {
   readonly onDeferredFailure: (error: unknown) => void;
 }
 
-/**
- * A batch whose events were all sampled out reaches no store at all while the buffer is young. Once it is due, the next batch
- * of any kind carries it. A drained buffer is gone even if the call fails. Each buffering batch also arms an idle timer unless
- * a timer armed within the last half idle period already covers it; the timer sleeps IDLE_FLUSH_MS, which fits inside the
- * time Cloudflare lets waitUntil work run after an invocation ends, and flushes only if no batch has added counts for half
- * that period.
- */
 export async function deliverSampled(delivery: SampledDelivery): Promise<void> {
   const { buffer, batch, nowMs, sink } = delivery;
   const due = buffer.isDue(nowMs);

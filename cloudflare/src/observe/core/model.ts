@@ -21,7 +21,6 @@ export interface OutcomeEvent {
 export const COUNT_OUTCOMES = ["ok", "failed", ...EXCLUDED_OUTCOMES] as const;
 export type CountOutcome = typeof COUNT_OUTCOMES[number];
 
-/** Events of a sampled service in one event-time bucket, kept or not; a failed event is always kept, and an excluded one never is. */
 export interface CountDelta {
   readonly bucketAt: number;
   readonly version: string;
