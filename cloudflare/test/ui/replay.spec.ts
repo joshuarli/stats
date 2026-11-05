@@ -84,10 +84,20 @@ function pause(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function replay(page: Page, capture: HostCapture, delayMs = 0): Promise<void> {
+interface Latency { readonly baseMs: number; readonly jitterMs: number }
+
+const NO_LATENCY: Latency = { baseMs: 0, jitterMs: 0 };
+
+function latencyFor(url: string, latency: Latency): number {
+  let hash = 2166136261;
+  for (let index = 0; index < url.length; index += 1) hash = Math.imul(hash ^ url.charCodeAt(index), 16777619) >>> 0;
+  return latency.baseMs + (latency.jitterMs === 0 ? 0 : hash % latency.jitterMs);
+}
+
+async function replay(page: Page, capture: HostCapture, latency: Latency = NO_LATENCY): Promise<void> {
   await freeze(page, capture.capturedAtMs);
   await page.route("**/api/v1/**", async route => {
-    await pause(delayMs);
+    await pause(latencyFor(route.request().url(), latency));
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
     const kind = url.searchParams.get("kind") ?? "summary";
@@ -118,10 +128,10 @@ async function replay(page: Page, capture: HostCapture, delayMs = 0): Promise<vo
   });
 }
 
-async function replayProject(page: Page, name: string, capturedAtMs: number, delayMs = 0): Promise<void> {
+async function replayProject(page: Page, name: string, capturedAtMs: number, latency: Latency = NO_LATENCY): Promise<void> {
   await freeze(page, capturedAtMs);
   await page.route("**/api/v1/**", async route => {
-    await pause(delayMs);
+    await pause(latencyFor(route.request().url(), latency));
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
@@ -211,39 +221,71 @@ for (const range of ["1h", "6h"]) {
 }
 
 const LAYOUT_SHIFT_BUDGET = 0.01;
-const LAYOUT_DATA_DELAY_MS = 1200;
+const LAYOUT_LATENCY: Latency = { baseMs: 300, jitterMs: 1500 };
+
+interface LayoutShiftRecord { readonly value: number; readonly sources: string[] }
 
 declare global {
   interface Window {
-    layoutShift: { total: number };
+    layoutShift: { total: number; records: LayoutShiftRecord[] };
   }
 }
 
+const apiRequests = new WeakMap<Page, { inFlight: number }>();
+
 async function trackLayoutShift(page: Page): Promise<void> {
+  const requests = { inFlight: 0 };
+  apiRequests.set(page, requests);
+  const isApi = (url: string) => url.includes("/api/v1/");
+  page.on("request", request => { if (isApi(request.url())) requests.inFlight += 1; });
+  page.on("requestfinished", request => { if (isApi(request.url())) requests.inFlight -= 1; });
+  page.on("requestfailed", request => { if (isApi(request.url())) requests.inFlight -= 1; });
   await page.addInitScript(() => {
-    const layoutShift = { total: 0 };
+    const layoutShift: { total: number; records: { value: number; sources: string[] }[] } = { total: 0, records: [] };
     Object.defineProperty(window, "layoutShift", { value: layoutShift });
+    const describe = (node: Node | null): string => {
+      if (node === null) return "(removed)";
+      if (!(node instanceof Element)) return node.nodeName.toLowerCase();
+      const classes = typeof node.className === "string" ? node.className.trim().split(/\s+/u).filter(Boolean).map(name => `.${name}`).join("") : "";
+      return `${node.nodeName.toLowerCase()}${classes}`;
+    };
     new PerformanceObserver(list => {
-      for (const entry of list.getEntries() as (PerformanceEntry & { readonly value: number; readonly hadRecentInput: boolean })[]) {
-        if (!entry.hadRecentInput) layoutShift.total += entry.value;
+      for (const entry of list.getEntries() as (PerformanceEntry & { readonly value: number; readonly hadRecentInput: boolean; readonly sources: readonly { readonly node: Node | null; readonly previousRect: DOMRectReadOnly; readonly currentRect: DOMRectReadOnly }[] })[]) {
+        if (entry.hadRecentInput) continue;
+        layoutShift.total += entry.value;
+        layoutShift.records.push({
+          value: entry.value,
+          sources: entry.sources.map(source => `${describe(source.node)} y ${Math.round(source.previousRect.y)}→${Math.round(source.currentRect.y)} h ${Math.round(source.previousRect.height)}→${Math.round(source.currentRect.height)}`)
+        });
       }
     }).observe({ type: "layout-shift", buffered: true });
   });
 }
 
+async function settleApiRequests(page: Page): Promise<void> {
+  const requests = apiRequests.get(page);
+  if (requests === undefined) throw new Error("layout tracking was not installed");
+  let quiet = 0;
+  while (quiet < 3) {
+    await page.waitForTimeout(200);
+    quiet = requests.inFlight === 0 ? quiet + 1 : 0;
+  }
+}
+
 async function expectStableLayout(page: Page, testInfo: TestInfo, name: string): Promise<void> {
   await expect(page.locator(".skeleton")).toHaveCount(0);
-  await page.waitForTimeout(300);
-  const total = await page.evaluate(() => window.layoutShift.total);
+  await settleApiRequests(page);
+  const { total, records } = await page.evaluate(() => window.layoutShift);
   testInfo.annotations.push({ type: "layout-shift", description: `${name} ${testInfo.project.name} ${total.toFixed(4)}` });
-  expect(total, `${name} cumulative layout shift`).toBeLessThanOrEqual(LAYOUT_SHIFT_BUDGET);
+  const culprits = records.map(record => `${record.value.toFixed(4)}: ${record.sources.join("; ")}`).join("\n");
+  expect(total, `${name} cumulative layout shift\n${culprits}`).toBeLessThanOrEqual(LAYOUT_SHIFT_BUDGET);
 }
 
 test("the fleet page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
   const host = hostCaptures().find(entry => entry.name === "lisa");
   if (host === undefined) throw new Error("no lisa capture");
   await trackLayoutShift(page);
-  await replay(page, host, LAYOUT_DATA_DELAY_MS);
+  await replay(page, host, LAYOUT_LATENCY);
   await page.goto("/");
   await expect(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: host.name })).toBeVisible();
   await expectStableLayout(page, testInfo, "fleet");
@@ -253,7 +295,7 @@ test("a host page keeps its layout while its data arrives", { tag: "@mobile" }, 
   const host = hostCaptures().find(entry => entry.name === "lisa");
   if (host === undefined) throw new Error("no lisa capture");
   await trackLayoutShift(page);
-  await replay(page, host, LAYOUT_DATA_DELAY_MS);
+  await replay(page, host, LAYOUT_LATENCY);
   await page.goto(`/#/host/${host.hostId}`);
   await expect(page.getByRole("heading", { name: host.name, level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "Charts" })).toBeVisible();
@@ -262,7 +304,7 @@ test("a host page keeps its layout while its data arrives", { tag: "@mobile" }, 
 
 test("the projects page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
   await trackLayoutShift(page);
-  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_DATA_DELAY_MS);
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_LATENCY);
   await page.goto("/#/projects");
   await expect(page.getByRole("table", { name: "Projects" })).toBeVisible();
   await expectStableLayout(page, testInfo, "projects");
@@ -270,11 +312,23 @@ test("the projects page keeps its layout while its data arrives", { tag: "@mobil
 
 test("the stuff project page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
   await trackLayoutShift(page);
-  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_DATA_DELAY_MS);
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_LATENCY);
   await page.goto("/#/project/stuff?open=deploys,signals");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".ledger-month")).toBeVisible();
   await expect(page.locator("#deployments")).toBeVisible();
   await expect(page.locator(".charts > .widget").first()).toBeVisible();
   await expectStableLayout(page, testInfo, "stuff project");
+});
+
+test("the stuff project page keeps its layout at tablet width", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await trackLayoutShift(page);
+  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_LATENCY);
+  await page.goto("/#/project/stuff?open=deploys,signals");
+  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+  await expect(page.locator(".ledger-month")).toBeVisible();
+  await expect(page.locator("#deployments")).toBeVisible();
+  await expect(page.locator(".charts > .widget").first()).toBeVisible();
+  await expectStableLayout(page, testInfo, "stuff project tablet");
 });
