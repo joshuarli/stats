@@ -1,6 +1,5 @@
-import { markInvocation, markOperation } from "./observe/cloudflare/mark.ts";
 import type { OperationSummary } from "./observe/producer/channel.ts";
-import { SqlAccount } from "./sql-account.ts";
+import type { SqlDatabase, SqlValue } from "./core/sql.ts";
 import type { HostHistoryColumns } from "./history-frame.ts";
 import type { HistoryKind } from "./limits.ts";
 import type { ProjectHistory, ProjectKind } from "./projects/history.ts";
@@ -10,13 +9,20 @@ export const SYNTHETIC_HOST_NAME = "synthetic-check";
 type Described<T> = T extends unknown ? Omit<T, "rows"> : never;
 export type OperationDescription = Described<OperationSummary>;
 
+export interface OperationSink {
+  invocation(): void;
+  operation(summary: OperationSummary): void;
+}
+
 export class OperationRun {
-  readonly sql: SqlAccount;
+  readonly sql: SqlDatabase;
+  private readonly sink: OperationSink;
   private describer: (() => OperationDescription) | null = null;
   private finished = false;
 
-  constructor(storage: SqlStorage) {
-    this.sql = new SqlAccount(storage);
+  constructor(sql: SqlDatabase, sink: OperationSink) {
+    this.sql = sql;
+    this.sink = sink;
   }
 
   describe(describer: () => OperationDescription): void {
@@ -26,8 +32,8 @@ export class OperationRun {
   finish(): void {
     if (this.finished) throw new Error("operation already published");
     this.finished = true;
-    if (this.describer === null) markInvocation();
-    else markOperation({ ...this.describer(), rows: this.sql.total() } as OperationSummary);
+    if (this.describer === null) this.sink.invocation();
+    else this.sink.operation({ ...this.describer(), rows: this.sql.total() } as OperationSummary);
   }
 }
 
@@ -35,10 +41,10 @@ export function isSyntheticHost(name: string): boolean {
   return name === SYNTHETIC_HOST_NAME;
 }
 
-export function rowsWrittenBy(sql: SqlAccount, query: string, ...bindings: unknown[]): number {
-  const before = sql.total().written;
-  sql.exec(query, ...bindings);
-  return sql.total().written - before;
+export function rowsWrittenBy(sql: SqlDatabase, query: string, ...params: SqlValue[]): number {
+  const before = sql.rowsWritten();
+  sql.run(query, ...params);
+  return sql.rowsWritten() - before;
 }
 
 export type HostHistoryResolution = "raw" | "1m" | "1h";

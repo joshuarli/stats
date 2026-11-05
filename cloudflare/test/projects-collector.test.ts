@@ -2,7 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
 import { readMetricHistory } from "../src/projects/history";
-import { SqlAccount } from "../src/sql-account";
+import { CloudflareSql } from "../src/cloudflare/sql";
 import type { ProbeFetch } from "../src/projects/probes";
 import type { BoundQuery } from "../src/projects/queries";
 import r2OperationsBody from "./fixtures/analytics/r2-operations.json";
@@ -56,8 +56,8 @@ function collect(store: ReturnType<typeof stub>, analytics: AnalyticsQuery, now 
   return runCollector({ analytics, store, projectsJson: PROJECTS, storeWorker: "stats", now, probeFetch: noProbes });
 }
 
-function inside<T>(store: ReturnType<typeof stub>, body: (sql: SqlStorage) => T): Promise<T> {
-  return runInDurableObject(store, async (_instance, state) => body(state.storage.sql));
+function inside<T>(store: ReturnType<typeof stub>, body: (sql: SqlStorage, storage: DurableObjectStorage) => T): Promise<T> {
+  return runInDurableObject(store, async (_instance, state) => body(state.storage.sql, state.storage));
 }
 
 beforeEach(async () => {
@@ -131,8 +131,8 @@ describe("collector", () => {
     const owner = { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
     const other = { ...owner, id: "stuff", name: "stuff", worker: "stuff" };
     await runCollector({ analytics: fakeAnalytics(fixtureRows()), store, projectsJson: JSON.stringify([owner, other]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
-    await inside(store, (sql) => {
-      const sizes = (project: typeof owner) => readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "durable-objects", NOW).series.find((series) => series.metric === "do.storageBytes")!.values;
+    await inside(store, (sql, storage) => {
+      const sizes = (project: typeof owner) => readMetricHistory(new CloudflareSql(storage), project, { range: "1h" }, "durable-objects", NOW).series.find((series) => series.metric === "do.storageBytes")!.values;
       const recorded = sizes(owner).filter((value) => value !== null);
       expect(recorded).toHaveLength(1);
       expect(recorded[0]).toBeGreaterThan(0);
@@ -166,19 +166,19 @@ describe("collector", () => {
     const projectsJson = JSON.stringify([{ id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] }]);
     const result = await runCollector({ analytics, store, projectsJson, storeWorker: "stats", now: NOW, probeFetch: noProbes });
     expect(result.queries).toBe(5);
-    await inside(store, (sql) => {
+    await inside(store, (sql, storage) => {
       const project = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
       const withDatabase = { ...project, d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"] };
-      const sizes = readMetricHistory(new SqlAccount(sql), withDatabase, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
+      const sizes = readMetricHistory(new CloudflareSql(storage), withDatabase, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === "d1.9870c4da-3758-4f0c-ab6d-2372eb34009b.storageBytes");
       expect(Math.max(...(sizes?.values ?? []).map((value) => value ?? 0))).toBe(245_923_840);
-      const totals = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1", NOW).series;
+      const totals = readMetricHistory(new CloudflareSql(storage), project, { range: "1h" }, "d1", NOW).series;
       const written = totals.find((series) => series.metric === "d1.rowsWritten")?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
       expect(written).toBe(3_078);
-      const ranked = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1-statements", NOW).series.filter((series) => series.metric.endsWith(".rowsWritten")).map((series) => series.metric);
+      const ranked = readMetricHistory(new CloudflareSql(storage), project, { range: "1h" }, "d1-statements", NOW).series.filter((series) => series.metric.endsWith(".rowsWritten")).map((series) => series.metric);
       expect(ranked).toHaveLength(10);
       expect(ranked[0]).toBe("d1q.UPDATE hot SET a = ?.rowsWritten");
       expect(ranked[1]).toBe("d1q.SELECT * FROM big_read.rowsWritten");
-      const hot = readMetricHistory(new SqlAccount(sql), project, { range: "1h" }, "d1-statements", NOW).series.find((series) => series.metric === "d1q.UPDATE hot SET a = ?.rowsWritten");
+      const hot = readMetricHistory(new CloudflareSql(storage), project, { range: "1h" }, "d1-statements", NOW).series.find((series) => series.metric === "d1q.UPDATE hot SET a = ?.rowsWritten");
       expect(hot?.values.reduce<number>((sum, value) => sum + (value ?? 0), 0)).toBe(3_000);
     });
   });

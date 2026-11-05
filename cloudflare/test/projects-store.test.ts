@@ -12,7 +12,7 @@ import {
   recordRun,
   upsertPoints,
 } from "../src/projects/store";
-import { SqlAccount } from "../src/sql-account";
+import { CloudflareSql } from "../src/cloudflare/sql";
 
 const HOUR = Date.UTC(2026, 10, 1, 12);
 const BUCKET = 300_000;
@@ -44,8 +44,8 @@ describe("project storage", () => {
         point("worker.cpuMsMax", HOUR, 7),
       ];
       state.storage.transactionSync(() => {
-        expect(upsertPoints(new SqlAccount(sql), "p", points).rowsWritten).toBeGreaterThan(0);
-        expect(upsertPoints(new SqlAccount(sql), "p", points).rowsWritten).toBe(0);
+        expect(upsertPoints(new CloudflareSql(state.storage), "p", points).rowsWritten).toBeGreaterThan(0);
+        expect(upsertPoints(new CloudflareSql(state.storage), "p", points).rowsWritten).toBe(0);
       });
     });
   });
@@ -54,8 +54,8 @@ describe("project storage", () => {
     await inside((sql, state) => {
       const first = [point("worker.invocations", HOUR, 10), point("worker.invocations", HOUR + BUCKET, 20)];
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", first);
-        const written = upsertPoints(new SqlAccount(sql), "p", [first[0]!, point("worker.invocations", HOUR + BUCKET, 25)]).rowsWritten;
+        upsertPoints(new CloudflareSql(state.storage), "p", first);
+        const written = upsertPoints(new CloudflareSql(state.storage), "p", [first[0]!, point("worker.invocations", HOUR + BUCKET, 25)]).rowsWritten;
         expect(written).toBe(2);
       });
       expect(sql.exec("SELECT value FROM project_samples WHERE bucket_ms = ?", HOUR + BUCKET).one().value).toBe(25);
@@ -66,7 +66,7 @@ describe("project storage", () => {
   it("rebuilds hours by adding sums, taking the maximum of maxes, and keeping hours apart", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", [
+        upsertPoints(new CloudflareSql(state.storage), "p", [
           point("worker.invocations", HOUR, 1),
           point("worker.invocations", HOUR + 2 * BUCKET, 2),
           point("worker.invocations", HOUR + HOUR_MS, 4),
@@ -76,7 +76,7 @@ describe("project storage", () => {
           point("r2.stuff-mynpm.storageBytes", HOUR, 500),
           point("r2.stuff-mynpm.storageBytes", HOUR + 10 * BUCKET, 400),
         ]);
-        upsertPoints(new SqlAccount(sql), "p", [point("worker.invocations", HOUR + 3 * BUCKET, 3)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("worker.invocations", HOUR + 3 * BUCKET, 3)]);
       });
       expect(hourValue(sql, "worker.invocations")).toBe(6);
       expect(hourValue(sql, "worker.invocations", HOUR + HOUR_MS)).toBe(4);
@@ -88,8 +88,8 @@ describe("project storage", () => {
   it("keeps an outage visible in the hour by taking the minimum of probe availability", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", [point("probe.npm.up", HOUR, 1), point("probe.npm.up", HOUR + BUCKET, 0), point("probe.npm.up", HOUR + 2 * BUCKET, 1)]);
-        upsertPoints(new SqlAccount(sql), "p", [point("probe.npm.ms", HOUR, 80), point("probe.npm.ms", HOUR + BUCKET, 900)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("probe.npm.up", HOUR, 1), point("probe.npm.up", HOUR + BUCKET, 0), point("probe.npm.up", HOUR + 2 * BUCKET, 1)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("probe.npm.ms", HOUR, 80), point("probe.npm.ms", HOUR + BUCKET, 900)]);
       });
       expect(hourValue(sql, "probe.npm.up")).toBe(0);
       expect(hourValue(sql, "probe.npm.ms")).toBe(900);
@@ -99,8 +99,8 @@ describe("project storage", () => {
   it("lowers a maximum hour when the corrected bucket was the maximum", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", [point("worker.cpuMsMax", HOUR, 9), point("worker.cpuMsMax", HOUR + BUCKET, 30)]);
-        upsertPoints(new SqlAccount(sql), "p", [point("worker.cpuMsMax", HOUR + BUCKET, 5)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("worker.cpuMsMax", HOUR, 9), point("worker.cpuMsMax", HOUR + BUCKET, 30)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("worker.cpuMsMax", HOUR + BUCKET, 5)]);
       });
       expect(hourValue(sql, "worker.cpuMsMax")).toBe(9);
     });
@@ -109,11 +109,11 @@ describe("project storage", () => {
   it("keeps projects separate and refuses metrics it cannot aggregate", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", [point("worker.invocations", HOUR, 1)]);
-        upsertPoints(new SqlAccount(sql), "q", [point("worker.invocations", HOUR, 100)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [point("worker.invocations", HOUR, 1)]);
+        upsertPoints(new CloudflareSql(state.storage), "q", [point("worker.invocations", HOUR, 100)]);
       });
       expect(hourValue(sql, "worker.invocations")).toBe(1);
-      expect(() => upsertPoints(new SqlAccount(sql), "p", [point("worker.unknown", HOUR, 1)])).toThrow("unknown project metric");
+      expect(() => upsertPoints(new CloudflareSql(state.storage), "p", [point("worker.unknown", HOUR, 1)])).toThrow("unknown project metric");
     });
   });
 
@@ -123,25 +123,25 @@ describe("project storage", () => {
       const old = now - PROJECT_SAMPLE_RETENTION_MS - HOUR_MS;
       const oldPoints = Array.from({ length: PURGE_BATCH + 5 }, (_, i) => point("worker.invocations", old - i * BUCKET, 1));
       state.storage.transactionSync(() => {
-        upsertPoints(new SqlAccount(sql), "p", [...oldPoints, point("worker.invocations", now - HOUR_MS, 1)]);
+        upsertPoints(new CloudflareSql(state.storage), "p", [...oldPoints, point("worker.invocations", now - HOUR_MS, 1)]);
         sql.exec("INSERT INTO project_hours (project, metric, hour_ms, value) VALUES ('p', 'worker.invocations', ?, 1)", now - PROJECT_HOUR_RETENTION_MS - HOUR_MS);
       });
-      const first = purgeExpired(new SqlAccount(sql), now);
+      const first = purgeExpired(new CloudflareSql(state.storage), now);
       expect(first.samples).toBe(PURGE_BATCH);
       expect(first.hours).toBe(1);
-      const second = purgeExpired(new SqlAccount(sql), now);
+      const second = purgeExpired(new CloudflareSql(state.storage), now);
       expect(second.samples).toBe(5);
-      expect(purgeExpired(new SqlAccount(sql), now)).toEqual({ samples: 0, hours: 0 });
+      expect(purgeExpired(new CloudflareSql(state.storage), now)).toEqual({ samples: 0, hours: 0 });
       expect(sql.exec("SELECT count(*) AS total FROM project_samples").one().total).toBe(1);
       expect(sql.exec("SELECT count(*) AS total FROM project_hours WHERE hour_ms >= ?", now - PROJECT_HOUR_RETENTION_MS).one().total).toBeGreaterThan(0);
     });
   });
 
   it("keeps the newest runs only", async () => {
-    await inside((sql) => {
+    await inside((sql, state) => {
       for (let i = 0; i < COLLECTOR_RUNS_KEPT + 3; i += 1) {
         const outcome = i % 2 === 0 ? { ok: true as const, collected: [], storeOwners: [] } : { ok: false as const };
-        recordRun(new SqlAccount(sql), { atMs: i, detail: "d", rowsRead: 0, durationMs: 1, upstreamQueries: 0, ...outcome });
+        recordRun(new CloudflareSql(state.storage), { atMs: i, detail: "d", rowsRead: 0, durationMs: 1, upstreamQueries: 0, ...outcome });
       }
       const rows = sql.exec<{ at_ms: number }>("SELECT at_ms FROM collector_runs ORDER BY id").toArray();
       expect(rows).toHaveLength(COLLECTOR_RUNS_KEPT);

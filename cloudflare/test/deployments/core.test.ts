@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import { parseDeployment, parseVersion, DEPLOYMENT_RETENTION_MS } from "../../src/deployments/model.ts";
 import { comparisonBounds, compareDeployment, DEPLOYMENT_BUCKET_MS as B, type ComparisonWindow, type DeploymentComparison, type MetricRow } from "../../src/deployments/compare.ts";
 import { collectDeployments, type DeploymentFetch, type DeploymentPoll } from "../../src/deployments/collector.ts";
 import { decodeDeploymentHistory, decodeDeploymentComparison } from "../../src/deployments/decode.ts";
-import type { DeploymentStorage } from "../../src/deployments/store.ts";
-import { SqlAccount } from "../../src/sql-account.ts";
+import type { SqlDatabase } from "../../src/core/sql.ts";
+import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { initializeDeployments, saveDeploymentPoll, readDeployments, readDeploymentSync, readVersions, purgeDeployments, rememberSettledWindow, hasSettledWindow } from "../../src/deployments/store.ts";
 
 const H = 3_600_000, SETTLE = 45 * 60_000;
@@ -40,18 +40,10 @@ const errorShare = (result: DeploymentComparison) => result.metrics.find(metric 
 const metricOf = (result: DeploymentComparison, name: string) => result.metrics.find(metric => metric.metric === name)!;
 const changes = (db: DatabaseSync): number => Number((db.prepare("SELECT total_changes() AS n").get() as { n: number | bigint }).n);
 
-type TestStorage = DeploymentStorage & { db: DatabaseSync };
+type TestStorage = { db: DatabaseSync; sql: SqlDatabase };
 function storage(): TestStorage {
   const db = new DatabaseSync(":memory:");
-  const sql = {
-    exec(query: string, ...args: Parameters<StatementSync["all"]>) {
-      const before = changes(db);
-      const data = db.prepare(query).all(...args);
-      const after = changes(db);
-      return { toArray: () => data, one: () => { assert.equal(data.length, 1); return data[0]; }, rowsWritten: after - before, [Symbol.iterator]: () => data[Symbol.iterator]() };
-    },
-  };
-  return { db, sql: new SqlAccount(sql as never), transactionSync<T>(fn: () => T): T { db.exec("BEGIN"); try { const value = fn(); db.exec("COMMIT"); return value; } catch (error) { db.exec("ROLLBACK"); throw error; } } } as unknown as TestStorage;
+  return { db, sql: nodeSqlScopes(db).open() };
 }
 function poll(extra: Partial<DeploymentPoll> = {}): DeploymentPoll { return { project: "stats", worker: "stats", atMs: NOW, error: null, deployments: [deployed, previous], versions: [{ id: id(102), tag: "abc1234", message: "release" }], truncated: false, ...extra }; }
 type CollectorInput = Parameters<typeof collectDeployments>[0];
@@ -200,42 +192,42 @@ await test("deferred Durable Object updates withhold DO attribution", () => {
 });
 
 await test("SQLite migration is additive and repeatable", () => {
-  const state = storage(); state.sql.exec("CREATE TABLE hosts (id TEXT)"); initializeDeployments(state); initializeDeployments(state);
-  assert.equal(state.sql.exec("SELECT name FROM sqlite_master WHERE type = 'table'").length, 5); state.db.close();
+  const state = storage(); state.sql.run("CREATE TABLE hosts (id TEXT)"); initializeDeployments(state.sql); initializeDeployments(state.sql);
+  assert.equal(state.sql.rows("SELECT name FROM sqlite_master WHERE type = 'table'").length, 5); state.db.close();
 });
 await test("SQLite unchanged polls only update the sync record", () => {
-  const state = storage(); initializeDeployments(state); saveDeploymentPoll(state, poll());
+  const state = storage(); initializeDeployments(state.sql); saveDeploymentPoll(state.sql, poll());
   const before = changes(state.db);
-  saveDeploymentPoll(state, poll({ atMs: NOW + B }));
+  saveDeploymentPoll(state.sql, poll({ atMs: NOW + B }));
   const after = changes(state.db);
   assert.equal(after - before, 1);
   assert.equal(readDeployments(state.sql, "stats", "stats", NOW).length, 2);
   assert.equal(readVersions(state.sql, "stats", "stats")[0]!.tag, "abc1234"); state.db.close();
 });
 await test("SQLite failures and out-of-order polls retain last good history", () => {
-  const state = storage(); initializeDeployments(state); saveDeploymentPoll(state, poll());
-  saveDeploymentPoll(state, poll({ atMs: NOW + B, error: "unauthorized", deployments: [], versions: [] }));
-  saveDeploymentPoll(state, poll({ atMs: NOW - B, error: "rate_limited" }));
+  const state = storage(); initializeDeployments(state.sql); saveDeploymentPoll(state.sql, poll());
+  saveDeploymentPoll(state.sql, poll({ atMs: NOW + B, error: "unauthorized", deployments: [], versions: [] }));
+  saveDeploymentPoll(state.sql, poll({ atMs: NOW - B, error: "rate_limited" }));
   assert.equal(readDeploymentSync(state.sql, "stats", "stats")!.lastSuccessAtMs, NOW);
   assert.equal(readDeploymentSync(state.sql, "stats", "stats")!.error, "unauthorized");
   assert.equal(readDeployments(state.sql, "stats", "stats", NOW).length, 2); state.db.close();
 });
 await test("SQLite scopes a renamed worker separately and retains rollbacks", () => {
-  const state = storage(); initializeDeployments(state); saveDeploymentPoll(state, poll({ deployments: [deployed, previous, parseDeployment(raw(3, AT + H, previous.versions.map(version => ({ version_id: version.id, percentage: version.percentage }))))] }));
+  const state = storage(); initializeDeployments(state.sql); saveDeploymentPoll(state.sql, poll({ deployments: [deployed, previous, parseDeployment(raw(3, AT + H, previous.versions.map(version => ({ version_id: version.id, percentage: version.percentage }))))] }));
   assert.equal(readDeployments(state.sql, "stats", "stats", NOW).length, 3);
   assert.equal(readDeployments(state.sql, "stats", "new-worker", NOW).length, 0); state.db.close();
 });
 await test("SQLite expiry also works while polling is disabled", () => {
-  const state = storage(); initializeDeployments(state); saveDeploymentPoll(state, poll());
+  const state = storage(); initializeDeployments(state.sql); saveDeploymentPoll(state.sql, poll());
   purgeDeployments(state.sql, NOW + DEPLOYMENT_RETENTION_MS + 1);
-  assert.equal(state.sql.exec("SELECT * FROM project_deployments").length, 0);
+  assert.equal(state.sql.rows("SELECT * FROM project_deployments").length, 0);
   assert.equal(readVersions(state.sql, "stats", "stats").length, 0);
   assert.equal(readDeploymentSync(state.sql, "stats", "stats"), null); state.db.close();
 });
 await test("SQLite caps deployment history at 1,000 records", () => {
-  const state = storage(); initializeDeployments(state);
-  saveDeploymentPoll(state, poll({ deployments: Array.from({ length: 1001 }, (_, index) => parseDeployment(raw(index + 1, NOW - index * 1000))), versions: [] }));
-  assert.equal(state.sql.exec("SELECT COUNT(*) AS n FROM project_deployments")[0]!["n"], 1000); state.db.close();
+  const state = storage(); initializeDeployments(state.sql);
+  saveDeploymentPoll(state.sql, poll({ deployments: Array.from({ length: 1001 }, (_, index) => parseDeployment(raw(index + 1, NOW - index * 1000))), versions: [] }));
+  assert.equal(state.sql.rows<{ n: number }>("SELECT COUNT(*) AS n FROM project_deployments")[0]!.n, 1000); state.db.close();
 });
 
 await test("no credentials means no API calls or writes", async () => {
@@ -297,7 +289,7 @@ await test("time alone does not certify partial metrics as settled", () => {
   assert.ok(value.reasons.some(reason => reason.includes("No proof")));
 });
 await test("coverage merges adjoining windows but preserves outage gaps", () => {
-  const state = storage(); initializeDeployments(state);
+  const state = storage(); initializeDeployments(state.sql);
   rememberSettledWindow(state.sql, "stats", "stats", AT - 3 * H, AT - 2 * H);
   rememberSettledWindow(state.sql, "stats", "stats", AT - 2 * H, AT - H);
   rememberSettledWindow(state.sql, "stats", "stats", AT, AT + H);
@@ -306,7 +298,7 @@ await test("coverage merges adjoining windows but preserves outage gaps", () => 
   assert.equal(hasSettledWindow(state.sql, "stats", "different-worker", AT - 3 * H, AT - H), false);
   rememberSettledWindow(state.sql, "stats", "stats", AT - H, AT);
   assert.equal(hasSettledWindow(state.sql, "stats", "stats", AT - 3 * H, AT + H), true);
-  assert.equal(state.sql.exec("SELECT * FROM project_deployment_coverage").length, 1);
+  assert.equal(state.sql.rows("SELECT * FROM project_deployment_coverage").length, 1);
   const before = changes(state.db);
   rememberSettledWindow(state.sql, "stats", "stats", AT - H, AT);
   assert.equal(changes(state.db), before);

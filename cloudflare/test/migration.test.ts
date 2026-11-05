@@ -2,7 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { migrate } from "../src/installation";
 import { readMetricHistory } from "../src/projects/history";
-import { SqlAccount } from "../src/sql-account";
+import { CloudflareSql } from "../src/cloudflare/sql";
 
 function stub(name: string) {
   return env.INSTALLATION.get(env.INSTALLATION.idFromName(name));
@@ -23,7 +23,7 @@ describe("schema migrations", () => {
       state.storage.sql.exec("INSERT INTO hosts (host_id, name, token_hash, created_at_ms) VALUES ('h_0123456789abcdef0123456789abcdef', 'kept', 'hash', 1)");
       state.storage.sql.exec("DROP TABLE host_system");
       state.storage.sql.exec("UPDATE schema_version SET version = 2");
-      migrate(state.storage);
+      migrate(new CloudflareSql(state.storage));
       expect(schemaVersion(state)).toBe(7);
       expect(state.storage.sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
       expect(state.storage.sql.exec("SELECT version FROM host_history_versions").toArray()).toEqual([{ version: 0 }]);
@@ -40,7 +40,7 @@ describe("schema migrations", () => {
       sql.exec("DROP TABLE project_hours");
       sql.exec("DROP TABLE collector_runs");
       sql.exec("UPDATE schema_version SET version = 3");
-      migrate(state.storage);
+      migrate(new CloudflareSql(state.storage));
       expect(schemaVersion(state)).toBe(7);
       expect(sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
       expect(sql.exec("SELECT count(*) AS total FROM samples").one().total).toBe(1);
@@ -62,7 +62,7 @@ describe("schema migrations", () => {
         }
       }
       sql.exec("UPDATE schema_version SET version = 4");
-      migrate(state.storage);
+      migrate(new CloudflareSql(state.storage));
       const kept = (table: string, column: string, at: number) =>
         sql.exec<{ metric: string }>(`SELECT metric FROM ${table} WHERE ${column} = ? ORDER BY metric`, at).toArray().map(row => row.metric);
       for (const [table, column] of [["project_samples", "bucket_ms"], ["project_hours", "hour_ms"]] as const) {
@@ -82,12 +82,12 @@ describe("schema migrations", () => {
       sql.exec("INSERT INTO collector_runs (at_ms, ok, detail, rows_read, duration_ms) VALUES (1793571349204, 1, 'ok', 1, 1)");
       sql.exec("UPDATE schema_version SET version = 5");
       const valueAt = () => {
-        const history = readMetricHistory(new SqlAccount(sql), project, { range: "6h" }, "worker", now);
+        const history = readMetricHistory(new CloudflareSql(state.storage), project, { range: "6h" }, "worker", now);
         const invocations = history.series.find(series => series.metric === "worker.invocations");
         return invocations?.values[(purgedBucket - history.fromMs) / 300000];
       };
       expect(valueAt()).toBe(0);
-      migrate(state.storage);
+      migrate(new CloudflareSql(state.storage));
       expect(valueAt()).toBeNull();
       expect(sql.exec("SELECT count(*) AS total FROM collector_runs").one().total).toBe(1);
     });
@@ -100,7 +100,7 @@ describe("schema migrations", () => {
       state.storage.sql.exec("DROP TABLE rollups");
       state.storage.sql.exec("DROP INDEX samples_by_received");
       state.storage.sql.exec("UPDATE schema_version SET version = 0");
-      migrate(state.storage);
+      migrate(new CloudflareSql(state.storage));
       expect(schemaVersion(state)).toBe(7);
       const objects = state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE name IN ('rollups', 'samples_by_received', 'rollups_by_expiry')").toArray().map(row => row.name).sort();
       expect(objects).toEqual(["rollups", "rollups_by_expiry", "samples_by_received"]);

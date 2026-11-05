@@ -5,7 +5,7 @@ import type { ProjectConfig } from "./config.ts";
 import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 import type { ProjectHistorySource } from "../operations.ts";
-import type { SqlAccount } from "../sql-account.ts";
+import type { SqlDatabase } from "../core/sql.ts";
 import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.ts";
 
 const STALE_AFTER_MS = 15 * 60_000;
@@ -109,9 +109,9 @@ function expectedMetrics(project: ProjectConfig, kind: MetricKind): string[] {
   }
 }
 
-export function summarizeCollector(sql: SqlAccount, now: number): CollectorSummary {
-  const last = sql.exec<{ at_ms: number; ok: number; detail: string }>("SELECT at_ms, ok, detail FROM collector_runs ORDER BY id DESC LIMIT 1")[0];
-  const success = sql.exec<{ at_ms: number }>("SELECT at_ms FROM collector_runs WHERE ok = 1 ORDER BY id DESC LIMIT 1")[0];
+export function summarizeCollector(sql: SqlDatabase, now: number): CollectorSummary {
+  const last = sql.rows<{ at_ms: number; ok: number; detail: string }>("SELECT at_ms, ok, detail FROM collector_runs ORDER BY id DESC LIMIT 1")[0];
+  const success = sql.rows<{ at_ms: number }>("SELECT at_ms FROM collector_runs WHERE ok = 1 ORDER BY id DESC LIMIT 1")[0];
   const lastSuccessAtMs = success?.at_ms ?? null;
   return {
     lastRunAtMs: last?.at_ms ?? null,
@@ -121,8 +121,8 @@ export function summarizeCollector(sql: SqlAccount, now: number): CollectorSumma
   };
 }
 
-export function latestCollectorRunId(sql: SqlAccount): number | null {
-  return sql.exec<{ id: number }>("SELECT id FROM collector_runs ORDER BY id DESC LIMIT 1")[0]?.id ?? null;
+export function latestCollectorRunId(sql: SqlDatabase): number | null {
+  return sql.rows<{ id: number }>("SELECT id FROM collector_runs ORDER BY id DESC LIMIT 1")[0]?.id ?? null;
 }
 
 function boundsOf(query: HistoryQuery, now: number): { readonly fromMs: number; readonly toMs: number } {
@@ -133,11 +133,11 @@ function rangeOf(query: HistoryQuery): { readonly range?: RangeKey } {
   return "range" in query ? { range: query.range } : {};
 }
 
-export function readCollectorHistory(sql: SqlAccount, project: ProjectConfig, query: HistoryQuery, now: number): CollectorHistory {
+export function readCollectorHistory(sql: SqlDatabase, project: ProjectConfig, query: HistoryQuery, now: number): CollectorHistory {
   const { fromMs, toMs } = boundsOf(query, now);
   const untilMs = "range" in query ? Number.MAX_SAFE_INTEGER : toMs;
   const runs = sql
-    .exec<{ at_ms: number; ok: number; detail: string; rows_read: number; duration_ms: number }>(
+    .rows<{ at_ms: number; ok: number; detail: string; rows_read: number; duration_ms: number }>(
       "SELECT at_ms, ok, detail, rows_read, duration_ms FROM collector_runs WHERE at_ms >= ? AND at_ms <= ? ORDER BY id",
       fromMs,
       untilMs,
@@ -170,7 +170,7 @@ export function projectHistorySource(query: HistoryQuery, kinds: readonly Projec
 }
 
 export function readProjectHistories(
-  sql: SqlAccount,
+  sql: SqlDatabase,
   project: ProjectConfig,
   query: HistoryQuery,
   kinds: readonly ProjectKind[],
@@ -195,7 +195,7 @@ export function readProjectHistories(
 }
 
 export function readMetricHistory(
-  sql: SqlAccount,
+  sql: SqlDatabase,
   project: ProjectConfig,
   query: HistoryQuery,
   kind: MetricKind,
@@ -281,7 +281,7 @@ function statementMetrics(rows: Grouped): string[] {
 }
 
 function readGrouped(
-  sql: SqlAccount,
+  sql: SqlDatabase,
   project: string,
   kinds: readonly MetricKind[],
   stepMs: number,
@@ -291,7 +291,7 @@ function readGrouped(
   const prefixes = kinds.map((kind) => KIND_PREFIX[kind]);
   const conditions = prefixes.map(() => "(metric >= ? AND metric < ?)").join(" OR ");
   const [table, column] = stepMs < HOUR_MS ? ["project_samples", "bucket_ms"] : ["project_hours", "hour_ms"];
-  const rows = sql.exec<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
+  const rows = sql.rows<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
     `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value
      FROM ${table} WHERE project = ? AND (${conditions}) AND ${column} >= ? AND ${column} <= ?
      GROUP BY metric, at`,
@@ -318,9 +318,9 @@ function readGrouped(
   return grouped;
 }
 
-function fillableBuckets(sql: SqlAccount, fromMs: number, now: number): (startMs: number, endMs: number) => boolean {
+function fillableBuckets(sql: SqlDatabase, fromMs: number, now: number): (startMs: number, endMs: number) => boolean {
   const successes = sql
-    .exec<{ at_ms: number }>("SELECT at_ms FROM collector_runs WHERE ok = 1 AND at_ms >= ? ORDER BY at_ms", fromMs)
+    .rows<{ at_ms: number }>("SELECT at_ms FROM collector_runs WHERE ok = 1 AND at_ms >= ? ORDER BY at_ms", fromMs)
     .map((row) => row.at_ms);
   const bucketFillable = (bucketStartMs: number): boolean => {
     const settledAtMs = bucketStartMs + BUCKET_MS + PROJECT_SETTLE_MS;

@@ -2,7 +2,7 @@ import { DAY_MS, HOUR_MS, HOUR_RETENTION_MS } from "../limits.ts";
 import { aggregationOf, type MetricPoint } from "./parse.ts";
 import { BUCKET_MS } from "./queries.ts";
 import { rowsWrittenBy } from "../operations.ts";
-import type { SqlAccount } from "../sql-account.ts";
+import type { SqlDatabase } from "../core/sql.ts";
 
 export const PROJECT_SAMPLE_RETENTION_MS = 7 * DAY_MS;
 export const PROJECT_HOUR_RETENTION_MS = HOUR_RETENTION_MS;
@@ -71,7 +71,7 @@ export interface UpsertResult {
   readonly hours: number;
 }
 
-export function upsertPoints(sql: SqlAccount, project: string, points: readonly MetricPoint[]): UpsertResult {
+export function upsertPoints(sql: SqlDatabase, project: string, points: readonly MetricPoint[]): UpsertResult {
   let rowsWritten = 0;
   let samples = 0;
   let hours = 0;
@@ -101,7 +101,7 @@ export function upsertPoints(sql: SqlAccount, project: string, points: readonly 
   return { rowsWritten, samples, hours };
 }
 
-function storedValues(sql: SqlAccount, project: string, points: readonly MetricPoint[]): Map<string, number> {
+function storedValues(sql: SqlDatabase, project: string, points: readonly MetricPoint[]): Map<string, number> {
   const stored = new Map<string, number>();
   if (points.length === 0) {
     return stored;
@@ -118,16 +118,16 @@ function storedValues(sql: SqlAccount, project: string, points: readonly MetricP
   return stored;
 }
 
-function rebuildHour(sql: SqlAccount, project: string, metric: string, hourMs: number): number {
+function rebuildHour(sql: SqlDatabase, project: string, metric: string, hourMs: number): number {
   const fold = { sum: "SUM", max: "MAX", min: "MIN" }[aggregationOf(metric)];
-  const rebuilt = sql.exec<{ value: number }>(
+  const rebuilt = sql.rows<{ value: number }>(
     `SELECT ${fold}(value) AS value FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms >= ? AND bucket_ms < ?`,
     project,
     metric,
     hourMs,
     hourMs + HOUR_MS,
   )[0]!.value;
-  const existing = sql.exec<{ value: number }>(
+  const existing = sql.rows<{ value: number }>(
     "SELECT value FROM project_hours WHERE project = ? AND metric = ? AND hour_ms = ?",
     project,
     metric,
@@ -146,7 +146,7 @@ function rebuildHour(sql: SqlAccount, project: string, metric: string, hourMs: n
   );
 }
 
-export function recordRun(sql: SqlAccount, run: CollectorRun): number {
+export function recordRun(sql: SqlDatabase, run: CollectorRun): number {
   let written = rowsWrittenBy(
     sql,
     "INSERT INTO collector_runs (at_ms, ok, detail, rows_read, duration_ms) VALUES (?, ?, ?, ?, ?)",
@@ -160,7 +160,7 @@ export function recordRun(sql: SqlAccount, run: CollectorRun): number {
   return written;
 }
 
-export function purgeExpired(sql: SqlAccount, nowMs: number): { samples: number; hours: number } {
+export function purgeExpired(sql: SqlDatabase, nowMs: number): { samples: number; hours: number } {
   const samples = rowsWrittenBy(
     sql,
     `DELETE FROM project_samples WHERE (project, metric, bucket_ms) IN (

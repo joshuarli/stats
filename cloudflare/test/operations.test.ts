@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Installation } from "../src/deployments/installation";
 import { HISTORY_KINDS } from "../src/limits";
 import { OBSERVE_CHANNEL, WORKLOAD_CLASS, type ChannelMessage, type OperationMessage } from "../src/observe/producer/channel";
+import { CloudflareSql } from "../src/cloudflare/sql";
+import { cloudflareOperations } from "../src/cloudflare/operations";
 import { hostHistoryClass, OperationRun, projectHistoryClass, type HostHistoryResolution } from "../src/operations";
 import { PROJECT_KINDS } from "../src/projects/history";
 import type { CollectorRun } from "../src/projects/store";
@@ -66,7 +68,7 @@ describe("host.ingest", () => {
     const first = await invoke(async (instance, state) => {
       const cursors: SqlStorageCursor<Record<string, SqlStorageValue>>[] = [];
       const storage = { exec: (query: string, ...bindings: unknown[]) => { const cursor = state.storage.sql.exec(query, ...bindings); cursors.push(cursor); return cursor; } } as SqlStorage;
-      const operation = new OperationRun(storage);
+      const operation = new OperationRun(new CloudflareSql({ sql: storage, transactionSync: closure => state.storage.transactionSync(closure) }), cloudflareOperations);
       const response = await instance.ingest(ingestRequest(host.token, body), operation);
       const ack = await readAck(response);
       operation.finish();
