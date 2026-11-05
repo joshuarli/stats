@@ -56,7 +56,7 @@ export function decodeDeploymentHistory(value: unknown, projectId: string): Depl
 
 const REASON_CODES: readonly ReasonCode[] = [
   "unsettled", "disabled", "not-ready", "expired", "truncated", "stale-history", "split", "baseline-missing", "baseline-split", "overlap",
-  "invocations-missing", "invocations-floor", "route-mix"
+  "invocations-missing", "invocations-floor", "route-mix", "no-data"
 ];
 const COMPARABLE_OPERATIONS: readonly ComparableOperation[] = ["host.ingest", "host.history", "project.history", "collector.record"];
 

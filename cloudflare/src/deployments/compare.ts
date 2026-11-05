@@ -23,7 +23,7 @@ export interface MetricComparison {
 }
 export type ReasonCode =
   | "unsettled" | "disabled" | "not-ready" | "expired" | "truncated" | "stale-history" | "split" | "baseline-missing" | "baseline-split" | "overlap"
-  | "invocations-missing" | "invocations-floor" | "route-mix";
+  | "invocations-missing" | "invocations-floor" | "route-mix" | "no-data";
 export interface BucketValue { readonly atMs: number; readonly value: number }
 export interface DeploymentComparison {
   readonly deploymentId: string;
@@ -50,8 +50,8 @@ export function comparisonBounds(atMs: number, window: ComparisonWindow): { befo
   return { before: { fromMs: end - duration, toMs: end }, after: { fromMs: start, toMs: start + duration } };
 }
 
-type Buckets = ReadonlyMap<number, ReadonlyMap<string, number>>;
-function bucketRows(rows: readonly MetricRow[]): Buckets {
+export type Buckets = ReadonlyMap<number, ReadonlyMap<string, number>>;
+export function bucketRows(rows: readonly MetricRow[]): Buckets {
   const buckets = new Map<number, Map<string, number>>();
   for (const row of rows) {
     if (!Number.isFinite(row.value) || row.value < 0 || row.bucket_ms % DEPLOYMENT_BUCKET_MS !== 0) continue;
@@ -77,7 +77,7 @@ function total(buckets: Buckets, bounds: WindowBounds, metric: string, absent: A
 
 export const PROBE_MIN_PRESENT_SHARE = 0.75;
 
-function probeMean(buckets: Buckets, bounds: WindowBounds, metric: string): number | null {
+export function presentMean(buckets: Buckets, bounds: WindowBounds, metric: string): number | null {
   let sum = 0, present = 0, expected = 0;
   for (let at = bounds.fromMs; at < bounds.toMs; at += DEPLOYMENT_BUCKET_MS) {
     expected++;
@@ -107,11 +107,9 @@ function result(metric: string, label: string, unit: string, before: number | nu
   return { metric, label, unit, before, after, ...judge(before, after, floor, blocked) };
 }
 
-/** Descriptive comparison, not a causal claim or statistical significance test. */
-export function compareDeployment(input: {
+export interface DeploymentGateInput {
   readonly deployment: Deployment;
   readonly deployments: readonly Deployment[];
-  readonly rows: readonly MetricRow[];
   readonly window: ComparisonWindow;
   readonly now: number;
   readonly settleMs: number;
@@ -119,11 +117,21 @@ export function compareDeployment(input: {
   readonly truncated: boolean;
   readonly enabled: boolean;
   readonly metricsSettled: boolean;
-  readonly hasD1?: boolean;
-  readonly hasDurableObjects?: boolean;
-  readonly buckets?: readonly string[];
-  readonly probes?: readonly string[];
-}): DeploymentComparison {
+}
+
+export interface DeploymentGate {
+  readonly before: WindowBounds;
+  readonly after: WindowBounds;
+  readonly readyAtMs: number;
+  readonly spec: ComparisonSpec;
+  readonly deferredObjects: boolean;
+  readonly reasons: string[];
+  readonly reasonCodes: ReasonCode[];
+  readonly warnings: string[];
+  readonly block: (code: ReasonCode, text: string) => void;
+}
+
+export function gateDeployment(input: DeploymentGateInput): DeploymentGate {
   const { deployment, window } = input;
   const { before, after } = comparisonBounds(deployment.atMs, window);
   const readyAtMs = after.toMs + input.settleMs;
@@ -149,6 +157,28 @@ export function compareDeployment(input: {
     before: { ...previousSide, ...before },
     after: { deploymentId: deployment.id, versionIds: deployment.versions.map(version => version.id), ...after },
   });
+  return { before, after, readyAtMs, spec, deferredObjects, reasons, reasonCodes, warnings, block };
+}
+
+/** Descriptive comparison, not a causal claim or statistical significance test. */
+export function compareDeployment(input: {
+  readonly deployment: Deployment;
+  readonly deployments: readonly Deployment[];
+  readonly rows: readonly MetricRow[];
+  readonly window: ComparisonWindow;
+  readonly now: number;
+  readonly settleMs: number;
+  readonly lastSuccessAtMs: number | null;
+  readonly truncated: boolean;
+  readonly enabled: boolean;
+  readonly metricsSettled: boolean;
+  readonly hasD1?: boolean;
+  readonly hasDurableObjects?: boolean;
+  readonly buckets?: readonly string[];
+  readonly probes?: readonly string[];
+}): DeploymentComparison {
+  const { deployment, window } = input;
+  const { before, after, readyAtMs, spec, deferredObjects, reasons, reasonCodes, warnings, block } = gateDeployment(input);
   const buckets = bucketRows(input.rows);
   const analyticsAbsent: AbsentBucket = input.metricsSettled ? "idle" : "missing";
   const beforeCount = total(buckets, before, "worker.invocations", analyticsAbsent);
@@ -204,7 +234,7 @@ export function compareDeployment(input: {
   }
   if ((input.buckets?.length ?? 0) > 0) warnings.push("R2 ratios include all clients of the configured bucket, not just this Worker.");
   for (const name of input.probes ?? []) {
-    const average = (bounds: WindowBounds, suffix: string): number | null => probeMean(buckets, bounds, `probe.${name}.${suffix}`);
+    const average = (bounds: WindowBounds, suffix: string): number | null => presentMean(buckets, bounds, `probe.${name}.${suffix}`);
     metrics.push(result(`probe.${name}.ms`, `Probe ${name} mean edge response time`, "ms", average(before, "ms"), average(after, "ms"), 10, blocked));
     const failures = (bounds: WindowBounds) => { const up = average(bounds, "up"); return up === null ? null : (1 - up) * 100; };
     metrics.push(result(`probe.${name}.failure`, `Probe ${name} failure share`, "%", failures(before), failures(after), 1, blocked));

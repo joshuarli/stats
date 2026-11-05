@@ -3,6 +3,8 @@ import type { Clock } from "../core/ports.ts";
 import { InstallationCore } from "../core/installation/installation.ts";
 import type { OperationSink } from "../operations.ts";
 import { systemClock, TimerScheduler } from "./ports.ts";
+import type { ProbeFetch } from "../projects/probes.ts";
+import { scheduleServiceProbes } from "./probes.ts";
 import { nodeSqlScopes } from "./sql.ts";
 
 const unobservedOperations: OperationSink = {
@@ -29,6 +31,7 @@ export interface NodeInstallationOptions {
   readonly path: string;
   readonly projects: string;
   readonly clock?: Clock;
+  readonly probeFetch?: ProbeFetch;
 }
 
 export interface NodeInstallation {
@@ -49,9 +52,14 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
   );
   core.initialize();
   void core.armRetention();
+  const probes = scheduleServiceProbes({
+    core, clock, fetch: options.probeFetch ?? fetch,
+    failed: error => { console.error(JSON.stringify({ event: "service_probes_failed", name: error instanceof Error ? error.name : typeof error })); }
+  });
   return {
     core,
     close(): void {
+      probes.stop();
       scheduler.stop();
       db.close();
     }

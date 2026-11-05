@@ -25,7 +25,9 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateService, createService, listServices, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker } from "./services.ts";
+import { authenticateService, createService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, serviceProbeOwner } from "./services.ts";
+import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
+import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
 const ONLINE_WINDOW_MS = 45_000;
 export const WINDOW_MS = 60_000;
@@ -688,6 +690,8 @@ export class InstallationCore {
         return result.ok ? json(result.value, 201) : failure(result.code, result.message, result.status);
       }
       if (path === "/services" && request.method === "GET") return json({ services: listServices(sql) });
+      const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
+      if (comparison !== null) return this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
       const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);
       if (service !== null) return await this.serviceRoute(request, sql, service[1]!, service[2] !== undefined);
       return failure("not_found", "unknown object route", 404);
@@ -706,6 +710,49 @@ export class InstallationCore {
     if (!deployments) return json(service);
     if ([...new URL(request.url).searchParams].length !== 0) return failure("invalid_request", "unexpected query parameters", 400);
     return json(readServiceDeployments(sql, service, this.now()));
+  }
+
+  private serviceComparison(request: Request, sql: SqlDatabase, name: string, deploymentId: string): Response {
+    if (request.method !== "GET") return failure("invalid_request", "method not allowed", 405);
+    const service = readService(sql, name);
+    if (service === null) return failure("not_found", "service not found", 404);
+    if (!UUID.test(deploymentId)) return failure("invalid_request", "invalid deployment id", 400);
+    const params = new URL(request.url).searchParams;
+    const windows = params.getAll("window");
+    if (windows.length > 1 || [...params.keys()].some(key => key !== "window")) return failure("invalid_request", "invalid comparison window", 400);
+    const window = windows[0] ?? "1h";
+    if (!isComparisonWindow(window)) return failure("invalid_request", `window must be one of ${Object.keys(COMPARISON_WINDOWS).join(", ")}`, 400);
+    const now = this.now();
+    const history = readServiceDeployments(sql, service, now);
+    const deployment = history.deployments.find(item => item.id === deploymentId.toLowerCase());
+    const marker = history.markers.find(item => item.deploymentId === deployment?.id);
+    if (deployment === undefined || marker === undefined) return failure("not_found", "deployment not found", 404);
+    const bounds = comparisonBounds(deployment.atMs, window);
+    const hostRollups = new Map<string, MinuteRollup[]>();
+    for (const hostId of marker.hostIds) {
+      const rows = sql.rows<{ bucket_ms: number; payload: string }>("SELECT bucket_ms, payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ? ORDER BY bucket_ms", hostId, bounds.before.fromMs, bounds.after.toMs);
+      hostRollups.set(hostId, rows.map(row => ({ bucketMs: row.bucket_ms, payload: JSON.parse(row.payload) as RollupPayload })));
+    }
+    const probeRows = sql.rows<MetricRow>(
+      "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (?, ?)",
+      serviceProbeOwner(name), bounds.before.fromMs, bounds.after.toMs, `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`
+    );
+    return json(compareServiceDeployment({ deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED }));
+  }
+
+  async collectServiceProbes(fetch: ProbeFetch): Promise<void> {
+    const operation = this.operationRun();
+    try {
+      const now = this.now();
+      const targets = listServices(operation.sql).flatMap(service => service.healthUrl === null ? [] : [{ name: service.name, url: service.healthUrl }]);
+      const collected = await Promise.all(targets.map(async target => ({ name: target.name, points: await runProbes({ fetch, probes: [{ name: SERVICE_PROBE_NAME, url: target.url }], now, clock: () => this.now() }) })));
+      operation.sql.transaction(() => {
+        for (const entry of collected) upsertPoints(operation.sql, serviceProbeOwner(entry.name), entry.points);
+      });
+      await this.ensureAlarm(this.now());
+    } finally {
+      operation.finish();
+    }
   }
 
   private async markDeployment(request: Request, sql: SqlDatabase, name: string): Promise<Response> {

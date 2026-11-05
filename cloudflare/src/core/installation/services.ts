@@ -8,11 +8,12 @@ export const MAX_SERVICE_BODY_BYTES = 8192;
 const MAX_SERVICE_HOSTS = 64;
 const MAX_HEALTH_URL_LENGTH = 2048;
 const MAX_MARKER_MESSAGE_LENGTH = 1000;
-const MARKERS_LISTED = 1000;
+export const MARKERS_LISTED = 1000;
 export const HOST_ID = /^h_[0-9a-f]{32}$/u;
 const UNIT = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/u;
 export const MARKER_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const MARKER_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/u;
+export const serviceProbeOwner = (name: string): string => `service:${name}`;
 const TAILNET_SUFFIX = ".ts.net";
 
 export const SERVICE_STATEMENTS: readonly string[] = [
