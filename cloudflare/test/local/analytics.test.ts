@@ -81,9 +81,17 @@ try {
   });
 
   await test("a failing dataset fails the collection and is recorded as failed", async () => {
-    provider.use(scenario(PRODUCTION_PROJECTS, RECORDED_AT_MS, { "states.r2CombinedStorage": { kind: "fail" } }));
+    const model = scenario(PRODUCTION_PROJECTS, RECORDED_AT_MS, { "states.r2CombinedStorage": { kind: "fail" } });
+    provider.use(model);
     const before = provider.calls.length;
     assert.equal(await collect(RECORDED_AT_MS), "exception");
+    const issued = expectedQueries(model).length;
+    const deadline = Date.now() + 10_000;
+    while (provider.calls.length - before < issued) {
+      if (Date.now() > deadline) throw new Error(`the failed run issued ${provider.calls.length - before} of its ${issued} queries`);
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    assert.equal(provider.calls.length - before, issued);
     const failed = provider.calls.slice(before).filter(call => call.outcome === "failed");
     assert.ok(failed.length > 0 && failed.every(call => call.dataset === "states.r2CombinedStorage"));
   });
