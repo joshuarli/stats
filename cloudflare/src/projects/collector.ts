@@ -9,13 +9,11 @@ import {
   parseR2StorageRows,
   parseRouteRows,
   parseWorkerRows,
-  type MetricPoint,
 } from "./parse.ts";
-import { BUCKET_MS, d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
+import { windowStartMs, type MetricPoint } from "./metrics.ts";
+import { d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "./queries.ts";
 import type { CollectorRun, ProjectPoints } from "./store.ts";
 import { reportError } from "../observe/producer/report.ts";
-
-const COLLECTION_WINDOW_MS = 90 * 60_000;
 
 export interface AnalyticsQuery {
   query(request: BoundQuery): Promise<{
@@ -40,10 +38,6 @@ interface CollectorInput {
 interface CollectorResult {
   readonly queries: number;
   readonly metricRowsWritten: number;
-}
-
-export function windowStartMs(now: number): number {
-  return Math.floor((now - COLLECTION_WINDOW_MS) / BUCKET_MS) * BUCKET_MS;
 }
 
 export async function runCollector(input: CollectorInput): Promise<CollectorResult> {

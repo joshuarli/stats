@@ -1,5 +1,4 @@
-import { DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentSync, type VersionMetadata } from "./model.ts";
-import type { DeploymentPoll } from "./collector.ts";
+import { DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentPoll, type DeploymentSync, type VersionMetadata } from "./model.ts";
 import type { SqlDatabase } from "../core/sql.ts";
 
 export const DEPLOYMENT_STATEMENTS: readonly string[] = [

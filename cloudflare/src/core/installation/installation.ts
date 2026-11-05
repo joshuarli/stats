@@ -11,12 +11,11 @@ import { encodeHostBundle, encodeHostHistory, encodeProjectBundle, encodeProject
 import { HOUR_MS, HOUR_RETENTION_MS, MAX_BODY_BYTES, MAX_POINTS, MINUTE_MS, MINUTE_RETENTION_MS, PROJECT_SETTLE_MS, RAW_HISTORY_SPAN_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGE_MS, type HistoryKind, type RangeKey } from "../../limits.ts";
 import type { ErrorCode } from "../../codes.ts";
 import { parseProjects, type ProjectConfig } from "../../projects/config.ts";
-import { windowStartMs } from "../../projects/collector.ts";
+import { windowStartMs } from "../../projects/metrics.ts";
 import { latestCollectorRunId, projectHistorySource, projectKind, type ProjectKind, projectKindsValue, readProjectHistories, summarizeCollector } from "../../projects/history.ts";
 import { collectedPoints, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "../../projects/store.ts";
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "../../deployments/compare.ts";
-import type { DeploymentPoll } from "../../deployments/collector.ts";
-import { UUID, type DeploymentHistory } from "../../deployments/model.ts";
+import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deployments/model.ts";
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
 import { readLimitedBytes } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";

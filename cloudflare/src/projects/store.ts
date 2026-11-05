@@ -1,5 +1,5 @@
 import { DAY_MS, HOUR_MS, HOUR_RETENTION_MS } from "../limits.ts";
-import { aggregationOf, type MetricPoint } from "./parse.ts";
+import { aggregationOf, type MetricPoint } from "./metrics.ts";
 import { BUCKET_MS } from "./queries.ts";
 import { rowsWrittenBy } from "../operations.ts";
 import type { SqlDatabase } from "../core/sql.ts";

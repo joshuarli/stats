@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { aggregationOf } from "../src/projects/metrics";
 import {
-  aggregationOf,
   parseR2OperationRows,
   parseR2StorageRows,
   parseWorkerRows,

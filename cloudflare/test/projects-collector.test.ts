@@ -1,6 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runCollector, windowStartMs, type AnalyticsQuery } from "../src/projects/collector";
+import { runCollector, type AnalyticsQuery } from "../src/projects/collector";
+import { windowStartMs } from "../src/projects/metrics";
 import { readMetricHistory } from "../src/projects/history";
 import { CloudflareSql } from "../src/cloudflare/sql";
 import type { ProbeFetch } from "../src/projects/probes";

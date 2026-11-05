@@ -1,3 +1,4 @@
+import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE, type Aggregation, type MetricPoint } from "./metrics.ts";
 import { BUCKET_MS, D1_STATEMENT_PREFIX_LENGTH } from "./queries.ts";
 
 export const MAX_ROUTES_PER_PROJECT = 15;
@@ -6,65 +7,13 @@ const ROUTE_LABEL_PATTERN = /^([A-Z]+) (\/\S*)$/;
 const ALARM_LABEL_PATTERN = /^\d{1,2}\/\d{1,2}\/\d{4}, \d{1,2}:\d{2}:\d{2}/;
 const API_VERSION_SEGMENT = /^v\d+$/;
 export const MAX_D1_STATEMENTS_PER_PROJECT = 10;
-export const D1_ROWS_READ_PER_ROW_WRITTEN_PRICE = 1000;
 const D1_STATEMENT_KEY_MAX_LENGTH = 60;
 const MAX_PLAIN_SEGMENT_LENGTH = 24;
 const MAX_DISTINCT_CHILDREN = 10;
 
-type Aggregation = "sum" | "max" | "min";
-
-export interface MetricPoint {
-  readonly metric: string;
-  readonly bucketMs: number;
-  readonly value: number;
-}
-
 type StatusClass = "2xx" | "3xx" | "4xx" | "5xx" | "other";
 
 type R2Outcome = "success" | "userError" | "other";
-
-const FIXED_AGGREGATIONS: Readonly<Record<string, Aggregation>> = {
-  "worker.invocations": "sum",
-  "worker.cpuMsSum": "sum",
-  "worker.cpuMsMax": "max",
-  "worker.status.2xx": "sum",
-  "worker.status.3xx": "sum",
-  "worker.status.4xx": "sum",
-  "worker.status.5xx": "sum",
-  "worker.status.other": "sum",
-  "do.invocations": "sum",
-  "do.errors": "sum",
-  "do.cpuMsSum": "sum",
-  "do.cpuMsMax": "max",
-  "do.wallMsSum": "sum",
-  "do.storageBytes": "max",
-  "d1.queries": "sum",
-  "d1.rowsRead": "sum",
-  "d1.rowsWritten": "sum",
-};
-
-const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
-  [/^route\..{1,80}\.(invocations|cpuMsSum)$/, "sum"],
-  [/^d1\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.storageBytes$/, "max"],
-  [/^d1q\..{1,60}\.(queries|rowsRead|rowsWritten)$/, "sum"],
-  [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
-  [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
-  [/^probe\.[a-z][a-z0-9-]{0,31}\.up$/, "min"],
-  [/^probe\.[a-z][a-z0-9-]{0,31}\.ms$/, "max"],
-];
-
-export function aggregationOf(metric: string): Aggregation {
-  const fixed = FIXED_AGGREGATIONS[metric];
-  if (fixed !== undefined) {
-    return fixed;
-  }
-  for (const [pattern, aggregation] of PATTERN_AGGREGATIONS) {
-    if (pattern.test(metric)) {
-      return aggregation;
-    }
-  }
-  throw new RangeError("unknown project metric");
-}
 
 export function statusClass(httpStatus: number): StatusClass {
   if (httpStatus >= 200 && httpStatus < 300) return "2xx";

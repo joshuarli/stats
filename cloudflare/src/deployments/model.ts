@@ -19,6 +19,16 @@ export interface VersionMetadata {
   readonly message: string | null;
 }
 
+export interface DeploymentPoll {
+  readonly project: string;
+  readonly worker: string;
+  readonly atMs: number;
+  readonly error: string | null;
+  readonly deployments: readonly Deployment[];
+  readonly versions: readonly VersionMetadata[];
+  readonly truncated: boolean;
+}
+
 export interface DeploymentSync {
   readonly lastAttemptAtMs: number;
   readonly lastSuccessAtMs: number | null;

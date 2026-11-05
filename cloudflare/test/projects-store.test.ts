@@ -2,7 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { Installation } from "../src/installation";
 import { HOUR_MS } from "../src/limits";
-import type { MetricPoint } from "../src/projects/parse";
+import type { MetricPoint } from "../src/projects/metrics";
 import {
   COLLECTOR_RUNS_KEPT,
   PROJECT_HOUR_RETENTION_MS,

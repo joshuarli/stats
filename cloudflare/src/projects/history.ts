@@ -1,8 +1,7 @@
 import type { HistoryQuery } from "../aggregate.ts";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGE_MS, type RangeKey } from "../limits.ts";
-import { windowStartMs } from "./collector.ts";
 import type { ProjectConfig } from "./config.ts";
-import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE } from "./parse.ts";
+import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE, windowStartMs } from "./metrics.ts";
 import { BUCKET_MS } from "./queries.ts";
 import type { ProjectHistorySource } from "../operations.ts";
 import type { SqlDatabase } from "../core/sql.ts";

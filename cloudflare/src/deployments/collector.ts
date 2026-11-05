@@ -1,4 +1,4 @@
-import { DEPLOYMENT_RETENTION_MS, parseDeployment, parseVersion, record, type Deployment, type VersionMetadata } from "./model.ts";
+import { DEPLOYMENT_RETENTION_MS, parseDeployment, parseVersion, record, type Deployment, type DeploymentPoll, type VersionMetadata } from "./model.ts";
 import { reportError } from "../observe/producer/report.ts";
 
 const MAX_PAGES = 3;
@@ -6,15 +6,6 @@ const PAGE_SIZE = 100;
 const MAX_VERSION_READS = 4;
 const MAX_RESPONSE_BYTES = 512 * 1024;
 
-export interface DeploymentPoll {
-  readonly project: string;
-  readonly worker: string;
-  readonly atMs: number;
-  readonly error: string | null;
-  readonly deployments: readonly Deployment[];
-  readonly versions: readonly VersionMetadata[];
-  readonly truncated: boolean;
-}
 export interface DeploymentStore {
   recordDeploymentPoll(poll: DeploymentPoll): Promise<void>;
   knownDeploymentVersions(project: string, worker: string): Promise<readonly string[]>;
