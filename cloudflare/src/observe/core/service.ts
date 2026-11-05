@@ -2,9 +2,9 @@ import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, ty
 import { representativeFrame, sha256Hex } from "./grouping.ts";
 import { createSymbolicator } from "./symbolicate.ts";
 import {
-  cleanup, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState,
+  cleanup, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
   type ArtifactResult, type CleanupResult, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
-  type RolloutResult, type SqlDatabase, type TraceDetail, type TraceFilter, type TraceSummary
+  type RolloutResult, type SqlDatabase, type StatsWindow, type TraceDetail, type TraceFilter, type TraceSummary, type WindowQuery
 } from "./store.ts";
 
 export interface ServiceHealth extends Health {
@@ -23,6 +23,7 @@ export interface ObserveService {
   impact(rolloutId: string): Promise<RolloutImpact | null>;
   explore(filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }): Promise<Exploration>;
   objects(filter: { readonly fromMs?: number; readonly toMs?: number }): Promise<ObjectMethods>;
+  window(query: WindowQuery): Promise<StatsWindow>;
   artifact(artifact: Artifact): Promise<ArtifactOutcome>;
 }
 
@@ -77,6 +78,7 @@ export function createObserveService(db: SqlDatabase, clock: ServiceClock): Main
     },
     explore: async filter => explore(db, clock.now(), filter),
     objects: async filter => objectMethods(db, clock.now(), filter),
+    window: async query => statsWindow(db, query),
     artifact: async artifact => {
       const problem = artifactProblem(artifact);
       if (problem !== null) return { problem };

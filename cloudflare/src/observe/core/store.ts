@@ -2,7 +2,7 @@ import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PA
 import { OTHER_ROUTE, OUTCOME_CLASSES, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
-import { OPERATION_IDS, type OperationSummary } from "../producer/channel.ts";
+import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 
 export type SqlValue = string | number | null;
 
@@ -1160,5 +1160,124 @@ export function health(db: SqlDatabase, nowMs: number): Health {
     evicted: total("evicted"),
     reasons: reasons.slice(0, MAX_HEALTH_REASONS).map(({ counter, reason, count, example }) => ({ counter, reason, count, example })),
     writes: { ingestBatches: ingestCost?.runs ?? 0, accepted: ingestCost?.invocations ?? 0, ingestRows: ingestCost?.rows_written ?? 0, cleanupRows: cleanupCost?.rows_written ?? 0 }
+  };
+}
+
+const WORK_FIELDS = {
+  received: "received", persisted: "persisted", duplicate: "duplicate",
+  rejected_invalid_sample: "rejectedInvalidSample", rejected_too_old: "rejectedTooOld", rejected_conflict: "rejectedConflict", input_bytes: "inputBytes",
+  points: "points", cells: "cells", output_bytes: "outputBytes", cache_hit_304: "cacheHit304", cache_rebuilt: "cacheRebuilt",
+  runs: "runs", metric_rows: "metricRows", hour_rollups: "hourRollups", upstream_queries: "upstreamQueries", expired: "expired", backlog_remaining: "backlogRemaining"
+} as const satisfies Record<OperationWorkColumn, string>;
+
+export type OperationWorkField = typeof WORK_FIELDS[OperationWorkColumn];
+export type OperationWorkTotals = Readonly<Record<OperationWorkField, number>>;
+
+export interface WindowQuery {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly operation?: OperationId;
+  readonly workloadClass?: string;
+}
+
+export interface OperationWindowRow {
+  readonly bucketAt: number;
+  readonly version: string;
+  readonly operation: OperationId;
+  readonly workloadClass: string;
+  readonly synthetic: boolean;
+  readonly count: number;
+  readonly failed: number;
+  readonly cpuMsSum: number;
+  readonly wallMsSum: number;
+  readonly rowsRead: number;
+  readonly rowsWritten: number;
+  readonly statements: number;
+  readonly lagCount: number;
+  readonly lagMsMax: number;
+  readonly lagMsSum: number;
+  readonly work: OperationWorkTotals;
+}
+
+export interface OutcomeWindowRow {
+  readonly bucketAt: number;
+  readonly version: string;
+  readonly stage: Stage | "unknown";
+  readonly outcome: typeof OUTCOME_CLASSES[number];
+  readonly count: number;
+  readonly lagCount: number;
+  readonly lagMsMax: number;
+  readonly lagMsSum: number;
+  readonly filterRevision: number;
+}
+
+export interface InvocationWindowRow {
+  readonly bucketAt: number;
+  readonly version: string;
+  readonly stage: Stage;
+  readonly count: number;
+}
+
+export interface LagTotals {
+  readonly count: number;
+  readonly maxMs: number;
+  readonly sumMs: number;
+}
+
+export interface StatsWindow {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly bucketMs: number;
+  readonly operation: OperationId | null;
+  readonly workloadClass: string | null;
+  readonly filterRevision: number;
+  readonly operations: readonly OperationWindowRow[];
+  readonly outcomes: readonly OutcomeWindowRow[];
+  readonly invocations: readonly InvocationWindowRow[];
+  readonly lag: { readonly operations: LagTotals; readonly outcomes: LagTotals };
+}
+
+interface StoredOperationRow {
+  bucket_at: number; version: string; operation: OperationId; workload_class: string; synthetic: number; count: number; failed: number;
+  cpu_ms_sum: number; wall_ms_sum: number; rows_read: number; rows_written: number; statements: number; lag_count: number; lag_ms_max: number; lag_ms_sum: number;
+}
+
+function lagTotals(rows: readonly { readonly lagCount: number; readonly lagMsMax: number; readonly lagMsSum: number }[]): LagTotals {
+  return { count: rows.reduce((sum, row) => sum + row.lagCount, 0), maxMs: rows.reduce((max, row) => Math.max(max, row.lagMsMax), 0), sumMs: rows.reduce((sum, row) => sum + row.lagMsSum, 0) };
+}
+
+/** Exact half-open event-time window; no rollout or version history is consulted, so a reused version carries only what it produced inside the bounds. */
+export function statsWindow(db: SqlDatabase, query: WindowQuery): StatsWindow {
+  const columns = Object.keys(WORK_FIELDS) as OperationWorkColumn[];
+  const filters = ["bucket_at >= ?", "bucket_at < ?"];
+  const params: SqlValue[] = [query.fromMs, query.toMs];
+  if (query.operation !== undefined) {
+    filters.push("operation = ?");
+    params.push(query.operation);
+    if (query.workloadClass !== undefined) {
+      filters.push("workload_class = ?");
+      params.push(query.workloadClass);
+    }
+  }
+  const operations = db.rows<StoredOperationRow & Record<OperationWorkColumn, number>>(
+    `SELECT bucket_at, version, operation, workload_class, synthetic, count, failed, cpu_ms_sum, wall_ms_sum, rows_read, rows_written, statements, lag_count, lag_ms_max, lag_ms_sum, ${columns.join(", ")}
+     FROM observe_operations WHERE ${filters.join(" AND ")} ORDER BY bucket_at, version, operation, workload_class, synthetic`, ...params
+  ).map((row): OperationWindowRow => ({
+    bucketAt: row.bucket_at, version: row.version, operation: row.operation, workloadClass: row.workload_class, synthetic: row.synthetic === 1, count: row.count, failed: row.failed,
+    cpuMsSum: row.cpu_ms_sum, wallMsSum: row.wall_ms_sum, rowsRead: row.rows_read, rowsWritten: row.rows_written, statements: row.statements,
+    lagCount: row.lag_count, lagMsMax: row.lag_ms_max, lagMsSum: row.lag_ms_sum,
+    work: Object.fromEntries(columns.map(column => [WORK_FIELDS[column], row[column]])) as OperationWorkTotals
+  }));
+  const outcomes = db.rows<{ bucket_at: number; version: string; stage: Stage | "unknown"; outcome: typeof OUTCOME_CLASSES[number]; count: number; lag_count: number; lag_ms_max: number; lag_ms_sum: number; filter_revision: number }>(
+    `SELECT bucket_at, version, stage, outcome, SUM(count) AS count, SUM(lag_count) AS lag_count, MAX(lag_ms_max) AS lag_ms_max, SUM(lag_ms_sum) AS lag_ms_sum, filter_revision
+     FROM observe_outcomes WHERE bucket_at >= ? AND bucket_at < ? GROUP BY bucket_at, version, stage, outcome, filter_revision ORDER BY bucket_at, version, stage, outcome, filter_revision`, query.fromMs, query.toMs
+  ).map((row): OutcomeWindowRow => ({ bucketAt: row.bucket_at, version: row.version, stage: row.stage, outcome: row.outcome, count: row.count, lagCount: row.lag_count, lagMsMax: row.lag_ms_max, lagMsSum: row.lag_ms_sum, filterRevision: row.filter_revision }));
+  const invocations = db.rows<{ bucket_at: number; version: string | null; stage: Stage; count: number }>(
+    `SELECT observed_at - observed_at % ? AS bucket_at, COALESCE(version, '') AS version, stage, COUNT(*) AS count
+     FROM observe_invocations WHERE observed_at >= ? AND observed_at < ? GROUP BY bucket_at, version, stage ORDER BY bucket_at, version, stage`, OPERATION_BUCKET_MS, query.fromMs, query.toMs
+  ).map((row): InvocationWindowRow => ({ bucketAt: row.bucket_at, version: row.version ?? "", stage: row.stage, count: row.count }));
+  return {
+    fromMs: query.fromMs, toMs: query.toMs, bucketMs: OPERATION_BUCKET_MS, operation: query.operation ?? null, workloadClass: query.workloadClass ?? null,
+    filterRevision: OBSERVE_FILTER_REVISION, operations, outcomes, invocations, lag: { operations: lagTotals(operations), outcomes: lagTotals(outcomes) }
   };
 }

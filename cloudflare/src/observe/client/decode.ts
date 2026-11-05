@@ -1,7 +1,8 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
+import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TraceSummary, VersionStats } from "../core/store.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
-import type { ErrorSource, InvocationKind, Stage } from "../core/model.ts";
+import { OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage } from "../core/model.ts";
+import { OPERATION_IDS } from "../producer/channel.ts";
 
 export interface ObserveHealth extends Health {
   readonly databaseBytes: number;
@@ -320,5 +321,65 @@ export function decodeExploration(value: unknown): Exploration {
     route: nullableText(fields["route"], "route", 128),
     routes: list(fields["routes"], 64, routeStats, "routes"),
     heatmap: heatmap(fields["heatmap"])
+  };
+}
+
+const WORK_FIELD_NAMES: readonly OperationWorkField[] = [
+  "received", "persisted", "duplicate", "rejectedInvalidSample", "rejectedTooOld", "rejectedConflict", "inputBytes",
+  "points", "cells", "outputBytes", "cacheHit304", "cacheRebuilt",
+  "runs", "metricRows", "hourRollups", "upstreamQueries", "expired", "backlogRemaining"
+];
+
+const MAX_WINDOW_ROWS = 200_000;
+
+function operationWindowRow(value: unknown): OperationWindowRow {
+  const fields = record(value, "operation row");
+  const work = record(fields["work"], "operation work");
+  const count = (key: string) => integer(fields[key], key);
+  return {
+    bucketAt: count("bucketAt"), version: text(fields["version"], "version", 36), operation: oneOf(fields["operation"], OPERATION_IDS, "operation"),
+    workloadClass: text(fields["workloadClass"], "workload class", 128), synthetic: bool(fields["synthetic"], "synthetic"),
+    count: count("count"), failed: count("failed"), cpuMsSum: count("cpuMsSum"), wallMsSum: count("wallMsSum"),
+    rowsRead: count("rowsRead"), rowsWritten: count("rowsWritten"), statements: count("statements"),
+    lagCount: count("lagCount"), lagMsMax: count("lagMsMax"), lagMsSum: count("lagMsSum"),
+    work: Object.fromEntries(WORK_FIELD_NAMES.map(name => [name, integer(work[name], name)])) as OperationWorkTotals
+  };
+}
+
+function outcomeWindowRow(value: unknown): OutcomeWindowRow {
+  const fields = record(value, "outcome row");
+  const count = (key: string) => integer(fields[key], key);
+  return {
+    bucketAt: count("bucketAt"), version: text(fields["version"], "version", 36), stage: oneOf(fields["stage"], ["worker", "object", "unknown"] as const, "stage"),
+    outcome: oneOf(fields["outcome"], OUTCOME_CLASSES, "outcome"), count: count("count"),
+    lagCount: count("lagCount"), lagMsMax: count("lagMsMax"), lagMsSum: count("lagMsSum"), filterRevision: count("filterRevision")
+  };
+}
+
+function invocationWindowRow(value: unknown): InvocationWindowRow {
+  const fields = record(value, "invocation row");
+  return { bucketAt: integer(fields["bucketAt"], "bucketAt"), version: text(fields["version"], "version", 36), stage: oneOf(fields["stage"], ["worker", "object"] as const, "stage"), count: integer(fields["count"], "count") };
+}
+
+function lagTotals(value: unknown): LagTotals {
+  const fields = record(value, "lag");
+  return { count: integer(fields["count"], "lag count"), maxMs: integer(fields["maxMs"], "lag max"), sumMs: integer(fields["sumMs"], "lag sum") };
+}
+
+export function decodeStatsWindow(value: unknown): StatsWindow {
+  const fields = record(value, "stats window");
+  const lag = record(fields["lag"], "lag");
+  const fromMs = integer(fields["fromMs"], "from");
+  const toMs = integer(fields["toMs"], "to");
+  if (toMs <= fromMs) fail("window bounds");
+  return {
+    fromMs, toMs, bucketMs: integer(fields["bucketMs"], "bucket"),
+    operation: fields["operation"] === null ? null : oneOf(fields["operation"], OPERATION_IDS, "operation"),
+    workloadClass: nullableText(fields["workloadClass"], "workload class", 128),
+    filterRevision: integer(fields["filterRevision"], "filter revision"),
+    operations: list(fields["operations"], MAX_WINDOW_ROWS, operationWindowRow, "operations"),
+    outcomes: list(fields["outcomes"], MAX_WINDOW_ROWS, outcomeWindowRow, "outcomes"),
+    invocations: list(fields["invocations"], MAX_WINDOW_ROWS, invocationWindowRow, "invocations"),
+    lag: { operations: lagTotals(lag["operations"]), outcomes: lagTotals(lag["outcomes"]) }
   };
 }

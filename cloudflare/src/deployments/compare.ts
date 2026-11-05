@@ -1,4 +1,5 @@
 import { LIST_PRICE_PER_MILLION } from "../cost/pricing.ts";
+import { buildComparisonSpec, type ComparisonSpec } from "../compare/spec.ts";
 import { singleVersion, type Deployment } from "./model.ts";
 
 export const DEPLOYMENT_BUCKET_MS = 300_000;
@@ -20,6 +21,10 @@ export interface MetricComparison {
   readonly deltaPercent: number | null;
   readonly verdict: Verdict;
 }
+export type ReasonCode =
+  | "unsettled" | "disabled" | "not-ready" | "expired" | "truncated" | "stale-history" | "split" | "baseline-missing" | "baseline-split" | "overlap"
+  | "invocations-missing" | "invocations-floor" | "route-mix";
+export interface BucketValue { readonly atMs: number; readonly value: number }
 export interface DeploymentComparison {
   readonly deploymentId: string;
   readonly window: ComparisonWindow;
@@ -28,7 +33,11 @@ export interface DeploymentComparison {
   readonly readyAtMs: number;
   readonly beforeInvocations: number | null;
   readonly afterInvocations: number | null;
+  readonly spec: ComparisonSpec;
   readonly reasons: readonly string[];
+  readonly reasonCodes: readonly ReasonCode[];
+  readonly deferredObjects: boolean;
+  readonly analyticsInvocations: { readonly before: readonly BucketValue[]; readonly after: readonly BucketValue[] };
   readonly warnings: readonly string[];
   readonly metrics: readonly MetricComparison[];
 }
@@ -72,12 +81,16 @@ function ratio(buckets: Buckets, bounds: WindowBounds, absent: AbsentBucket, num
   return count === null || count < 100 || sum === null ? null : sum / count * scale;
 }
 
-function result(metric: string, label: string, unit: string, before: number | null, after: number | null, floor: number, blocked: boolean): MetricComparison {
+export function judge(before: number | null, after: number | null, floor: number, blocked: boolean): Pick<MetricComparison, "delta" | "deltaPercent" | "verdict"> {
   const delta = before === null || after === null ? null : after - before;
   const deltaPercent = delta === null || before === null || before === 0 ? null : delta / before * 100;
   const changed = delta !== null && Math.abs(delta) >= floor && (deltaPercent === null || Math.abs(deltaPercent) >= 10);
   const verdict: Verdict = delta === null ? "insufficient-data" : blocked ? "confounded" : changed ? delta > 0 ? "regressed" : "improved" : "unchanged";
-  return { metric, label, unit, before, after, delta, deltaPercent, verdict };
+  return { delta, deltaPercent, verdict };
+}
+
+function result(metric: string, label: string, unit: string, before: number | null, after: number | null, floor: number, blocked: boolean): MetricComparison {
+  return { metric, label, unit, before, after, ...judge(before, after, floor, blocked) };
 }
 
 /** Descriptive comparison, not a causal claim or statistical significance test. */
@@ -101,26 +114,33 @@ export function compareDeployment(input: {
   const { before, after } = comparisonBounds(deployment.atMs, window);
   const readyAtMs = after.toMs + input.settleMs;
   const reasons: string[] = [];
+  const reasonCodes: ReasonCode[] = [];
+  const block = (code: ReasonCode, text: string) => { reasons.push(text); reasonCodes.push(code); };
   const warnings: string[] = [];
-  if (!input.metricsSettled) reasons.push("No proof that both metric windows were collected after settlement; historical partial data is not a baseline.");
-  if (!input.enabled) reasons.push("Deployment polling is disabled.");
-  if (input.now < readyAtMs) reasons.push("Waiting for the full post-deployment window and analytics settlement.");
-  if (before.fromMs < input.now - 7 * 86_400_000) reasons.push("Five-minute metrics have expired; hourly rollups cannot safely isolate this deployment.");
-  if (input.truncated) reasons.push("Deployment history is truncated.");
-  if (input.lastSuccessAtMs === null || input.lastSuccessAtMs < Math.min(after.toMs, input.now) || input.now - input.lastSuccessAtMs > 15 * 60_000) reasons.push("Deployment history has not been refreshed recently enough to exclude intervening releases.");
-  if (!singleVersion(deployment)) reasons.push("This deployment splits traffic between versions.");
+  if (!input.metricsSettled) block("unsettled", "No proof that both metric windows were collected after settlement; historical partial data is not a baseline.");
+  if (!input.enabled) block("disabled", "Deployment polling is disabled.");
+  if (input.now < readyAtMs) block("not-ready", "Waiting for the full post-deployment window and analytics settlement.");
+  if (before.fromMs < input.now - 7 * 86_400_000) block("expired", "Five-minute metrics have expired; hourly rollups cannot safely isolate this deployment.");
+  if (input.truncated) block("truncated", "Deployment history is truncated.");
+  if (input.lastSuccessAtMs === null || input.lastSuccessAtMs < Math.min(after.toMs, input.now) || input.now - input.lastSuccessAtMs > 15 * 60_000) block("stale-history", "Deployment history has not been refreshed recently enough to exclude intervening releases.");
+  if (!singleVersion(deployment)) block("split", "This deployment splits traffic between versions.");
   const previous = [...input.deployments].filter(item => item.atMs < deployment.atMs).sort((a, b) => b.atMs - a.atMs)[0];
-  if (previous === undefined || previous.atMs > before.fromMs) reasons.push("The baseline does not contain one known, stable deployment.");
-  else if (!singleVersion(previous)) reasons.push("The baseline splits traffic between versions.");
-  if (input.deployments.some(item => item.id !== deployment.id && item.atMs >= before.fromMs && item.atMs < after.toMs && item.id !== (previous?.atMs === before.fromMs ? previous.id : ""))) reasons.push("Another deployment overlaps the comparison windows.");
+  if (previous === undefined || previous.atMs > before.fromMs) block("baseline-missing", "The baseline does not contain one known, stable deployment.");
+  else if (!singleVersion(previous)) block("baseline-split", "The baseline splits traffic between versions.");
+  if (input.deployments.some(item => item.id !== deployment.id && item.atMs >= before.fromMs && item.atMs < after.toMs && item.id !== (previous?.atMs === before.fromMs ? previous.id : ""))) block("overlap", "Another deployment overlaps the comparison windows.");
   const deferredObjects = deployment.deferred || previous?.deferred === true;
   if (deferredObjects) warnings.push("Durable Object code updates are deferred; their metrics are not attributed to this deployment.");
+  const previousSide = previous === undefined ? { deploymentId: null, versionIds: [] as string[] } : { deploymentId: previous.id, versionIds: previous.versions.map(version => version.id) };
+  const spec = buildComparisonSpec({
+    before: { ...previousSide, ...before },
+    after: { deploymentId: deployment.id, versionIds: deployment.versions.map(version => version.id), ...after },
+  });
   const buckets = bucketRows(input.rows);
   const analyticsAbsent: AbsentBucket = input.metricsSettled ? "idle" : "missing";
   const beforeCount = total(buckets, before, "worker.invocations", analyticsAbsent);
   const afterCount = total(buckets, after, "worker.invocations", analyticsAbsent);
-  if (beforeCount === null || afterCount === null) reasons.push("One or more invocation buckets are missing from a window not yet proven collected; missing data is not zero.");
-  else if (beforeCount < 100 || afterCount < 100) reasons.push("Fewer than 100 invocations in a comparison window.");
+  if (beforeCount === null || afterCount === null) block("invocations-missing", "One or more invocation buckets are missing from a window not yet proven collected; missing data is not zero.");
+  else if (beforeCount < 100 || afterCount < 100) block("invocations-floor", "Fewer than 100 invocations in a comparison window.");
   if (beforeCount !== null && beforeCount > 0 && afterCount !== null && (afterCount / beforeCount > 2 || afterCount / beforeCount < 0.5)) warnings.push("Traffic volume changed by more than 2x; compare workload and cache behavior.");
   // Top routes are truncated upstream. A large observed shift is enough to withhold
   // a global verdict; a small shift is NOT proof that the full mix stayed constant.
@@ -134,7 +154,7 @@ export function compareDeployment(input: {
     const keys = new Set([...left.keys(), ...right.keys()]);
     let variation = 0;
     for (const key of keys) variation += Math.abs((left.get(key) ?? 0) / beforeCount! - (right.get(key) ?? 0) / afterCount!);
-    if (variation / 2 > 0.2) reasons.push("Observed top-route traffic mix changed materially (over 20 percentage points).");
+    if (variation / 2 > 0.2) block("route-mix", "Observed top-route traffic mix changed materially (over 20 percentage points).");
   }
   warnings.push("Heuristic signals, not significance tests or proof of causation. Top-route coverage is incomplete; cache, background jobs and traffic can change.");
   const blocked = reasons.length > 0;
@@ -198,5 +218,16 @@ export function compareDeployment(input: {
   };
   metrics.push(result("cost", "Estimated list-price cost / 1,000 invocations", "USD", cost(before), cost(after), 0.000001, blocked || (deferredObjects && (input.hasDurableObjects ?? false))));
   warnings.push("Cost reuses the dashboard's list prices; it excludes allowances, R2, storage and Durable Object duration. Probe times are not user-request latency.");
-  return { deploymentId: deployment.id, window, before, after, readyAtMs, beforeInvocations: beforeCount, afterInvocations: afterCount, reasons, warnings, metrics };
+  const invocationBuckets = (bounds: WindowBounds): BucketValue[] => {
+    const values: BucketValue[] = [];
+    for (let at = bounds.fromMs; at < bounds.toMs; at += DEPLOYMENT_BUCKET_MS) {
+      const value = buckets.get(at)?.get("worker.invocations");
+      if (value !== undefined) values.push({ atMs: at, value });
+    }
+    return values;
+  };
+  return {
+    deploymentId: deployment.id, window, before, after, readyAtMs, beforeInvocations: beforeCount, afterInvocations: afterCount, spec, reasons, reasonCodes, deferredObjects,
+    analyticsInvocations: { before: invocationBuckets(before), after: invocationBuckets(after) }, warnings, metrics
+  };
 }

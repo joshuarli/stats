@@ -1,6 +1,7 @@
-import type { IssueState, TraceFilter } from "../core/store.ts";
+import type { IssueState, TraceFilter, WindowQuery } from "../core/store.ts";
+import { OPERATION_IDS, type OperationId } from "../producer/channel.ts";
 import type { ObserveService } from "../core/service.ts";
-import { MAX_ARTIFACT_BYTES, MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH } from "../core/limits.ts";
+import { MAX_ARTIFACT_BYTES, MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH, OPERATION_BUCKET_MS, RETENTION_MS } from "../core/limits.ts";
 import { ARTIFACT_FILE, VERSION, type ObservedRollout, type VersionLabel } from "../core/model.ts";
 import { readLimitedText } from "../../body.ts";
 
@@ -75,6 +76,20 @@ function exploreFilter(values: Map<string, string>): { fromMs?: number; toMs?: n
   if (toMs !== undefined) filter.toMs = toMs;
   if (route !== undefined) filter.route = route;
   return filter;
+}
+
+function windowQuery(values: Map<string, string>): WindowQuery {
+  const fromMs = milliseconds(values, "from");
+  const toMs = milliseconds(values, "to");
+  if (fromMs === undefined || toMs === undefined) throw new BadRequest("from and to are required");
+  if (fromMs % OPERATION_BUCKET_MS !== 0 || toMs % OPERATION_BUCKET_MS !== 0) throw new BadRequest(`from and to must align to ${OPERATION_BUCKET_MS} ms`);
+  if (toMs <= fromMs) throw new BadRequest("to must be after from");
+  if (toMs - fromMs > RETENTION_MS) throw new BadRequest(`window must not exceed ${RETENTION_MS} ms`);
+  const operation = values.get("operation");
+  const workloadClass = label(values, "class");
+  if (operation !== undefined && !(OPERATION_IDS as readonly string[]).includes(operation)) throw new BadRequest("invalid operation");
+  if (workloadClass !== undefined && operation === undefined) throw new BadRequest("class requires operation");
+  return { fromMs, toMs, ...(operation === undefined ? {} : { operation: operation as OperationId }), ...(workloadClass === undefined ? {} : { workloadClass }) };
 }
 
 function traceFilter(values: Map<string, string>): TraceFilter {
@@ -216,6 +231,7 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
     if (path === "/traces") return json(await store.traces(traceFilter(params(url, ["label", "version", "failed", "from", "to", "minWall", "maxWall", "order", "cursor", "limit"]))));
     if (path === "/explore") return json(await store.explore(exploreFilter(params(url, ["from", "to", "route"]))));
     if (path === "/objects") return json(await store.objects(exploreFilter(params(url, ["from", "to"]))));
+    if (path === "/window") return json(await store.window(windowQuery(params(url, ["from", "to", "operation", "class"]))));
     const trace = /^\/traces\/([^/]+)$/u.exec(path);
     if (trace !== null) {
       if (!TRACE_ID.test(trace[1]!)) throw new BadRequest("invalid trace id");
