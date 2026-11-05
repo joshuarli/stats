@@ -2,19 +2,14 @@ import { openHistory } from "../binary/history.ts";
 import type { LedgerHistories, ObjectMethods } from "../cost/ledger.ts";
 import { PRICING_REVISION } from "../cost/pricing.ts";
 import { buildCostReport, type CostReport, type PlanMonthInput } from "../cost/report.ts";
-import { PROJECT_SETTLE_MS, type RangeKey } from "../limits.ts";
+import { PROJECT_SETTLE_MS } from "../limits.ts";
 import type { ObjectMethods as ObservedObjectMethods } from "../observe/core/store.ts";
 import type { TimeWindow } from "./chart-data.ts";
 import { decodeProjectHistories, type MetricHistory, type ProjectHistories } from "./history.ts";
 import type { ProjectSummary } from "./project-model.ts";
+import { historyKinds, projectHistoryPath, windowParams, type HistoryKinds, type HistoryQuery } from "./history-path.ts";
 
-export type HistoryQuery = { readonly range: RangeKey } | { readonly fromMs: number; readonly toMs: number };
-
-export interface HistoryKinds {
-  readonly durableObjects: boolean;
-  readonly d1: boolean;
-  readonly probes: boolean;
-}
+export { historyKinds, projectHistoryPath, windowParams, type HistoryKinds, type HistoryQuery };
 
 export interface ProjectLedger {
   readonly report: CostReport;
@@ -32,21 +27,8 @@ export interface LedgerInputs {
   readonly planMonth: PlanMonthInput | undefined;
 }
 
-export function windowParams(query: HistoryQuery): string {
-  return "range" in query ? `range=${encodeURIComponent(query.range)}` : `from=${Math.round(query.fromMs)}&to=${Math.round(query.toMs)}`;
-}
 
-export function projectHistoryPath(projectId: string, query: HistoryQuery, options: HistoryKinds): string {
-  const kinds = ["worker", "routes", "r2", "collector"];
-  if (options.durableObjects) kinds.push("durable-objects");
-  if (options.d1) kinds.push("d1", "d1-statements");
-  if (options.probes) kinds.push("probes");
-  return `/api/v1/projects/${encodeURIComponent(projectId)}/history?${windowParams(query)}&kinds=${kinds.join(",")}`;
-}
 
-export function historyKinds(project: Pick<ProjectSummary, "durableObjectNamespaces" | "d1Databases" | "probes">): HistoryKinds {
-  return { durableObjects: project.durableObjectNamespaces.length > 0, d1: project.d1Databases.length > 0, probes: project.probes.length > 0 };
-}
 
 export function provisionalFromMs(history: MetricHistory): number {
   const cutoff = history.toMs - history.stepMs - PROJECT_SETTLE_MS;

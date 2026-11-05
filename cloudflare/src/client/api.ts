@@ -1,6 +1,6 @@
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history";
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
-import { projectHistoryPath, windowParams, type HistoryQuery } from "./project-ledger.ts";
+import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
 
 export interface Host {
