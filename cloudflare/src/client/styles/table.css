@@ -32,6 +32,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .cell-note { color: var(--muted); font-size: var(--fs-meta); }
 .cell-strong { color: var(--text); }
 .cell-stack { display: flex; flex-direction: column; line-height: 1.3; }
+.cell-pending { display: block; width: 5.5em; height: 32px; border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
 .wrap-note { display: block; max-width: 28ch; white-space: normal; }
 .device-name { display: block; }
 .metric-value-small { min-width: 40px; display: inline-block; }

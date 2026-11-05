@@ -1,5 +1,17 @@
 .projects-basis { color: var(--muted); font-size: var(--fs-meta); }
 .projects-table .numeric .cell-stack { align-items: flex-end; }
+.projects-table .numeric .cell-pending { margin-left: auto; }
+@media (min-width: 900px) {
+  .projects-table { table-layout: fixed; }
+  .projects-table th:nth-child(1) { width: 16.5%; }
+  .projects-table th:nth-child(2) { width: 11.5%; }
+  .projects-table th:nth-child(3) { width: 10.8%; }
+  .projects-table th:nth-child(4) { width: 14.3%; }
+  .projects-table th:nth-child(5) { width: 14%; }
+  .projects-table th:nth-child(6) { width: 11.7%; }
+  .projects-table th:nth-child(7) { width: 18%; }
+  .projects-table th:nth-child(8) { width: 3.2%; }
+}
 .projects-change { margin-left: var(--space-xs); font-size: var(--fs-label); color: var(--muted); font-weight: 500; }
 .projects-change.worse { color: var(--serious-text); }
 .projects-change.better { color: var(--good); }

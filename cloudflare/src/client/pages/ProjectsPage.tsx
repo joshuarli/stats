@@ -114,6 +114,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   const [histories, setHistories] = createSignal<ProjectHistories | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
+  const [deploymentsSettled, setDeploymentsSettled] = createSignal(false);
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
 
   createEffect(() => `${props.project.id}:${range()}:${refreshKey()}`, () => {
@@ -129,8 +130,14 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     void loadDeploymentHistory(props.project.id, controller.signal).then(value => {
-      if (!controller.signal.aborted) setDeployments(value);
-    }).catch(() => { if (!controller.signal.aborted) setDeployments(null); });
+      if (controller.signal.aborted) return;
+      setDeployments(value);
+      setDeploymentsSettled(true);
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setDeployments(null);
+      setDeploymentsSettled(true);
+    });
   });
 
   const window = createMemo((): TimeWindow | null => {
@@ -176,7 +183,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     return history === null || deployment === undefined ? null : { title: deploymentTitle(history, deployment), atMs: deployment.atMs };
   };
   const cpuDuration = (value: number) => value >= 3_600_000 ? `${(value / 3_600_000).toPrecision(3)} h` : value >= 60_000 ? `${(value / 60_000).toPrecision(3)} min` : value >= 1000 ? `${(value / 1000).toPrecision(3)} s` : milliseconds(Math.round(value));
-  const pending = () => <span class="cell-note" title={failure() ?? undefined}>{failure() === null ? "…" : "unavailable"}</span>;
+  const pending = () => failure() === null ? <span class="cell-pending" aria-hidden="true" /> : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
 
   return (
     <tbody class={open() ? "projects-group open" : "projects-group"}>
@@ -217,7 +224,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
           )}</Show>
         </td>
         <td>
-          <Show when={latest()} fallback={<span class="cell-note">none recorded</span>}>{deployment => (
+          <Show when={latest()} fallback={deploymentsSettled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
             <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
           )}</Show>
         </td>

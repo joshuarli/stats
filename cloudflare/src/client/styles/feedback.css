@@ -15,6 +15,8 @@
 .error-state .btn { margin-left: auto; }
 
 .skeleton { display: grid; gap: var(--space-md); }
-.skeleton-line { display: block; height: var(--space-md); border-radius: var(--radius-sm); background: var(--hover); animation: pulse 1.4s ease-in-out infinite; }
-.skeleton-chart { display: block; height: 140px; border-radius: var(--radius-md); background: var(--hover); animation: pulse 1.4s ease-in-out infinite; }
+.skeleton-line { display: block; height: var(--space-md); border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
+.skeleton-chart { display: block; height: 140px; border-radius: var(--radius-md); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
+.summary-pending { display: inline-block; width: 6em; height: 1em; vertical-align: middle; border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
+.boot-pending { display: block; width: 180px; height: 16px; margin: 0; border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
 .page-skeleton { max-width: 360px; }

@@ -237,7 +237,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         </Errored>
 
         <Section id="deploys" title="Deployments" open={sections().has("deploys")} onToggle={() => toggleSection("deploys")}
-          summary={<Show when={latest()} fallback={deployments.historyError() ?? "none recorded"}>{deployment => <>{deployments.title(deployment())} · {age(deployment().atMs, now())}{deployment().message === null ? "" : ` · ${deployment().message}`}</>}</Show>}>
+          summary={<Show when={latest()} fallback={deploymentsSettled() ? (deployments.historyError() ?? "none recorded") : <span class="summary-pending" aria-hidden="true" />}>{deployment => <>{deployments.title(deployment())} · {age(deployment().atMs, now())}{deployment().message === null ? "" : ` · ${deployment().message}`}</>}</Show>}>
           <Show when={deploymentsSettled()} fallback={<Skeleton rows={4} chart class="skeleton-deployments" />}>
             <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
               <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
@@ -251,7 +251,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         <Show when={observe}>{state => (
           <>
             <Section id="errors" title="Errors" open={sections().has("errors")} onToggle={() => toggleSection("errors")}
-              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().error() ?? "loading"}>
+              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().error() ?? <span class="summary-pending" aria-hidden="true" />}>
               <IssuesWidget observe={state()} />
             </Section>
             <Section id="requests" title="Requests" open={sections().has("requests")} onToggle={() => toggleSection("requests")}
