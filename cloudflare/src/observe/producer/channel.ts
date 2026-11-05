@@ -1,4 +1,5 @@
-import type { SampleRejection } from "../../ingest/ack.ts";
+export const SAMPLE_REJECTIONS = { invalid_sample: 1, too_old: 2, conflict: 3 } as const;
+export type SampleRejection = keyof typeof SAMPLE_REJECTIONS;
 
 export const OBSERVE_CHANNEL = "stats.observe";
 
@@ -24,9 +25,9 @@ export interface InvocationMark {
   readonly spanId: string;
 }
 
-export interface ErrorReport {
+export interface ErrorReport<O extends string = Operation> {
   readonly kind: "error";
-  readonly operation: Operation;
+  readonly operation: O;
   readonly name: string;
   readonly message: string;
   readonly stack: string | null;
@@ -81,4 +82,14 @@ export type OperationSummary = { readonly synthetic: boolean; readonly rows: Row
 
 export type OperationMessage = { readonly kind: "operation"; readonly traceId: string; readonly spanId: string } & OperationSummary;
 
-export type ChannelMessage = InvocationMark | ErrorReport | OperationMessage;
+export interface ServiceOperationSummary<O extends string> {
+  readonly operation: O;
+  readonly synthetic: boolean;
+  readonly rows: RowAccount | null;
+}
+
+export type ServiceOperationMessage<O extends string> = { readonly kind: "operation"; readonly traceId: string; readonly spanId: string } & ServiceOperationSummary<O>;
+
+export type ChannelMessage<O extends string = Operation> = InvocationMark | ErrorReport<O> | OperationMessage;
+
+export type ServiceChannelMessage<O extends string> = InvocationMark | ErrorReport<O> | ServiceOperationMessage<O>;

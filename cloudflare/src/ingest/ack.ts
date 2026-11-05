@@ -1,7 +1,8 @@
 export const ACK_MEDIA_TYPE = "application/vnd.stats.ingest-ack.v2";
 
-export const SAMPLE_REJECTIONS = { invalid_sample: 1, too_old: 2, conflict: 3 } as const;
-export type SampleRejection = keyof typeof SAMPLE_REJECTIONS;
+import { SAMPLE_REJECTIONS, type SampleRejection } from "../observe/producer/channel.ts";
+
+export { SAMPLE_REJECTIONS, type SampleRejection };
 
 export interface Ack {
   readonly accepted: number;
