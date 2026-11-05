@@ -19,6 +19,59 @@
 - **Next:** final report; 24 h coverage record at 2026-11-06 05:55Z. The portable-core campaign continues in `docs/portable-core-campaign.md`.
 - **Resume:** `Execute self-improvement.md from its Status block.` First command: `git log --oneline -1 && make cloudflare-test`.
 
+## Result
+
+Written 2026-11-05 at 15:15Z. Open: the 24 h coverage record for 2026-11-05 05:55Z to 2026-11-06 05:55Z, read with `.work/tmp/scripts/coverage-live.ts` after it closes.
+
+**Production-verified:** O1, rollups written in place, with the two `hosts` updates merged. `statsctl verify` returned `improved` (exit 0).
+
+| Metric | Before (08:50–09:50Z) | After (10:00–11:00Z) | Change |
+| --- | --- | --- | --- |
+| `host.ingest` rows written per persisted sample | 10.83 | 7.92 | -26.9% (offline -25.7%) |
+| Operations / persisted samples | 239 / 476 | 239 / 479 | same work |
+| Guardrails (safety check, new issues, probes, coverage, failed share, persistence) | | | all pass |
+
+The run cost 14 of 60 requests and 5 polls.
+
+**Deployed and spot-checked** (smoke and `check ingest` after each):
+
+| Worker | Deployment / version | What |
+| --- | --- | --- |
+| stats | `8d426e74` / `e38f0726` | O0 measurement deploy |
+| stats | `e233b271` / `bbbb4bb3` | O1 |
+| stats | `a65a6058` / `edb4ba9f` | probe averaging over the samples present (`68396b7`) |
+| stats | `28370338` / `31f2f398` | N1–N4 (merge `f62f5c9`), live |
+| stats-observe | `dc041292` / `f30bbdac` | O0 |
+| stats-observe | `e542f0f7` / `b0a0a12d` | N1–N4 |
+| stats-observe | version `c32833bc` | each service finishes its tail delivery (`425fb3e`) |
+| stats-observe | version `e858fa73` | STA-52 always-kept cap (`dd19486`), live |
+
+**Accepted locally:**
+- **N3:** Nanoshop's budget projects to $1.05 and 783k rows a month against $1.10 and 1.0M. A month-long storm at the cap projects to $3.86.
+- **N4:** `docs/observe-billing.md`.
+- **N6:** on Nanoshop branch `stats/observe-figures`, which the owner merged.
+- **X1:** dead code in `7c61ba3`. The review found no P1 and one P2, fixed in `425fb3e`.
+
+**Not run, with reasons:**
+- **O2 and O3:** P4 stopped after O1, because stats costs $0.20 a month at list price and nothing on the invoice.
+- **The unattended loop:** X2 was not met, because no candidate ended `unchanged`, `regressed`, or reverted.
+
+**Reverted:** none.
+
+**Measured overhead:**
+- `stats-observe` cost $0.16 to $0.31 a month at list price over the day, against stats' own $0.16 to $0.28.
+- Tail CPU is 0.413 ms per invocation. The store is 31.7 ms wall per call.
+- One observed stats event writes 3 rows, plus operation, outcome, and occurrence rows that depend on traffic. That came to 3.10 to 3.58 per accepted event, and an A/B shows no code difference.
+
+**Open tickets from this campaign:**
+- **STA-50:** overlapping RPC marks.
+- **STA-51:** tail isolate lifetime in production.
+- **STA-53:** collector runs missing or failing about 1 in 9.
+- **STA-54:** two workerd tests fail under load.
+- Rejected-invalid events are not capped by STA-52 and have no ticket yet.
+
+**Master is ahead of production:** master now carries portable-core P1 and P2 (`docs/portable-core-campaign.md`), so the next stats deploy ships that refactor. Its parity, fixture, and bundle-export checks pass locally.
+
 ## Charter
 
 - Implement the campaign; this is not a design exercise. Decide and keep going. Record a decision in **Decisions** only when a later slice depends on it.
