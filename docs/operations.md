@@ -338,6 +338,34 @@ tailnet users:
 tailscale serve --bg --http=18790 http://127.0.0.1:18791
 ```
 
+### In a container on threadripper
+
+```sh
+STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
+```
+
+`deploy/node/deploy.sh` refuses a tree with uncommitted tracked changes,
+because the image is tagged with the commit. It builds the dashboard here,
+copies `cloudflare/src`, the built assets, and `deploy/node/Dockerfile` to
+`~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
+there from `node:26.12.1-alpine`, which is the only image on the host it
+uses. It then replaces the `stats-node` container, which runs as `node` on
+the host network and listens on `127.0.0.1:18791`. The container keeps the
+database in `~/.local/share/stats-node` and is started with
+`--restart unless-stopped`. The deploy waits for `/health` and prints the
+tag, with the full output in `.work/tmp/node-deploy.log`.
+
+The container uses the host network because Docker's bridge network would
+present every request as coming from its gateway, and the auth adapter
+trusts loopback peers only. The tailnet reaches the server only through
+`tailscale serve`; nothing else listens beyond loopback. The deploy stops
+if the host has under 50 GB free.
+
+To roll back, run `docker run` for an earlier `stats-node:<commit>` image
+with the same flags. To remove the deployment, run `docker rm -f
+stats-node` and `tailscale serve --http=18790 off`; the data directory
+stays.
+
 Provision a host through the tailnet origin as on the Worker, with
 `POST /api/v1/admin/hosts` and `{"name": "<label>"}`; the token is shown once.
 `make node-e2e` runs `deploy/deployed-smoke.sh` and the real agent against a
