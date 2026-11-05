@@ -1,3 +1,4 @@
+import type { ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError } from "./config.ts";
@@ -10,10 +11,14 @@ async function main(): Promise<void> {
   const installation = openNodeInstallation({ path: config.databasePath, projects: "[]" });
   const server = createStatsServer({ installation: request => installation.core.fetch(request), assets, allowedLogins: config.allowedLogins });
   let draining = false;
-  server.on("request", (_incoming, outgoing) => {
-    if (!draining) return;
-    outgoing.shouldKeepAlive = false;
-    outgoing.on("finish", () => server.closeIdleConnections());
+  const inFlight = new Set<ServerResponse>();
+  server.on("request", (_incoming, outgoing: ServerResponse) => {
+    inFlight.add(outgoing);
+    if (draining) outgoing.shouldKeepAlive = false;
+    outgoing.on("close", () => {
+      inFlight.delete(outgoing);
+      if (draining) setImmediate(() => server.closeIdleConnections());
+    });
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -37,6 +42,7 @@ async function main(): Promise<void> {
       }
       console.log(JSON.stringify({ event: "stopped" }));
     });
+    for (const outgoing of inFlight) if (!outgoing.headersSent) outgoing.shouldKeepAlive = false;
     server.closeIdleConnections();
   };
   process.once("SIGTERM", stop);
