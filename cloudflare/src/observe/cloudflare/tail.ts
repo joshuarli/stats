@@ -1,4 +1,4 @@
-import { OBSERVE_CHANNEL, OPERATION_IDS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
+import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type SampleRejection, type OperationSummary, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "./policies.ts";
 import { OTHER_ROUTE, prepareInvocation, VERSION, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
@@ -38,11 +38,22 @@ export function stageOf(item: Pick<TailItem, "executionModel">): Stage | null {
 
 export function reduceTailItem(item: TailItem, policy: ServicePolicy): Reduction {
   const stage = stageOf(item);
-  if (stage === null || item.eventTimestamp === null) return REJECTED;
+  const eventAtMs = item.eventTimestamp;
+  if (stage === null || eventAtMs === null) return REJECTED;
   const entry = describeEvent(item.event, stage, item.entrypoint ?? "Object", policy);
   if (entry === null) return REJECTED;
-  if ("excluded" in entry) return { kind: "excluded", outcome: entry.excluded, stage, route: entry.route };
-  const channel = readChannel(item.diagnosticsChannelEvents, policy.operations);
+  if (!("excluded" in entry)) return observe(item, stage, entry, eventAtMs, policy);
+  if (entry.unmatched === null || !carriesFailure(item, entry.unmatched.status)) return { kind: "excluded", outcome: entry.excluded, stage, route: entry.route };
+  return observe(item, stage, entry.unmatched, eventAtMs, policy);
+}
+
+function carriesFailure(item: TailItem, status: number | null): boolean {
+  if (item.exceptions.length > 0 || (status !== null && status >= 500)) return true;
+  return item.diagnosticsChannelEvents.some(event => event.channel === OBSERVE_CHANNEL && field(event.message, "kind") === "error");
+}
+
+function observe(item: TailItem, stage: Stage, entry: Entry, eventAtMs: number, policy: ServicePolicy): Reduction {
+  const channel = readChannel(item.diagnosticsChannelEvents, policy);
   if (channel === null) return REJECTED;
   const uncaught: ObservedError[] = item.exceptions.map(exception => ({ source: "uncaught", operation: null, name: exception.name, message: exception.message, stack: exception.stack ?? null }));
   return {
@@ -57,7 +68,7 @@ export function reduceTailItem(item: TailItem, policy: ServicePolicy): Reduction
       outcome: item.outcome,
       cpuMs: Math.round(item.cpuTime),
       wallMs: Math.round(item.wallTime),
-      eventAtMs: item.eventTimestamp,
+      eventAtMs,
       trace: channel.trace,
       ...(channel.operation === null ? {} : { operation: channel.operation }),
       errors: [...uncaught, ...channel.errors]
@@ -100,6 +111,7 @@ interface Entry {
 interface Excluded {
   readonly excluded: ExcludedOutcome;
   readonly route: string;
+  readonly unmatched: Entry | null;
 }
 
 function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy: ServicePolicy): Entry | Excluded | null {
@@ -113,9 +125,10 @@ function describeEvent(event: unknown, stage: Stage, entrypoint: string, policy:
     const path = pathOf(url);
     const route = path === null ? null : stage === "worker" ? policy.workerRoute(path) : policy.objectRoute(path);
     const label = route === null ? null : stage === "worker" ? `${method} ${route}` : `${entrypoint} ${method} ${route}`;
-    if (status !== null && EXCLUDED_STATUSES.has(status)) return { excluded: `excluded-status:${status}` as ExcludedOutcome, route: routeLabel(label) };
+    if (status !== null && EXCLUDED_STATUSES.has(status)) return { excluded: `excluded-status:${status}` as ExcludedOutcome, route: routeLabel(label), unmatched: null };
     if (path === null) return null;
-    return label === null ? { excluded: "excluded-route", route: OTHER_ROUTE } : { kind: "fetch", label, status };
+    if (label !== null) return { kind: "fetch", label, status };
+    return { excluded: "excluded-route", route: OTHER_ROUTE, unmatched: stage === "worker" ? { kind: "fetch", label: `${method} unmatched`, status } : null };
   }
   const rpcMethod = text(field(event, "rpcMethod"));
   if (rpcMethod !== null) return RPC_METHOD.test(rpcMethod) ? { kind: "rpc", label: `${entrypoint}.${rpcMethod}`, status: null } : null;
@@ -137,9 +150,10 @@ function pathOf(url: string): string | null {
   }
 }
 
-function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: ReadonlySet<string>): { trace: TraceContext | null; operation: OperationSummary | null; errors: ObservedError[] } | null {
+function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: ServicePolicy): { trace: TraceContext | null; operation: OperationSummary | null; errors: ObservedError[] } | null {
   let trace: TraceContext | null = null;
   let summary: OperationSummary | null = null;
+  let operationSeen = false;
   const errors: ObservedError[] = [];
   for (const event of events) {
     if (event.channel !== OBSERVE_CHANNEL) continue;
@@ -153,16 +167,17 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: R
     } else if (kind === "operation") {
       const traceId = text(field(message, "traceId"));
       const spanId = text(field(message, "spanId"));
-      const parsed = readOperation(message);
-      if (traceId === null || spanId === null || parsed === null || summary !== null) return null;
+      const parsed = policy.operationMessages === "stats" ? readStatsOperation(message) : readServiceOperation(message, policy.operations);
+      if (traceId === null || spanId === null || parsed === null || operationSeen) return null;
       trace ??= { traceId, spanId };
-      summary = parsed;
+      operationSeen = true;
+      summary = parsed.summary;
     } else if (kind === "error") {
       const operation = field(message, "operation");
       const name = text(field(message, "name"));
       const errorMessage = text(field(message, "message"));
       const stack = field(message, "stack");
-      if (typeof operation !== "string" || !operations.has(operation) || name === null || errorMessage === null || (stack !== null && typeof stack !== "string")) return null;
+      if (typeof operation !== "string" || !policy.operations.has(operation) || name === null || errorMessage === null || (stack !== null && typeof stack !== "string")) return null;
       errors.push({ source: "caught", operation, name, message: errorMessage, stack });
     } else {
       return null;
@@ -171,7 +186,19 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], operations: R
   return { trace, operation: summary, errors };
 }
 
-const REJECTION_CODES = ["invalid_sample", "too_old", "conflict"] as const;
+const REJECTION_CODES = Object.keys(SAMPLE_REJECTIONS) as readonly SampleRejection[];
+
+function readStatsOperation(message: unknown): { readonly summary: OperationSummary } | null {
+  const summary = readOperation(message);
+  return summary === null ? null : { summary };
+}
+
+function readServiceOperation(message: unknown, operations: ReadonlySet<string>): { readonly summary: null } | null {
+  const operation = field(message, "operation");
+  const rows = field(message, "rows");
+  if (typeof operation !== "string" || !operations.has(operation) || typeof field(message, "synthetic") !== "boolean") return null;
+  return rows === null || readRows(rows) !== null ? { summary: null } : null;
+}
 
 function readOperation(message: unknown): OperationSummary | null {
   const id = field(message, "operation");

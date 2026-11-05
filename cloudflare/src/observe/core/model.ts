@@ -94,7 +94,7 @@ export const VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u;
 const SOURCE = /^[a-z][a-z0-9_-]{0,31}$/u;
 const OBJECT_ID = /^[0-9a-f]{64}$/u;
 const OUTCOME = /^[A-Za-z]{1,32}$/u;
-const OPERATION = /^[a-z][a-z0-9_.]{0,63}$/u;
+const OPERATION = /^[a-z][A-Za-z0-9_.-]{0,63}$/u;
 
 export async function prepareInvocation(input: ObservedInvocation, policy: MessagePolicy): Promise<Preparation> {
   const reason = rejection(input);

@@ -1,11 +1,13 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
+import { NANOSHOP_OPERATIONS, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
 export interface ServicePolicy {
   readonly workerRoute: (path: string) => string | null;
   readonly objectRoute: (path: string) => string | null;
   readonly operations: ReadonlySet<string>;
+  readonly operationMessages: "stats" | "service";
 }
 
 const HOST_ID = /^h_[0-9a-f]{32}$/u;
@@ -43,11 +45,19 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
   stats: {
     workerRoute: statsWorkerRoute,
     objectRoute: path => path === "/" ? null : statsTemplate(path),
-    operations: new Set(OPERATIONS)
+    operations: new Set(OPERATIONS),
+    operationMessages: "stats"
   },
   "usr-memories": {
     workerRoute: memoriesWorkerRoute,
     objectRoute: () => null,
-    operations: new Set(MEMORIES_OPERATIONS)
+    operations: new Set(MEMORIES_OPERATIONS),
+    operationMessages: "service"
+  },
+  "nanoshop-storied": {
+    workerRoute: nanoshopWorkerRoute,
+    objectRoute: () => null,
+    operations: new Set(NANOSHOP_OPERATIONS),
+    operationMessages: "service"
   }
 };

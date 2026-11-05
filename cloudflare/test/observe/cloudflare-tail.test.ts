@@ -4,6 +4,8 @@ import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { errorReport } from "../../src/observe/producer/report.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { groupByService, OBSERVED_SERVICES } from "../../src/observe/services.ts";
 
 const VERSION = "3172128e-5c58-48a4-8c16-7767d5521979";
 const OBJECT = "71437be8483ec4c778560417396a6e8e81f1673f27ec5d341ec7a2645e467eb9";
@@ -107,4 +109,110 @@ await test("error reports survive non-Error throws and throwing accessors", () =
   Object.defineProperty(hostile, "stack", { get() { throw new Error("accessor"); } });
   const report = errorReport("projects.config", hostile);
   assert.deepEqual([report.name, report.message, report.stack], ["Error", "", null]);
+});
+
+await test("nanoshop-storied routes are templates generated from its route list, and assets and unmatched paths are excluded", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const cases: readonly [string, string][] = [
+    ["https://shop.example/", "GET /"],
+    ["https://shop.example/products?q=SECRET_IN_QUERY", "GET /products"],
+    ["https://shop.example/products/linen-shirt", "GET /products/:handle"],
+    ["https://shop.example/collections", "GET /collections"],
+    ["https://shop.example/collections/new-in", "GET /collections/:handle"],
+    ["https://shop.example/search?q=SECRET_IN_QUERY", "GET /search"],
+    ["https://shop.example/cart", "GET /cart"],
+    ["https://shop.example/cart/items", "GET /cart/items"],
+    ["https://shop.example/cart/items/9007199254740993", "GET /cart/items/:variant_id"],
+    ["https://shop.example/cart/items/9007199254740993/remove", "GET /cart/items/:variant_id/remove"]
+  ];
+  assert.equal(cases.length, NANOSHOP_ROUTES.length);
+  for (const [url, expected] of cases) assert.equal(label(fetchItem(url, 200), shop), expected, url);
+  for (const url of [
+    "https://shop.example/static/app.css", "https://shop.example/assets/hero.webp", "https://shop.example/static", "https://shop.example/products/a/b",
+    "https://shop.example/products/", "https://shop.example/cart/items/1/remove/x", "https://shop.example/cart/", "https://shop.example/wp-login.php"
+  ]) assert.equal(label(fetchItem(url, 200), shop), "excluded", url);
+});
+
+await test("nanoshop-storied operations come from its route and RPC lists", () => {
+  assert.deepEqual([...NANOSHOP_OPERATIONS].sort(), [
+    "catalog.load", "catalog.rejected",
+    "request.cart", "request.cart-add", "request.cart-remove", "request.cart-set", "request.collection", "request.collections", "request.home",
+    "request.product", "request.products", "request.search", "request.unmatched",
+    "store.rpc.addToCart", "store.rpc.readCart", "store.rpc.removeCartItem", "store.rpc.setCartQuantity", "store.rpc.syncCatalog"
+  ]);
+});
+
+await test("nanoshop-storied labels its Durable Object RPCs, has no object route, and accepts only its own error operations", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  assert.equal(label(objectItem({ rpcMethod: "readCart" }, { entrypoint: "TenantStore" }), shop), "TenantStore.readCart");
+  assert.equal(label(objectItem({ request: { url: "https://tenant/anything", method: "GET", headers: {} }, response: { status: 200 } }, { entrypoint: "TenantStore" }), shop), "excluded");
+  const report = (operation: string) => ({ channel: OBSERVE_CHANNEL, message: { kind: "error", operation, name: "Error", message: "", stack: null } });
+  assert.equal(label(fetchItem("https://shop.example/cart", 500, { diagnosticsChannelEvents: [MARK, report("store.rpc.addToCart")] }), shop), "GET /cart");
+  assert.equal(label(fetchItem("https://shop.example/cart", 500, { diagnosticsChannelEvents: [MARK, report("deployments.poll")] }), shop), "rejected");
+});
+
+await test("a producer can supply its own closed operation union", () => {
+  type ShopOperation = "request.cart";
+  const shop = errorReport<ShopOperation>("request.cart", new Error("x"));
+  const operation: ShopOperation = shop.operation;
+  assert.equal(operation, "request.cart");
+});
+
+await test("service identity comes only from the platform script name", () => {
+  const forged = { url: "https://nanoshop-storied.example/cart", headers: { host: "nanoshop-storied", "x-script-name": "nanoshop-storied", "cf-worker": "nanoshop-storied" } };
+  const claimed = { ...fetchItem(forged.url, 200), event: { request: { url: forged.url, method: "GET", headers: forged.headers } } };
+  const { byService, unknown } = groupByService([
+    { ...claimed, scriptName: "stats" },
+    { ...claimed, scriptName: null },
+    { ...claimed },
+    { ...claimed, scriptName: "nanoshop-storied-evil" },
+    { ...claimed, scriptName: "nanoshop-storied" }
+  ]);
+  assert.equal(unknown.length, 3);
+  assert.deepEqual([...byService].map(([service, items]) => [service, items.length]), [["stats", 1], ["nanoshop-storied", 1]]);
+  assert.deepEqual(OBSERVED_SERVICES, ["stats", "usr-memories", "nanoshop-storied"]);
+});
+
+const SHOP_SPAN = { traceId: "9bcf42a3d155dee9563e537e144790e4", spanId: "2b1e95b0d4dcde81" };
+
+function serviceOperation(overrides: Record<string, unknown> = {}) {
+  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "request.cart", synthetic: false, rows: null, ...overrides } };
+}
+
+await test("a service other than stats carries its trace on a generic operation message and needs no invocation mark", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  for (const rows of [null, { read: 1, written: 0, statements: 1 }]) {
+    const reduction = reduceTailItem(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation({ rows })] }), shop);
+    assert.equal(reduction.kind, "observed");
+    if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.trace, SHOP_SPAN);
+  }
+  for (const bad of [{ operation: "host.ingest" }, { operation: "deployments.poll" }, { rows: { read: 1 } }, { rows: { read: -1, written: 0, statements: 0 } }, { synthetic: "no" }, { traceId: 1 }]) {
+    assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(bad)] }), shop), "rejected", JSON.stringify(bad));
+  }
+  assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(), serviceOperation()] }), shop), "rejected");
+});
+
+await test("stats keeps its typed operation decoder, and a generic message is not a stats operation", () => {
+  const generic = serviceOperation({ operation: "host.ingest" });
+  assert.equal(label(fetchItem("https://stats.example/ingest/v2/batches", 200, { diagnosticsChannelEvents: [generic] })), "rejected");
+  const typed = { channel: OBSERVE_CHANNEL, message: { kind: "operation", ...SHOP_SPAN, operation: "deployments.poll", synthetic: false, rows: { read: 1, written: 0, statements: 1 } } };
+  const reduction = reduceTailItem(fetchItem("https://stats.example/ingest/v2/batches", 200, { diagnosticsChannelEvents: [typed] }), POLICIES.stats);
+  assert.equal(reduction.kind === "observed" ? reduction.invocation.operation?.operation : reduction.kind, "deployments.poll");
+});
+
+await test("an unrouted request that failed is observed as unmatched, and the rest stay excluded", () => {
+  const report = { channel: OBSERVE_CHANNEL, message: { kind: "error", operation: "request.unmatched", name: "Error", message: "x", stack: null } };
+  const shop = POLICIES["nanoshop-storied"];
+  const caught = reduceTailItem(fetchItem("https://shop.example/static/x", 500, { diagnosticsChannelEvents: [MARK, report] }), shop);
+  assert.equal(caught.kind, "observed");
+  if (caught.kind === "observed") assert.deepEqual([caught.invocation.label, caught.invocation.status, caught.invocation.errors.map(error => error.source)], ["GET unmatched", 500, ["caught"]]);
+  const uncaught = reduceTailItem(fetchItem("https://shop.example/static/x", 200, { exceptions: [{ name: "TypeError", message: "x" }] }), shop);
+  assert.equal(uncaught.kind === "observed" ? uncaught.invocation.errors[0]?.source : uncaught.kind, "uncaught");
+  assert.equal(label(fetchItem("https://shop.example/static/x", 503), shop), "GET unmatched");
+  assert.equal(label(fetchItem("https://shop.example/static/x", 200, { diagnosticsChannelEvents: [MARK, report] }), shop), "GET unmatched");
+  assert.equal(label(fetchItem("https://shop.example/static/x", 200), shop), "excluded");
+  assert.equal(label(fetchItem("https://shop.example/static/x", 499), shop), "excluded");
+  assert.equal(label(fetchItem("https://shop.example/static/x", 404, { exceptions: [{ name: "TypeError", message: "x" }] }), shop), "excluded");
+  assert.equal(label(fetchItem("https://stats.example/nowhere", 500, { diagnosticsChannelEvents: [MARK] })), "GET unmatched");
+  assert.equal(label(objectItem({ request: { url: "https://installation/", method: "GET", headers: {} }, response: { status: 500 } })), "excluded");
 });

@@ -1,6 +1,6 @@
 import { OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
-import { isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
+import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
 import { POLICIES } from "./policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { ObservationStore, type ObserveEnv } from "./store-object.ts";
@@ -16,13 +16,9 @@ function store(env: ObserveEnv, service: ObservedService): DurableObjectStub<Obs
 
 export default {
   async tail(events: TraceItem[], env: ObserveEnv): Promise<void> {
-    const byService = new Map<ObservedService, TraceItem[]>();
-    const unknown: OutcomeEvent[] = [];
-    for (const item of events) {
-      const service = item.scriptName ?? "";
-      if (!isObservedService(service)) { unknown.push(outcomeOf(item, "unknown-service", OTHER_ROUTE)); continue; }
-      byService.set(service, [...byService.get(service) ?? [], item]);
-    }
+    const grouped = groupByService(events);
+    const byService = grouped.byService;
+    const unknown: OutcomeEvent[] = grouped.unknown.map(item => outcomeOf(item, "unknown-service", OTHER_ROUTE));
     if (unknown.length > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown.length }));
     const batches = new Map(await Promise.all([...byService].map(async ([service, items]) => [service, await prepareTailItems(items, POLICIES[service])] as const)));
     if (unknown.length > 0) {
