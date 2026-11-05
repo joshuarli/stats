@@ -150,6 +150,61 @@ Configuration: `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are Worker secrets;
 `ENVIRONMENT`, `INSTALLATION`, `ASSETS`, `ANALYTICS_SQL`, and `PROJECTS` are
 bindings declared in `cloudflare.config.ts`, which also declares the cron. The Durable Object id is the fixed name `installation`.
 
+### Operations and coverage
+
+Measuring whether a deployment used fewer resources needs counts of work, not
+only of requests. Each instrumented `stats` invocation publishes one
+`operation` message on the `stats.observe` diagnostics channel instead of the
+bare `invocation` mark (`src/operations.ts`, `src/observe/producer/channel.ts`).
+It names an operation id (`host.ingest`, `host.history`, `project.history`,
+`collector.record`, `cleanup.retention`, `deployments.poll`), whether the host
+was the synthetic check, the invocation's SQLite row account, and the work that
+operation did: persisted, duplicate and rejected samples and input bytes for
+ingest; points, cells, output bytes and cache result for history (with a
+`workloadClass` such as `1m:summary`); runs, metric rows, hour rollups and
+upstream queries for the collector; expired rows and backlog for retention.
+`stats-observe` must accept `operation` before `stats` emits it. A tail that
+does not know the kind rejects the whole invocation as `rejected-invalid`, so
+never roll `stats-observe` back below the version that accepts `operation`
+while `stats` emits it.
+
+`SqlAccount` (`src/sql-account.ts`) wraps `SqlStorage.exec`. It adds each
+cursor's `rowsRead`, `rowsWritten` and one statement to its totals once the
+cursor is consumed or closed, so the account counts what SQLite actually
+read and wrote, not what the code expected.
+
+The `ObservationStore` keeps two additive tables beside its existing ones, both
+in five-minute buckets and bounded to 100,000 rows:
+
+- `observe_operations`, keyed by `(bucket_at, version, operation,
+  workload_class, synthetic)`. Each row holds `count`, `failed`, summed
+  `cpu_ms_sum`, `wall_ms_sum`, `rows_read`, `rows_written` and `statements`,
+  lag counters (`lag_count`, `lag_ms_max`, `lag_ms_sum`), and one integer column
+  per work field. Synthetic rows are kept apart from real ones.
+- `observe_outcomes`, keyed by `(bucket_at, version, stage, outcome, route)`.
+  It counts tail events that produced no stored invocation, by `stage`
+  (`worker`, `object`, `unknown`) and by `outcome`: `excluded-status:401|403|404`,
+  `excluded-route`, `rejected-invalid`, `unknown-service`. Each bucket, version,
+  stage and outcome keeps at most 32 routes, then folds the rest into one `other` route. Each row
+  records the `filter_revision` that excluded it.
+
+`GET /api/observe/stats/window?from=<ms>&to=<ms>[&operation=<id>][&class=<name>]`
+returns one half-open window: operation rows, outcome rows, invocation rows and
+lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes
+the same Access check as every observe route.
+
+The coverage rule (`src/compare/coverage.ts`) decides whether the observed
+counts can support a verdict. For each side of a comparison it sums the
+invocations plus every outcome class the tail saw, per five-minute event-time
+bucket, over both stages (`worker` and `object`), and compares that sum with
+the analytics `worker.invocations` the comparison route returns in
+`analyticsInvocations`. The state is `reconciled` when no bucket in the window
+is missing from either source and the totals differ by at most 5% of the
+analytics total; `partial` when a bucket is missing or the difference is larger;
+and `unknown` when either source lacks the window, so absent data is never
+counted as zero. A comparison is `reconciled` only if both sides are. The bound
+is 5%; `docs/cost-campaign.md` records the measured spread.
+
 ## Storage and rollups
 
 One Durable Object per installation holds the host tables below and the project

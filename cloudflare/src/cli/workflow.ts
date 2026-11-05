@@ -66,8 +66,8 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
    State lives in .work/statsctl/verify/DEPLOYMENT_ID.json; repeating the same command
    continues from it and counts requests across runs. A finished verdict is not re-read.
-   statsctl verify --replay .work/statsctl/verify/DEPLOYMENT_ID.json re-derives the
-   verdict offline from the saved evidence and fails if it differs.
+   To re-derive the verdict offline from the saved evidence (it fails if it differs):
+   pnpm --dir cloudflare -s statsctl verify --replay .work/statsctl/verify/DEPLOYMENT_ID.json
 
 9. Check ingest end to end (mutation)
    pnpm --dir cloudflare -s statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json

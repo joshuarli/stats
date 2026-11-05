@@ -20,8 +20,16 @@ make agent-e2e         # the real agent binary against the built Worker in worke
 make smoke-local       # deploy/deployed-smoke.sh against the built Worker in workerd
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
 make check             # all of the above plus make release
+make stats-deploy      # deploy only the stats Worker, leaving stats-observe untouched
+
+pnpm --dir cloudflare -s statsctl help workflow    # copy-pastable recipes for the commands below
+pnpm --dir cloudflare -s statsctl health --project stats --json    # are the telemetry sources fresh and complete
+pnpm --dir cloudflare -s statsctl cost --project stats --window 1h --json    # price a window, find the bottleneck
+pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a deployment use fewer resources for the same work
 ```
 
+`statsctl` reads the production origin through Access; `statsctl help workflow` and
+`statsctl help verify` are the source of truth for its recipes and policy fields.
 Node and pnpm versions are enforced by `make node-ready`. Scratch and `TMPDIR`
 go under `.work/tmp`.
 
@@ -36,6 +44,7 @@ go under `.work/tmp`.
 - Every non-ingest, non-health path that serves assets or data passes Access JWT verification in the Worker; other paths are rejected before any data is read.
 - Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
 - Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
+- `statsctl` read commands never mutate. `check ingest` is the only mutation, and it writes one flagged sample only to the `synthetic-check` host.
 - The baseline agent never loads BPF and needs no root, service manager, or runtime. On Linux it links no dynamic libraries; on macOS it links only system libraries and frameworks.
 
 ## Docs
@@ -48,10 +57,12 @@ go under `.work/tmp`.
 | Components, routes, auth, storage, rollups | `docs/architecture.md` |
 | Release build, deployment, verified environments | `docs/operations.md` |
 | Toolchain pins and dependency decisions | `docs/dependencies.md` |
+| Deployment tracking, comparison, and its verification record | `docs/deployments.md` |
 | Test commands, screenshot goldens, and image comparison | `docs/testing.md` |
 | Benchmark method and results | `bench/README.md` |
 | Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Observability product campaign | `docs/observability-campaign.md` |
+| `statsctl`, measurement, and the measured-optimization campaign | `self-improvement.md` |
 | Open work | `TODO.md` |

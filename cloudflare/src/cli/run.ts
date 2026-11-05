@@ -67,7 +67,7 @@ type Route =
   | { readonly kind: "help"; readonly text: string }
   | { readonly kind: "run"; readonly command: Command; readonly values: Values };
 
-function route(argv: readonly string[]): Route {
+export function route(argv: readonly string[]): Route {
   const registry = REGISTRY;
   const first = argv[0];
   if (first === undefined) throw usageFailure("no command given", "run `statsctl --help` for the command list");
