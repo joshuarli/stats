@@ -546,10 +546,11 @@ bucket counts only when every compared host reported at least 150 s of it:
 | `service.cpu` (cores), `service.memory` (`memory.current`, B), `service.io` (read + write, B/s) | the service's cgroup in host one-minute rollups, from agents configured with the service |
 | `probe.health.ms`, `probe.health.failure` (%) | service health probes, only when `healthUrl` is set |
 
-A cgroup metric replaces its host counterpart (`service.cpu` for `host.cpu`,
+A cgroup metric supersedes its host counterpart (`service.cpu` for `host.cpu`,
 `service.memory` for `host.memory`, `service.io` for `host.disk`) only when it
-has a value in both windows; otherwise the host metric stays and the cgroup
-metric is left out, so an agent rolled out between the windows never yields a
+has a value in both windows; the host row then stays in the response, listed
+after the others and marked `supersededBy` the cgroup metric. Otherwise the
+host metric stays unmarked and the cgroup metric is left out, so an agent rolled out between the windows never yields a
 cgroup comparison against nothing. A cgroup bucket also needs 150 s of cgroup
 counter coverage. Network and pressure have no cgroup counterpart and stay
 host-level.

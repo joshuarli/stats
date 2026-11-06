@@ -498,9 +498,10 @@ unavailable), 6 unchanged or confounded, 7 regressed. Every output states that
 it shows resource levels changed, not fewer resources for the same work. Host
 metrics include every process on the hosts the marker names; when the agents
 on those hosts report the service's cgroup in both windows, `service.cpu`,
-`service.memory`, and `service.io` replace `host.cpu`, `host.memory`, and
-`host.disk`, and a policy on a replaced host metric is insufficient-data with
-a reason naming its replacement.
+`service.memory`, and `service.io` supersede `host.cpu`, `host.memory`, and
+`host.disk`. The host rows stay in the response after the rest, marked
+`supersededBy`, so a policy on a host metric is still judged and carries a
+reason naming the better measure.
 
 The Node server probes each service's `healthUrl` every five minutes. A Node
 container with no network sees every probe fail, so its probe failure share is

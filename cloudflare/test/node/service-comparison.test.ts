@@ -105,7 +105,10 @@ await test("a service's cgroup series replaces the host series it covers when bo
 
     const result = await comparison(harness, "api", deploymentId);
     assert.deepEqual(result.reasonCodes, []);
-    assert.deepEqual(result.metrics.map(entry => entry.metric), ["service.cpu", "service.memory", "host.pressure.cpu", "host.pressure.memory", "host.pressure.io", "host.net", "service.io", "probe.health.ms", "probe.health.failure"]);
+    assert.deepEqual(result.metrics.map(entry => entry.metric), ["service.cpu", "service.memory", "host.pressure.cpu", "host.pressure.memory", "host.pressure.io", "host.net", "service.io", "probe.health.ms", "probe.health.failure", "host.cpu", "host.memory", "host.disk"]);
+    assert.deepEqual(result.metrics.filter(entry => entry.supersededBy !== undefined).map(entry => [entry.metric, entry.supersededBy]), [["host.cpu", "service.cpu"], ["host.memory", "service.memory"], ["host.disk", "service.io"]]);
+    assert.equal(metric(result, "host.cpu").verdict, "regressed");
+    assert.ok(Math.abs(metric(result, "host.cpu").after! - 50) < 1);
     assert.ok(Math.abs(metric(result, "service.cpu").before! - 0.5) < 0.01);
     assert.ok(Math.abs(metric(result, "service.cpu").after! - 0.25) < 0.01);
     assert.equal(metric(result, "service.cpu").verdict, "improved");

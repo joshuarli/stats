@@ -141,7 +141,7 @@ function sourceStatuses(input: ServiceComparisonInput, metrics: readonly MetricC
   ];
 }
 
-/** Descriptive comparison of resource levels around a pushed marker, not a causal claim and not work-normalised. A service's cgroup series replaces the matching host series when it has values in both windows. */
+/** Descriptive comparison of resource levels around a pushed marker, not a causal claim and not work-normalised. A service's cgroup series supersedes the matching host series when it has values in both windows; the host rows stay in the response, marked supersededBy and listed after the rest. */
 export function compareServiceDeployment(input: ServiceComparisonInput): ServiceComparison {
   const gate = gateDeployment({
     deployment: input.deployment, deployments: input.deployments, window: input.window, now: input.now, settleMs: SERVICE_SETTLE_MS,
@@ -156,11 +156,19 @@ export function compareServiceDeployment(input: ServiceComparisonInput): Service
   const read = (bounds: WindowBounds, metric: string) => metric === `probe.${SERVICE_PROBE_NAME}.failure` ? failure(bounds) : mean(bounds, metric);
   const raw = SERVICE_LEVEL_METRICS.map(entry => ({ entry, before: read(gate.before, entry.metric), after: read(gate.after, entry.metric) }));
   const usable = new Set(raw.filter(item => item.before !== null && item.after !== null).map(item => item.entry.metric));
-  const chosen = raw.filter(({ entry }) => entry.source === "cgroup" ? usable.has(entry.metric) : !usable.has(replacementFor(entry.metric) ?? ""));
+  const supersededBy = (metric: string) => {
+    const replacement = replacementFor(metric);
+    return replacement !== undefined && usable.has(replacement) ? replacement : undefined;
+  };
+  const shown = raw.filter(({ entry }) => entry.source !== "cgroup" || usable.has(entry.metric));
+  const chosen = [...shown.filter(({ entry }) => supersededBy(entry.metric) === undefined), ...shown.filter(({ entry }) => supersededBy(entry.metric) !== undefined)];
   if (usable.size === 0) gate.block("no-data", "No source reported enough data in both windows; missing data is not zero.");
   const blocked = gate.reasons.length > 0;
-  const metrics = chosen.map(({ entry, before, after }): MetricComparison => ({ metric: entry.metric, label: entry.label, unit: entry.unit, before, after, ...judge(before, after, entry.floor, blocked) }));
-  const cgroupUsed = chosen.some(({ entry }) => entry.source === "cgroup");
+  const metrics = chosen.map(({ entry, before, after }): MetricComparison => {
+    const replacement = supersededBy(entry.metric);
+    return { metric: entry.metric, label: entry.label, unit: entry.unit, before, after, ...judge(before, after, entry.floor, blocked), ...(replacement === undefined ? {} : { supersededBy: replacement }) };
+  });
+  const cgroupUsed = shown.some(({ entry }) => entry.source === "cgroup");
   const warnings = [
     ...gate.warnings,
     SERVICE_LEVEL_CAVEAT,

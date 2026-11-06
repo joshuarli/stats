@@ -158,7 +158,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "",
       "Service policy (--service), schema statsctl-policy/1, strict: schema, id, hypothesis, service, metric, direction, minChangePercent, floor, window.",
       `  metric is one of ${SERVICE_LEVEL_METRICS.map(entry => entry.metric).join(", ")}; floor is at least the metric's default (${SERVICE_LEVEL_METRICS.map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
-      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io replace host.cpu, host.memory, and host.disk, which a policy then cannot target.",
+      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io supersede host.cpu, host.memory, and host.disk, which stay in the response marked supersededBy and which a policy can still target.",
       "",
       "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],
