@@ -734,11 +734,9 @@ export class InstallationCore {
     const marker = history.markers.find(item => item.deploymentId === deployment?.id);
     if (deployment === undefined || marker === undefined) return failure("not_found", "deployment not found", 404);
     const bounds = comparisonBounds(deployment.atMs, window);
-    const hostRollups = new Map<string, MinuteRollup[]>();
-    for (const hostId of marker.hostIds) {
-      const rows = sql.rows<{ bucket_ms: number; payload: string }>("SELECT bucket_ms, payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ? ORDER BY bucket_ms", hostId, bounds.before.fromMs, bounds.after.toMs);
-      hostRollups.set(hostId, rows.map(row => ({ bucketMs: row.bucket_ms, payload: JSON.parse(row.payload) as RollupPayload })));
-    }
+    const hostRollups = (hostId: string): MinuteRollup[] => sql.rows<{ bucket_ms: number; payload: string }>(
+      "SELECT bucket_ms, payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ? ORDER BY bucket_ms", hostId, bounds.before.fromMs, bounds.after.toMs
+    ).map(row => ({ bucketMs: row.bucket_ms, payload: JSON.parse(row.payload) as RollupPayload }));
     const probeRows = sql.rows<MetricRow>(
       "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (?, ?)",
       serviceProbeOwner(name), bounds.before.fromMs, bounds.after.toMs, `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`

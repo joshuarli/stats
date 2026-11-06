@@ -88,10 +88,10 @@ function bucketLevels(payloads: readonly RollupPayload[], bucketMs: number, serv
   return levels;
 }
 
-export function hostLevelRows(service: string, hostIds: readonly string[], rollups: ReadonlyMap<string, readonly MinuteRollup[]>): MetricRow[] {
+export function hostLevelRows(service: string, hostIds: readonly string[], rollupsOf: (hostId: string) => readonly MinuteRollup[]): MetricRow[] {
   const perHost = hostIds.map(hostId => {
     const grouped = new Map<number, RollupPayload[]>();
-    for (const rollup of rollups.get(hostId) ?? []) {
+    for (const rollup of rollupsOf(hostId)) {
       const bucketMs = Math.floor(rollup.bucketMs / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS;
       grouped.set(bucketMs, [...grouped.get(bucketMs) ?? [], rollup.payload]);
     }
@@ -114,7 +114,7 @@ export interface ServiceComparisonInput {
   readonly deployment: Deployment;
   readonly deployments: readonly Deployment[];
   readonly hostIds: readonly string[];
-  readonly hostRollups: ReadonlyMap<string, readonly MinuteRollup[]>;
+  readonly hostRollups: (hostId: string) => readonly MinuteRollup[];
   readonly probeRows: readonly MetricRow[];
   readonly hasHealthUrl: boolean;
   readonly window: ComparisonWindow;
