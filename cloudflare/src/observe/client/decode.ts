@@ -309,11 +309,14 @@ function routeVersionStats(value: unknown): RouteVersionStats {
 function routeStats(value: unknown): RouteStats {
   const fields = record(value, "route stats");
   const ms = (key: string) => integer(fields[key], key);
+  const nullableMs = (key: string) => fields[key] === null ? null : ms(key);
+  if (fields["unmeasured"] !== undefined && fields["unmeasured"] !== "sampled-out") fail("route stats unmeasured is not a known reason");
   return {
     label: text(fields["label"], "route label", 128),
     requests: ms("requests"), failed: ms("failed"), cpuMs: ms("cpuMs"),
-    p50WallMs: ms("p50WallMs"), p95WallMs: ms("p95WallMs"), p99WallMs: ms("p99WallMs"), p50CpuMs: ms("p50CpuMs"), p95CpuMs: ms("p95CpuMs"),
-    ...(fields["observed"] === undefined ? {} : { observed: ms("observed") })
+    p50WallMs: nullableMs("p50WallMs"), p95WallMs: nullableMs("p95WallMs"), p99WallMs: nullableMs("p99WallMs"), p50CpuMs: nullableMs("p50CpuMs"), p95CpuMs: nullableMs("p95CpuMs"),
+    ...(fields["observed"] === undefined ? {} : { observed: ms("observed") }),
+    ...(fields["unmeasured"] === "sampled-out" ? { unmeasured: "sampled-out" as const } : {})
   };
 }
 

@@ -307,6 +307,29 @@ await test("the service answers a sampled window, explore, and traces with the p
   assert.throws(() => decodeExploration(wire({ ...explored, sampling: { keepPerMillion: 2_000_000, kept: 0, observed: 0 } })));
 });
 
+await test("explore lists a sampled route with no kept invocation, with its exact count and null latency", async () => {
+  const quiet = sampled({ keepPerMillion: 0, slowWallMs: 100, slowCpuMs: 10 });
+  const policy = { ...SHOP, sampling: quiet };
+  const db = database();
+  const nowMs = START + 10_000;
+  const items = [
+    ...Array.from({ length: 3 }, (_, n) => workerItem(n, START + n, "/search", "GET", 200, "request.search")),
+    workerItem(10, START + 10, "/search", "GET", 500, "request.search")
+  ];
+  const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
+  const quietOnly = await prepareTailItems(Array.from({ length: 5 }, (_, n) => workerItem(20 + n, START + 20 + n, "/cart", "GET", 200, "request.cart")), policy, nowMs, new AlwaysKeptCap());
+  ingest(db, quietOnly.preparations, nowMs, quietOnly.outcomes, { sampling: quiet, counts: quietOnly.counts });
+  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => quiet);
+  const explored = await service.explore({ fromMs: START, toMs: START + COUNT_BUCKET_MS });
+  const cart = explored.routes.find(route => route.label === "GET /cart");
+  assert.ok(cart !== undefined);
+  assert.deepEqual([cart.requests, cart.observed, cart.p50WallMs, cart.p95WallMs, cart.p99WallMs, cart.p50CpuMs, cart.p95CpuMs, cart.unmeasured], [0, 5, null, null, null, null, null, "sampled-out"]);
+  const search = explored.routes.find(route => route.label === "GET /search");
+  assert.deepEqual([search?.requests, search?.observed, search?.unmeasured], [1, 4, undefined]);
+  assert.deepEqual(decodeExploration(JSON.parse(JSON.stringify(explored))), explored);
+});
+
 function flushOf(random: () => number, bucketAt: number, keys: number, events: number): CountDelta[] {
   const deltas: CountDelta[] = [];
   for (let n = 0; n < events; n++) {

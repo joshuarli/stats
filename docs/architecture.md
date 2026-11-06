@@ -341,7 +341,9 @@ of stored (a subset of `sampledOut`). The window, explore, objects, traces, trac
 impact responses add `sampling: { keepPerMillion, kept, observed }`, where
 `observed` is exact and counts kept plus sampled-out ok and failed invocations
 of the response's stage over the whole buckets it overlaps. Explore routes add an
-exact `observed` count, and a rollout's request and failure counts come from the
+exact `observed` count and list every counted route: one with no kept invocation
+has `requests` 0, `null` latency and CPU percentiles, and `unmeasured:
+"sampled-out"`. A rollout's request and failure counts come from the
 counts table. Every percentile and the CPU share in those responses are computed
 from the kept invocations only: `statsctl observe --project nanoshop-storied` and
 the dashboard label them sampled, and a service that keeps everything returns

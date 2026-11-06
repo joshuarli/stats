@@ -173,12 +173,13 @@ export interface RouteStats {
   readonly requests: number;
   readonly failed: number;
   readonly cpuMs: number;
-  readonly p50WallMs: number;
-  readonly p95WallMs: number;
-  readonly p99WallMs: number;
-  readonly p50CpuMs: number;
-  readonly p95CpuMs: number;
+  readonly p50WallMs: number | null;
+  readonly p95WallMs: number | null;
+  readonly p99WallMs: number | null;
+  readonly p50CpuMs: number | null;
+  readonly p95CpuMs: number | null;
   readonly observed?: number;
+  readonly unmeasured?: "sampled-out";
 }
 
 export interface ObjectMethodStats {

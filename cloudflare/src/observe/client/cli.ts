@@ -88,6 +88,10 @@ function samplingLine(health: ObserveHealth): string[] {
   return [`sampled at ${sampling.policy.keepPerMillion} per million (slow at ${sampling.policy.slowWallMs} ms wall or ${sampling.policy.slowCpuMs} ms cpu): ${observed} events observed, ${sampling.kept} kept, ${sampling.sampledOut} sampled out, ${sampling.excluded} excluded, ${sampling.untraced} untraced, ${sampling.flushes} flushed batches, ${sampling.capped} capped`];
 }
 
+function sampledMs(value: number | null): string {
+  return value === null ? "sampled out" : ms(value);
+}
+
 function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`;
 }
@@ -133,7 +137,7 @@ async function run(command: string, positional: readonly string[], values: Recor
       const sampling = exploration.sampling;
       const total = Math.max(1, exploration.routes.reduce((sum, route) => sum + route.cpuMs, 0));
       const head = sampling === undefined ? ["route", "requests", "failed", "cpu", "p50", "p95", "p99", "p95 cpu"] : ["route", "kept", "observed", "failed", "cpu", "p50 (sampled)", "p95 (sampled)", "p99 (sampled)", "p95 cpu (sampled)"];
-      const row = (route: (typeof exploration.routes)[number]) => [route.label, String(route.requests), ...(sampling === undefined ? [] : [String(route.observed ?? 0)]), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`, ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)];
+      const row = (route: (typeof exploration.routes)[number]) => [route.label, String(route.requests), ...(sampling === undefined ? [] : [String(route.observed ?? 0)]), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`, sampledMs(route.p50WallMs), sampledMs(route.p95WallMs), sampledMs(route.p99WallMs), sampledMs(route.p95CpuMs)];
       return print(sampling === undefined ? exploration.routes : { sampling, routes: exploration.routes }, () => [
         ...(sampling === undefined ? [] : [`sampled: the kept, failed, cpu and percentile columns come from ${sampling.kept} kept of ${sampling.observed} observed invocations (keep rate ${sampling.keepPerMillion} per million); observed is exact`]),
         ...table([head, ...exploration.routes.map(row)], new Set(Array.from(head.keys()).slice(1)))
