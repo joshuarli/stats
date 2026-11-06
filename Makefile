@@ -7,7 +7,7 @@ SSH ?= local
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -185,6 +185,26 @@ node-e2e: work-ready node-ready worker-bundle
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' pnpm run test:node-e2e
 
 release: agent-build
+
+build-statsctl: work-ready node-ready
+	@scripts/build-statsctl.sh
+	@cp dist/statsctl-$$(grep '^version' agent/Cargo.toml | head -1 | sed -n 's/version = "\(.*\)"/\1/p').mjs dist/statsctl.mjs 2>/dev/null || true
+
+release-artifacts: work-ready node-ready
+	@set -eu; \
+	mkdir -p dist; \
+	case "$$(uname -s)" in \
+	  Darwin) agent/scripts/build-release.sh ;; \
+	  Linux) agent/scripts/build-static.sh ;; \
+	  *) echo "unsupported platform for agent release build" >&2; exit 1 ;; \
+	esac; \
+	$(MAKE) --no-print-directory build-statsctl; \
+	cp install.sh dist/install.sh; \
+	cp agent/dist/stats-* dist/ 2>/dev/null || true; \
+	if [ -f agent/dist/SHA256SUMS ]; then cp agent/dist/SHA256SUMS dist/SHA256SUMS.agent; fi; \
+	if [ -f dist/SHA256SUMS.statsctl ]; then :; fi; \
+	cat dist/SHA256SUMS.agent dist/SHA256SUMS.statsctl > dist/SHA256SUMS 2>/dev/null || true; \
+	ls -lh dist/
 
 OFFLINE_SANDBOX_CHECK := $(if $(filter Darwin,$(shell uname -s)),integration-local,)
 

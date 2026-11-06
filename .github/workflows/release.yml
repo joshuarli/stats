@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-agent-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - name: Build agent (Linux musl)
+        run: make agent-build
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-linux
+          path: |
+            agent/dist/stats-*-x86_64-unknown-linux-musl
+            agent/dist/stats-*-aarch64-unknown-linux-musl
+            agent/dist/SHA256SUMS
+
+  build-agent-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build agent (macOS arm64)
+        run: |
+          cd agent
+          cargo build --release --locked
+          mkdir -p dist
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
+          cp target/release/stats "dist/stats-$version-aarch64-apple-darwin"
+          (cd dist && shasum -a 256 "stats-$version-aarch64-apple-darwin" > SHA256SUMS.macos)
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-macos
+          path: |
+            agent/dist/stats-*-aarch64-apple-darwin
+            agent/dist/SHA256SUMS.macos
+
+  build-statsctl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+      - name: Install dependencies
+        run: cd cloudflare && pnpm install --frozen-lockfile
+      - name: Build statsctl
+        run: ./scripts/build-statsctl.sh
+      - name: Upload statsctl
+        uses: actions/upload-artifact@v4
+        with:
+          name: statsctl
+          path: |
+            dist/statsctl-*.mjs
+            dist/SHA256SUMS.statsctl
+
+  publish:
+    needs: [build-agent-linux, build-agent-macos, build-statsctl]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          # Agent binaries
+          find artifacts/agent-linux -type f -name 'stats-*' -exec cp {} release/ \;
+          find artifacts/agent-macos -type f -name 'stats-*' -exec cp {} release/ \;
+          # statsctl
+          find artifacts/statsctl -type f -name 'statsctl-*' -exec cp {} release/ \;
+          # Installer
+          cp install.sh release/
+          # Combined checksums
+          (cd release && sha256sum stats-* statsctl-*.mjs install.sh > SHA256SUMS)
+          ls -la release/
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: release/*
+          generate_release_notes: true

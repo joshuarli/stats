@@ -17,8 +17,14 @@ Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Develo
 
 ## Install the agent
 
-Build the binary with `make agent-build` (see `docs/operations.md`), provision
-the host to get a `hostId` and token, then:
+Download the installer from a [release](https://github.com/joshuarli/stats/releases)
+and run it as root on Linux (OpenRC or systemd) or as your user on macOS
+(launchd). It installs the right binary, verifies its SHA-256, and sets up the
+service. Provision the host to get a `hostId` and token, place them in the
+config and token files the installer prints, then start the service.
+
+To install manually, build the binary with `make agent-build` (see
+`docs/operations.md`), provision the host, then:
 
 ```sh
 useradd --system --no-create-home --shell /usr/sbin/nologin stats
