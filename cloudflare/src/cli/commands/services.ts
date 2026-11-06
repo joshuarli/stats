@@ -28,18 +28,18 @@ export interface ServiceDeploymentsPayload {
 }
 
 interface ServiceCredential {
-  readonly token: string;
+  readonly deployToken: string;
   readonly hostIds: readonly string[] | null;
 }
 
 export function readServiceCredential(file: string, service: string): ServiceCredential {
-  const credential = readCredentialJson(file, "name and token");
+  const credential = readCredentialJson(file, "name and deployToken");
   if (credential.fields["name"] !== service) throw authError("credential_file_service", `${credential.path} is the credential for service ${JSON.stringify(credential.fields["name"] ?? null)}, not ${service}`);
-  const token = credentialToken(credential);
+  const deployToken = credentialToken(credential, "deployToken");
   const hosts = credential.fields["hostIds"];
-  if (hosts === undefined) return { token, hostIds: null };
+  if (hosts === undefined) return { deployToken, hostIds: null };
   if (!Array.isArray(hosts) || !hosts.every((id): id is string => typeof id === "string" && HOST_ID.test(id))) throw authError("credential_file_invalid", `${credential.path} has invalid hostIds`);
-  return { token, hostIds: hosts };
+  return { deployToken, hostIds: hosts };
 }
 
 export function defaultMarkerId(version: string): string {
@@ -131,7 +131,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
     message: { type: "string", placeholder: "TEXT", description: `free text shown on the timeline, at most ${MAX_MESSAGE_CHARS} characters` },
     host: { type: "string", placeholder: "ID[,ID...]", description: "host ids the deploy reached, comma-separated (default: every host of the service, from the token file)" },
     "marker-id": { type: "string", placeholder: "ID", description: "idempotency key (default: v-VERSION)" },
-    "token-file": { type: "string", placeholder: "FILE", required: true, description: "service creation response JSON {name, hostIds, ..., token}, mode 0600; never passed in argv" }
+    "token-file": { type: "string", placeholder: "FILE", required: true, description: "service creation response JSON {name, hostIds, deployToken, ingestToken}, mode 0600; never passed in argv" }
   },
   examples: ["statsctl deploy mark --service stats-node --version 9df651c1a2b3 --message 'make node-deploy' --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790"],
   limitations: [
@@ -152,7 +152,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
     const hostIds = explicitHosts === undefined ? credential.hostIds : hostList(explicitHosts);
     if (hostIds === null) throw usageError("the token file has no hostIds; pass --host");
     const body = JSON.stringify({ markerId, version, ...(message === undefined ? {} : { message }), hostIds });
-    const { value } = await postMarker(context, service, credential.token, body);
+    const { value } = await postMarker(context, service, credential.deployToken, body);
     return { payload: value, identities: { deploymentIds: [value.marker.deployment.id], versionIds: [version] } };
   },
   render({ created, marker }) {

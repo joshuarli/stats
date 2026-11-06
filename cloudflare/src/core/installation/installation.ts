@@ -25,7 +25,7 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateService, createService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, serviceProbeOwner } from "./services.ts";
+import { authenticateDeployToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -695,6 +695,20 @@ export class InstallationCore {
         const result = await createService(sql, await readLimitedText(request, MAX_SERVICE_BODY_BYTES), this.now());
         return result.ok ? json(result.value, 201) : failure(result.code, result.message, result.status);
       }
+      const rotateDeploy = /^\/admin\/services\/([^/]+)\/rotate$/u.exec(path);
+      if (rotateDeploy !== null && request.method === "POST") {
+        const result = await rotateServiceDeployToken(sql, rotateDeploy[1]!);
+        return result.ok ? json(result.value) : failure(result.code, result.message, result.status);
+      }
+      const rotateIngest = /^\/admin\/services\/([^/]+)\/token\/rotate$/u.exec(path);
+      if (rotateIngest !== null && request.method === "POST") {
+        const result = await rotateServiceIngestToken(sql, rotateIngest[1]!);
+        return result.ok ? json(result.value) : failure(result.code, result.message, result.status);
+      }
+      const removed = /^\/admin\/services\/([^/]+)$/u.exec(path);
+      if (removed !== null && request.method === "DELETE") {
+        return deleteService(sql, removed[1]!) ? new Response(null, { status: 204 }) : failure("not_found", "service not found", 404);
+      }
       if (path === "/services" && request.method === "GET") return json({ services: listServices(sql) });
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
       if (comparison !== null) return this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
@@ -764,7 +778,7 @@ export class InstallationCore {
       console.error(JSON.stringify({ event: "deploy_mark_rejected", code }));
       return failure(code, message, status);
     };
-    if (!await authenticateService(sql, name, bearerToken(request.headers.get("authorization")))) return rejected("unauthorized", "deploy credential rejected", 401);
+    if (!await authenticateDeployToken(sql, name, bearerToken(request.headers.get("authorization")))) return rejected("unauthorized", "deploy credential rejected", 401);
     const result = await recordMarker(sql, name, await readLimitedText(request, MAX_MARKER_BODY_BYTES), this.now());
     if (!result.ok) return rejected(result.code, result.message, result.status);
     return json(result.value.marker, result.value.created ? 201 : 200);

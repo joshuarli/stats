@@ -12,6 +12,7 @@ const SCRATCH_ROOT = resolve(import.meta.dirname, "../../../.work/tmp");
 const HOST_A = `h_${"a".repeat(32)}`;
 const HOST_B = `h_${"b".repeat(32)}`;
 const SECRET = "nst_service-token-4f9c2e7a";
+const INGEST_SECRET = "nst_ingest-token-8d1b5c3e";
 
 mkdirSync(SCRATCH_ROOT, { recursive: true });
 const scratch = mkdtempSync(join(SCRATCH_ROOT, "service-mark-"));
@@ -23,7 +24,7 @@ function tokenFile(name: string, contents: object, mode = 0o600): string {
   return path;
 }
 
-const good = () => tokenFile("good.json", { name: "web", hostIds: [HOST_A, HOST_B], healthUrl: null, unit: null, createdAtMs: 1, token: SECRET });
+const good = () => tokenFile("good.json", { name: "web", hostIds: [HOST_A, HOST_B], healthUrl: null, unit: null, createdAtMs: 1, deployToken: SECRET, ingestToken: INGEST_SECRET });
 
 const markerReply = (service: string, markerId: string, version: string, hostIds: string[]) => ({
   service, markerId, hostIds,
@@ -35,8 +36,10 @@ interface Document {
   readonly error?: { readonly code: string };
 }
 
+const SECRETS = [SECRET, INGEST_SECRET];
+
 function leaked(run: { stdout: string; stderr: string }): boolean {
-  return run.stdout.includes(SECRET) || run.stderr.includes(SECRET);
+  return SECRETS.some(secret => run.stdout.includes(secret) || run.stderr.includes(secret));
 }
 
 await test("deploy mark against a fake origin", async t => {
@@ -118,10 +121,10 @@ await test("deploy mark against a fake origin", async t => {
 
     await t.test("a token file problem exits 3 before any request", async () => {
       const before = origin.seen.length;
-      const loose = await mark([], tokenFile("loose.json", { name: "web", token: SECRET }, 0o644));
+      const loose = await mark([], tokenFile("loose.json", { name: "web", deployToken: SECRET }, 0o644));
       assert.equal(loose.code, 3);
       assert.equal((JSON.parse(loose.stdout) as Document).error?.code, "credential_file_mode");
-      const other = await mark([], tokenFile("other.json", { name: "api", hostIds: [HOST_A], token: SECRET }));
+      const other = await mark([], tokenFile("other.json", { name: "api", hostIds: [HOST_A], deployToken: SECRET }));
       assert.equal(other.code, 3);
       assert.equal((JSON.parse(other.stdout) as Document).error?.code, "credential_file_service");
       const missing = await mark([], join(scratch, "missing.json"));
@@ -131,8 +134,20 @@ await test("deploy mark against a fake origin", async t => {
       assert.equal(origin.seen.length, before);
     });
 
+    await t.test("a token file carries only the deploy credential, never the ingest credential or the old field", async () => {
+      const before = origin.seen.length;
+      const ingestOnly = await mark([], tokenFile("ingest-only.json", { name: "web", hostIds: [HOST_A], ingestToken: INGEST_SECRET }));
+      assert.equal(ingestOnly.code, 3);
+      assert.equal((JSON.parse(ingestOnly.stdout) as Document).error?.code, "credential_file_invalid");
+      const legacy = await mark([], tokenFile("legacy.json", { name: "web", hostIds: [HOST_A], token: SECRET }));
+      assert.equal(legacy.code, 3);
+      assert.equal((JSON.parse(legacy.stdout) as Document).error?.code, "credential_file_invalid");
+      for (const run of [ingestOnly, legacy]) assert.ok(!leaked(run));
+      assert.equal(origin.seen.length, before);
+    });
+
     await t.test("a token file without hostIds needs --host", async () => {
-      const run = await mark([], tokenFile("nohosts.json", { name: "web", token: SECRET }));
+      const run = await mark([], tokenFile("nohosts.json", { name: "web", deployToken: SECRET }));
       assert.equal(run.code, 2, run.stdout + run.stderr);
       assert.ok(!leaked(run));
     });
@@ -200,8 +215,10 @@ await test("deploy mark records and repeats a marker on a real Node server, and 
     const services = await runCli(["services", "--origin", origin, "--json"], env);
     assert.equal(services.code, 0, services.stdout + services.stderr);
     assert.deepEqual((JSON.parse(services.stdout) as { payload: { services: { name: string }[] } }).payload.services.map(item => item.name), ["web"]);
-    const token = (JSON.parse(readFileSync(file, "utf8")) as { token: string }).token;
-    for (const run of [first, again, conflict, listed, services]) assert.ok(!run.stdout.includes(token) && !run.stderr.includes(token));
+    const credentials = JSON.parse(readFileSync(file, "utf8")) as { deployToken: string; ingestToken: string };
+    for (const run of [first, again, conflict, listed, services]) {
+      for (const token of [credentials.deployToken, credentials.ingestToken]) assert.ok(!run.stdout.includes(token) && !run.stderr.includes(token));
+    }
   } finally {
     proxy.close();
     node.child.kill("SIGTERM");

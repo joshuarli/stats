@@ -103,17 +103,18 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
     const [first, second, foreign] = hostIds as [string, string, string];
     const definition = { name: "web", hostIds: [second, first], healthUrl: "http://web.tail1234.ts.net:8080/health", unit: "web@1.service" };
     const created = await exchanged("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify(definition) }, true);
-    const withoutToken = (side: typeof created.fromWorker) => {
+    const withoutTokens = (side: typeof created.fromWorker) => {
       const body = JSON.parse(unhex(side.body)) as Record<string, unknown>;
-      assert.match(String(body["token"]), /^nft_[A-Za-z0-9_-]{43}$/u);
-      return { ...side, body: { ...body, token: "normalized" } };
+      for (const field of ["deployToken", "ingestToken"]) assert.match(String(body[field]), /^nft_[A-Za-z0-9_-]{43}$/u);
+      return { ...side, body: { ...body, deployToken: "normalized", ingestToken: "normalized" } };
     };
     assert.equal(created.fromWorker.status, 201);
-    assert.deepEqual(withoutToken(created.fromNode), withoutToken(created.fromWorker), "POST /api/v1/admin/services with the token normalized");
-    const token = (JSON.parse(unhex(created.fromWorker.body)) as { token: string }).token;
-    const nodeToken = (JSON.parse(unhex(created.fromNode.body)) as { token: string }).token;
-    secrets.push(token, nodeToken);
-    harness.db.prepare("UPDATE services SET token_hash = ? WHERE name = 'web'").run(await tokenHash(token));
+    assert.deepEqual(withoutTokens(created.fromNode), withoutTokens(created.fromWorker), "POST /api/v1/admin/services with the tokens normalized");
+    const credentials = JSON.parse(unhex(created.fromWorker.body)) as { deployToken: string; ingestToken: string };
+    const nodeCredentials = JSON.parse(unhex(created.fromNode.body)) as { deployToken: string; ingestToken: string };
+    secrets.push(credentials.deployToken, credentials.ingestToken, nodeCredentials.deployToken, nodeCredentials.ingestToken);
+    harness.db.prepare("UPDATE services SET token_hash = ?, ingest_token_hash = ? WHERE name = 'web'").run(await tokenHash(credentials.deployToken), await tokenHash(credentials.ingestToken));
+    const token = credentials.deployToken;
 
     await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify(definition) });
     await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify({ ...definition, name: "Web" }) });
@@ -124,6 +125,9 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
     await both("/api/v1/services/web");
     await both("/api/v1/services/absent");
     await both("/api/v1/services/absent/deployments");
+    await both("/api/v1/admin/services/absent/rotate", { method: "POST" });
+    await both("/api/v1/admin/services/absent/token/rotate", { method: "POST" });
+    await both("/api/v1/admin/services/absent", { method: "DELETE" });
 
     const marker = { markerId: "ci-1", version: "1.0.0", message: "first", hostIds: [first] };
     const mark = (credential: string | null, body: string, headers: Record<string, string> = json) => both("/ingest/services/web/deployments", { method: "POST", headers: { ...headers, ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }) }, body }, false);

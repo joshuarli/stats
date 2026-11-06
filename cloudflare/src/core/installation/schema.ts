@@ -66,6 +66,7 @@ const FORGET_UNCORRECTED_RUNS: readonly string[] = [
 interface Migration {
   readonly version: number;
   readonly statements: readonly string[];
+  readonly apply?: (sql: SqlDatabase) => void;
 }
 
 const MIGRATIONS: readonly Migration[] = [
@@ -76,7 +77,16 @@ const MIGRATIONS: readonly Migration[] = [
   { version: 5, statements: PURGE_WEIGHTED_PROJECT_HISTORY },
   { version: 6, statements: FORGET_UNCORRECTED_RUNS },
   { version: 7, statements: [HOST_HISTORY_VERSIONS, "INSERT OR IGNORE INTO host_history_versions (host_id, version) SELECT host_id, 0 FROM hosts"] },
-  { version: 8, statements: SERVICE_STATEMENTS }
+  { version: 8, statements: SERVICE_STATEMENTS },
+  {
+    version: 9,
+    statements: [],
+    apply: sql => {
+      if (!sql.rows<{ name: string }>("PRAGMA table_info(services)").some(column => column.name === "ingest_token_hash")) {
+        sql.run("ALTER TABLE services ADD COLUMN ingest_token_hash TEXT");
+      }
+    }
+  }
 ];
 
 export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
@@ -92,6 +102,7 @@ export function migrate(sql: SqlDatabase): void {
     if (migration.version <= current) continue;
     sql.transaction(() => {
       for (const statement of migration.statements) sql.run(statement);
+      migration.apply?.(sql);
       if (hasRow) sql.run("UPDATE schema_version SET version = ?", migration.version);
       else sql.run("INSERT INTO schema_version (version) VALUES (?)", migration.version);
     });

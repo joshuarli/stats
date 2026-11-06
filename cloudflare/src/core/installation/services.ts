@@ -75,6 +75,7 @@ export type ServiceResult<T> = { readonly ok: true; readonly value: T } | ({ rea
 type ServiceRow = {
   readonly name: string;
   readonly token_hash: string;
+  readonly ingest_token_hash: string | null;
   readonly host_ids: string;
   readonly health_url: string | null;
   readonly unit: string | null;
@@ -209,19 +210,26 @@ function markerOf(service: string, row: MarkerRow): ServiceMarker {
   return { service, markerId: row.marker_id, hostIds: JSON.parse(row.host_ids) as string[], deployment: JSON.parse(row.payload) as Deployment };
 }
 
-export async function createService(sql: SqlDatabase, text: string | null, now: number): Promise<ServiceResult<Service & { token: string }>> {
+export interface CreatedService extends Service {
+  readonly deployToken: string;
+  readonly ingestToken: string;
+}
+
+export async function createService(sql: SqlDatabase, text: string | null, now: number): Promise<ServiceResult<CreatedService>> {
   if (text === null) return { ok: false, status: 413, code: "too_large", message: "body exceeds the cap" };
   const parsed = parseDefinition(parseJson(text));
   if (!parsed.ok) return parsed;
   const definition = parsed.value;
-  const token = generateToken();
-  const hash = await tokenHash(token);
-  return sql.transaction((): ServiceResult<Service & { token: string }> => {
+  const deployToken = generateToken();
+  const ingestToken = generateToken();
+  const deployHash = await tokenHash(deployToken);
+  const ingestHash = await tokenHash(ingestToken);
+  return sql.transaction((): ServiceResult<CreatedService> => {
     if (serviceRow(sql, definition.name) !== undefined) return { ok: false, status: 409, code: "conflict", message: "a service with this name exists" };
     const unusable = unusableHost(sql, definition.hostIds);
     if (unusable !== null) return invalid(`host ${unusable} is unknown or revoked`);
-    sql.run("INSERT INTO services (name, token_hash, host_ids, health_url, unit, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)", definition.name, hash, JSON.stringify(definition.hostIds), definition.healthUrl, definition.unit, now);
-    return { ok: true, value: { ...definition, createdAtMs: now, token } };
+    sql.run("INSERT INTO services (name, token_hash, ingest_token_hash, host_ids, health_url, unit, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?)", definition.name, deployHash, ingestHash, JSON.stringify(definition.hostIds), definition.healthUrl, definition.unit, now);
+    return { ok: true, value: { ...definition, createdAtMs: now, deployToken, ingestToken } };
   });
 }
 
@@ -234,11 +242,42 @@ export function readService(sql: SqlDatabase, name: string): Service | null {
   return row === undefined ? null : serviceOf(row);
 }
 
-export async function authenticateService(sql: SqlDatabase, name: string, token: string | null): Promise<boolean> {
+async function authenticate(sql: SqlDatabase, name: string, token: string | null, column: "token_hash" | "ingest_token_hash"): Promise<boolean> {
   if (token === null) return false;
   const hash = await tokenHash(token);
-  const row = serviceRow(sql, name);
-  return row !== undefined && constantTimeEqual(row.token_hash, hash);
+  const stored = serviceRow(sql, name)?.[column] ?? null;
+  return stored !== null && constantTimeEqual(stored, hash);
+}
+
+export function authenticateDeployToken(sql: SqlDatabase, name: string, token: string | null): Promise<boolean> {
+  return authenticate(sql, name, token, "token_hash");
+}
+
+export function authenticateIngestToken(sql: SqlDatabase, name: string, token: string | null): Promise<boolean> {
+  return authenticate(sql, name, token, "ingest_token_hash");
+}
+
+export async function rotateServiceDeployToken(sql: SqlDatabase, name: string): Promise<ServiceResult<{ readonly name: string; readonly deployToken: string }>> {
+  if (serviceRow(sql, name) === undefined) return { ok: false, status: 404, code: "not_found", message: "service not found" };
+  const deployToken = generateToken();
+  sql.run("UPDATE services SET token_hash = ? WHERE name = ?", await tokenHash(deployToken), name);
+  return { ok: true, value: { name, deployToken } };
+}
+
+export async function rotateServiceIngestToken(sql: SqlDatabase, name: string): Promise<ServiceResult<{ readonly name: string; readonly ingestToken: string }>> {
+  if (serviceRow(sql, name) === undefined) return { ok: false, status: 404, code: "not_found", message: "service not found" };
+  const ingestToken = generateToken();
+  sql.run("UPDATE services SET ingest_token_hash = ? WHERE name = ?", await tokenHash(ingestToken), name);
+  return { ok: true, value: { name, ingestToken } };
+}
+
+export function deleteService(sql: SqlDatabase, name: string): boolean {
+  return sql.transaction(() => {
+    if (serviceRow(sql, name) === undefined) return false;
+    sql.run("DELETE FROM service_deployments WHERE service = ?", name);
+    sql.run("DELETE FROM services WHERE name = ?", name);
+    return true;
+  });
 }
 
 export async function recordMarker(sql: SqlDatabase, name: string, text: string | null, now: number): Promise<ServiceResult<{ created: boolean; marker: ServiceMarker }>> {

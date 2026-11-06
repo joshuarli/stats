@@ -283,22 +283,25 @@ await test("a deploy marker needs only its service token, from any peer and with
       assert.ok(host.ok);
       const created = await served.harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "svc", hostIds: [host.value.hostId] }) }));
       assert.equal(created.status, 201);
-      const { token } = await created.json() as { token: string };
+      const { deployToken, ingestToken } = await created.json() as { deployToken: string; ingestToken: string };
       const marker = { markerId: "m1", version: "1.0.0", hostIds: [host.value.hostId] };
       const post = (credential: string | null) => served.fetch("/ingest/services/svc/deployments", { method: "POST", headers: { ...(credential === null ? {} : { Authorization: `Bearer ${credential}` }), "Content-Type": "application/json" }, body: JSON.stringify(marker) });
       assert.equal((await post(null)).status, 401);
       assert.equal((await post(`nft_${"A".repeat(43)}`)).status, 401);
+      assert.equal((await post(ingestToken)).status, 401);
       const rows = () => (served.harness.db.prepare("SELECT COUNT(*) AS count FROM service_deployments").get() as { count: number }).count;
       assert.equal(rows(), 0);
-      const first = await post(token);
+      const first = await post(deployToken);
       assert.equal(first.status, 201, first.text);
-      assert.doesNotMatch(first.text, new RegExp(token, "u"));
-      assert.equal((await post(token)).status, 200);
+      for (const token of [deployToken, ingestToken]) assert.doesNotMatch(first.text, new RegExp(token, "u"));
+      assert.equal((await post(deployToken)).status, 200);
       assert.equal(rows(), 1);
       for (const path of ["/api/v1/services", "/api/v1/services/svc", "/api/v1/services/svc/deployments"]) {
         assert.equal((await served.fetch(path)).status, 401, `${String(peer)} ${path}`);
       }
-      for (const call of log.mock.calls) assert.doesNotMatch(JSON.stringify(call.arguments), new RegExp(token, "u"));
+      for (const call of log.mock.calls) {
+        for (const token of [deployToken, ingestToken]) assert.doesNotMatch(JSON.stringify(call.arguments), new RegExp(token, "u"));
+      }
     } finally {
       log.mock.restore();
       await served.close();

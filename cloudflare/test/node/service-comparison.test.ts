@@ -22,7 +22,7 @@ async function createHost(harness: Harness, name: string): Promise<{ hostId: str
 async function createService(harness: Harness, body: Record<string, unknown>): Promise<string> {
   const response = await harness.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }));
   assert.equal(response.status, 201);
-  return (await response.json() as { token: string }).token;
+  return (await response.json() as { deployToken: string }).deployToken;
 }
 
 async function mark(harness: Harness, service: string, token: string, markerId: string, version: string, hostIds: readonly string[], atMs: number): Promise<string> {

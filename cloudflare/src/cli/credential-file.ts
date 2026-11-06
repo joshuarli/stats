@@ -36,8 +36,8 @@ export function readCredentialJson(file: string, shape: string): CredentialFile 
   }
 }
 
-export function credentialToken(file: CredentialFile): string {
-  const { token } = file.fields;
-  if (typeof token !== "string" || !TOKEN_FORMAT.test(token)) throw authError("credential_file_invalid", `${file.path} has no valid token`);
+export function credentialToken(file: CredentialFile, field = "token"): string {
+  const token = file.fields[field];
+  if (typeof token !== "string" || !TOKEN_FORMAT.test(token)) throw authError("credential_file_invalid", `${file.path} has no valid ${field}`);
   return token;
 }

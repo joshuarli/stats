@@ -42,7 +42,7 @@ async function createHost(name: string): Promise<{ hostId: string; token: string
 async function createService(body: Record<string, unknown>): Promise<string> {
   const response = await post("/admin/services", body);
   expect(response.status).toBe(201);
-  return (await response.json() as { token: string }).token;
+  return (await response.json() as { deployToken: string }).deployToken;
 }
 
 async function mark(service: string, token: string, version: string, hostIds: string[], atMs: number): Promise<string> {
