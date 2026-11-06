@@ -135,12 +135,12 @@ Cloudflare login and no network. It needs `pnpm build` and
   node src/main.ts local export-producer --env s3 --root "$S" --out "$S/export"
   ```
 
-  Then replace the fixture directory with `$S/export`. The export includes
-  the release's `.cloudflare/output`, which its digest covers, so
-  `.gitignore` re-includes `.cloudflare/` under `fixtures/producers/`;
-  without it a fresh checkout fails the digest check. The ports are chosen at
-  `init` and recorded in the export, so they change on every regeneration,
-  and the tests fail if one is already in use.
+  Then replace the fixture directory with `$S/export`. The current fixture
+  was exported from Nanoshop `campaign/load-p1c`, which publishes one
+  operation summary per invocation and leaves each tenant's generated
+  `.cloudflare/output` out of the export (4.0 MB in all). The ports are
+  chosen at `init` and recorded in the export, so they change on every
+  regeneration, and the tests fail if one is already in use.
 
 - **Producer checkout.** `make integration-producer` runs
   `test/producer/checkout.test.ts` under `scripts/offline-run.sh`. It runs
@@ -159,6 +159,15 @@ Cloudflare login and no network. It needs `pnpm build` and
   stored; one `store.rpc.commerceCommand` for the review, two for the accept
   (accept and session record) and one per stored webhook; and as many
   `store.alarm` as a second tail consumer recorded from workerd directly.
+  That consumer also totals the operation summaries the producer published;
+  for `request.checkout-accept` and `store.rpc.commerceCommand` the test
+  requires one summary per invocation and `statsctl`'s `rows` equal to
+  their sum (`null` for the Worker request, which has no SQLite storage of
+  its own), and it prints the rows `statsctl` reported for every operation.
+  `store.alarm` is not compared: when an RPC arrives while the alarm awaits
+  a provider call, local workerd puts the alarm's summary on that RPC's
+  event, and the collector leaves it out (see `architecture.md`), so the
+  alarm can be counted with no row account.
   It also requires the confirmation email in the mailbox and no undeclared
   outbound request. It takes about 40 s, mostly waiting: local workerd
   delivered one Durable Object RPC's tail event about 20 s late when it

@@ -78,6 +78,7 @@ function stopped(child: ChildProcess): Promise<void> {
 }
 
 const RECORDER_SCRIPT = `const counts = {};
+const summaries = {};
 export default {
   tail(events) {
     for (const item of events) {
@@ -88,15 +89,44 @@ export default {
         : event.scheduledTime !== undefined ? "alarm" : "other";
       const key = item.executionModel + " " + what;
       counts[key] = (counts[key] ?? 0) + 1;
+      for (const published of item.diagnosticsChannelEvents ?? []) {
+        const message = published.message ?? {};
+        if (published.channel !== "stats.observe" || message.kind !== "operation") continue;
+        const total = summaries[message.operation] ?? { summaries: 0, rows: null };
+        total.summaries += 1;
+        if (message.rows !== null) {
+          const rows = total.rows ?? { accounted: 0, read: 0, written: 0, statements: 0 };
+          rows.accounted += 1;
+          rows.read += message.rows.read;
+          rows.written += message.rows.written;
+          rows.statements += message.rows.statements;
+          total.rows = rows;
+        }
+        summaries[message.operation] = total;
+      }
     }
   },
-  fetch() { return Response.json(counts); }
+  fetch(request) { return Response.json(new URL(request.url).pathname === "/summaries" ? summaries : counts); }
 };`;
+
+interface CountedRows {
+  readonly accounted: number;
+  readonly read: number;
+  readonly written: number;
+  readonly statements: number;
+}
 
 interface CountedRow {
   readonly operation: string | null;
   readonly count: number;
   readonly failed: number;
+  readonly rows: CountedRows | null;
+}
+
+function addRows(a: CountedRows | null, b: CountedRows | null): CountedRows | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return { accounted: a.accounted + b.accounted, read: a.read + b.read, written: a.written + b.written, statements: a.statements + b.statements };
 }
 
 function statsctl(env: Readonly<Record<string, string>>, service: string): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
@@ -108,7 +138,7 @@ function statsctl(env: Readonly<Record<string, string>>, service: string): Promi
   return new Promise(resolve => child.on("close", status => resolve({ status, stdout, stderr })));
 }
 
-await test("a checkout with simulated payment through a producer export reaches statsctl as exact counts by operation name", async () => {
+await test("a checkout with simulated payment through a producer export reaches statsctl as exact counts by operation name, with the rows each invocation published", async t => {
   const nanoshop = nanoshopCheckout();
   const manifest = JSON.parse(readFileSync(join(PRODUCER_EXPORT, "producer-export.json"), "utf8")) as Manifest;
   const [tenant] = manifest.tenants as [Manifest["tenants"][number]];
@@ -137,6 +167,7 @@ await test("a checkout with simulated payment through a producer export reaches 
     let disposed = false;
     try {
       const recorded = async (): Promise<Readonly<Record<string, number>>> => await (await (await stack.mf.getWorker(RECORDER)).fetch("http://recorder/")).json() as Record<string, number>;
+      const published = async (): Promise<Readonly<Record<string, { readonly summaries: number; readonly rows: CountedRows | null }>>> => await (await (await stack.mf.getWorker(RECORDER)).fetch("http://recorder/summaries")).json() as Record<string, { summaries: number; rows: CountedRows | null }>;
 
       const added = await send(manifest.shopPort, tenant.host, "/cart/items", { form: { variant_id: "1", quantity: "1" } });
       assert.equal(added.status, 303);
@@ -168,8 +199,8 @@ await test("a checkout with simulated payment through a producer export reaches 
         const byName = new Map<string, CountedRow>();
         for (const row of envelope.payload.operations) {
           if (row.operation === null) continue;
-          const total = byName.get(row.operation) ?? { operation: row.operation, count: 0, failed: 0 };
-          byName.set(row.operation, { operation: row.operation, count: total.count + row.count, failed: total.failed + row.failed });
+          const total = byName.get(row.operation) ?? { operation: row.operation, count: 0, failed: 0, rows: null };
+          byName.set(row.operation, { operation: row.operation, count: total.count + row.count, failed: total.failed + row.failed, rows: addRows(total.rows, row.rows) });
         }
         const stored = webhooks.filter(webhook => webhook.status === 200).length;
         const expected: Record<string, number> = {
@@ -188,6 +219,14 @@ await test("a checkout with simulated payment through a producer export reaches 
           assert.ok(expected["store.alarm"]! >= 1, last);
           assert.equal(after["durableObject rpc commerceCommand"], expected["store.rpc.commerceCommand"], last);
           assert.equal(after["stateless POST /webhooks/stripe"], stored, last);
+          const producer = await published();
+          for (const name of ["request.checkout-accept", "store.rpc.commerceCommand"]) {
+            assert.equal(producer[name]?.summaries, expected[name], `${name}: one published summary per invocation; ${JSON.stringify(producer)}`);
+            assert.deepEqual(byName.get(name)?.rows, producer[name]?.rows, `${name}: statsctl rows equal the producer's published summaries; ${JSON.stringify(producer)}`);
+          }
+          assert.equal(producer["request.checkout-accept"]?.rows, null, "a Worker invocation has no SQLite account of its own");
+          assert.ok((producer["store.rpc.commerceCommand"]?.rows?.statements ?? 0) > 0);
+          t.diagnostic(`statsctl rows by operation: ${JSON.stringify(Object.fromEntries([...byName].map(([name, row]) => [name, row.rows])))}`);
           break;
         }
         assert.ok(Date.now() < deadline, `statsctl did not converge on the checkout's counts within ${DEADLINE_MS / 1000} s: ${last}`);

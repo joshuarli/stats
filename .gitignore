@@ -3,5 +3,4 @@ node_modules/
 dist/
 .work/
 .cloudflare/
-!fixtures/producers/*/release/cloudflare/*/.cloudflare/
 .wrangler/
