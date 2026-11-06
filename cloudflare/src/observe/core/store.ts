@@ -481,14 +481,22 @@ const NOT_COUNTED: Counting = { ...KEEP_ALL_COUNTING, counts: [] };
 const FLUSH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const UNSENT_FIELDS = Object.keys(NOTHING_UNSENT) as (keyof UnsentTally)[];
 
+function fieldsOf(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
 export function decodeFlush(value: unknown): Flush | null {
   if (value === undefined || value === null) return null;
-  const fields = typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const unsent = fields["unsent"];
-  const tally = typeof unsent === "object" && unsent !== null ? unsent as Record<string, unknown> : {};
-  const id = fields["id"];
-  if (typeof id !== "string" || !FLUSH_ID.test(id) || !UNSENT_FIELDS.every(key => Number.isSafeInteger(tally[key]) && (tally[key] as number) >= 0)) throw new TypeError("malformed flush: needs a UUID id and a non-negative unsent tally");
-  return { id, unsent: Object.fromEntries(UNSENT_FIELDS.map(key => [key, tally[key]])) as unknown as UnsentTally };
+  const { id, unsent, ambiguousMarks } = fieldsOf(value);
+  const tally = fieldsOf(unsent);
+  if (typeof id !== "string" || !FLUSH_ID.test(id) || !UNSENT_FIELDS.every(key => isCount(tally[key])) || !isCount(ambiguousMarks)) {
+    throw new TypeError("malformed flush: needs a UUID id, a non-negative unsent tally, and a non-negative ambiguousMarks");
+  }
+  return { id, unsent: Object.fromEntries(UNSENT_FIELDS.map(key => [key, tally[key]])) as Record<keyof UnsentTally, number>, ambiguousMarks };
 }
 
 const UNSENT_REASONS: Readonly<Record<keyof UnsentTally, string>> = { batches: "unsent_batches", invocations: "unsent_invocations", outcomes: "unsent_outcomes", countedEvents: "unsent_counted_events" };
@@ -499,7 +507,10 @@ function claimFlush(db: SqlStatements, nowMs: number, flush: Flush): boolean {
     return false;
   }
   db.run("INSERT INTO observe_applied_flushes (flush_id, applied_at) VALUES (?, ?)", flush.id, nowMs);
-  recordHealthTallies(db, nowMs, UNSENT_FIELDS.filter(key => flush.unsent[key] > 0).map(key => ({ counter: "evicted", reason: UNSENT_REASONS[key], example: null, count: flush.unsent[key] })));
+  recordHealthTallies(db, nowMs, [
+    ...UNSENT_FIELDS.filter(key => flush.unsent[key] > 0).map(key => ({ counter: "evicted" as const, reason: UNSENT_REASONS[key], example: null, count: flush.unsent[key] })),
+    ...(flush.ambiguousMarks > 0 ? [{ counter: "rejected" as const, reason: "ambiguous_invocation_mark", example: null, count: flush.ambiguousMarks }] : [])
+  ]);
   return true;
 }
 

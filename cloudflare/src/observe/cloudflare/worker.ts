@@ -1,4 +1,4 @@
-import { OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
+import { NOTHING_UNSENT, OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
 import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
 import { POLICIES } from "../core/policies.ts";
@@ -52,7 +52,7 @@ export default {
       const prepared = await prepareTailItems(items, POLICIES[service], nowMs, capOf(service));
       const batch = service === UNKNOWN_SERVICE_HOME ? { ...prepared, outcomes: [...prepared.outcomes, ...unknown] } : prepared;
       if (POLICIES[service].sampling.kind === "all") {
-        await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts);
+        await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts, batch.ambiguousMarks > 0 ? { id: crypto.randomUUID(), unsent: NOTHING_UNSENT, ambiguousMarks: batch.ambiguousMarks } : null);
         return;
       }
       await deliverSampled({

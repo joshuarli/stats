@@ -271,10 +271,29 @@ await test("past the pending-batch bound the oldest failed batch is dropped, and
   assert.equal(observedTotal(db) + 3, sent + 1, "every invocation is either counted or reported as unsent");
 });
 
+await test("an event with two different invocation marks is counted in the exact totals and once in health as ambiguous, even when a retry repeats its batch", async () => {
+  const db = database();
+  let clock = START;
+  const sink = storeSink(db, () => clock, { before: 0, after: 1 });
+  const buffer = new CountBuffer(INTERVAL);
+  const marks = [hex(1, 32), hex(2, 32)].map((traceId, n) => ({ channel: OBSERVE_CHANNEL, message: { kind: "invocation", traceId, spanId: hex(n + 1, 16) } }));
+  const ambiguous: TailItem = { ...item(1, START + 10), diagnosticsChannelEvents: [...marks, ...item(1, START + 10).diagnosticsChannelEvents] };
+  const deliver = async (items: TailItem[], nowMs: number) => {
+    clock = nowMs;
+    await deliverSampled({ buffer, batch: await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()), nowMs, now: () => clock, sink, defer: () => undefined, sleep: () => new Promise(() => undefined), onDeferredFailure: () => undefined });
+  };
+  await assert.rejects(deliver([ambiguous], START + 10));
+  await deliver([item(2, START + 20, 500)], START + 20);
+  assert.equal(observedTotal(db), 2);
+  const stored = db.rows<{ trace_id: string | null; label: string }>("SELECT trace_id, label FROM observe_invocations ORDER BY event_at").map(row => [row.trace_id, row.label]);
+  assert.deepEqual(stored[0], [null, "GET /search"]);
+  assert.deepEqual(health(db, START + 20, SHOP.sampling).reasons.filter(reason => reason.reason === "ambiguous_invocation_mark").map(reason => [reason.counter, reason.count]), [["rejected", 1]]);
+});
+
 await test("a flush id is recorded in the transaction that applies its batch, so a rolled-back batch applies on retry, and it expires with the counts", () => {
   const db = database();
   const nowMs = START + 1_000;
-  const flush = { id: "6f1c5a2e-8d3b-4f7a-9c1e-2b4d6f8a0c3e", unsent: { batches: 0, invocations: 0, outcomes: 0, countedEvents: 0 } };
+  const flush = { id: "6f1c5a2e-8d3b-4f7a-9c1e-2b4d6f8a0c3e", unsent: { batches: 0, invocations: 0, outcomes: 0, countedEvents: 0 }, ambiguousMarks: 0 };
   const counts: CountDelta[] = [{ bucketAt: START, version: VERSION, stage: "worker", route: "GET /search", operation: "", outcome: "ok", kept: 0, sampledOut: 3, capped: 0, cpuMsSum: 3, wallMsSum: 3, ...NO_SUMMARY_TOTALS }];
   db.failOnRun = query => query.includes("observe_counts");
   assert.throws(() => ingest(db, [], nowMs, [], { ...SHOP, counts }, flush));
@@ -289,7 +308,7 @@ await test("a flush id is recorded in the transaction that applies its batch, so
   assert.equal(nextCleanupAt(outcomesOnly, nowMs, { deleted: 0, evicted: 0, more: false }), nowMs + RETENTION_MS);
   cleanup(db, later);
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_applied_flushes")[0]!.n, 0);
-  assert.throws(() => createObserveService(database(), { now: () => nowMs, databaseBytes: () => 0 }, () => SHOP).ingest([], [], counts, { id: "not a flush id", unsent: flush.unsent }), /flush/u);
+  assert.throws(() => createObserveService(database(), { now: () => nowMs, databaseBytes: () => 0 }, () => SHOP).ingest([], [], counts, { ...flush, id: "not a flush id" }), /flush/u);
 });
 
 await test("a buffer with too many distinct keys is flushed at once", async () => {

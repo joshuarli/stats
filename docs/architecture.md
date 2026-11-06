@@ -386,7 +386,14 @@ in, so an event that has an invocation mark keeps only the operation message
 of the mark's span and leaves any other out; the invocation that published
 the stray message is then counted with no summary (its operation falls back
 to the policy's name for its route, and `rows.accounted` stays below `count`).
-An object event with no message has no trace, so it is kept and counted
+An event that carries invocation marks of two different spans cannot tell its
+own mark from a stray one, whichever arrives first, so it trusts neither: it
+keeps no trace and no summary, is kept like any untraced event (and counted
+`untraced`), and still adds to the exact counts. The tail tallies such events
+per batch and sends the tally with the batch under a flush id, and health
+counts them under `rejected` with reason `ambiguous_invocation_mark`; a
+service that keeps everything sends the tally the same way. Repeated marks
+of one span are not ambiguous. An object event with no message has no trace, so it is kept and counted
 `untraced`; one with no mark and two operation messages is rejected as
 `rejected-invalid`. Worker events were unaffected. Whether production behaves
 the same is unverified.

@@ -33,6 +33,7 @@ export class CountBuffer {
   #counts = new Map<string, CountDelta>();
   #pending: StoreBatch[] = [];
   #unsent: UnsentTally = NOTHING_UNSENT;
+  #ambiguousMarks = 0;
   #startedAtMs = 0;
   #lastAddedAtMs = 0;
   #timerArmedAtMs = Number.NEGATIVE_INFINITY;
@@ -77,14 +78,20 @@ export class CountBuffer {
     for (const count of counts) addCount(this.#counts, count);
   }
 
+  noteAmbiguousMarks(events: number): void {
+    this.#ambiguousMarks += events;
+  }
+
   seal(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], drainCounts: boolean): StoreBatch | null {
     const counts = drainCounts ? [...this.#counts.values()] : [];
     if (drainCounts) this.#counts.clear();
     const unsent = this.#unsent;
+    const ambiguousMarks = this.#ambiguousMarks;
     this.#unsent = NOTHING_UNSENT;
-    const replayable = counts.length > 0 || outcomes.length > 0 || anyUnsent(unsent);
+    this.#ambiguousMarks = 0;
+    const replayable = counts.length > 0 || outcomes.length > 0 || anyUnsent(unsent) || ambiguousMarks > 0;
     if (!replayable && preparations.length === 0) return null;
-    return { preparations, outcomes, counts, flush: replayable ? { id: crypto.randomUUID(), unsent } : null };
+    return { preparations, outcomes, counts, flush: replayable ? { id: crypto.randomUUID(), unsent, ambiguousMarks } : null };
   }
 
   takePending(): StoreBatch[] {
@@ -93,7 +100,11 @@ export class CountBuffer {
 
   keepPending(failed: readonly StoreBatch[]): void {
     this.#pending = [...failed, ...this.#pending];
-    while (this.#pending.length > MAX_PENDING_BATCHES) this.#unsent = plusDropped(this.#unsent, this.#pending.shift()!);
+    while (this.#pending.length > MAX_PENDING_BATCHES) {
+      const dropped = this.#pending.shift()!;
+      this.#unsent = plusDropped(this.#unsent, dropped);
+      this.#ambiguousMarks += dropped.flush?.ambiguousMarks ?? 0;
+    }
   }
 }
 
@@ -103,7 +114,7 @@ export interface CountSink {
 
 export interface SampledDelivery {
   readonly buffer: CountBuffer;
-  readonly batch: { readonly preparations: readonly Preparation[]; readonly outcomes: readonly OutcomeEvent[]; readonly counts: readonly CountDelta[] };
+  readonly batch: { readonly preparations: readonly Preparation[]; readonly outcomes: readonly OutcomeEvent[]; readonly counts: readonly CountDelta[]; readonly ambiguousMarks: number };
   readonly nowMs: number;
   readonly now: () => number;
   readonly sink: CountSink;
@@ -128,6 +139,7 @@ export async function deliverSampled(delivery: SampledDelivery): Promise<void> {
   const { buffer, batch, nowMs, sink } = delivery;
   const due = buffer.isDue(nowMs);
   buffer.add(batch.counts, nowMs);
+  buffer.noteAmbiguousMarks(batch.ambiguousMarks);
   try {
     if (due || batch.preparations.length > 0 || batch.outcomes.length > 0) await send(buffer, sink, buffer.seal(batch.preparations, batch.outcomes, due));
   } finally {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { prepareTailItems, reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
+import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/core/policies.ts";
 import { errorReport } from "../../src/observe/producer/report.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
@@ -281,6 +282,26 @@ await test("an operation message of another span is left out of a marked invocat
   assert.deepEqual(read([mark, foreign]), [SHOP_SPAN, undefined]);
   assert.equal(read([mark, own, own]), "rejected");
   assert.equal(read([own, foreign]), "rejected", "with no mark there is no own span, so two summaries stay ambiguous");
+});
+
+await test("an event that carries two different invocation marks is kept untraced and with no summary, whichever mark arrives first, and is tallied as ambiguous", async () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const own = { channel: OBSERVE_CHANNEL, message: { kind: "invocation", ...SHOP_SPAN } };
+  const foreignSpan = { spanId: "7a1c3e5f9b2d4c6e", traceId: "0af7651916cd43dd8448eb211c80319c" };
+  const foreign = { channel: OBSERVE_CHANNEL, message: { kind: "invocation", ...foreignSpan } };
+  const ownSummary = serviceOperation({ operation: "store.rpc.commerceQuery", rows: { read: 5, written: 0, statements: 1 } });
+  const foreignSummary = serviceOperation({ ...foreignSpan, operation: "store.alarm", rows: { read: 500, written: 90, statements: 40 } });
+  for (const events of [[foreign, own, ownSummary, foreignSummary], [own, foreign, foreignSummary, ownSummary], [own, foreign]]) {
+    const item = objectItem({ rpcMethod: "commerceQuery" }, { diagnosticsChannelEvents: events, scriptName: "nanoshop-storied" });
+    const reduction = reduceTailItem(item, shop);
+    assert.equal(reduction.kind, "observed");
+    if (reduction.kind !== "observed") continue;
+    assert.deepEqual([reduction.invocation.trace, reduction.invocation.serviceOperation, reduction.ambiguousMarks], [null, undefined, true]);
+    const batch = await prepareTailItems([item, objectItem({ rpcMethod: "commerceQuery" }, { diagnosticsChannelEvents: [own, ownSummary] })], shop, 1_793_750_800_000, new AlwaysKeptCap());
+    assert.equal(batch.ambiguousMarks, 1);
+  }
+  const same = reduceTailItem(objectItem({ rpcMethod: "commerceQuery" }, { diagnosticsChannelEvents: [own, own] }), shop);
+  assert.deepEqual(same.kind === "observed" ? [same.invocation.trace, same.ambiguousMarks] : same.kind, [SHOP_SPAN, false], "a repeated mark of one span is not ambiguous");
 });
 
 await test("stats keeps its typed operation decoder, and a generic message is not a stats operation", () => {

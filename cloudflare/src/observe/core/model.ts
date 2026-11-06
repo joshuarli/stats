@@ -68,6 +68,7 @@ export const NOTHING_UNSENT: UnsentTally = { batches: 0, invocations: 0, outcome
 export interface Flush {
   readonly id: string;
   readonly unsent: UnsentTally;
+  readonly ambiguousMarks: number;
 }
 
 const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
