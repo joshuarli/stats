@@ -46,27 +46,27 @@ function deploy(env: Record<string, string>): Promise<Outcome> {
   });
 }
 
-test("an upload from the old agent during the restart does not prove the new binary", async () => {
+await test("an upload from the old agent during the restart does not prove the new binary", async () => {
   const outcome = await deploy({ STUB_NEW_AGENT_UPLOADS: "no" });
   assert.notEqual(outcome.code, 0);
   assert.match(outcome.stderr, /no fresh receipt/u);
   assert.doesNotMatch(outcome.stdout, /deployed/u);
 });
 
-test("a receipt after the restart proves the new binary", async () => {
+await test("a receipt after the restart proves the new binary", async () => {
   const outcome = await deploy({ STUB_NEW_AGENT_UPLOADS: "yes" });
   assert.equal(outcome.code, 0);
   assert.match(outcome.stdout, /threadripper: deployed/u);
 });
 
-test("an unchanged host that is not uploading fails instead of reporting unchanged", async () => {
+await test("an unchanged host that is not uploading fails instead of reporting unchanged", async () => {
   const outcome = await deploy({ STUB_UNCHANGED: "yes", STUB_NEW_AGENT_UPLOADS: "no" });
   assert.notEqual(outcome.code, 0);
   assert.match(outcome.stderr, /no fresh receipt/u);
   assert.doesNotMatch(outcome.stdout, /unchanged/u);
 });
 
-test("an unchanged host that keeps uploading reports unchanged", async () => {
+await test("an unchanged host that keeps uploading reports unchanged", async () => {
   const outcome = await deploy({ STUB_UNCHANGED: "yes", STUB_NEW_AGENT_UPLOADS: "yes" });
   assert.equal(outcome.code, 0);
   assert.match(outcome.stdout, /threadripper: unchanged/u);

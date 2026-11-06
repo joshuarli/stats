@@ -34,7 +34,7 @@ const SCRIPTS = [
 
 for (const { script, args } of SCRIPTS) {
   for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
-    test(`${script} stops with ${code} on ${signal} and removes its scratch state`, async () => {
+    await test(`${script} stops with ${code} on ${signal} and removes its scratch state`, async () => {
       const outcome = await interrupt(script, args, signal);
       assert.equal(outcome.code, code);
       assert.deepEqual(outcome.leftovers, []);
@@ -43,7 +43,7 @@ for (const { script, args } of SCRIPTS) {
   }
 }
 
-test("deploy-host.sh removes the remote temp file once and runs nothing after the signal", async () => {
+await test("deploy-host.sh removes the remote temp file once and runs nothing after the signal", async () => {
   const outcome = await interrupt("deploy-host.sh", ["threadripper"], "SIGTERM");
   assert.equal(outcome.code, 143);
   assert.equal(outcome.log.filter(line => line.includes("rm -f '/tmp/stats.t1'")).length, 1);

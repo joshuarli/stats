@@ -57,14 +57,14 @@ async function capture(id: string): Promise<string[]> {
   }
 }
 
-test("a project with Durable Object namespaces is captured with its durable-objects history", async () => {
+await test("a project with Durable Object namespaces is captured with its durable-objects history", async () => {
   const files = await capture("alpha");
   assert.ok(files.includes("durable-objects-1h.json"));
   assert.ok(files.includes("durable-objects-6h.json"));
   assert.ok(files.includes("routes-1h.json"));
 });
 
-test("a project without namespaces gets no durable-objects capture", async () => {
+await test("a project without namespaces gets no durable-objects capture", async () => {
   const files = await capture("beta");
   assert.deepEqual(files.filter(file => file.startsWith("durable-objects")), []);
   assert.ok(files.includes("routes-6h.json"));
