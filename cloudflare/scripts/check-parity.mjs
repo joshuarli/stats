@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readHistory } from "../test/support/history.ts";
 
 const HOST = process.env.STATS_URL ?? "https://stats.17166969.xyz";
 const PROJECT = process.env.PROJECT_ID ?? "stuff";
@@ -20,7 +21,7 @@ const token = run("cf", ["access", "token", HOST]).trim();
 
 const response = await fetch(`${HOST}/api/v1/projects/${PROJECT}/history?range=24h&kind=worker`, { headers: { "cf-access-token": token } });
 if (!response.ok) throw new Error(`history answered ${response.status}; run cf access login ${HOST}`);
-const history = await response.json();
+const history = readHistory(Buffer.from(await response.arrayBuffer()));
 const stored = history.series.find((entry) => entry.metric === "worker.invocations").values;
 
 const now = Date.now();
