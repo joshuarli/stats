@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import diagnostics from "node:diagnostics_channel";
 import { DatabaseSync } from "node:sqlite";
 import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { POLICIES } from "../../src/observe/core/policies.ts";
+import { MEMORIES_OPERATIONS, POLICIES } from "../../src/observe/core/policies.ts";
 import { OBSERVE_CHANNEL, type OperationMessage, type OperationSummary } from "../../src/observe/producer/channel.ts";
 import { reportOperation } from "../../src/observe/producer/report.ts";
 import { prepareInvocation, type MessagePolicy, type ObservedInvocation } from "../../src/observe/core/model.ts";
@@ -38,6 +38,30 @@ function tailItem(...messages: unknown[]): TailItem {
 function reduce(...messages: unknown[]) {
   return reduceTailItem(tailItem(...messages), POLICIES.stats);
 }
+
+function memoriesItem(...messages: unknown[]): TailItem {
+  return {
+    event: { request: { url: "https://memories.example/api/v1/status", method: "GET", headers: {} }, response: { status: 200 } },
+    eventTimestamp: 1_793_750_714_539, exceptions: [],
+    diagnosticsChannelEvents: messages.map(value => ({ channel: OBSERVE_CHANNEL, message: value })),
+    scriptVersion: { id: VERSION }, executionModel: "stateless", outcome: "ok", cpuTime: 2, wallTime: 30
+  };
+}
+
+await test("usr-memories accepts every published operation name with rows and rejects an unknown name", () => {
+  const policy = POLICIES["usr-memories"];
+  for (const operation of MEMORIES_OPERATIONS) {
+    const reduction = reduceTailItem(memoriesItem({
+      kind: "operation", ...CONTEXT, operation, synthetic: false, rows: ROWS
+    }), policy);
+    assert.equal(reduction.kind, "observed", operation);
+    if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.trace, CONTEXT);
+  }
+  const unknown = reduceTailItem(memoriesItem({
+    kind: "operation", ...CONTEXT, operation: "sync.unknown", synthetic: false, rows: ROWS
+  }), policy);
+  assert.equal(unknown.kind, "rejected");
+});
 
 await test("an operation message supplies the trace context and the operation summary", () => {
   for (const summary of [INGEST, HISTORY]) {

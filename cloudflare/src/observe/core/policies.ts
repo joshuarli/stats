@@ -47,7 +47,12 @@ function memoriesWorkerRoute(path: string): string {
   return path.split("/").map((segment, index) => index === 0 || MEMORIES_SEGMENTS.has(segment) ? segment : ":id").join("/");
 }
 
-export const MEMORIES_OPERATIONS = ["request.auth", "request.route", "sync.replace", "snapshots.commit", "generations.commit"] as const;
+export const MEMORIES_OPERATIONS = [
+  "request.auth", "request.route", "sync.replace", "snapshots.commit", "generations.commit",
+  "sync.hello", "sync.missing", "sync.upload", "snapshots.page", "snapshots.verify", "snapshots.gc",
+  "tombstones.commit", "learning.state", "learning.delta", "learning.reconcile", "memories.search",
+  "status.read", "mcp.request"
+] as const;
 
 export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
   stats: {
