@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CommandError, EXIT } from "../../src/cli/exit.ts";
 import type { VerdictPayload } from "../../src/cli/commands/verify.ts";
+import { POLL_REQUEST_LIMIT } from "../../src/cli/verify/gather.ts";
 import { AT, bounds, CANDIDATE, deployment, harness, id, newWorld, POLICY, READY_AT, H, type Harness, type World } from "./verify-support.ts";
 
 type Result = Awaited<ReturnType<Harness["run"]>>["result"];
@@ -40,7 +41,7 @@ await test("a clean cost win with every guardrail passing is improved, reads exa
     const urls = h.origin.seen.map(seen => seen.url);
     assert.ok(urls.includes(`/api/observe/stats/window?from=${bounds.before.fromMs}&to=${bounds.before.toMs}&operation=host.ingest`));
     assert.ok(urls.includes(`/api/observe/stats/window?from=${bounds.after.fromMs}&to=${bounds.after.toMs}&operation=host.ingest`));
-    assert.ok(urls.length <= 6, urls.join("\n"));
+    assert.ok(urls.length <= POLL_REQUEST_LIMIT, urls.join("\n"));
     assert.equal(payload.overhead.requests, urls.length);
     assert.ok(existsSync(payload.state.path));
   } finally {
@@ -59,7 +60,7 @@ await test("overlap, a split rollout, and a deferred rollout are confounded even
     try {
       assert.equal(verdictOf(result).verdict, "confounded", name);
       assert.equal(result.exit, EXIT.unchanged, name);
-      assert.ok(h.origin.seen.length <= 6, name);
+      assert.ok(h.origin.seen.length <= POLL_REQUEST_LIMIT, name);
     } finally {
       await h.close();
     }
@@ -117,6 +118,21 @@ await test("a regressed guardrail overrides a cost win", async () => {
   assert.equal(persistence.exit, EXIT.regressed);
   const failedCheck = await verdictFor(newWorld(), {}, POLICY, { ok: false, failedStep: "replay" });
   assert.equal(verdictOf(failedCheck).verdict, "regressed");
+});
+
+await test("an error that regrouped under the candidate is confounded and names both fingerprints, while a new error name still regresses", async () => {
+  const earlier = { fingerprint: "old1", name: "Error", operation: null, lastAtMs: AT - 60_000 };
+  const regrouped = await verdictFor(newWorld({ issues: { [id(102)]: 1 }, earlierIssues: [earlier] }));
+  const report = guardrail(regrouped, "new-issue-group");
+  assert.equal(report?.status, "regrouped");
+  assert.ok(report?.detail.includes("old1") && report.detail.includes("f0"), report?.detail);
+  assert.equal(verdictOf(regrouped).verdict, "confounded");
+  assert.equal(regrouped.exit, EXIT.unchanged);
+  const renamed = await verdictFor(newWorld({ issues: { [id(102)]: 1 }, earlierIssues: [{ ...earlier, name: "TypeError" }] }));
+  assert.equal(guardrail(renamed, "new-issue-group")?.status, "regressed");
+  assert.equal(renamed.exit, EXIT.regressed);
+  const stale = await verdictFor(newWorld({ issues: { [id(102)]: 1 }, earlierIssues: [{ ...earlier, lastAtMs: AT - 10 * H }] }));
+  assert.equal(guardrail(stale, "new-issue-group")?.status, "regressed");
 });
 
 await test("a failed safety check regresses at once, even before the window is ready", async () => {
@@ -286,7 +302,7 @@ await test("readiness lists each needed signal, flags absent operation summaries
     assert.match(summaries?.message ?? "", /operation summaries absent for host\.ingest/u);
     assert.equal(payload.signals.find(signal => signal.signal === "safety-check")?.status, "unavailable:safety_check_missing");
     assert.deepEqual(payload.signals.map(signal => signal.signal), ["analytics-collector", "deployment-comparison", "observe-events", "observe-invocations", "operation-summaries", "probes", "safety-check"]);
-    assert.ok(h.origin.seen.length <= 6);
+    assert.ok(h.origin.seen.length <= POLL_REQUEST_LIMIT);
 
     absent.operationRows = true;
     const ready = (await h.run({ deployment: CANDIDATE.id, readiness: true, "safety-check-file": h.safetyFile({}) })).result;

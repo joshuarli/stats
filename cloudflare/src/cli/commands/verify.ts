@@ -75,7 +75,7 @@ const POLICY_FIELD_HELP: readonly (readonly [string, string])[] = [
 const GUARDRAIL_HELP: readonly (readonly [string, string])[] = [
   ["safety-check", "a saved `check ingest --json` that passed, run after the deploy began and before the after window"],
   ["failed-share", "operation failures: none if the before side had none, else the share may rise at most 1 point"],
-  ["new-issue-group", "no observe issue group whose first version is the candidate"],
+  ["new-issue-group", "no observe issue group whose first version is the candidate; a group with the same operation and error name as one seen since the before window began, under another fingerprint, is `regrouped` and makes the verdict confounded"],
   ["probe-failure-share", "no probe failure share rose by 1 point or more; not applicable when the project defines no probes"],
   ["coverage", "observe events reconcile with analytics invocations within 5% on both sides"],
   ["ingest-persistence", "(persisted + duplicate) / received, in percent, does not fall by more than 1 point; rejected samples stay in the denominator (host.ingest only)"]
