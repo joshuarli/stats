@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { authError, usageError } from "./exit.ts";
+import { authError, transportError, usageError } from "./exit.ts";
 
 export const DEFAULT_ORIGIN = "https://stats.17166969.xyz";
 export const AUTH_COMMAND_TIMEOUT_MS = 20_000;
@@ -53,6 +53,7 @@ export function fetchCredential(origin: string, env: NodeJS.ProcessEnv, signal: 
   const { file, args } = credentialCommand(origin, env);
   const fail = (why: string) => authError("credential_unavailable", `${why}; ${loginHint(origin)}`);
   return new Promise((resolve, reject) => {
+    const cancelled = () => transportError("cancelled", "request cancelled");
     const child = spawn(file, [...args], { stdio: ["ignore", "pipe", "ignore"], timeout: AUTH_COMMAND_TIMEOUT_MS, killSignal: "SIGKILL", signal, env });
     let output = "";
     let overflow = false;
@@ -64,8 +65,9 @@ export function fetchCredential(origin: string, env: NodeJS.ProcessEnv, signal: 
         child.kill("SIGKILL");
       }
     });
-    child.once("error", error => reject(fail((error as NodeJS.ErrnoException).code === "ENOENT" ? `credential command ${file} not found` : "credential command could not run")));
+    child.once("error", error => reject(signal.aborted ? cancelled() : fail((error as NodeJS.ErrnoException).code === "ENOENT" ? `credential command ${file} not found` : "credential command could not run")));
     child.once("close", (status, termination) => {
+      if (signal.aborted) return reject(cancelled());
       if (overflow) return reject(fail("credential command printed too much"));
       if (status !== 0) return reject(fail(termination === null ? `credential command exited ${status ?? "abnormally"}` : "credential command timed out or was cancelled"));
       const value = output.trim();
