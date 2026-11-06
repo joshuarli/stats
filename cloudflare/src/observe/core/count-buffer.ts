@@ -50,6 +50,10 @@ export class CountBuffer {
     this.#counts.clear();
     return drained;
   }
+
+  restore(counts: readonly CountDelta[]): void {
+    for (const count of counts) addCount(this.#counts, count);
+  }
 }
 
 export interface CountSink {
@@ -67,19 +71,29 @@ export interface SampledDelivery {
   readonly onDeferredFailure: (error: unknown) => void;
 }
 
+async function flush(buffer: CountBuffer, sink: CountSink, preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[]): Promise<void> {
+  const drained = buffer.drain();
+  try {
+    await sink.ingest(preparations, outcomes, drained);
+  } catch (error) {
+    buffer.restore(drained);
+    throw error;
+  }
+}
+
 export async function deliverSampled(delivery: SampledDelivery): Promise<void> {
   const { buffer, batch, nowMs, sink } = delivery;
   const due = buffer.isDue(nowMs);
   buffer.add(batch.counts, nowMs);
   if (due) {
-    await sink.ingest(batch.preparations, batch.outcomes, buffer.drain());
+    await flush(buffer, sink, batch.preparations, batch.outcomes);
     return;
   }
   if (batch.preparations.length > 0 || batch.outcomes.length > 0) await sink.ingest(batch.preparations, batch.outcomes, []);
   if (buffer.needsIdleTimer(nowMs)) {
     buffer.armIdleTimer(nowMs);
     delivery.defer(delivery.sleep(IDLE_FLUSH_MS).then(async () => {
-      if (buffer.isIdle(delivery.now())) await sink.ingest([], [], buffer.drain());
+      if (buffer.isIdle(delivery.now())) await flush(buffer, sink, [], []);
     }).catch(delivery.onDeferredFailure));
   }
 }

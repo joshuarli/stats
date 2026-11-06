@@ -150,7 +150,7 @@ await test("a timer that wakes while batches are still arriving leaves the flush
   assert.equal(h.buffer.size, 0);
 });
 
-await test("a failed flush loses the drained counts, a failed timer is reported, and a failed kept write leaves the buffer", async () => {
+await test("a failed flush keeps the drained counts for the next flush, a failed timer is reported and keeps them, and a failed kept write leaves the buffer", async () => {
   const dead: CountSink = { ingest: async () => { throw new Error("store down"); } };
   const never = () => new Promise<void>(() => undefined);
   const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()).then(batch => deliverSampled({
@@ -161,7 +161,8 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
   await deliverTo(flushed, [quietItem(1, START)], START + 1_000, never);
   assert.equal(flushed.size, 1);
   await assert.rejects(deliverTo(flushed, [quietItem(2, START)], START + 1_000 + INTERVAL, never), /store down/u);
-  assert.equal(flushed.size, 0, "at most once: the counts were drained before the failing call");
+  assert.equal(flushed.size, 1, "the two events share one count key and stay buffered after the failing call");
+  assert.equal(flushed.drain()[0]?.sampledOut, 2);
 
   const timed = new CountBuffer(INTERVAL);
   const deferred: Promise<void>[] = [];
@@ -169,7 +170,7 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
   await deliverTo(timed, [quietItem(1, START)], START + 1_000, async () => undefined, deferred, reported, START + 1_000 + IDLE_FLUSH_MS);
   await Promise.all(deferred);
   assert.equal(reported.length, 1);
-  assert.equal(timed.size, 0);
+  assert.equal(timed.size, 1);
 
   const kept = new CountBuffer(INTERVAL);
   await deliverTo(kept, [quietItem(3, START)], START + 2_000, never);

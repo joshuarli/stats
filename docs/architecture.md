@@ -295,9 +295,8 @@ flushed within 20 s of the last batch, and a busy isolate flushes by the interva
 rule above. Each flush adds one to the bucket row's `flushes` column.
 
 Counts are exact for every event that reaches the collector and is flushed.
-A flush is at most once: the buffer is emptied before the store call, so a
-failed call loses what it carried, and the failure is logged or thrown. An
-isolate that is evicted, or that never gets its timer, loses at most one flush
+A failed store call puts the counts it carried back in the buffer for the next
+flush, and the failure is logged or thrown. An isolate that is evicted, or that never gets its timer, loses at most one flush
 interval of sampled-out and excluded counts. Kept invocations are never lost this
 way, because the store counts them in the transaction that stores them. The loss
 shows as coverage below `reconciled` against analytics `worker.invocations`.
