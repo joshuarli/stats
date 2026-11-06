@@ -228,7 +228,11 @@ the agent benchmark method does not accept as evidence either way.
   request. Rows per request (at most 16) and requests per host per minute
   (6) are unchanged, and the real agent's samples store the same bytes as
   before; the larger bound matters only for a misbehaving or compromised host
-  token.
+  token. The actual bound is therefore about 143 KB of canonical JSON per
+  request, 16 samples times the per-sample limits in `docs/protocol.md`. The
+  old 64 KB JSON bound is intentionally not enforced: the server does not
+  reject a batch whose decoded canonical JSON exceeds it, and no fixture or
+  Worker test covers that boundary.
 - **Measured on fixtures, not live hosts.** The byte results use
   fixture-derived and synthetic batches; a live capture from each host
   platform would confirm the representative sizes.
