@@ -56,6 +56,20 @@ export interface CountDelta extends SummaryTotals {
   readonly cpuMsSum: number;
   readonly wallMsSum: number;
 }
+export interface UnsentTally {
+  readonly batches: number;
+  readonly invocations: number;
+  readonly outcomes: number;
+  readonly countedEvents: number;
+}
+
+export const NOTHING_UNSENT: UnsentTally = { batches: 0, invocations: 0, outcomes: 0, countedEvents: 0 };
+
+export interface Flush {
+  readonly id: string;
+  readonly unsent: UnsentTally;
+}
+
 const CLIENT_ENDED_OUTCOMES: ReadonlySet<string> = new Set(["canceled", "responseStreamDisconnected"]);
 
 export function isFailedInvocation(invocation: { readonly errorCount: number; readonly status: number | null; readonly outcome: string }): boolean {

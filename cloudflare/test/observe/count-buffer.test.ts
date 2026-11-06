@@ -4,11 +4,12 @@ import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/ta
 import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/core/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
-import { ingest } from "../../src/observe/core/store.ts";
+import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, MAX_PENDING_BATCHES, type CountSink } from "../../src/observe/core/count-buffer.ts";
+import { cleanup, health, ingest, nextCleanupAt } from "../../src/observe/core/store.ts";
+import { createObserveService } from "../../src/observe/core/service.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import { NO_SUMMARY_TOTALS, type CountDelta, type OutcomeEvent, type Preparation } from "../../src/observe/core/model.ts";
-import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
+import { COUNT_BUCKET_MS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { T0, VERSION, database, hex } from "./support.ts";
 
 const SHOP = POLICIES["nanoshop-storied"];
@@ -35,9 +36,9 @@ interface Call { readonly preparations: number; readonly outcomes: number; reado
 
 function recorder(calls: Call[], inner: CountSink | null = null): CountSink {
   return {
-    ingest: async (preparations, outcomes, counts) => {
+    ingest: async (preparations, outcomes, counts, flush) => {
       calls.push({ preparations: preparations.length, outcomes: outcomes.length, counts: counts.length });
-      await inner?.ingest(preparations, outcomes, counts);
+      await inner?.ingest(preparations, outcomes, counts, flush);
     }
   };
 }
@@ -150,7 +151,7 @@ await test("a timer that wakes while batches are still arriving leaves the flush
   assert.equal(h.buffer.size, 0);
 });
 
-await test("a failed flush keeps the drained counts for the next flush, a failed timer is reported and keeps them, and a failed kept write leaves the buffer", async () => {
+await test("a failed flush keeps its drained counts as one pending batch, a failed timer is reported and keeps them, and a failed kept write leaves the buffer", async () => {
   const dead: CountSink = { ingest: async () => { throw new Error("store down"); } };
   const never = () => new Promise<void>(() => undefined);
   const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()).then(batch => deliverSampled({
@@ -161,8 +162,7 @@ await test("a failed flush keeps the drained counts for the next flush, a failed
   await deliverTo(flushed, [quietItem(1, START)], START + 1_000, never);
   assert.equal(flushed.size, 1);
   await assert.rejects(deliverTo(flushed, [quietItem(2, START)], START + 1_000 + INTERVAL, never), /store down/u);
-  assert.equal(flushed.size, 1, "the two events share one count key and stay buffered after the failing call");
-  assert.equal(flushed.drain()[0]?.sampledOut, 2);
+  assert.deepEqual([flushed.size, flushed.pendingBatches], [0, 1], "the drained counts wait under their flush id instead of merging back into the buffer");
 
   const timed = new CountBuffer(INTERVAL);
   const deferred: Promise<void>[] = [];
@@ -170,12 +170,126 @@ await test("a failed flush keeps the drained counts for the next flush, a failed
   await deliverTo(timed, [quietItem(1, START)], START + 1_000, async () => undefined, deferred, reported, START + 1_000 + IDLE_FLUSH_MS);
   await Promise.all(deferred);
   assert.equal(reported.length, 1);
-  assert.equal(timed.size, 1);
+  assert.deepEqual([timed.size, timed.pendingBatches], [0, 1]);
 
   const kept = new CountBuffer(INTERVAL);
   await deliverTo(kept, [quietItem(3, START)], START + 2_000, never);
   await assert.rejects(deliverTo(kept, [item(50, START, 500)], START + 3_000, never));
-  assert.equal(kept.size, 1, "a kept event's own failure does not touch the buffer");
+  assert.deepEqual([kept.size, kept.pendingBatches], [1, 1], "a kept event's own failure keeps that event and does not touch the buffer");
+});
+
+await test("an idle isolate retries a failed batch by its timer", async () => {
+  const calls: number[] = [];
+  let down = true;
+  const sink: CountSink = { ingest: async preparations => { calls.push(preparations.length); if (down) throw new Error("store down"); } };
+  const buffer = new CountBuffer(INTERVAL);
+  const timers: (() => void)[] = [];
+  const deferred: Promise<void>[] = [];
+  let clock = START + 1_000;
+  await assert.rejects(deliverSampled({
+    buffer, batch: await prepareTailItems([item(1, START, 500)], SHOP, clock, new AlwaysKeptCap()), nowMs: clock, now: () => clock, sink,
+    defer: work => { deferred.push(work); }, sleep: () => new Promise<void>(resolve => { timers.push(resolve); }), onDeferredFailure: () => undefined
+  }));
+  assert.deepEqual([buffer.pendingBatches, timers.length], [1, 1]);
+  down = false;
+  clock += IDLE_FLUSH_MS;
+  timers.shift()?.();
+  await Promise.all(deferred);
+  assert.deepEqual([calls, buffer.pendingBatches], [[1, 1], 0]);
+});
+
+function storeSink(db: ReturnType<typeof database>, clock: () => number, failures: { before: number; after: number }): CountSink {
+  const service = createObserveService(db, { now: clock, databaseBytes: () => 0 }, () => SHOP);
+  return {
+    ingest: async (preparations, outcomes, counts, flush) => {
+      if (failures.before > 0) { failures.before--; throw new Error("store unreachable"); }
+      service.ingest(preparations, outcomes, counts, flush);
+      if (failures.after > 0) { failures.after--; throw new Error("the call failed after the store committed"); }
+    }
+  };
+}
+
+function observedTotal(db: ReturnType<typeof database>): number {
+  return db.rows<{ n: number }>("SELECT COALESCE(SUM(kept + sampled_out), 0) AS n FROM observe_count_entries WHERE outcome IN ('ok', 'failed')")[0]!.n;
+}
+
+await test("kept invocations of a store call that failed before the store saw it are sent with the next call and counted once", async () => {
+  const db = database();
+  let clock = START;
+  const failures = { before: 1, after: 0 };
+  const sink = storeSink(db, () => clock, failures);
+  const buffer = new CountBuffer(INTERVAL);
+  const deliver = async (items: TailItem[], nowMs: number) => {
+    clock = nowMs;
+    await deliverSampled({ buffer, batch: await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()), nowMs, now: () => clock, sink, defer: () => undefined, sleep: () => new Promise(() => undefined), onDeferredFailure: () => undefined });
+  };
+  await assert.rejects(deliver([item(1, START + 10, 500)], START + 10), /unreachable/u);
+  await deliver([item(2, START + 20, 500)], START + 20);
+  assert.equal(observedTotal(db), 2);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_invocations")[0]!.n, 2);
+  assert.equal(buffer.pendingBatches, 0);
+});
+
+await test("a flush that the store committed but whose call then failed is retried under the same flush id and counted once", async () => {
+  const db = database();
+  let clock = START;
+  const failures = { before: 0, after: 1 };
+  const sink = storeSink(db, () => clock, failures);
+  const buffer = new CountBuffer(INTERVAL);
+  const deliver = async (items: TailItem[], nowMs: number) => {
+    clock = nowMs;
+    await deliverSampled({ buffer, batch: await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()), nowMs, now: () => clock, sink, defer: () => undefined, sleep: () => new Promise(() => undefined), onDeferredFailure: () => undefined });
+  };
+  await deliver([quietItem(1, START + 10), quietItem(2, START + 20)], START + 30);
+  await assert.rejects(deliver([quietItem(3, START + 70_000), item(40, START + 70_000, 500)], START + 70_000), /after the store committed/u);
+  assert.equal(observedTotal(db), 4, "the store committed the first attempt");
+  await deliver([item(41, START + 80_000, 500)], START + 80_000);
+  assert.equal(observedTotal(db), 5, "the retried flush is skipped by its id; only the new kept event adds");
+  await deliver([quietItem(5, START + 150_000)], START + 150_000);
+  assert.equal(observedTotal(db), 5);
+  assert.equal(buffer.pendingBatches, 0);
+  assert.deepEqual(health(db, START + 150_000, SHOP.sampling).reasons.filter(reason => reason.counter === "duplicate").map(reason => [reason.reason, reason.count]), [["flush", 1]]);
+});
+
+await test("past the pending-batch bound the oldest failed batch is dropped, and the next batch the store accepts reports what it held under evicted", async () => {
+  const db = database();
+  let clock = START;
+  const failures = { before: MAX_PENDING_BATCHES + 3, after: 0 };
+  const sink = storeSink(db, () => clock, failures);
+  const buffer = new CountBuffer(INTERVAL);
+  const deliver = async (items: TailItem[], nowMs: number) => {
+    clock = nowMs;
+    await deliverSampled({ buffer, batch: await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()), nowMs, now: () => clock, sink, defer: () => undefined, sleep: () => new Promise(() => undefined), onDeferredFailure: () => undefined });
+  };
+  const sent = MAX_PENDING_BATCHES + 3;
+  for (let n = 0; n < sent; n++) await assert.rejects(deliver([item(n, START + n, 500)], START + n));
+  assert.equal(buffer.pendingBatches, MAX_PENDING_BATCHES);
+  await deliver([item(sent, START + sent, 500)], START + sent);
+  assert.equal(buffer.pendingBatches, 0);
+  const evicted = health(db, START + sent, SHOP.sampling).reasons.filter(reason => reason.counter === "evicted").map(reason => [reason.reason, reason.count]).sort(([a], [b]) => String(a).localeCompare(String(b)));
+  assert.deepEqual(evicted, [["unsent_batches", 3], ["unsent_invocations", 3]]);
+  assert.equal(observedTotal(db) + 3, sent + 1, "every invocation is either counted or reported as unsent");
+});
+
+await test("a flush id is recorded in the transaction that applies its batch, so a rolled-back batch applies on retry, and it expires with the counts", () => {
+  const db = database();
+  const nowMs = START + 1_000;
+  const flush = { id: "6f1c5a2e-8d3b-4f7a-9c1e-2b4d6f8a0c3e", unsent: { batches: 0, invocations: 0, outcomes: 0, countedEvents: 0 } };
+  const counts: CountDelta[] = [{ bucketAt: START, version: VERSION, stage: "worker", route: "GET /search", operation: "", outcome: "ok", kept: 0, sampledOut: 3, capped: 0, cpuMsSum: 3, wallMsSum: 3, ...NO_SUMMARY_TOTALS }];
+  db.failOnRun = query => query.includes("observe_counts");
+  assert.throws(() => ingest(db, [], nowMs, [], { ...SHOP, counts }, flush));
+  db.failOnRun = null;
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_applied_flushes")[0]!.n, 0);
+  ingest(db, [], nowMs, [], { ...SHOP, counts }, flush);
+  ingest(db, [], nowMs + 1, [], { ...SHOP, counts }, flush);
+  assert.equal(observedTotal(db), 3);
+  const later = nowMs + RETENTION_MS + COUNT_BUCKET_MS;
+  const outcomesOnly = database();
+  ingest(outcomesOnly, [], nowMs, [{ version: VERSION, stage: "worker", outcome: "rejected-invalid", route: "other", eventAtMs: nowMs }], { ...SHOP, counts: [] }, flush);
+  assert.equal(nextCleanupAt(outcomesOnly, nowMs, { deleted: 0, evicted: 0, more: false }), nowMs + RETENTION_MS);
+  cleanup(db, later);
+  assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_applied_flushes")[0]!.n, 0);
+  assert.throws(() => createObserveService(database(), { now: () => nowMs, databaseBytes: () => 0 }, () => SHOP).ingest([], [], counts, { id: "not a flush id", unsent: flush.unsent }), /flush/u);
 });
 
 await test("a buffer with too many distinct keys is flushed at once", async () => {

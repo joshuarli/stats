@@ -1,14 +1,38 @@
 import { addCount, countBucket } from "./counts.ts";
 import { COUNT_BUCKET_MS } from "./limits.ts";
-import type { CountDelta, OutcomeEvent, Preparation } from "./model.ts";
+import { NOTHING_UNSENT, type CountDelta, type Flush, type OutcomeEvent, type Preparation, type UnsentTally } from "./model.ts";
 
 export const COUNT_FLUSH_INTERVAL_MS = COUNT_BUCKET_MS;
 export const IDLE_FLUSH_MS = 20_000;
 export const MAX_BUFFERED_COUNT_KEYS = 1_000;
+export const MAX_PENDING_BATCHES = 32;
+
+export interface StoreBatch {
+  readonly preparations: readonly Preparation[];
+  readonly outcomes: readonly OutcomeEvent[];
+  readonly counts: readonly CountDelta[];
+  readonly flush: Flush | null;
+}
+
+function anyUnsent(tally: UnsentTally): boolean {
+  return tally.batches + tally.invocations + tally.outcomes + tally.countedEvents > 0;
+}
+
+function plusDropped(tally: UnsentTally, batch: StoreBatch): UnsentTally {
+  const carried = batch.flush?.unsent ?? NOTHING_UNSENT;
+  return {
+    batches: tally.batches + carried.batches + 1,
+    invocations: tally.invocations + carried.invocations + batch.preparations.length,
+    outcomes: tally.outcomes + carried.outcomes + batch.outcomes.length,
+    countedEvents: tally.countedEvents + carried.countedEvents + batch.counts.reduce((sum, count) => sum + count.kept + count.sampledOut, 0)
+  };
+}
 
 export class CountBuffer {
   readonly intervalMs: number;
   #counts = new Map<string, CountDelta>();
+  #pending: StoreBatch[] = [];
+  #unsent: UnsentTally = NOTHING_UNSENT;
   #startedAtMs = 0;
   #lastAddedAtMs = 0;
   #timerArmedAtMs = Number.NEGATIVE_INFINITY;
@@ -21,8 +45,16 @@ export class CountBuffer {
     return this.#counts.size;
   }
 
+  get pendingBatches(): number {
+    return this.#pending.length;
+  }
+
+  #holdsWork(): boolean {
+    return this.#counts.size > 0 || this.#pending.length > 0;
+  }
+
   needsIdleTimer(nowMs: number): boolean {
-    return this.#counts.size > 0 && nowMs - this.#timerArmedAtMs >= IDLE_FLUSH_MS / 2;
+    return this.#holdsWork() && nowMs - this.#timerArmedAtMs >= IDLE_FLUSH_MS / 2;
   }
 
   armIdleTimer(nowMs: number): void {
@@ -30,7 +62,7 @@ export class CountBuffer {
   }
 
   isIdle(nowMs: number): boolean {
-    return this.#counts.size > 0 && nowMs - this.#lastAddedAtMs >= IDLE_FLUSH_MS / 2;
+    return this.#holdsWork() && nowMs - this.#lastAddedAtMs >= IDLE_FLUSH_MS / 2;
   }
 
   isDue(nowMs: number): boolean {
@@ -45,19 +77,28 @@ export class CountBuffer {
     for (const count of counts) addCount(this.#counts, count);
   }
 
-  drain(): CountDelta[] {
-    const drained = [...this.#counts.values()];
-    this.#counts.clear();
-    return drained;
+  seal(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], drainCounts: boolean): StoreBatch | null {
+    const counts = drainCounts ? [...this.#counts.values()] : [];
+    if (drainCounts) this.#counts.clear();
+    const unsent = this.#unsent;
+    this.#unsent = NOTHING_UNSENT;
+    const replayable = counts.length > 0 || outcomes.length > 0 || anyUnsent(unsent);
+    if (!replayable && preparations.length === 0) return null;
+    return { preparations, outcomes, counts, flush: replayable ? { id: crypto.randomUUID(), unsent } : null };
   }
 
-  restore(counts: readonly CountDelta[]): void {
-    for (const count of counts) addCount(this.#counts, count);
+  takePending(): StoreBatch[] {
+    return this.#pending.splice(0);
+  }
+
+  keepPending(failed: readonly StoreBatch[]): void {
+    this.#pending = [...failed, ...this.#pending];
+    while (this.#pending.length > MAX_PENDING_BATCHES) this.#unsent = plusDropped(this.#unsent, this.#pending.shift()!);
   }
 }
 
 export interface CountSink {
-  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[]): Promise<unknown>;
+  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[], flush: Flush | null): Promise<unknown>;
 }
 
 export interface SampledDelivery {
@@ -71,13 +112,15 @@ export interface SampledDelivery {
   readonly onDeferredFailure: (error: unknown) => void;
 }
 
-async function flush(buffer: CountBuffer, sink: CountSink, preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[]): Promise<void> {
-  const drained = buffer.drain();
-  try {
-    await sink.ingest(preparations, outcomes, drained);
-  } catch (error) {
-    buffer.restore(drained);
-    throw error;
+async function send(buffer: CountBuffer, sink: CountSink, current: StoreBatch | null): Promise<void> {
+  const queue = [...buffer.takePending(), ...(current === null ? [] : [current])];
+  for (const [index, batch] of queue.entries()) {
+    try {
+      await sink.ingest(batch.preparations, batch.outcomes, batch.counts, batch.flush);
+    } catch (error) {
+      buffer.keepPending(queue.slice(index));
+      throw error;
+    }
   }
 }
 
@@ -85,15 +128,18 @@ export async function deliverSampled(delivery: SampledDelivery): Promise<void> {
   const { buffer, batch, nowMs, sink } = delivery;
   const due = buffer.isDue(nowMs);
   buffer.add(batch.counts, nowMs);
-  if (due) {
-    await flush(buffer, sink, batch.preparations, batch.outcomes);
-    return;
+  try {
+    if (due || batch.preparations.length > 0 || batch.outcomes.length > 0) await send(buffer, sink, buffer.seal(batch.preparations, batch.outcomes, due));
+  } finally {
+    armIdleTimer(delivery);
   }
-  if (batch.preparations.length > 0 || batch.outcomes.length > 0) await sink.ingest(batch.preparations, batch.outcomes, []);
-  if (buffer.needsIdleTimer(nowMs)) {
-    buffer.armIdleTimer(nowMs);
-    delivery.defer(delivery.sleep(IDLE_FLUSH_MS).then(async () => {
-      if (buffer.isIdle(delivery.now())) await flush(buffer, sink, [], []);
-    }).catch(delivery.onDeferredFailure));
-  }
+}
+
+function armIdleTimer(delivery: SampledDelivery): void {
+  const { buffer, nowMs, sink } = delivery;
+  if (!buffer.needsIdleTimer(nowMs)) return;
+  buffer.armIdleTimer(nowMs);
+  delivery.defer(delivery.sleep(IDLE_FLUSH_MS).then(async () => {
+    if (buffer.isIdle(delivery.now())) await send(buffer, sink, buffer.seal([], [], true));
+  }).catch(delivery.onDeferredFailure));
 }

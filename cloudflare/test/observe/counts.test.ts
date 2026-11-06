@@ -415,7 +415,7 @@ await test("every route Nanoshop's closed matcher can name keeps its own count i
   ];
   assert.equal(new Set(labels).size, labels.length);
   const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => SHOP);
-  service.ingest([], [], labels.map((route, n): CountDelta => ({ bucketAt: START, version: VERSION, stage: "worker", route, operation: "", outcome: "ok", kept: 0, sampledOut: n + 1, capped: 0, cpuMsSum: 1, wallMsSum: 1, ...NO_SUMMARY_TOTALS })));
+  service.ingest([], [], labels.map((route, n): CountDelta => ({ bucketAt: START, version: VERSION, stage: "worker", route, operation: "", outcome: "ok", kept: 0, sampledOut: n + 1, capped: 0, cpuMsSum: 1, wallMsSum: 1, ...NO_SUMMARY_TOTALS })), null);
   const observed = new Map((await service.explore({ fromMs: START, toMs: START + COUNT_BUCKET_MS })).routes.map(route => [route.label, route.observed]));
   assert.deepEqual(labels.map(label => observed.get(label)), labels.map((_, n) => n + 1));
   assert.equal(observed.has(OTHER_ROUTE), false);

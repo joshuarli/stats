@@ -325,14 +325,36 @@ flushed within 20 s of the last batch, and a busy isolate flushes by the interva
 rule above. Each flush adds one to the bucket row's `flushes` column.
 
 Counts are exact for every event that reaches the collector and is flushed.
-A failed store call puts the counts it carried back in the buffer for the next
-flush, and the failure is logged or thrown. An isolate that is evicted, or that never gets its timer, loses at most one flush
-interval of sampled-out and excluded counts. Kept invocations are never lost this
-way, because the store counts them in the transaction that stores them. The loss
-shows as coverage below `reconciled` against analytics `worker.invocations`.
-Exactness across eviction would take one durable write per event, which is the
-cost buffering removes; the owner accepted that trade. A service that keeps
-everything is not buffered.
+Each store call from a sampled service's tail is a batch: the event's kept
+invocations, its outcome rows, and, when the buffer is due, the drained counts.
+A batch that carries counts or outcome rows gets a random flush id (a UUID). A
+batch whose store call fails, whether before or after the store committed it,
+waits in the isolate as a pending batch with its contents and flush id
+unchanged; it is never merged back into the buffer. The failure is still thrown,
+or logged when the idle timer sent it. Pending batches are sent again, oldest
+first and each under its own id, before the next batch the isolate sends, and by
+the idle timer, which a failed call arms. The store records each applied flush
+id in `observe_applied_flushes` in the same transaction that applies the batch,
+and skips a batch whose id it has already applied, counting it under health
+`duplicate` with reason `flush`. A retry after a commit therefore adds nothing,
+and a retry after a rollback applies the batch once. A batch of kept
+invocations alone gets no flush id, because the store already deduplicates an
+invocation by its key and counts it as kept only when it stores it. Flush ids
+are kept for the count retention window and deleted by cleanup.
+
+An isolate holds at most `MAX_PENDING_BATCHES` (32) pending batches per
+service. Past that the oldest is dropped, and what it held is tallied: one
+batch, its invocations, its outcome rows, and the events its counts covered.
+The tally rides, under a flush id, on the next batch the isolate sends, and the
+store records it under health `evicted` with reasons `unsent_batches`,
+`unsent_invocations`, `unsent_outcomes`, and `unsent_counted_events`. An isolate
+that is evicted, or that never gets its timer, loses its buffered counts, at
+most one flush interval of sampled-out and excluded events, and its pending
+batches with them; those losses are silent in health and show only as coverage
+below `reconciled` against analytics `worker.invocations`. Exactness across
+eviction would take one durable write per event, which is the cost buffering
+removes; the owner accepted that trade. A service that keeps everything is not
+buffered, and its failed store calls are thrown, not retried.
 
 A sampled service also caps its always-kept invocations. `keepReason` keeps
 errors, status 500 and above, non-ok outcomes, slow events and untraced events

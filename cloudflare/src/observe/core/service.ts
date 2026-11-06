@@ -5,7 +5,7 @@ import { representativeFrame, sha256Hex } from "./grouping.ts";
 import { RETENTION_MS } from "./limits.ts";
 import { createSymbolicator } from "./symbolicate.ts";
 import {
-  cleanup, eventWindow, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
+  cleanup, decodeFlush, eventWindow, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
   KEEP_ALL_COUNTING, type ArtifactResult, type CleanupResult, type CountingPolicy, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
   type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
 } from "./store.ts";
@@ -34,7 +34,7 @@ export interface ObserveService {
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
 
 export interface MaintainedService extends ObserveService {
-  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[]): IngestResult;
+  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[], flush: unknown): IngestResult;
   cleanup(): { readonly cleaned: CleanupResult; readonly nextAtMs: number | null };
 }
 
@@ -119,7 +119,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
       if (problem !== null) return { problem };
       return { result: recordArtifact(db, { ...artifact, digest: await sha256Hex(artifact.map) }, clock.now()) };
     },
-    ingest: (preparations, outcomes, counts) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }),
+    ingest: (preparations, outcomes, counts, flush) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush)),
     cleanup: () => {
       const now = clock.now();
       const cleaned = cleanup(db, now);
