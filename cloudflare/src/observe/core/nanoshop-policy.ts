@@ -72,6 +72,8 @@ export const NANOSHOP_ROUTES = [
   { name: "admin-order-access-revoke", method: "POST", pattern: "/admin/orders/{number}/access/revoke" },
   { name: "admin-order-slip", method: "GET", pattern: "/admin/orders/{number}/packing-slip" },
   { name: "admin-media", method: "GET", pattern: "/admin/media/{media_id}/{file}" },
+  { name: "admin-operator-read", method: "GET", pattern: "/admin/operator/{action}" },
+  { name: "admin-operator-write", method: "POST", pattern: "/admin/operator/{action}" },
   { name: "webhook", method: "POST", pattern: "/webhooks/stripe" }
 ] as const;
 
