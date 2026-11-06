@@ -222,7 +222,7 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
         <table class="data-table compact deployment-table">
           <thead><tr><th>Metric</th><th class="numeric">Before → after</th></tr></thead>
           <tbody>
-            <For each={props.comparison.metrics}>{metric => (
+            <For each={props.comparison.metrics.filter(metric => metric.supersededBy === undefined)}>{metric => (
               <tr>
                 <th scope="row">{metric.label}</th>
                 <td class="numeric" title={metric.verdict.replaceAll("-", " ")}>
