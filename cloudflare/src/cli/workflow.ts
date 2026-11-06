@@ -22,6 +22,12 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    pnpm --dir cloudflare -s statsctl observe operations --project nanoshop-storied --window 1h --json
    observe operations totals one exact window by operation for any observed service: count,
    failed, CPU and wall, plus rows, statements and lag where the service publishes them.
+   pnpm --dir cloudflare -s statsctl observe rollouts --settle 3h --within 24h --json
+   observe rollouts reads the impact report of each rollout that started between 24h and 3h ago,
+   for every observed service (or one, with --project), and lists only rollouts with a new issue
+   group, a regression, or a failure-rate or route CPU change beyond twice its standard error.
+   Exit 0 nothing to report, 8 findings, each with the commands to drill in. It is stateless: a
+   rollout is listed on every run until it ages past --within. Run it from a timer or a routine.
 
 3. Save a snapshot and replay it offline
    pnpm --dir cloudflare -s statsctl snapshot --project stats --window 24h --out .work/statsctl/snapshots/stats-24h.json

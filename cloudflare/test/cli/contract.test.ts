@@ -24,7 +24,7 @@ function errorOf(stdout: string): { code: string; message: string } {
 const jsonRun = (origin: FakeOrigin, args: readonly string[], extra: Record<string, string> = {}) => runCli([...args, "--json", "--origin", origin.origin], tokenEnv(extra));
 
 await test("the exit code map matches the contract", () => {
-  assert.deepEqual({ ...EXIT }, { ok: 0, usage: 2, auth: 3, transport: 4, pending: 5, unchanged: 6, regressed: 7 });
+  assert.deepEqual({ ...EXIT }, { ok: 0, usage: 2, auth: 3, transport: 4, pending: 5, unchanged: 6, regressed: 7, findings: 8 });
 });
 
 await test("unknown options, missing selectors, and conflicting selectors exit 2", async () => {

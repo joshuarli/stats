@@ -33,7 +33,7 @@ function trailingWindow(context: CommandContext): Window & { readonly span: stri
   return { fromMs: toMs - length, toMs, span };
 }
 
-async function read<T>(context: CommandContext, service: string, path: string, decode: (value: unknown) => T): Promise<T> {
+export async function read<T>(context: CommandContext, service: string, path: string, decode: (value: unknown) => T): Promise<T> {
   const fetched = await context.http.getJson(`/api/observe/${service}${path}`, decode);
   if (fetched.kind !== "ok") throw transportError("contract", `${path} answered not-modified to an unconditional request`);
   return fetched.value;

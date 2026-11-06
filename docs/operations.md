@@ -197,10 +197,34 @@ the policy fields; this page does not copy them. The same binary also runs as
 first and fix anything unhealthy before trusting a verdict. Exit codes: 0 read
 succeeded or improved, 2 usage, 3 authentication, 4 transport or contract
 failure, 5 pending or insufficient data, 6 unchanged or confounded, 7
-regressed. `--json` prints one `statsctl/1` document. Resumable verdict state
+regressed, 8 `observe rollouts` found settled rollouts to look at. `--json` prints one `statsctl/1` document. Resumable verdict state
 and snapshots live under `.work/statsctl/`. Authentication runs
 `cf access token <origin>`; set `STATSCTL_AUTH_COMMAND` and
 `STATSCTL_AUTH_HEADER` to use another credential source.
+
+### Checking settled rollouts
+
+```sh
+pnpm --dir cloudflare -s statsctl observe rollouts --settle 3h --within 24h --json
+pnpm --dir cloudflare -s statsctl observe rollouts --project nanoshop-storied
+```
+
+`observe rollouts` is read-only and stateless. For each rollout of an observed
+service (or of `--project`) that started between `--within` ago (default 24h)
+and `--settle` ago (default 3h), it reads the same impact report as
+`observe deployment` and lists the rollout only when it has a new issue group, a
+regression, a failure-rate change, or a route CPU change larger than twice its
+combined standard error; the failure-rate spread is the same rule applied to the
+difference of two proportions. Changes are reported in either direction. Each
+finding carries the rollout id, service, introduced versions, the numbers, and
+the commands to drill in. The `statsctl/1` payload is `{settle, within,
+startedFromMs, startedToMs, checked, findings}`. Exit 0 means nothing to
+report, 8 means findings, and 2, 3, and 4 are the usual usage, authentication,
+and transport or contract failures. The command keeps no record of what it has
+reported, so a rollout with findings is listed again on every run until it ages
+past `--within`; choose `--within` to bound that repetition. Scheduling it (a
+host timer or an agent routine) and the alert destination are not set up and
+need a production Access credential.
 
 Every command reads except `check ingest`, which writes one flagged sample and
 takes the `synthetic-check` host's credential from
