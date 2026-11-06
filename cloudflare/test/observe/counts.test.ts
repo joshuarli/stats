@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
 import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES, type ServicePolicy } from "../../src/observe/core/policies.ts";
+import { NANOSHOP_ROUTES, nanoshopWorkerRoute } from "../../src/observe/core/nanoshop-policy.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { NO_SUMMARY_TOTALS, OTHER_ROUTE, type CountDelta, type SummaryTotals } from "../../src/observe/core/model.ts";
 import { cleanup, health, initializeStore, ingest, nextCleanupAt, statsWindow } from "../../src/observe/core/store.ts";
@@ -131,7 +132,7 @@ await test("counts over 10,000 seeded events equal the input exactly, and kept r
     at += slice.length;
     const nowMs = Math.max(...slice.map(item => item.eventTimestamp ?? 0)) + 1_000;
     const batch = await prepareTailItems(slice, SHOP, nowMs, new AlwaysKeptCap());
-    ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
+    ingest(db, batch.preparations, nowMs, batch.outcomes, { ...SHOP, counts: batch.counts });
   }
   const want = new Map<string, { count: number; cpu: number; wall: number }>();
   for (const entry of expected) {
@@ -188,7 +189,7 @@ await test("every always-keep case is stored with its count, and an untraced inv
     workerItem(7, START + 7, "/cart", "GET", 200, "request.cart", { diagnosticsChannelEvents: [operationMessage(hex(8, 32), hex(8, 16), "request.cart"), { channel: OBSERVE_CHANNEL, message: { kind: "error", operation: "request.cart", name: "Error", message: "", stack: null } }] })
   ];
   const batch = await prepareTailItems(cases, policy, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, cases.length);
   assert.equal(batch.counts.length, 0);
   const row = db.rows<{ kept: number; sampled_out: number }>("SELECT SUM(kept) AS kept, SUM(sampled_out) AS sampled_out FROM observe_count_entries")[0]!;
@@ -205,7 +206,7 @@ await test("an invalid event of a sampled service keeps today's rejection and is
   const badVersion = workerItem(1, START + 1, "/cart", "GET", 200, "request.cart", { scriptVersion: { id: "bad version" } });
   const badStage = workerItem(2, START + 2, "/cart", "GET", 200, "request.cart", { executionModel: "dispatch" });
   const batch = await prepareTailItems([badVersion, badStage], policy, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_counts").length, 0);
   assert.deepEqual(db.rows<{ outcome: string; count: number }>("SELECT outcome, SUM(count) AS count FROM observe_outcomes GROUP BY outcome").map(row => ({ ...row })), [{ outcome: "rejected-invalid", count: 2 }]);
 });
@@ -220,7 +221,7 @@ await test("excluded events of a sampled service are counted by outcome, not sto
     workerItem(4, START + 4, "/nope", "GET", 404, null)
   ];
   const batch = await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { ...SHOP, counts: batch.counts });
   assert.equal(db.rows("SELECT 1 FROM observe_invocations").length, 0);
   assert.equal(db.rows("SELECT 1 FROM observe_outcomes").length, 0);
   assert.deepEqual(db.rows<{ outcome: string; route: string; sampled_out: number }>("SELECT outcome, route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY outcome, route ORDER BY outcome, route").map(row => ({ ...row })), [
@@ -238,7 +239,7 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
   const nowMs = START + 10_000;
   const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 1, ...NO_SUMMARY_TOTALS };
   const counts = Array.from({ length: MAX_OUTCOME_ROUTES_PER_CLASS + 5 }, (_, n): CountDelta => ({ ...base, route: `GET /r${n}` }));
-  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts });
+  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS, counts });
   const routes = db.rows<{ route: string; sampled_out: number }>("SELECT route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY route");
   assert.equal(routes.length, MAX_OUTCOME_ROUTES_PER_CLASS + 1);
   assert.equal(routes.find(row => row.route === OTHER_ROUTE)?.sampled_out, 5);
@@ -255,7 +256,7 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
     { ...base, workLagMsSum: 4 },
     { ...base, bucketAt: nowMs - RETENTION_MS - 2 * COUNT_BUCKET_MS - ((nowMs - RETENTION_MS) % COUNT_BUCKET_MS) }
   ];
-  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: refused });
+  ingest(db, [], nowMs, [], { ...SHOP, counts: refused });
   const reasons = health(db, nowMs, SHOP.sampling).reasons.map(reason => [reason.counter, reason.reason, reason.count]);
   assert.deepEqual(reasons, [["rejected", "invalid_count", 10], ["expired", "counts", 1]]);
   assert.equal(db.rows<{ n: number }>("SELECT SUM(sampled_out) AS n FROM observe_count_entries")[0]!.n, MAX_OUTCOME_ROUTES_PER_CLASS + 5);
@@ -279,7 +280,7 @@ await test("a store written before summaries reads its stored counts with no row
   recordCounts(old, START + 10_000, [{
     bucketAt: START, version: VERSION, stage: "object", route: "TenantStore.alarm", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 10,
     rowAccounts: 1, rowsRead: 9, rowsWritten: 2, statements: 4, workLagCount: 1, workLagMsMax: 700, workLagMsSum: 700
-  }], { untraced: 0, flush: 1 });
+  }], { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
   assert.deepEqual(statsWindow(old, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, SHOP.sampling).counts, [{
     version: VERSION, stage: "object", route: "TenantStore.alarm", operation: "", count: 4, failed: 0, cpuMsSum: 4, wallMsSum: 40,
     rowAccounts: 1, rowsRead: 9, rowsWritten: 2, statements: 4, workLagCount: 1, workLagMsMax: 700, workLagMsSum: 700
@@ -293,7 +294,7 @@ await test("a count delta sent by an older tail Worker is counted with zero summ
   const preOperation = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /cart", outcome: "failed", kept: 1, sampledOut: 2, capped: 0, cpuMsSum: 3, wallMsSum: 9 };
   const preCap = { bucketAt: START, version: VERSION, stage: "object", route: "TenantStore.readCart", outcome: "ok", kept: 0, sampledOut: 4, cpuMsSum: 4, wallMsSum: 8 };
   const mistyped = { ...preSummaries, route: "GET /x", rowsRead: "9" };
-  const recorded = recordCounts(db, nowMs, [preSummaries, preOperation, preCap, mistyped], { untraced: 0, flush: 1 });
+  const recorded = recordCounts(db, nowMs, [preSummaries, preOperation, preCap, mistyped], { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
   assert.deepEqual(recorded, { invalid: 1, expired: 0 });
   assert.deepEqual(statsWindow(db, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, SHOP.sampling).counts, [
     { version: VERSION, stage: "object", route: "TenantStore.readCart", operation: "", count: 4, failed: 0, cpuMsSum: 4, wallMsSum: 8, ...NO_SUMMARY_TOTALS },
@@ -306,7 +307,7 @@ await test("a count delta sent by an older tail Worker is counted with zero summ
 await test("a count with a future bucket lands in the current bucket", () => {
   const db = database();
   const nowMs = START + 10_000;
-  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS }] });
+  ingest(db, [], nowMs, [], { ...SHOP, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS }] });
   assert.deepEqual(db.rows<{ bucket_at: number }>("SELECT bucket_at FROM observe_counts").map(row => ({ ...row })), [{ bucket_at: START }]);
 });
 
@@ -323,7 +324,7 @@ await test("health reports kept, sampled out, excluded, untraced and flushed bat
     workerItem(5, START + 5, "/static/x", "GET", 200, null)
   ];
   const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   const sampledHealth = health(db, nowMs, quiet).sampling;
   assert.deepEqual(sampledHealth, { policy: quiet, kept: 2, sampledOut: 2, excluded: 1, untraced: 1, flushes: 1, capped: 0 });
   assert.equal("sampling" in health(db, nowMs), false);
@@ -335,12 +336,12 @@ await test("a service that keeps everything writes nothing to the count tables, 
   const items = [workerItem(1, START + 1, "/search", "GET", 200, "request.search"), workerItem(2, START + 2, "/static/x", "GET", 200, null)];
   const batch = await prepareTailItems(items, POLICIES["usr-memories"], nowMs, new AlwaysKeptCap());
   assert.deepEqual(batch.counts, []);
-  ingest(all, batch.preparations, nowMs, batch.outcomes, { sampling: POLICIES["usr-memories"].sampling, counts: batch.counts });
+  ingest(all, batch.preparations, nowMs, batch.outcomes, { sampling: POLICIES["usr-memories"].sampling, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   assert.equal(all.rows("SELECT 1 FROM observe_counts").length, 0);
 
   const db = database();
   const shop = await prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap());
-  ingest(db, shop.preparations, nowMs, shop.outcomes, { sampling: SHOP.sampling, counts: shop.counts });
+  ingest(db, shop.preparations, nowMs, shop.outcomes, { ...SHOP, counts: shop.counts });
   const later = nowMs + RETENTION_MS + 2 * HEALTH_BUCKET_MS;
   assert.ok(nextCleanupAt(db, nowMs, { deleted: 0, evicted: 0, more: false }) !== null);
   cleanup(db, later);
@@ -357,8 +358,8 @@ await test("the service answers a sampled window, explore, and traces with the p
     workerItem(10, START + 10, "/search", "GET", 500, "request.search")
   ];
   const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
-  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => quiet);
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
+  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => ({ sampling: quiet, routesPerClass: SHOP.routesPerClass }));
   const summary = { keepPerMillion: 0, kept: 1, observed: 8 };
   const explored = await service.explore({ fromMs: START, toMs: START + COUNT_BUCKET_MS });
   assert.deepEqual(explored.sampling, summary);
@@ -391,10 +392,10 @@ await test("explore lists a sampled route with no kept invocation, with its exac
     workerItem(10, START + 10, "/search", "GET", 500, "request.search")
   ];
   const batch = await prepareTailItems(items, policy, nowMs, new AlwaysKeptCap());
-  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, counts: batch.counts });
+  ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   const quietOnly = await prepareTailItems(Array.from({ length: 5 }, (_, n) => workerItem(20 + n, START + 20 + n, "/cart", "GET", 200, "request.cart")), policy, nowMs, new AlwaysKeptCap());
-  ingest(db, quietOnly.preparations, nowMs, quietOnly.outcomes, { sampling: quiet, counts: quietOnly.counts });
-  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => quiet);
+  ingest(db, quietOnly.preparations, nowMs, quietOnly.outcomes, { sampling: quiet, routesPerClass: SHOP.routesPerClass, counts: quietOnly.counts });
+  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => ({ sampling: quiet, routesPerClass: SHOP.routesPerClass }));
   const explored = await service.explore({ fromMs: START, toMs: START + COUNT_BUCKET_MS });
   const cart = explored.routes.find(route => route.label === "GET /cart");
   assert.ok(cart !== undefined);
@@ -402,6 +403,25 @@ await test("explore lists a sampled route with no kept invocation, with its exac
   const search = explored.routes.find(route => route.label === "GET /search");
   assert.deepEqual([search?.requests, search?.observed, search?.unmeasured], [1, 4, undefined]);
   assert.deepEqual(decodeExploration(JSON.parse(JSON.stringify(explored))), explored);
+});
+
+await test("every route Nanoshop's closed matcher can name keeps its own count in one bucket, and explore reports each", async () => {
+  const db = database();
+  const nowMs = START + 10_000;
+  const labels = [
+    ...NANOSHOP_ROUTES.map(route => `${route.method} ${nanoshopWorkerRoute(route.pattern.replace(/\{[a-z_]+\}/gu, "x"))}`),
+    ...["GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"].map(method => `${method} unmatched`),
+    "scheduled 7 * * * *"
+  ];
+  assert.equal(new Set(labels).size, labels.length);
+  const service = createObserveService(db, { now: () => nowMs, databaseBytes: () => 0 }, () => SHOP);
+  service.ingest([], [], labels.map((route, n): CountDelta => ({ bucketAt: START, version: VERSION, stage: "worker", route, operation: "", outcome: "ok", kept: 0, sampledOut: n + 1, capped: 0, cpuMsSum: 1, wallMsSum: 1, ...NO_SUMMARY_TOTALS })));
+  const observed = new Map((await service.explore({ fromMs: START, toMs: START + COUNT_BUCKET_MS })).routes.map(route => [route.label, route.observed]));
+  assert.deepEqual(labels.map(label => observed.get(label)), labels.map((_, n) => n + 1));
+  assert.equal(observed.has(OTHER_ROUTE), false);
+  assert.equal(SHOP.routesPerClass, labels.length);
+  assert.equal(POLICIES.stats.routesPerClass, MAX_OUTCOME_ROUTES_PER_CLASS);
+  assert.equal(POLICIES["usr-memories"].routesPerClass, MAX_OUTCOME_ROUTES_PER_CLASS);
 });
 
 function summaryOf(random: () => number): SummaryTotals {
@@ -452,7 +472,7 @@ await test("many flushes from several isolates merge into one row per bucket and
       if (next() < 0.3) buckets.push(START + Math.floor(next() * 4) * COUNT_BUCKET_MS);
       const flush = buckets.flatMap(bucketAt => flushOf(next, bucketAt, 14, 1 + Math.floor(next() * 200)));
       const before = db.rowsWritten();
-      recordCounts(db, nowMs, flush, { untraced: 0, flush: 1 });
+      recordCounts(db, nowMs, flush, { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
       assert.equal(db.rowsWritten() - before, new Set(flush.map(delta => delta.bucketAt)).size, "a flush writes one row per bucket it touches, however many keys it carries");
       sent.push(...flush);
       flushes++;
@@ -473,8 +493,8 @@ await test("the route cap holds across flushes because the stored bucket remembe
   const db = database();
   const nowMs = START + 10_000;
   const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS };
-  for (let n = 0; n < MAX_OUTCOME_ROUTES_PER_CLASS + 5; n++) recordCounts(db, nowMs, [{ ...base, route: `GET /r${n}` }], { untraced: 0, flush: 1 });
-  recordCounts(db, nowMs, [{ ...base, route: "GET /r0" }], { untraced: 0, flush: 1 });
+  for (let n = 0; n < MAX_OUTCOME_ROUTES_PER_CLASS + 5; n++) recordCounts(db, nowMs, [{ ...base, route: `GET /r${n}` }], { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
+  recordCounts(db, nowMs, [{ ...base, route: "GET /r0" }], { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
   const rows = db.rows<{ route: string; sampled_out: number }>("SELECT route, sampled_out FROM observe_count_entries");
   assert.equal(rows.length, MAX_OUTCOME_ROUTES_PER_CLASS + 1);
   assert.equal(rows.find(row => row.route === OTHER_ROUTE)?.sampled_out, 5);
@@ -487,9 +507,9 @@ await test("retention deletes one row per expired bucket whatever its key count,
   const old = START - 2 * COUNT_BUCKET_MS;
   const fresh = START + RETENTION_MS;
   const nowMs = fresh + 10_000;
-  recordCounts(db, old + RETENTION_MS - 60_000, [...flushOf(next, old, 14, 300), ...flushOf(next, old + COUNT_BUCKET_MS, 14, 300)], { untraced: 0, flush: 1 });
+  recordCounts(db, old + RETENTION_MS - 60_000, [...flushOf(next, old, 14, 300), ...flushOf(next, old + COUNT_BUCKET_MS, 14, 300)], { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
   const kept = flushOf(next, fresh - (fresh % COUNT_BUCKET_MS), 14, 300);
-  recordCounts(db, nowMs, kept, { untraced: 0, flush: 1 });
+  recordCounts(db, nowMs, kept, { untraced: 0, flush: 1 }, MAX_OUTCOME_ROUTES_PER_CLASS);
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_counts")[0]!.n, 3);
   const before = db.rowsWritten();
   cleanupCounts(db, nowMs - RETENTION_MS);
@@ -505,7 +525,7 @@ function failures(from: number, count: number, atMs: number): TailItem[] {
 async function deliverInBatches(db: SqlStatements, policy: ServicePolicy, cap: AlwaysKeptCap, items: readonly TailItem[], nowMs: number): Promise<void> {
   for (let at = 0; at < items.length; at += 7) {
     const batch = await prepareTailItems(items.slice(at, at + 7), policy, nowMs, cap);
-    ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: policy.sampling, counts: batch.counts });
+    ingest(db, batch.preparations, nowMs, batch.outcomes, { sampling: policy.sampling, routesPerClass: SHOP.routesPerClass, counts: batch.counts });
   }
 }
 

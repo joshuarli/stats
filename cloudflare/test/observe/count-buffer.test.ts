@@ -191,7 +191,7 @@ await test("10,000 seeded events, delivered one per tail batch with buffering on
   const db = database();
   const direct: CountSink = {
     ingest: async (preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[]) => {
-      ingest(db, preparations as Preparation[], Date.now(), outcomes, { sampling: SHOP.sampling, counts });
+      ingest(db, preparations as Preparation[], Date.now(), outcomes, { ...SHOP, counts });
     }
   };
   const h = harness(direct);
@@ -222,7 +222,7 @@ await test("10,000 seeded events, delivered one per tail batch with buffering on
 
 await test("an evicted isolate loses at most the counts buffered since its last flush", async () => {
   const db = database();
-  const direct: CountSink = { ingest: async (preparations, outcomes, counts) => { ingest(db, preparations as Preparation[], START + 10 * INTERVAL, outcomes, { sampling: SHOP.sampling, counts }); } };
+  const direct: CountSink = { ingest: async (preparations, outcomes, counts) => { ingest(db, preparations as Preparation[], START + 10 * INTERVAL, outcomes, { ...SHOP, counts }); } };
   const first = harness(direct);
   let events = 0;
   for (let n = 0; n < 200; n++) { await first.deliver([quietItem(n, START)], START + n * 500); events++; }
@@ -247,7 +247,7 @@ await test("rejected-invalid events past the always-kept cap are counted in the 
   assert.equal(batch.outcomes.length + counted[0]!.sampledOut, total);
 
   const db = database();
-  ingest(db, batch.preparations, START + 1_000, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
+  ingest(db, batch.preparations, START + 1_000, batch.outcomes, { ...SHOP, counts: batch.counts });
   const rows = db.rows<{ outcome: string; n: number }>("SELECT outcome, SUM(sampled_out) AS n FROM observe_count_entries WHERE outcome = 'rejected-invalid' GROUP BY outcome");
   assert.deepEqual(rows.map(row => [row.outcome, row.n]), [["rejected-invalid", 7]]);
 });

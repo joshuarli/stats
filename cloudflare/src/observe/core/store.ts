@@ -461,12 +461,18 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
   return differing.length === 0 ? "errors" : differing.sort().join(", ");
 }
 
-export interface Counting {
+export interface CountingPolicy {
   readonly sampling: Sampling;
+  readonly routesPerClass: number;
+}
+
+export const KEEP_ALL_COUNTING: CountingPolicy = { sampling: KEEP_ALL, routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS };
+
+export interface Counting extends CountingPolicy {
   readonly counts: readonly unknown[];
 }
 
-const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
+const NOT_COUNTED: Counting = { ...KEEP_ALL_COUNTING, counts: [] };
 
 export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
@@ -508,7 +514,7 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
     }
     recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
-    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 });
+    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 }, counting.routesPerClass);
     for (let n = 0; n < recorded.invalid; n++) events.push({ counter: "rejected", reason: "invalid_count", example: null });
     for (let n = 0; n < recorded.expired; n++) events.push({ counter: "expired", reason: "counts", example: null });
     recordHealth(db, nowMs, events);

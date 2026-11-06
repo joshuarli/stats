@@ -293,8 +293,14 @@ store counts a kept invocation in the same transaction that stores it, so a
 duplicate is never counted twice. The tail counts everything it does not keep
 (a sampled-out invocation is always `ok`, because every failure is kept, and an
 excluded event is never kept) and sends those counts with the batch. Each
-bucket, version, stage and outcome keeps at most 32 routes, then folds the rest
-into `other`. For a sampled service the window's invocation rows and its
+bucket, version, stage and outcome keeps at most the policy's `routesPerClass`
+routes, then folds the rest into `other` in arrival order. A policy whose route
+matcher is closed sets it from the labels that matcher can produce: Nanoshop's
+is its route table plus one `METHOD unmatched` label per standard HTTP method
+plus its one cron trigger (`NANOSHOP_ROUTES_PER_CLASS` in
+`src/observe/core/nanoshop-policy.ts`), so every Nanoshop route keeps its own
+count and explore never reports a real route as observed 0 because others
+arrived first. A policy with an open-ended matcher keeps the 32-route bound. For a sampled service the window's invocation rows and its
 excluded outcome rows come from this table, so they total every event, kept or
 not. The table has no row for a service that keeps everything, so `stats` and
 `usr-memories` write and answer exactly as before.

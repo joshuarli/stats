@@ -1,12 +1,12 @@
 import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, type ObservedRollout, type OutcomeEvent, type Preparation, type Stage, type VersionLabel } from "./model.ts";
 import { observedByRoute, samplingSummary } from "./counts.ts";
-import { KEEP_ALL, type Sampling } from "./sampling.ts";
+import type { Sampling } from "./sampling.ts";
 import { representativeFrame, sha256Hex } from "./grouping.ts";
 import { RETENTION_MS } from "./limits.ts";
 import { createSymbolicator } from "./symbolicate.ts";
 import {
   cleanup, eventWindow, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
-  type ArtifactResult, type CleanupResult, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
+  KEEP_ALL_COUNTING, type ArtifactResult, type CleanupResult, type CountingPolicy, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
   type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
 } from "./store.ts";
 import type { SqlStatements } from "../../core/sql.ts";
@@ -43,7 +43,8 @@ export interface ServiceClock {
   readonly databaseBytes: () => number;
 }
 
-export function createObserveService(db: SqlStatements, clock: ServiceClock, sampling: () => Sampling = () => KEEP_ALL): MaintainedService {
+export function createObserveService(db: SqlStatements, clock: ServiceClock, policy: () => CountingPolicy = () => KEEP_ALL_COUNTING): MaintainedService {
+  const sampling = (): Sampling => policy().sampling;
   const symbolicate = createSymbolicator((version, file) => readArtifact(db, version, file));
   const withSources = <T extends Occurrence>(occurrence: T): T => ({ ...occurrence, frames: symbolicate(occurrence.frames, occurrence.version) });
   const withFrame = <T extends { readonly fingerprint: string; readonly frame: string | null }>(issue: T): T => {
@@ -118,7 +119,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, sam
       if (problem !== null) return { problem };
       return { result: recordArtifact(db, { ...artifact, digest: await sha256Hex(artifact.map) }, clock.now()) };
     },
-    ingest: (preparations, outcomes, counts) => ingest(db, preparations, clock.now(), outcomes, { sampling: sampling(), counts }),
+    ingest: (preparations, outcomes, counts) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }),
     cleanup: () => {
       const now = clock.now();
       const cleaned = cleanup(db, now);

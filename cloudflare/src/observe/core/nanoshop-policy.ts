@@ -122,4 +122,9 @@ export function nanoshopLabelOperation(stage: Stage, label: string): NanoshopOpe
   return RPC_OPERATIONS.get(label.slice(label.lastIndexOf(".") + 1)) ?? null;
 }
 
+const UNMATCHED_METHODS = ["GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"] as const;
+const CRON_TRIGGERS = 1;
+
+export const NANOSHOP_ROUTES_PER_CLASS = NANOSHOP_ROUTES.length + UNMATCHED_METHODS.length + CRON_TRIGGERS;
+
 export const NANOSHOP_SAMPLING = sampled({ keepPerMillion: 2_000, slowWallMs: 1_000, slowCpuMs: 50 });
