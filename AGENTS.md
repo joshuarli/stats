@@ -71,7 +71,6 @@ go under `.work/tmp`.
 | Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
-| Portable core: stats on Node with Cloudflare as an adapter | `docs/portable-core-campaign.md` |
 | Complete local stack: the Cloudflare topology offline | `docs/CAMPAIGN-LOCAL-STACK.md` |
 | Service deployments: deployment tracking for servers | `docs/service-deployments-campaign.md` |
 | Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |

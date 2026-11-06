@@ -26,6 +26,14 @@ The client bounds the request write and response-header read with the request
 timeout; the agent bounds the body read to the remainder of the same deadline.
 Connection setup is bounded separately by the same duration.
 
+## Node server
+
+`cloudflare/src/node/` adds no dependency. It uses `node:http`, `node:sqlite`,
+`node:zlib`, and timers, and runs under the pinned Node with
+`--experimental-strip-types`. The container image is `node:26.12.1-alpine`.
+A new dependency there needs a written reason, with its build time and image
+size in the commit body.
+
 ## esbuild in `@stats/telemetry`
 
 The production build and deploy are esbuild-free: `vite build` writes the Build

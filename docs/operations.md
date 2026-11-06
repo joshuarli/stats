@@ -397,16 +397,29 @@ the socket with `docker exec` and prints the tag, with the full output in
 
 The container has no network at all: Docker's bridge network would present
 every request as coming from its gateway, and host networking would put a
-listener on the host, so the only way in is the socket (`Decision 1` in
-`docs/portable-core-campaign.md`). Expose it to the tailnet with
-`tailscale serve` running as root:
+listener on the host. The Node auth adapter trusts only a loopback peer or the
+socket, so the socket in a `0700` directory is the one entrance, reachable by
+the owning user and root and by no other process on the host. Expose it to the
+tailnet with `tailscale serve` running as root:
 
 ```sh
 doas tailscale serve --bg --http=18790 unix:/home/josh/.local/share/stats-node-run/stats.sock
 ```
 
 This replaces the earlier `http://127.0.0.1:18791` target. The deploy stops
-if the host has under 50 GB free.
+if the host has under 50 GB free. The Node instance is a separate installation:
+it starts empty, shares no data with the Cloudflare one, and has no import or
+agent cutover. `tailscale serve` attaches the caller's identity to every
+tailnet request, so `deploy/deployed-smoke.sh` reports its no-credentials check
+as a failure against the tailnet origin; the rejection paths are covered by
+`make node-e2e`.
+
+The container runs with `--cgroup-parent=/stats.slice/stats-node.slice`, so the
+unit `stats-node.slice` names a cgroup that persists across deploys and counts
+the container's CPU, memory, and I/O. A host agent reports that unit as a
+service (README, `services`). The agent accepts only an `https://` endpoint or
+loopback `http://`, so a remote agent reports to this instance through a
+`tailscale serve --https` entry on the same socket.
 
 To roll back, run `docker run` for an earlier `stats-node:<commit>` image
 with the same flags. To remove the deployment, run `docker rm -f

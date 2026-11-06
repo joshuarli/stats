@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 80
+Next: 81
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -112,4 +112,13 @@ Next: 80
 - **Problem:** `PROJECT_SETTLE_MS` decides when a missing counter bucket reads as zero. It was set from 2026-11-01 readings only: the newest Worker event was 6.7 minutes old under steady traffic and 22 minutes old in a quiet period. Too short a settle time writes zeros that late rows would have filled, too long delays charts and verdicts. A parity re-run on 2026-11-06 found one bucket (11:10 on 2026-11-05) that stored 44 events against 8 from the source, which the lag explanation does not cover.
 - **Recommendation:** Measure the newest-event age against now over several days of traffic, including quiet nights, and change `PROJECT_SETTLE_MS` only if the 99th percentile approaches it. Investigate the 11:10 bucket with `node cloudflare/scripts/check-parity.mjs`.
 - **Fix with:** root-cause
+- **Effort:** S
+
+### STA-80 · P4 · The projects page on the Node target points at a Cloudflare config file
+
+- **Area:** Docs
+- **Where:** `cloudflare/src/client/pages/ProjectsPage.tsx:43`
+- **Problem:** The Node server has no project collector, so its project registry is always empty and the page shows "Projects are declared in cloudflare/cloudflare.config.ts." That tells a Node user to edit a file that has no effect on their instance.
+- **Recommendation:** Show an empty-state detail that says the target has no project collector when the server reports an empty registry on the Node target, and keep the current text for Cloudflare.
+- **Fix with:** none
 - **Effort:** S
