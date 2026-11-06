@@ -3,7 +3,10 @@ set -eu
 
 base=${STATS_URL:-https://stats.17166969.xyz}
 work=$(mktemp -d "${TMPDIR:-/tmp}/stats-smoke.XXXXXX")
-trap 'rm -rf "$work"' 0 1 2 15
+trap 'rm -rf "$work"' 0
+trap 'exit 129' 1
+trap 'exit 130' 2
+trap 'exit 143' 15
 
 fail() {
   echo "FAIL: $*" >&2
