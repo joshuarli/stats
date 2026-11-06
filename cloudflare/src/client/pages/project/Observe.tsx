@@ -61,6 +61,15 @@ function bandParam(band: Band | null): string | null {
   return band.kind === "slow" ? "slow" : `cell:${band.fromMs}:${band.toMs}:${band.minWallMs}:${band.maxWallMs ?? ""}`;
 }
 
+interface IssueFilter {
+  readonly state: IssueState;
+  readonly introducedIn: string | null;
+}
+
+type FilterAnswer<T> = IssueFilter & T;
+
+const sameIssueFilter = (left: IssueFilter, right: IssueFilter): boolean => left.state === right.state && left.introducedIn === right.introducedIn;
+
 export type ModalView =
   | { readonly kind: "issue"; readonly fingerprint: string }
   | { readonly kind: "trace"; readonly traceId: string }
@@ -87,8 +96,11 @@ export function createObservability(service: ObservedService, refreshKey: () => 
   const [traces, setTraces] = createSignal<Page<TraceSummary> | null>(null);
   const [exploration, setExploration] = createSignal<Exploration | null>(null);
   const [band, setBand] = createSignal<Band | null>(parseBand(readParam("band")));
-  const [issues, setIssues] = createSignal<Page<IssueSummary> | null>(null);
-  const [error, setError] = createSignal<string | null>(null);
+  const [answeredIssues, setAnsweredIssues] = createSignal<FilterAnswer<{ readonly page: Page<IssueSummary> }> | null>(null);
+  const [failedIssues, setFailedIssues] = createSignal<FilterAnswer<{ readonly message: string }> | null>(null);
+  const [exploreError, setExploreError] = createSignal<string | null>(null);
+  const [occurrencesError, setOccurrencesError] = createSignal<string | null>(null);
+  const [mutationError, setMutationError] = createSignal<string | null>(null);
   const [traceFilter, setTraceFilter] = createSignal<TraceFilter>(readParam("traces") === "failed" ? "failed" : "all");
   const [route, setRoute] = createSignal<string | null>(readParam("route"));
   const [issueState, setIssueState] = createSignal<IssueState>(readParam("issues") === "resolved" ? "resolved" : "open");
@@ -103,6 +115,15 @@ export function createObservability(service: ObservedService, refreshKey: () => 
   const [traceError, setTraceError] = createSignal<string | null>(null);
   const [occurrences, setOccurrences] = createSignal<Page<Occurrence> | null>(null);
   const [mutation, setMutation] = createSignal(0);
+  const issueFilter = (): IssueFilter => ({ state: issueState(), introducedIn: introducedIn() });
+  const issues = createMemo(() => {
+    const answered = answeredIssues();
+    return answered !== null && sameIssueFilter(answered, issueFilter()) ? answered.page : null;
+  });
+  const issuesError = createMemo(() => {
+    const failed = failedIssues();
+    return failed !== null && sameIssueFilter(failed, issueFilter()) ? failed.message : null;
+  });
 
   createEffect(() => ({ tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
     const controller = new AbortController();
@@ -113,10 +134,10 @@ export function createObservability(service: ObservedService, refreshKey: () => 
     ]).then(([nextHealth, nextIssues]) => {
       if (controller.signal.aborted) return;
       setHealth(nextHealth);
-      setIssues(nextIssues);
-      setError(null);
+      setAnsweredIssues({ state: query.state, introducedIn: query.introduced, page: nextIssues });
+      setFailedIssues(null);
       if (issueId() === null || !nextIssues.items.some(issue => issue.fingerprint === issueId())) selectIssue(nextIssues.items[0]?.fingerprint ?? null, false);
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause, "The observability collector is unavailable")); });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailedIssues({ state: query.state, introducedIn: query.introduced, message: message(cause, "The observability collector is unavailable") }); });
   });
 
   createEffect(() => ({ tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()), active: exploring() }), query => {
@@ -143,12 +164,12 @@ export function createObservability(service: ObservedService, refreshKey: () => 
       if (controller.signal.aborted) return;
       setExploration(nextExploration);
       setTraces(nextTraces);
-      setError(null);
+      setExploreError(null);
       if (traceId() === null || current !== null) {
         const first = nextTraces.items.find(item => item.traceId !== null)?.traceId ?? null;
         if (traceId() === null || !nextTraces.items.some(item => item.traceId === traceId())) selectTrace(first, false);
       }
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause, "The observability collector is unavailable")); });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setExploreError(message(cause, "The observability collector is unavailable")); });
   });
 
   createEffect(() => ({ id: traceId(), tick: refreshKey() }), query => {
@@ -171,10 +192,12 @@ export function createObservability(service: ObservedService, refreshKey: () => 
   createEffect(() => ({ id: issueId(), tick: refreshKey(), mutation: mutation() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (query.id === null) { setOccurrences(null); return; }
+    if (query.id === null) { setOccurrences(null); setOccurrencesError(null); return; }
     void read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
-      if (!controller.signal.aborted) setOccurrences(value);
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause, "Occurrences unavailable")); });
+      if (controller.signal.aborted) return;
+      setOccurrences(value);
+      setOccurrencesError(null);
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesError(message(cause, "Occurrences unavailable")); });
   });
 
   function selectTrace(id: string | null, remember = true): void {
@@ -203,18 +226,19 @@ export function createObservability(service: ObservedService, refreshKey: () => 
   const [resolving, setResolving] = createSignal(false);
   const changeState = async (fingerprint: string, state: IssueState) => {
     setResolving(true);
+    setMutationError(null);
     try {
       const response = await fetch(`${base}/issues/${fingerprint}/state`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state }) });
       if (!response.ok) throw new ApiFailure(response.status, `Could not mark the issue ${state} (${response.status})`);
       setMutation(value => value + 1);
     } catch (cause) {
-      setError(message(cause, "Could not change the issue"));
+      setMutationError(message(cause, "Could not change the issue"));
     } finally {
       setResolving(false);
     }
   };
 
-  return { read, modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, error, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
+  return { read, modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, issuesError, exploreError, occurrencesError, mutationError, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
 }
 
 export type Observability = ReturnType<typeof createObservability>;
@@ -258,7 +282,8 @@ export function IssueDetail(props: { readonly issue: IssueSummary; readonly occu
         <div><dt>Last seen</dt><dd>{age(issue().lastAtMs, now())}</dd></div>
         <div><dt><Term hint="The version of the earliest retained occurrence. Unknown when that occurrence recorded no version.">Introduced in</Term></dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
       </dl>
-      <Show when={representative()} fallback={<Skeleton rows={4} />}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
+      <Show when={o.occurrencesError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={representative()} fallback={o.occurrencesError() === null ? <Skeleton rows={4} /> : null}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
       <h3 class="observe-subhead">Occurrences</h3>
       <div class="table-scroll" role="region" aria-label="Occurrences">
         <table class="data-table compact occurrence-table">
@@ -320,7 +345,8 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
           </select>
         </label>
       </div>
-      <Show when={o.issues() !== null} fallback={o.error() === null ? <Skeleton rows={5} /> : null}>
+      <Show when={o.issuesError() ?? o.mutationError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={o.issues() !== null} fallback={o.issuesError() === null ? <Skeleton rows={5} /> : null}>
         <Show when={items().length > 0} fallback={<p class="panel-label observe-empty">{o.issueState() === "open" ? "No open issues in the last 7 days." : "No resolved issues with occurrences in the last 7 days."}</p>}>
           <div class="issue-layout">
             <div class="issue-list" role="listbox" tabindex="-1" aria-label="Issues" onKeyDown={moveSelection}>

@@ -252,7 +252,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         <Show when={observe}>{state => (
           <>
             <Section id="errors" title="Errors" open={sections().has("errors")} onToggle={() => toggleSection("errors")}
-              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().error() ?? <span class="summary-pending" aria-hidden="true" />}>
+              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().issuesError() ?? <span class="summary-pending" aria-hidden="true" />}>
               <IssuesWidget observe={state()} />
             </Section>
             <Section id="requests" title="Requests" open={sections().has("requests")} onToggle={() => toggleSection("requests")}

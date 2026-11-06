@@ -109,8 +109,8 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
   };
   return (
     <Widget id="route-explorer" class="wide observe" title="Requests by route" meta={<><span class="observe-window">{props.windowLabel}</span><HealthMeta health={o.health()} /></>} expandable>
-      <Show when={o.error()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
-      <Show when={exploration()} fallback={o.error() === null ? <Skeleton rows={6} chart /> : null}>{value => (
+      <Show when={o.exploreError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={exploration()} fallback={o.exploreError() === null ? <Skeleton rows={6} chart /> : null}>{value => (
         <Show when={value().routes.length > 0} fallback={<p class="panel-label observe-empty">No requests were observed in this window.</p>}>
           <Show when={value().sampling}>{sampling => (
             <p class="panel-label observe-sampling" role="note">Sampled: {count(sampling().kept)} of {count(sampling().observed)} invocations are kept. Request and failure counts are exact; percentiles, CPU share, and the traces below come from the kept invocations only.</p>

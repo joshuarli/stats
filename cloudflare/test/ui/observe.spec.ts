@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly failWhen?: (method: string, path: string) => boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -47,7 +47,7 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (service === undefined || path === undefined) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "unknown observed service" } } });
     services.add(service);
     requests.push(path + url.search);
-    if (options.failing === true) return route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "observe down" } } });
+    if (options.failing === true || options.failWhen?.(route.request().method(), path + url.search) === true) return route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "observe down" } } });
     const method = route.request().method();
     if (method === "POST") posts.push(`${path} ${route.request().postData() ?? ""}`);
     const response = await answer(scenario, now, new Request(`https://observe${path}${url.search}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
@@ -204,6 +204,34 @@ test("resolving an issue posts its new state and moves it to Resolved", async ({
   expect(observe.posts[0]).toMatch(/^\/issues\/[0-9a-f]{64}\/state \{"state":"resolved"\}$/u);
   await issues.getByRole("button", { name: "Resolved", exact: true }).click();
   await expect(issues.getByRole("button", { name: "Reopen" })).toBeVisible();
+});
+
+test("a failed resolve says so in the Errors section", async ({ page }) => {
+  await setup(page, { fresh: true, failWhen: (method, path) => method === "POST" && path.endsWith("/state") });
+  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  const issues = page.locator("#issues");
+  await issues.getByRole("option", { name: /RangeError/u }).click();
+  await issues.getByRole("button", { name: "Resolve", exact: true }).click();
+  await expect(issues).toContainText("Could not mark the issue resolved (503)");
+  await expect(issues.getByRole("button", { name: "Resolve", exact: true })).toBeEnabled();
+});
+
+test("choosing Resolved never relabels the open issues while its data is missing", async ({ page }) => {
+  await setup(page, { failWhen: (_method, path) => path.startsWith("/issues?") && path.includes("state=resolved") });
+  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  const issues = page.locator("#issues");
+  await expect(issues.getByRole("option", { name: /RangeError/u })).toBeVisible();
+  await issues.getByRole("button", { name: "Resolved", exact: true }).click();
+  await expect(issues).toContainText("collector is unavailable (503)");
+  await expect(issues.locator(".issue-item")).toHaveCount(0);
+  await expect(issues).not.toContainText("resolved · last 7 days");
+});
+
+test("a failed route exploration is reported even while issues keep loading", async ({ page }) => {
+  await setup(page, { failWhen: (_method, path) => path.startsWith("/explore") });
+  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await expect(page.locator("#issues .issue-item").first()).toBeVisible();
+  await expect(page.locator("#route-explorer")).toContainText("collector is unavailable (503)");
 });
 
 test("the timeline zooms with W, fits the selection with F, and steps with arrow keys", async ({ page }) => {
