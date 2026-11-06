@@ -920,6 +920,38 @@ one grouped metric window for all requested metric kinds. `GET /projects`
 returns each project with `collector.lastRunAtMs`, `lastSuccessAtMs`,
 `lastError`, and `stale` (no success in 15 minutes).
 
+**Probes.** Each collection sends one `GET` per probe URL with a 10 second
+timeout and does not follow redirects. A status from 200 to 399 is up; any
+other status, a thrown fetch, or a timeout is down. Probes measure from
+Cloudflare's edge, not from users. A failed
+collector run is never recorded as a down probe.
+
+**Health limits.** `LIMITS` in `src/client/health.ts` holds tunable
+heuristics, not service levels:
+
+| Signal | Elevated | Critical |
+| --- | --- | --- |
+| Worker 5xx share of invocations | 1% | 5% |
+| Worker average CPU time per invocation | 5 ms | 20 ms |
+| R2 `other` share of operations | 0.5% | 2% |
+| Collector staleness | 15 minutes | 60 minutes |
+| Probe | | down |
+
+A share or average is not scored from a bucket with fewer than 100 events
+(`MIN_SCORED_EVENTS`), because one failure in a 64-request bucket would read as
+a critical 25%. Zero invocations and zero R2 operations are never a state by
+themselves. Collector health is shown beside a target's state and never folded
+into it.
+
+**Scope.** A project covers one Worker's invocations, status mix, and CPU time;
+its R2 operations by outcome, storage, and objects; its Durable Objects and D1
+databases; and its probes. Worker CPU is shown as a weighted mean and an
+approximate maximum per bucket, labelled CPU time and never latency, because the
+SQL source has no quantiles. The project data has no per-hostname split when one
+Worker serves several hostnames, no cache hit ratio, and no R2 read and write
+split: the operations dataset has an outcome but no action column, so R2 Class
+A and B are not priced. Alert delivery is not provided.
+
 **Access.** `ANALYTICS_SQL` can read all of the account's analytics. Only the
 fixed queries run, and no request data reaches SQL.
 

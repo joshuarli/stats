@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 78
+Next: 80
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -96,3 +96,20 @@ Next: 78
 - **Fix with:** single-source-of-truth
 - **Effort:** S
 
+### STA-78 · P4 · The stuff site probe reported down once in its first runs
+
+- **Area:** Projects
+- **Where:** `cloudflare/cloudflare.config.ts:19` (the `site` probe), `docs/operations.md` (Verified environments)
+- **Problem:** On 2026-11-01 the `site` probe of `stuff` was down in one of the first five collector runs and returned 200 on every later check. Probes measure from Cloudflare's edge and a failed fetch records down, so a cold-start or edge blip reads as an outage. Whether it recurs is unknown.
+- **Recommendation:** Read `kind=probes` history for `stuff` over 7 days. If `site` shows isolated single-bucket downs, decide between keeping the signal as is and requiring two consecutive failures before it scores; if it shows none, delete this ticket.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-79 · P4 · The 45 minute settle time rests on one day of ingestion-lag samples
+
+- **Area:** Projects
+- **Where:** `cloudflare/src/limits.ts:11` (`PROJECT_SETTLE_MS`), `docs/operations.md` (Verified environments)
+- **Problem:** `PROJECT_SETTLE_MS` decides when a missing counter bucket reads as zero. It was set from 2026-11-01 readings only: the newest Worker event was 6.7 minutes old under steady traffic and 22 minutes old in a quiet period. Too short a settle time writes zeros that late rows would have filled, too long delays charts and verdicts. A parity re-run on 2026-11-06 found one bucket (11:10 on 2026-11-05) that stored 44 events against 8 from the source, which the lag explanation does not cover.
+- **Recommendation:** Measure the newest-event age against now over several days of traffic, including quiet nights, and change `PROJECT_SETTLE_MS` only if the 99th percentile approaches it. Investigate the 11:10 bucket with `node cloudflare/scripts/check-parity.mjs`.
+- **Fix with:** root-cause
+- **Effort:** S
