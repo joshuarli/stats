@@ -98,6 +98,13 @@ prepare_receipt() {
     echo "$label: cannot read the agent hostId" >&2
     exit 1
   }
+  api_receipt >/dev/null || {
+    echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
+    exit 1
+  }
+}
+
+take_baseline() {
   baseline=$(api_receipt) || {
     echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
     exit 1
@@ -179,6 +186,7 @@ if [ "$mode" = "--rollback" ]; then
     systemd) remote "$elevate systemctl restart stats" ;;
     openrc) remote "$elevate /sbin/rc-service stats restart >/dev/null" ;;
   esac
+  take_baseline
   if ! is_active; then
     echo "$label: service did not become active after rollback" >&2
     exit 1
@@ -189,6 +197,9 @@ if [ "$mode" = "--rollback" ]; then
 fi
 
 if [ "$binary_changed" -eq 0 ] && [ "$unit_changed" -eq 0 ] && [ "$active" -eq 1 ]; then
+  prepare_receipt
+  take_baseline
+  wait_for_upload || exit 1
   echo "$label: unchanged"
   exit 0
 fi
@@ -238,6 +249,7 @@ case "$init" in
     ;;
 esac
 
+take_baseline
 if ! is_active; then
   echo "$label: service did not become active" >&2
   exit 1
