@@ -622,7 +622,8 @@ one batched history request on each refresh. Summary points carry `cpuCount` and
 `uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 History responses carry an `ETag` derived from the last host ingest or the last
-collector run, plus the requested window and kinds and the frame format
+collector run, plus the requested window and kinds (a host's range window also
+carries its resolved end and resolution) and the frame format
 (`:stc1`), so a validator never matches a different representation. The match
 is weak, so a `W/` prefix added by an intermediary still revalidates. The
 dashboard sends `If-None-Match` and reuses its decoded history on `304`, so a

@@ -291,7 +291,7 @@ describe("history", () => {
       for (let index = 0; index < 1001; index += 1) {
         state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES ('h_0123456789abcdef0123456789abcdef', '3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f', ?, ?, ?, 1, 0, '{}', '{}')", `old-${index}`, now - 49 * 60 * 60 * 1000, now - 49 * 60 * 60 * 1000);
       }
-      await state.storage.setAlarm(Date.now() + 1_000);
+      await state.storage.setAlarm(Date.now() + 3_600_000);
     });
     expect(await runDurableObjectAlarm(retention)).toBe(true);
     const remaining = await runInDurableObject(retention, async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ count: number }>("SELECT count(*) AS count FROM samples WHERE seq LIKE 'old-%'").one().count);
