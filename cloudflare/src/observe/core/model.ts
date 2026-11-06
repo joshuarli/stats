@@ -1,6 +1,6 @@
 import { MAX_ARTIFACT_BYTES, MAX_ERRORS_PER_INVOCATION, MAX_LABEL_BYTES, MAX_MESSAGE_BYTES, MAX_NAME_BYTES, MAX_STACK_BYTES } from "./limits.ts";
 import { parseStack, type StackFrame } from "./stack.ts";
-import type { OperationSummary } from "../producer/channel.ts";
+import type { OperationSummary, RowAccount } from "../producer/channel.ts";
 import { fingerprint, sha256Hex } from "./grouping.ts";
 
 export type Stage = "worker" | "object";
@@ -21,7 +21,29 @@ export interface OutcomeEvent {
 export const COUNT_OUTCOMES = ["ok", "failed", ...EXCLUDED_OUTCOMES, "rejected-invalid"] as const;
 export type CountOutcome = typeof COUNT_OUTCOMES[number];
 
-export interface CountDelta {
+export interface SummaryTotals {
+  readonly rowAccounts: number;
+  readonly rowsRead: number;
+  readonly rowsWritten: number;
+  readonly statements: number;
+  readonly workLagCount: number;
+  readonly workLagMsMax: number;
+  readonly workLagMsSum: number;
+}
+
+export const NO_SUMMARY_TOTALS: SummaryTotals = { rowAccounts: 0, rowsRead: 0, rowsWritten: 0, statements: 0, workLagCount: 0, workLagMsMax: 0, workLagMsSum: 0 };
+
+export function summaryTotals(operation: ServiceOperationReading | undefined): SummaryTotals {
+  if (operation === undefined) return NO_SUMMARY_TOTALS;
+  const rows = operation.rows;
+  const lag = operation.workLagMs;
+  return {
+    rowAccounts: rows === null ? 0 : 1, rowsRead: rows?.read ?? 0, rowsWritten: rows?.written ?? 0, statements: rows?.statements ?? 0,
+    workLagCount: lag === null ? 0 : 1, workLagMsMax: lag ?? 0, workLagMsSum: lag ?? 0
+  };
+}
+
+export interface CountDelta extends SummaryTotals {
   readonly bucketAt: number;
   readonly version: string;
   readonly stage: Stage;
@@ -44,6 +66,12 @@ export function isFailedInvocation(invocation: { readonly errorCount: number; re
 
 export type InvocationKind = "fetch" | "rpc" | "alarm" | "scheduled";
 export type ErrorSource = "uncaught" | "caught";
+
+export interface ServiceOperationReading {
+  readonly name: string;
+  readonly rows: RowAccount | null;
+  readonly workLagMs: number | null;
+}
 
 export interface TraceContext {
   readonly traceId: string;
@@ -71,7 +99,7 @@ export interface ObservedInvocation {
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
   readonly operation?: OperationSummary;
-  readonly operationName?: string;
+  readonly serviceOperation?: ServiceOperationReading;
   readonly errors: readonly ObservedError[];
 }
 
@@ -107,7 +135,7 @@ export interface PreparedInvocation {
   readonly eventAtMs: number;
   readonly trace: TraceContext | null;
   readonly operation?: OperationSummary;
-  readonly operationName?: string;
+  readonly serviceOperation?: ServiceOperationReading;
   readonly errorCount: number;
   readonly errors: readonly PreparedError[];
 }
@@ -148,7 +176,7 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
     ? (await sha256Hex(["observe.key.v1", input.version ?? "", input.objectId ?? "", input.kind, input.label, String(input.eventAtMs)].join("\u0000"))).slice(0, 32)
     : input.trace.spanId;
   const digest = await sha256Hex(JSON.stringify(fields));
-  return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields, ...(input.operationName === undefined ? {} : { operationName: input.operationName }) } };
+  return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields, ...(input.serviceOperation === undefined ? {} : { serviceOperation: input.serviceOperation }) } };
 }
 
 export function rejection(input: ObservedInvocation): Rejection | null {
@@ -160,7 +188,7 @@ export function rejection(input: ObservedInvocation): Rejection | null {
   if (!OUTCOME.test(input.outcome)) return "invalid_outcome";
   if (![input.cpuMs, input.wallMs].every(ms => Number.isSafeInteger(ms) && ms >= 0) || !Number.isSafeInteger(input.eventAtMs) || input.eventAtMs <= 0) return "invalid_timing";
   if (input.errors.some(error => error.operation !== null && !OPERATION.test(error.operation))) return "invalid_operation";
-  if (input.operationName !== undefined && !OPERATION.test(input.operationName)) return "invalid_operation";
+  if (input.serviceOperation !== undefined && !OPERATION.test(input.serviceOperation.name)) return "invalid_operation";
   return null;
 }
 

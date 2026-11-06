@@ -1,5 +1,5 @@
 import { COUNT_BUCKET_MS, MAX_LABEL_BYTES, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "./limits.ts";
-import { COUNT_OUTCOMES, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage } from "./model.ts";
+import { COUNT_OUTCOMES, NO_SUMMARY_TOTALS, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage, type SummaryTotals } from "./model.ts";
 import type { SampledPolicy } from "./sampling.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
 
@@ -27,9 +27,23 @@ export const COUNT_STATEMENTS = [
       json_extract(e.value, '$.kept') AS kept,
       json_extract(e.value, '$.sampledOut') AS sampled_out,
       json_extract(e.value, '$.cpuMsSum') AS cpu_ms_sum,
-      json_extract(e.value, '$.wallMsSum') AS wall_ms_sum
+      json_extract(e.value, '$.wallMsSum') AS wall_ms_sum,
+      COALESCE(json_extract(e.value, '$.rowAccounts'), 0) AS row_accounts,
+      COALESCE(json_extract(e.value, '$.rowsRead'), 0) AS rows_read,
+      COALESCE(json_extract(e.value, '$.rowsWritten'), 0) AS rows_written,
+      COALESCE(json_extract(e.value, '$.statements'), 0) AS statements,
+      COALESCE(json_extract(e.value, '$.workLagCount'), 0) AS work_lag_count,
+      COALESCE(json_extract(e.value, '$.workLagMsMax'), 0) AS work_lag_ms_max,
+      COALESCE(json_extract(e.value, '$.workLagMsSum'), 0) AS work_lag_ms_sum
     FROM observe_counts c, json_each(c.entries) e`
 ];
+
+export function upgradeCountEntriesView(db: SqlStatements): void {
+  const view = db.rows<{ sql: string }>("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'observe_count_entries'")[0];
+  if (view === undefined || view.sql.includes("work_lag_ms_sum")) return;
+  db.run("DROP VIEW observe_count_entries");
+  db.run(COUNT_STATEMENTS[1]!);
+}
 
 export function eventBucket(eventAtMs: number | null, nowMs: number, widthMs: number): number {
   const at = eventAtMs === null ? nowMs : Math.min(eventAtMs, nowMs);
@@ -53,14 +67,24 @@ export function addCount(into: Map<string, CountDelta>, delta: CountDelta): void
     sampledOut: existing.sampledOut + delta.sampledOut,
     capped: existing.capped + delta.capped,
     cpuMsSum: existing.cpuMsSum + delta.cpuMsSum,
-    wallMsSum: existing.wallMsSum + delta.wallMsSum
+    wallMsSum: existing.wallMsSum + delta.wallMsSum,
+    rowAccounts: existing.rowAccounts + delta.rowAccounts,
+    rowsRead: existing.rowsRead + delta.rowsRead,
+    rowsWritten: existing.rowsWritten + delta.rowsWritten,
+    statements: existing.statements + delta.statements,
+    workLagCount: existing.workLagCount + delta.workLagCount,
+    workLagMsMax: Math.max(existing.workLagMsMax, delta.workLagMsMax),
+    workLagMsSum: existing.workLagMsSum + delta.workLagMsSum
   });
 }
 
 function wellFormed(delta: CountDelta): boolean {
-  const integers = [delta.kept, delta.sampledOut, delta.capped, delta.cpuMsSum, delta.wallMsSum];
+  const integers = [delta.kept, delta.sampledOut, delta.capped, delta.cpuMsSum, delta.wallMsSum, delta.rowAccounts, delta.rowsRead, delta.rowsWritten, delta.statements, delta.workLagCount, delta.workLagMsMax, delta.workLagMsSum];
+  const invocations = delta.kept + delta.sampledOut;
   return Number.isSafeInteger(delta.bucketAt) && delta.bucketAt > 0 && delta.bucketAt % COUNT_BUCKET_MS === 0
-    && integers.every(value => Number.isSafeInteger(value) && value >= 0) && delta.kept + delta.sampledOut > 0 && delta.capped <= delta.sampledOut
+    && integers.every(value => Number.isSafeInteger(value) && value >= 0) && invocations > 0 && delta.capped <= delta.sampledOut
+    && delta.rowAccounts <= invocations && (delta.rowAccounts > 0 || delta.rowsRead + delta.rowsWritten + delta.statements === 0)
+    && delta.workLagCount <= invocations && delta.workLagMsMax <= delta.workLagMsSum && (delta.workLagCount > 0 || delta.workLagMsSum === 0)
     && (delta.version === "" || VERSION.test(delta.version))
     && (delta.stage === "worker" || delta.stage === "object")
     && (COUNT_OUTCOMES as readonly string[]).includes(delta.outcome)
@@ -73,7 +97,7 @@ export interface CountsRecorded {
   readonly expired: number;
 }
 
-type StoredEntry = Omit<CountDelta, "bucketAt" | "capped"> & { readonly capped?: number };
+type StoredEntry = Omit<CountDelta, "bucketAt" | "capped" | keyof SummaryTotals> & { readonly capped?: number } & Partial<SummaryTotals>;
 
 interface BucketCounts {
   readonly bucketAt: number;
@@ -90,7 +114,7 @@ function loadBucket(db: SqlStatements, bucketAt: number): BucketCounts {
   const routes = new Map<string, Set<string>>();
   const stored = db.rows<{ entries: string }>("SELECT entries FROM observe_counts WHERE bucket_at = ?", bucketAt)[0];
   for (const entry of stored === undefined ? [] : JSON.parse(stored.entries) as StoredEntry[]) {
-    const delta = { ...entry, capped: entry.capped ?? 0, bucketAt };
+    const delta: CountDelta = { ...NO_SUMMARY_TOTALS, ...entry, capped: entry.capped ?? 0, bucketAt };
     entries.set(deltaKey(delta), delta);
     const group = routeGroup(delta);
     const known = routes.get(group);
@@ -102,7 +126,9 @@ function loadBucket(db: SqlStatements, bucketAt: number): BucketCounts {
 function storeBucket(db: SqlStatements, bucket: BucketCounts, events: SamplingEvents): void {
   const entries = [...bucket.entries.values()].map((delta): StoredEntry => ({
     version: delta.version, stage: delta.stage, outcome: delta.outcome, route: delta.route, operation: delta.operation,
-    kept: delta.kept, sampledOut: delta.sampledOut, capped: delta.capped, cpuMsSum: delta.cpuMsSum, wallMsSum: delta.wallMsSum
+    kept: delta.kept, sampledOut: delta.sampledOut, capped: delta.capped, cpuMsSum: delta.cpuMsSum, wallMsSum: delta.wallMsSum,
+    ...(delta.rowAccounts === 0 ? {} : { rowAccounts: delta.rowAccounts, rowsRead: delta.rowsRead, rowsWritten: delta.rowsWritten, statements: delta.statements }),
+    ...(delta.workLagCount === 0 ? {} : { workLagCount: delta.workLagCount, workLagMsMax: delta.workLagMsMax, workLagMsSum: delta.workLagMsSum })
   }));
   db.run(
     `INSERT INTO observe_counts (bucket_at, untraced, flushes, entries) VALUES (?, ?, ?, ?)
@@ -228,7 +254,7 @@ export function countWindow(db: SqlStatements, fromMs: number, toMs: number): Co
   return { invocations, excluded };
 }
 
-export interface CountedRoute {
+export interface CountedRoute extends SummaryTotals {
   readonly version: string;
   readonly stage: Stage;
   readonly route: string;
@@ -240,13 +266,18 @@ export interface CountedRoute {
 }
 
 export function countedRoutes(db: SqlStatements, fromMs: number, toMs: number, operation?: string): CountedRoute[] {
-  return db.rows<{ version: string; stage: Stage; route: string; operation: string; count: number; failed: number; cpu_ms_sum: number; wall_ms_sum: number }>(
+  return db.rows<{ version: string; stage: Stage; route: string; operation: string; count: number; failed: number; cpu_ms_sum: number; wall_ms_sum: number; row_accounts: number; rows_read: number; rows_written: number; statements: number; work_lag_count: number; work_lag_ms_max: number; work_lag_ms_sum: number }>(
     `SELECT version, stage, route, operation, SUM(kept + sampled_out) AS count, SUM(CASE WHEN outcome = 'failed' THEN kept + sampled_out ELSE 0 END) AS failed,
-       SUM(cpu_ms_sum) AS cpu_ms_sum, SUM(wall_ms_sum) AS wall_ms_sum
+       SUM(cpu_ms_sum) AS cpu_ms_sum, SUM(wall_ms_sum) AS wall_ms_sum, SUM(row_accounts) AS row_accounts, SUM(rows_read) AS rows_read, SUM(rows_written) AS rows_written,
+       SUM(statements) AS statements, SUM(work_lag_count) AS work_lag_count, MAX(work_lag_ms_max) AS work_lag_ms_max, SUM(work_lag_ms_sum) AS work_lag_ms_sum
      FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed') AND (? IS NULL OR operation = ?)
      GROUP BY version, stage, route, operation ORDER BY version, stage, route, operation`,
     ...windowParams(fromMs, toMs), operation ?? null, operation ?? null
-  ).map(row => ({ version: row.version, stage: row.stage, route: row.route, operation: row.operation, count: row.count, failed: row.failed, cpuMsSum: row.cpu_ms_sum, wallMsSum: row.wall_ms_sum }));
+  ).map(row => ({
+    version: row.version, stage: row.stage, route: row.route, operation: row.operation, count: row.count, failed: row.failed, cpuMsSum: row.cpu_ms_sum, wallMsSum: row.wall_ms_sum,
+    rowAccounts: row.row_accounts, rowsRead: row.rows_read, rowsWritten: row.rows_written, statements: row.statements,
+    workLagCount: row.work_lag_count, workLagMsMax: row.work_lag_ms_max, workLagMsSum: row.work_lag_ms_sum
+  }));
 }
 
 export function versionRequests(db: SqlStatements, nowMs: number, versions: readonly string[]): ReadonlyMap<string, { readonly requests: number; readonly failed: number }> {

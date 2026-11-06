@@ -3,7 +3,7 @@ import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkF
 import type { CountedRoute, SamplingHealth, SamplingSummary } from "../core/counts.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
-import { OPERATION, OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage } from "../core/model.ts";
+import { OPERATION, OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage, type SummaryTotals } from "../core/model.ts";
 import { OPERATION_IDS } from "../producer/channel.ts";
 
 export interface ObserveHealth extends Health {
@@ -408,9 +408,16 @@ function countedRoute(value: unknown): CountedRoute {
   const count = integer(fields["count"], "counted count");
   const failed = integer(fields["failed"], "counted failed");
   if (failed > count) fail("counted failed");
+  const summary = (key: keyof SummaryTotals) => integer(fields[key], `counted ${key}`);
+  const rowAccounts = summary("rowAccounts");
+  const workLagCount = summary("workLagCount");
+  if (rowAccounts > count) fail("counted rowAccounts");
+  if (workLagCount > count) fail("counted workLagCount");
   return {
     version: text(fields["version"], "version", 36), stage: oneOf(fields["stage"], ["worker", "object"] as const, "stage"), route: text(fields["route"], "counted route label", MAX_LABEL_BYTES),
-    operation, count, failed, cpuMsSum: integer(fields["cpuMsSum"], "counted cpu"), wallMsSum: integer(fields["wallMsSum"], "counted wall")
+    operation, count, failed, cpuMsSum: integer(fields["cpuMsSum"], "counted cpu"), wallMsSum: integer(fields["wallMsSum"], "counted wall"),
+    rowAccounts, rowsRead: summary("rowsRead"), rowsWritten: summary("rowsWritten"), statements: summary("statements"),
+    workLagCount, workLagMsMax: summary("workLagMsMax"), workLagMsSum: summary("workLagMsSum")
   };
 }
 

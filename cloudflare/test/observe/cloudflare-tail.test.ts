@@ -139,7 +139,7 @@ await test("nanoshop-storied operations come from its route and RPC lists", () =
     ...NANOSHOP_ROUTES.map(route => `request.${route.name}`),
     "request.unmatched", "catalog.load", "catalog.rejected",
     ...NANOSHOP_RPC_METHODS.map(method => `store.rpc.${method}`),
-    "store.alarm", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"
+    "store.alarm", "worker.scheduled", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"
   ].sort());
   assert.equal(new Set(NANOSHOP_OPERATIONS).size, NANOSHOP_OPERATIONS.length);
   for (const operation of ["store.rpc.commerceCommand", "store.rpc.commerceQuery", "request.webhook", "request.admin-order-refund", "request.checkout-attempt"]) assert.ok(NANOSHOP_OPERATIONS.includes(operation as never), operation);
@@ -248,10 +248,23 @@ await test("a service other than stats carries its trace on a generic operation 
     assert.equal(reduction.kind, "observed");
     if (reduction.kind === "observed") assert.deepEqual(reduction.invocation.trace, SHOP_SPAN);
   }
-  for (const bad of [{ operation: "host.ingest" }, { operation: "deployments.poll" }, { rows: { read: 1 } }, { rows: { read: -1, written: 0, statements: 0 } }, { synthetic: "no" }, { traceId: 1 }]) {
+  for (const bad of [{ operation: "host.ingest" }, { operation: "deployments.poll" }, { rows: { read: 1 } }, { rows: { read: -1, written: 0, statements: 0 } }, { synthetic: "no" }, { traceId: 1 }, { workLagMs: -1 }, { workLagMs: 1.5 }, { workLagMs: "5" }, { workLagMs: null }]) {
     assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(bad)] }), shop), "rejected", JSON.stringify(bad));
   }
   assert.equal(label(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(), serviceOperation()] }), shop), "rejected");
+});
+
+await test("a sampled service's operation summary carries its name, row account and work lag into the reduction", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const read = (overrides: Record<string, unknown>) => {
+    const reduction = reduceTailItem(fetchItem("https://shop.example/cart", 200, { diagnosticsChannelEvents: [serviceOperation(overrides)] }), shop);
+    return reduction.kind === "observed" ? reduction.invocation.serviceOperation : reduction.kind;
+  };
+  assert.deepEqual(read({}), { name: "request.cart", rows: null, workLagMs: null });
+  assert.deepEqual(read({ operation: "store.alarm", rows: { read: 7, written: 2, statements: 3 }, workLagMs: 1250 }), { name: "store.alarm", rows: { read: 7, written: 2, statements: 3 }, workLagMs: 1250 });
+  assert.deepEqual(read({ workLagMs: 0 }), { name: "request.cart", rows: null, workLagMs: 0 });
+  const memories = reduceTailItem(fetchItem("https://memories.example/", 200, { diagnosticsChannelEvents: [serviceOperation({ operation: "request.route" })] }), POLICIES["usr-memories"]);
+  assert.equal(memories.kind === "observed" ? memories.invocation.serviceOperation : memories.kind, undefined, "a service that keeps everything does not count summaries");
 });
 
 await test("stats keeps its typed operation decoder, and a generic message is not a stats operation", () => {

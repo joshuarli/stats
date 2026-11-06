@@ -260,12 +260,30 @@ writes one row per bucket it touches however many keys it carries, and
 retention deletes one row per bucket. The row's `entries` column is a JSON array
 with one element per `(version, stage, outcome, route, operation)` key holding
 `kept`, `sampledOut`, `capped`, `cpuMsSum` and `wallMsSum` (`capped` is part
-of `sampledOut`; entries written before it existed read as 0), merged in the store
+of `sampledOut`; entries written before it existed read as 0), plus the
+service operation summary totals described below, merged in the store
 transaction; the `untraced` and `flushes` columns count the sampling events of
 the calls that wrote the row. The view `observe_count_entries` presents the
 elements as rows for reads. An element's `outcome` is `ok`, `failed`,
 or one of the four `excluded-*` classes; the operation is the generic operation
-name that stats-style summaries do not carry, empty when an event has none. The
+name that stats-style summaries do not carry, empty when an event has none.
+
+A sampled service's operation message (`ServiceOperationSummary`: `operation`,
+`synthetic`, `rows` as `{ read, written, statements }` or `null`, and an
+optional `workLagMs`, a non-negative integer) is summed into the same element:
+`rowAccounts` counts the invocations whose summary carried a row account,
+`rowsRead`, `rowsWritten` and `statements` sum those accounts, and
+`workLagCount`, `workLagMsMax` and `workLagMsSum` total the reported work lag
+(how late the work the invocation ran was, by the producer's definition; not
+ingest lag). The summary rides on the kept and sampled-out invocation alike,
+so its totals are exact for every flushed invocation; an excluded or rejected
+event's summary is not counted. An element omits the summary fields while
+they are zero, and elements written before they existed read as zero, which
+`rowAccounts` 0 and `workLagCount` 0 mark as absent. The view gained the
+columns in place: `initializeStore` drops and recreates
+`observe_count_entries` once when its definition lacks them; the table and its
+JSON are unchanged. A message whose `rows` or `workLagMs` is malformed rejects
+the invocation like any malformed message. The
 store counts a kept invocation in the same transaction that stores it, so a
 duplicate is never counted twice. The tail counts everything it does not keep
 (a sampled-out invocation is always `ok`, because every failure is kept, and an
@@ -354,9 +372,11 @@ returns one half-open window: operation rows, outcome rows, invocation rows and
 lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes
 the same Access check as every observe route.
 For a sampled service it adds `counts`: one row per `(version, stage, route,
-operation)` with `count` (kept plus sampled-out), `failed`, `cpuMsSum` and
-`wallMsSum`, summed from `observe_count_entries` over the window's ok and
-failed outcomes, so the totals are exact for every flushed event. `operation`
+operation)` with `count` (kept plus sampled-out), `failed`, `cpuMsSum`,
+`wallMsSum`, `rowAccounts`, `rowsRead`, `rowsWritten`, `statements`,
+`workLagCount`, `workLagMsMax` and `workLagMsSum`, summed from
+`observe_count_entries` over the window's ok and failed outcomes, so the
+totals are exact for every flushed event. `operation`
 is the name the event's operation message carried, or empty. `operation` in
 the query filters these rows too. A service that keeps everything has no
 `counts`; its per-operation totals are the `operations` rows.
@@ -368,10 +388,15 @@ synthetic flag with count, failed, CPU, wall, rows read and written,
 statements and ingest lag. For a sampled service `source` is `counts`: one row
 per stage, route and operation, where an empty operation takes the name the
 service policy gives the route (`labelOperation`; for Nanoshop
-`request.<route>`, `store.rpc.<method>`, `store.alarm`) or `null`. Nanoshop
-publishes invocation marks and caught-error reports but no operation messages,
-so its rows carry no SQLite rows, statements or lag; those exist only where
-the producer publishes an operation summary.
+`request.<route>`, `store.rpc.<method>`, `store.alarm`, `worker.scheduled`) or
+`null`. Each row adds `rows`, `{ accounted, read, written, statements }` over
+the `accounted` invocations whose summary carried a row account, or `null`
+when none did, and `workLag`, `{ count, maxMs, sumMs }`, or `null` when no
+summary reported one. Nanoshop publishes one summary per Worker and Durable
+Object invocation; a Worker invocation has no SQLite storage of its own, so
+its `rows` is `null` (its Durable Object calls are their own rows), and only
+`store.alarm` reports work lag. The additions are fields on existing rows of
+the `statsctl/1` document and the window API, so the change is additive.
 
 The coverage rule (`src/compare/coverage.ts`) decides whether the observed
 counts can support a verdict. For each side of a comparison it sums the

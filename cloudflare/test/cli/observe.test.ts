@@ -161,7 +161,8 @@ await test("observe operations totals stats's operation summaries and a sampled 
     bucketAt, version: "v1", operation, workloadClass: "", synthetic: false, count: n, failed: n - 1, cpuMsSum: 2 * n, wallMsSum: 10 * n,
     rowsRead: 3 * n, rowsWritten: n, statements: 4 * n, lagCount: n, lagMsMax: 100 * n, lagMsSum: 50 * n, work: Object.fromEntries(WORK_FIELDS.map(field => [field, 0]))
   });
-  const counted = (version: string, stage: string, route: string, operation: string, count: number) => ({ version, stage, route, operation, count, failed: 1, cpuMsSum: count, wallMsSum: 5 * count });
+  const none = { rowAccounts: 0, rowsRead: 0, rowsWritten: 0, statements: 0, workLagCount: 0, workLagMsMax: 0, workLagMsSum: 0 };
+  const counted = (version: string, stage: string, route: string, operation: string, count: number, summary: Partial<typeof none> = {}) => ({ version, stage, route, operation, count, failed: 1, cpuMsSum: count, wallMsSum: 5 * count, ...none, ...summary });
   const handle: Handler = (request, response) => {
     if (!authorized(request)) return void response.writeHead(401).end();
     const url = new URL(request.url ?? "/", "http://x");
@@ -170,8 +171,9 @@ await test("observe operations totals stats's operation summaries and a sampled 
       return sendJson(response, windowBody(url.searchParams, { counts: [
         counted("v1", "worker", "POST /checkout/quotes/:ref/accept", "", 1),
         counted("v2", "worker", "POST /checkout/quotes/:ref/accept", "", 2),
-        counted("v1", "object", "TenantStore.commerceCommand", "", 7),
-        counted("v1", "object", "TenantStore.alarm", "", 2),
+        counted("v1", "object", "TenantStore.commerceCommand", "store.rpc.commerceCommand", 5, { rowAccounts: 5, rowsRead: 40, rowsWritten: 12, statements: 30 }),
+        counted("v2", "object", "TenantStore.commerceCommand", "store.rpc.commerceCommand", 2, { rowAccounts: 2, rowsRead: 6, rowsWritten: 2, statements: 9 }),
+        counted("v1", "object", "TenantStore.alarm", "", 2, { rowAccounts: 2, rowsRead: 11, rowsWritten: 3, statements: 8, workLagCount: 1, workLagMsMax: 1_500, workLagMsSum: 1_500 }),
         counted("v1", "worker", "scheduled 12 * * * *", "", 1),
         counted("v1", "worker", "GET /search", "request.search", 4)
       ] }));
@@ -195,15 +197,16 @@ await test("observe operations totals stats's operation summaries and a sampled 
     assert.equal(shop.schema, "statsctl/1");
     assert.equal(shop.payload.source, "counts");
     assert.deepEqual(shop.payload.operations, [
-      { operation: "store.rpc.commerceCommand", stage: "object", route: "TenantStore.commerceCommand", count: 7, failed: 1, cpuMsSum: 7, wallMsSum: 35 },
-      { operation: "request.search", stage: "worker", route: "GET /search", count: 4, failed: 1, cpuMsSum: 4, wallMsSum: 20 },
-      { operation: "request.checkout-accept", stage: "worker", route: "POST /checkout/quotes/:ref/accept", count: 3, failed: 2, cpuMsSum: 3, wallMsSum: 15 },
-      { operation: "store.alarm", stage: "object", route: "TenantStore.alarm", count: 2, failed: 1, cpuMsSum: 2, wallMsSum: 10 },
-      { operation: null, stage: "worker", route: "scheduled 12 * * * *", count: 1, failed: 1, cpuMsSum: 1, wallMsSum: 5 }
+      { operation: "store.rpc.commerceCommand", stage: "object", route: "TenantStore.commerceCommand", count: 7, failed: 2, cpuMsSum: 7, wallMsSum: 35, rows: { accounted: 7, read: 46, written: 14, statements: 39 }, workLag: null },
+      { operation: "request.search", stage: "worker", route: "GET /search", count: 4, failed: 1, cpuMsSum: 4, wallMsSum: 20, rows: null, workLag: null },
+      { operation: "request.checkout-accept", stage: "worker", route: "POST /checkout/quotes/:ref/accept", count: 3, failed: 2, cpuMsSum: 3, wallMsSum: 15, rows: null, workLag: null },
+      { operation: "store.alarm", stage: "object", route: "TenantStore.alarm", count: 2, failed: 1, cpuMsSum: 2, wallMsSum: 10, rows: { accounted: 2, read: 11, written: 3, statements: 8 }, workLag: { count: 1, maxMs: 1_500, sumMs: 1_500 } },
+      { operation: "worker.scheduled", stage: "worker", route: "scheduled 12 * * * *", count: 1, failed: 1, cpuMsSum: 1, wallMsSum: 5, rows: null, workLag: null }
     ]);
     const text = await run(origin, ["observe", "operations", "--project", "nanoshop-storied"], false);
     assert.equal(text.code, EXIT.ok, text.stderr);
-    assert.match(text.stdout, /store\.rpc\.commerceCommand +object +TenantStore\.commerceCommand +7 +1 /u);
-    assert.match(text.stdout, /this service publishes no SQLite rows, statements, or lag/u);
+    assert.match(text.stdout, /store\.rpc\.commerceCommand +object +TenantStore\.commerceCommand +7 +2 +7 ms +35 ms +46 +14 +39 +- *\n/u);
+    assert.match(text.stdout, /store\.alarm +object +TenantStore\.alarm +2 +1 +2 ms +10 ms +11 +3 +8 +1\.50 s/u);
+    assert.match(text.stdout, /request\.search +worker +GET \/search +4 +1 +4 ms +20 ms +- +- +- +-/u);
   });
 });

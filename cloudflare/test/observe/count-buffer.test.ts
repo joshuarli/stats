@@ -7,7 +7,7 @@ import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
 import { ingest } from "../../src/observe/core/store.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
-import type { CountDelta, OutcomeEvent, Preparation } from "../../src/observe/core/model.ts";
+import { NO_SUMMARY_TOTALS, type CountDelta, type OutcomeEvent, type Preparation } from "../../src/observe/core/model.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import { T0, VERSION, database, hex } from "./support.ts";
 
@@ -180,7 +180,7 @@ await test("a failed flush keeps the drained counts for the next flush, a failed
 
 await test("a buffer with too many distinct keys is flushed at once", async () => {
   const buffer = new CountBuffer(INTERVAL);
-  const counts: CountDelta[] = Array.from({ length: MAX_BUFFERED_COUNT_KEYS }, (_, n) => ({ bucketAt: START, version: VERSION, stage: "worker", route: `GET /r${n}`, operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 }));
+  const counts: CountDelta[] = Array.from({ length: MAX_BUFFERED_COUNT_KEYS }, (_, n) => ({ bucketAt: START, version: VERSION, stage: "worker", route: `GET /r${n}`, operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS }));
   buffer.add(counts.slice(0, MAX_BUFFERED_COUNT_KEYS - 1), START);
   assert.equal(buffer.isDue(START), false);
   buffer.add(counts.slice(MAX_BUFFERED_COUNT_KEYS - 1), START);

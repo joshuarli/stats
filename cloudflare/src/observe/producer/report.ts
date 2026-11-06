@@ -13,7 +13,7 @@ export function reportOperation(summary: OperationSummary, context: { readonly t
 }
 
 export function reportServiceOperation<O extends string = string>(summary: ServiceOperationSummary<NoInfer<O>>, context: { readonly traceId: string; readonly spanId: string }): void {
-  const message: ServiceOperationMessage<O> = { kind: "operation", traceId: context.traceId, spanId: context.spanId, operation: summary.operation, synthetic: summary.synthetic, rows: summary.rows };
+  const message: ServiceOperationMessage<O> = { kind: "operation", traceId: context.traceId, spanId: context.spanId, operation: summary.operation, synthetic: summary.synthetic, rows: summary.rows, ...(summary.workLagMs === undefined ? {} : { workLagMs: summary.workLagMs }) };
   channel.publish(message);
 }
 

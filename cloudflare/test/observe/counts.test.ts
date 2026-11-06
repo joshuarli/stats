@@ -4,15 +4,16 @@ import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/ta
 import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES, type ServicePolicy } from "../../src/observe/core/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { OTHER_ROUTE, type CountDelta } from "../../src/observe/core/model.ts";
-import { cleanup, health, ingest, nextCleanupAt, statsWindow } from "../../src/observe/core/store.ts";
+import { NO_SUMMARY_TOTALS, OTHER_ROUTE, type CountDelta, type SummaryTotals } from "../../src/observe/core/model.ts";
+import { cleanup, health, initializeStore, ingest, nextCleanupAt, statsWindow } from "../../src/observe/core/store.ts";
 import type { SqlStatements } from "../../src/core/sql.ts";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { COUNT_BUCKET_MS, HEALTH_BUCKET_MS, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { cleanupCounts, recordCounts } from "../../src/observe/core/counts.ts";
 import { MILLION, sampled } from "../../src/observe/core/sampling.ts";
 import { decodeExploration, decodeHealth, decodeObjectMethods, decodeStatsWindow, decodeTrace, decodeTraces } from "../../src/observe/client/decode.ts";
-import { T0, VERSION, database, hex } from "./support.ts";
+import { T0, VERSION, database, hex, wrap } from "./support.ts";
+import { DatabaseSync } from "node:sqlite";
 
 const SHOP = POLICIES["nanoshop-storied"];
 const OBJECT = "71437be8483ec4c778560417396a6e8e81f1673f27ec5d341ec7a2645e467eb9";
@@ -33,6 +34,12 @@ interface Expectation {
   readonly key: string;
   readonly cpu: number;
   readonly wall: number;
+  readonly summary: SummaryTotals;
+}
+
+interface PublishedSummary {
+  readonly rows: { readonly read: number; readonly written: number; readonly statements: number } | null;
+  readonly workLagMs?: number;
 }
 
 interface Generated {
@@ -41,8 +48,17 @@ interface Generated {
   readonly failures: number;
 }
 
-function operationMessage(traceId: string, spanId: string, operation: string) {
-  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, synthetic: false, rows: null } };
+function operationMessage(traceId: string, spanId: string, operation: string, summary: PublishedSummary = { rows: null }) {
+  return { channel: OBSERVE_CHANNEL, message: { kind: "operation", traceId, spanId, operation, synthetic: false, ...summary } };
+}
+
+function expectedTotals(summary: PublishedSummary): SummaryTotals {
+  const rows = summary.rows;
+  const lag = summary.workLagMs;
+  return {
+    rowAccounts: rows === null ? 0 : 1, rowsRead: rows?.read ?? 0, rowsWritten: rows?.written ?? 0, statements: rows?.statements ?? 0,
+    workLagCount: lag === undefined ? 0 : 1, workLagMsMax: lag ?? 0, workLagMsSum: lag ?? 0
+  };
 }
 
 function workerItem(n: number, atMs: number, path: string, method: string, status: number, operation: string | null, overrides: Partial<TailItem> = {}): TailItem {
@@ -54,11 +70,11 @@ function workerItem(n: number, atMs: number, path: string, method: string, statu
   };
 }
 
-function objectItem(n: number, atMs: number, rpcMethod: string, operation: string, overrides: Partial<TailItem> = {}): TailItem {
+function objectItem(n: number, atMs: number, rpcMethod: string, operation: string, overrides: Partial<TailItem> = {}, summary: PublishedSummary = { rows: null }): TailItem {
   return {
     ...workerItem(n, atMs, "/", "GET", 200, null),
     event: { rpcMethod }, executionModel: "durableObject", durableObjectId: OBJECT, entrypoint: "TenantStore",
-    diagnosticsChannelEvents: [operationMessage(hex(n + 1, 32), hex(2 * n + 2, 16), operation)], ...overrides
+    diagnosticsChannelEvents: [operationMessage(hex(n + 1, 32), hex(2 * n + 2, 16), operation, summary)], ...overrides
   };
 }
 
@@ -67,9 +83,9 @@ function generate(count: number, seed: number): Generated {
   const items: TailItem[] = [];
   const expected: Expectation[] = [];
   let failures = 0;
-  const add = (item: TailItem, stage: string, outcome: string, route: string, operation: string) => {
+  const add = (item: TailItem, stage: string, outcome: string, route: string, operation: string, summary: PublishedSummary = { rows: null }) => {
     items.push(item);
-    expected.push({ key: [stage, outcome, route, operation].join("|"), cpu: Math.round(item.cpuTime), wall: Math.round(item.wallTime) });
+    expected.push({ key: [stage, outcome, route, operation].join("|"), cpu: Math.round(item.cpuTime), wall: Math.round(item.wallTime), summary: expectedTotals(summary) });
     if (outcome === "failed") failures++;
   };
   for (let n = 0; items.length < count; n++) {
@@ -81,7 +97,12 @@ function generate(count: number, seed: number): Generated {
     else if (roll < 0.7) add(workerItem(n, at, "/search", "GET", 200, "request.search", { cpuTime, wallTime }), "worker", "ok", "GET /search", "request.search");
     else if (roll < 0.8) {
       add(workerItem(n, at, "/cart/items", "POST", 200, "request.cart-add", { cpuTime, wallTime }), "worker", "ok", "POST /cart/items", "request.cart-add");
-      add(objectItem(n, at + 1, "addToCart", "store.rpc.addToCart", { cpuTime: 1, wallTime: 4 }), "object", "ok", "TenantStore.addToCart", "store.rpc.addToCart");
+      const summary: PublishedSummary = { rows: { read: Math.floor(next() * 30), written: Math.floor(next() * 6), statements: 1 + Math.floor(next() * 9) } };
+      add(objectItem(n, at + 1, "addToCart", "store.rpc.addToCart", { cpuTime: 1, wallTime: 4 }, summary), "object", "ok", "TenantStore.addToCart", "store.rpc.addToCart", summary);
+    } else if (roll < 0.82) {
+      const failed = next() < 0.2;
+      const summary: PublishedSummary = { rows: { read: Math.floor(next() * 200), written: Math.floor(next() * 20), statements: 1 + Math.floor(next() * 40) }, ...(next() < 0.7 ? { workLagMs: Math.floor(next() * 5_000) } : {}) };
+      add(objectItem(n, at + 2, "alarm", "store.alarm", { event: { scheduledTime: at }, cpuTime: 2, wallTime: 30, ...(failed ? { outcome: "exception", exceptions: [{ name: "Error", message: "x" }] } : {}) }, summary), "object", failed ? "failed" : "ok", "TenantStore.alarm", "store.alarm", summary);
     } else if (roll < 0.85) add(workerItem(n, at, "/static/app.css", "GET", 200, null, { cpuTime, wallTime }), "worker", "excluded-route", OTHER_ROUTE, "");
     else if (roll < 0.9) add(workerItem(n, at, "/products/gone", "GET", 404, "request.product", { cpuTime, wallTime }), "worker", "excluded-status:404", "GET /products/:handle", "");
     else if (roll < 0.93) add(workerItem(n, at, "/cart", "GET", 500, "request.cart", { cpuTime, wallTime }), "worker", "failed", "GET /cart", "request.cart");
@@ -134,15 +155,21 @@ await test("counts over 10,000 seeded events equal the input exactly, and kept r
   const window = statsWindow(db, { fromMs: START, toMs: START + 5 * COUNT_BUCKET_MS }, SHOP.sampling);
   const observed = window.invocations.reduce((sum, row) => sum + row.count, 0) + window.outcomes.reduce((sum, row) => sum + row.count, 0);
   assert.equal(observed, items.length);
-  const byRoute = new Map<string, { count: number; failed: number; cpuMsSum: number; wallMsSum: number }>();
+  const byRoute = new Map<string, { count: number; failed: number; cpuMsSum: number; wallMsSum: number } & SummaryTotals>();
   for (const entry of expected) {
     const [stage, outcome, route, operation] = entry.key.split("|");
     if (outcome !== "ok" && outcome !== "failed") continue;
     const key = [stage, route, operation].join("|");
-    const total = byRoute.get(key) ?? { count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0 };
-    byRoute.set(key, { count: total.count + 1, failed: total.failed + (outcome === "failed" ? 1 : 0), cpuMsSum: total.cpuMsSum + entry.cpu, wallMsSum: total.wallMsSum + entry.wall });
+    const total = byRoute.get(key) ?? { count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS };
+    const add = entry.summary;
+    byRoute.set(key, {
+      count: total.count + 1, failed: total.failed + (outcome === "failed" ? 1 : 0), cpuMsSum: total.cpuMsSum + entry.cpu, wallMsSum: total.wallMsSum + entry.wall,
+      rowAccounts: total.rowAccounts + add.rowAccounts, rowsRead: total.rowsRead + add.rowsRead, rowsWritten: total.rowsWritten + add.rowsWritten, statements: total.statements + add.statements,
+      workLagCount: total.workLagCount + add.workLagCount, workLagMsMax: Math.max(total.workLagMsMax, add.workLagMsMax), workLagMsSum: total.workLagMsSum + add.workLagMsSum
+    });
   }
-  assert.deepEqual(new Map(window.counts?.map(row => [[row.stage, row.route, row.operation].join("|"), { count: row.count, failed: row.failed, cpuMsSum: row.cpuMsSum, wallMsSum: row.wallMsSum }])), byRoute);
+  assert.ok((byRoute.get("object|TenantStore.alarm|store.alarm")?.workLagCount ?? 0) > 0);
+  assert.deepEqual(new Map(window.counts?.map(({ version: _version, stage, route, operation, ...totals }) => [[stage, route, operation].join("|"), totals])), byRoute);
   assert.deepEqual(new Set(window.counts?.map(row => row.version)), new Set([VERSION]));
 });
 
@@ -209,7 +236,7 @@ await test("excluded events of a sampled service are counted by outcome, not sto
 await test("routes beyond the per-class cap fold into other, and malformed or expired counts are refused with a health reason", async () => {
   const db = database();
   const nowMs = START + 10_000;
-  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 1 };
+  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 1, ...NO_SUMMARY_TOTALS };
   const counts = Array.from({ length: MAX_OUTCOME_ROUTES_PER_CLASS + 5 }, (_, n): CountDelta => ({ ...base, route: `GET /r${n}` }));
   ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts });
   const routes = db.rows<{ route: string; sampled_out: number }>("SELECT route, SUM(sampled_out) AS sampled_out FROM observe_count_entries GROUP BY route");
@@ -221,18 +248,48 @@ await test("routes beyond the per-class cap fold into other, and malformed or ex
     { ...base, operation: "Bad Op" },
     { ...base, sampledOut: -1 },
     { ...base, kept: 0, sampledOut: 0 },
+    { ...base, rowAccounts: 2 },
+    { ...base, rowsRead: 3 },
+    { ...base, rowAccounts: 1, statements: -1 },
+    { ...base, workLagCount: 1, workLagMsMax: 5, workLagMsSum: 4 },
+    { ...base, workLagMsSum: 4 },
     { ...base, bucketAt: nowMs - RETENTION_MS - 2 * COUNT_BUCKET_MS - ((nowMs - RETENTION_MS) % COUNT_BUCKET_MS) }
   ];
   ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: refused });
   const reasons = health(db, nowMs, SHOP.sampling).reasons.map(reason => [reason.counter, reason.reason, reason.count]);
-  assert.deepEqual(reasons, [["rejected", "invalid_count", 5], ["expired", "counts", 1]]);
+  assert.deepEqual(reasons, [["rejected", "invalid_count", 10], ["expired", "counts", 1]]);
   assert.equal(db.rows<{ n: number }>("SELECT SUM(sampled_out) AS n FROM observe_count_entries")[0]!.n, MAX_OUTCOME_ROUTES_PER_CLASS + 5);
+});
+
+await test("a store written before summaries reads its stored counts with no row account or work lag, and new summaries add to them", () => {
+  const raw = new DatabaseSync(":memory:");
+  const old = wrap(raw);
+  raw.exec(`CREATE TABLE observe_counts (bucket_at INTEGER PRIMARY KEY, untraced INTEGER NOT NULL, flushes INTEGER NOT NULL, entries TEXT NOT NULL CHECK (json_valid(entries))) WITHOUT ROWID`);
+  raw.exec(`CREATE VIEW observe_count_entries AS SELECT c.bucket_at AS bucket_at, json_extract(e.value, '$.version') AS version, json_extract(e.value, '$.stage') AS stage,
+    json_extract(e.value, '$.outcome') AS outcome, json_extract(e.value, '$.route') AS route, json_extract(e.value, '$.operation') AS operation, json_extract(e.value, '$.kept') AS kept,
+    json_extract(e.value, '$.sampledOut') AS sampled_out, json_extract(e.value, '$.cpuMsSum') AS cpu_ms_sum, json_extract(e.value, '$.wallMsSum') AS wall_ms_sum
+    FROM observe_counts c, json_each(c.entries) e`);
+  raw.prepare("INSERT INTO observe_counts (bucket_at, untraced, flushes, entries) VALUES (?, 0, 1, ?)").run(START, JSON.stringify([
+    { version: VERSION, stage: "object", outcome: "ok", route: "TenantStore.alarm", operation: "", kept: 0, sampledOut: 3, cpuMsSum: 3, wallMsSum: 30 }
+  ]));
+  initializeStore(old);
+  initializeStore(old);
+  const before = statsWindow(old, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, SHOP.sampling).counts;
+  assert.deepEqual(before, [{ version: VERSION, stage: "object", route: "TenantStore.alarm", operation: "", count: 3, failed: 0, cpuMsSum: 3, wallMsSum: 30, ...NO_SUMMARY_TOTALS }]);
+  recordCounts(old, START + 10_000, [{
+    bucketAt: START, version: VERSION, stage: "object", route: "TenantStore.alarm", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 1, wallMsSum: 10,
+    rowAccounts: 1, rowsRead: 9, rowsWritten: 2, statements: 4, workLagCount: 1, workLagMsMax: 700, workLagMsSum: 700
+  }], { untraced: 0, flush: 1 });
+  assert.deepEqual(statsWindow(old, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, SHOP.sampling).counts, [{
+    version: VERSION, stage: "object", route: "TenantStore.alarm", operation: "", count: 4, failed: 0, cpuMsSum: 4, wallMsSum: 40,
+    rowAccounts: 1, rowsRead: 9, rowsWritten: 2, statements: 4, workLagCount: 1, workLagMsMax: 700, workLagMsSum: 700
+  }]);
 });
 
 await test("a count with a future bucket lands in the current bucket", () => {
   const db = database();
   const nowMs = START + 10_000;
-  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 }] });
+  ingest(db, [], nowMs, [], { sampling: SHOP.sampling, counts: [{ bucketAt: START + 4 * COUNT_BUCKET_MS, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS }] });
   assert.deepEqual(db.rows<{ bucket_at: number }>("SELECT bucket_at FROM observe_counts").map(row => ({ ...row })), [{ bucket_at: START }]);
 });
 
@@ -301,7 +358,7 @@ await test("the service answers a sampled window, explore, and traces with the p
   assert.deepEqual(decodeObjectMethods(wire(await service.objects({ fromMs: START, toMs: START + COUNT_BUCKET_MS }))).sampling, { keepPerMillion: 0, kept: 0, observed: 0 });
   const window = await service.window({ fromMs: START, toMs: START + COUNT_BUCKET_MS });
   assert.deepEqual(decodeStatsWindow(wire(window)).sampling, summary);
-  assert.deepEqual(decodeStatsWindow(wire(window)).counts, [{ version: VERSION, stage: "worker", route: "GET /search", operation: "request.search", count: 8, failed: 1, cpuMsSum: 8, wallMsSum: 160 }]);
+  assert.deepEqual(decodeStatsWindow(wire(window)).counts, [{ version: VERSION, stage: "worker", route: "GET /search", operation: "request.search", count: 8, failed: 1, cpuMsSum: 8, wallMsSum: 160, ...NO_SUMMARY_TOTALS }]);
   assert.deepEqual(decodeTrace(wire(trace), hex(11, 32)).sampling, summary);
   assert.deepEqual(decodeHealth(wire(await service.health())).sampling, (await service.health()).sampling);
   assert.throws(() => decodeExploration(wire({ ...explored, sampling: { keepPerMillion: 2_000_000, kept: 0, observed: 0 } })));
@@ -330,6 +387,14 @@ await test("explore lists a sampled route with no kept invocation, with its exac
   assert.deepEqual(decodeExploration(JSON.parse(JSON.stringify(explored))), explored);
 });
 
+function summaryOf(random: () => number): SummaryTotals {
+  const lag = random() < 0.5 ? null : Math.floor(random() * 3_000);
+  return {
+    rowAccounts: 1, rowsRead: Math.floor(random() * 40), rowsWritten: Math.floor(random() * 8), statements: 1 + Math.floor(random() * 12),
+    workLagCount: lag === null ? 0 : 1, workLagMsMax: lag ?? 0, workLagMsSum: lag ?? 0
+  };
+}
+
 function flushOf(random: () => number, bucketAt: number, keys: number, events: number): CountDelta[] {
   const deltas: CountDelta[] = [];
   for (let n = 0; n < events; n++) {
@@ -337,7 +402,8 @@ function flushOf(random: () => number, bucketAt: number, keys: number, events: n
     const failed = random() < 0.1;
     deltas.push({
       bucketAt, version: VERSION, stage: key % 2 === 0 ? "worker" : "object", route: `GET /r${key}`, operation: `request.r${key}`, outcome: failed ? "failed" : "ok",
-      kept: random() < 0.2 ? 1 : 0, sampledOut: 1, capped: 0, cpuMsSum: 1 + Math.floor(random() * 5), wallMsSum: 5 + Math.floor(random() * 60)
+      kept: random() < 0.2 ? 1 : 0, sampledOut: 1, capped: 0, cpuMsSum: 1 + Math.floor(random() * 5), wallMsSum: 5 + Math.floor(random() * 60),
+      ...(key % 2 === 0 ? NO_SUMMARY_TOTALS : summaryOf(random))
     });
   }
   return deltas;
@@ -347,8 +413,12 @@ function totals(deltas: readonly CountDelta[]): Map<string, number[]> {
   const sums = new Map<string, number[]>();
   for (const delta of deltas) {
     const key = [delta.bucketAt, delta.stage, delta.outcome, delta.route, delta.operation].join("|");
-    const sum = sums.get(key) ?? [0, 0, 0, 0];
-    sums.set(key, [sum[0]! + delta.kept, sum[1]! + delta.sampledOut, sum[2]! + delta.cpuMsSum, sum[3]! + delta.wallMsSum]);
+    const sum = sums.get(key) ?? [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    sums.set(key, [
+      sum[0]! + delta.kept, sum[1]! + delta.sampledOut, sum[2]! + delta.cpuMsSum, sum[3]! + delta.wallMsSum,
+      sum[4]! + delta.rowAccounts, sum[5]! + delta.rowsRead, sum[6]! + delta.rowsWritten, sum[7]! + delta.statements,
+      sum[8]! + delta.workLagCount, Math.max(sum[9]!, delta.workLagMsMax), sum[10]! + delta.workLagMsSum
+    ]);
   }
   return sums;
 }
@@ -373,9 +443,11 @@ await test("many flushes from several isolates merge into one row per bucket and
   }
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_counts")[0]!.n, 4);
   assert.equal(db.rows<{ n: number }>("SELECT SUM(flushes) AS n FROM observe_counts")[0]!.n, flushes);
-  const stored = new Map(db.rows<{ bucket_at: number; stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu_ms_sum: number; wall_ms_sum: number }>(
-    "SELECT bucket_at, stage, outcome, route, operation, kept, sampled_out, cpu_ms_sum, wall_ms_sum FROM observe_count_entries"
-  ).map(row => [[row.bucket_at, row.stage, row.outcome, row.route, row.operation].join("|"), [row.kept, row.sampled_out, row.cpu_ms_sum, row.wall_ms_sum]]));
+  const stored = new Map(db.rows<{ bucket_at: number; stage: string; outcome: string; route: string; operation: string; kept: number; sampled_out: number; cpu_ms_sum: number; wall_ms_sum: number; row_accounts: number; rows_read: number; rows_written: number; statements: number; work_lag_count: number; work_lag_ms_max: number; work_lag_ms_sum: number }>(
+    "SELECT bucket_at, stage, outcome, route, operation, kept, sampled_out, cpu_ms_sum, wall_ms_sum, row_accounts, rows_read, rows_written, statements, work_lag_count, work_lag_ms_max, work_lag_ms_sum FROM observe_count_entries"
+  ).map(row => [[row.bucket_at, row.stage, row.outcome, row.route, row.operation].join("|"), [
+    row.kept, row.sampled_out, row.cpu_ms_sum, row.wall_ms_sum, row.row_accounts, row.rows_read, row.rows_written, row.statements, row.work_lag_count, row.work_lag_ms_max, row.work_lag_ms_sum
+  ]]));
   assert.deepEqual(stored, totals(sent));
   assert.equal(sent.reduce((sum, delta) => sum + delta.kept + delta.sampledOut, 0), db.rows<{ n: number }>("SELECT SUM(kept + sampled_out) AS n FROM observe_count_entries")[0]!.n);
 });
@@ -383,7 +455,7 @@ await test("many flushes from several isolates merge into one row per bucket and
 await test("the route cap holds across flushes because the stored bucket remembers its routes", () => {
   const db = database();
   const nowMs = START + 10_000;
-  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0 };
+  const base: CountDelta = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /x", operation: "", outcome: "ok", kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0, ...NO_SUMMARY_TOTALS };
   for (let n = 0; n < MAX_OUTCOME_ROUTES_PER_CLASS + 5; n++) recordCounts(db, nowMs, [{ ...base, route: `GET /r${n}` }], { untraced: 0, flush: 1 });
   recordCounts(db, nowMs, [{ ...base, route: "GET /r0" }], { untraced: 0, flush: 1 });
   const rows = db.rows<{ route: string; sampled_out: number }>("SELECT route, sampled_out FROM observe_count_entries");
