@@ -14,5 +14,5 @@ const fixtures = Object.fromEntries(readdirSync(fixtureDir, { recursive: true, w
 
 export default defineConfig({
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
-  test: { include: ["test/**/*.test.ts"], exclude: ["test/binary/**", "test/ingest/**", "test/deployments/**", "test/cost/**", "test/cli/**", "test/scripts/**", "test/observe/**", "test/observe-e2e/**", "test/agent-e2e/**", "test/node/**", "test/node-e2e/**", "test/local/**"], testTimeout: 30_000 }
+  test: { include: ["test/**/*.test.ts"], exclude: ["test/binary/**", "test/ingest/**", "test/deployments/**", "test/cost/**", "test/cli/**", "test/scripts/**", "test/observe/**", "test/observe-e2e/**", "test/agent-e2e/**", "test/node/**", "test/node-e2e/**", "test/local/**", "test/producer/**"], testTimeout: 30_000 }
 });
