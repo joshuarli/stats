@@ -272,7 +272,7 @@ describe("ingest", () => {
     const host = await createHost();
     const body = frameFor("linux-normal", host.hostId);
     expect((await post(host.token, body)).status).toBe(200);
-    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toBe(true);
+    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toEqual({ ok: true, value: null });
     const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) =>
       state.storage.sql.exec<{ hosts: number; samples: number; rollups: number }>("SELECT (SELECT count(*) FROM hosts WHERE host_id = ?) AS hosts, (SELECT count(*) FROM samples WHERE host_id = ?) AS samples, (SELECT count(*) FROM rollups WHERE host_id = ?) AS rollups", host.hostId, host.hostId, host.hostId).one()
     );

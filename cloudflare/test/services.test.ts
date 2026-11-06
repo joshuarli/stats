@@ -49,6 +49,17 @@ async function provisioned(name: string, hostNames: readonly string[] = ["web-1"
 }
 
 describe("services", () => {
+  it("refuses to purge a host a service lists with 409, and purges it once no service lists it", async () => {
+    const lone = await createHost("lonely");
+    expect((await admin(`/admin/hosts/${lone}/purge`, { method: "DELETE" })).status).toBe(204);
+    const { hostIds } = await provisioned("purge-guard", ["a"]);
+    const refused = await admin(`/admin/hosts/${hostIds[0]}/purge`, { method: "DELETE" });
+    expect(refused.status).toBe(409);
+    expect((await refused.json() as { error: { code: string } }).error.code).toBe("conflict");
+    const stillListed = await admin("/hosts");
+    expect((await stillListed.json() as { hosts: { hostId: string }[] }).hosts.some(host => host.hostId === hostIds[0])).toBe(true);
+  });
+
   it("creates a service and returns its deploy token only in the creation response", async () => {
     const log = vi.spyOn(console, "error");
     const info = vi.spyOn(console, "log");

@@ -91,7 +91,7 @@ export interface LatestSample {
 
 export type AdminResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: 400 | 404; readonly code: "invalid_request" | "not_found"; readonly message: string };
+  | { readonly ok: false; readonly status: 400 | 404 | 409; readonly code: "invalid_request" | "not_found" | "conflict"; readonly message: string };
 
 export class InstallationCore {
   private readonly ports: InstallationPorts;
@@ -161,9 +161,11 @@ export class InstallationCore {
     return true;
   }
 
-  async purgeHost(hostId: string): Promise<boolean> {
-    if (this.host(this.unpublished(), hostId) === undefined) return false;
+  async purgeHost(hostId: string): Promise<AdminResult<null>> {
     const sql = this.unpublished();
+    if (this.host(sql, hostId) === undefined) return { ok: false, status: 404, code: "not_found", message: "host not found" };
+    const listedBy = listServices(sql).find(service => service.hostIds.includes(hostId));
+    if (listedBy !== undefined) return { ok: false, status: 409, code: "conflict", message: `service ${listedBy.name} lists this host` };
     sql.transaction(() => {
       sql.run("DELETE FROM samples WHERE host_id = ?", hostId);
       sql.run("DELETE FROM rollups WHERE host_id = ?", hostId);
@@ -172,7 +174,7 @@ export class InstallationCore {
       sql.run("DELETE FROM hosts WHERE host_id = ?", hostId);
       this.invalidateHistory();
     });
-    return true;
+    return { ok: true, value: null };
   }
 
   async listHosts(): Promise<HostSummary[]> {
@@ -685,7 +687,10 @@ export class InstallationCore {
       const revoke = /^\/admin\/hosts\/(h_[0-9a-f]{32})$/u.exec(path);
       if (revoke !== null && request.method === "DELETE") return (await this.revokeHost(revoke[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
       const purge = /^\/admin\/hosts\/(h_[0-9a-f]{32})\/purge$/u.exec(path);
-      if (purge !== null && request.method === "DELETE") return (await this.purgeHost(purge[1]!)) ? new Response(null, { status: 204 }) : failure("not_found", "host not found", 404);
+      if (purge !== null && request.method === "DELETE") {
+        const result = await this.purgeHost(purge[1]!);
+        return result.ok ? new Response(null, { status: 204 }) : failure(result.code, result.message, result.status);
+      }
       if (path === "/admin/services" && request.method === "POST") {
         const result = await createService(sql, await readLimitedText(request, MAX_SERVICE_BODY_BYTES), this.now());
         return result.ok ? json(result.value, 201) : failure(result.code, result.message, result.status);

@@ -400,7 +400,7 @@ describe("system details", () => {
     expect((await system(host.hostId)).status).toBe(200);
 
     expect((await SELF.fetch(`https://example.com/api/v1/hosts/${host.hostId}/system`)).status).toBe(401);
-    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toBe(true);
+    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toEqual({ ok: true, value: null });
     expect((await system(host.hostId)).status).toBe(404);
   });
 

@@ -172,7 +172,8 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
   Both history routes answer in the [history frame](#history-frames); every
   other route and every error answers in JSON.
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
-  `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
+  `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`
+  (409 `conflict` while a service lists the host).
 - `POST /admin/services`, `GET /services`, `GET /services/:name`,
   and `GET /services/:name/deployments`; the marker `POST` is
   `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)),
