@@ -66,17 +66,15 @@ export function Shell(props: ParentProps): JSX.Element {
     };
   });
 
-  let keepZoomOnRangeChange = false;
-  createUpdateEffect(() => range(), () => {
-    if (keepZoomOnRangeChange) keepZoomOnRangeChange = false;
-    else views.resetZoom();
-  });
+  const chooseRange = (next: Range): void => {
+    views.resetZoom();
+    setRange(next);
+  };
   const showWindow = (window: TimeWindow): boolean => {
     const current = now();
     const fromMs = Math.max(window.fromMs, current - rangeMs[ranges[ranges.length - 1]!]);
     const covering = smallestRangeCovering(fromMs, current);
     if (rangeMs[covering] > rangeMs[range()]) {
-      keepZoomOnRangeChange = true;
       setRange(covering);
     }
     views.resetZoom();
@@ -93,7 +91,7 @@ export function Shell(props: ParentProps): JSX.Element {
   };
 
   return (
-    <TelemetryContext value={{ range, query, setRange, showWindow, now, hosts, refreshHosts, ...views }}>
+    <TelemetryContext value={{ range, query, chooseRange, showWindow, now, hosts, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
           <nav class="primary-nav" aria-label="Primary">

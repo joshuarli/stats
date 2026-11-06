@@ -6,13 +6,13 @@ import { rangeLabels, ranges, useTelemetry } from "../state";
 import { Icon } from "./Icon";
 
 export function TimeBar(): JSX.Element {
-  const { range, setRange, view, canZoomOut, live, zoomOut, resetZoom, pan, toggleLive, requestRefresh } = useTelemetry();
+  const { range, chooseRange, view, canZoomOut, live, zoomOut, resetZoom, pan, toggleLive, requestRefresh } = useTelemetry();
   return (
     <div class="timebar">
       <div class={isPending(range) ? "segmented pending" : "segmented"} role="group" aria-label="Time range">
         <For each={ranges}>
           {(option) => (
-            <button class="segment" type="button" aria-pressed={latest(range) === option && view() === null ? "true" : "false"} onClick={() => { setRange(option); }}>
+            <button class="segment" type="button" aria-pressed={latest(range) === option && view() === null ? "true" : "false"} onClick={() => { chooseRange(option); }}>
               {option}
             </button>
           )}

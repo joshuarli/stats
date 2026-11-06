@@ -503,6 +503,26 @@ test("dragging a chart zooms the time window, and escape returns to live", async
   await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("clicking the range button of a zoomed window leaves the zoom", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("heading", { name: "Block latency" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const plot = page.locator(".chart-plot .u-over").first();
+  await plot.scrollIntoViewIfNeeded();
+  const box = await plot.boundingBox();
+  if (box === null) throw new Error("chart plot has no box");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByRole("button", { name: /Reset/ })).toBeVisible();
+  await page.getByRole("button", { name: "1h", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Reset/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("legend rows isolate and restore series", async ({ page }) => {
   await mock(page);
   await page.goto("/");
