@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 76
+Next: 77
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -57,13 +57,22 @@ Next: 76
 - **Fix with:** none
 - **Effort:** S
 
-### STA-53 · P3 · Collector runs go missing or fail about one time in nine
+### STA-53 · P3 · A failed collector run cannot be traced to its Analytics query
 
 - **Area:** Projects
-- **Where:** `cloudflare/src/cloudflare/projects/collector.ts`, the stats `scheduled` handler
-- **Problem:** From 08:50 to 11:00Z on 2026-11-05, 3 of 26 five-minute collector runs left no probe sample. The 09:35 and 09:40Z crons recorded no run at all, and the 10:05Z run recorded `collector_failed` after 5.2 s with 32M analytics rows read. Each gap removes a probe sample and delays settled coverage. Until `68396b7`, any one gap voided the probe guardrail, which is why O1 first came back `insufficient-data`.
-- **Recommendation:** Read the stats-observe traces for the scheduled invocations at those times to tell a skipped cron from one that died before recording its run, and record the failing step of `collector_failed`. Fix the cause if it is ours; if Cloudflare skipped the crons, document the rate.
+- **Where:** `cloudflare/src/cloudflare/projects/collector.ts:53` (`run`), `:70` (`collector_failed`), the stats `scheduled` handler
+- **Problem:** Read from stats-observe traces, collector history and `events.durableObjectsInvocations` on 2026-11-06, over 2026-11-04 01:00Z to 2026-11-06 05:00Z (618 recorded scheduled invocations, 620 five-minute slots). Missing runs are Cloudflare's: the 09:35Z and 09:40Z crons on 2026-11-05 never started (no scheduled tail event, no Durable Object `jsrpc` in their buckets, while ingest traces continued every minute), and the 09:30Z cron started at 10:31:36Z, 61 minutes late, and recorded its run with `atMs` 09:30:48Z. That is 3 slots in 620 with no on-time run, in one 15 minute event. The failed runs are ours to explain but not yet explainable: 8 of 618 (1.3%) ended `exception`, and all 8 are an uncaught `AnalyticsSQLAPIError` thrown by `input.analytics.query` in `run` (`collector.ts:53`, awaited through `Promise.all` at `:57`). The 10:05Z run that read 32,064,861 rows in 5.2 s is one of them; the four failures in the 24 hour collector history read 44.0M, 15.7M, 32.1M and 31.6M rows against a median of 46M, so they do not follow row count, and two failed in under 0.5 s. The observe occurrence has no message, `collector_failed` carries no detail, and the run record does not store which query was in flight, so which of the per-project queries failed and with which status is unknown.
+- **Recommendation:** Record the failing query kind and the Analytics error status in the failed run's `detail` and in the `collector_failed` log line, then read the next few failures. If they are 429 or 5xx from the Analytics API, retry that one query once inside the run and document the rate; if one query kind fails, fix that query.
 - **Fix with:** root-cause
+- **Effort:** S
+
+### STA-76 · P3 · Every collector run fails a deployment poll for a Worker that does not exist
+
+- **Area:** Projects
+- **Where:** `cloudflare/cloudflare.config.ts:55` (`nanoshop-storied` project), `cloudflare/src/cloudflare/deployments/collector.ts:63` (`request`), `cloudflare/src/cloudflare/index.ts` (`scheduled`)
+- **Problem:** `cf workers deployments list --script-name nanoshop-storied` answers `[10007] This Worker does not exist on your account` (404), so the deployment poll for that project throws `Error("upstream")` in `request` on every cron. `reportError("deployments.poll", ...)` records it as a caught error: 156 occurrences since 2026-11-05 13:20Z in one open issue, and the trace of every scheduled run has `errorCount` 1 and `failed: true`. `statsctl observe routes --project stats --window 1h` lists `scheduled */5 * * * *` as 12 requests, 12 failed, and `statsctl health --project nanoshop-storied` reports `sync_never_succeeded` and `sync_error: upstream`. A real scheduled failure (STA-53) is indistinguishable from this in the failure rate.
+- **Recommendation:** Owner decision: remove `nanoshop-storied` from the project list until its Worker is deployed, or make the poll record a 404 as "worker not deployed" without reporting an error. Then confirm the scheduled failure rate falls to the real exceptions.
+- **Fix with:** none
 - **Effort:** S
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
