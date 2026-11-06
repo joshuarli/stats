@@ -1,8 +1,8 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
 import { NANOSHOP_OPERATIONS, NANOSHOP_SAMPLING, nanoshopLabelOperation, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
-import type { Stage } from "../core/model.ts";
-import { KEEP_ALL, type Sampling } from "../core/sampling.ts";
+import type { Stage } from "./model.ts";
+import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
 export interface ServicePolicy {

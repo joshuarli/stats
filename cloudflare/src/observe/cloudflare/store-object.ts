@@ -5,7 +5,7 @@ import { createObserveService, type ArtifactOutcome, type MaintainedService, typ
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 import type { Sampling } from "../core/sampling.ts";
 import { isObservedService } from "../services.ts";
-import { POLICIES } from "./policies.ts";
+import { POLICIES } from "../core/policies.ts";
 import { CloudflareSql } from "../../cloudflare/sql.ts";
 
 export interface ObserveEnv {

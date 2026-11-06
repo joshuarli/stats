@@ -8,7 +8,7 @@ import { collectorModules, ROOT, until, type Page, type TraceSummary } from "./h
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
 import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
-import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { NANOSHOP_SAMPLING } from "../../src/observe/core/nanoshop-policy.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import type { Health, Exploration, ObjectMethods, StatsWindow } from "../../src/observe/core/store.ts";
 

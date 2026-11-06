@@ -323,7 +323,7 @@ serves more than one service.
   named after it, so the core stays single-service and nothing is shared
   between their rows. The collector routes each tail event by the
   producer's script name and drops any other script with a fixed log line.
-  `src/observe/cloudflare/policies.ts` holds each service's route templates
+  `src/observe/core/policies.ts` holds each service's route templates
   and closed set of error operations. usr-memories keeps only its known
   path segments and replaces every other segment with `:id`, so object
   digests and memory ids never become labels. The API and the stats proxy

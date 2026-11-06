@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { POLICIES } from "../../src/observe/core/policies.ts";
 import { errorReport } from "../../src/observe/producer/report.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES, NANOSHOP_RPC_METHODS } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES, NANOSHOP_RPC_METHODS } from "../../src/observe/core/nanoshop-policy.ts";
 import { groupByService, isObservedService, OBSERVED_SERVICES } from "../../src/observe/services.ts";
 
 const VERSION = "3172128e-5c58-48a4-8c16-7767d5521979";

@@ -1,5 +1,5 @@
-import { sampled } from "../core/sampling.ts";
-import type { Stage } from "../core/model.ts";
+import { sampled } from "./sampling.ts";
+import type { Stage } from "./model.ts";
 
 export const NANOSHOP_ROUTES = [
   { name: "home", method: "GET", pattern: "/" },

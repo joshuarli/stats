@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareInvocation, truncateUtf8, type MessagePolicy, type ObservedError, type PreparedInvocation } from "../../src/observe/core/model.ts";
 import { parseStack } from "../../src/observe/core/stack.ts";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { POLICIES } from "../../src/observe/core/policies.ts";
 import { BUNDLE_STACK, DO_STACK, worker } from "./support.ts";
 
 const SAFE: MessagePolicy = { safeNames: new Set(["ValidationError"]) };

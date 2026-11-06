@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import diagnostics from "node:diagnostics_channel";
 import { DatabaseSync } from "node:sqlite";
 import { reduceTailItem, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { POLICIES } from "../../src/observe/core/policies.ts";
 import { OBSERVE_CHANNEL, type OperationMessage, type OperationSummary } from "../../src/observe/producer/channel.ts";
 import { reportOperation } from "../../src/observe/producer/report.ts";
 import { prepareInvocation, type MessagePolicy, type ObservedInvocation } from "../../src/observe/core/model.ts";

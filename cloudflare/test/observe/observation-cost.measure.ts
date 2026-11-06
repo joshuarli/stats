@@ -1,6 +1,6 @@
 import { CLOUDFLARE_STORE_WALL_MS_PER_CALL, CLOUDFLARE_TAIL_CPU_MS_PER_INVOCATION, NANOSHOP_ASSUMPTIONS, OBSERVATION_BUDGET, project, type MeasuredFigures } from "../../src/observe/core/budget.ts";
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
-import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { NANOSHOP_SAMPLING } from "../../src/observe/core/nanoshop-policy.ts";
 import { measure } from "./measure.ts";
 import { startRig } from "./workload.ts";
 

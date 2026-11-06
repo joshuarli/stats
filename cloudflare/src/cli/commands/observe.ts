@@ -1,7 +1,7 @@
 import { decodeExploration, decodeImpact, decodeIssues, decodeStatsWindow, decodeTraces } from "../../observe/client/decode.ts";
 import type { Exploration, IssueSummary, LagTotals, Page, RolloutImpact, RouteStats, StatsWindow, TracePage } from "../../observe/core/store.ts";
 import { OPERATION_BUCKET_MS } from "../../observe/core/limits.ts";
-import { POLICIES } from "../../observe/cloudflare/policies.ts";
+import { POLICIES } from "../../observe/core/policies.ts";
 import { observeWindowPath } from "../verify/gather.ts";
 import { VERSION, type Stage } from "../../observe/core/model.ts";
 import type { SamplingSummary } from "../../observe/core/counts.ts";

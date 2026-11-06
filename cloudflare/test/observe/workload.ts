@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { TailItem } from "../../src/observe/cloudflare/tail.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
-import { NANOSHOP_ROUTES } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { NANOSHOP_ROUTES } from "../../src/observe/core/nanoshop-policy.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import type { Health } from "../../src/observe/core/store.ts";

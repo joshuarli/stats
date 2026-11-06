@@ -1,6 +1,6 @@
 import { prepareTailItems } from "../../src/observe/cloudflare/tail.ts";
 import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { POLICIES } from "../../src/observe/core/policies.ts";
 import { CountBuffer, COUNT_FLUSH_INTERVAL_MS, deliverSampled } from "../../src/observe/core/count-buffer.ts";
 import { ALL_SHAPES, objectEntry, random, traceFor, workerEntry, type Fate } from "./workload.ts";
 import type { TailItem } from "../../src/observe/cloudflare/tail.ts";

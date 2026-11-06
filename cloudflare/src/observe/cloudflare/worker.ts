@@ -1,7 +1,7 @@
 import { OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
 import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
-import { POLICIES } from "./policies.ts";
+import { POLICIES } from "../core/policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { COUNT_FLUSH_INTERVAL_MS, CountBuffer, deliverSampled } from "../core/count-buffer.ts";
 import { AlwaysKeptCap } from "../core/always-kept-cap.ts";

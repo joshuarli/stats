@@ -117,7 +117,7 @@ shops `nanoshop-fieldhouse` and `nanoshop-tidewater`, listed in
 route of its own, and keeps each service's data in its own
 `ObservationStore` Durable Object named after the service. It routes each
 tail event by the producer's script name; each service's route templates
-and closed set of error operations live in `src/observe/cloudflare/policies.ts`,
+and closed set of error operations live in `src/observe/core/policies.ts`,
 and an event from any other script is dropped with a fixed log line.
 The Nanoshop services share one policy and generate their templates from exported route data in
 Nanoshop's own notation (`/products/{handle}` becomes `/products/:handle`), covering the

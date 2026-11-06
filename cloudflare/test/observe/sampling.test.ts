@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
+import { POLICIES } from "../../src/observe/core/policies.ts";
 import { sampled } from "../../src/observe/core/sampling.ts";
 
 await test("stats and usr-memories keep every observed invocation, and nanoshop-storied is sampled", () => {

@@ -1,5 +1,5 @@
 import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
-import type { ServicePolicy } from "./policies.ts";
+import type { ServicePolicy } from "../core/policies.ts";
 import { isFailedInvocation, OTHER_ROUTE, prepareInvocation, rejection, VERSION, type CountDelta, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
 import { addCount, countBucket } from "../core/counts.ts";

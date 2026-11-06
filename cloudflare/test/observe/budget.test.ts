@@ -4,7 +4,7 @@ import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.t
 import { alwaysKeptStorm, CLOUDFLARE_STORE_WALL_MS_PER_CALL, CLOUDFLARE_TAIL_CPU_MS_PER_INVOCATION, MONTH_MS, NANOSHOP_ASSUMPTIONS, OBSERVATION_BUDGET, fits, project, type MeasuredFigures, type Workload } from "../../src/observe/core/budget.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
-import { NANOSHOP_SAMPLING } from "../../src/observe/cloudflare/nanoshop-policy.ts";
+import { NANOSHOP_SAMPLING } from "../../src/observe/core/nanoshop-policy.ts";
 import { MILLION } from "../../src/observe/core/sampling.ts";
 import { measure, type Measurement } from "./measure.ts";
 import { startRig, type Rig } from "./workload.ts";
