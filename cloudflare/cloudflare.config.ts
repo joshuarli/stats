@@ -56,8 +56,8 @@ const PROJECTS: readonly ProjectConfig[] = [
     name: "nanoshop-storied",
     worker: "nanoshop-storied",
     workerBilling: "requests-and-cpu",
-    buckets: [],
-    durableObjectNamespaces: [],
+    buckets: ["nanoshop-media-storied"],
+    durableObjectNamespaces: ["a7e0a4cae8794796b24d07e28fdfc0b6"],
     d1Databases: [],
     probes: []
   }
