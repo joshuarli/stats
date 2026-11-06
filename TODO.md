@@ -59,15 +59,6 @@ Next: 77
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-76 · P3 · Every collector run fails a deployment poll for a Worker that does not exist
-
-- **Area:** Projects
-- **Where:** `cloudflare/cloudflare.config.ts:55` (`nanoshop-storied` project), `cloudflare/src/cloudflare/deployments/collector.ts:63` (`request`), `cloudflare/src/cloudflare/index.ts` (`scheduled`)
-- **Problem:** `cf workers deployments list --script-name nanoshop-storied` answers `[10007] This Worker does not exist on your account` (404), so the deployment poll for that project throws `Error("upstream")` in `request` on every cron. `reportError("deployments.poll", ...)` records it as a caught error: 156 occurrences since 2026-11-05 13:20Z in one open issue, and the trace of every scheduled run has `errorCount` 1 and `failed: true`. `statsctl observe routes --project stats --window 1h` lists `scheduled */5 * * * *` as 12 requests, 12 failed, and `statsctl health --project nanoshop-storied` reports `sync_never_succeeded` and `sync_error: upstream`. A real scheduled failure (STA-53) is indistinguishable from this in the failure rate.
-- **Recommendation:** Owner decision: remove `nanoshop-storied` from the project list until its Worker is deployed, or make the poll record a 404 as "worker not deployed" without reporting an error. Then confirm the scheduled failure rate falls to the real exceptions.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests

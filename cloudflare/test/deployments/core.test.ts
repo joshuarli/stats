@@ -244,6 +244,7 @@ const failures: [number, string][] = [[302, "upstream"], [401, "unauthorized"], 
 for (const [status, code] of failures) await test(`collector handles HTTP ${status} without leaking bodies`, async () => {
   const run = collector(async () => new Response("secret-must-not-leak", { status })); await run.run(); assert.equal(run.polls[0]!.error, code); assert.equal(JSON.stringify(run.polls).includes("secret-must-not-leak"), false);
 });
+await test("collector records a worker the account does not have as not deployed", async () => { const run = collector(async url => url.includes("/deployments") ? Response.json({ success: false, errors: [{ code: 10007, message: "This Worker does not exist on your account." }] }, { status: 404 }) : response([])); await run.run(); assert.equal(run.polls.length, 1); assert.equal(run.polls[0]!.error, "not_deployed"); assert.deepEqual(run.polls[0]!.deployments, []); });
 await test("collector validates successful envelopes", async () => { const run = collector(async () => Response.json({ success: false, errors: [{ message: "secret-must-not-leak" }] })); await run.run(); assert.equal(run.polls[0]!.error, "invalid_response"); });
 await test("collector caps response bodies even without Content-Length", async () => { const run = collector(async () => new Response("x".repeat(512 * 1024 + 1))); await run.run(); assert.equal(run.polls[0]!.error, "invalid_response"); });
 await test("collector follows explicit pagination", async () => {
