@@ -1,0 +1,14 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "usr-memories-gc-index",
+  "hypothesis": "Dropping the write-side remote_object_gc index cuts the hourly mirror's D1 rows written by at least 10% with identical persisted state and unchanged GC reachability.",
+  "project": "usr-memories",
+  "operation": "global",
+  "metric": "d1.write",
+  "direction": "decrease",
+  "minChangePercent": 10,
+  "floor": 0.1,
+  "guardrails": ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage"],
+  "window": "24h",
+  "maxWaitMs": 172800000
+}
