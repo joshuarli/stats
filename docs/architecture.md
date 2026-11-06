@@ -108,7 +108,7 @@ decision, which on the Worker is `verifyAccess` in `src/cloudflare/access.ts`. A
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `/api/observe/<service>/*` passes the same Access check and is then proxied
 over the `OBSERVE` service binding to `stats-observe`, the observability
-collector in `docs/observability-campaign.md`. The only writes it passes are
+collector in [Observability product](observe.md). The only writes it passes are
 an issue's resolve or reopen and a source-map upload, and both must be
 same-origin. That Worker is the tail consumer of every observed service
 (`stats`, `usr-memories`, `nanoshop-storied`, and the two Nanoshop demo
@@ -237,7 +237,9 @@ while `stats` emits it.
 `SqlAccount` (`src/sql-account.ts`) wraps `SqlStorage.exec`. It adds each
 cursor's `rowsRead`, `rowsWritten` and one statement to its totals once the
 cursor is consumed or closed, so the account counts what SQLite actually
-read and wrote, not what the code expected.
+read and wrote, not what the code expected. Summaries take CPU from the tail
+event's `cpuTime`, never from timers around synchronous code, because production
+timers advance only on I/O.
 
 The `ObservationStore` keeps two additive tables beside its existing ones, both
 in five-minute buckets and bounded to 100,000 rows:
@@ -920,6 +922,38 @@ one grouped metric window for all requested metric kinds. `GET /projects`
 returns each project with `collector.lastRunAtMs`, `lastSuccessAtMs`,
 `lastError`, and `stale` (no success in 15 minutes).
 
+**Probes.** Each collection sends one `GET` per probe URL with a 10 second
+timeout and does not follow redirects. A status from 200 to 399 is up; any
+other status, a thrown fetch, or a timeout is down. Probes measure from
+Cloudflare's edge, not from users. A failed
+collector run is never recorded as a down probe.
+
+**Health limits.** `LIMITS` in `src/client/health.ts` holds tunable
+heuristics, not service levels:
+
+| Signal | Elevated | Critical |
+| --- | --- | --- |
+| Worker 5xx share of invocations | 1% | 5% |
+| Worker average CPU time per invocation | 5 ms | 20 ms |
+| R2 `other` share of operations | 0.5% | 2% |
+| Collector staleness | 15 minutes | 60 minutes |
+| Probe | | down |
+
+A share or average is not scored from a bucket with fewer than 100 events
+(`MIN_SCORED_EVENTS`), because one failure in a 64-request bucket would read as
+a critical 25%. Zero invocations and zero R2 operations are never a state by
+themselves. Collector health is shown beside a target's state and never folded
+into it.
+
+**Scope.** A project covers one Worker's invocations, status mix, and CPU time;
+its R2 operations by outcome, storage, and objects; its Durable Objects and D1
+databases; and its probes. Worker CPU is shown as a weighted mean and an
+approximate maximum per bucket, labelled CPU time and never latency, because the
+SQL source has no quantiles. The project data has no per-hostname split when one
+Worker serves several hostnames, no cache hit ratio, and no R2 read and write
+split: the operations dataset has an outcome but no action column, so R2 Class
+A and B are not priced. Alert delivery is not provided.
+
 **Access.** `ANALYTICS_SQL` can read all of the account's analytics. Only the
 fixed queries run, and no request data reaches SQL.
 
@@ -966,6 +1000,6 @@ built client from the captured API fixtures with a frozen clock.
 
 Per-process profiling, continuous event streaming, eBPF-only observability,
 OpenTelemetry, PromQL, Grafana, log search, traces beyond the 7-day
-per-invocation records of `docs/observability-campaign.md`, alert routing, arbitrary
+per-invocation records of the [observability product](observe.md), alert routing, arbitrary
 queries or unbounded ranges, cgroup or guest semantics beyond the observed
 host, and multi-tenant SaaS.

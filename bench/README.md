@@ -14,7 +14,7 @@ kernel, CPU model, filesystem, capabilities, load, and interval with every run.
 
 Compare with Node Exporter only on the same host and interval. Report median and
 spread across repeated runs; never mix partial metric sets. Local numbers from a
-development macOS host are not evidence. The campaign's targets are
+development macOS host are not evidence. The agent's targets are
 aspirations: at most 16 MiB steady RSS and under 0.1% of one logical CPU at 15 s
 on an idle representative host.
 

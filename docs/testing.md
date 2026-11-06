@@ -186,6 +186,50 @@ macOS until a Linux sandbox is verified, so `make check` runs
 `make integration-local` only on macOS; elsewhere `make cloudflare-test` still
 runs `test:local` with the app-level outbound check. Nothing here measures billable CPU.
 
+Constraints a change to the stack must keep:
+
+- **No test seam in `src/`.** The provider and topology live under
+  `cloudflare/local/`, and nothing in `src/` imports them
+  (`test/node/boundary.test.ts`). `topology.test.ts` asserts the built
+  production config keeps `ENVIRONMENT` `production` and carries no
+  `TEST_NOW_MS`.
+- **Test identity.** `ENVIRONMENT=test` plus the test Access key, tokens minted
+  by `cloudflare/local/token.ts` (one per credential call, because a token lives
+  one hour), and a listener on `127.0.0.1` only. `statsctl` reads `127.0.0.1` as
+  a Cloudflare target, so the launcher sets `STATSCTL_AUTH_HEADER` to
+  `cf-access-jwt-assertion`, the only header the Worker reads.
+- **Clock.** A scenario pins `TEST_NOW_MS` for the `Installation` clock, but the
+  collector's `now` is the scheduled time and its window is the trailing 90
+  minutes, so generated rows anchor to the scheduled time. A scenario that
+  advances time restarts the stack on the same persistence directory with a later
+  `TEST_NOW_MS`, which also proves restart. `dev` leaves the clock real and fires
+  `scheduled` every five minutes itself, because local development does not run
+  Cron Triggers.
+- **Miniflare quirks.** `scheduled()` resolves `{ outcome: "exception" }` instead
+  of rejecting. `ASSETS` is served only with `has_user_worker` routing, not
+  `run_worker_first`. `ANALYTICS_SQL` is an RPC method, so it must be a
+  `WorkerEntrypoint` service binding. Local tail events carry no script name, so
+  the observe harness wraps the collector per producer. With the clock pinned in
+  the past the retention alarm fires repeatedly, so wait for the invocations a
+  test caused, never for quiet.
+- **One build at a time.** `make worker-bundle`, `smoke-local`, `agent-e2e`, and
+  `pnpm build` all rewrite `cloudflare/.cloudflare/output/`. Never run two at
+  once or background one; a build killed midway leaves a bundle that answers 500
+  to everything.
+- **Parallel browser specs.** `playwright.config.ts` is `fullyParallel`, so a
+  spec that binds a fixed port or shares one stack sets
+  `test.describe.configure({ mode: "serial" })` and owns its port.
+- **`dev` Local Explorer.** The persistent stack enables Miniflare's Local
+  Explorer, which reads local state without Access, on loopback only. Tests do
+  not.
+
+Not covered, by design: `cf dev` and the Cloudflare Vite plugin as the harness
+(their support for the prebuilt output format is unverified here), an
+instrumented D1 or R2 workload Worker (add one with the first such producer),
+the Node target's collector (it has none), the observation store's clock and
+count-buffer timing in the integrated stack (core tests own them), and Cron
+Triggers in tests.
+
 ## Ingest conformance
 
 `fixtures/v2/` holds the cross-language corpus for the binary ingest format.

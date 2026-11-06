@@ -1,14 +1,13 @@
 # History frames
 
-Status: **integrated**. Every host and project history response is an STC1
-frame (`HISTORY_CONTENT_TYPE`); the JSON history representation, content
-negotiation, and point-object models were removed. The SQL schema and the
-history algorithms (rollups, rates, missing-versus-zero, gap
-rules) are unchanged. Host ingest later moved to the separate binary STB2
-format (`docs/binary-ingest.md`), which shares no envelope or code with STC1
-and leaves stored samples as they were. The wire contract, compression, and ETag behavior are in
-`docs/architecture.md#history-frames`; this file holds the codec reference,
-measurements, and the negative storage result.
+Every host and project history response is an STC1 frame
+(`HISTORY_CONTENT_TYPE`). There is no JSON history representation, content
+negotiation, or point-object model. The SQL schema and the history algorithms
+(rollups, rates, missing-versus-zero, gap rules) are independent of the frame.
+Host ingest uses the separate binary STB2 format (`docs/binary-ingest.md`),
+which shares no envelope or code with STC1. The wire contract, compression, and
+ETag behavior are in `docs/architecture.md#history-frames`; this file holds the
+codec reference, measurements, and the negative storage result.
 
 ## What is implemented
 

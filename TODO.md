@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 77
+Next: 91
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -59,6 +59,24 @@ Next: 77
 - **Fix with:** root-cause
 - **Effort:** S
 
+### STA-81 · P3 · A leaked service deploy token cannot be rotated or revoked
+
+- **Area:** Security
+- **Where:** `cloudflare/src/core/installation/services.ts`, `docs/architecture.md` (Services and deploy markers)
+- **Problem:** The deploy token is shown once at service creation and stored as a SHA-256 verifier. No route rotates or revokes it, unlike host tokens. The token is accepted from any network on `/ingest/services/:name/deployments` and writes markers that appear on the service's timeline and feed `statsctl verify --service`, so a leaked token lets a third party forge deploys until the service is deleted, and there is no delete route either.
+- **Recommendation:** Add `POST /api/v1/admin/services/:name/rotate`, which returns a new token once and invalidates the old verifier, mirroring host rotation, with a test that the old token gets 401 after rotation.
+- **Fix with:** security
+- **Effort:** S
+
+### STA-84 · P3 · The 24 hour observe coverage record for the telemetry foundation is unread
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/compare/coverage.ts`, `docs/architecture.md` (Operations and coverage)
+- **Problem:** Coverage reconciled in each hourly window checked on 2026-11-05 (spreads of 3% to 25%, inside the sampling bound), but the full record for 2026-11-05 05:55Z to 2026-11-06 05:55Z has not been read, and the scratch script meant to read it was not kept. No `statsctl` command reads observe coverage over an arbitrary window, so the claim in docs/architecture.md that coverage catches gross loss rests on single hours. `verify` blocks on any coverage state other than `reconciled`, so a gap shows up there first as insufficient data.
+- **Recommendation:** Read the closed 24 hour window once: sum observed events at the `worker` stage per five-minute bucket from `GET /api/observe/stats/window` against `worker.invocations` from project history, apply the rule in `src/compare/coverage.ts` per hour, and record the spread in docs/architecture.md. If an hour is `partial`, root-cause it. Consider exposing coverage over `--window` in `statsctl health`.
+- **Fix with:** root-cause
+- **Effort:** S
+
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
@@ -78,3 +96,110 @@ Next: 77
 - **Fix with:** single-source-of-truth
 - **Effort:** S
 
+### STA-77 · P4 · Rollouts have no CI write path
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/observe/http/api.ts` (`POST /rollouts`), `cloudflare/src/cloudflare/index.ts` (observe proxy), `docs/observe.md`
+- **Problem:** The stats proxy refuses rollout writes on purpose, so only the Cloudflare deployment poll records rollouts. A service deployed outside Cloudflare, or a deploy a CI job wants to record before the poll sees it, has no authenticated way to write one. Choosing the surface is an owner decision: an Access service token on a separate route, or a write token on a future public receiver.
+- **Recommendation:** Decide the surface when a non-Cloudflare producer exists. Service deploy markers (`POST /ingest/services/:name/deployments`) already give servers a token-authenticated write; reuse that shape if the decision is to extend it to observed services.
+- **Fix with:** architect
+- **Effort:** M
+
+### STA-78 · P4 · The stuff site probe reported down once in its first runs
+
+- **Area:** Projects
+- **Where:** `cloudflare/cloudflare.config.ts:19` (the `site` probe), `docs/operations.md` (Verified environments)
+- **Problem:** On 2026-11-01 the `site` probe of `stuff` was down in one of the first five collector runs and returned 200 on every later check. Probes measure from Cloudflare's edge and a failed fetch records down, so a cold-start or edge blip reads as an outage. Whether it recurs is unknown.
+- **Recommendation:** Read `kind=probes` history for `stuff` over 7 days. If `site` shows isolated single-bucket downs, decide between keeping the signal as is and requiring two consecutive failures before it scores; if it shows none, delete this ticket.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-79 · P4 · The 45 minute settle time rests on one day of ingestion-lag samples
+
+- **Area:** Projects
+- **Where:** `cloudflare/src/limits.ts:11` (`PROJECT_SETTLE_MS`), `docs/operations.md` (Verified environments)
+- **Problem:** `PROJECT_SETTLE_MS` decides when a missing counter bucket reads as zero. It was set from 2026-11-01 readings only: the newest Worker event was 6.7 minutes old under steady traffic and 22 minutes old in a quiet period. Too short a settle time writes zeros that late rows would have filled, too long delays charts and verdicts. A parity re-run on 2026-11-06 found one bucket (11:10 on 2026-11-05) that stored 44 events against 8 from the source, which the lag explanation does not cover.
+- **Recommendation:** Measure the newest-event age against now over several days of traffic, including quiet nights, and change `PROJECT_SETTLE_MS` only if the 99th percentile approaches it. Investigate the 11:10 bucket with `node cloudflare/scripts/check-parity.mjs`.
+- **Fix with:** root-cause
+- **Effort:** S
+
+### STA-80 · P4 · The projects page on the Node target points at a Cloudflare config file
+
+- **Area:** Docs
+- **Where:** `cloudflare/src/client/pages/ProjectsPage.tsx:43`
+- **Problem:** The Node server has no project collector, so its project registry is always empty and the page shows "Projects are declared in cloudflare/cloudflare.config.ts." That tells a Node user to edit a file that has no effect on their instance.
+- **Recommendation:** Show an empty-state detail that says the target has no project collector when the server reports an empty registry on the Node target, and keep the current text for Cloudflare.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-82 · P4 · Service cgroup I/O may count one I/O twice on stacked devices
+
+- **Area:** Data
+- **Where:** `agent/src/cgroup.rs:61` (`parse_io_stat`), `docs/protocol.md` (services group)
+- **Problem:** The agent sums `rbytes`, `wbytes`, `rios`, and `wios` over every device `io.stat` lists. On a host where a unit's I/O goes through a device-mapper or md device, the same bytes can be listed for the virtual device and for its backing devices, so `service.io` overstates throughput. It has not been measured on such a host.
+- **Recommendation:** Read `io.stat` on a host with stacked storage and compare the per-device lines with `iostat`. If devices double count, sum only devices that are not holders of another listed device, and add a fixture for it.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-83 · P4 · The offline local stack has no Linux network sandbox
+
+- **Area:** Tests
+- **Where:** `scripts/offline-run.sh`, `Makefile:189` (`OFFLINE_SANDBOX_CHECK`), `docs/testing.md` (Local stack)
+- **Problem:** `scripts/offline-run.sh` exits 2 off macOS, so `make check` runs `make integration-local` only on Darwin. On Linux the stack still fails any undeclared outbound Worker request and removes `CLOUDFLARE_*` and `CF_*`, but nothing denies network to the browser or to `statsctl`, so a Linux run proves less than the macOS one. No Linux host was available to verify an alternative.
+- **Recommendation:** On a Linux host, run the same commands under `unshare -rn` with a loopback interface brought up, confirm Chromium launches under it, add that branch to `scripts/offline-run.sh`, and drop the Darwin-only condition from `OFFLINE_SANDBOX_CHECK` if it passes.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-85 · P4 · The verify loop is not scheduled to run unattended
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/cli/commands/verify.ts`, `docs/operations.md` (Verifying a candidate)
+- **Problem:** The loop that deploys `stats`, runs `statsctl verify`, and keeps or rolls back on the verdict is run by hand. Its precondition was met: two production verdicts (`improved` and a `regressed` with a named confound) matched their offline predictions, and the `new-issue-group` guardrail now reports a regrouped issue as `confounded`. It stays unscheduled because no cost candidate is left worth a deploy: `stats` runs about $0.29 a month at list price and $0 on the invoice.
+- **Recommendation:** Decide whether to schedule it only when a candidate worth a deploy exists. If so, run it as a job that deploys with `make stats-deploy`, verifies with a committed policy, and rolls back on exit 7 to the previously validated version, with a spend ceiling that stops it.
+- **Fix with:** orchestrate
+- **Effort:** M
+
+### STA-86 · P4 · Deployment polling parses up to 2,000 version payloads to read their ids
+
+- **Area:** Performance
+- **Where:** `cloudflare/src/core/installation/installation.ts:358` (`knownDeploymentVersions`), `cloudflare/src/cloudflare/deployments/collector.ts:91`
+- **Problem:** Each poll loads every stored version payload only to read its id. At the retention cap that is about 2,000 JSON parses per poll, worth about $0.006 a month at list price, the largest remaining `stats` lead after the ingest path. No observed operation exists for `statsctl verify` to target, so a change cannot be proven without an instrumentation deploy.
+- **Recommendation:** Store the version id in its own column, or select only ids with `json_extract`, and add a `deployments.poll` work field if the saving needs a verdict. Skip it unless poll cost grows; the saving is small.
+- **Fix with:** make-it-fast
+- **Effort:** S
+
+### STA-87 · P4 · Whether the Analytics SQL binding bills for the rows the collector reads is unconfirmed
+
+- **Area:** Performance
+- **Where:** `cloudflare/src/projects/queries.ts`, `docs/operations.md` (Project collection)
+- **Problem:** One collector run reads about 8M analytics rows, plus about 2.2M for D1 when a project lists databases. Operations records the rows read per query but not whether the binding bills for them. Widening the 90 minute window multiplies the reads, and the settle time and parity checks both argue for a wider window.
+- **Recommendation:** Read the account's billing or usage view for the binding after a week of collection and record whether reads are billable. Widen the window only after that.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-88 · P4 · The stuff project has no cost baseline since its bench loop stopped
+
+- **Area:** Operability
+- **Where:** `cloudflare/cloudflare.config.ts:10` (`stuff` project), `#/project/stuff`
+- **Problem:** The loop that made up about 86% of `stuff` requests stopped, so earlier cost and route readings describe it, not the service. Whether the response cache absorbs repeat reads is unchecked: compare `crates` blob requests with `stuff-mycrates` operations.
+- **Recommendation:** Take one hour on the project page, rank routes by CPU and R2 operations per request, and file in the `stuff` repository whatever is worth changing. Delete this ticket after that.
+- **Fix with:** none
+- **Effort:** S
+
+### STA-89 · P4 · usr-memories snapshot writes and database growth were left unchanged by decision
+
+- **Area:** Data
+- **Where:** `cloudflare/cloudflare.config.ts` (`usr-memories` project), the `agent-memory` repository's snapshot write path
+- **Problem:** A snapshot POST writes one `snapshot_object` row and one `remote_object` update per referenced object, about 32k each. Eight snapshots wrote about 220k rows per burst, roughly $8 a month at list price over the included amount, or about $3 if `last_referenced_at` skipped unchanged rows. The owner chose not to change it: it touches garbage-collection marking in a backup system, and the per-snapshot object list is a stored-format change. Separately, the database grew about 39 MB an hour at steady state during measurement, which would reach D1's 10 GB cap in about ten days if it continued.
+- **Recommendation:** Revisit the snapshot write path if snapshots become more frequent or the object count grows by an order of magnitude. Check the D1 storage chart on the project page for growth against the cap.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-90 · P4 · Rust dependencies in stuff and the stats agent are unaudited
+
+- **Area:** Dependencies
+- **Where:** `agent/Cargo.toml`, `../stuff` crates, `docs/dependencies.md`
+- **Problem:** `cargo outdated` is not installed, so no one has checked the crates against current releases. A stale crate can carry fixed bugs or advisories, and `docs/dependencies.md` records decisions but no audit.
+- **Recommendation:** Run `cargo update --dry-run` in each workspace, upgrade what the pinned nightly accepts, and record removals in docs/dependencies.md.
+- **Fix with:** none
+- **Effort:** S

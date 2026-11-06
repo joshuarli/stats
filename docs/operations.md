@@ -228,9 +228,15 @@ need a production Access credential.
 
 Every command reads except `check ingest`, which writes one flagged sample and
 takes the `synthetic-check` host's credential from
-`.work/credentials/synthetic-check.json`. Run it only inside a deployment's
-excluded bucket and warm-up interval, so its sample never enters a measured
-window.
+`.work/credentials/synthetic-check.json`. It encodes one known sample with a
+fresh sequence and time, POSTs it, expects the acknowledgment to accept 1, reads
+the host history and finds the sample, replays the identical bytes and expects
+duplicate 1 and accepted 0, and confirms the stored count did not change. Its
+encoder, `src/ingest/encode.ts`, must reproduce every `fixtures/v2` golden frame
+byte for byte (`test/ingest/conformance.test.ts`). Run it in production only
+inside a deployment's excluded bucket and warm-up interval, so its sample never
+enters a measured window; synthetic operations carry a flag and are excluded
+from organic metrics, but their cost stays in totals.
 
 Deploy order matters for measurement. `stats` publishes one `operation` message
 per instrumented invocation, and `stats-observe` must already accept it:
@@ -238,6 +244,136 @@ per instrumented invocation, and `stats-observe` must already accept it:
 version that accepts `operation` while `stats` still emits it. The older tail
 rejects those invocations as `rejected-invalid`, and the operation tables stop
 filling.
+
+### The statsctl contract
+
+`statsctl` is a TypeScript CLI that shares the dashboard's cost engine and reads
+only routes the dashboard already uses: `/api/v1/projects`, the project
+history, deployments, and comparison routes, and `/api/observe/stats/*`. There
+is no server endpoint for cost. It uses `node:util` `parseArgs`, global `fetch`,
+`node:fs`, and `node:crypto`, with no CLI framework, schema library, or SDK. Its
+name differs from `stats`, which is the Rust agent.
+
+- **JSON envelope.** `--json` prints exactly one `statsctl/1` document on stdout.
+  It carries `schema`, `command`, `generatedAtMs`, `origin`, `project`, the
+  half-open UTC `windows`, `pricingRevision`, `measurementRevision`, `coverage`,
+  `units`, `priced`, `excluded`, `warnings`, `identities` (deployment and
+  version ids), and either `payload` or `error: {code, message}`. Numbers stay
+  numbers, u64 values stay decimal strings, and ordering is deterministic.
+  Diagnostics go to stderr, with no progress output, colour, or pager when
+  stdout is not a TTY or `NO_COLOR` is set.
+- **Schema versioning.** `statsctl/1` changes only by adding fields, to the
+  envelope, its payloads, or the observe API responses it decodes. Changing an
+  existing field's type, unit, or meaning, or removing a field, moves the schema
+  to `statsctl/2`; when the version cannot move with the change, the commit is
+  marked breaking (`!`). A `statsctl` newer than the server it reads finds an
+  added field missing and fails with `server_older` (exit 4), whose message names
+  the field. A field present with the wrong type is still `contract`.
+- **Authentication.** The credential command defaults to
+  `cf access token <origin>`, run with stdin closed and a 20 second timeout. A
+  failure exits 3 with `run: cf access login <origin>`; `statsctl` never starts a
+  login. The credential goes only to the configured origin, redirects are not
+  followed, and a 3xx, an HTML 200, a 401, or a 403 is exit 3. A credential
+  never enters argv, a snapshot, a log, or a report field.
+- **Requests.** Each has a 15 second timeout and a body cap of 8 MiB for history
+  and 1 MiB for JSON. Only GETs that fail with a network error, 502, 503, or 504
+  retry, twice, with jittered backoff. History kinds are bundled into one request
+  per window.
+- **Snapshots.** `.work/statsctl/snapshots/` holds the raw history frames
+  (base64), the decoded deployment and observe JSON, the resolved windows,
+  project config, resource identities, the pricing and measurement revisions,
+  the git SHA of the CLI, and a SHA-256 of each input. A snapshot never holds a
+  credential or an observe stack frame. Each is capped at 4 MiB and the
+  directory at 200 MiB, pruned oldest first. `--input` refuses a snapshot whose
+  schema, pricing revision, or hash does not match, with exit 4 and a reason
+  code, and never reinterprets it.
+- **Readiness.** `health --policy FILE` and `verify --readiness` list each
+  signal a policy needs as `available` or `unavailable:<code>` with a sentence.
+  A missing signal the policy does not use never blocks it.
+- **Mutations.** Only `check ingest` and `deploy mark` write.
+
+### Cost reports
+
+`cloudflare/src/cost/` owns the versioned tariff table (`pricing.ts`), ledger
+construction, plan bill and projection, coverage semantics, and
+`buildCostReport`. The dashboard and `statsctl cost` both call it, and each adds
+its own presentation. Modules in the CLI's import graph use explicit `.ts`
+imports and erasable syntax only, and none imports Solid, uPlot, or
+`src/client/pages/**` (`test/cost/boundary.test.ts`).
+
+- **Tariffs.** Every price carries a source URL and a `verifiedOn` date, and the
+  table carries `PRICING_REVISION`. A meter without a source is a type error.
+  Prices are never fetched at runtime, and a baseline and a candidate are priced
+  with the same revision.
+- **Missing data is not free.** A line with no covered bucket is
+  `uncollected/no-data`, and a meter with no source (Durable Object SQLite rows
+  where no summary exists, R2 Class A and B) is `uncollected/no-source`. Neither
+  is priced as zero.
+- **Scope is stated.** The plan bill is `isolated`: it subtracts the full account
+  allowance for one project, and an account total exists only when every project
+  in the account is covered. Months are UTC calendar months, labelled
+  `utc-month`, never the billing cycle. Durable Object duration from summed wall
+  time is an upper bound. Every total lists its priced meters, excluded meters,
+  and residuals.
+- **Compare like with like.** The ledger total and the comparator's cost per
+  1,000 invocations share arithmetic but have different scopes, and each names its
+  meter set.
+
+### Verifying a candidate
+
+Pre-register each experiment before its deploy: a hypothesis and a policy file in
+`bench/policies/`. `statsctl help verify` documents the policy fields, the
+guardrails, and the verdict precedence, and `docs/deployments.md` explains why
+the operation-scoped comparison decides acceptance. The result is the saved
+`verify --json` output and a commit body with the code SHA, deployment and
+version ids, exact windows, counts, coverage state, absolute and relative
+deltas, denominators, exclusions, cost basis, guardrails, and the keep, revert,
+or pending decision. A change that did not move its metric is reverted or
+re-diagnosed, not kept.
+
+- **Cost.** `verify` separates application cost (`stats`), observation cost (the
+  `stats-observe` project: tail CPU, its Durable Object requests, duration, rows,
+  and storage), and experiment overhead, which is the requests `statsctl` itself
+  made, counted in the verify state. `stats-observe` never tails itself.
+- **Polling.** `verify --wait` sleeps until the comparison window's ready time,
+  then polls at most every 15 minutes with `If-None-Match`. A poll makes at most 7
+  requests and a full verify at most 60.
+- **Deploying.** `make stats-deploy` redeploys only `stats`, for a change that
+  touches no observe code. `make worker-deploy` always redeploys `stats-observe`
+  first. Confirm a deployment id
+  from `cf workers deployments list --worker NAME` or `statsctl deployments --project stats`,
+  never from a log line alone, and inspect the active deployment before you retry
+  or roll back a command that failed after the upload.
+- **Windows.** A production verdict needs about 2.5 hours free of other
+  deployments: an hour of stable baseline, an hour after, 5 to 10 minutes of
+  warm-up, and 45 minutes of settlement. A verdict whose window another
+  deployment overlaps is `confounded`. Reads of history (about tens an hour)
+  fall under the 100-operation minimum at 1 hour, so verify those over 6 hours.
+- **Instrumentation budget.** Operation summaries add no more than 1.0 observe
+  row written per `stats` invocation over a baseline of 3.0, and keep the `stats`
+  Worker's gzip bundle within 5 KiB of the previous release.
+
+### Reducing cost
+
+Stats is the instrument: a change ships only when the project page can show
+whether it helped.
+
+1. Open the project page for the range since the last deploy. Take the top row of
+   the Estimated cost widget, then the top D1 statement or CPU route under it.
+2. State the hypothesis in one line and name the metric that would move.
+3. Reproduce with a failing test or a measured count (rows written, CPU per
+   call), fix the cause, and run the narrowest checks.
+4. Deploy, wait an hour of new data, and read the same metric over the hour after
+   the deploy only. Earlier data predates the change and is not a baseline.
+5. Put the before and after figures in the commit body.
+
+Estimated cost is list price before included allowances. It ranks components and
+is not the bill. Durable Object CPU is not a billed dimension (requests,
+duration, and rows are), so work on it buys latency and headroom, not money. Stop
+working a lane when its top item is under 10% of the project's list cost, or when
+the last two fixes each moved their metric by less than one sample of noise. Do
+not reduce retention, resolution, collection cadence, sample persistence, or
+Access coverage as an optimization.
 
 ## Observability
 
@@ -397,16 +533,29 @@ the socket with `docker exec` and prints the tag, with the full output in
 
 The container has no network at all: Docker's bridge network would present
 every request as coming from its gateway, and host networking would put a
-listener on the host, so the only way in is the socket (`Decision 1` in
-`docs/portable-core-campaign.md`). Expose it to the tailnet with
-`tailscale serve` running as root:
+listener on the host. The Node auth adapter trusts only a loopback peer or the
+socket, so the socket in a `0700` directory is the one entrance, reachable by
+the owning user and root and by no other process on the host. Expose it to the
+tailnet with `tailscale serve` running as root:
 
 ```sh
 doas tailscale serve --bg --http=18790 unix:/home/josh/.local/share/stats-node-run/stats.sock
 ```
 
 This replaces the earlier `http://127.0.0.1:18791` target. The deploy stops
-if the host has under 50 GB free.
+if the host has under 50 GB free. The Node instance is a separate installation:
+it starts empty, shares no data with the Cloudflare one, and has no import or
+agent cutover. `tailscale serve` attaches the caller's identity to every
+tailnet request, so `deploy/deployed-smoke.sh` reports its no-credentials check
+as a failure against the tailnet origin; the rejection paths are covered by
+`make node-e2e`.
+
+The container runs with `--cgroup-parent=/stats.slice/stats-node.slice`, so the
+unit `stats-node.slice` names a cgroup that persists across deploys and counts
+the container's CPU, memory, and I/O. A host agent reports that unit as a
+service (README, `services`). The agent accepts only an `https://` endpoint or
+loopback `http://`, so a remote agent reports to this instance through a
+`tailscale serve --https` entry on the same socket.
 
 To roll back, run `docker run` for an earlier `stats-node:<commit>` image
 with the same flags. To remove the deployment, run `docker rm -f
