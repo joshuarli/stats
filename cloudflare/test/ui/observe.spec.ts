@@ -322,6 +322,15 @@ test("changing the project in the URL moves the observed service with it", async
   expect([...observe.services]).toEqual(["usr-memories"]);
 });
 
+test("a failed deployments fetch in a project row says so instead of none recorded", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/projects/stats/deployments", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "deployments down" } } }));
+  await page.goto("/#/projects");
+  const row = page.locator("tbody", { hasText: "stats" }).first();
+  await expect(row).toContainText("deployments unavailable");
+  await expect(row).not.toContainText("none recorded");
+});
+
 test("other projects split cost by sampled routes and never call the observability API", async ({ page }) => {
   const observe = await setup(page);
   await page.goto("/#/project/stuff?range=24h");

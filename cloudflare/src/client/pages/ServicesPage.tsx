@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, onCleanup, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Service } from "../api";
-import { age } from "../format";
+import { age, errorMessage } from "../format";
 import { loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { EmptyState, EntityCell, ErrorState, Skeleton, Widget } from "../components/ui";
@@ -61,16 +61,18 @@ function ServiceRow(props: { readonly service: Service }): JSX.Element {
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
   const [settled, setSettled] = createSignal(false);
+  const [failure, setFailure] = createSignal<string | null>(null);
   createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     void loadServiceDeploymentHistory(props.service.name, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setDeployments(value);
+      setFailure(null);
       setSettled(true);
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setDeployments(null);
+      setFailure(errorMessage(error));
       setSettled(true);
     });
   });
@@ -85,8 +87,8 @@ function ServiceRow(props: { readonly service: Service }): JSX.Element {
       <td class="numeric">{props.service.hostIds.length}</td>
       <td>{props.service.healthUrl === null ? <span class="cell-note">unavailable, no health URL</span> : <span class="mono services-url" title={props.service.healthUrl}>{props.service.healthUrl}</span>}</td>
       <td>
-        <Show when={latest()} fallback={settled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
-          <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
+        <Show when={latest()} fallback={failure() !== null ? <span class="cell-note" role="status" title={failure() ?? undefined}>deployments unavailable</span> : settled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
+          <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note" title={failure() ?? undefined}>{age(deployment().atMs, now())}{failure() === null ? "" : " · refresh failed"}</span></span>
         )}</Show>
       </td>
     </tr>
