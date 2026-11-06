@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 83
+Next: 84
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -138,5 +138,14 @@ Next: 83
 - **Where:** `agent/src/cgroup.rs:61` (`parse_io_stat`), `docs/protocol.md` (services group)
 - **Problem:** The agent sums `rbytes`, `wbytes`, `rios`, and `wios` over every device `io.stat` lists. On a host where a unit's I/O goes through a device-mapper or md device, the same bytes can be listed for the virtual device and for its backing devices, so `service.io` overstates throughput. It has not been measured on such a host.
 - **Recommendation:** Read `io.stat` on a host with stacked storage and compare the per-device lines with `iostat`. If devices double count, sum only devices that are not holders of another listed device, and add a fixture for it.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-83 · P4 · The offline local stack has no Linux network sandbox
+
+- **Area:** Tests
+- **Where:** `scripts/offline-run.sh`, `Makefile:189` (`OFFLINE_SANDBOX_CHECK`), `docs/testing.md` (Local stack)
+- **Problem:** `scripts/offline-run.sh` exits 2 off macOS, so `make check` runs `make integration-local` only on Darwin. On Linux the stack still fails any undeclared outbound Worker request and removes `CLOUDFLARE_*` and `CF_*`, but nothing denies network to the browser or to `statsctl`, so a Linux run proves less than the macOS one. No Linux host was available to verify an alternative.
+- **Recommendation:** On a Linux host, run the same commands under `unshare -rn` with a loopback interface brought up, confirm Chromium launches under it, add that branch to `scripts/offline-run.sh`, and drop the Darwin-only condition from `OFFLINE_SANDBOX_CHECK` if it passes.
 - **Fix with:** none
 - **Effort:** M
