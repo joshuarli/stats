@@ -282,8 +282,13 @@ they are zero, and elements written before they existed read as zero, which
 `rowAccounts` 0 and `workLagCount` 0 mark as absent. The view gained the
 columns in place: `initializeStore` drops and recreates
 `observe_count_entries` once when its definition lacks them; the table and its
-JSON are unchanged. A message whose `rows` or `workLagMs` is malformed rejects
-the invocation like any malformed message. The
+JSON are unchanged. Count deltas a tail Worker sends over RPC get the same
+treatment, so a store deployed before its tail Worker keeps counting: a
+delta without the summary fields or `capped` reads them as zero, and one
+without `operation` reads it as the empty operation. A field that is present
+with the wrong type still refuses that delta as `invalid_count`. A message
+whose `rows` or `workLagMs` is malformed rejects the invocation like any
+malformed message. The
 store counts a kept invocation in the same transaction that stores it, so a
 duplicate is never counted twice. The tail counts everything it does not keep
 (a sampled-out invocation is always `ok`, because every failure is kept, and an

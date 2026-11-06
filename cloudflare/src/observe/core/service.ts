@@ -1,4 +1,4 @@
-import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, type CountDelta, type ObservedRollout, type OutcomeEvent, type Preparation, type Stage, type VersionLabel } from "./model.ts";
+import { artifactProblem, prepareRollout, prepareVersionLabel, type Artifact, type ObservedRollout, type OutcomeEvent, type Preparation, type Stage, type VersionLabel } from "./model.ts";
 import { observedByRoute, samplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { representativeFrame, sha256Hex } from "./grouping.ts";
@@ -34,7 +34,7 @@ export interface ObserveService {
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
 
 export interface MaintainedService extends ObserveService {
-  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[]): IngestResult;
+  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[]): IngestResult;
   cleanup(): { readonly cleaned: CleanupResult; readonly nextAtMs: number | null };
 }
 

@@ -286,6 +286,23 @@ await test("a store written before summaries reads its stored counts with no row
   }]);
 });
 
+await test("a count delta sent by an older tail Worker is counted with zero summaries, capped, and operation, and a mistyped field is still refused", () => {
+  const db = database();
+  const nowMs = START + 10_000;
+  const preSummaries = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /search", operation: "request.search", outcome: "ok", kept: 0, sampledOut: 7, capped: 2, cpuMsSum: 7, wallMsSum: 35 };
+  const preOperation = { bucketAt: START, version: VERSION, stage: "worker", route: "GET /cart", outcome: "failed", kept: 1, sampledOut: 2, capped: 0, cpuMsSum: 3, wallMsSum: 9 };
+  const preCap = { bucketAt: START, version: VERSION, stage: "object", route: "TenantStore.readCart", outcome: "ok", kept: 0, sampledOut: 4, cpuMsSum: 4, wallMsSum: 8 };
+  const mistyped = { ...preSummaries, route: "GET /x", rowsRead: "9" };
+  const recorded = recordCounts(db, nowMs, [preSummaries, preOperation, preCap, mistyped], { untraced: 0, flush: 1 });
+  assert.deepEqual(recorded, { invalid: 1, expired: 0 });
+  assert.deepEqual(statsWindow(db, { fromMs: START, toMs: START + COUNT_BUCKET_MS }, SHOP.sampling).counts, [
+    { version: VERSION, stage: "object", route: "TenantStore.readCart", operation: "", count: 4, failed: 0, cpuMsSum: 4, wallMsSum: 8, ...NO_SUMMARY_TOTALS },
+    { version: VERSION, stage: "worker", route: "GET /cart", operation: "", count: 3, failed: 3, cpuMsSum: 3, wallMsSum: 9, ...NO_SUMMARY_TOTALS },
+    { version: VERSION, stage: "worker", route: "GET /search", operation: "request.search", count: 7, failed: 0, cpuMsSum: 7, wallMsSum: 35, ...NO_SUMMARY_TOTALS }
+  ]);
+  assert.equal(health(db, nowMs, SHOP.sampling).sampling?.capped, 2);
+});
+
 await test("a count with a future bucket lands in the current bucket", () => {
   const db = database();
   const nowMs = START + 10_000;

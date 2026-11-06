@@ -463,7 +463,7 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
 
 export interface Counting {
   readonly sampling: Sampling;
-  readonly counts: readonly CountDelta[];
+  readonly counts: readonly unknown[];
 }
 
 const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
@@ -471,7 +471,7 @@ const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
 export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
-  const counts: CountDelta[] = [...counting.counts];
+  const counts: unknown[] = [...counting.counts];
   let untraced = 0;
   const operations = new Map<string, OperationBucket>();
   const cutoff = nowMs - RETENTION_MS;

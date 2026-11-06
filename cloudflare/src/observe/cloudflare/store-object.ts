@@ -27,7 +27,7 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
     void ctx.blockConcurrencyWhile(async () => { initializeStore(db); });
   }
 
-  async ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[]): Promise<IngestResult> {
+  async ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[]): Promise<IngestResult> {
     const result = this.service.ingest(preparations, outcomes, counts);
     if ((result.accepted > 0 || counts.length > 0) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
     return result;
