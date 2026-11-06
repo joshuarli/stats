@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { constants } from "node:os";
 import { join } from "node:path";
 import type { Miniflare, V4WorkerOptions } from "miniflare";
 import { accessToken } from "../test/access-token.ts";
@@ -99,7 +100,21 @@ interface Shared {
   readonly analytics: OfflineAnalytics;
   readonly outbound: OfflineOutbound;
   readonly producers: readonly ProducerExport[];
-  readonly ephemeral: boolean;
+  readonly discard: (() => void) | null;
+}
+
+const TERMINATION_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+
+function discardOnExit(directory: string): () => void {
+  const remove = (): void => rmSync(directory, { recursive: true, force: true });
+  const terminate = (signal: NodeJS.Signals): void => process.exit(128 + constants.signals[signal]);
+  process.on("exit", remove);
+  for (const signal of TERMINATION_SIGNALS) process.on(signal, terminate);
+  return () => {
+    process.off("exit", remove);
+    for (const signal of TERMINATION_SIGNALS) process.off(signal, terminate);
+    remove();
+  };
 }
 
 async function launch(shared: Shared, start: StackStart & { readonly persist: string }): Promise<Stack> {
@@ -182,7 +197,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     stop,
     dispose: async () => {
       await stop();
-      if (shared.ephemeral) rmSync(start.persist, { recursive: true, force: true });
+      shared.discard?.();
       const unexpected = shared.outbound.unexpected();
       if (unexpected.length > 0) throw new Error(describeUnexpected(unexpected));
     }
@@ -198,12 +213,12 @@ export async function startStack(start: StackStart): Promise<Stack> {
   const persist = start.persist ?? mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)));
   mkdirSync(persist, { recursive: true });
   const outbound = offlineOutbound(probeUrls(start.projectsJson ?? productionProjects(stats)));
-  const ephemeral = start.persist === undefined;
+  const discard = start.persist === undefined ? discardOnExit(persist) : null;
   try {
     for (const producer of producers) seedProducerState(producer, persist);
-    return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, producers, ephemeral }, { ...start, persist });
+    return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, producers, discard }, { ...start, persist });
   } catch (error) {
-    if (ephemeral) rmSync(persist, { recursive: true, force: true });
+    discard?.();
     throw error;
   }
 }

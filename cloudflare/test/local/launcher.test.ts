@@ -138,6 +138,22 @@ try {
     assert.deepEqual(readdirSync(SCRATCH).filter(name => name.startsWith(ephemeralPrefix(child.pid!))), []);
   });
 
+  for (const [signal, status] of [["SIGINT", 128 + 2], ["SIGTERM", 128 + 15]] as const) {
+    await test(`${signal} while the stack is still starting leaves no scratch state`, async () => {
+      const child = launch(["run", "--", "sh", "-c", "exec sleep 60"]);
+      const done = finish(child);
+      const scratch = () => readdirSync(SCRATCH).filter(name => name.startsWith(ephemeralPrefix(child.pid!)));
+      const deadline = Date.now() + 20_000;
+      while (scratch().length === 0) {
+        if (Date.now() > deadline || child.exitCode !== null) throw new Error("run never created its scratch directory");
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      child.kill(signal);
+      assert.equal((await done).status, status);
+      assert.deepEqual(scratch(), []);
+    });
+  }
+
   await test("dev serves the stack from its state, survives a restart, and leaves no process after SIGTERM or SIGINT", async () => {
     const state = join(work, "state");
     const port = await freePort();
