@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
+import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
@@ -233,4 +233,21 @@ await test("an evicted isolate loses at most the counts buffered since its last 
   assert.equal(after, recorded + 1, "the new isolate never sees the lost buffer");
   const lost = events - recorded;
   assert.ok(lost > 0 && lost <= INTERVAL / 500, `${lost} events lost, at most the ${INTERVAL / 500} that arrive in one flush interval`);
+});
+
+await test("rejected-invalid events past the always-kept cap are counted in the bucket instead of stored one by one", async () => {
+  const invalid = (n: number): TailItem => ({ ...item(n, START + n), event: { request: { url: "not a url", method: "GET" } } });
+  const total = ALWAYS_KEPT_PER_BUCKET + 7;
+  const batch = await prepareTailItems(Array.from({ length: total }, (_, n) => invalid(n)), SHOP, START + 1_000, new AlwaysKeptCap());
+  assert.equal(batch.preparations.length, ALWAYS_KEPT_PER_BUCKET);
+  assert.equal(batch.outcomes.length, ALWAYS_KEPT_PER_BUCKET);
+  const counted = batch.counts.filter(count => count.outcome === "rejected-invalid");
+  assert.equal(counted.length, 1);
+  assert.equal(counted[0]!.sampledOut, 7);
+  assert.equal(batch.outcomes.length + counted[0]!.sampledOut, total);
+
+  const db = database();
+  ingest(db, batch.preparations, START + 1_000, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
+  const rows = db.rows<{ outcome: string; n: number }>("SELECT outcome, SUM(sampled_out) AS n FROM observe_count_entries WHERE outcome = 'rejected-invalid' GROUP BY outcome");
+  assert.deepEqual(rows.map(row => [row.outcome, row.n]), [["rejected-invalid", 7]]);
 });

@@ -100,6 +100,13 @@ function excludedCount(item: TailItem, reduction: Extract<Reduction, { kind: "ex
   };
 }
 
+function rejectedCount(item: TailItem, stage: Stage, nowMs: number): CountDelta {
+  return {
+    bucketAt: countBucket(item.eventTimestamp ?? nowMs, nowMs), version: versionOf(item), stage, route: OTHER_ROUTE, operation: "", outcome: "rejected-invalid",
+    kept: 0, sampledOut: 1, capped: 0, cpuMsSum: 0, wallMsSum: 0
+  };
+}
+
 function sampledOutCount(invocation: ObservedInvocation, nowMs: number, capped: 0 | 1): CountDelta {
   return {
     bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "",
@@ -120,6 +127,11 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
       continue;
     }
     if (reduction.kind === "rejected") {
+      const stage = stageOf(item);
+      if (policy.sampling.kind === "sampled" && stage !== null && !cap.admit(countBucket(item.eventTimestamp ?? nowMs, nowMs))) {
+        addCount(counted, rejectedCount(item, stage, nowMs));
+        continue;
+      }
       preparations.push({ ok: false, reason: "invalid_event" });
       outcomes.push(outcomeOf(item, "rejected-invalid", OTHER_ROUTE));
       continue;
@@ -134,6 +146,9 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
         addCount(counted, sampledOutCount(reduction.invocation, nowMs, 1));
         continue;
       }
+    } else if (policy.sampling.kind === "sampled" && !cap.admit(countBucket(reduction.invocation.eventAtMs, nowMs))) {
+      addCount(counted, rejectedCount(item, reduction.invocation.stage, nowMs));
+      continue;
     }
     const preparation = await prepareInvocation(reduction.invocation, POLICY);
     preparations.push(preparation);

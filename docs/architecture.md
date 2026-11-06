@@ -312,8 +312,12 @@ The tail isolate admits at most `ALWAYS_KEPT_PER_BUCKET` (10) of them per servic
 per five-minute count bucket (`AlwaysKeptCap`, module state next to the count
 buffer in `cloudflare/worker.ts`). Past the cap an invocation is not stored: it
 is counted like a sampled-out one, with its real outcome class, so `failed`
-totals stay exact, and its `capped` count rises. Trace-hash keeps, invocations
-rejected as invalid, and services that keep everything are never capped. The cap
+totals stay exact, and its `capped` count rises. Trace-hash keeps and services
+that keep everything are never capped. An event rejected as invalid draws on the
+same cap; past it the event is counted as `rejected-invalid` in the bucket's
+counts (route `other`) instead of storing a rejection and an outcome row, and the
+`rejected` health counter does not see it. An event whose execution model is
+unknown is not capped. The cap
 is per isolate, so the bound scales with the number of tail isolates: the
 ceiling is `isolates x 10` always-kept invocations per bucket, priced in
 `observe-billing.md`. Detail beyond the cap is lost, so a deploy that fails every
