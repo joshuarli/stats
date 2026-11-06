@@ -87,25 +87,6 @@ Next: 77
 - **Fix with:** none
 - **Effort:** S
 
-### STA-39 · P4 · Add the 6h project goldens
-
-- **Area:** Tests
-- **Where:** `cloudflare/test/ui/captures/stuff/`, `cloudflare/test/ui/replay.spec.ts:70`
-- **Problem:** The project replay covers only the 1h range. Six hours of data exist only after 2026-11-02 01:20 UTC, because history restarted at 2026-11-01 19:20 UTC.
-- **Recommendation:** After that time run `cloudflare/scripts/capture-project.sh` for the 6h range, add a 6h replay test, and regenerate the golden images.
-- **Fix with:** none
-- **Effort:** S
-
-### STA-40 · P4 · The capture script omits the route and Durable Object kinds
-
-- **Area:** Tests
-- **Where:** `cloudflare/scripts/capture-project.sh:25`
-- **Problem:** The loop fetches `worker r2 probes collector` only. `captures/stuff/routes-1h.json` was assembled by hand from a live `cf sql query` run through `parseRouteRows`, so the next capture will not reproduce it and the replay breaks.
-- **Recommendation:** Add `routes` and `durable-objects` to the loop, make the replay serve `durable-objects` captures for projects that have namespaces, and replace the hand-built file with a real capture.
-- **Status (2026-11-05):** the capture script now captures `routes` and `durable-objects` for every requested range. Left: replace the hand-built `test/ui/captures/stuff/routes-1h.json` with a real production capture.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-49 · P4 · Nanoshop does not check its routes and operations against Stats' lists
 
 - **Area:** Operability

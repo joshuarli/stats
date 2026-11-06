@@ -271,8 +271,8 @@ saves the production observe responses, which `make preview` serves from
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
 `cloudflare/test/ui/captures/` with the clock frozen at the capture time. It
 compares the host summary and charts on each captured host page, the cost
-ledger and charts on the `stuff` project page, and its Deployment card at the
-1h and 6h ranges. The ledger reads `from`/`to` windows, which the replay and
+ledger and charts on the `stuff` project page at 1h, its charts at 6h, and its
+Deployment card at the 1h and 6h ranges. The ledger reads `from`/`to` windows, which the replay and
 `make preview` answer by slicing the shortest captured range that covers the
 window. Baselines live beside the spec as WebP files, and `make
 dashboard-test` rejects tracked PNGs. The replay hides the section bar and
@@ -284,6 +284,11 @@ Recapture fixture data with `cloudflare/scripts/capture-host.sh` or
 `cloudflare/scripts/capture-project.sh` against the deployed service. The
 `stuff` deployment files (`deployments.json` and `comparison-1h|6h|24h.json`)
 are hand-built, not captured, and both the replay and `make preview` serve them.
+`capture-project.sh` deletes the project's capture directory first, so restore
+those four files from git after a `stuff` capture and set `sync.lastAttemptAtMs`
+and `sync.lastSuccessAtMs` in `deployments.json` a minute before the new
+`capturedAtMs`; otherwise the card shows the stale-history banner. Capture every
+range the replay serves: `capture-project.sh stuff 1h 6h 24h 7d 30d`.
 
 A one-device-pixel raster shift can fail a golden even when the content and
 layout are unchanged. Playwright pads a size mismatch before counting pixels

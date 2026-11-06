@@ -148,7 +148,7 @@ async function replayProject(page: Page, name: string, capturedAtMs: number, lat
     if (kinds !== null) {
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
-      const body = (kind: string) => from === null || to === null ? capturedKind(name, "1h", kind) : windowedKind(name, kind, Number(from), Number(to));
+      const body = (kind: string) => from === null || to === null ? capturedKind(name, url.searchParams.get("range") ?? "1h", kind) : windowedKind(name, kind, Number(from), Number(to));
       return fulfillHistory(route, { projectId: name, histories: Object.fromEntries(kinds.split(",").map(kind => [kind, body(kind)])) });
     }
     return fulfillCapture(route, name, `${url.searchParams.get("kind")}-${url.searchParams.get("range")}.json`, true);
@@ -184,26 +184,30 @@ for (const capture of hostCaptures()) {
   }
 }
 
-test("stuff project page, 1h", { tag: "@mobile" }, async ({ page }) => {
-  await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
-  await page.goto("/#/project/stuff?open=signals");
-  await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
-  const ledger = page.getByRole("region", { name: "Cost ledger" });
-  await expect(ledger.locator('[id="ledger-worker"]')).toBeVisible();
-  await expect(ledger.locator('[id="ledger-r2"]')).toBeVisible();
-  await expect(ledger.locator(".ledger-detail")).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  await page.mouse.move(0, 0);
-  const regions = [
-    ["ledger", ledger] as const,
-    ["charts", page.getByRole("region", { name: "Charts" })] as const
-  ];
-  for (const [file, region] of regions) {
-    await expect(region).toHaveScreenshot(`stuff-1h-${file}.webp`);
-  }
-});
+for (const range of ["1h", "6h"]) {
+  test(`stuff project page, ${range}`, { tag: "@mobile" }, async ({ page }) => {
+    await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
+    await page.goto("/#/project/stuff?open=signals");
+    await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+    if (range !== "1h") await page.getByRole("button", { name: range, exact: true }).click();
+    await expect(page.getByRole("button", { name: range, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
+    const ledger = page.getByRole("region", { name: "Cost ledger" });
+    await expect(ledger.locator('[id="ledger-worker"]')).toBeVisible();
+    await expect(ledger.locator('[id="ledger-r2"]')).toBeVisible();
+    await expect(ledger.locator(".ledger-detail")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.mouse.move(0, 0);
+    const regions = [
+      ...(range === "1h" ? [["ledger", ledger] as const] : []),
+      ["charts", page.getByRole("region", { name: "Charts" })] as const
+    ];
+    for (const [file, region] of regions) {
+      await expect(region).toHaveScreenshot(`stuff-${range}-${file}.webp`);
+    }
+  });
+}
 
 for (const range of ["1h", "6h"]) {
   test(`stuff deployments card, ${range}`, { tag: "@mobile" }, async ({ page }) => {
