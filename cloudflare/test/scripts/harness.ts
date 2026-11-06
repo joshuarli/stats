@@ -13,6 +13,7 @@ export type Script = "deploy-host.sh" | "add-host.sh" | "deployed-smoke.sh";
 
 export interface Outcome {
   readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
   readonly stdout: string;
   readonly stderr: string;
   readonly log: string[];
@@ -63,10 +64,10 @@ export async function withWorkspace<T>(use: (workspace: Workspace) => Promise<T>
       let stderr = "";
       child.stdout.on("data", chunk => { stdout += String(chunk); });
       child.stderr.on("data", chunk => { stderr += String(chunk); });
-      const closed = new Promise<number | null>(done => child.on("close", code => done(code)));
+      const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(done => child.on("close", (code, signal) => done({ code, signal })));
       await whileRunning?.(blocked, signal => child.kill(signal));
-      const code = await closed;
-      return { code, stdout, stderr, log: readFileSync(log, "utf8").split("\n").filter(line => line !== ""), leftovers: readdirSync(tmp) };
+      const { code, signal } = await closed;
+      return { code, signal, stdout, stderr, log: readFileSync(log, "utf8").split("\n").filter(line => line !== ""), leftovers: readdirSync(tmp) };
     };
     return await use({ bin, state, log, tmp, blocked, install, run });
   } finally {

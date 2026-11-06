@@ -14,7 +14,7 @@ Run the narrowest target while iterating and `make check` before release.
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
 | `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
-| `pnpm --dir cloudflare test:scripts` | `deploy/*.sh` and `capture-project.sh` under stubbed `ssh`, `curl`, and `cf` with no network: SIGINT and SIGTERM exit 130 and 143 after one cleanup, and a deploy reports success only on a receipt that arrives after the restart |
+| `pnpm --dir cloudflare test:scripts` | `deploy/*.sh` and `capture-project.sh` under stubbed `ssh`, `curl`, and `cf` with no network: SIGHUP, SIGINT, and SIGTERM run one cleanup and then re-raise the signal, so the script dies by it and a calling shell or `make` loop stops too; and a deploy reports success only on a receipt that arrives after the restart |
 | `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, the two-Worker tail test, and the Node server's auth and Worker-parity tests |
 | `make dashboard-test` | Dashboard build, Playwright tests (including one against the Node server), and the tracked-PNG check |
 | `make lint` | Type-aware Oxlint |
