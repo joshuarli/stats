@@ -31,7 +31,7 @@ impl Backoff {
         let base = self.next_ms.min(self.max_ms);
         self.next_ms = self.next_ms.saturating_mul(2).min(self.max_ms);
         if let Some(retry_after) = retry_after {
-            return Duration::from_millis((retry_after.as_millis().min(self.max_ms as u128)) as u64);
+            return Duration::from_millis(retry_after.as_millis().clamp(self.base_ms as u128, self.max_ms as u128) as u64);
         }
         Duration::from_millis((base + self.jitter()).min(self.max_ms))
     }
@@ -65,5 +65,12 @@ mod tests {
         let mut backoff = Backoff::new(Duration::from_millis(1000), Duration::from_secs(60), 11);
         assert_eq!(backoff.delay(Some(Duration::from_secs(2))), Duration::from_secs(2));
         assert_eq!(backoff.delay(Some(Duration::from_secs(600))), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn retry_after_never_drops_below_the_base_delay() {
+        let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 11);
+        assert_eq!(backoff.delay(Some(Duration::ZERO)), Duration::from_secs(1));
+        assert_eq!(backoff.delay(Some(Duration::from_millis(10))), Duration::from_secs(1));
     }
 }
