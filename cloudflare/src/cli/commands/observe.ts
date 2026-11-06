@@ -39,6 +39,10 @@ async function read<T>(context: CommandContext, service: string, path: string, d
   return fetched.value;
 }
 
+function sampledMs(value: number | null): string {
+  return value === null ? "sampled out" : ms(value);
+}
+
 function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`;
 }
@@ -88,7 +92,7 @@ export const observeRoutesCommand = defineCommand<RoutesPayload>({
     const head = sampling === undefined ? ["route", "requests", "failed", "cpu", ...percentiles] : ["route", "kept", "observed", "failed", "cpu", ...percentiles];
     const row = (route: RouteStats) => [
       route.label, String(route.requests), ...(sampling === undefined ? [] : [String(route.observed ?? 0)]), String(route.failed), `${Math.round((route.cpuMs / total) * 100)}%`,
-      ms(route.p50WallMs), ms(route.p95WallMs), ms(route.p99WallMs), ms(route.p95CpuMs)
+      sampledMs(route.p50WallMs), sampledMs(route.p95WallMs), sampledMs(route.p99WallMs), sampledMs(route.p95CpuMs)
     ];
     return [...lines, ...samplingNote(sampling, "the kept, failed, cpu and percentile columns"), ...table([head, ...routes.slice(0, TEXT_ROWS).map(row)]), ...omitted(routes.length)];
   }

@@ -5,11 +5,11 @@ import { scopeSpec, windowQuery, type ComparisonScope } from "../../compare/spec
 import { CommandError, transportError } from "../exit.ts";
 import { HISTORY_BODY_LIMIT, type Fetched, type HttpClient } from "../http.ts";
 import { decodeProjects } from "../decode.ts";
-import { isPending, type Evidence, type IssueCheck } from "./decide.ts";
+import { isPending, type Evidence, type IssueCheck, type IssueGroup } from "./decide.ts";
 import { isOperationPolicy, type Policy } from "./policy.ts";
 import type { VerifyState } from "./state.ts";
 
-export const POLL_REQUEST_LIMIT = 6;
+export const POLL_REQUEST_LIMIT = 7;
 export const TOTAL_REQUEST_LIMIT = 60;
 export const POLL_INTERVAL_MS = 15 * 60_000;
 export const ISSUE_VERSION_LIMIT = 2;
@@ -76,6 +76,10 @@ function notModifiedWithoutBase(path: string): never {
   throw transportError("contract", `${path} answered not-modified with nothing cached`);
 }
 
+function issueGroups(value: unknown): readonly IssueGroup[] {
+  return decodeIssues(value).items.map(item => ({ fingerprint: item.fingerprint, name: item.name, operation: item.operation, lastAtMs: item.lastAtMs }));
+}
+
 export async function gatherEvidence(budget: RequestBudget, state: VerifyState, nowMs: number): Promise<Gathered> {
   const { policy, project, deploymentId, window } = state;
   const previous = state.evidence;
@@ -118,13 +122,15 @@ export async function gatherEvidence(budget: RequestBudget, state: VerifyState, 
     evidence = { ...evidence, windows: { before, after } };
 
     const candidates = comparison.spec.after.versionIds.filter(id => !comparison.spec.before.versionIds.includes(id));
-    const versions: { versionId: string; groups: number }[] = [];
+    const versions: { versionId: string; groups: readonly IssueGroup[] }[] = [];
     for (const versionId of candidates.slice(0, ISSUE_VERSION_LIMIT)) {
       const issuePath = `/api/observe/${OBSERVED_PROJECT}/issues?${new URLSearchParams({ introducedIn: versionId, limit: String(ISSUE_PAGE) })}`;
-      const page = await conditional(issuePath, value => decodeIssues(value).items.length, previous?.issues?.versions.find(item => item.versionId === versionId)?.groups);
-      versions.push({ versionId, groups: page });
+      const groups = await conditional(issuePath, issueGroups, previous?.issues?.versions.find(item => item.versionId === versionId)?.groups);
+      versions.push({ versionId, groups });
     }
-    const issues: IssueCheck = { versions, skipped: candidates.slice(ISSUE_VERSION_LIMIT) };
+    const introduced = versions.some(item => item.groups.length > 0);
+    const earlier = introduced ? await conditional(`/api/observe/${OBSERVED_PROJECT}/issues?${new URLSearchParams({ limit: String(ISSUE_PAGE) })}`, issueGroups, previous?.issues?.earlier) : [];
+    const issues: IssueCheck = { versions, earlier, skipped: candidates.slice(ISSUE_VERSION_LIMIT) };
     evidence = { ...evidence, issues };
     return { evidence, etags, exhausted: null };
   } catch (error) {

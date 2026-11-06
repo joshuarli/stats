@@ -191,6 +191,28 @@ describe("history", () => {
     expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
+  it("answers 200 to a conditional request once an offline host's points have aged out of the window", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
+    const first = await historySearch(host.hostId, "range=1h&kind=summary");
+    const etag = first.headers.get("etag")!;
+    expect(first.status).toBe(200);
+
+    const later = await runInDurableObject(stub(), async (instance: Installation) => {
+      const original = (instance as unknown as { env: Env }).env;
+      Object.defineProperty(instance, "env", { value: { ...original, TEST_NOW_MS: String(now + 3 * 3_600_000) }, configurable: true });
+      try {
+        const url = `https://installation/hosts/${host.hostId}/history?range=1h&kind=summary`;
+        const conditional = await instance.fetch(new Request(url, { headers: { "If-None-Match": etag } }));
+        return { status: conditional.status, etag: conditional.headers.get("etag") };
+      } finally {
+        Object.defineProperty(instance, "env", { value: original, configurable: true });
+      }
+    });
+    expect(later.status).toBe(200);
+    expect(later.etag).not.toBe(etag);
+  });
+
   it("sends history as a frame, compressed to what the client accepts, with every security header", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
@@ -269,7 +291,7 @@ describe("history", () => {
       for (let index = 0; index < 1001; index += 1) {
         state.storage.sql.exec("INSERT INTO samples (host_id, boot_id, seq, at_ms, received_at_ms, mono_ms, elapsed_ms, delta, payload) VALUES ('h_0123456789abcdef0123456789abcdef', '3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f', ?, ?, ?, 1, 0, '{}', '{}')", `old-${index}`, now - 49 * 60 * 60 * 1000, now - 49 * 60 * 60 * 1000);
       }
-      await state.storage.setAlarm(Date.now() + 1_000);
+      await state.storage.setAlarm(Date.now() + 3_600_000);
     });
     expect(await runDurableObjectAlarm(retention)).toBe(true);
     const remaining = await runInDurableObject(retention, async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ count: number }>("SELECT count(*) AS count FROM samples WHERE seq LIKE 'old-%'").one().count);
@@ -378,7 +400,7 @@ describe("system details", () => {
     expect((await system(host.hostId)).status).toBe(200);
 
     expect((await SELF.fetch(`https://example.com/api/v1/hosts/${host.hostId}/system`)).status).toBe(401);
-    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toBe(true);
+    expect(await runInDurableObject(stub(), async (instance: Installation) => instance.purgeHost(host.hostId))).toEqual({ ok: true, value: null });
     expect((await system(host.hostId)).status).toBe(404);
   });
 

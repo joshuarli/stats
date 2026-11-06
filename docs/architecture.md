@@ -172,7 +172,8 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
   Both history routes answer in the [history frame](#history-frames); every
   other route and every error answers in JSON.
 - `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
-  `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`.
+  `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`
+  (409 `conflict` while a service lists the host).
 - `POST /admin/services`, `GET /services`, `GET /services/:name`,
   and `GET /services/:name/deployments`; the marker `POST` is
   `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)),
@@ -295,9 +296,8 @@ flushed within 20 s of the last batch, and a busy isolate flushes by the interva
 rule above. Each flush adds one to the bucket row's `flushes` column.
 
 Counts are exact for every event that reaches the collector and is flushed.
-A flush is at most once: the buffer is emptied before the store call, so a
-failed call loses what it carried, and the failure is logged or thrown. An
-isolate that is evicted, or that never gets its timer, loses at most one flush
+A failed store call puts the counts it carried back in the buffer for the next
+flush, and the failure is logged or thrown. An isolate that is evicted, or that never gets its timer, loses at most one flush
 interval of sampled-out and excluded counts. Kept invocations are never lost this
 way, because the store counts them in the transaction that stores them. The loss
 shows as coverage below `reconciled` against analytics `worker.invocations`.
@@ -312,8 +312,12 @@ The tail isolate admits at most `ALWAYS_KEPT_PER_BUCKET` (10) of them per servic
 per five-minute count bucket (`AlwaysKeptCap`, module state next to the count
 buffer in `cloudflare/worker.ts`). Past the cap an invocation is not stored: it
 is counted like a sampled-out one, with its real outcome class, so `failed`
-totals stay exact, and its `capped` count rises. Trace-hash keeps, invocations
-rejected as invalid, and services that keep everything are never capped. The cap
+totals stay exact, and its `capped` count rises. Trace-hash keeps and services
+that keep everything are never capped. An event rejected as invalid draws on the
+same cap; past it the event is counted as `rejected-invalid` in the bucket's
+counts (route `other`) instead of storing a rejection and an outcome row, and the
+`rejected` health counter does not see it. An event whose execution model is
+unknown is not capped. The cap
 is per isolate, so the bound scales with the number of tail isolates: the
 ceiling is `isolates x 10` always-kept invocations per bucket, priced in
 `observe-billing.md`. Detail beyond the cap is lost, so a deploy that fails every
@@ -337,7 +341,9 @@ of stored (a subset of `sampledOut`). The window, explore, objects, traces, trac
 impact responses add `sampling: { keepPerMillion, kept, observed }`, where
 `observed` is exact and counts kept plus sampled-out ok and failed invocations
 of the response's stage over the whole buckets it overlaps. Explore routes add an
-exact `observed` count, and a rollout's request and failure counts come from the
+exact `observed` count and list every counted route: one with no kept invocation
+has `requests` 0, `null` latency and CPU percentiles, and `unmeasured:
+"sampled-out"`. A rollout's request and failure counts come from the
 counts table. Every percentile and the CPU share in those responses are computed
 from the kept invocations only: `statsctl observe --project nanoshop-storied` and
 the dashboard label them sampled, and a service that keeps everything returns
@@ -540,10 +546,11 @@ bucket counts only when every compared host reported at least 150 s of it:
 | `service.cpu` (cores), `service.memory` (`memory.current`, B), `service.io` (read + write, B/s) | the service's cgroup in host one-minute rollups, from agents configured with the service |
 | `probe.health.ms`, `probe.health.failure` (%) | service health probes, only when `healthUrl` is set |
 
-A cgroup metric replaces its host counterpart (`service.cpu` for `host.cpu`,
+A cgroup metric supersedes its host counterpart (`service.cpu` for `host.cpu`,
 `service.memory` for `host.memory`, `service.io` for `host.disk`) only when it
-has a value in both windows; otherwise the host metric stays and the cgroup
-metric is left out, so an agent rolled out between the windows never yields a
+has a value in both windows; the host row then stays in the response, listed
+after the others and marked `supersededBy` the cgroup metric. Otherwise the
+host metric stays unmarked and the cgroup metric is left out, so an agent rolled out between the windows never yields a
 cgroup comparison against nothing. A cgroup bucket also needs 150 s of cgroup
 counter coverage. Network and pressure have no cgroup counterpart and stay
 host-level.
@@ -623,7 +630,8 @@ one batched history request on each refresh. Summary points carry `cpuCount` and
 `uptimeMs`; the dashboard reads a fall in uptime as a reboot.
 
 History responses carry an `ETag` derived from the last host ingest or the last
-collector run, plus the requested window and kinds and the frame format
+collector run, plus the requested window and kinds (a host's range window also
+carries its resolved end and resolution) and the frame format
 (`:stc1`), so a validator never matches a different representation. The match
 is weak, so a `W/` prefix added by an intermediary still revalidates. The
 dashboard sends `If-None-Match` and reuses its decoded history on `304`, so a

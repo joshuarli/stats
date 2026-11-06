@@ -7,7 +7,7 @@ import { createSymbolicator } from "./symbolicate.ts";
 import {
   cleanup, eventWindow, explore, health, objectMethods, ingest, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
   type ArtifactResult, type CleanupResult, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
-  type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
+  type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
 } from "./store.ts";
 import type { SqlStatements } from "../../core/sql.ts";
 
@@ -98,7 +98,12 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, sam
       const policy = sampling();
       if (policy.kind === "all") return exploration;
       const observed = observedByRoute(db, exploration.fromMs, exploration.toMs, "worker");
-      return summarized({ ...exploration, routes: exploration.routes.map(route => ({ ...route, observed: observed.get(route.label) ?? 0 })) }, exploration.fromMs, exploration.toMs, "worker");
+      const kept = exploration.routes.map((route): RouteStats => ({ ...route, observed: observed.get(route.label) ?? 0 }));
+      const sampledOut = [...observed].filter(([label]) => !exploration.routes.some(route => route.label === label)).map(([label, count]): RouteStats => ({
+        label, requests: 0, failed: 0, cpuMs: 0, p50WallMs: null, p95WallMs: null, p99WallMs: null, p50CpuMs: null, p95CpuMs: null, observed: count, unmeasured: "sampled-out"
+      }));
+      const routes = [...kept, ...sampledOut].sort((a, b) => b.cpuMs - a.cpuMs || a.label.localeCompare(b.label));
+      return summarized({ ...exploration, routes }, exploration.fromMs, exploration.toMs, "worker");
     },
     objects: async filter => {
       const methods = objectMethods(db, clock.now(), filter);

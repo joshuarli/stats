@@ -39,6 +39,7 @@ export interface World {
   after: RowOver;
   observedFactor: number;
   issues: Record<string, number>;
+  earlierIssues: { fingerprint: string; name: string; operation: string | null; lastAtMs: number }[];
   operationRows: boolean;
   paddingRows: number;
   doRows: boolean;
@@ -48,7 +49,7 @@ export interface World {
 export function newWorld(over: Partial<World> = {}): World {
   return {
     clock: { now: AT + 3 * H }, deployments: [PREVIOUS, CANDIDATE], settled: true, probes: [], probeRows: [],
-    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, operationRows: true, paddingRows: 0, doRows: false, syncedAtMs: AT, ...over
+    before: { rowsWritten: 600 }, after: { rowsWritten: 300 }, observedFactor: 1, issues: {}, earlierIssues: [], operationRows: true, paddingRows: 0, doRows: false, syncedAtMs: AT, ...over
   };
 }
 
@@ -109,8 +110,12 @@ export function handler(world: World) {
     if (pathname === "/api/observe/stats/health") return sendJson(response, observeHealth(world.clock.now - 60_000));
     if (pathname === "/api/observe/stats/window") return sendJson(response, windowBody(world, Number(searchParams.get("from")), Number(searchParams.get("to")), searchParams.get("operation")));
     if (pathname === "/api/observe/stats/issues") {
-      const groups = world.issues[searchParams.get("introducedIn") ?? ""] ?? 0;
-      const items = Array.from({ length: groups }, (_, index) => ({ fingerprint: `f${index}`, name: "Error", operation: null, frame: null, state: "open", occurrences: 3, firstAtMs: AT, lastAtMs: AT, lastVersion: null, versions: 1, firstVersion: searchParams.get("introducedIn"), firstVersionLabel: null }));
+      const introducedIn = searchParams.get("introducedIn");
+      const groups = world.issues[introducedIn ?? ""] ?? 0;
+      const issue = (fields: { fingerprint: string; name: string; operation: string | null; lastAtMs: number }, firstVersion: string | null) => ({ frame: null, state: "open", occurrences: 3, firstAtMs: AT, lastVersion: null, versions: 1, firstVersion, firstVersionLabel: null, ...fields });
+      const items = introducedIn === null
+        ? world.earlierIssues.map(fields => issue(fields, id(101)))
+        : Array.from({ length: groups }, (_, index) => issue({ fingerprint: `f${index}`, name: "Error", operation: null, lastAtMs: AT }, introducedIn));
       return sendJson(response, { items, next: null });
     }
     response.writeHead(404).end();

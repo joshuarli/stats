@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareTailItems, type TailItem } from "../../src/observe/cloudflare/tail.ts";
-import { AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
+import { ALWAYS_KEPT_PER_BUCKET, AlwaysKeptCap } from "../../src/observe/core/always-kept-cap.ts";
 import { POLICIES } from "../../src/observe/cloudflare/policies.ts";
 import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { CountBuffer, deliverSampled, IDLE_FLUSH_MS, MAX_BUFFERED_COUNT_KEYS, type CountSink } from "../../src/observe/core/count-buffer.ts";
@@ -150,7 +150,7 @@ await test("a timer that wakes while batches are still arriving leaves the flush
   assert.equal(h.buffer.size, 0);
 });
 
-await test("a failed flush loses the drained counts, a failed timer is reported, and a failed kept write leaves the buffer", async () => {
+await test("a failed flush keeps the drained counts for the next flush, a failed timer is reported and keeps them, and a failed kept write leaves the buffer", async () => {
   const dead: CountSink = { ingest: async () => { throw new Error("store down"); } };
   const never = () => new Promise<void>(() => undefined);
   const deliverTo = (buffer: CountBuffer, items: TailItem[], nowMs: number, sleep: () => Promise<void>, deferred: Promise<void>[] = [], reported: unknown[] = [], wakeMs = nowMs) => prepareTailItems(items, SHOP, nowMs, new AlwaysKeptCap()).then(batch => deliverSampled({
@@ -161,7 +161,8 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
   await deliverTo(flushed, [quietItem(1, START)], START + 1_000, never);
   assert.equal(flushed.size, 1);
   await assert.rejects(deliverTo(flushed, [quietItem(2, START)], START + 1_000 + INTERVAL, never), /store down/u);
-  assert.equal(flushed.size, 0, "at most once: the counts were drained before the failing call");
+  assert.equal(flushed.size, 1, "the two events share one count key and stay buffered after the failing call");
+  assert.equal(flushed.drain()[0]?.sampledOut, 2);
 
   const timed = new CountBuffer(INTERVAL);
   const deferred: Promise<void>[] = [];
@@ -169,7 +170,7 @@ await test("a failed flush loses the drained counts, a failed timer is reported,
   await deliverTo(timed, [quietItem(1, START)], START + 1_000, async () => undefined, deferred, reported, START + 1_000 + IDLE_FLUSH_MS);
   await Promise.all(deferred);
   assert.equal(reported.length, 1);
-  assert.equal(timed.size, 0);
+  assert.equal(timed.size, 1);
 
   const kept = new CountBuffer(INTERVAL);
   await deliverTo(kept, [quietItem(3, START)], START + 2_000, never);
@@ -232,4 +233,21 @@ await test("an evicted isolate loses at most the counts buffered since its last 
   assert.equal(after, recorded + 1, "the new isolate never sees the lost buffer");
   const lost = events - recorded;
   assert.ok(lost > 0 && lost <= INTERVAL / 500, `${lost} events lost, at most the ${INTERVAL / 500} that arrive in one flush interval`);
+});
+
+await test("rejected-invalid events past the always-kept cap are counted in the bucket instead of stored one by one", async () => {
+  const invalid = (n: number): TailItem => ({ ...item(n, START + n), event: { request: { url: "not a url", method: "GET" } } });
+  const total = ALWAYS_KEPT_PER_BUCKET + 7;
+  const batch = await prepareTailItems(Array.from({ length: total }, (_, n) => invalid(n)), SHOP, START + 1_000, new AlwaysKeptCap());
+  assert.equal(batch.preparations.length, ALWAYS_KEPT_PER_BUCKET);
+  assert.equal(batch.outcomes.length, ALWAYS_KEPT_PER_BUCKET);
+  const counted = batch.counts.filter(count => count.outcome === "rejected-invalid");
+  assert.equal(counted.length, 1);
+  assert.equal(counted[0]!.sampledOut, 7);
+  assert.equal(batch.outcomes.length + counted[0]!.sampledOut, total);
+
+  const db = database();
+  ingest(db, batch.preparations, START + 1_000, batch.outcomes, { sampling: SHOP.sampling, counts: batch.counts });
+  const rows = db.rows<{ outcome: string; n: number }>("SELECT outcome, SUM(sampled_out) AS n FROM observe_count_entries WHERE outcome = 'rejected-invalid' GROUP BY outcome");
+  assert.deepEqual(rows.map(row => [row.outcome, row.n]), [["rejected-invalid", 7]]);
 });

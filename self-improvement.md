@@ -251,7 +251,7 @@ Each decision gives its reason, and what would reverse it.
 18. **Observer and experiment overhead.**
     - **Three totals.** Reports separate application cost (`stats`), observation cost (the `stats-observe` project: Tail CPU only, plus its DO requests, duration, rows, and storage), and experiment overhead. Experiment overhead is the requests `statsctl` made, counted client-side and written into the verify state.
     - **No observer of the observer.** `stats-observe` never tails itself.
-    - **Polling limits.** `verify --wait` sleeps until the window's `readyAtMs` before its first data read. After that it polls at most once every 15 minutes, with `If-None-Match`. Each poll makes at most 6 requests. A full verify makes at most 60 requests.
+    - **Polling limits.** `verify --wait` sleeps until the window's `readyAtMs` before its first data read. After that it polls at most once every 15 minutes, with `If-None-Match`. Each poll makes at most 7 requests. A full verify makes at most 60 requests.
     - **Instrumentation budget.** T1 through T3 may add at most 1.0 observe row written per stats invocation over the baseline of 3.0. The baseline is 38,639 ingest rows over 12,885 invocations, read from production `health` on 2026-11-04. They also keep the stats Worker gzip bundle within 5 KiB of baseline.
 19. **Deploy targets.**
     - `make worker-deploy` always redeploys `stats-observe` first (`Makefile:96`).

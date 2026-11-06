@@ -1,7 +1,9 @@
 import { COUNT_BUCKET_MS, MAX_LABEL_BYTES, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "./limits.ts";
-import { COUNT_OUTCOMES, EXCLUDED_OUTCOMES, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage } from "./model.ts";
+import { COUNT_OUTCOMES, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage } from "./model.ts";
 import type { SampledPolicy } from "./sampling.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
+
+type UncountedOutcome = Exclude<typeof COUNT_OUTCOMES[number], "ok" | "failed">;
 
 export interface SamplingEvents {
   readonly untraced: number;
@@ -210,7 +212,7 @@ export function samplingHealth(db: SqlStatements, nowMs: number, policy: Sampled
 
 export interface CountWindow {
   readonly invocations: readonly { readonly bucketAt: number; readonly version: string; readonly stage: Stage; readonly count: number }[];
-  readonly excluded: readonly { readonly bucketAt: number; readonly version: string; readonly stage: Stage; readonly outcome: typeof EXCLUDED_OUTCOMES[number]; readonly count: number }[];
+  readonly excluded: readonly { readonly bucketAt: number; readonly version: string; readonly stage: Stage; readonly outcome: UncountedOutcome; readonly count: number }[];
 }
 
 export function countWindow(db: SqlStatements, fromMs: number, toMs: number): CountWindow {
@@ -219,7 +221,7 @@ export function countWindow(db: SqlStatements, fromMs: number, toMs: number): Co
     `SELECT bucket_at, version, stage, SUM(kept + sampled_out) AS count FROM observe_count_entries WHERE ${WINDOW} AND outcome IN ('ok', 'failed')
      GROUP BY bucket_at, version, stage ORDER BY bucket_at, version, stage`, ...params
   ).map(row => ({ bucketAt: row.bucket_at, version: row.version, stage: row.stage, count: row.count }));
-  const excluded = db.rows<{ bucket_at: number; version: string; stage: Stage; outcome: typeof EXCLUDED_OUTCOMES[number]; count: number }>(
+  const excluded = db.rows<{ bucket_at: number; version: string; stage: Stage; outcome: UncountedOutcome; count: number }>(
     `SELECT bucket_at, version, stage, outcome, SUM(sampled_out) AS count FROM observe_count_entries WHERE ${WINDOW} AND outcome NOT IN ('ok', 'failed')
      GROUP BY bucket_at, version, stage, outcome ORDER BY bucket_at, version, stage, outcome`, ...params
   ).map(row => ({ bucketAt: row.bucket_at, version: row.version, stage: row.stage, outcome: row.outcome, count: row.count }));

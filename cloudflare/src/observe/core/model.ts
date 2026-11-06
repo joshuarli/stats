@@ -18,7 +18,7 @@ export interface OutcomeEvent {
   readonly route: string;
   readonly eventAtMs: number | null;
 }
-export const COUNT_OUTCOMES = ["ok", "failed", ...EXCLUDED_OUTCOMES] as const;
+export const COUNT_OUTCOMES = ["ok", "failed", ...EXCLUDED_OUTCOMES, "rejected-invalid"] as const;
 export type CountOutcome = typeof COUNT_OUTCOMES[number];
 
 export interface CountDelta {

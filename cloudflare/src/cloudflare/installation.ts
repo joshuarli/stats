@@ -36,7 +36,7 @@ export class Installation extends DurableObject<Env> {
     return this.core.revokeHost(hostId);
   }
 
-  purgeHost(hostId: string): Promise<boolean> {
+  purgeHost(hostId: string): Promise<AdminResult<null>> {
     return this.core.purgeHost(hostId);
   }
 

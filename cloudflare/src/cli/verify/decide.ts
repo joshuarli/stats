@@ -7,7 +7,7 @@ import { isOperationPolicy, operationFloors, type GuardrailId, type Policy } fro
 
 export const VERDICTS = ["improved", "unchanged", "confounded", "insufficient-data", "pending", "regressed"] as const;
 export type VerifyVerdict = typeof VERDICTS[number];
-export type GuardrailStatus = "pass" | "regressed" | "insufficient-data" | "pending" | "waived" | "not-applicable";
+export type GuardrailStatus = "pass" | "regressed" | "insufficient-data" | "pending" | "waived" | "not-applicable" | "regrouped";
 
 export const PENDING_CODES: readonly ReasonCode[] = ["not-ready", "unsettled", "stale-history"];
 const DATA_CODES: readonly string[] = ["disabled", "expired", "truncated", "invocations-missing", "invocations-floor"];
@@ -22,8 +22,16 @@ export interface SafetyRecord {
   readonly file: string;
 }
 
+export interface IssueGroup {
+  readonly fingerprint: string;
+  readonly name: string;
+  readonly operation: string | null;
+  readonly lastAtMs: number;
+}
+
 export interface IssueCheck {
-  readonly versions: readonly { readonly versionId: string; readonly groups: number }[];
+  readonly versions: readonly { readonly versionId: string; readonly groups: readonly IssueGroup[] }[];
+  readonly earlier: readonly IssueGroup[];
   readonly skipped: readonly string[];
 }
 
@@ -122,11 +130,18 @@ function safetyGuardrail(safety: SafetyRecord | null, comparison: DeploymentComp
   return { id, status: "pass", detail: inside ? "passed, but ran inside the after window rather than the warm-up interval" : "passed inside the deployment warm-up interval", before: null, after: null };
 }
 
-function issueGuardrail(issues: IssueCheck | null): GuardrailReport {
+function issueGuardrail(issues: IssueCheck | null, beforeFromMs: number): GuardrailReport {
   const id = "new-issue-group";
   if (issues === null) return { id, status: "insufficient-data", detail: "observe issue groups were not read", before: null, after: null };
-  const groups = issues.versions.reduce((sum, item) => sum + item.groups, 0);
+  const candidates = issues.versions.flatMap(item => item.groups);
+  const earlierOf = (group: IssueGroup) => issues.earlier.find(known => known.operation === group.operation && known.name === group.name && known.fingerprint !== group.fingerprint && known.lastAtMs >= beforeFromMs);
+  const regrouped = candidates.flatMap(group => { const earlier = earlierOf(group); return earlier === undefined ? [] : [{ group, earlier }]; });
+  const groups = candidates.length - regrouped.length;
   if (groups > 0) return { id, status: "regressed", detail: `${groups} issue groups first appeared in the candidate version`, before: null, after: groups };
+  if (regrouped.length > 0) {
+    const pairs = regrouped.map(({ group, earlier }) => `${earlier.fingerprint} regrouped as ${group.fingerprint} (${group.operation ?? "no operation"}, ${group.name})`).join("; ");
+    return { id, status: "regrouped", detail: `the candidate's issue groups repeat errors seen in the before window under another fingerprint: ${pairs}`, before: null, after: regrouped.length };
+  }
   if (issues.skipped.length > 0) return { id, status: "insufficient-data", detail: `issue groups were not read for ${issues.skipped.length} versions; too many candidate versions for the poll budget`, before: null, after: 0 };
   return { id, status: "pass", detail: issues.versions.length === 0 ? "the deployment introduced no new version" : "no issue group has the candidate as its first version", before: null, after: 0 };
 }
@@ -183,11 +198,12 @@ export function decide(policy: Policy, evidence: Evidence, safety: SafetyRecord 
     const statuses = all.map(item => item.status);
     let verdict: VerifyVerdict;
     if (statuses.includes("regressed") || target.verdict === "regressed") verdict = "regressed";
-    else if (target.verdict === "confounded") verdict = "confounded";
+    else if (target.verdict === "confounded" || statuses.includes("regrouped")) verdict = "confounded";
     else if (target.verdict === "insufficient-data" || statuses.includes("insufficient-data")) verdict = "insufficient-data";
     else if (pending || target.verdict === "pending" || statuses.includes("pending")) verdict = "pending";
     else verdict = target.verdict;
     for (const item of all) if (item.status === "regressed" || item.status === "insufficient-data") reasons.push({ code: `guardrail-${item.status}`, message: `${item.id}: ${item.detail}` });
+    for (const item of all) if (item.status === "regrouped") reasons.push({ code: "regrouped", message: `${item.id}: ${item.detail}` });
     if (target.verdict === "confounded") reasons.push({ code: "confounded", message: `the comparison is blocked by ${extra.blockedBy.join(", ") || "its reasons"}` });
     if (target.verdict === "insufficient-data") reasons.push({ code: "target-insufficient", message: `${policy.metric} has no usable value on both sides` });
     if (verdict === "pending") reasons.push({ code: "pending", message: comparison.reasons.find((_, index) => PENDING_CODES.includes(comparison.reasonCodes[index] as ReasonCode)) ?? "waiting for the after window to settle" });
@@ -214,7 +230,7 @@ export function decide(policy: Policy, evidence: Evidence, safety: SafetyRecord 
   const coverage: CoverageReport = { before, after, state: combineCoverage(before.state, after.state) };
   const common = (): GuardrailReport[] => [
     safetyGuardrail(safety, comparison, evidence.deployedAtMs),
-    issueGuardrail(evidence.issues),
+    issueGuardrail(evidence.issues, comparison.spec.before.fromMs),
     probeGuardrail(evidence.probes, comparison),
     coverageGuardrail(coverage)
   ];

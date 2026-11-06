@@ -18,6 +18,10 @@ function statusTone(trace: TraceSummary): string {
   return "tone-ok";
 }
 
+function latency(ms: number | null): string {
+  return ms === null ? "sampled out" : duration(ms);
+}
+
 function median(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) / 2)] ?? 0;
@@ -57,10 +61,10 @@ function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly sa
               <td class="numeric">{count(observed(route))}</td>
               <td class={route.failed > 0 ? "numeric failed-cell" : "numeric"}>{route.failed === 0 ? "0" : percent((route.failed / observed(route)) * 100)}</td>
               <td class="cpu-col"><span class="share"><span class="share-bar" style={`width:${(route.cpuMs / totalCpu()) * 100}%`} /><span class="share-text">{percent((route.cpuMs / totalCpu()) * 100)}</span></span></td>
-              <td class="numeric">{duration(route.p50WallMs)}</td>
-              <td class="numeric strong">{duration(route.p95WallMs)}</td>
-              <td class="numeric">{duration(route.p99WallMs)}</td>
-              <td class="numeric">{duration(route.p95CpuMs)}</td>
+              <td class="numeric">{latency(route.p50WallMs)}</td>
+              <td class="numeric strong">{latency(route.p95WallMs)}</td>
+              <td class="numeric">{latency(route.p99WallMs)}</td>
+              <td class="numeric">{latency(route.p95CpuMs)}</td>
             </tr>
           )}</For>
         </tbody>
@@ -86,12 +90,12 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
     if (current === null || items().length === 0) return null;
     const cpu = items().map(item => item.cpuMs + item.objectCpuMs);
     const objectShare = items().reduce((sum, item) => sum + item.objectCpuMs, 0) / Math.max(1, cpu.reduce((sum, value) => sum + value, 0));
-    return { calls: items().length, wall: median(items().map(item => item.wallMs)), cpu: median(cpu), objectShare, typical: route === null ? null : { wall: route.p50WallMs, cpu: route.p50CpuMs } };
+    return { calls: items().length, wall: median(items().map(item => item.wallMs)), cpu: median(cpu), objectShare, typical: route === null || route.p50WallMs === null || route.p50CpuMs === null ? null : { wall: route.p50WallMs, cpu: route.p50CpuMs } };
   });
   const bandLabel = () => {
     const current = band();
     if (current === null) return null;
-    if (current.kind === "slow") return selectedRoute() === null ? "Slowest calls" : `Calls at or above p95 (${duration(selectedRoute()!.p95WallMs)})`;
+    if (current.kind === "slow") return selectedRoute() === null ? "Slowest calls" : `Calls at or above p95 (${latency(selectedRoute()!.p95WallMs)})`;
     return `${axisTime(current.fromMs, (exploration()?.toMs ?? now()) - (exploration()?.fromMs ?? 0))} · ${duration(current.minWallMs)}–${current.maxWallMs === null ? "more" : duration(current.maxWallMs)}`;
   };
   const moveSelection = (event: KeyboardEvent & { currentTarget: HTMLDivElement }) => {

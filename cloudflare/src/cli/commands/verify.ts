@@ -75,7 +75,7 @@ const POLICY_FIELD_HELP: readonly (readonly [string, string])[] = [
 const GUARDRAIL_HELP: readonly (readonly [string, string])[] = [
   ["safety-check", "a saved `check ingest --json` that passed, run after the deploy began and before the after window"],
   ["failed-share", "operation failures: none if the before side had none, else the share may rise at most 1 point"],
-  ["new-issue-group", "no observe issue group whose first version is the candidate"],
+  ["new-issue-group", "no observe issue group whose first version is the candidate; a group with the same operation and error name as one seen since the before window began, under another fingerprint, is `regrouped` and makes the verdict confounded"],
   ["probe-failure-share", "no probe failure share rose by 1 point or more; not applicable when the project defines no probes"],
   ["coverage", "observe events reconcile with analytics invocations within 5% on both sides"],
   ["ingest-persistence", "(persisted + duplicate) / received, in percent, does not fall by more than 1 point; rejected samples stay in the denominator (host.ingest only)"]
@@ -158,7 +158,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "",
       "Service policy (--service), schema statsctl-policy/1, strict: schema, id, hypothesis, service, metric, direction, minChangePercent, floor, window.",
       `  metric is one of ${SERVICE_LEVEL_METRICS.map(entry => entry.metric).join(", ")}; floor is at least the metric's default (${SERVICE_LEVEL_METRICS.map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
-      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io replace host.cpu, host.memory, and host.disk, which a policy then cannot target.",
+      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io supersede host.cpu, host.memory, and host.disk, which stay in the response marked supersededBy and which a policy can still target.",
       "",
       "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],

@@ -10,7 +10,7 @@ import type { Evidence, IssueCheck, SafetyRecord, VerifyVerdict } from "./decide
 import { VERDICTS } from "./decide.ts";
 import { parsePolicy, policyHash, PolicyError, type Policy } from "./policy.ts";
 
-export const STATE_SCHEMA = "statsctl-verify-state/1";
+export const STATE_SCHEMA = "statsctl-verify-state/2";
 export const DEFAULT_STATE_DIRECTORY = join(REPOSITORY_ROOT, ".work", "statsctl", "verify");
 export const MAX_STATE_BYTES = 32 * 1024 * 1024;
 
@@ -97,8 +97,18 @@ function decodeIssues(value: unknown, path: string): IssueCheck | null {
   if (value === null) return null;
   const fields = record(value, path, "issues");
   if (!Array.isArray(fields["versions"]) || !Array.isArray(fields["skipped"])) fail(path, "issues must list versions and skipped");
+  const groups = (list: unknown, what: string) => {
+    if (!Array.isArray(list)) fail(path, `${what} must be a list`);
+    return list.map(item => {
+      const entry = record(item, path, what);
+      const operation = entry["operation"];
+      if (operation !== null && typeof operation !== "string") fail(path, `${what} operation must be a string or null`);
+      return { fingerprint: stringValue(entry["fingerprint"], path, `${what} fingerprint`), name: stringValue(entry["name"], path, `${what} name`), operation, lastAtMs: integer(entry["lastAtMs"], path, `${what} lastAtMs`) };
+    });
+  };
   return {
-    versions: fields["versions"].map(item => { const entry = record(item, path, "issue version"); return { versionId: stringValue(entry["versionId"], path, "issue versionId"), groups: integer(entry["groups"], path, "issue groups") }; }),
+    versions: fields["versions"].map(item => { const entry = record(item, path, "issue version"); return { versionId: stringValue(entry["versionId"], path, "issue versionId"), groups: groups(entry["groups"], "issue groups") }; }),
+    earlier: groups(fields["earlier"], "earlier issue groups"),
     skipped: fields["skipped"].map(item => stringValue(item, path, "skipped version"))
   };
 }

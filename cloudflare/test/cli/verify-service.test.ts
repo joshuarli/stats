@@ -28,7 +28,7 @@ function probeRows(window: { fromMs: number; toMs: number }, ms: number, up: num
 function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, hasHealthUrl = true) {
   const { before, after } = comparisonBounds(deployment.atMs, "1h");
   const rows = hasHealthUrl ? [...probeRows(before, beforeMs, 1), ...probeRows(after, afterMs, 1)] : [];
-  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: new Map(), probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false });
+  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: () => [], probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false });
 }
 
 function policyFile(name: string, over: Record<string, unknown> = {}): string {
@@ -120,12 +120,15 @@ function cgroupRollups(deployment: Deployment, beforeCores: number, afterCores: 
   return new Map([[HOST, minutes]]);
 }
 
-await test("a host policy whose metric the service's cgroup replaced says so, and the cgroup metric is judged", async () => {
+await test("a host policy whose metric the service's cgroup supersedes is still judged and says so, and the cgroup metric is judged", async () => {
   const now = AT + 3 * HOUR;
-  const body = compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: cgroupRollups(CANDIDATE, 1, 0.5), probeRows: [], hasHealthUrl: false, window: "1h", now, truncated: false });
-  const replaced = await verify(body, [], policyFile("replaced.json", { metric: "host.cpu", floor: 2 }));
-  assert.equal(replaced.run.code, 5);
-  assert.match(replaced.document.payload?.reasons[0]?.message ?? "", /host\.cpu is not compared: .* service\.cpu replaces it/u);
+  const body = compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: (() => { const rollups = cgroupRollups(CANDIDATE, 1, 0.5); return (hostId: string) => rollups.get(hostId) ?? []; })(), probeRows: [], hasHealthUrl: false, window: "1h", now, truncated: false });
+  const answerable = { ...body, metrics: body.metrics.map(entry => entry.metric === "host.cpu" ? { ...entry, before: 40, after: 20, delta: -20, deltaPercent: -50, verdict: "improved" as const } : entry) };
+  assert.equal(body.metrics.find(entry => entry.metric === "host.cpu")?.supersededBy, "service.cpu");
+  const superseded = await verify(answerable, [], policyFile("superseded.json", { metric: "host.cpu", floor: 2 }));
+  assert.equal(superseded.run.code, 0, superseded.run.stdout);
+  assert.equal(superseded.document.payload?.verdict, "improved");
+  assert.match(superseded.document.payload?.reasons[0]?.message ?? "", /host\.cpu is judged as asked.* service\.cpu is the better measure/u);
   const cgroup = await verify(body, [], policyFile("cgroup.json", { metric: "service.cpu", floor: 0.02 }));
   assert.equal(cgroup.run.code, 0, cgroup.run.stdout);
   assert.equal(cgroup.document.payload?.verdict, "improved");
