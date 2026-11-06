@@ -346,8 +346,15 @@ message. In local workerd, when RPCs overlap on one Durable Object instance
 (even two at a time), diagnostics-channel messages land on other invocations'
 tail events: 200 sequential RPCs each carried one message, but 200 RPCs five
 at a time produced events carrying zero to four, and RPCs on distinct
-instances were unaffected. An object event with no message has no trace, so it
-is kept and counted `untraced`; one with two operation messages is rejected as
+instances were unaffected. A Nanoshop alarm that awaits provider calls shows
+the same: the summary it publishes at its end lands on whichever RPC event
+arrived meanwhile. An operation message carries the span it was published
+in, so an event that has an invocation mark keeps only the operation message
+of the mark's span and leaves any other out; the invocation that published
+the stray message is then counted with no summary (its operation falls back
+to the policy's name for its route, and `rows.accounted` stays below `count`).
+An object event with no message has no trace, so it is kept and counted
+`untraced`; one with no mark and two operation messages is rejected as
 `rejected-invalid`. Worker events were unaffected. Whether production behaves
 the same is unverified.
 

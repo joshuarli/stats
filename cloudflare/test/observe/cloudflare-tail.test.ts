@@ -267,6 +267,22 @@ await test("a sampled service's operation summary carries its name, row account 
   assert.equal(memories.kind === "observed" ? memories.invocation.serviceOperation : memories.kind, undefined, "a service that keeps everything does not count summaries");
 });
 
+await test("an operation message of another span is left out of a marked invocation, which keeps its own summary", () => {
+  const shop = POLICIES["nanoshop-storied"];
+  const mark = { channel: OBSERVE_CHANNEL, message: { kind: "invocation", ...SHOP_SPAN } };
+  const foreign = serviceOperation({ spanId: "7a1c3e5f9b2d4c6e", traceId: "0af7651916cd43dd8448eb211c80319c", operation: "store.alarm", rows: { read: 221, written: 63, statements: 93 }, workLagMs: 382 });
+  const own = serviceOperation({ operation: "store.rpc.commerceCommand", rows: { read: 3, written: 6, statements: 3 } });
+  const read = (events: TailItem["diagnosticsChannelEvents"]) => {
+    const reduction = reduceTailItem(objectItem({ rpcMethod: "commerceCommand" }, { diagnosticsChannelEvents: events }), shop);
+    return reduction.kind === "observed" ? [reduction.invocation.trace, reduction.invocation.serviceOperation] : reduction.kind;
+  };
+  assert.deepEqual(read([mark, own, foreign]), [SHOP_SPAN, { name: "store.rpc.commerceCommand", rows: { read: 3, written: 6, statements: 3 }, workLagMs: null }]);
+  assert.deepEqual(read([foreign, mark, own]), [SHOP_SPAN, { name: "store.rpc.commerceCommand", rows: { read: 3, written: 6, statements: 3 }, workLagMs: null }]);
+  assert.deepEqual(read([mark, foreign]), [SHOP_SPAN, undefined]);
+  assert.equal(read([mark, own, own]), "rejected");
+  assert.equal(read([own, foreign]), "rejected", "with no mark there is no own span, so two summaries stay ambiguous");
+});
+
 await test("stats keeps its typed operation decoder, and a generic message is not a stats operation", () => {
   const generic = serviceOperation({ operation: "host.ingest" });
   assert.equal(label(fetchItem("https://stats.example/ingest/v2/batches", 200, { diagnosticsChannelEvents: [generic] })), "rejected");

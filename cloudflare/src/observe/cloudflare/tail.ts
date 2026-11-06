@@ -211,6 +211,7 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
   let serviceOperation: ServiceOperationReading | null = null;
   let operationSeen = false;
   const errors: ObservedError[] = [];
+  const ownSpan = markedSpan(events);
   for (const event of events) {
     if (event.channel !== OBSERVE_CHANNEL) continue;
     const message = event.message;
@@ -223,7 +224,9 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
     } else if (kind === "operation") {
       const traceId = text(field(message, "traceId"));
       const spanId = text(field(message, "spanId"));
-      if (traceId === null || spanId === null || operationSeen) return null;
+      if (traceId === null || spanId === null) return null;
+      if (ownSpan !== null && spanId !== ownSpan) continue;
+      if (operationSeen) return null;
       if (policy.operationMessages === "stats") {
         summary = readOperation(message);
         if (summary === null) return null;
@@ -245,6 +248,13 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
     }
   }
   return { trace, operation: summary, serviceOperation, errors };
+}
+
+function markedSpan(events: TailItem["diagnosticsChannelEvents"]): string | null {
+  for (const event of events) {
+    if (event.channel === OBSERVE_CHANNEL && field(event.message, "kind") === "invocation") return text(field(event.message, "spanId"));
+  }
+  return null;
 }
 
 function readServiceOperation(message: unknown, operations: ReadonlySet<string>): ServiceOperationReading | null {
