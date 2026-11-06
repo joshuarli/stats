@@ -153,8 +153,13 @@ A unit whose cgroup does not exist is sent as unavailable, never zero; a
 memory or io controller that is not enabled for it leaves those values
 absent. With no cgroup v2 hierarchy, including on macOS, the whole group is
 unavailable. A container scope carries the container id, so a recreated
-container needs its new scope in the config. Reading these files needs no
-privileges.
+container needs its new scope in the config. `io.stat` is summed over every
+device it lists, so stacked devices (device-mapper, md) can count one I/O twice.
+Reading these files needs no privileges.
+
+A decoder that does not know the `services` group rejects the whole frame as
+`invalid_frame`. Deploy the Worker or Node server that decodes it before you
+configure `services` on any agent that reports there.
 
 ## Running
 

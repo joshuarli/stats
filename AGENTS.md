@@ -72,7 +72,6 @@ go under `.work/tmp`.
 | Optional block-latency probe | `bpf/README.md` |
 | Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Complete local stack: the Cloudflare topology offline | `docs/CAMPAIGN-LOCAL-STACK.md` |
-| Service deployments: deployment tracking for servers | `docs/service-deployments-campaign.md` |
 | Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |
 | `statsctl`, measurement, and the measured-optimization campaign | `self-improvement.md` |

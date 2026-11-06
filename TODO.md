@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 81
+Next: 83
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -122,3 +122,21 @@ Next: 81
 - **Recommendation:** Show an empty-state detail that says the target has no project collector when the server reports an empty registry on the Node target, and keep the current text for Cloudflare.
 - **Fix with:** none
 - **Effort:** S
+
+### STA-81 · P3 · A leaked service deploy token cannot be rotated or revoked
+
+- **Area:** Security
+- **Where:** `cloudflare/src/core/installation/services.ts`, `docs/architecture.md` (Services and deploy markers)
+- **Problem:** The deploy token is shown once at service creation and stored as a SHA-256 verifier. No route rotates or revokes it, unlike host tokens. The token is accepted from any network on `/ingest/services/:name/deployments` and writes markers that appear on the service's timeline and feed `statsctl verify --service`, so a leaked token lets a third party forge deploys until the service is deleted, and there is no delete route either.
+- **Recommendation:** Add `POST /api/v1/admin/services/:name/rotate`, which returns a new token once and invalidates the old verifier, mirroring host rotation, with a test that the old token gets 401 after rotation.
+- **Fix with:** security
+- **Effort:** S
+
+### STA-82 · P4 · Service cgroup I/O may count one I/O twice on stacked devices
+
+- **Area:** Data
+- **Where:** `agent/src/cgroup.rs:61` (`parse_io_stat`), `docs/protocol.md` (services group)
+- **Problem:** The agent sums `rbytes`, `wbytes`, `rios`, and `wios` over every device `io.stat` lists. On a host where a unit's I/O goes through a device-mapper or md device, the same bytes can be listed for the virtual device and for its backing devices, so `service.io` overstates throughput. It has not been measured on such a host.
+- **Recommendation:** Read `io.stat` on a host with stacked storage and compare the per-device lines with `iostat`. If devices double count, sum only devices that are not holders of another listed device, and add a fixture for it.
+- **Fix with:** none
+- **Effort:** M
