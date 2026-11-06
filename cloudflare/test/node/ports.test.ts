@@ -100,3 +100,13 @@ await test("the timer scheduler reports a failed alarm and stays usable", async 
   scheduler.stop();
   assert.equal(await scheduler.pending(), null);
 });
+
+await test("a stopped timer scheduler ignores a request made after stop, as a run in flight during close makes", async () => {
+  const fired: number[] = [];
+  const scheduler = new TimerScheduler(systemClock, async () => { fired.push(Date.now()); }, error => { throw error; });
+  scheduler.stop();
+  await scheduler.at(Date.now());
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.deepEqual(fired, []);
+  assert.equal(await scheduler.pending(), null);
+});

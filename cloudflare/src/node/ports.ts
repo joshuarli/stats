@@ -10,6 +10,7 @@ export class TimerScheduler implements Scheduler {
   private readonly failed: (error: unknown) => void;
   private timer: NodeJS.Timeout | null = null;
   private dueMs: number | null = null;
+  private stopped = false;
 
   constructor(clock: Clock, fire: () => Promise<void>, failed: (error: unknown) => void) {
     this.clock = clock;
@@ -22,12 +23,14 @@ export class TimerScheduler implements Scheduler {
   }
 
   at(atMs: number): Promise<void> {
+    if (this.stopped) return Promise.resolve();
     this.dueMs = atMs;
     this.arm();
     return Promise.resolve();
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this.dueMs = null;
