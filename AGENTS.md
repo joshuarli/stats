@@ -62,16 +62,15 @@ go under `.work/tmp`.
 | Install, configure, and run the agent | `README.md` |
 | Wire protocol, validation, rate semantics | `docs/protocol.md` |
 | Binary ingest rationale, measurements, limits | `docs/binary-ingest.md` |
+| History frame codec, measurements, negative storage result | `docs/binary-history.md` |
 | Components, routes, auth, storage, rollups | `docs/architecture.md` |
-| Release build, deployment, verified environments | `docs/operations.md` |
+| Release build, deployment, `statsctl` contract, cost reports, verified environments | `docs/operations.md` |
 | Toolchain pins and dependency decisions | `docs/dependencies.md` |
 | Deployment tracking, comparison, and its verification record | `docs/deployments.md` |
 | Test commands, screenshot goldens, and image comparison | `docs/testing.md` |
 | Benchmark method and results | `bench/README.md` |
 | Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
 | Optional block-latency probe | `bpf/README.md` |
-| Cost campaign plan and loop | `docs/cost-campaign.md` |
 | Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |
-| `statsctl`, measurement, and the measured-optimization campaign | `self-improvement.md` |
 | Open work | `TODO.md` |

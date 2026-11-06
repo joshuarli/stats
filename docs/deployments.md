@@ -135,6 +135,37 @@ guardrails for failed share, ingest persistence and coverage. `statsctl verify`
 runs it against a committed policy and is the acceptance gate. Its exit code and
 verdict, not this route's metrics, decide whether a candidate is accepted
 (`statsctl help verify`).
+The project-wide gates cannot decide a `stats` deployment. Its top-route mix
+moves more than 20 points between hours, which suppresses the verdict, and its
+5xx share needs 1,000 invocations while `stats` serves a few hundred an hour. So
+`statsctl verify` judges an operation-scoped metric instead:
+
+- **Metric.** The sum of CPU, wall time, SQLite rows read or written, or
+  statements over the operation buckets that match the policy's operation and
+  workload class, excluding synthetic checks, divided by that operation's work
+  unit. The work unit is persisted samples for `host.ingest`, requests within one
+  workload class for `host.history` and `project.history`, and successful runs for
+  `collector.record`.
+- **Not blocked** by the route-mix check or the 100-invocation floor. **Blocked**
+  by an unsettled window, an unstable baseline, an overlapping deployment, a split
+  or deferred rollout, a coverage state other than `reconciled`, and a move of
+  more than 2x in work units per operation or of more than 20 points in the
+  share of the operation's workload classes.
+- **Minimums.** Each side needs at least 100 operations. A material change is at
+  least 10% and at least the metric's floor.
+- **Guardrails.** The fast safety check passes. Failed operations do not appear
+  if the before window had none, and otherwise the failed share rises by no more
+  than 1 point. No observe issue group has the candidate as its first version.
+  The probe failure share does not rise. Coverage stays `reconciled`. For ingest,
+  persisted plus duplicate over received does not fall by more than 1 point. A
+  guardrail without evidence never passes.
+- **Precedence.** `regressed`, then `confounded`, `insufficient-data`, `pending`,
+  and `improved` or `unchanged`.
+
+Windows are time-bounded, so a rolled-back version inherits nothing from its
+earlier deployment. The observe store's `rolloutImpact`, which scans the whole
+retention window by version, stays exploratory and never feeds the gate.
+
 Chart annotations use the existing event mechanism. Lines closer than three
 pixels merge into one counted marker, and a label is drawn only where it fits
 before the next line, so a wide range shows bare lines (hover lists the

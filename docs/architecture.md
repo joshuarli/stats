@@ -237,7 +237,9 @@ while `stats` emits it.
 `SqlAccount` (`src/sql-account.ts`) wraps `SqlStorage.exec`. It adds each
 cursor's `rowsRead`, `rowsWritten` and one statement to its totals once the
 cursor is consumed or closed, so the account counts what SQLite actually
-read and wrote, not what the code expected.
+read and wrote, not what the code expected. Summaries take CPU from the tail
+event's `cpuTime`, never from timers around synchronous code, because production
+timers advance only on I/O.
 
 The `ObservationStore` keeps two additive tables beside its existing ones, both
 in five-minute buckets and bounded to 100,000 rows:
