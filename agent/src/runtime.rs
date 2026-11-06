@@ -81,12 +81,45 @@ pub struct RunReport {
     pub upload_failures: u64,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct FlushOutcome {
-    pub sent: Option<SendOutcome>,
-    pub retry: Option<Duration>,
-    pub dropped: u64,
-    pub failure: Option<TransportError>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlushOutcome {
+    Idle,
+    Sent(SendOutcome),
+    Retry { delay: Duration, failure: TransportError },
+    Dropped { samples: u64, failure: TransportError },
+}
+
+impl FlushOutcome {
+    fn is_credential_failure(&self) -> bool {
+        matches!(self, Self::Retry { failure: TransportError::Credential(_), .. })
+    }
+
+    fn record(&self, report: &mut RunReport, failure_log: &mut FailureLog, backoff: &mut Backoff) {
+        match self {
+            Self::Idle => {}
+            Self::Sent(sent) => {
+                report.accepted += sent.accepted;
+                report.duplicates += sent.duplicates;
+                report.rejected_by_server += sent.rejected;
+                backoff.reset();
+                failure_log.reset();
+            }
+            Self::Retry { failure, .. } => {
+                report.upload_failures += 1;
+                log_failure(failure_log, failure);
+            }
+            Self::Dropped { samples, failure } => {
+                report.dropped_local += samples;
+                log_failure(failure_log, failure);
+            }
+        }
+    }
+}
+
+fn log_failure(failure_log: &mut FailureLog, failure: &TransportError) {
+    if let Some(line) = failure_log.record(failure, Instant::now()) {
+        eprintln!("{line}");
+    }
 }
 
 #[derive(Default)]
@@ -134,43 +167,36 @@ fn requeue(queue: &Arc<Mutex<Queue>>, samples: Vec<Sample>) {
 }
 
 fn flush_batch(queue: &Arc<Mutex<Queue>>, sender: &dyn BatchSender, boot_id: &BootId, backoff: &mut Backoff, final_flush: bool) -> FlushOutcome {
-    let (mut batch, pending) = {
+    let mut batch = {
         let mut queue = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let limit = if queue.len() > 2 { 16 } else { 2 };
-        let batch = queue.take_batch(limit);
-        (batch, queue.len())
+        queue.take_batch(limit)
     };
     if batch.is_empty() {
-        return FlushOutcome::default();
+        return FlushOutcome::Idle;
     }
     let encoded = match sender.prepare(boot_id, &batch) {
         Ok(encoded) => encoded,
         Err(error) => {
             requeue(queue, batch.split_off(1));
-            return FlushOutcome { sent: None, retry: None, dropped: 1, failure: Some(TransportError::Permanent(error.to_string())) };
+            return FlushOutcome::Dropped { samples: 1, failure: TransportError::Permanent(error.to_string()) };
         }
     };
     requeue(queue, batch.split_off(encoded.samples()));
     let result = if final_flush { sender.deliver_final(&encoded) } else { sender.deliver(&encoded) };
     match result {
-        Ok(outcome) => {
-            if pending == 0 {
-                backoff.reset();
-            }
-            FlushOutcome { sent: Some(outcome), retry: None, dropped: 0, failure: None }
-        }
+        Ok(outcome) => FlushOutcome::Sent(outcome),
         Err(error) => {
-            let retry = match &error {
-                TransportError::RateLimited(retry_after) => Some(backoff.delay(*retry_after)),
-                TransportError::Retryable(_) => Some(backoff.delay(None)),
-                TransportError::Credential(_) => Some(backoff.delay(Some(CREDENTIAL_RETRY))),
-                TransportError::Permanent(_) | TransportError::Protocol(_) => None,
+            let delay = match &error {
+                TransportError::RateLimited(retry_after) => backoff.delay(*retry_after),
+                TransportError::Retryable(_) => backoff.delay(None),
+                TransportError::Credential(_) => backoff.delay(Some(CREDENTIAL_RETRY)),
+                TransportError::Permanent(_) | TransportError::Protocol(_) => {
+                    return FlushOutcome::Dropped { samples: batch.len() as u64, failure: error };
+                }
             };
-            let dropped = if retry.is_none() { batch.len() as u64 } else { 0 };
-            if retry.is_some() {
-                requeue(queue, batch);
-            }
-            FlushOutcome { sent: None, retry, dropped, failure: Some(error) }
+            requeue(queue, batch);
+            FlushOutcome::Retry { delay, failure: error }
         }
     }
 }
@@ -202,28 +228,12 @@ fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: 
     'upload: while sleep_interruptible(interval, stop) {
         let mut outcome = flush_once(&queue, sender.as_ref(), &boot_id, &mut backoff);
         loop {
-            if let Some(error) = &outcome.failure {
-                if let Some(line) = failure_log.record(error, Instant::now()) {
-                    eprintln!("{line}");
-                }
-            }
-            if let Some(sent) = outcome.sent {
-                report.accepted += sent.accepted;
-                report.duplicates += sent.duplicates;
-                report.rejected_by_server += sent.rejected;
-                backoff.reset();
-                failure_log.reset();
-            }
-            if outcome.dropped > 0 {
-                report.dropped_local += outcome.dropped;
-            }
-            if let Some(delay) = outcome.retry {
-                report.upload_failures += 1;
-                let credential = matches!(outcome.failure.as_ref(), Some(TransportError::Credential(_)));
-                if !sleep_interruptible(delay, stop) {
+            outcome.record(&mut report, &mut failure_log, &mut backoff);
+            if let FlushOutcome::Retry { delay, .. } = &outcome {
+                if !sleep_interruptible(*delay, stop) {
                     break 'upload;
                 }
-                if credential {
+                if outcome.is_credential_failure() {
                     if let Err(error) = reload_token(sender.as_ref(), &token_file) {
                         eprintln!("stats: token reload failed: {error}");
                     }
@@ -247,24 +257,8 @@ fn upload_loop(queue: Arc<Mutex<Queue>>, sender: Arc<dyn BatchSender>, boot_id: 
             break;
         }
         let outcome = flush_batch(&queue, sender.as_ref(), &boot_id, &mut backoff, true);
-        if let Some(error) = &outcome.failure {
-            if let Some(line) = failure_log.record(error, Instant::now()) {
-                eprintln!("{line}");
-            }
-        }
-        if let Some(sent) = outcome.sent {
-            report.accepted += sent.accepted;
-            report.duplicates += sent.duplicates;
-            report.rejected_by_server += sent.rejected;
-            failure_log.reset();
-        }
-        if outcome.dropped > 0 {
-            report.dropped_local += outcome.dropped;
-        }
-        if outcome.retry.is_some() {
-            report.upload_failures += 1;
-        }
-        if outcome.retry.is_some() || Instant::now() >= deadline {
+        outcome.record(&mut report, &mut failure_log, &mut backoff);
+        if matches!(outcome, FlushOutcome::Retry { .. }) || Instant::now() >= deadline {
             break;
         }
     }
@@ -418,10 +412,10 @@ mod tests {
         let sender = FakeSender::new(vec![Err(TransportError::Retryable("offline".into())), Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
         let first = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert!(first.retry.is_some());
+        assert!(matches!(first, FlushOutcome::Retry { .. }));
         assert_eq!(queue.lock().unwrap().len(), 2);
         let second = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!(second.sent, Some(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
+        assert_eq!(second, FlushOutcome::Sent(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
         assert!(queue.lock().unwrap().is_empty());
     }
 
@@ -431,7 +425,7 @@ mod tests {
         let sender = FakeSender::new(vec![Err(TransportError::Permanent("bad request".into()))]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
         let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!(outcome.dropped, 2);
+        assert!(matches!(outcome, FlushOutcome::Dropped { samples: 2, failure: TransportError::Permanent(_) }));
         assert!(queue.lock().unwrap().is_empty());
     }
 
@@ -455,8 +449,7 @@ mod tests {
         let sender = FakeSender::limited(vec![Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })], 2);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
         let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!(outcome.sent, Some(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
-        assert_eq!(outcome.dropped, 0);
+        assert_eq!(outcome, FlushOutcome::Sent(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 }));
         assert_eq!(sender.batches.lock().unwrap().as_slice(), [2]);
         let remaining: Vec<u64> = queue.lock().unwrap().take_batch(10).iter().map(|sample| sample.seq).collect();
         assert_eq!(remaining, [2, 3, 4]);
@@ -467,7 +460,7 @@ mod tests {
         let queue = queue(5);
         let sender = FakeSender::limited(vec![Err(TransportError::Retryable("offline".into())), Ok(SendOutcome { accepted: 3, duplicates: 0, rejected: 0 }), Ok(SendOutcome { accepted: 2, duplicates: 0, rejected: 0 })], 3);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
-        assert!(flush_once(&queue, &sender, &boot(), &mut backoff).retry.is_some());
+        assert!(matches!(flush_once(&queue, &sender, &boot(), &mut backoff), FlushOutcome::Retry { .. }));
         assert_eq!(queue.lock().unwrap().len(), 5);
         flush_once(&queue, &sender, &boot(), &mut backoff);
         flush_once(&queue, &sender, &boot(), &mut backoff);
@@ -486,8 +479,7 @@ mod tests {
         let sender = FakeSender::new(vec![Ok(SendOutcome { accepted: 1, duplicates: 0, rejected: 0 })]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
         let first = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!((first.dropped, first.retry), (1, None));
-        assert!(matches!(first.failure, Some(TransportError::Permanent(_))));
+        assert!(matches!(first, FlushOutcome::Dropped { samples: 1, failure: TransportError::Permanent(_) }));
         assert!(sender.sent.lock().unwrap().is_empty());
         flush_once(&queue, &sender, &boot(), &mut backoff);
         assert_eq!(sender.sent.lock().unwrap().as_slice(), [vec![1]]);
@@ -499,7 +491,7 @@ mod tests {
         let sender = FakeSender::new(vec![Err(TransportError::Protocol("server returned 410".into()))]);
         let mut backoff = Backoff::new(Duration::from_millis(1), Duration::from_millis(4), 3);
         let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!((outcome.dropped, outcome.retry), (2, None));
+        assert!(matches!(outcome, FlushOutcome::Dropped { samples: 2, failure: TransportError::Protocol(_) }));
         assert!(queue.lock().unwrap().is_empty());
     }
 
@@ -509,7 +501,7 @@ mod tests {
         let sender = FakeSender::new(vec![Err(TransportError::RateLimited(Some(Duration::from_secs(3))))]);
         let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
         let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!(outcome.retry, Some(Duration::from_secs(3)));
+        assert!(matches!(outcome, FlushOutcome::Retry { delay, failure: TransportError::RateLimited(_) } if delay == Duration::from_secs(3)));
         assert_eq!(queue.lock().unwrap().len(), 2);
     }
 
@@ -519,10 +511,25 @@ mod tests {
         let sender = FakeSender::new(vec![Err(TransportError::Credential("server returned 401".into()))]);
         let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
         let outcome = flush_once(&queue, &sender, &boot(), &mut backoff);
-        assert_eq!(outcome.retry, Some(Duration::from_secs(60)));
-        assert_eq!(outcome.dropped, 0);
-        assert!(matches!(outcome.failure, Some(TransportError::Credential(_))));
+        assert!(outcome.is_credential_failure());
+        assert!(matches!(outcome, FlushOutcome::Retry { delay, .. } if delay == Duration::from_secs(60)));
         assert_eq!(queue.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn every_outcome_is_recorded_the_same_way() {
+        let mut report = RunReport::default();
+        let mut failure_log = FailureLog::default();
+        let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60), 5);
+        backoff.delay(None);
+        backoff.delay(None);
+        FlushOutcome::Sent(SendOutcome { accepted: 3, duplicates: 1, rejected: 2 }).record(&mut report, &mut failure_log, &mut backoff);
+        assert_eq!((report.accepted, report.duplicates, report.rejected_by_server), (3, 1, 2));
+        assert!((1000..=1200).contains(&backoff.delay(None).as_millis()));
+        FlushOutcome::Retry { delay: Duration::from_secs(1), failure: TransportError::Retryable("offline".into()) }.record(&mut report, &mut failure_log, &mut backoff);
+        FlushOutcome::Dropped { samples: 4, failure: TransportError::Permanent("bad".into()) }.record(&mut report, &mut failure_log, &mut backoff);
+        FlushOutcome::Idle.record(&mut report, &mut failure_log, &mut backoff);
+        assert_eq!((report.upload_failures, report.dropped_local), (1, 4));
     }
 
     #[test]
