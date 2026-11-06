@@ -1,4 +1,4 @@
-import { COUNT_BUCKET_MS, MAX_LABEL_BYTES, MAX_OUTCOME_ROUTES_PER_CLASS, RETENTION_MS } from "./limits.ts";
+import { COUNT_BUCKET_MS, MAX_LABEL_BYTES, RETENTION_MS } from "./limits.ts";
 import { COUNT_OUTCOMES, NO_SUMMARY_TOTALS, OPERATION, OTHER_ROUTE, VERSION, utf8Length, type CountDelta, type Stage, type SummaryTotals } from "./model.ts";
 import type { SampledPolicy } from "./sampling.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
@@ -78,6 +78,19 @@ export function addCount(into: Map<string, CountDelta>, delta: CountDelta): void
   });
 }
 
+const COUNT_TEXT_FIELDS = ["version", "stage", "route", "operation", "outcome"] as const;
+const COUNT_NUMBER_FIELDS = ["bucketAt", "kept", "sampledOut", "capped", "cpuMsSum", "wallMsSum", ...Object.keys(NO_SUMMARY_TOTALS) as (keyof SummaryTotals)[]] as const;
+const COUNT_FIELDS_ADDED_LATER: Readonly<Record<string, string | number>> = { operation: "", capped: 0, ...NO_SUMMARY_TOTALS };
+
+export function decodeCountDelta(value: unknown): CountDelta | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const sent = value as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of [...COUNT_TEXT_FIELDS, ...COUNT_NUMBER_FIELDS]) fields[key] = sent[key] === undefined ? COUNT_FIELDS_ADDED_LATER[key] : sent[key];
+  if (!COUNT_TEXT_FIELDS.every(key => typeof fields[key] === "string") || !COUNT_NUMBER_FIELDS.every(key => typeof fields[key] === "number")) return null;
+  return fields as unknown as CountDelta;
+}
+
 function wellFormed(delta: CountDelta): boolean {
   const integers = [delta.kept, delta.sampledOut, delta.capped, delta.cpuMsSum, delta.wallMsSum, delta.rowAccounts, delta.rowsRead, delta.rowsWritten, delta.statements, delta.workLagCount, delta.workLagMsMax, delta.workLagMsSum];
   const invocations = delta.kept + delta.sampledOut;
@@ -137,14 +150,15 @@ function storeBucket(db: SqlStatements, bucket: BucketCounts, events: SamplingEv
   );
 }
 
-export function recordCounts(db: SqlStatements, nowMs: number, deltas: readonly CountDelta[], events: SamplingEvents): CountsRecorded {
+export function recordCounts(db: SqlStatements, nowMs: number, sent: readonly unknown[], events: SamplingEvents, routesPerClass: number): CountsRecorded {
   let invalid = 0;
   let expired = 0;
   const newest = countBucket(nowMs, nowMs);
   const oldest = nowMs - RETENTION_MS;
   const buckets = new Map<number, BucketCounts>();
-  for (const delta of deltas) {
-    if (!wellFormed(delta)) { invalid++; continue; }
+  for (const value of sent) {
+    const delta = decodeCountDelta(value);
+    if (delta === null || !wellFormed(delta)) { invalid++; continue; }
     if (delta.bucketAt + COUNT_BUCKET_MS <= oldest) { expired++; continue; }
     const bucketAt = Math.min(delta.bucketAt, newest);
     let bucket = buckets.get(bucketAt);
@@ -158,7 +172,7 @@ export function recordCounts(db: SqlStatements, nowMs: number, deltas: readonly 
       known = new Set();
       bucket.routes.set(group, known);
     }
-    const route = known.has(delta.route) || known.size < MAX_OUTCOME_ROUTES_PER_CLASS ? delta.route : OTHER_ROUTE;
+    const route = known.has(delta.route) || known.size < routesPerClass ? delta.route : OTHER_ROUTE;
     known.add(route);
     addCount(bucket.entries, { ...delta, bucketAt, route });
   }

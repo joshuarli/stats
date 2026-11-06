@@ -121,6 +121,22 @@ await test("an observe response that does not decode exits 4", async () => {
   });
 });
 
+await test("an observe response missing a field this client reads names a server older than the client, and a mistyped field stays a contract failure", async () => {
+  const shopRouteWithout = { label: "GET /products/:handle", requests: 12, failed: 1, cpuMs: 1, p50WallMs: 1, p95WallMs: 2, p99WallMs: 3, p50CpuMs: 1 };
+  await withOrigin((_, response) => { sendJson(response, { fromMs: 0, toMs: 1, route: null, routes: [shopRouteWithout], heatmap }); }, async origin => {
+    const result = await run(origin, ["observe", "routes", "--project", "stats"]);
+    assert.equal(result.code, EXIT.transport);
+    const error = (JSON.parse(result.stdout) as { error: { code: string; message: string } }).error;
+    assert.equal(error.code, "server_older");
+    assert.match(error.message, /server older than client/u);
+    assert.match(error.message, /p95CpuMs|p95 cpu/u);
+  });
+  await withOrigin((_, response) => { sendJson(response, { fromMs: 0, toMs: 1, route: null, routes: [{ ...shopRouteWithout, p95CpuMs: "2" }], heatmap }); }, async origin => {
+    const result = await run(origin, ["observe", "routes", "--project", "stats"]);
+    assert.equal((JSON.parse(result.stdout) as { error: { code: string } }).error.code, "contract");
+  });
+});
+
 await test("a sampled service marks every percentile as sampled in text and json, and an unsampled one is unchanged", async () => {
   await withOrigin(handler(), async origin => {
     const text = await run(origin, ["observe", "routes", "--project", "nanoshop-storied"], false);

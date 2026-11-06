@@ -71,10 +71,19 @@ cleanup() {
     remote "rm -f '$remote_tmp'" >/dev/null 2>&1 || true
   fi
 }
-trap 'cleanup; rm -rf "$work"' 0
-trap 'exit 129' 1
-trap 'exit 130' 2
-trap 'exit 143' 15
+finish() {
+  cleanup
+  rm -rf "$work"
+}
+reraise() {
+  trap - 0 "$1"
+  finish
+  kill -s "$1" $$
+}
+trap finish 0
+trap 'reraise HUP' 1
+trap 'reraise INT' 2
+trap 'reraise TERM' 15
 
 base=${STATS_URL:-https://stats.17166969.xyz}
 access_token=

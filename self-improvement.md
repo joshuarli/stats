@@ -159,7 +159,9 @@ Each decision gives its reason, and what would reverse it.
     - `warnings: [{code, message}]`, `identities` (deployment and version ids)
     - `payload`, or `error: {code, message}`
 
-    Numbers stay numbers, and u64 values stay decimal strings. Ordering is deterministic. In `--json` mode stdout carries exactly one document. Diagnostics go to stderr, with no progress output, colour, or pager when stdout is not a TTY or `NO_COLOR` is set.
+    Numbers stay numbers, and u64 values stay decimal strings. Ordering is deterministic.
+
+    Version 1 changes only by adding fields, to the envelope, its payloads, or the observe API responses `statsctl` decodes. A change to an existing field's type, unit, or meaning, or the removal of a field, moves the schema to `statsctl/2`; when the version cannot move with it, the commit is marked breaking (`!`). A `statsctl` newer than the server it reads finds an added field missing and fails with error code `server_older` (exit 4), whose message says the server is older than the client and names the field; a field that is present with the wrong type is still `contract`. In `--json` mode stdout carries exactly one document. Diagnostics go to stderr, with no progress output, colour, or pager when stdout is not a TTY or `NO_COLOR` is set.
 11. **Snapshots and state.**
     - Snapshots live in `.work/statsctl/snapshots/`, and `verify` state in `.work/statsctl/verify/<deployment-id>.json`.
     - A snapshot holds:

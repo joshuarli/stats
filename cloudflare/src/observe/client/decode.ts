@@ -12,17 +12,29 @@ export interface ObserveHealth extends Health {
 
 type Fields = Record<string, unknown>;
 
+export class ServerOlderError extends Error {
+  constructor(what: string) {
+    super(`server older than client: the response has no ${what}; deploy the server this client was built with`);
+    this.name = "ServerOlderError";
+  }
+}
+
 function fail(what: string): never {
   throw new Error(`invalid observability response: ${what}`);
 }
 
+function refuse(value: unknown, what: string): never {
+  if (value === undefined) throw new ServerOlderError(what);
+  fail(what);
+}
+
 function record(value: unknown, what: string): Fields {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) fail(what);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) refuse(value, what);
   return value as Fields;
 }
 
 function text(value: unknown, what: string, limit = 4096): string {
-  if (typeof value !== "string" || value.length > limit) fail(what);
+  if (typeof value !== "string" || value.length > limit) refuse(value, what);
   return value;
 }
 
@@ -31,7 +43,7 @@ function nullableText(value: unknown, what: string, limit = 4096): string | null
 }
 
 function integer(value: unknown, what: string): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) fail(what);
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) refuse(value, what);
   return value;
 }
 
@@ -41,22 +53,22 @@ function nullableInteger(value: unknown, what: string): number | null {
 
 function nullableMeasure(value: unknown, what: string): number | null {
   if (value === null) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) fail(what);
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) refuse(value, what);
   return value;
 }
 
 function bool(value: unknown, what: string): boolean {
-  if (typeof value !== "boolean") fail(what);
+  if (typeof value !== "boolean") refuse(value, what);
   return value;
 }
 
 function oneOf<T extends string>(value: unknown, options: readonly T[], what: string): T {
-  if (typeof value !== "string" || !(options as readonly string[]).includes(value)) fail(what);
+  if (typeof value !== "string" || !(options as readonly string[]).includes(value)) refuse(value, what);
   return value as T;
 }
 
 function list<T>(value: unknown, limit: number, decode: (item: unknown) => T, what: string): T[] {
-  if (!Array.isArray(value) || value.length > limit) fail(what);
+  if (!Array.isArray(value) || value.length > limit) refuse(value, what);
   return value.map(decode);
 }
 

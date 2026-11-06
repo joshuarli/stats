@@ -22,7 +22,7 @@ export interface TailItem {
 }
 
 export type Reduction =
-  | { readonly kind: "observed"; readonly invocation: ObservedInvocation }
+  | { readonly kind: "observed"; readonly invocation: ObservedInvocation; readonly ambiguousMarks: boolean }
   | { readonly kind: "excluded"; readonly outcome: ExcludedOutcome; readonly stage: Stage; readonly route: string }
   | { readonly kind: "rejected" };
 
@@ -59,6 +59,7 @@ function observe(item: TailItem, stage: Stage, entry: Entry, eventAtMs: number, 
   const uncaught: ObservedError[] = item.exceptions.map(exception => ({ source: "uncaught", operation: null, name: exception.name, message: exception.message, stack: exception.stack ?? null }));
   return {
     kind: "observed",
+    ambiguousMarks: channel.ambiguousMarks,
     invocation: {
       version: item.scriptVersion?.id ?? null,
       stage,
@@ -91,6 +92,7 @@ export interface TailBatch {
   readonly preparations: Preparation[];
   readonly outcomes: OutcomeEvent[];
   readonly counts: CountDelta[];
+  readonly ambiguousMarks: number;
 }
 
 function excludedCount(item: TailItem, reduction: Extract<Reduction, { kind: "excluded" }>, nowMs: number): CountDelta {
@@ -119,8 +121,10 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
   const preparations: Preparation[] = [];
   const outcomes: OutcomeEvent[] = [];
   const counted = new Map<string, CountDelta>();
+  let ambiguousMarks = 0;
   for (const item of items) {
     const reduction = reduceTailItem(item, policy);
+    if (reduction.kind === "observed" && reduction.ambiguousMarks) ambiguousMarks++;
     if (reduction.kind === "excluded") {
       if (policy.sampling.kind === "sampled") addCount(counted, excludedCount(item, reduction, nowMs));
       else outcomes.push(outcomeOf(item, reduction.outcome, reduction.route, reduction.stage));
@@ -154,7 +158,7 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
     preparations.push(preparation);
     if (!preparation.ok) outcomes.push(outcomeOf(item, "rejected-invalid", routeLabel(reduction.invocation.label)));
   }
-  return { preparations, outcomes, counts: [...counted.values()] };
+  return { preparations, outcomes, counts: [...counted.values()], ambiguousMarks };
 }
 
 interface Entry {
@@ -205,13 +209,15 @@ function pathOf(url: string): string | null {
   }
 }
 
-function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: ServicePolicy): { trace: TraceContext | null; operation: OperationSummary | null; serviceOperation: ServiceOperationReading | null; errors: ObservedError[] } | null {
+function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: ServicePolicy): { trace: TraceContext | null; operation: OperationSummary | null; serviceOperation: ServiceOperationReading | null; errors: ObservedError[]; ambiguousMarks: boolean } | null {
   let trace: TraceContext | null = null;
   let summary: OperationSummary | null = null;
   let serviceOperation: ServiceOperationReading | null = null;
   let operationSeen = false;
   const errors: ObservedError[] = [];
-  const ownSpan = markedSpan(events);
+  const marks = markedSpans(events);
+  const ambiguousMarks = marks.size > 1;
+  const ownSpan = ambiguousMarks ? null : [...marks][0] ?? null;
   for (const event of events) {
     if (event.channel !== OBSERVE_CHANNEL) continue;
     const message = event.message;
@@ -220,12 +226,12 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
       const traceId = text(field(message, "traceId"));
       const spanId = text(field(message, "spanId"));
       if (traceId === null || spanId === null) return null;
-      trace ??= { traceId, spanId };
+      if (!ambiguousMarks) trace ??= { traceId, spanId };
     } else if (kind === "operation") {
       const traceId = text(field(message, "traceId"));
       const spanId = text(field(message, "spanId"));
       if (traceId === null || spanId === null) return null;
-      if (ownSpan !== null && spanId !== ownSpan) continue;
+      if (ambiguousMarks || (ownSpan !== null && spanId !== ownSpan)) continue;
       if (operationSeen) return null;
       if (policy.operationMessages === "stats") {
         summary = readOperation(message);
@@ -247,14 +253,17 @@ function readChannel(events: TailItem["diagnosticsChannelEvents"], policy: Servi
       return null;
     }
   }
-  return { trace, operation: summary, serviceOperation, errors };
+  return { trace, operation: summary, serviceOperation, errors, ambiguousMarks };
 }
 
-function markedSpan(events: TailItem["diagnosticsChannelEvents"]): string | null {
+function markedSpans(events: TailItem["diagnosticsChannelEvents"]): ReadonlySet<string> {
+  const spans = new Set<string>();
   for (const event of events) {
-    if (event.channel === OBSERVE_CHANNEL && field(event.message, "kind") === "invocation") return text(field(event.message, "spanId"));
+    if (event.channel !== OBSERVE_CHANNEL || field(event.message, "kind") !== "invocation") continue;
+    const spanId = text(field(event.message, "spanId"));
+    if (spanId !== null) spans.add(spanId);
   }
-  return null;
+  return spans;
 }
 
 function readServiceOperation(message: unknown, operations: ReadonlySet<string>): ServiceOperationReading | null {

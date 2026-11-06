@@ -1,5 +1,5 @@
 import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
-import { isFailedInvocation, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
+import { isFailedInvocation, NOTHING_UNSENT, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type Flush, type UnsentTally, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
@@ -352,6 +352,10 @@ const STATEMENTS = [
     example TEXT,
     PRIMARY KEY (bucket_at, counter, reason)
   ) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS observe_applied_flushes (
+    flush_id TEXT PRIMARY KEY,
+    applied_at INTEGER NOT NULL
+  ) WITHOUT ROWID`,
   `CREATE TABLE IF NOT EXISTS observe_write_cost (
     bucket_at INTEGER NOT NULL,
     phase TEXT NOT NULL CHECK (phase IN ('ingest', 'cleanup')),
@@ -461,21 +465,64 @@ function differingColumns(stored: StoredColumns, invocation: PreparedInvocation)
   return differing.length === 0 ? "errors" : differing.sort().join(", ");
 }
 
-export interface Counting {
+export interface CountingPolicy {
   readonly sampling: Sampling;
-  readonly counts: readonly CountDelta[];
+  readonly routesPerClass: number;
 }
 
-const NOT_COUNTED: Counting = { sampling: KEEP_ALL, counts: [] };
+export const KEEP_ALL_COUNTING: CountingPolicy = { sampling: KEEP_ALL, routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS };
 
-export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED): IngestResult {
+export interface Counting extends CountingPolicy {
+  readonly counts: readonly unknown[];
+}
+
+const NOT_COUNTED: Counting = { ...KEEP_ALL_COUNTING, counts: [] };
+
+const FLUSH_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const UNSENT_FIELDS = Object.keys(NOTHING_UNSENT) as (keyof UnsentTally)[];
+
+function fieldsOf(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isCount(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+export function decodeFlush(value: unknown): Flush | null {
+  if (value === undefined || value === null) return null;
+  const { id, unsent, ambiguousMarks } = fieldsOf(value);
+  const tally = fieldsOf(unsent);
+  if (typeof id !== "string" || !FLUSH_ID.test(id) || !UNSENT_FIELDS.every(key => isCount(tally[key])) || !isCount(ambiguousMarks)) {
+    throw new TypeError("malformed flush: needs a UUID id, a non-negative unsent tally, and a non-negative ambiguousMarks");
+  }
+  return { id, unsent: Object.fromEntries(UNSENT_FIELDS.map(key => [key, tally[key]])) as Record<keyof UnsentTally, number>, ambiguousMarks };
+}
+
+const UNSENT_REASONS: Readonly<Record<keyof UnsentTally, string>> = { batches: "unsent_batches", invocations: "unsent_invocations", outcomes: "unsent_outcomes", countedEvents: "unsent_counted_events" };
+
+function claimFlush(db: SqlStatements, nowMs: number, flush: Flush): boolean {
+  if (db.rows<{ flush_id: string }>("SELECT flush_id FROM observe_applied_flushes WHERE flush_id = ?", flush.id).length > 0) {
+    recordHealth(db, nowMs, [{ counter: "duplicate", reason: "flush", example: null }]);
+    return false;
+  }
+  db.run("INSERT INTO observe_applied_flushes (flush_id, applied_at) VALUES (?, ?)", flush.id, nowMs);
+  recordHealthTallies(db, nowMs, [
+    ...UNSENT_FIELDS.filter(key => flush.unsent[key] > 0).map(key => ({ counter: "evicted" as const, reason: UNSENT_REASONS[key], example: null, count: flush.unsent[key] })),
+    ...(flush.ambiguousMarks > 0 ? [{ counter: "rejected" as const, reason: "ambiguous_invocation_mark", example: null, count: flush.ambiguousMarks }] : [])
+  ]);
+  return true;
+}
+
+export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED, flush: Flush | null = null): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
-  const counts: CountDelta[] = [...counting.counts];
+  const counts: unknown[] = [...counting.counts];
   let untraced = 0;
   const operations = new Map<string, OperationBucket>();
   const cutoff = nowMs - RETENTION_MS;
   db.transaction(() => {
+    if (flush !== null && !claimFlush(db, nowMs, flush)) return;
     const writtenBefore = db.rowsWritten();
     for (const preparation of preparations) {
       if (!preparation.ok) { result.rejected++; events.push({ counter: "rejected", reason: preparation.reason, example: null }); continue; }
@@ -508,7 +555,7 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
     }
     recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
-    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 });
+    const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 }, counting.routesPerClass);
     for (let n = 0; n < recorded.invalid; n++) events.push({ counter: "rejected", reason: "invalid_count", example: null });
     for (let n = 0; n < recorded.expired; n++) events.push({ counter: "expired", reason: "counts", example: null });
     recordHealth(db, nowMs, events);
@@ -697,14 +744,18 @@ function healthBucket(nowMs: number): number {
 }
 
 function recordHealth(db: SqlStatements, nowMs: number, events: readonly HealthEvent[]): void {
-  const grouped = new Map<string, { event: HealthEvent; count: number }>();
+  const grouped = new Map<string, HealthEvent & { count: number }>();
   for (const event of events) {
     const key = `${event.counter}\u0000${event.reason}`;
     const entry = grouped.get(key);
-    if (entry === undefined) grouped.set(key, { event, count: 1 });
+    if (entry === undefined) grouped.set(key, { ...event, count: 1 });
     else entry.count++;
   }
-  for (const { event, count } of grouped.values()) {
+  recordHealthTallies(db, nowMs, [...grouped.values()]);
+}
+
+function recordHealthTallies(db: SqlStatements, nowMs: number, tallies: readonly (HealthEvent & { readonly count: number })[]): void {
+  for (const { count, ...event } of tallies) {
     db.run(
       `INSERT INTO observe_health_events (bucket_at, counter, reason, count, example) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (bucket_at, counter, reason) DO UPDATE SET count = count + excluded.count`,
@@ -744,6 +795,7 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
       db.run("DELETE FROM observe_outcomes WHERE (bucket_at, version, stage, outcome, route) IN (SELECT bucket_at, version, stage, outcome, route FROM observe_outcomes ORDER BY bucket_at LIMIT ?)", outcomeExcess);
     }
     cleanupCounts(db, cutoff);
+    db.run("DELETE FROM observe_applied_flushes WHERE applied_at <= ?", cutoff);
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";
     db.run(`DELETE FROM observe_rollout_shares WHERE rollout_id IN (SELECT id FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline}))`, rolloutCutoff, rolloutCutoff);
@@ -774,8 +826,9 @@ function evict(db: SqlStatements): { readonly invocations: number; readonly occu
 export function nextCleanupAt(db: SqlStatements, nowMs: number, cleaned: CleanupResult): number | null {
   if (cleaned.more) return nowMs;
   const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences)")[0]?.at ?? null;
-  const counted = oldestCountExpiryMs(db);
-  const expiry = oldest === null ? counted : counted === null ? oldest + RETENTION_MS : Math.min(oldest + RETENTION_MS, counted);
+  const flushed = db.rows<{ at: number | null }>("SELECT MIN(applied_at) AS at FROM observe_applied_flushes")[0]?.at ?? null;
+  const expiries = [oldest === null ? null : oldest + RETENTION_MS, oldestCountExpiryMs(db), flushed === null ? null : flushed + RETENTION_MS].filter(at => at !== null);
+  const expiry = expiries.length === 0 ? null : Math.min(...expiries);
   if (expiry === null) return null;
   return Math.max(expiry, nowMs + CLEANUP_INTERVAL_MS);
 }

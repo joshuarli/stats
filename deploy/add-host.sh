@@ -23,10 +23,15 @@ die() {
 
 mkdir -p "$repo/.work/tmp"
 work=$(mktemp -d "$repo/.work/tmp/add-host.XXXXXX")
+reraise() {
+  trap - 0 "$1"
+  rm -rf "$work"
+  kill -s "$1" $$
+}
 trap 'rm -rf "$work"' 0
-trap 'exit 129' 1
-trap 'exit 130' 2
-trap 'exit 143' 15
+trap 'reraise HUP' 1
+trap 'reraise INT' 2
+trap 'reraise TERM' 15
 
 ssh_opts=${SSH_OPTS:--o BatchMode=yes -o ConnectTimeout=10}
 if [ "$ssh_target" = local ]; then

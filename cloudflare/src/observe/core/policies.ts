@@ -1,17 +1,18 @@
 import { OPERATIONS } from "../producer/channel.ts";
 import type { ObservedService } from "../services.ts";
-import { NANOSHOP_OPERATIONS, NANOSHOP_SAMPLING, nanoshopLabelOperation, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES_PER_CLASS, NANOSHOP_SAMPLING, nanoshopLabelOperation, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
+import { MAX_OUTCOME_ROUTES_PER_CLASS } from "./limits.ts";
+import type { CountingPolicy } from "./store.ts";
 import type { Stage } from "./model.ts";
-import { KEEP_ALL, type Sampling } from "./sampling.ts";
+import { KEEP_ALL } from "./sampling.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
-export interface ServicePolicy {
+export interface ServicePolicy extends CountingPolicy {
   readonly workerRoute: (path: string) => string | null;
   readonly objectRoute: (path: string) => string | null;
   readonly operations: ReadonlySet<string>;
   readonly labelOperation: (stage: Stage, label: string) => string | null;
   readonly operationMessages: "stats" | "service";
-  readonly sampling: Sampling;
 }
 
 const SERVICE_MARKER_PATH = /^\/ingest\/services\/[^/]+\/deployments$/u;
@@ -55,7 +56,8 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(OPERATIONS),
     labelOperation: () => null,
     operationMessages: "stats",
-    sampling: KEEP_ALL
+    sampling: KEEP_ALL,
+    routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS
   },
   "usr-memories": {
     workerRoute: memoriesWorkerRoute,
@@ -63,7 +65,8 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(MEMORIES_OPERATIONS),
     labelOperation: () => null,
     operationMessages: "service",
-    sampling: KEEP_ALL
+    sampling: KEEP_ALL,
+    routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS
   },
   "nanoshop-storied": {
     workerRoute: nanoshopWorkerRoute,
@@ -71,7 +74,8 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(NANOSHOP_OPERATIONS),
     labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
-    sampling: NANOSHOP_SAMPLING
+    sampling: NANOSHOP_SAMPLING,
+    routesPerClass: NANOSHOP_ROUTES_PER_CLASS
   },
   "nanoshop-fieldhouse": {
     workerRoute: nanoshopWorkerRoute,
@@ -79,7 +83,8 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(NANOSHOP_OPERATIONS),
     labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
-    sampling: NANOSHOP_SAMPLING
+    sampling: NANOSHOP_SAMPLING,
+    routesPerClass: NANOSHOP_ROUTES_PER_CLASS
   },
   "nanoshop-tidewater": {
     workerRoute: nanoshopWorkerRoute,
@@ -87,6 +92,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operations: new Set(NANOSHOP_OPERATIONS),
     labelOperation: nanoshopLabelOperation,
     operationMessages: "service",
-    sampling: NANOSHOP_SAMPLING
+    sampling: NANOSHOP_SAMPLING,
+    routesPerClass: NANOSHOP_ROUTES_PER_CLASS
   }
 };

@@ -14,7 +14,7 @@ Next: 76
 
 - **Area:** Observability
 - **Where:** `cloudflare/src/observe/cloudflare/tail.ts` (`readChannel`), `docs/architecture.md` (Sampling relies on each invocation's tail event)
-- **Problem:** In local workerd, when RPCs overlap on one Durable Object instance, diagnostics-channel messages land on other invocations' tail events: five at a time produced events with zero to four messages. An object event with none is untraced, so a sampled service always keeps it. One with two operation messages is rejected as `rejected-invalid`. Nanoshop's one `TenantStore` object per shop is exactly this shape. Production is unmeasured.
+- **Problem:** In local workerd, when RPCs overlap on one Durable Object instance, diagnostics-channel messages land on other invocations' tail events: five at a time produced events with zero to four messages. An object event with no message is untraced, so a sampled service always keeps it. An event with one invocation mark keeps only its own span's operation message and counts a stray one's publisher with no summary. An event with marks of two different spans is ambiguous: it is kept untraced with no summary and counted in health as `rejected` `ambiguous_invocation_mark`. One with no mark and two operation messages is rejected as `rejected-invalid`. Nanoshop's one `TenantStore` object per shop is exactly this shape. Production is unmeasured.
 - **Recommendation:** Measure the share of untraced and rejected object events once Nanoshop runs locally under load. If it is high, find a mark that does not travel by diagnostics channel, or sample object events by a key that does not need the trace.
 - **Fix with:** none
 - **Effort:** M

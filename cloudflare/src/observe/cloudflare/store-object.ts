@@ -1,20 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Artifact, CountDelta, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
+import type { Artifact, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
 import { initializeStore, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery } from "../core/store.ts";
 import { createObserveService, type ArtifactOutcome, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
-import type { Sampling } from "../core/sampling.ts";
 import { isObservedService } from "../services.ts";
-import { POLICIES } from "../core/policies.ts";
+import { POLICIES, type ServicePolicy } from "../core/policies.ts";
 import { CloudflareSql } from "../../cloudflare/sql.ts";
 
 export interface ObserveEnv {
   readonly STORE: DurableObjectNamespace<ObservationStore>;
 }
 
-function samplingOf(name: string | undefined): Sampling {
+function policyOf(name: string | undefined): ServicePolicy {
   if (name === undefined || !isObservedService(name)) throw new Error(`observation store has no observed service name: ${name ?? "unnamed"}`);
-  return POLICIES[name].sampling;
+  return POLICIES[name];
 }
 
 export class ObservationStore extends DurableObject<ObserveEnv> implements ObserveService {
@@ -23,13 +22,13 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   constructor(ctx: DurableObjectState, env: ObserveEnv) {
     super(ctx, env);
     const db = new CloudflareSql(ctx.storage);
-    this.service = createObserveService(db, { now: () => Date.now(), databaseBytes: () => db.databaseBytes() }, () => samplingOf(ctx.id.name));
+    this.service = createObserveService(db, { now: () => Date.now(), databaseBytes: () => db.databaseBytes() }, () => policyOf(ctx.id.name));
     void ctx.blockConcurrencyWhile(async () => { initializeStore(db); });
   }
 
-  async ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly CountDelta[]): Promise<IngestResult> {
-    const result = this.service.ingest(preparations, outcomes, counts);
-    if ((result.accepted > 0 || counts.length > 0) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+  async ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[], flush?: unknown): Promise<IngestResult> {
+    const result = this.service.ingest(preparations, outcomes, counts, flush);
+    if ((result.accepted > 0 || counts.length > 0 || (flush ?? null) !== null) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
     return result;
   }
 

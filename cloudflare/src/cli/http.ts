@@ -1,5 +1,6 @@
 import { authError, transportError } from "./exit.ts";
 import type { Credential } from "./auth.ts";
+import { ServerOlderError } from "../observe/client/decode.ts";
 
 export const REQUEST_TIMEOUT_MS = 15_000;
 export const JSON_BODY_LIMIT = 1024 * 1024;
@@ -172,6 +173,7 @@ export function createHttpClient(options: HttpOptions): HttpClient {
       try {
         return { kind: "ok", value: decode(parsed), etag };
       } catch (error) {
+        if (error instanceof ServerOlderError) throw transportError("server_older", `${path}: ${error.message}`);
         throw transportError("contract", `${path} did not match the telemetry contract: ${error instanceof Error ? error.message : "invalid response"}`);
       }
     },
