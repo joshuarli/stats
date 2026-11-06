@@ -108,7 +108,7 @@ decision, which on the Worker is `verifyAccess` in `src/cloudflare/access.ts`. A
 Methods other than GET and HEAD on non-API paths are rejected before routing.
 `/api/observe/<service>/*` passes the same Access check and is then proxied
 over the `OBSERVE` service binding to `stats-observe`, the observability
-collector in `docs/observability-campaign.md`. The only writes it passes are
+collector in [Observability product](observe.md). The only writes it passes are
 an issue's resolve or reopen and a source-map upload, and both must be
 same-origin. That Worker is the tail consumer of every observed service
 (`stats`, `usr-memories`, `nanoshop-storied`, and the two Nanoshop demo
@@ -966,6 +966,6 @@ built client from the captured API fixtures with a frozen clock.
 
 Per-process profiling, continuous event streaming, eBPF-only observability,
 OpenTelemetry, PromQL, Grafana, log search, traces beyond the 7-day
-per-invocation records of `docs/observability-campaign.md`, alert routing, arbitrary
+per-invocation records of the [observability product](observe.md), alert routing, arbitrary
 queries or unbounded ranges, cgroup or guest semantics beyond the observed
 host, and multi-tenant SaaS.

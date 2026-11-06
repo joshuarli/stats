@@ -6,8 +6,8 @@ OpenTelemetry data. Cloudflare's tools have been enough for every performance
 question asked so far, and the heavier options all add cost to the Worker that
 is being measured.
 
-The one exception is the error-tracking product prototyped in
-`docs/observability-campaign.md`. It keeps 7 days of per-invocation records
+The one exception is the error-tracking product described in
+`docs/observe.md`. It keeps 7 days of per-invocation records
 and grouped errors in a separate tail-consumer Worker, and is built around the
 objections below rather than against them.
 
@@ -50,7 +50,7 @@ find that out.
   itself. Turning on Cloudflare's tracing stores nothing in stats, so it stays
   within them.
 
-How the observability campaign meets these objections:
+How the observability product meets these objections:
 
 - It never times CPU work. CPU and wall time come from the platform's tail
   events, one figure per invocation.

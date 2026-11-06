@@ -74,7 +74,7 @@ go under `.work/tmp`.
 | Portable core: stats on Node with Cloudflare as an adapter | `docs/portable-core-campaign.md` |
 | Complete local stack: the Cloudflare topology offline | `docs/CAMPAIGN-LOCAL-STACK.md` |
 | Service deployments: deployment tracking for servers | `docs/service-deployments-campaign.md` |
-| Observability product campaign | `docs/observability-campaign.md` |
+| Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |
 | `statsctl`, measurement, and the measured-optimization campaign | `self-improvement.md` |
 | Open work | `TODO.md` |

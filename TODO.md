@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 77
+Next: 78
 
 ### STA-50 · P2 · Overlapping RPCs on one Durable Object lose their trace marks
 
@@ -67,6 +67,15 @@ Next: 77
 - **Recommendation:** Owner decision: remove `nanoshop-storied` from the project list until its Worker is deployed, or make the poll record a 404 as "worker not deployed" without reporting an error. Then confirm the scheduled failure rate falls to the real exceptions.
 - **Fix with:** none
 - **Effort:** S
+
+### STA-77 · P4 · Rollouts have no CI write path
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/observe/http/api.ts` (`POST /rollouts`), `cloudflare/src/cloudflare/index.ts` (observe proxy), `docs/observe.md`
+- **Problem:** The stats proxy refuses rollout writes on purpose, so only the Cloudflare deployment poll records rollouts. A service deployed outside Cloudflare, or a deploy a CI job wants to record before the poll sees it, has no authenticated way to write one. Choosing the surface is an owner decision: an Access service token on a separate route, or a write token on a future public receiver.
+- **Recommendation:** Decide the surface when a non-Cloudflare producer exists. Service deploy markers (`POST /ingest/services/:name/deployments`) already give servers a token-authenticated write; reuse that shape if the decision is to extend it to observed services.
+- **Fix with:** architect
+- **Effort:** M
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
