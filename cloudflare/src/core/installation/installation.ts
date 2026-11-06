@@ -647,8 +647,9 @@ export class InstallationCore {
           kinds = [kind];
         }
         const synthetic = isSyntheticHost(found.name);
-        const workloadClass = hostHistoryClass(this.historyShape(query, this.now()).resolution, kinds);
-        const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(sql, found.host_id), historyWindowKey(query), kinds.join("+"));
+        const shape = this.historyShape(query, this.now());
+        const workloadClass = hostHistoryClass(shape.resolution, kinds);
+        const etag = historyEtag(`host:${found.host_id}`, this.historyVersion(sql, found.host_id), `${historyWindowKey(query)}&to=${shape.toMs}&res=${shape.resolution}`, kinds.join("+"));
         if (etagMatches(request, etag)) {
           operation.describe(() => ({ operation: "host.history", synthetic, workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
           return notModified(etag);

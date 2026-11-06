@@ -191,6 +191,28 @@ describe("history", () => {
     expect(changed.headers.get("etag")).not.toBe(etag);
   });
 
+  it("answers 200 to a conditional request once an offline host's points have aged out of the window", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
+    const first = await historySearch(host.hostId, "range=1h&kind=summary");
+    const etag = first.headers.get("etag")!;
+    expect(first.status).toBe(200);
+
+    const later = await runInDurableObject(stub(), async (instance: Installation) => {
+      const original = (instance as unknown as { env: Env }).env;
+      Object.defineProperty(instance, "env", { value: { ...original, TEST_NOW_MS: String(now + 3 * 3_600_000) }, configurable: true });
+      try {
+        const url = `https://installation/hosts/${host.hostId}/history?range=1h&kind=summary`;
+        const conditional = await instance.fetch(new Request(url, { headers: { "If-None-Match": etag } }));
+        return { status: conditional.status, etag: conditional.headers.get("etag") };
+      } finally {
+        Object.defineProperty(instance, "env", { value: original, configurable: true });
+      }
+    });
+    expect(later.status).toBe(200);
+    expect(later.etag).not.toBe(etag);
+  });
+
   it("sends history as a frame, compressed to what the client accepts, with every security header", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
