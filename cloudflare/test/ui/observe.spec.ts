@@ -306,6 +306,22 @@ test("each observed project reads its own service", async ({ page }) => {
   await expect.poll(() => [...observe.services]).toEqual(["usr-memories"]);
 });
 
+test("changing the project in the URL moves the observed service with it", async ({ page }) => {
+  const observe = await setup(page);
+  await page.goto("/#/project/stats?range=24h&open=errors,requests");
+  await expect(page.locator("#issues .issue-item").first()).toBeVisible();
+  await expect.poll(() => [...observe.services]).toEqual(["stats"]);
+  await page.evaluate(() => { location.hash = "#/project/usr-memories?range=24h&open=errors,requests"; });
+  await expect(page.getByRole("heading", { name: "usr-memories" })).toBeVisible();
+  await expect.poll(() => observe.services.has("usr-memories")).toBe(true);
+  await page.waitForLoadState("networkidle");
+  observe.services.clear();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() => [...observe.services]).toEqual(["usr-memories"]);
+  await page.waitForLoadState("networkidle");
+  expect([...observe.services]).toEqual(["usr-memories"]);
+});
+
 test("other projects split cost by sampled routes and never call the observability API", async ({ page }) => {
   const observe = await setup(page);
   await page.goto("/#/project/stuff?range=24h");

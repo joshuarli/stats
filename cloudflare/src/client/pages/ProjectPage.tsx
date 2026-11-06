@@ -48,7 +48,8 @@ export function ProjectPage(): JSX.Element {
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
         <Show
-          when={project()}
+          when={project()?.id}
+          keyed
           fallback={
             <EmptyState
               icon="host"
@@ -58,7 +59,7 @@ export function ProjectPage(): JSX.Element {
             />
           }
         >
-          {(found) => <ProjectView project={found()} />}
+          {id => <ProjectView project={projects().find(candidate => candidate.id === id)!} />}
         </Show>
       </Loading>
     </Errored>

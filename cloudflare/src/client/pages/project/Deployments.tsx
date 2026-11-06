@@ -112,14 +112,12 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   const [comparison, setComparison] = createSignal<AnyComparison | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [comparisonError, setComparisonError] = createSignal<string | null>(null);
-  let loadedProject = "";
   let linkPending = true;
   const { now, showWindow } = useTelemetry();
 
   createEffect(() => ({ project: projectId(), tick: refreshKey() }), ({ project }) => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (loadedProject !== project) { setHistory(null); setSelected(""); setComparison(null); loadedProject = project; linkPending = true; }
     void routes.history(project, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);

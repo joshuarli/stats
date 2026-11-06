@@ -24,10 +24,11 @@ export function ServicePage(): JSX.Element {
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
         <Show
-          when={service()}
+          when={service()?.name}
+          keyed
           fallback={<EmptyState icon="host" title="Service not found" detail="The service name is not in this installation." action={<a class="btn" href="#/services">Back to services</a>} />}
         >
-          {found => <ServiceView service={found()} />}
+          {name => <ServiceView service={services().find(candidate => candidate.name === name)!} />}
         </Show>
       </Loading>
     </Errored>
