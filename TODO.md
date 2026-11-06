@@ -91,21 +91,13 @@ Next: 76
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-59 · P3 · An empty io.stat reads as measured zero service I/O
-
-- **Area:** Agent
-- **Where:** `agent/src/cgroup.rs` (`parse_io_stat`), `cloudflare/src/deployments/service-compare.ts`
-- **Problem:** An empty `io.stat` parses as all-zero counters, and that zero `service.io` then replaces `host.disk`. On a filesystem that does not charge writeback to cgroups, a deploy that adds disk I/O would read as unchanged. This is unproven: threadripper reported nonzero io bytes on its first sample.
-- **Recommendation:** Check on threadripper whether `io.stat` ever stays empty while the host disk is busy. If it does, send io as absent when `io.stat` has no device lines.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
 - **Where:** `cloudflare/test/ui/replay.spec.ts-snapshots/`
 - **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not.
 - **Recommendation:** Open each remaining golden and the deployed `#/project/stats` and `#/host/...` pages, and file or fix anything that reads wrong.
+- **Deferred (owner, 2026-11-05).**
 - **Fix with:** none
 - **Effort:** S
 
