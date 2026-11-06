@@ -180,7 +180,7 @@ function capture(name: string) {
 
 const MEASURED: Record<string, unknown> = {
   "stats": {"usage": {"workerRequests": 28940, "workerCpuMs": 82040, "durableObjectRequests": 0, "durableObjectGbSeconds": 0, "d1RowsWritten": 0, "d1RowsRead": 0, "r2Storage": 0, "d1Storage": 0, "durableObjectStorage": 0}, "billed": 0, "projected": 0, "projectedAtThousandFold": 94.17380339903069, "monthly": 0.09779494736842105, "lines": [["worker", 0.09779494736842105]]},
-  "stuff": {"usage": {"workerRequests": 53056, "workerCpuMs": 280688, "durableObjectRequests": 0, "durableObjectGbSeconds": 0, "d1RowsWritten": 0, "d1RowsRead": 0, "r2Storage": 0.15088319503190553, "d1Storage": 0, "durableObjectStorage": 0}, "billed": 0, "projected": 0, "projectedAtThousandFold": 216.312708209405, "monthly": 0.22010197743923074, "lines": [["worker", 0.19874363076923074], ["r2", 0.02135834667]]},
+  "stuff": {"usage": {"workerRequests": 68424, "workerCpuMs": 366336, "durableObjectRequests": 0, "durableObjectGbSeconds": 0, "d1RowsWritten": 0, "d1RowsRead": 0, "r2Storage": 0.21060406305115006, "d1Storage": 0, "durableObjectStorage": 0}, "billed": 0, "projected": 0, "projectedAtThousandFold": 203.3298560471774, "monthly": 0.20705114667, "lines": [["worker", 0.1856928], ["r2", 0.02135834667]]},
   "usr-memories": {"usage": {"workerRequests": 142436, "workerCpuMs": 954336, "durableObjectRequests": 0, "durableObjectGbSeconds": 0, "d1RowsWritten": 0, "d1RowsRead": 0, "r2Storage": 0.5640650856646147, "d1Storage": 0, "durableObjectStorage": 0}, "billed": 0, "projected": 0, "projectedAtThousandFold": 668.6578220336322, "monthly": 0.6725339828778947, "lines": [["worker", 0.5856396631578946], ["r2", 0.08689431972]]}
 };
 
