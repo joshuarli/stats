@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Miniflare } from "miniflare";
+import { pathToFileURL } from "node:url";
+import type { Miniflare, V4ModuleDefinition, V4WorkerOptions } from "miniflare";
 import { accessToken } from "../access-token.ts";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, openWorkers, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
@@ -58,14 +59,66 @@ export interface Harness {
 export type Outbound = (request: Request) => Response | Promise<Response>;
 const UNAVAILABLE: Outbound = () => new Response("upstream unavailable", { status: 503 });
 
+function agentMemoryWorker(directory: string): V4WorkerOptions {
+  const output = join(directory, "cloudflare/.cloudflare/output/v0/workers/default");
+  const bundle = join(output, "bundle");
+  const config = JSON.parse(readFileSync(join(output, "worker.config.json"), "utf8")) as {
+    compatibilityDate: string;
+    compatibilityFlags: string[];
+    manifest: { mainModule: string; modules: Record<string, unknown> };
+  };
+  const main = config.manifest.mainModule;
+  const names = Object.keys(config.manifest.modules).filter(name => name.endsWith(".js")).sort();
+  const entry = `
+import worker from "./${main}";
+export default {
+  async fetch(request, env, context) {
+    return await worker.fetch(request, env, {
+      access: { getIdentity: async () => ({ email: "reader@example.test" }) },
+      tracing: context.tracing,
+      waitUntil: context.waitUntil?.bind(context),
+      passThroughOnException: context.passThroughOnException?.bind(context),
+    });
+  },
+};
+`;
+  const modules: V4ModuleDefinition[] = [
+    { type: "ESModule", path: join(bundle, "entry.js"), contents: entry },
+    ...names.map(name => ({
+      type: "ESModule" as const,
+      path: join(bundle, name),
+      contents: readFileSync(join(bundle, name), "utf8"),
+    })),
+  ];
+  return {
+    name: "usr-memories",
+    modules,
+    modulesRoot: bundle,
+    compatibilityDate: config.compatibilityDate,
+    compatibilityFlags: config.compatibilityFlags,
+    bindings: {
+      ACCESS_TEAM_DOMAIN: "team.example.test",
+      ACCESS_AUD: "test-audience",
+      READERS: "reader@example.test",
+    },
+    access: { aud: "test-audience", identity: { email: "reader@example.test" } },
+    d1Databases: ["DB"],
+    r2Buckets: ["BUCKET"],
+    tails: ["memories-observe"],
+  };
+}
+
 export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE): Promise<Harness> {
   const persist = mkdtempSync(join(tmpdir(), "observe-e2e-"));
   const { ENVIRONMENT, PROJECTS, WORKER_NAME, ...secrets } = VARS;
   const statsCollector: TopologyCollector = collector === "crashing" ? { kind: "replaced", script: CRASHING_CONSUMER } : { kind: collector };
+  const agentMemory = process.env.AGENT_MEMORY_DIR;
   const memoriesCollector = collector === "crashing"
     ? { name: "memories-observe", modules: true, script: CRASHING_CONSUMER, ...COMPAT }
     : collectorWorker(OBSERVE, "memories-observe", "usr-memories");
-  const memoriesWorker = { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) };
+  const memoriesWorker = agentMemory === undefined
+    ? { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) }
+    : agentMemoryWorker(agentMemory);
   const mf = openWorkers(STATS, OBSERVE, {
     text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME!, ...bindings },
     secrets: { ...secrets, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
@@ -76,6 +129,13 @@ export async function start(collector: Collector, bindings: Record<string, strin
     alarms: "platform",
     extraWorkers: collector === "absent" ? [memoriesWorker] : [memoriesCollector, memoriesWorker]
   });
+  if (agentMemory !== undefined) {
+    const db = await mf.getD1Database("DB", "usr-memories");
+    const seed = await import(pathToFileURL(join(agentMemory, "cloudflare/bench/seed.mjs")).href) as {
+      seedDatabase(db: D1Database): Promise<void>;
+    };
+    await seed.seedDatabase(db);
+  }
   const stats = await mf.getWorker("stats");
   let stopped = false;
   const stop = async (): Promise<void> => {
