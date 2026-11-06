@@ -58,7 +58,7 @@ async function collectProject(input: {
   const request = async (suffix: string): Promise<Record<string, unknown>> => {
     const response = await input.fetch(`${base}${suffix}`, { method: "GET", headers: { Authorization: `Bearer ${input.token}` }, redirect: "manual", signal });
     if (!response.ok) {
-      code = response.status === 401 || response.status === 403 ? "unauthorized" : response.status === 429 ? "rate_limited" : "upstream";
+      code = response.status === 401 || response.status === 403 ? "unauthorized" : response.status === 429 ? "rate_limited" : response.status === 404 && suffix.startsWith("/deployments") ? "not_deployed" : "upstream";
       await response.body?.cancel();
       throw new Error(code);
     }
@@ -97,7 +97,7 @@ async function collectProject(input: {
     }
     await store.recordDeploymentPoll({ project: project.id, worker: project.worker, atMs: now, error: null, deployments: ordered, versions, truncated });
   } catch (error) {
-    reportError("deployments.poll", error);
+    if (code !== "not_deployed") reportError("deployments.poll", error);
     try {
       await store.recordDeploymentPoll({ project: project.id, worker: project.worker, atMs: now, error: signal.aborted ? "timeout" : code, deployments: [], versions: [], truncated: false });
     } catch (recordError) {

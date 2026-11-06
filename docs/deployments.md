@@ -70,7 +70,10 @@ bindings, author emails, API bodies or credentials. Tags are displayed as tags;
 a Git SHA is only available when the deployment process supplies it, and is not
 inferred from arbitrary message text. Failed enrichment does not drop the
 valid deployment timeline. Failed polls preserve the last successful history
-and surface a fixed error code. Ordinary telemetry and deployment polling are
+and surface a fixed error code. A project whose Worker the account does not
+have (the deployments list answers 404) records `not_deployed` without
+reporting a caught error, so a configured but undeployed project shows in
+health as `sync_error: not_deployed` and does not mark scheduled runs failed. Ordinary telemetry and deployment polling are
 independent; a failure in one does not suppress execution of the other.
 
 The deployment routes, polls, and retention live in `src/core/installation/`
