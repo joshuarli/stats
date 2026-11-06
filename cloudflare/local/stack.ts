@@ -105,16 +105,24 @@ interface Shared {
 
 const TERMINATION_SIGNALS = ["SIGINT", "SIGTERM"] as const;
 
-function discardOnExit(directory: string): () => void {
-  const remove = (): void => rmSync(directory, { recursive: true, force: true });
+function createDiscardedOnExit(create: () => string): { readonly directory: string; readonly discard: () => void } {
+  let directory: string | null = null;
+  const remove = (): void => { if (directory !== null) rmSync(directory, { recursive: true, force: true }); };
   const terminate = (signal: NodeJS.Signals): void => process.exit(128 + constants.signals[signal]);
   process.on("exit", remove);
   for (const signal of TERMINATION_SIGNALS) process.on(signal, terminate);
-  return () => {
+  const discard = (): void => {
     process.off("exit", remove);
     for (const signal of TERMINATION_SIGNALS) process.off(signal, terminate);
     remove();
   };
+  try {
+    directory = create();
+  } catch (error) {
+    discard();
+    throw error;
+  }
+  return { directory, discard };
 }
 
 async function launch(shared: Shared, start: StackStart & { readonly persist: string }): Promise<Stack> {
@@ -210,10 +218,11 @@ export async function startStack(start: StackStart): Promise<Stack> {
   const producers = (start.producers ?? []).map(readProducerExport);
   refuseCollisions(producers, [stats.name, observe.name], start.port ?? 0);
   mkdirSync(SCRATCH, { recursive: true });
-  const persist = start.persist ?? mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)));
+  const ephemeral = start.persist === undefined ? createDiscardedOnExit(() => mkdtempSync(join(SCRATCH, ephemeralPrefix(process.pid)))) : null;
+  const persist = ephemeral?.directory ?? start.persist!;
+  const discard = ephemeral?.discard ?? null;
   mkdirSync(persist, { recursive: true });
   const outbound = offlineOutbound(probeUrls(start.projectsJson ?? productionProjects(stats)));
-  const discard = start.persist === undefined ? discardOnExit(persist) : null;
   try {
     for (const producer of producers) seedProducerState(producer, persist);
     return await launch({ stats, observe, analytics: offlineAnalytics(stats), outbound, producers, discard }, { ...start, persist });
