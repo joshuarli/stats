@@ -22,15 +22,17 @@ printf '%s' "$projects" | jaq -er --arg id "$id" '.[] | select(.id == $id) | .id
 rm -rf "$out"
 mkdir -p "$out"
 printf '%s' "$projects" | jaq -c . > "$out/projects.json"
+kinds='worker routes r2 probes collector'
+namespaces=$(printf '%s' "$projects" | jaq -er --arg id "$id" '.[] | select(.id == $id) | .durableObjectNamespaces | length')
+if [ "$namespaces" -gt 0 ]; then
+  kinds="$kinds durable-objects"
+fi
 for range in $ranges; do
-  for kind in worker routes r2 probes collector; do
+  for kind in $kinds; do
     node "$here/api.mjs" "/projects/$id/history?range=$range&kind=$kind" | jaq -c . > "$out/$kind-$range.json"
   done
 done
 if [ "$id" = stats ]; then
-  for kind in durable-objects; do
-    node "$here/api.mjs" "/projects/$id/history?range=1h&kind=$kind" | jaq -c . > "$out/$kind-1h.json"
-  done
   node "$here/api.mjs" "/projects/$id/deployments" | jaq -c . > "$out/deployments.json"
   node "$here/api.mjs" /api/observe/stats/health | jaq -c . > "$out/observe-health.json"
   node "$here/api.mjs" "/api/observe/stats/traces?limit=100" | jaq -c . > "$out/observe-traces.json"

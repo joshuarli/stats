@@ -37,10 +37,10 @@ export function DurableObjectsWidget(props: { readonly data: ProjectData }): JSX
             stepMs={history()!.stepMs}
             provisionalFromMs={provisionalFromMs(history()!)}
           />
-          <PanelLabel>Max CPU time</PanelLabel>
+          <PanelLabel><Term hint="Analytics Engine computes this maximum from a sketch, so it can read several times higher than the largest real invocation in the bucket. Use it to spot a trend, not to read a peak.">Max CPU time (estimate)</Term></PanelLabel>
           <PanelChart
-            label="Durable Object maximum CPU time"
-            series={[{ label: "maximum", color: "violet", scored: false, track: metricTrack(history()!, "do.cpuMsMax") }]}
+            label="Durable Object maximum CPU time estimate"
+            series={[{ label: "estimated maximum", color: "violet", scored: false, track: metricTrack(history()!, "do.cpuMsMax") }]}
             format={milliseconds}
             min={0}
             stepMs={history()!.stepMs}

@@ -115,6 +115,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
   const [deploymentsSettled, setDeploymentsSettled] = createSignal(false);
+  const [deploymentsError, setDeploymentsError] = createSignal<string | null>(null);
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
 
   createEffect(() => `${props.project.id}:${range()}:${refreshKey()}`, () => {
@@ -132,10 +133,11 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     void loadDeploymentHistory(props.project.id, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setDeployments(value);
+      setDeploymentsError(null);
       setDeploymentsSettled(true);
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setDeployments(null);
+      setDeploymentsError(errorMessage(error));
       setDeploymentsSettled(true);
     });
   });
@@ -224,8 +226,8 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
           )}</Show>
         </td>
         <td>
-          <Show when={latest()} fallback={deploymentsSettled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
-            <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
+          <Show when={latest()} fallback={deploymentsError() !== null ? <span class="cell-note" role="status" title={deploymentsError() ?? undefined}>deployments unavailable</span> : deploymentsSettled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
+            <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note" title={deploymentsError() ?? undefined}>{age(deployment().atMs, now())}{deploymentsError() === null ? "" : " · refresh failed"}</span></span>
           )}</Show>
         </td>
         <td><StateCell tone={status().tone} label={status().label} note={age(props.project.collector.lastSuccessAtMs, now())} /></td>

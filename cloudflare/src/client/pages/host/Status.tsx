@@ -8,7 +8,7 @@ import { useTelemetry } from "../../state";
 import type { MonitorCell } from "./monitors";
 
 export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string; readonly class?: string }): JSX.Element {
-  const { range, setRange } = useTelemetry();
+  const { range, chooseRange } = useTelemetry();
   const present = () => props.cells.filter(cell => cell.value !== undefined);
   const absent = () => props.cells.filter(cell => cell.value === undefined);
   const columns = () => present().length + (absent().length > 0 ? 1 : 0);
@@ -45,7 +45,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
             <For each={absent()}>{(cell) => <button class="link" type="button" onClick={() => jumpTo(cell.anchor)}>{cell.label}</button>}</For>
           </span>
           <Show when={range() === "1h" || range() === "6h"}>
-            <button class="btn btn-small strip-absent-action" type="button" onClick={() => setRange("24h")}>Show 24h</button>
+            <button class="btn btn-small strip-absent-action" type="button" onClick={() => chooseRange("24h")}>Show 24h</button>
           </Show>
         </div>
       </Show>

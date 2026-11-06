@@ -70,10 +70,10 @@ export function CpuTimeWidget(props: { readonly data: ProjectData }): JSX.Elemen
         stepMs={props.data.worker.stepMs}
         provisionalFromMs={provisionalFromMs(props.data.worker)}
       />
-      <PanelLabel>Max CPU time</PanelLabel>
+      <PanelLabel><Term hint="Analytics Engine computes this maximum from a sketch, so it can read several times higher than the largest real invocation in the bucket. Use it to spot a trend, not to read a peak.">Max CPU time (estimate)</Term></PanelLabel>
       <PanelChart
-        label="Worker maximum CPU time"
-        series={[{ label: "maximum", color: "violet", scored: false, track: metricTrack(props.data.worker, "worker.cpuMsMax") }]}
+        label="Worker maximum CPU time estimate"
+        series={[{ label: "estimated maximum", color: "violet", scored: false, track: metricTrack(props.data.worker, "worker.cpuMsMax") }]}
         format={milliseconds}
         min={0}
         stepMs={props.data.worker.stepMs}

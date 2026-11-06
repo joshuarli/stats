@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { rmSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
 const osConstants = constants;
@@ -41,7 +40,6 @@ async function run(producers, command) {
     const forward = signal => child.kill(signal);
     process.prependListener("SIGINT", forward);
     process.prependListener("SIGTERM", forward);
-    process.on("exit", () => rmSync(stack.persist, { recursive: true, force: true }));
     code = await new Promise((resolve, reject) => {
       child.once("error", reject);
       child.once("exit", (status, signal) => resolve(status ?? (signal === null ? 1 : 128 + osConstants.signals[signal])));

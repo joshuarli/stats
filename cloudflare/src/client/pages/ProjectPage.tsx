@@ -48,7 +48,8 @@ export function ProjectPage(): JSX.Element {
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
         <Show
-          when={project()}
+          when={project()?.id}
+          keyed
           fallback={
             <EmptyState
               icon="host"
@@ -58,7 +59,7 @@ export function ProjectPage(): JSX.Element {
             />
           }
         >
-          {(found) => <ProjectView project={found()} />}
+          {id => <ProjectView project={projects().find(candidate => candidate.id === id)!} />}
         </Show>
       </Loading>
     </Errored>
@@ -252,7 +253,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         <Show when={observe}>{state => (
           <>
             <Section id="errors" title="Errors" open={sections().has("errors")} onToggle={() => toggleSection("errors")}
-              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().error() ?? <span class="summary-pending" aria-hidden="true" />}>
+              summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().issuesError() ?? <span class="summary-pending" aria-hidden="true" />}>
               <IssuesWidget observe={state()} />
             </Section>
             <Section id="requests" title="Requests" open={sections().has("requests")} onToggle={() => toggleSection("requests")}
