@@ -5,7 +5,8 @@ export const EXIT = {
   transport: 4,
   pending: 5,
   unchanged: 6,
-  regressed: 7
+  regressed: 7,
+  findings: 8
 } as const;
 
 export type ExitCode = typeof EXIT[keyof typeof EXIT];
@@ -17,7 +18,8 @@ export const EXIT_MEANING: readonly (readonly [ExitCode, string])[] = [
   [EXIT.transport, "transport or contract failure, or a command that is not implemented"],
   [EXIT.pending, "verification is pending or has insufficient data"],
   [EXIT.unchanged, "verification is unchanged or confounded"],
-  [EXIT.regressed, "verification regressed"]
+  [EXIT.regressed, "verification regressed"],
+  [EXIT.findings, "observe rollouts found settled rollouts with changes to look at"]
 ];
 
 export class CommandError extends Error {
