@@ -86,6 +86,7 @@ export interface ServiceOperationSummary<O extends string> {
   readonly operation: O;
   readonly synthetic: boolean;
   readonly rows: RowAccount | null;
+  readonly workLagMs?: number;
 }
 
 export type ServiceOperationMessage<O extends string> = { readonly kind: "operation"; readonly traceId: string; readonly spanId: string } & ServiceOperationSummary<O>;

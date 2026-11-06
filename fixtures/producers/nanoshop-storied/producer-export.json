@@ -2,25 +2,39 @@
   "version": 1,
   "kind": "nanoshop-producer-export",
   "label": "local",
-  "env": "s3",
-  "createdAt": "2026-11-05T23:34:15.153Z",
+  "env": "p1c",
+  "createdAt": "2026-11-06T02:27:30.929Z",
   "releaseDir": "release",
   "persistSeedDir": "persist-seed",
   "secretsFile": "secrets.json",
-  "shopPort": 62345,
+  "shopPort": 63585,
   "includeFetchTriggers": false,
+  "testIdentity": {
+    "issuerOrigin": "http://id.localhost:63586",
+    "kid": "export-key-1",
+    "audiences": [
+      "http://storied.localhost:63585"
+    ],
+    "principals": [
+      {
+        "subject": "owner",
+        "label": "Local owner (test identity)",
+        "email": null
+      }
+    ]
+  },
   "origins": {
-    "mailboxApi": "http://127.0.0.1:62347",
-    "mailboxViewer": "http://mail.localhost:62347",
-    "identity": "http://id.localhost:62346"
+    "mailboxApi": "http://127.0.0.1:63587",
+    "mailboxViewer": "http://mail.localhost:63587",
+    "identity": "http://id.localhost:63586"
   },
   "tenants": [
     {
       "tenant": "storied",
       "serviceName": "nanoshop-storied",
-      "host": "storied.localhost:62345",
-      "shopOrigin": "http://storied.localhost:62345",
-      "stripeOrigin": "http://stripe-sim.localhost:62348",
+      "host": "storied.localhost:63585",
+      "shopOrigin": "http://storied.localhost:63585",
+      "stripeOrigin": "http://stripe-sim.localhost:63588",
       "version": {
         "label": "local",
         "id": "10ca1000-0000-4000-8000-000000000000"
@@ -34,10 +48,11 @@
         "12 * * * *"
       ],
       "textBindings": {
-        "STRIPE_SECRET_KEY": "sk_test_locale088edfe2ff21d4fa5de3a0d925c79c78445",
-        "STRIPE_WEBHOOK_SECRET": "whsec_localec8c4738d07a66027d0d483750fbc23fd356",
-        "RESEND_API_KEY": "re_local176debed628caa5c038d5983b0831e2f16cb",
-        "ORDER_ACCESS_KEY": "local-order-access-3133f0e114e67f843068f821f40779ce7265"
+        "STRIPE_SECRET_KEY": "sk_test_locale72a86be6b58359419d32e21369cf1fd7e64",
+        "STRIPE_WEBHOOK_SECRET": "whsec_local746bc21c414315456196617a97514b4d4d07",
+        "RESEND_API_KEY": "re_local245339a955865cb8a54a0355ac6d3c314eac",
+        "ORDER_ACCESS_KEY": "local-order-access-0a3a38c85bc1ff871ac2efa5d74cf578793e",
+        "NANOSHOP_TEST_IDENTITY": "{\"issuerOrigin\":\"http://id.localhost:63586\",\"kid\":\"export-key-1\",\"publicJwk\":{\"key_ops\":[\"verify\"],\"ext\":true,\"kty\":\"EC\",\"x\":\"afEmk6nIpZy4GVIpF-GSdUf7EN4_Hp9VW9ALZqHb2sk\",\"y\":\"VfmQx-iJ6SWaah2LSEQzcsbJejqTOmHnwKRrUxANEl0\",\"crv\":\"P-256\"},\"owners\":[{\"issuer\":\"http://id.localhost:63586\",\"subject\":\"owner\",\"label\":\"Local owner (test identity)\"}],\"operators\":[]}"
       },
       "worker": {
         "name": "nanoshop-storied",
@@ -86,23 +101,27 @@
           },
           "STRIPE_SECRET_KEY": {
             "type": "text",
-            "value": "sk_test_locale088edfe2ff21d4fa5de3a0d925c79c78445"
+            "value": "sk_test_locale72a86be6b58359419d32e21369cf1fd7e64"
           },
           "STRIPE_WEBHOOK_SECRET": {
             "type": "text",
-            "value": "whsec_localec8c4738d07a66027d0d483750fbc23fd356"
+            "value": "whsec_local746bc21c414315456196617a97514b4d4d07"
           },
           "RESEND_API_KEY": {
             "type": "text",
-            "value": "re_local176debed628caa5c038d5983b0831e2f16cb"
+            "value": "re_local245339a955865cb8a54a0355ac6d3c314eac"
           },
           "ORDER_ACCESS_KEY": {
             "type": "text",
-            "value": "local-order-access-3133f0e114e67f843068f821f40779ce7265"
+            "value": "local-order-access-0a3a38c85bc1ff871ac2efa5d74cf578793e"
+          },
+          "NANOSHOP_TEST_IDENTITY": {
+            "type": "text",
+            "value": "{\"issuerOrigin\":\"http://id.localhost:63586\",\"kid\":\"export-key-1\",\"publicJwk\":{\"key_ops\":[\"verify\"],\"ext\":true,\"kty\":\"EC\",\"x\":\"afEmk6nIpZy4GVIpF-GSdUf7EN4_Hp9VW9ALZqHb2sk\",\"y\":\"VfmQx-iJ6SWaah2LSEQzcsbJejqTOmHnwKRrUxANEl0\",\"crv\":\"P-256\"},\"owners\":[{\"issuer\":\"http://id.localhost:63586\",\"subject\":\"owner\",\"label\":\"Local owner (test identity)\"}],\"operators\":[]}"
           }
         }
       }
     }
   ],
-  "digest": "sha256:3f8388019277fa6a604e61147f5406f4be3c3ccf5b75cb26d7b9be934ba486b2"
+  "digest": "sha256:619df38f46d2617489374c84a136be69f41d6db85a1c7bc9e0e5a4fd3f235693"
 }

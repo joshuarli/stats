@@ -236,6 +236,13 @@ export interface SummarizedOperation {
   readonly lag: LagTotals;
 }
 
+export interface CountedRows {
+  readonly accounted: number;
+  readonly read: number;
+  readonly written: number;
+  readonly statements: number;
+}
+
 export interface CountedOperation {
   readonly operation: string | null;
   readonly stage: Stage;
@@ -244,6 +251,8 @@ export interface CountedOperation {
   readonly failed: number;
   readonly cpuMsSum: number;
   readonly wallMsSum: number;
+  readonly rows: CountedRows | null;
+  readonly workLag: LagTotals | null;
 }
 
 interface OperationsWindow {
@@ -282,18 +291,27 @@ function summarized(window: StatsWindow): SummarizedOperation[] {
 }
 
 function counted(service: ObservedService, counts: NonNullable<StatsWindow["counts"]>): CountedOperation[] {
-  const totals = new Map<string, { -readonly [K in keyof CountedOperation]: CountedOperation[K] }>();
+  const totals = new Map<string, { operation: string | null; stage: Stage; route: string; count: number; failed: number; cpuMsSum: number; wallMsSum: number; rows: { accounted: number; read: number; written: number; statements: number }; workLag: { count: number; maxMs: number; sumMs: number } }>();
   for (const row of counts) {
     const operation = row.operation === "" ? POLICIES[service].labelOperation(row.stage, row.route) : row.operation;
     const key = [row.stage, row.route, operation ?? ""].join("\u0000");
-    const total = totals.get(key) ?? { operation, stage: row.stage, route: row.route, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0 };
+    const total = totals.get(key) ?? { operation, stage: row.stage, route: row.route, count: 0, failed: 0, cpuMsSum: 0, wallMsSum: 0, rows: { accounted: 0, read: 0, written: 0, statements: 0 }, workLag: { count: 0, maxMs: 0, sumMs: 0 } };
     total.count += row.count;
     total.failed += row.failed;
     total.cpuMsSum += row.cpuMsSum;
     total.wallMsSum += row.wallMsSum;
+    total.rows.accounted += row.rowAccounts;
+    total.rows.read += row.rowsRead;
+    total.rows.written += row.rowsWritten;
+    total.rows.statements += row.statements;
+    total.workLag.count += row.workLagCount;
+    total.workLag.maxMs = Math.max(total.workLag.maxMs, row.workLagMsMax);
+    total.workLag.sumMs += row.workLagMsSum;
     totals.set(key, total);
   }
-  return [...totals.values()].sort(byCost(row => `${row.stage}\u0000${row.route}`));
+  return [...totals.values()]
+    .map(({ rows, workLag, ...total }): CountedOperation => ({ ...total, rows: rows.accounted === 0 ? null : rows, workLag: workLag.count === 0 ? null : workLag }))
+    .sort(byCost(row => `${row.stage}\u0000${row.route}`));
 }
 
 function bucketWindow(context: CommandContext): OperationsWindow {
@@ -304,12 +322,13 @@ function bucketWindow(context: CommandContext): OperationsWindow {
 
 export const observeOperationsCommand = defineCommand<OperationsPayload>({
   name: "observe operations",
-  summary: "total each operation's invocations, failures, CPU and wall time over a window",
+  summary: "total each operation's invocations, failures, CPU, wall time, SQLite rows and lag over a window",
   description: [
     "Reads one exact observe window for an observed service and totals it by operation. Read-only.",
     "The window ends at the end of the current five-minute bucket and spans --window before that, so it includes the bucket in progress.",
     "source \"summaries\" (a service that keeps every invocation, such as stats): rows come from the operation summaries each invocation published, by operation, workload class and synthetic flag, with SQLite rows read and written, statements, and ingest lag.",
-    "source \"counts\" (a sampled service such as nanoshop-storied): rows come from the exact counts of every kept and sampled-out invocation, by stage and route. operation is the name the invocation published, or else the service policy's name for that route (request.<route>, store.rpc.<method>, store.alarm), or null. These rows carry no SQLite rows, statements, or lag, because the service publishes none."
+    "source \"counts\" (a sampled service such as nanoshop-storied): rows come from the exact counts of every kept and sampled-out invocation, by stage and route. operation is the name the invocation's operation summary published, or else the service policy's name for that route (request.<route>, store.rpc.<method>, store.alarm), or null.",
+    "rows totals the SQLite rows read and written and the statements of the invocations whose summary carried a row account (rows.accounted of count); null when none did, as for an invocation that has no SQLite storage of its own. workLag totals the work lag the summaries reported (how late the work the invocation ran was, by the producer's own definition): count, maxMs and sumMs; null when none reported one. Neither is ingest lag."
   ],
   access: "read",
   options: { project, window },
@@ -338,9 +357,13 @@ export const observeOperationsCommand = defineCommand<OperationsPayload>({
     const lines = [`observe operations, last ${payload.span}: [${timeText(payload.fromMs)}, ${timeText(payload.toMs)})`];
     if (payload.operations.length === 0) return [...lines, "no operations in this window"];
     if (payload.source === "counts") {
-      return [...lines, "exact counts of every observed invocation; this service publishes no SQLite rows, statements, or lag", ...table([
-        ["operation", "stage", "route", "count", "failed", "cpu", "wall"],
-        ...payload.operations.slice(0, TEXT_ROWS).map(row => [row.operation ?? "-", row.stage, row.route, String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum)])
+      const rowsText = (row: CountedOperation, value: (rows: CountedRows) => number) => row.rows === null ? "-" : String(value(row.rows));
+      return [...lines, "exact counts of every observed invocation; rows and statements sum the invocations that published a row account, - where none did", ...table([
+        ["operation", "stage", "route", "count", "failed", "cpu", "wall", "rows read", "rows written", "statements", "work lag max"],
+        ...payload.operations.slice(0, TEXT_ROWS).map(row => [
+          row.operation ?? "-", row.stage, row.route, String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum),
+          rowsText(row, rows => rows.read), rowsText(row, rows => rows.written), rowsText(row, rows => rows.statements), row.workLag === null ? "-" : ms(row.workLag.maxMs)
+        ])
       ]), ...omitted(payload.operations.length)];
     }
     return [...lines, ...table([

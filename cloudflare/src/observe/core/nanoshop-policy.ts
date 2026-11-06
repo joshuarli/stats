@@ -77,7 +77,7 @@ export const NANOSHOP_ROUTES = [
 
 export const NANOSHOP_RPC_METHODS = ["syncCatalog", "readCart", "addToCart", "setCartQuantity", "removeCartItem", "commerceCommand", "commerceQuery"] as const;
 
-export const NANOSHOP_EXTRA_OPERATIONS = ["store.alarm", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"] as const;
+export const NANOSHOP_EXTRA_OPERATIONS = ["store.alarm", "worker.scheduled", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"] as const;
 
 export type NanoshopRouteName = typeof NANOSHOP_ROUTES[number]["name"];
 export type NanoshopRpcMethod = typeof NANOSHOP_RPC_METHODS[number];
@@ -114,10 +114,11 @@ export function nanoshopWorkerRoute(path: string): string | null {
 
 const ROUTE_OPERATIONS: ReadonlyMap<string, NanoshopOperation> = new Map(NANOSHOP_ROUTES.map((route, index) => [`${route.method} ${SHAPES[index]!.template}`, `request.${route.name}` as const]));
 const UNMATCHED_LABEL = /^[A-Z]{3,7} unmatched$/u;
+const SCHEDULED_LABEL = /^scheduled /u;
 const RPC_OPERATIONS: ReadonlyMap<string, NanoshopOperation> = new Map([...NANOSHOP_RPC_METHODS.map(method => [method, `store.rpc.${method}`] as const), ["alarm", "store.alarm"]]);
 
 export function nanoshopLabelOperation(stage: Stage, label: string): NanoshopOperation | null {
-  if (stage === "worker") return UNMATCHED_LABEL.test(label) ? "request.unmatched" : ROUTE_OPERATIONS.get(label) ?? null;
+  if (stage === "worker") return UNMATCHED_LABEL.test(label) ? "request.unmatched" : SCHEDULED_LABEL.test(label) ? "worker.scheduled" : ROUTE_OPERATIONS.get(label) ?? null;
   return RPC_OPERATIONS.get(label.slice(label.lastIndexOf(".") + 1)) ?? null;
 }
 

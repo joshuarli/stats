@@ -1,8 +1,8 @@
 import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
-import { isFailedInvocation, OTHER_ROUTE, OUTCOME_CLASSES, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
+import { isFailedInvocation, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
-import { cleanupCounts, COUNT_STATEMENTS, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
+import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
@@ -398,6 +398,7 @@ const STATEMENTS = [
 export function initializeStore(db: SqlStatements): void {
   db.transaction(() => {
     for (const statement of STATEMENTS) db.run(statement);
+    upgradeCountEntriesView(db);
     if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
       db.run("ALTER TABLE observe_issues ADD COLUMN resolved_at INTEGER");
     }
@@ -518,8 +519,8 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
 
 function keptCount(invocation: PreparedInvocation, nowMs: number): CountDelta {
   return {
-    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.operationName ?? "",
-    outcome: isFailed(invocation) ? "failed" : "ok", kept: 1, sampledOut: 0, capped: 0, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs
+    bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.serviceOperation?.name ?? "",
+    outcome: isFailed(invocation) ? "failed" : "ok", kept: 1, sampledOut: 0, capped: 0, cpuMsSum: invocation.cpuMs, wallMsSum: invocation.wallMs, ...summaryTotals(invocation.serviceOperation)
   };
 }
 
