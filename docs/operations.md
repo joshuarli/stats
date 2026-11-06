@@ -550,6 +550,12 @@ Not yet verified:
   stale and the corrected runs, so a binding-side result cache is possible).
   The open choices are a longer collection window, which reads more rows per
   run, or accepting an error of about 10% on the largest buckets.
+- Parity re-run on 2026-11-06 at about 04:50 UTC, with the Worker `stuff`: 279
+  settled buckets compared, 275 exact. Four differed, all on 2026-11-05: 11:10 stored 44 against 8,
+  15:25 stored 12 against 16, 16:25 stored 284 against 296, and 16:40 stored 200
+  against 204. Total stored 14,624 against 14,608, an error of +0.1% against the
+  5% gate. The 11:10 bucket stores more than the CLI returns, which the lag
+  explanation above does not cover; it is a single bucket and unexplained.
 - Source retention seen on 2026-11-01: `logs.workersLogs` served from 04:58
   UTC that day, `events.r2CombinedOperations` served the full 7 days queried,
   and `states.r2CombinedStorage` could not be probed (state datasets allow only

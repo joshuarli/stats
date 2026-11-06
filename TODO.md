@@ -37,15 +37,6 @@ Next: 76
 - **Fix with:** make-it-fast
 - **Effort:** M
 
-### STA-36 · P3 · Re-run the Worker parity check after a day of data
-
-- **Area:** Tests
-- **Where:** `cloudflare/scripts/check-parity.mjs`, `docs/operations.md:80`
-- **Problem:** Stored history restarted at 2026-11-01 19:20 UTC after the Worker rename, so the 24 hour comparison of stored buckets against `cf sql query` has no full day to compare yet.
-- **Recommendation:** On or after 2026-11-02 19:20 UTC run `node cloudflare/scripts/check-parity.mjs` (needs `cf access login`). If it fails above 5% total error, record why in `docs/operations.md` next to the existing miss.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-44 · P3 · One observed invocation was dropped as a key conflict
 
 - **Area:** Observability
