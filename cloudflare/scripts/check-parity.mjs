@@ -14,10 +14,10 @@ function run(command, args) {
   return result.stdout;
 }
 
-const account = JSON.parse(run("cf", ["accounts", "list"]));
+const account = JSON.parse(run("cf", ["-q", "accounts", "list"]));
 if (account.length !== 1) throw new Error("set CLOUDFLARE_ACCOUNT_ID: the profile sees more than one account");
 const accountTag = process.env.CLOUDFLARE_ACCOUNT_ID ?? account[0].id;
-const token = run("cf", ["access", "token", HOST]).trim();
+const token = run("cf", ["-q", "access", "token", HOST]).trim();
 
 const response = await fetch(`${HOST}/api/v1/projects/${PROJECT}/history?range=24h&kind=worker`, { headers: { "cf-access-token": token } });
 if (!response.ok) throw new Error(`history answered ${response.status}; run cf access login ${HOST}`);
@@ -32,7 +32,7 @@ const body = JSON.stringify({
   scope: { accountTag },
 });
 const direct = new Map();
-for (const row of JSON.parse(run("cf", ["sql", "query", "-", "--body", body])).data) {
+for (const row of JSON.parse(run("cf", ["-q", "sql", "query", "-", "--body", body])).data) {
   const atMs = Date.parse(`${row.day}T00:00:00Z`) + row.hour * 3_600_000 + row.slot * 300_000;
   direct.set(atMs, Number(row.invocations));
 }

@@ -30,7 +30,7 @@ const PROJECT = {
 const WINDOW_MS = 90 * 60_000;
 
 function cf(args, input) {
-  const run = spawnSync("cf", args, { encoding: "utf8", input, maxBuffer: 64 * 1024 * 1024 });
+  const run = spawnSync("cf", ["-q", ...args], { encoding: "utf8", input, maxBuffer: 64 * 1024 * 1024 });
   if (run.error) {
     throw run.error;
   }

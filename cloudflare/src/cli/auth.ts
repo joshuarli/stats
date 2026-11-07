@@ -39,7 +39,7 @@ export function loginHint(origin: string): string {
 
 export function credentialCommand(origin: string, env: NodeJS.ProcessEnv): { readonly file: string; readonly args: readonly string[] } {
   const override = env["STATSCTL_AUTH_COMMAND"];
-  return override === undefined || override === "" ? { file: "cf", args: ["access", "token", origin] } : { file: "sh", args: ["-c", override] };
+  return override === undefined || override === "" ? { file: "cf", args: ["-q", "access", "token", origin] } : { file: "sh", args: ["-c", override] };
 }
 
 export function credentialHeader(env: NodeJS.ProcessEnv): string {

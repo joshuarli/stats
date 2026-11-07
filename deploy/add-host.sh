@@ -203,7 +203,7 @@ hash_file() {
 access_token=
 api() {
   if [ -z "$access_token" ]; then
-    access_token=$(cf access token "$base") || die "cf access token $base failed; run cf access login $base"
+    access_token=$(cf -q access token "$base") || die "cf access token $base failed; run cf access login $base"
   fi
   curl -fsS -H "Cf-Access-Jwt-Assertion: $access_token" "$@"
 }

@@ -82,14 +82,14 @@ lint: node-ready
 	pnpm --filter @stats/telemetry lint
 
 auth-ready:
-	@cf auth whoami >/dev/null
+	@cf -q auth whoami >/dev/null
 
 worker-check: node-ready
-	cd cloudflare && pnpm build && cf deploy --prebuilt --dry-run --mode production
-	cd cloudflare && pnpm run build:observe && cd observe-worker && cf deploy --prebuilt --dry-run --mode production
+	cd cloudflare && pnpm build && cf -q deploy --prebuilt --dry-run --mode production
+	cd cloudflare && pnpm run build:observe && cd observe-worker && cf -q deploy --prebuilt --dry-run --mode production
 
 observe-deploy: auth-ready node-ready
-	cd cloudflare && pnpm run build:observe && cd observe-worker && cf deploy --prebuilt --mode production
+	cd cloudflare && pnpm run build:observe && cd observe-worker && cf -q deploy --prebuilt --mode production
 
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
@@ -101,13 +101,13 @@ worker-deploy: auth-ready work-ready worker-bundle observe-deploy stats-deploy
 
 stats-deploy: auth-ready work-ready worker-bundle
 	@set -eu; \
-	(cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')); \
-	version=$$(cd cloudflare && cf workers deployments list --worker stats --per-page 1 | jaq -er '.deployments[0].versions | if length == 1 and .[0].percentage == 100 then .[0].version_id else error("the latest stats deployment does not serve one version at 100%, so the source map was not registered") end'); \
+	(cd cloudflare && cf -q deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')); \
+	version=$$(cd cloudflare && cf -q workers deployments list --worker stats --per-page 1 | jaq -er '.deployments[0].versions | if length == 1 and .[0].percentage == 100 then .[0].version_id else error("the latest stats deployment does not serve one version at 100%, so the source map was not registered") end'); \
 	$(MAKE) observe-sourcemap VERSION="$$version"
 
 observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }
-	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' OBSERVE_AUTH_COMMAND="cf access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
+	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' OBSERVE_AUTH_COMMAND="cf -q access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
 
 worker-test: work-ready node-ready
 	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
