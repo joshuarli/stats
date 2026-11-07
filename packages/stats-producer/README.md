@@ -29,8 +29,9 @@ disabled: it opens no connection and `record` is a no-op.
 
 ## Delivery
 
-- The queue holds 1024 events by default. When it is full the oldest event is
-  dropped and counted in `stats().dropped`.
+- The queue holds at most 256 events by default and is capped at 256. The
+  worst-case encoded event is 1,512 bytes, so the queue stays under 0.4 MiB.
+  When it is full the oldest event is dropped and counted in `stats().dropped`.
 - A batch holds at most 64 events by default and never exceeds 128 events or
   64 KiB.
 - Requests time out after 5 s. Retryable failures (network, timeout, 408, 425,

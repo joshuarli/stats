@@ -88,6 +88,22 @@ pnpm --dir cloudflare run bench:workerd ingest-rows
 SQLite rows written per persisted sample from cursor totals. The count is
 deterministic; it read 7.762 at `c85450f`.
 
+## Producer queue bound
+
+```sh
+node --experimental-strip-types bench/producer-queue.ts 1024
+node --experimental-strip-types bench/producer-queue.ts 256
+```
+
+The first count is the pre-O1 default; the second is the current cap. The
+script constructs the largest valid event (16 work keys, maximum label and id
+lengths) and multiplies its encoded size by the queue count. The queue stores
+parsed events, so this is the protocol-side bound, not a heap measurement.
+
+Recorded 2026-11-06: one event is 1,512 bytes. 1,024 events is 1.477 MiB,
+above the 1 MiB budget; 256 events is 0.369 MiB. Both producers cap the queue
+at 256.
+
 ## Local stack counts
 
 ```sh

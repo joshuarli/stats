@@ -80,7 +80,7 @@ impl Default for ProducerConfig {
             release: String::new(),
             instance: None,
             host: None,
-            queue_limit: 1024,
+            queue_limit: 256,
             batch_size: 64,
             flush_interval: Duration::from_secs(5),
             timeout: Duration::from_secs(5),
@@ -234,8 +234,8 @@ impl Producer {
                 return Err(ProducerError::Config("host must be 1-128 letters, digits, or ._:- starting with a letter or digit".to_owned()));
             }
         }
-        if config.queue_limit == 0 || config.queue_limit > 100_000 {
-            return Err(ProducerError::Config("queue_limit must be 1-100000".to_owned()));
+        if config.queue_limit == 0 || config.queue_limit > 256 {
+            return Err(ProducerError::Config("queue_limit must be 1-256".to_owned()));
         }
         if config.batch_size == 0 || config.batch_size > MAX_EVENTS {
             return Err(ProducerError::Config(format!("batch_size must be 1-{MAX_EVENTS}")));

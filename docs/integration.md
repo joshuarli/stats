@@ -174,7 +174,8 @@ Telemetry must never fail or block the application operation that produced it.
 
 - Producers enqueue synchronously and send from a worker. A full queue drops
   the oldest event and increments a bounded `dropped` count.
-- The producer queue defaults to 1024 events; a batch defaults to 64 events and
+- The producer queue defaults to 256 events and cannot be configured above 256;
+  a batch defaults to 64 events and
   never exceeds the 128-event or 64 KiB protocol cap.
 - Requests time out after 5 seconds. Retryable failures are retried 5 times
   with exponential backoff and jitter; `429` honours `Retry-After`. Permanent

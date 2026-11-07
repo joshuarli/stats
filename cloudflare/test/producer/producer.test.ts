@@ -60,6 +60,10 @@ function configure(endpoint: string, overrides: Partial<ProducerConfig> = {}): P
 
 const noSleep = () => Promise.resolve();
 
+await test("the queue cap rejects a bound above 256 events", () => {
+  assert.throws(() => createProducer(configure("http://127.0.0.1:9", { queueLimit: 257 })), /integer from 1 to 256/u);
+});
+
 await test("an unconfigured producer is a no-op with no network activity", async () => {
   const producer = createProducer();
   producer.record({ operation: "note.save", outcome: "ok", durationMs: 1 });

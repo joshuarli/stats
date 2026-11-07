@@ -7,7 +7,8 @@ export type { OperationEvent, Trace } from "./protocol.ts";
 export { MAX_BATCH_BYTES, MAX_EVENTS, SCHEMA_VERSION } from "./protocol.ts";
 
 const MAX_ACK_BYTES = 4096;
-const DEFAULT_QUEUE_LIMIT = 1024;
+const DEFAULT_QUEUE_LIMIT = 256;
+const MAX_QUEUE_LIMIT = 256;
 const DEFAULT_BATCH_SIZE = 64;
 const DEFAULT_FLUSH_INTERVAL_MS = 5000;
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -115,7 +116,7 @@ export function createProducer(config?: ProducerConfig | null): Producer {
   }
   const fetchFn = config.fetch ?? globalThis.fetch;
   if (typeof fetchFn !== "function") return disabledProducer();
-  const queueLimit = bound(config.queueLimit, DEFAULT_QUEUE_LIMIT, 1, 100_000);
+  const queueLimit = bound(config.queueLimit, DEFAULT_QUEUE_LIMIT, 1, MAX_QUEUE_LIMIT);
   const batchSize = bound(config.batchSize, DEFAULT_BATCH_SIZE, 1, MAX_EVENTS);
   const flushIntervalMs = bound(config.flushIntervalMs, DEFAULT_FLUSH_INTERVAL_MS, 1, 3_600_000);
   const timeoutMs = bound(config.timeoutMs, DEFAULT_TIMEOUT_MS, 1, 120_000);
