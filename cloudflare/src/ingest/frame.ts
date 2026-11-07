@@ -8,7 +8,7 @@ export interface WireLoad { readonly one: bigint; readonly five: bigint; readonl
 export interface WireSwap { readonly swapIn: bigint; readonly swapOut: bigint }
 export interface WireMem { readonly total: bigint; readonly available: bigint; readonly swapTotal: bigint; readonly swapFree: bigint; readonly swap?: WireSwap; readonly pressure?: MemoryPressure }
 export interface DiskEntry { readonly major: number; readonly minor: number; readonly name: string }
-export interface WireDisk { readonly entry: DiskEntry; readonly reads: bigint; readonly readSectors: bigint; readonly writes: bigint; readonly writeSectors: bigint; readonly ioMs?: bigint }
+export interface WireDisk { readonly entry: DiskEntry; readonly reads: bigint; readonly readSectors: bigint; readonly writes: bigint; readonly writeSectors: bigint; readonly ioMs?: bigint; readonly readMs?: bigint; readonly writeMs?: bigint; readonly weightedIoMs?: bigint; readonly inFlight?: bigint }
 export interface WireNet { readonly name: string; readonly rxBytes: bigint; readonly rxPackets: bigint; readonly rxDrops: bigint; readonly rxErrors: bigint; readonly txBytes: bigint; readonly txPackets: bigint; readonly txErrors: bigint; readonly txDrops?: bigint }
 export interface WirePsiFull { readonly avg10: bigint; readonly avg60: bigint; readonly avg300: bigint; readonly total: bigint }
 export interface WirePsiGroup { readonly some10: bigint; readonly some60: bigint; readonly some300: bigint; readonly total: bigint; readonly full?: WirePsiFull }
@@ -318,8 +318,13 @@ function reference<T>(reader: Reader, field: string, entries: T[], define: () =>
   return entry;
 }
 
+const DISK_OPTIONAL_COUNTERS = [
+  { bit: 1, field: "ioMs" }, { bit: 4, field: "readMs" }, { bit: 8, field: "writeMs" }, { bit: 16, field: "weightedIoMs" }
+] as const;
+const DISK_IN_FLIGHT_BIT = 32;
+
 function diskValues(disk: WireDisk): bigint[] {
-  return optional([disk.reads, disk.readSectors, disk.writes, disk.writeSectors, disk.ioMs]);
+  return optional([disk.reads, disk.readSectors, disk.writes, disk.writeSectors, disk.ioMs, disk.readMs, disk.writeMs, disk.weightedIoMs]);
 }
 
 function readDisks(reader: Reader, entries: DiskEntry[], previous: readonly WireDisk[] | undefined): WireDisk[] {
@@ -334,11 +339,17 @@ function readDisks(reader: Reader, entries: DiskEntry[], previous: readonly Wire
       return { major: Number(major), minor: Number(minor), name };
     }, (left, right) => left.major === right.major && left.minor === right.minor && left.name === right.name);
     if (disks.some(disk => disk.entry.major === entry.major && disk.entry.minor === entry.minor)) structural("a disk appears twice in one sample");
-    const head = reader.mask("disk head", 0b11);
+    const head = reader.mask("disk head", 0b11_1111);
     const predecessor = previous?.find(disk => disk.entry.major === entry.major && disk.entry.minor === entry.minor);
-    const sameShape = predecessor !== undefined && (predecessor.ioMs !== undefined) === ((head & 1) !== 0);
-    const values = counters(reader, "disk", 4 + (head & 1), base("disk", (head & 2) !== 0, sameShape ? diskValues(predecessor) : undefined));
-    disks.push({ entry, reads: values[0]!, readSectors: values[1]!, writes: values[2]!, writeSectors: values[3]!, ...(values[4] === undefined ? {} : { ioMs: values[4] }) });
+    const optionalCounters = DISK_OPTIONAL_COUNTERS.filter(({ bit }) => (head & bit) !== 0);
+    const sameShape = predecessor !== undefined && DISK_OPTIONAL_COUNTERS.every(({ bit, field }) => (predecessor[field] !== undefined) === ((head & bit) !== 0));
+    const values = counters(reader, "disk", 4 + optionalCounters.length, base("disk", (head & 2) !== 0, sameShape ? diskValues(predecessor) : undefined));
+    const inFlight = (head & DISK_IN_FLIGHT_BIT) === 0 ? undefined : reader.varint("disk inFlight");
+    disks.push({
+      entry, reads: values[0]!, readSectors: values[1]!, writes: values[2]!, writeSectors: values[3]!,
+      ...Object.fromEntries(optionalCounters.map(({ field }, index) => [field, values[4 + index]!])),
+      ...(inFlight === undefined ? {} : { inFlight })
+    });
   }
   return disks;
 }

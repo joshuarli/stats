@@ -73,7 +73,11 @@ function normalize(sample: WireSample): Sample {
   const disks: Disk[] | undefined = sample.disks?.map(disk => ({
     id: `${disk.entry.major}:${disk.entry.minor}`, name: disk.entry.name,
     reads: decimal(disk.reads), readSectors: decimal(disk.readSectors), writes: decimal(disk.writes), writeSectors: decimal(disk.writeSectors),
-    ...(disk.ioMs === undefined ? {} : { ioMs: decimal(disk.ioMs) })
+    ...(disk.ioMs === undefined ? {} : { ioMs: decimal(disk.ioMs) }),
+    ...(disk.readMs === undefined ? {} : { readMs: decimal(disk.readMs) }),
+    ...(disk.writeMs === undefined ? {} : { writeMs: decimal(disk.writeMs) }),
+    ...(disk.weightedIoMs === undefined ? {} : { weightedIoMs: decimal(disk.weightedIoMs) }),
+    ...(disk.inFlight === undefined ? {} : { inFlight: decimal(disk.inFlight) })
   }));
   const nets: Net[] | undefined = sample.nets?.map(net => ({
     id: net.name, rxBytes: decimal(net.rxBytes), rxPackets: decimal(net.rxPackets), rxDrops: decimal(net.rxDrops), rxErrors: decimal(net.rxErrors),

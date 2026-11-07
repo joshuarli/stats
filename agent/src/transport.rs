@@ -502,7 +502,7 @@ mod tests {
     }
 
     fn large_sample(seq: u64) -> Sample {
-        let disk = |index: u32| Disk { id: DiskId { major: 8, minor: index + 16 * seq as u32 }, name: format!("sd{index}"), reads: 1, read_sectors: 1, writes: 1, write_sectors: 1, io_ms: Some(1) };
+        let disk = |index: u32| Disk { id: DiskId { major: 8, minor: index + 16 * seq as u32 }, name: format!("sd{index}"), reads: 1, read_sectors: 1, writes: 1, write_sectors: 1, io_ms: Some(1), read_ms: Some(1), write_ms: Some(1), weighted_io_ms: Some(1), in_flight: Some(1) };
         let net = |index: u64| Net { id: format!("e{seq}x{index}"), rx_bytes: 1, rx_packets: 1, rx_drops: 1, rx_errors: 1, tx_bytes: 1, tx_packets: 1, tx_drops: Some(1), tx_errors: 1 };
         let filesystem = |index: u64| FileSystem { id: format!("/mnt/{seq}/{index}/{}", "v".repeat(240)), fs_type: FileSystemType::from_name("ext4").unwrap(), total: 1, available: 1 };
         Sample { disks: Some((0..16).map(disk).collect()), nets: Some((0..16).map(net).collect()), filesystems: Some((0..16).map(filesystem).collect()), ..sample(seq) }

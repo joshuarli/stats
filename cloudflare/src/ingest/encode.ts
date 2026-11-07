@@ -99,7 +99,8 @@ function cpuShape(cpu: Json): [number, bigint[]] {
 }
 
 function diskShape(disk: Json): [number, bigint[]] {
-  return [disk.ioMs === undefined ? 0 : 1, [disk.reads, disk.readSectors, disk.writes, disk.writeSectors, disk.ioMs].filter(present).map(u64)];
+  const shape = (disk.ioMs === undefined ? 0 : 1) | (disk.readMs === undefined ? 0 : 4) | (disk.writeMs === undefined ? 0 : 8) | (disk.weightedIoMs === undefined ? 0 : 16);
+  return [shape, [disk.reads, disk.readSectors, disk.writes, disk.writeSectors, disk.ioMs, disk.readMs, disk.writeMs, disk.weightedIoMs].filter(present).map(u64)];
 }
 
 function netShape(net: Json): [number, bigint[]] {
@@ -196,7 +197,8 @@ function writeSample(out: Writer, sample: Json, previous: Json | undefined, dict
       }
       const predecessor = previous?.disks === undefined ? undefined : list(previous.disks).find(other => other.id === disk.id);
       const current = diskShape(disk);
-      counterRecord(out, current[0], 2, current[1], sameShape(current, predecessor === undefined ? undefined : diskShape(predecessor)), delta);
+      counterRecord(out, current[0] | (disk.inFlight === undefined ? 0 : 32), 2, current[1], sameShape(current, predecessor === undefined ? undefined : diskShape(predecessor)), delta);
+      if (disk.inFlight !== undefined) out.varint(u64(disk.inFlight));
     }
   }
   if (sample.nets !== undefined) {

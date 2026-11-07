@@ -161,7 +161,7 @@ fn random_sample(random: &mut Random, seq: u64) -> Sample {
     }
     if random.below(3) > 0 {
         let count = random.below(17) as u32;
-        sample.disks = Some((0..count).map(|index| Disk { id: DiskId { major: 8, minor: index * 16 + random.below(2) as u32 * 512 }, name: format!("sd{}", random.below(3)), reads: random.counter(), read_sectors: random.counter(), writes: random.counter(), write_sectors: random.counter(), io_ms: (random.below(2) == 0).then(|| random.counter()) }).collect());
+        sample.disks = Some((0..count).map(|index| Disk { id: DiskId { major: 8, minor: index * 16 + random.below(2) as u32 * 512 }, name: format!("sd{}", random.below(3)), reads: random.counter(), read_sectors: random.counter(), writes: random.counter(), write_sectors: random.counter(), io_ms: (random.below(2) == 0).then(|| random.counter()), read_ms: (random.below(2) == 0).then(|| random.counter()), write_ms: (random.below(2) == 0).then(|| random.counter()), weighted_io_ms: (random.below(2) == 0).then(|| random.counter()), in_flight: (random.below(2) == 0).then(|| random.counter()) }).collect());
     }
     if random.below(3) > 0 {
         let count = random.below(17);

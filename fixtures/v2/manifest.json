@@ -250,6 +250,22 @@
       "frame": "frames/device-churn.stb2"
     },
     {
+      "name": "disk-latency",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/disk-latency.json",
+      "frame": "frames/disk-latency.stb2"
+    },
+    {
       "name": "device-union",
       "label": "synthetic",
       "samples": [

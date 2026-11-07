@@ -169,7 +169,7 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
     let mut devices = FxHashMap::default();
     for line in text.lines() {
         let fields: Vec<&str> = line.split_whitespace().take(14).collect();
-        if fields.len() < 14 {
+        if fields.len() < 13 {
             continue;
         }
         let Some(major) = parse_u64(fields[0]) else { continue };
@@ -183,7 +183,14 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
         let Some(read_sectors) = parse_u64(fields[5]) else { continue };
         let Some(writes) = parse_u64(fields[7]) else { continue };
         let Some(write_sectors) = parse_u64(fields[9]) else { continue };
+        let Some(read_ms) = parse_u64(fields[6]) else { continue };
+        let Some(write_ms) = parse_u64(fields[10]) else { continue };
+        let Some(in_flight) = parse_u64(fields[11]) else { continue };
         let Some(io_ms) = parse_u64(fields[12]) else { continue };
+        let weighted_io_ms = match fields.get(13).map(|text| parse_u64(text)) {
+            Some(None) => continue,
+            parsed => parsed.flatten(),
+        };
         devices.insert(
             id.to_string(),
             Disk {
@@ -194,6 +201,10 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
                 writes,
                 write_sectors,
                 io_ms: Some(io_ms),
+                read_ms: Some(read_ms),
+                write_ms: Some(write_ms),
+                weighted_io_ms,
+                in_flight: Some(in_flight),
             },
         );
     }
@@ -380,6 +391,46 @@ mod tests {
         assert_eq!(disks[0].read_sectors, 24);
         assert_eq!(disks[1].id, DiskId { major: 8, minor: 0 });
         assert_eq!(disks[1].io_ms, Some(7));
+    }
+
+    #[test]
+    fn parses_diskstats_latency_queue_and_weighted_time() {
+        let whole = HashSet::from(["nvme0n1".to_owned()]);
+        let text = b"259 0 nvme0n1 100 5 800 30 200 6 1600 4000 3 70 9000 0 0 0 0 0 0\n";
+        let disk = &parse_diskstats(text, &whole).unwrap()[0];
+        assert_eq!((disk.read_ms, disk.write_ms, disk.in_flight, disk.io_ms, disk.weighted_io_ms), (Some(30), Some(4000), Some(3), Some(70), Some(9000)));
+    }
+
+    #[test]
+    fn leaves_weighted_time_absent_on_a_line_without_it() {
+        let whole = HashSet::from(["sda".to_owned()]);
+        let disk = &parse_diskstats(b"8 0 sda 10 2 80 1 5 1 40 2 0 7\n", &whole).unwrap()[0];
+        assert_eq!((disk.io_ms, disk.weighted_io_ms), (Some(7), None));
+        assert_eq!((disk.read_ms, disk.write_ms, disk.in_flight), (Some(1), Some(2), Some(0)));
+    }
+
+    #[test]
+    fn skips_lines_shorter_than_the_busy_time_field() {
+        let whole = HashSet::from(["sda".to_owned()]);
+        assert!(parse_diskstats(b"8 0 sda 10 2 80 1 5 1 40 2 0\n", &whole).unwrap().is_empty());
+    }
+
+    #[test]
+    fn skips_disk_lines_whose_new_counters_overflow_or_are_malformed() {
+        let whole = HashSet::from(["sda".to_owned()]);
+        let over = "18446744073709551616";
+        for text in [
+            format!("8 0 sda 1 0 1 {over} 1 0 1 0 0 0 0\n"),
+            format!("8 0 sda 1 0 1 0 1 0 1 {over} 0 0 0\n"),
+            format!("8 0 sda 1 0 1 0 1 0 1 0 {over} 0 0\n"),
+            format!("8 0 sda 1 0 1 0 1 0 1 0 0 0 {over}\n"),
+            "8 0 sda 1 0 1 0 1 0 1 0 0 0 x\n".to_owned(),
+        ] {
+            assert!(parse_diskstats(text.as_bytes(), &whole).unwrap().is_empty(), "{text}");
+        }
+        let max = format!("8 0 sda 1 0 1 18446744073709551615 1 0 1 0 0 0 18446744073709551615\n");
+        let disk = &parse_diskstats(max.as_bytes(), &whole).unwrap()[0];
+        assert_eq!((disk.read_ms, disk.weighted_io_ms), (Some(u64::MAX), Some(u64::MAX)));
     }
 
     #[test]

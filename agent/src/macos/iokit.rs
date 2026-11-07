@@ -76,6 +76,10 @@ fn disk_from(name: String, major: u64, minor: u64, counters: Counters) -> Option
         writes: counters.writes,
         write_sectors: counters.write_bytes / SECTOR_BYTES,
         io_ms: None,
+        read_ms: None,
+        write_ms: None,
+        weighted_io_ms: None,
+        in_flight: None,
     })
 }
 

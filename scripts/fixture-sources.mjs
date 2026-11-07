@@ -205,6 +205,18 @@ define("device-churn", "synthetic", batch([
   sample(3, { disks: [disk("8:0", "sdb", 5), disk("259:0", "nvme0n1", 70)], nets: [net("wg0", 2)], filesystems: [filesystem("/", "ext4", 300), filesystem("/data", "btrfs", 900)] }),
   sample(4, { disks: [disk("8:0", "sdb", 6, false), disk("259:0", "nvme0n1", 80)], nets: [net("eth0", 1200), net("wg0", 3)], filesystems: [filesystem("/data", "btrfs", 800), filesystem("/", "ext4", 200)] })
 ]));
+const timedDisk = (reads, readMs, writeMs, extra = {}) => ({ ...disk("259:0", "nvme0n1", reads), readMs: String(readMs), writeMs: String(writeMs), weightedIoMs: String(BigInt(readMs) + BigInt(writeMs)), inFlight: "3", ...extra });
+const withoutFields = (value, ...names) => Object.fromEntries(Object.entries(value).filter(([key]) => !names.includes(key)));
+define("disk-latency", "synthetic", batch([
+  sample(1, { disks: [timedDisk(100, 1000, 5000)] }),
+  sample(2, { disks: [timedDisk(110, 1050, 7600)] }),
+  sample(3, { disks: [timedDisk(120, 1100, 9000, { inFlight: "0" })] }),
+  sample(4, { disks: [withoutFields(timedDisk(130, 1200, 9500), "inFlight")] }),
+  sample(5, { disks: [withoutFields(timedDisk(140, 1300, 9600), "weightedIoMs")] }),
+  sample(6, { disks: [withoutFields(timedDisk(150, 1400, 9700), "readMs", "writeMs", "weightedIoMs", "inFlight")] }),
+  sample(7, { disks: [timedDisk(160, 10, 20, { weightedIoMs: "5" })] }),
+  sample(8, { disks: [timedDisk(170, U64_MAX, U64_MAX, { weightedIoMs: String(U64_MAX), inFlight: String(U64_MAX) })] })
+]));
 const wide = (seq, generation) => sample(seq, {
   disks: Array.from({ length: 16 }, (_, index) => disk(`${8 + generation}:${index * 16}`, `sd${generation}x${index}`, 1000 * (index + 1) + seq)),
   nets: Array.from({ length: 16 }, (_, index) => net(`veth${generation}n${index}`, 5000 * (index + 1) + seq)),

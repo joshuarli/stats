@@ -246,7 +246,8 @@ fn cpu_counters(cpu: &Cpu) -> (u8, Counters) {
 }
 
 fn disk_counters(disk: &Disk) -> (u8, Counters) {
-    (u8::from(disk.io_ms.is_some()), Counters::new(&[disk.reads, disk.read_sectors, disk.writes, disk.write_sectors], &[disk.io_ms]))
+    let shape = u8::from(disk.io_ms.is_some()) | u8::from(disk.read_ms.is_some()) << 2 | u8::from(disk.write_ms.is_some()) << 3 | u8::from(disk.weighted_io_ms.is_some()) << 4;
+    (shape, Counters::new(&[disk.reads, disk.read_sectors, disk.writes, disk.write_sectors], &[disk.io_ms, disk.read_ms, disk.write_ms, disk.weighted_io_ms]))
 }
 
 fn net_counters(net: &Net) -> (u8, Counters) {
@@ -357,7 +358,10 @@ fn write_sample<'a>(out: &mut Vec<u8>, sample: &'a Sample, previous: Option<&'a 
             }
             let predecessor = previous.and_then(|previous| previous.disks.as_ref()).and_then(|disks| disks.iter().find(|other| other.id == disk.id)).map(disk_counters);
             let (shape, values, base) = same_shape(disk_counters(disk), predecessor);
-            counter_record(out, shape, 1 << 1, &values, base.as_ref());
+            counter_record(out, shape | u8::from(disk.in_flight.is_some()) << 5, 1 << 1, &values, base.as_ref());
+            if let Some(in_flight) = disk.in_flight {
+                varint(out, in_flight);
+            }
         }
     }
     if let Some(nets) = &sample.nets {
@@ -700,7 +704,7 @@ mod tests {
     #[test]
     fn dictionaries_define_once_and_rename_gets_a_new_entry() {
         let (host, boot) = ids();
-        let disk = |name: &str, reads: u64| Disk { id: DiskId { major: 8, minor: 0 }, name: name.into(), reads, read_sectors: 0, writes: 0, write_sectors: 0, io_ms: None };
+        let disk = |name: &str, reads: u64| Disk { id: DiskId { major: 8, minor: 0 }, name: name.into(), reads, read_sectors: 0, writes: 0, write_sectors: 0, io_ms: None, read_ms: None, write_ms: None, weighted_io_ms: None, in_flight: None };
         let with = |seq: u64, disk: Disk| Sample { disks: Some(vec![disk]), ..Sample::empty(seq, seq, seq) };
         let batch = encode_batch(&host, &boot, None, &[with(1, disk("sda", 5)), with(2, disk("sda", 6)), with(3, disk("sdb", 7))], MAX_BODY).unwrap();
         let body = &batch.body[39..];
@@ -728,6 +732,17 @@ mod tests {
         let body = &batch.body[39..];
         assert_eq!(&body[5..8], [0x9f, 0x19, 0]);
         assert_eq!(&body[8..], [0, 1, 2, 3, 6, 120, 0xc8, 0x01, 0xb6, 0x02, 0b011, 8, 4, 2, 1, 10, 20, 2, 0, 1, 8, 0b100, 1, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 0b10, 3, 4]);
+    }
+
+    #[test]
+    fn disk_latency_counters_follow_busy_time_and_the_queue_gauge_stays_absolute() {
+        let (host, boot) = ids();
+        let disk = |reads: u64, read_ms: u64, in_flight: u64| Disk { id: DiskId { major: 8, minor: 0 }, name: "sda".into(), reads, read_sectors: 0, writes: 0, write_sectors: 0, io_ms: None, read_ms: Some(read_ms), write_ms: Some(2), weighted_io_ms: Some(9), in_flight: Some(in_flight) };
+        let with = |seq: u64, disk: Disk| Sample { disks: Some(vec![disk]), ..Sample::empty(seq, seq, seq) };
+        let batch = encode_batch(&host, &boot, None, &[with(1, disk(5, 30, 4)), with(2, disk(6, 33, 1))], MAX_BODY).unwrap();
+        let body = &batch.body[39..];
+        assert_eq!(&body[..20], [1, 1, 1, 0x20, 0, 1, 0, 8, 0, 3, b's', b'd', b'a', 0b11_1100, 5, 0, 0, 0, 30, 2]);
+        assert_eq!(&body[20..], [9, 4, 2, 2, 2, 0x20, 0, 1, 1, 0b11_1110, 1, 0, 0, 0, 3, 0, 0, 1]);
     }
 
     #[test]

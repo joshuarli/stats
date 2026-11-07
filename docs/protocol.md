@@ -167,8 +167,19 @@ reject the frame.
   `minor` varint, `name` str(32). The entry's index is the number of disk
   entries defined before it in this frame. A ref `r >= 1` names entry `r - 1`,
   which must already be defined.
-- head u8: bit 0 `ioMs`, bit 1 `DELTA`; bits 2–7 reserved.
-- `reads`, `readSectors`, `writes`, `writeSectors`, `ioMs` (bit 0): counter varints.
+- head u8: bit 0 `ioMs`, bit 1 `DELTA`, bit 2 `readMs`, bit 3 `writeMs`, bit 4
+  `weightedIoMs`, bit 5 `inFlight`; bits 6–7 reserved.
+- `reads`, `readSectors`, `writes`, `writeSectors`, then `ioMs` (bit 0), `readMs`
+  (bit 2), `writeMs` (bit 3), `weightedIoMs` (bit 4): counter varints.
+- When bit 5, `inFlight`: a gauge varint, always absolute.
+
+`readMs`, `writeMs`, `ioMs`, and `weightedIoMs` are the cumulative milliseconds
+`/proc/diskstats` reports for time spent reading, time spent writing, time
+with any I/O in progress, and the queue-weighted time (fields 4, 8, 10, and 11
+of the kernel's `iostats` layout). `inFlight` is the number of I/Os in
+progress at the sample (field 9). An agent omits a field the host does not
+report: macOS sends none of them, and a diskstats line without the weighted
+field sends no `weightedIoMs`.
 
 **nets** — count varint, 0–16, then per interface:
 
@@ -259,7 +270,7 @@ its `DELTA` bit, a set of differences against the **immediately preceding
 sample record in this frame**. Its predecessor is the record of the same group
 — and, for devices and services, the same identity; for PSI, the same resource — in that
 previous sample. A delta record requires a predecessor with the same optional
-counters present (`iowait`/`steal`, `ioMs`, `txDrops`, `FULL`, `GPU_NJ`/`SYSTEM`,
+counters present (`iowait`/`steal`, a disk's `ioMs`/`readMs`/`writeMs`/`weightedIoMs`, `txDrops`, `FULL`, `GPU_NJ`/`SYSTEM`,
 a service's `IO`); an `UNAVAILABLE` service is no predecessor.
 `DELTA` without such a predecessor rejects the frame.
 
@@ -414,7 +425,8 @@ Rejections never include credentials, token hashes, or request bodies.
   percentages are counter deltas divided by the delta of `total`.
 - macOS exposes neither `iowait` nor `steal`, an interface's transmit drops,
   nor disk busy time, so its agent omits `iowait`, `steal`, `txDrops`, and
-  `ioMs`, and the Worker reports no value for them. Disk sectors are always
+  `ioMs`, `readMs`, `writeMs`, `weightedIoMs`, and `inFlight`, and the Worker
+  reports no value for them. Disk sectors are always
   512-byte kernel sectors.
 - Swap activity rates are `swapIn` and `swapOut` deltas divided by the
   monotonic interval. A sample without the pair, or a regressed counter, has
@@ -436,6 +448,14 @@ Rejections never include credentials, token hashes, or request bodies.
 - Disk and network rates are deltas divided by the monotonic interval. Disk
   bytes use 512-byte sectors. `ioMs / interval` is busy time and may exceed
   100% when the device has concurrent I/O.
+- Mean disk read latency is the `readMs` delta divided by the `reads` delta,
+  and mean write latency the `writeMs` delta divided by the `writes` delta, in
+  milliseconds. An interval with no completed reads (or writes), a missing
+  field, or a regressed counter has no value for that latency, never zero.
+  Average queue depth is the `weightedIoMs` delta divided by the monotonic
+  interval in milliseconds; an idle disk reports 0. In rollups the divisors
+  count only the intervals that reported the matching field. `inFlight` is
+  stored on the sample and is not charted.
 - A device or interface that disappears and returns resumes the same series
   with a gap: the first sample after it returns has no rate because no counter
   interval exists. Its name is display text, not identity.

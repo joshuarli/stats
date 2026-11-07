@@ -311,6 +311,14 @@ pub struct Disk {
     pub write_sectors: u64,
     #[deser(rename = "ioMs", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
     pub io_ms: Option<u64>,
+    #[deser(rename = "readMs", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub read_ms: Option<u64>,
+    #[deser(rename = "writeMs", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub write_ms: Option<u64>,
+    #[deser(rename = "weightedIoMs", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub weighted_io_ms: Option<u64>,
+    #[deser(rename = "inFlight", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub in_flight: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

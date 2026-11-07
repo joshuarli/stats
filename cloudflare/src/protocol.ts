@@ -38,6 +38,10 @@ export interface Disk {
   readonly writes: string;
   readonly writeSectors: string;
   readonly ioMs?: string;
+  readonly readMs?: string;
+  readonly writeMs?: string;
+  readonly weightedIoMs?: string;
+  readonly inFlight?: string;
 }
 
 export interface Net {

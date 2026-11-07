@@ -1,0 +1,160 @@
+{
+  "hostId": "h_0123456789abcdef0123456789abcdef",
+  "bootId": "3f2a9c1e-8b7d-4c6a-9e5f-1a2b3c4d5e6f",
+  "samples": [
+    {
+      "seq": "1",
+      "atMs": "1793510341000",
+      "monoMs": "1000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "100",
+          "readSectors": "1600",
+          "writes": "200",
+          "writeSectors": "4800",
+          "ioMs": "300",
+          "readMs": "1000",
+          "writeMs": "5000",
+          "weightedIoMs": "6000",
+          "inFlight": "3"
+        }
+      ]
+    },
+    {
+      "seq": "2",
+      "atMs": "1793510342000",
+      "monoMs": "2000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "110",
+          "readSectors": "1760",
+          "writes": "220",
+          "writeSectors": "5280",
+          "ioMs": "330",
+          "readMs": "1050",
+          "writeMs": "7600",
+          "weightedIoMs": "8650",
+          "inFlight": "3"
+        }
+      ]
+    },
+    {
+      "seq": "3",
+      "atMs": "1793510343000",
+      "monoMs": "3000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "120",
+          "readSectors": "1920",
+          "writes": "240",
+          "writeSectors": "5760",
+          "ioMs": "360",
+          "readMs": "1100",
+          "writeMs": "9000",
+          "weightedIoMs": "10100",
+          "inFlight": "0"
+        }
+      ]
+    },
+    {
+      "seq": "4",
+      "atMs": "1793510344000",
+      "monoMs": "4000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "130",
+          "readSectors": "2080",
+          "writes": "260",
+          "writeSectors": "6240",
+          "ioMs": "390",
+          "readMs": "1200",
+          "writeMs": "9500",
+          "weightedIoMs": "10700"
+        }
+      ]
+    },
+    {
+      "seq": "5",
+      "atMs": "1793510345000",
+      "monoMs": "5000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "140",
+          "readSectors": "2240",
+          "writes": "280",
+          "writeSectors": "6720",
+          "ioMs": "420",
+          "readMs": "1300",
+          "writeMs": "9600",
+          "inFlight": "3"
+        }
+      ]
+    },
+    {
+      "seq": "6",
+      "atMs": "1793510346000",
+      "monoMs": "6000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "150",
+          "readSectors": "2400",
+          "writes": "300",
+          "writeSectors": "7200",
+          "ioMs": "450"
+        }
+      ]
+    },
+    {
+      "seq": "7",
+      "atMs": "1793510347000",
+      "monoMs": "7000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "160",
+          "readSectors": "2560",
+          "writes": "320",
+          "writeSectors": "7680",
+          "ioMs": "480",
+          "readMs": "10",
+          "writeMs": "20",
+          "weightedIoMs": "5",
+          "inFlight": "3"
+        }
+      ]
+    },
+    {
+      "seq": "8",
+      "atMs": "1793510348000",
+      "monoMs": "8000",
+      "disks": [
+        {
+          "id": "259:0",
+          "name": "nvme0n1",
+          "reads": "170",
+          "readSectors": "2720",
+          "writes": "340",
+          "writeSectors": "8160",
+          "ioMs": "510",
+          "readMs": "18446744073709551615",
+          "writeMs": "18446744073709551615",
+          "weightedIoMs": "18446744073709551615",
+          "inFlight": "18446744073709551615"
+        }
+      ]
+    }
+  ]
+}

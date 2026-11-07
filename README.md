@@ -169,6 +169,11 @@ A decoder that does not know the `services` group rejects the whole frame as
 `invalid_frame`. Deploy the Worker or Node server that decodes it before you
 configure `services` on any agent that reports there.
 
+A Linux agent also sends per-disk `readMs`, `writeMs`, `weightedIoMs`, and
+`inFlight` whenever `/proc/diskstats` has them, with no configuration. A decoder
+that predates these fields rejects the frame as `invalid_frame` because the disk
+head sets reserved bits. Deploy the Worker or Node server first, then update agents.
+
 ## Running
 
 ```sh
@@ -257,7 +262,9 @@ agent reports with its first upload after an update and then hourly. Below that:
   swap paging, and memory pressure (some and full) on one shared time axis.
 - Disk and network: throughput and operations or packets with reads and
   receive above the line and writes and transmit below it, busy time (and I/O
-  pressure) or drops and errors, and a device or interface table.
+  pressure) or drops and errors, and a device or interface table. Linux disks
+  also chart mean read and write latency and average queue depth per interval,
+  derived from `/proc/diskstats` without privileges.
 - Filesystems: usage over time and one table with capacity and state.
 - Block latency and completions, shown only when the collector is configured.
 
