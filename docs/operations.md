@@ -2,13 +2,20 @@
 
 ## Release build
 
-`make agent-build` runs `agent/scripts/build-static.sh`. It requires Zig
-0.17.0 and `python3` on `PATH`, builds both musl targets through the Zig
-wrappers in `tools/` with `cargo build --locked`, copies
-`stats-<version>-<target>` into `agent/dist/`, and rewrites `SHA256SUMS` plus
+`make agent-build` runs `agent/scripts/build-static.sh`. It requires Docker
+and `curl`. It downloads the pinned
+[llvm-prebuilt-musl](https://github.com/laputa-systems/llvm-prebuilt-musl/releases)
+release `llvm-musl-23.1.5-2f0b039` for each architecture into
+`.work/llvm-agent-build/`, verifies its sha256, and builds each musl target
+with `cargo build --locked` in a container of the matching architecture
+(`agent/build/Dockerfile`: Alpine 3.23 by digest, `musl-dev` headers, rustup
+by checksum, the Rust channel from `rust-toolchain.toml`). The packaged `clang`
+is the linker and C compiler and `llvm-ar` the archiver. The non-native
+architecture runs under emulation. The script copies
+`stats-<version>-<target>` into `agent/dist/` and rewrites `SHA256SUMS` plus
 an `.elf.txt` program-header dump per binary. Older artifacts are left in
-place. It fails if an ELF has `PT_INTERP` or `NEEDED`. The aarch64 wrapper
-drops rustc's `--fix-cortex-a53-843419` argument, which Zig does not accept.
+place. It fails if an ELF has `PT_INTERP` or `NEEDED`. Each container compiles
+into `.work/llvm-agent-build/target-<arch>`, never `agent/target`.
 
 Recorded 2026-11-01: 1,984,688 bytes x86_64 and 1,760,912 bytes aarch64,
 stripped; two builds produced identical SHA-256 digests.
