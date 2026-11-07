@@ -9,7 +9,7 @@ Send a Cloudflare Access token. From a machine logged in with `cf access login`:
     tok=$(cf access token https://stats.17166969.xyz)
     curl -s -H "cf-access-token: $tok" https://stats.17166969.xyz/api/v1/projects
 
-A missing or invalid token answers 401. Errors are `{"error":{"code","message"}}`. Do not call the `/admin/*` routes; they create, rotate, revoke, and purge hosts.
+A missing or invalid token answers 401. Errors are `{"error":{"code","message"}}`. Do not call the `/admin/*` routes; they create, rotate, revoke, and purge hosts and services.
 
 ## Projects (Cloudflare Workers and R2)
 
@@ -65,7 +65,16 @@ For cost, comparison, and deployment-verification questions, use `statsctl` inst
     pnpm --dir cloudflare -s statsctl help workflow
     pnpm --dir cloudflare -s statsctl health --project stats --json
 
-`statsctl help workflow` has the recipes and `statsctl help verify` the policy fields. Exit 5 means pending or insufficient data, 6 unchanged or confounded, 7 regressed; none of them is a pass. `observe rollouts` exits 8 when a settled rollout has a new issue group, a regression, or a change beyond spread. `verify --service NAME` compares a service's resource levels around a deployment marker; it cannot show fewer resources for the same work. Only `check ingest` and `deploy mark` write: `check ingest` only to the `synthetic-check` host, and `deploy mark` one deployment marker for the named service.
+`statsctl help workflow` has the recipes and `statsctl help verify` the policy fields. Exit 5 means pending or insufficient data, 6 unchanged or confounded, 7 regressed; none of them is a pass. `observe rollouts` exits 8 when a settled rollout has a new issue group, a regression, or a change beyond spread. `verify --service NAME` compares a service's resource levels around a deployment marker; it cannot show fewer resources for the same work.
+
+Service administration writes one owner-only credential file and never prints either token:
+
+    pnpm --dir cloudflare -s statsctl service create --name tansu --host h_0123456789abcdef0123456789abcdef --health-url https://lisa.tail1234.ts.net/health --credential-file .work/credentials/tansu.json
+    pnpm --dir cloudflare -s statsctl service inspect --service tansu
+    pnpm --dir cloudflare -s statsctl service token rotate --service tansu --kind ingest --credential-file .work/credentials/tansu.json
+    pnpm --dir cloudflare -s statsctl service check --service tansu
+
+Only `check ingest`, `deploy mark`, and the `service create`/`service token rotate`/`service token revoke` commands write: `check ingest` only to the `synthetic-check` host, `deploy mark` one deployment marker, and the service commands only the service they name and the local credential file.
 
 ## More
 

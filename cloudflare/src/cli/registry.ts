@@ -78,7 +78,7 @@ export class Registry {
   }
 
   resolve(words: readonly string[]): { readonly command: Command; readonly consumed: number } | undefined {
-    for (const length of [2, 1]) {
+    for (const length of [3, 2, 1]) {
       const name = words.slice(0, length).join(" ");
       const command = this.commands.find(candidate => candidate.name === name);
       if (command !== undefined && words.length >= length) return { command, consumed: length };

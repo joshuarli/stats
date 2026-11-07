@@ -1,4 +1,4 @@
-import { authError, transportError } from "./exit.ts";
+import { authError, CommandError, EXIT, transportError } from "./exit.ts";
 import type { Credential } from "./auth.ts";
 import { ServerOlderError } from "../observe/client/decode.ts";
 
@@ -37,6 +37,14 @@ export interface HttpClient {
   readonly requests: () => number;
   getJson<T>(path: string, decode: (value: unknown) => T, options?: GetOptions): Promise<Fetched<T>>;
   getBytes(path: string, options?: GetOptions): Promise<Fetched<Uint8Array>>;
+  postJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T>;
+  delete(path: string): Promise<void>;
+}
+
+interface ReplyOptions extends GetOptions {
+  readonly method?: "GET" | "POST" | "DELETE";
+  readonly body?: string;
+  readonly contentType?: string;
 }
 
 async function readCapped(response: Response, limit: number, abort: () => void): Promise<Uint8Array> {
@@ -91,16 +99,17 @@ export function createHttpClient(options: HttpOptions): HttpClient {
     return target;
   }
 
-  async function attempt(target: URL, accept: string, limit: number, extra: GetOptions): Promise<Reply> {
+  async function attempt(target: URL, accept: string, limit: number, extra: ReplyOptions): Promise<Reply> {
     const secret = options.credential === null ? null : await (credential ??= options.credential());
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), timeoutMs);
     const signal = AbortSignal.any([options.signal, timeout.signal]);
     const headers: Record<string, string> = secret === null ? { accept } : { accept, [secret.header]: secret.value };
     if (extra.ifNoneMatch !== undefined) headers["if-none-match"] = extra.ifNoneMatch;
+    if (extra.contentType !== undefined) headers["content-type"] = extra.contentType;
     count += 1;
     try {
-      const response = await doFetch(target, { method: "GET", headers, redirect: "manual", cache: "no-store", signal });
+      const response = await doFetch(target, { method: extra.method ?? "GET", headers, ...(extra.body === undefined ? {} : { body: extra.body }), redirect: "manual", cache: "no-store", signal });
       const body = response.status === 304 ? new Uint8Array() : await readCapped(response, limit, () => timeout.abort());
       return { status: response.status, headers: response.headers, body };
     } catch (error) {
@@ -158,6 +167,29 @@ export function createHttpClient(options: HttpOptions): HttpClient {
     return "body";
   }
 
+  function serverMessage(body: Uint8Array): string {
+    try {
+      const parsed = JSON.parse(new TextDecoder().decode(body)) as { error?: { message?: unknown } };
+      const message = parsed.error?.message;
+      return typeof message === "string" && /^[\x20-\x7e]{1,200}$/u.test(message) ? `: ${message}` : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function writeProblem(reply: Reply, path: string): void {
+    const { status } = reply;
+    if (status >= 300 && status < 400) throw authError("redirect", `${path} answered ${status}, a redirect that is not followed; the session is not signed in to ${options.origin}`);
+    if (status === 401 || status === 403) {
+      if (isHtml(reply.headers, reply.body)) throw authError("login_page", `${path} answered an HTML page instead of data; the session is not signed in to ${options.origin}`);
+      throw authError("unauthorized", `${path} answered ${status}${serverMessage(reply.body)}`);
+    }
+    if (status === 404) throw transportError("not_found", `${path} answered 404${serverMessage(reply.body)}`);
+    if (status === 400 || status === 409 || status === 413 || status === 415) throw new CommandError(EXIT.usage, status === 409 ? "conflict" : "invalid_request", `${path} answered ${status}${serverMessage(reply.body)}`);
+    if (status < 200 || status >= 300) throw transportError(`http_${status}`, `${path} answered ${status}${serverMessage(reply.body)}`);
+    if (isHtml(reply.headers, reply.body)) throw authError("login_page", `${path} answered an HTML page instead of data; the session is not signed in to ${options.origin}`);
+  }
+
   return {
     requests: () => count,
     async getJson<T>(path: string, decode: (value: unknown) => T, extra: GetOptions = {}): Promise<Fetched<T>> {
@@ -182,6 +214,24 @@ export function createHttpClient(options: HttpOptions): HttpClient {
       const etag = reply.headers.get("etag");
       if (classify(reply, path, extra.ifNoneMatch !== undefined) === "not-modified") return { kind: "not-modified", etag };
       return { kind: "ok", value: reply.body, etag };
+    },
+    async postJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T> {
+      const reply = await attempt(url(path), "application/json", JSON_BODY_LIMIT, { method: "POST", body: JSON.stringify(body), contentType: "application/json" });
+      writeProblem(reply, path);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reply.body));
+      } catch {
+        throw transportError("malformed_json", `${path} did not return valid JSON`);
+      }
+      try {
+        return decode(parsed);
+      } catch (error) {
+        throw transportError("contract", `${path} did not match the telemetry contract: ${error instanceof Error ? error.message : "invalid response"}`);
+      }
+    },
+    async delete(path: string): Promise<void> {
+      writeProblem(await attempt(url(path), "application/json", JSON_BODY_LIMIT, { method: "DELETE" }), path);
     }
   };
 }
