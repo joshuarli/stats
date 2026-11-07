@@ -235,7 +235,7 @@ await test("S4: a failing dataset marks the collector failed and stale without t
     replace(stack);
     assert.equal(await stack.collect(scenario(PROJECTS, failAt, { "states.r2CombinedStorage": { kind: "fail" } })), "exception");
     for (const project of await projectsList(stack)) {
-      assert.deepEqual([project.collector.lastError, project.collector.stale, project.collector.lastSuccessAtMs !== null && project.collector.lastSuccessAtMs < failAt], ["collector_failed", true, true], project.id);
+      assert.deepEqual([project.collector.lastError, project.collector.stale, project.collector.lastSuccessAtMs !== null && project.collector.lastSuccessAtMs < failAt], ["collector_failed:r2Storage", true, true], project.id);
     }
     assert.equal(await ingest(stack, host, failAt - 60_000), 200);
     assert.equal((await stack.fetch("/api/v1/hosts")).status, 200);

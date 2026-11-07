@@ -192,6 +192,10 @@ try {
       running.child.kill(signal);
       const result = await running.done;
       assert.equal(result.status, status, result.stderr);
+      const deadline = Date.now() + 2000;
+      while (pids.some(alive) && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
       assert.deepEqual(pids.filter(alive), []);
     };
     const first = await serve();
