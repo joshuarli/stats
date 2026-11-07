@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** The tree is clean at `3851348`, but the campaign is parked before F0a on a pre-existing red: `make cloudflare-test` fails four `test/node/service-comparison.test.ts` expectations that still list three comparison sources while the code now returns a fourth, `application`. `make fixtures` (0.29 s), `make lint` (0.76 s), and `make dashboard-test` (29.2 s, 131 passed) are green. This is the deployments campaign's S12 follow-up, not a frontend finding. Resume when that campaign updates its expectations, or when the owner authorizes a four-line prerequisite commit. Baseline tables were measured at `1de3eac`; F0a re-pins them at the start commit.
-- **Accepted:** none. **Red:** none in this campaign. **Parked:** start precondition; see above. **Next:** F0a after the precondition.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F0a. Verify the start precondition: clean tree, green make cloudflare-test. Then read the item, own only its files, and finish on its acceptance command.`
+- **State:** Ready for execution at `6791d3f`. The tree is clean; `make fixtures` 0.29 s, `make lint` 0.76 s, `make cloudflare-test` 71.3 s, and `make dashboard-test` 29.2 s (131 passed) are green. Baseline tables were measured at `1de3eac`; F0a re-pins them at the start commit.
+- **Accepted:** none. **Red:** none. **Parked:** none. **Next:** F0a.
+- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F0a. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 
@@ -55,10 +55,10 @@
 
 ## Baseline
 
-Verified baseline tables were measured at `1de3eac`; the current checkout is clean at `3851348` and F0a re-pins them.
+Verified baseline tables were measured at `1de3eac`; the current checkout is clean at `6791d3f` and F0a re-pins them.
 
-- **Known red at `3851348`:** `make cloudflare-test` fails four tests in `cloudflare/test/node/service-comparison.test.ts` because their expected source lists end at `probe` while the code now returns `application` as a fourth source. This is the deployments campaign's S12 test-expectation lag, not a frontend finding. `make lint`, `make fixtures`, and `make dashboard-test` are green.
-- **Loop at `3851348`:** `make fixtures` 0.29 s; `make lint` 0.76 s; `make dashboard-test` 29.2 s with 131 Playwright tests; `make cloudflare-test` 113.5 s and red on the four tests above, after `pnpm build` and `pnpm run build:observe`. A fresh worktree without both builds also fails four CLI tests on missing `.cloudflare/output/.../worker.config.json` and assets. `make check` was not run: it includes agent, release, e2e, and sandbox layers outside this campaign.
+- **Known red:** none at `6791d3f`. The four service-comparison expectations that lagged the new `application` source were updated in `6791d3f`.
+- **Loop at `6791d3f`:** `make fixtures` 0.29 s; `make lint` 0.76 s; `make cloudflare-test` 71.3 s; `make dashboard-test` 29.2 s with 131 Playwright tests. A fresh worktree without `pnpm build` and `pnpm run build:observe` also fails four CLI tests on missing `.cloudflare/output/.../worker.config.json` and assets. `make check` was not run: it includes agent, release, e2e, and sandbox layers outside this campaign.
 - **Reference baseline at `1de3eac`:** 131 Playwright tests in 28.3 s; Worker suite 69.6 s after both builds; lint 1.41 s; fixtures 0.22 s. Bundle and browser tables below are from that commit; F0a replaces them.
 - **Foundation proof already run:** a deferred host A→B navigation aborted A's history request (`net::ERR_ABORTED`) and rendered only B; a 15-second fleet tick issued one history request per visible host; the route probe counted 13 API requests on a closed project page, 28 on the 5-row projects page, and 4 `/system` requests per fleet tick; forced-GC retained-memory and decode probes produced the tables below. These are the assumptions the plan stands on; F0a re-runs them with the repaired harness.
 
