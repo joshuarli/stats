@@ -18,7 +18,7 @@ import { DeploymentEvents } from "../components/DeploymentEvents";
 import { ProbesWidget } from "./project/Probes";
 import { OperationsWidget, StorageWidget } from "./project/R2";
 import { DurableObjectsWidget } from "./project/DurableObjects";
-import { metricTrack } from "../history";
+import { metricTrack, type ProjectHistories } from "../history";
 import { hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
 import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel, type Observability } from "./project/Observe";
@@ -95,7 +95,13 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
   const hasDatabases = () => props.project.d1Databases.length > 0;
   const kinds = () => historyKinds(props.project);
-  const histories = createMemo(() => loadQuery(signal => getProjectHistories(id(), query(), kinds(), signal)));
+  const histories = createMemo<ProjectHistories>(previous =>
+    loadQuery(
+      signal => getProjectHistories(id(), query(), kinds(), signal),
+      previous,
+      error => setRefreshError(error === null ? null : errorMessage(error))
+    )
+  );
   const worker = () => histories().worker;
   const collector = () => histories().collector;
 
@@ -196,20 +202,22 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
         title={props.project.name}
         titleExtra={<><Badge tone={status().tone} dot>{status().label}</Badge><Show when={collectorNote()}>{(note) => <Info title="Collector status">{note()}</Info>}</Show></>}
       >
-        <Loading fallback={<div class="project-pills project-pills-pending" aria-hidden="true" />}>
-        <div class="project-pills" aria-label="Project health">
-          <button type="button" class={`project-pill tone-${serverErrorTone()}`} onClick={() => openSection("signals")}>5xx {serverErrors() === undefined ? "—" : percent(Number((serverErrors() ?? 0).toPrecision(2)))}</button>
-          <Show when={openIssues() !== undefined}>
-            <button type="button" class={`project-pill tone-${(openIssues() ?? 0) > 0 ? "bad" : "neutral"}`} onClick={() => openSection("errors")}>{openIssues()} open {openIssues() === 1 ? "error" : "errors"}</button>
-          </Show>
-          <Show when={probesUp()}>{probes => (
-            <button type="button" class={`project-pill tone-${probes().known > probes().up ? "bad" : "neutral"}`} onClick={() => openSection("signals")}>{probes().up}/{probes().total} endpoints up</button>
-          )}</Show>
-          <Show when={latest()}>{deployment => (
-            <button type="button" class="project-pill tone-neutral" onClick={() => openSection("deploys")}>{deployments.title(deployment())} <em>{age(deployment().atMs, now())}</em></button>
-          )}</Show>
-        </div>
-        </Loading>
+        <Errored fallback={null}>
+          <Loading fallback={<div class="project-pills project-pills-pending" aria-hidden="true" />}>
+            <div class="project-pills" aria-label="Project health">
+              <button type="button" class={`project-pill tone-${serverErrorTone()}`} onClick={() => openSection("signals")}>5xx {serverErrors() === undefined ? "—" : percent(Number((serverErrors() ?? 0).toPrecision(2)))}</button>
+              <Show when={openIssues() !== undefined}>
+                <button type="button" class={`project-pill tone-${(openIssues() ?? 0) > 0 ? "bad" : "neutral"}`} onClick={() => openSection("errors")}>{openIssues()} open {openIssues() === 1 ? "error" : "errors"}</button>
+              </Show>
+              <Show when={probesUp()}>{probes => (
+                <button type="button" class={`project-pill tone-${probes().known > probes().up ? "bad" : "neutral"}`} onClick={() => openSection("signals")}>{probes().up}/{probes().total} endpoints up</button>
+              )}</Show>
+              <Show when={latest()}>{deployment => (
+                <button type="button" class="project-pill tone-neutral" onClick={() => openSection("deploys")}>{deployments.title(deployment())} <em>{age(deployment().atMs, now())}</em></button>
+              )}</Show>
+            </div>
+          </Loading>
+        </Errored>
       </PageHeader>
       <Show when={refreshError()}>
         {(message) => <Notice tone="warn">{message()}</Notice>}

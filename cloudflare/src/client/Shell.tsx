@@ -103,7 +103,7 @@ export function Shell(props: ParentProps): JSX.Element {
         </div>
         <TimeBar />
       </header>
-      <main class="content">{props.children}</main>
+      <main class="content"><Loading fallback={null}>{props.children}</Loading></main>
     </TelemetryContext>
   );
 }

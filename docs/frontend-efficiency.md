@@ -175,3 +175,24 @@ The trace cycles across 24 hosts (`1h`, `6h`, `24h`, `7d`, `30d`), 12 projects, 
 | 100 | 105,535.4 | 107,984.3 | 97,023 | 3,767 | 0 |
 | Final on Fleet | 104,991.3 | 108,522.8 | 97,229 | 3,771 | 0 |
 
+## Async lifecycle verification and fixes (F1)
+
+`cloudflare/test/ui/lifecycle.spec.ts` exercises 13 lifecycle scenarios using deferred route gates (`createGate`) and Playwright's fake clock (`page.clock`) with zero `sleep` calls:
+
+1. Host A to Host B navigation while Host A's history is deferred: aborts Host A's in-flight request (`requestfailed`) and renders only Host B.
+2. Project A to Project B navigation at the same range while Project B's history is deferred: clears Project A's ledger immediately, shows Project B's skeleton, and settles on Project B.
+3. Host A to Host B navigation where Host B's history returns `500`: disposes Host A's view and renders only Host B's `<ErrorState>`.
+4. Rapid Host A → B → C → A navigation with B and C deferred: aborts B and C and settles on A without late-resolution overwrite.
+5. Range change (`1h → 7d → 30d`) across resolution boundaries while `7d` is deferred: aborts `7d` and renders `30d` with its 30-day window.
+6. Live, paused, hidden (`document.hidden = true`), visible, and zoomed states across 15-second clock boundaries: issues exactly 1 history request per visible host per tick while live and visible, and 0 while paused, hidden, or zoomed.
+7. Manual refresh during an automatic 15-second tick and overlapping `304` conditional revalidation: coalesces cleanly without warning banners or duplicate renders.
+8. Auth `401` and malformed history frames during refresh: retains the last good telemetry on screen and surfaces an explicit `<Notice tone="warn">` banner.
+9. Route disposal during an active chart load: aborts the in-flight history request and leaves `0` `.uplot` roots.
+
+Confirmed lifecycle defects fixed in F1:
+
+- **Unbounded lazy-route suspension (`Shell.tsx`):** `<main class="content">` rendered `{props.children}` without a `<Loading>` boundary, causing `lazy()` route imports (`HostPage`, `ProjectsPage`, `ProjectPage`, `ServicesPage`, `ServicePage`) to open a root held transaction that blocked `<PageHeader>` and route skeletons until inner telemetry fetches settled. Wrapping `{props.children}` in `<Loading fallback={null}>` lets each route's own `<Loading>` boundaries render headers and skeletons immediately.
+- **Unkeyed `<HostView>` (`HostPage.tsx`):** `<Show when={host()}>` was not keyed by `hostId`, so navigating from Host A to Host B reused Host A's component instance and held Host A's telemetry under Host B's `<PageHeader>` during the transition. Keying `<Show when={host()?.hostId} keyed>` (matching `ProjectPage.tsx` and `ServicePage.tsx`) disposes Host A immediately.
+- **Refresh error tearing down settled data (`queries.ts`, `FleetPage.tsx`, `HostPage.tsx`, `ProjectPage.tsx`):** A failed `refresh()` rejected the memo's promise even when `previous` telemetry was already settled, triggering `<Errored>` to tear down the active charts/table in addition to showing the `refreshError` `<Notice tone="warn">`. Passing `previous` and `onRefreshError` into `loadQuery` preserves the settled telemetry on refresh failure while surfacing the warning notice.
+
+

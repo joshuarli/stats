@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** Executing; `F0a` and `F0b` accepted. Scale fixture (24 hosts, 12 projects, 3 fleet pages) and 100-navigation retention trace are recorded in `docs/frontend-efficiency.md` and `.work/frontend-retention.json`.
-- **Accepted:** F0a, F0b. **Red:** none. **Parked:** none. **Next:** F1.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F1. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
+- **State:** Executing; `F0a`, `F0b`, and `F1` accepted. Async lifecycle suite (`cloudflare/test/ui/lifecycle.spec.ts`) and fixes in `Shell.tsx`, `HostPage.tsx`, `ProjectPage.tsx`, `FleetPage.tsx`, and `queries.ts` verified.
+- **Accepted:** F0a, F0b, F1. **Red:** none. **Parked:** none. **Next:** F2.
+- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F2. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 

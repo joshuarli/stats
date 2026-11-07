@@ -64,7 +64,14 @@ export function FleetPage(): JSX.Element {
   const pages = createMemo(() => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)));
   const currentPage = createMemo(() => Math.min(page(), pages()));
   const pageHosts = createMemo(() => filtered().slice((currentPage() - 1) * PAGE_SIZE, currentPage() * PAGE_SIZE));
-  const rows = createMemo(() => loadFleetRows(pageHosts(), query()));
+  const rows = createMemo<readonly FleetRow[]>(previous =>
+    loadFleetRows(
+      pageHosts(),
+      query(),
+      previous,
+      error => setRefreshError(error === null ? null : errorMessage(error))
+    )
+  );
 
   const doRefresh = async () => {
     setRefreshError(null);

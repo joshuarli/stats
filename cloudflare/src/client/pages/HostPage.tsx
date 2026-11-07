@@ -1,6 +1,7 @@
 import { createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
+import type { HostHistories } from "../history";
 import { getHostHistories, getSystem, type Host } from "../api";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
@@ -35,7 +36,8 @@ export function HostPage(): JSX.Element {
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<HostSkeleton />}>
         <Show
-          when={host()}
+          when={host()?.hostId}
+          keyed
           fallback={
             <EmptyState
               icon="host"
@@ -45,7 +47,7 @@ export function HostPage(): JSX.Element {
             />
           }
         >
-          {(found) => <HostView host={found()} />}
+          {id => <HostView host={hosts().find(candidate => candidate.hostId === id)!} />}
         </Show>
       </Loading>
     </Errored>
@@ -59,7 +61,13 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const [psiWindow, setPsiWindow] = createSignal<PsiWindow>("300");
 
   const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
-  const histories = createMemo(() => loadQuery(signal => getHostHistories(hostId(), query(), signal)));
+  const histories = createMemo<HostHistories>(previous =>
+    loadQuery(
+      signal => getHostHistories(hostId(), query(), signal),
+      previous,
+      error => setRefreshError(error === null ? null : errorMessage(error))
+    )
+  );
   const summary = () => histories().summary;
   const disks = () => histories().disks;
   const nets = () => histories().nets;

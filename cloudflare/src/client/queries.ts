@@ -2,10 +2,26 @@ import { onCleanup } from "solid-js";
 import { getFleetHistories, getHosts, getProjects, getServices, getSystem, type HistoryQuery, type Host, type HostSystem, type Project, type Service } from "./api";
 import type { DiskSeries, FilesystemSeries, NetSeries, SummaryTable } from "./history";
 
-export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>): Promise<T> {
+export function loadQuery<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  previous?: T,
+  onRefreshError?: (error: unknown) => void
+): Promise<T> {
   const controller = new AbortController();
   onCleanup(() => controller.abort());
-  return load(controller.signal);
+  const promise = load(controller.signal);
+  if (previous === undefined || onRefreshError === undefined) return promise;
+  return promise.then(
+    value => {
+      if (!controller.signal.aborted) onRefreshError(null);
+      return value;
+    },
+    (error: unknown) => {
+      if (controller.signal.aborted) throw error;
+      onRefreshError(error);
+      return previous;
+    }
+  );
 }
 
 export function loadHosts(): Promise<readonly Host[]> {
@@ -42,7 +58,12 @@ async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: 
   return results;
 }
 
-export function loadFleetRows(hosts: readonly Host[], query: HistoryQuery): Promise<readonly FleetRow[]> {
+export function loadFleetRows(
+  hosts: readonly Host[],
+  query: HistoryQuery,
+  previous?: readonly FleetRow[],
+  onRefreshError?: (error: unknown) => void
+): Promise<readonly FleetRow[]> {
   return loadQuery(signal => mapLimit(hosts, 4, async host => {
     const [history, system] = await Promise.all([getFleetHistories(host.hostId, query, signal), getSystem(host.hostId, signal)]);
     return {
@@ -57,5 +78,5 @@ export function loadFleetRows(hosts: readonly Host[], query: HistoryQuery): Prom
       nets: history.nets.series,
       filesystems: history.filesystems.series
     };
-  }));
+  }), previous, onRefreshError);
 }
