@@ -14,7 +14,7 @@ import { defaultSlice, duration, keyedError, keyedValue, message, MOMENT, RouteL
 const ISSUE_PAGE = 12;
 const OCCURRENCE_PAGE = 10;
 
-export function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly observe: Observability }): JSX.Element {
+function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly observe: Observability }): JSX.Element {
   const { now } = useTelemetry();
   const o = props.observe;
   const issue = () => props.issue;

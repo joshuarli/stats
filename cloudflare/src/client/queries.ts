@@ -69,7 +69,7 @@ export interface FleetRowCache {
   readonly histories: Map<string, { readonly queryKey: string; readonly history: FleetHistories }>;
 }
 
-export async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: T, index: number) => Promise<R>): Promise<R[]> {
+async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: T, index: number) => Promise<R>): Promise<R[]> {
   if (limit < 1) throw new Error("limit must be positive");
   if (values.length === 0) return [];
   const results = Array.from<R>({ length: values.length });

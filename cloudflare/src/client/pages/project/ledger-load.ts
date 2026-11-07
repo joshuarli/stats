@@ -40,21 +40,14 @@ export interface ObjectMethodSource {
   readonly now: Accessor<number>;
 }
 
-export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow | null>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
+export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
   const [load, setLoad] = createSignal<LedgerLoad | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => {
     const bounds = window();
-    return bounds === null
-      ? `${project().id}:none:${refreshKey()}`
-      : `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
+    return `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
   }, () => {
     const current = window();
-    if (current === null) {
-      setLoad(null);
-      setError(null);
-      return;
-    }
     const previous = previousWindowOf(current);
     const kinds = historyKinds(project());
     const controller = new AbortController();

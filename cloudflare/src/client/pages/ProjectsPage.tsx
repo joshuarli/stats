@@ -131,13 +131,12 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     });
   });
 
-  const window = createMemo((): TimeWindow | null => {
+  const window = createMemo((): TimeWindow => {
     refreshKey();
     return settledRangeWindow(rangeMs[range()], untrack(now));
   });
-  const ready = () => window() !== null;
   const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, refreshKey, null, () => null);
-  const loaded = () => ready() ? ledger() : null;
+  const loaded = ledger;
   const failure = () => ledgerError();
   const trendHistories = () => ledgerHistories() ?? fallbackHistories();
 
@@ -219,7 +218,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
           <Show when={calls()} fallback={pending()}>{amount => <span class="cell-stack"><span>{count(Math.round(amount().now))}<Change amount={amount()} worseUp={null} /></span><span class="cell-note">per day</span></span>}</Show>
         </td>
         <td class="numeric">
-          <Show when={serverErrors()} fallback={ready() && loaded() !== null ? <span class="cell-note">—</span> : pending()}>{value => (
+          <Show when={serverErrors()} fallback={loaded() !== null ? <span class="cell-note">—</span> : pending()}>{value => (
             <span class="cell-stack">
               <span>{percent(Number(value().current.share.toPrecision(2)))}<Change amount={{ now: value().current.share, before: value().before?.share ?? null }} worseUp /></span>
               <span class="cell-note">{count(value().current.errors)} in window</span>
