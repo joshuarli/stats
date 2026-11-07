@@ -49,6 +49,15 @@ Cloudflare login and no network. It needs `pnpm build` and
   sample horizon. Each compares stored history, `GET /api/v1/projects`, and a
   real `statsctl` process to totals computed from the model, never read back
   from the Worker.
+- **Cross-repository scenarios.** `test/local/scenarios.test.ts` runs A to G
+  from the standardized-deployments campaign. It exercises service creation,
+  ingest, read-back, rotation, marker idempotency, invalid credentials, the
+  shared `fixtures/observe-ingest` batch on workerd and Node, and the real
+  Tansu and Niceforge telemetry tests. It does not require a live deployment:
+  the app checks use their disposable test targets, and the Stats checks use
+  the local stack. Run one scenario directly with
+  `cd cloudflare && node --experimental-strip-types --test test/local/scenarios.test.ts`;
+  `make integration-local` adds the offline sandbox and the browser layer.
 - **Upgrade.** `test/local/upgrade.test.ts` opens state written by the build of
   `a5918ea~1` with the current build. It reads that build from
   `BASELINE_WORKTREE` (default `.work/wt/baseline`) and skips with the build
