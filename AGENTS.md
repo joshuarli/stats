@@ -73,4 +73,4 @@ go under `.work/tmp`.
 | Optional block-latency probe | `bpf/README.md` |
 | Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |
 | What observation costs per invocation, with sources | `docs/observe-billing.md` |
-| Open work | `TODO.md` |
+| Open work | `TODO.md`; active campaign: [frontend efficiency](docs/CAMPAIGN-FRONTEND.md) |
