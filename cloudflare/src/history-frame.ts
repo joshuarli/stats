@@ -48,7 +48,8 @@ const summaryReaders: Readers<"summary", SummaryPoint> = {
   power: p => (p.power === undefined ? undefined : present()), "power.gpuWatts": p => p.power?.gpuWatts, "power.systemWatts": p => p.power?.systemWatts
 };
 const diskReaders: Readers<"disks", DiskPoint> = {
-  atMs: p => p.atMs, readBytesPerSec: p => p.readBytesPerSec, writeBytesPerSec: p => p.writeBytesPerSec, readsPerSec: p => p.readsPerSec, writesPerSec: p => p.writesPerSec, busyPct: p => p.busyPct
+  atMs: p => p.atMs, readBytesPerSec: p => p.readBytesPerSec, writeBytesPerSec: p => p.writeBytesPerSec, readsPerSec: p => p.readsPerSec, writesPerSec: p => p.writesPerSec, busyPct: p => p.busyPct,
+  readLatencyMs: p => p.readLatencyMs, writeLatencyMs: p => p.writeLatencyMs, queueDepth: p => p.queueDepth
 };
 const netReaders: Readers<"nets", NetPoint> = {
   atMs: p => p.atMs, rxBytesPerSec: p => p.rxBytesPerSec, txBytesPerSec: p => p.txBytesPerSec, rxPacketsPerSec: p => p.rxPacketsPerSec, txPacketsPerSec: p => p.txPacketsPerSec,

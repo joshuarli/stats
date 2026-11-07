@@ -158,6 +158,56 @@ describe("counters a platform does not expose", () => {
   });
 });
 
+describe("disk latency and queue depth", () => {
+  const timed = (reads: string, writes: string, readMs: string, writeMs: string, weightedIoMs: string): Disk => ({
+    id: "8:0", name: "sda", reads, readSectors: "0", writes, writeSectors: "0", ioMs: "0", readMs, writeMs, weightedIoMs, inFlight: "2"
+  });
+  const at = (monoMs: number, disks: Disk[]): Sample => ({ seq: String(monoMs), atMs: String(monoMs), monoMs: String(monoMs), disks });
+  const rowBetween = (previous: Disk[], current: Disk[]): RawRow => {
+    const before = at(0, previous);
+    const after = at(15_000, current);
+    return { sample: after, delta: computeDelta(before, after, 15_000) };
+  };
+  const diskPoints = (rows: readonly RawRow[]) => (rawPoints(rows, "disks") as { points: DiskPoint[] }[])[0]?.points ?? [];
+
+  it("divides time by completed operations and weighted time by the interval", () => {
+    const [point] = diskPoints([rowBetween([timed("100", "50", "1000", "5000", "8000")], [timed("110", "60", "1050", "7600", "38000")])]);
+    expect(point!.readLatencyMs).toBe(5);
+    expect(point!.writeLatencyMs).toBe(260);
+    expect(point!.queueDepth).toBe(2);
+  });
+
+  it("leaves latency unavailable in an interval without completed operations", () => {
+    const [point] = diskPoints([rowBetween([timed("100", "50", "1000", "5000", "8000")], [timed("100", "60", "1000", "5100", "8000")])]);
+    expect(point).not.toHaveProperty("readLatencyMs");
+    expect(point!.writeLatencyMs).toBe(10);
+    expect(point!.queueDepth).toBe(0);
+  });
+
+  it("drops the interval when a latency counter regressed", () => {
+    expect(diskPoints([rowBetween([timed("100", "50", "1000", "5000", "8000")], [timed("110", "60", "900", "5100", "8100")])])).toEqual([]);
+  });
+
+  it("leaves every latency value absent for an agent that does not send the counters", () => {
+    const [point] = diskPoints([rowBetween([disk("0")], [disk("10")])]);
+    expect(point).not.toHaveProperty("readLatencyMs");
+    expect(point).not.toHaveProperty("writeLatencyMs");
+    expect(point).not.toHaveProperty("queueDepth");
+  });
+
+  it("rolls up latency over only the operations whose time was reported", () => {
+    const oldAgent = rowBetween([disk("0")], [disk("10")]);
+    const newAgent = rowBetween([timed("100", "50", "1000", "5000", "8000")], [timed("110", "60", "1050", "7600", "38000")]);
+    const payload = rollupFromRaw([oldAgent, newAgent], 0, 60_000)!;
+    const [point] = (rollupPoints([payload], "disks") as { points: DiskPoint[] }[])[0]!.points;
+    expect(point!.readLatencyMs).toBe(5);
+    expect(point!.writeLatencyMs).toBe(260);
+    expect(point!.queueDepth).toBe(2);
+    const legacy = rollupFromRaw([oldAgent], 0, 60_000)!;
+    expect((rollupPoints([legacy], "disks") as { points: DiskPoint[] }[])[0]!.points[0]).not.toHaveProperty("queueDepth");
+  });
+});
+
 describe("memory pressure level", () => {
   const row = (seq: number, pressure?: "normal" | "warn" | "critical"): RawRow => ({
     sample: { seq: String(seq), atMs: String(seq * 15_000), monoMs: String(seq * 15_000), mem: { total: "100", available: "50", swapTotal: "0", swapFree: "0", ...(pressure === undefined ? {} : { pressure }) } },

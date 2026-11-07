@@ -17,7 +17,7 @@ const SUMMARY = {
   gpu: "object", "gpu.busyPct": "number",
   power: "object", "power.gpuWatts": "number", "power.systemWatts": "number"
 } as const;
-const DISKS = { atMs: "number", readBytesPerSec: "number", writeBytesPerSec: "number", readsPerSec: "number", writesPerSec: "number", busyPct: "number" } as const;
+const DISKS = { atMs: "number", readBytesPerSec: "number", writeBytesPerSec: "number", readsPerSec: "number", writesPerSec: "number", busyPct: "number", readLatencyMs: "number", writeLatencyMs: "number", queueDepth: "number" } as const;
 const NETS = {
   atMs: "number", rxBytesPerSec: "number", txBytesPerSec: "number", rxPacketsPerSec: "number", txPacketsPerSec: "number",
   rxDropsPerSec: "number", txDropsPerSec: "number", rxErrorsPerSec: "number", txErrorsPerSec: "number"

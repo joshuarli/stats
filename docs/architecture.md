@@ -67,7 +67,10 @@ Sampling sources and filters:
   `pswpin` and `pswpout` counters in `/proc/vmstat`, converted to bytes; load, uptime, and CPU count from
   `sysinfo(2)`.
 - Disks from `/proc/diskstats`, whole devices listed in `/sys/block`,
-  excluding `loop*`, `ram*`, `zram*`, and `fd*`.
+  excluding `loop*`, `ram*`, `zram*`, and `fd*`. Beyond throughput and busy
+  time it reads read and write milliseconds, weighted I/O milliseconds, and the
+  in-flight count, from which the Worker derives mean read and write latency
+  and average queue depth per interval.
 - Network from `/sys/class/net/<if>/statistics` 64-bit counters, excluding
   `lo` and, unless `includeVirtualInterfaces` is set, every interface without
   a sysfs `device` link (veth, bridges, tunnels). Sysfs exposes the same `rtnl_link_stats64` counters as rtnetlink

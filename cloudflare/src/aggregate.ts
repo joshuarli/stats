@@ -69,6 +69,9 @@ export interface DiskPoint {
   readonly readsPerSec: number;
   readonly writesPerSec: number;
   readonly busyPct?: number;
+  readonly readLatencyMs?: number;
+  readonly writeLatencyMs?: number;
+  readonly queueDepth?: number;
 }
 export interface NetPoint {
   readonly atMs: number;
@@ -158,6 +161,29 @@ export interface RawRow {
 }
 
 const DEVICE_COVERAGE = "coveredMs";
+const READS_TIMED = "readsTimed";
+const WRITES_TIMED = "writesTimed";
+const WEIGHTED_COVERAGE = "weightedCoveredMs";
+
+function meanLatencyMs(timeMs: string | undefined, operations: string | undefined): number | undefined {
+  if (timeMs === undefined || operations === undefined) return undefined;
+  const completed = Number(operations);
+  return completed > 0 ? Number(timeMs) / completed : undefined;
+}
+
+function queueDepth(weightedMs: string | undefined, coverageMs: string | undefined): number | undefined {
+  if (weightedMs === undefined || coverageMs === undefined) return undefined;
+  const covered = Number(coverageMs);
+  return covered > 0 ? Number(weightedMs) / covered : undefined;
+}
+
+function diskLatencyPoint(values: { readonly readLatencyMs: number | undefined; readonly writeLatencyMs: number | undefined; readonly queueDepth: number | undefined }): Pick<DiskPoint, "readLatencyMs" | "writeLatencyMs" | "queueDepth"> {
+  return {
+    ...(values.readLatencyMs === undefined ? {} : { readLatencyMs: values.readLatencyMs }),
+    ...(values.writeLatencyMs === undefined ? {} : { writeLatencyMs: values.writeLatencyMs }),
+    ...(values.queueDepth === undefined ? {} : { queueDepth: values.queueDepth })
+  };
+}
 const PSI_FIELDS = ["some10", "some60", "some300", "full10", "full60", "full300"] as const;
 
 export function rangeKey(value: string | null): RangeKey | null {
@@ -427,6 +453,10 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
         const value = disk[field];
         if (value !== undefined) target[field] = (BigInt(target[field] ?? "0") + BigInt(value)).toString();
       }
+      const addTo = (key: string, amount: string | number) => { target[key] = (BigInt(target[key] ?? "0") + BigInt(amount)).toString(); };
+      if (disk.readMs !== undefined) addTo(READS_TIMED, disk.reads);
+      if (disk.writeMs !== undefined) addTo(WRITES_TIMED, disk.writes);
+      if (disk.weightedIoMs !== undefined) addTo(WEIGHTED_COVERAGE, delta.intervalMs);
       target[DEVICE_COVERAGE] = (BigInt(target[DEVICE_COVERAGE] ?? "0") + BigInt(delta.intervalMs)).toString();
       disks[id] = target;
     }
@@ -585,7 +615,12 @@ function diskPoints(row: RawRow): Array<{ id: string; name: string; point: DiskP
       writeBytesPerSec: (Number(disk.writeSectors) * 512 * 1000) / row.delta.intervalMs,
       readsPerSec: (Number(disk.reads) * 1000) / row.delta.intervalMs,
       writesPerSec: (Number(disk.writes) * 1000) / row.delta.intervalMs,
-      ...(disk.ioMs === undefined ? {} : { busyPct: (Number(disk.ioMs) / row.delta.intervalMs) * 100 })
+      ...(disk.ioMs === undefined ? {} : { busyPct: (Number(disk.ioMs) / row.delta.intervalMs) * 100 }),
+      ...diskLatencyPoint({
+        readLatencyMs: meanLatencyMs(disk.readMs, disk.reads),
+        writeLatencyMs: meanLatencyMs(disk.writeMs, disk.writes),
+        queueDepth: disk.weightedIoMs === undefined ? undefined : Number(disk.weightedIoMs) / row.delta.intervalMs
+      })
     }
   }));
 }
@@ -686,7 +721,12 @@ export function rollupPoints(payloads: readonly RollupPayload[], kind: HistoryKi
           writeBytesPerSec: rate(values.writeSectors, coverage, 512),
           readsPerSec: rate(values.reads, coverage),
           writesPerSec: rate(values.writes, coverage),
-          ...(values.ioMs === undefined ? {} : { busyPct: rate(values.ioMs, coverage) / 1000 * 100 })
+          ...(values.ioMs === undefined ? {} : { busyPct: rate(values.ioMs, coverage) / 1000 * 100 }),
+          ...diskLatencyPoint({
+            readLatencyMs: meanLatencyMs(values.readMs, values[READS_TIMED]),
+            writeLatencyMs: meanLatencyMs(values.writeMs, values[WRITES_TIMED]),
+            queueDepth: queueDepth(values.weightedIoMs, values[WEIGHTED_COVERAGE])
+          })
         });
         grouped.set(id, points);
       }

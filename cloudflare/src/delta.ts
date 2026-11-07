@@ -89,7 +89,7 @@ function serviceDeltas(previous: readonly Service[] | undefined, current: readon
 }
 
 const CPU_OPTIONAL_FIELDS = ["iowait", "steal"] as const;
-export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs"] as const;
+export const DISK_FIELDS = ["reads", "readSectors", "writes", "writeSectors", "ioMs", "readMs", "writeMs", "weightedIoMs"] as const;
 export const NET_FIELDS = ["rxBytes", "rxPackets", "rxDrops", "rxErrors", "txBytes", "txPackets", "txDrops", "txErrors"] as const;
 
 function counterDelta(previous: object, current: object, fields: readonly string[]): Record<string, string> | null {

@@ -24,8 +24,8 @@ function summary(range: string, empty = false, accelerator = false) {
   };
 }
 
-function disks(range: string, empty = false) {
-  return { hostId, range, kind: "disks", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "8:0", name: "sda", points: Array.from({ length: 6 }, (_, index) => ({ atMs: now - (6 - index) * 15_000, readBytesPerSec: 1_000_000 + index * 1000, writeBytesPerSec: 500_000, readsPerSec: 20, writesPerSec: 10, busyPct: 4 })) }] };
+function disks(range: string, empty = false, latency = false) {
+  return { hostId, range, kind: "disks", fromMs: now - 3_600_000, toMs: now, resolution: "raw", stepMs: 15_000, series: empty ? [] : [{ id: "8:0", name: "sda", points: Array.from({ length: 6 }, (_, index) => ({ atMs: now - (6 - index) * 15_000, readBytesPerSec: 1_000_000 + index * 1000, writeBytesPerSec: 500_000, readsPerSec: 20, writesPerSec: 10, busyPct: 4, ...(latency ? { readLatencyMs: 0.5, writeLatencyMs: 260, queueDepth: 2.5 } : {}) })) }] };
 }
 
 function nets(range: string, empty = false) {
@@ -202,7 +202,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; accelerator?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -237,7 +237,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
     }
     const empty = options.empty === true;
     const historyBody = (kind: string): unknown => {
-      if (kind === "disks") return disks(range, empty);
+      if (kind === "disks") return disks(range, empty, options.diskLatency === true);
       if (kind === "nets") return options.manyNets === true ? manyNets(range) : nets(range, empty);
       if (kind === "filesystems") return filesystems(range, empty);
       if (kind === "block") return block(range, empty);
@@ -372,6 +372,28 @@ test("the network table collapses churn behind a show-all control", async ({ pag
   await expect(fewer).toHaveAttribute("aria-expanded", "true");
   await fewer.click();
   await expect(table.locator("tbody tr")).toHaveCount(8);
+});
+
+test("a host that reports disk latency charts it beside throughput and lists it per device", async ({ page }) => {
+  await mock(page, { diskLatency: true });
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("img", { name: /Disk read latency;/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Disk write latency;/ })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Disk queue depth;/ })).toBeVisible();
+  const row = page.getByRole("table", { name: "Disk activity" }).getByRole("row", { name: /sda/ });
+  await expect(row).toContainText("0.5 ms");
+  await expect(row).toContainText("260 ms");
+  await expect(row).toContainText("2.5");
+});
+
+test("a host without disk latency shows no latency or queue panels", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByRole("table", { name: "Disk activity" })).toContainText("sda");
+  await expect(page.getByRole("img", { name: /Disk write latency;/ })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Queue" })).toHaveCount(0);
 });
 
 test("a host that reports gpu and power shows GPU busy beside CPU and a Power widget", async ({ page }) => {
