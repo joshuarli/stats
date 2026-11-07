@@ -196,7 +196,7 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   return { history, listed, selected, select, focus, window, comparison, stale, historyError, comparisonError, name, title, events, current, problem, subject: routes.subject };
 }
 
-const SOURCE_LABELS: Record<SourceName, string> = { hosts: "Hosts", cgroup: "Service cgroup", probe: "Health probe" };
+const SOURCE_LABELS: Record<SourceName, string> = { hosts: "Hosts", cgroup: "Service cgroup", probe: "Health probe", application: "Application" };
 
 function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | null {
   return "sources" in comparison ? comparison.sources : null;

@@ -4,6 +4,7 @@ import { decodeFrame } from "../../ingest/frame.ts";
 import { validateSample, normalizeSystem } from "../../ingest/sample.ts";
 import { ACK_MEDIA_TYPE, encodeAck } from "../../ingest/ack.ts";
 import type { SampleRejection } from "../../observe/producer/channel.ts";
+import type { ExternalEventRecord } from "../../observe/ingest/model.ts";
 import { mediaProblem } from "../../ingest/http.ts";
 import { computeDelta, parseDelta } from "../../delta.ts";
 import { combineRollups, downsample, historyQuery, kindValue, kindsValue, pointsFromRows, rollupPoints, rollupFromRaw, type HistoryPoints, type HistoryQuery, type RawRow, type RollupPayload } from "../../aggregate.ts";
@@ -42,6 +43,7 @@ export interface InstallationPorts {
   readonly clock: Clock;
   readonly scheduler: Scheduler;
   readonly operations: OperationSink;
+  readonly readApplicationEvents?: (service: string, fromMs: number, toMs: number) => Promise<{ readonly events: readonly ExternalEventRecord[]; readonly truncated: boolean }>;
 }
 
 export interface InstallationConfig {
@@ -716,7 +718,7 @@ export class InstallationCore {
       }
       if (path === "/services" && request.method === "GET") return json({ services: listServices(sql) });
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
-      if (comparison !== null) return this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
+      if (comparison !== null) return await this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
       const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);
       if (service !== null) return await this.serviceRoute(request, sql, service[1]!, service[2] !== undefined);
       return failure("not_found", "unknown object route", 404);
@@ -737,7 +739,7 @@ export class InstallationCore {
     return json(readServiceDeployments(sql, service, this.now()));
   }
 
-  private serviceComparison(request: Request, sql: SqlDatabase, name: string, deploymentId: string): Response {
+  private async serviceComparison(request: Request, sql: SqlDatabase, name: string, deploymentId: string): Promise<Response> {
     if (request.method !== "GET") return failure("invalid_request", "method not allowed", 405);
     const service = readService(sql, name);
     if (service === null) return failure("not_found", "service not found", 404);
@@ -753,6 +755,18 @@ export class InstallationCore {
     const marker = history.markers.find(item => item.deploymentId === deployment?.id);
     if (deployment === undefined || marker === undefined) return failure("not_found", "deployment not found", 404);
     const bounds = comparisonBounds(deployment.atMs, window);
+    let applicationEvents: readonly ExternalEventRecord[] = [];
+    let applicationTruncated = false;
+    let applicationProblem: string | null = this.ports.readApplicationEvents === undefined ? "this target has no application telemetry reader" : null;
+    if (this.ports.readApplicationEvents !== undefined) {
+      try {
+        const read = await this.ports.readApplicationEvents(name, bounds.before.fromMs, bounds.after.toMs);
+        applicationEvents = read.events;
+        applicationTruncated = read.truncated;
+      } catch {
+        applicationProblem = "the observe store did not answer";
+      }
+    }
     const hostRollups = (hostId: string): MinuteRollup[] => sql.rows<{ bucket_ms: number; payload: string }>(
       "SELECT bucket_ms, payload FROM rollups WHERE host_id = ? AND resolution = '1m' AND bucket_ms >= ? AND bucket_ms < ? ORDER BY bucket_ms", hostId, bounds.before.fromMs, bounds.after.toMs
     ).map(row => ({ bucketMs: row.bucket_ms, payload: JSON.parse(row.payload) as RollupPayload }));
@@ -760,7 +774,7 @@ export class InstallationCore {
       "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (?, ?)",
       serviceProbeOwner(name), bounds.before.fromMs, bounds.after.toMs, `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`
     );
-    return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED }));
+    return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED, applicationEvents, applicationTruncated, applicationProblem }));
   }
 
   async collectServiceProbes(fetch: ProbeFetch): Promise<void> {

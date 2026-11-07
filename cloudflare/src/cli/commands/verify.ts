@@ -10,7 +10,7 @@ import { EXIT, transportError, unsupportedOnTarget, usageError, type ExitCode } 
 import { targetOf } from "../auth.ts";
 import { defineCommand, type Command, type CommandContext } from "../registry.ts";
 import { MEASUREMENT_REVISION } from "../revisions.ts";
-import { SERVICE_LEVEL_METRICS } from "../../deployments/service-compare.ts";
+import { SERVICE_LEVEL_METRICS, SERVICE_WORK_METRICS } from "../../deployments/service-compare.ts";
 import { table, timeText } from "../text.ts";
 import { EXIT_FOR_VERDICT, type Decision, type Reason, type SafetyRecord, type VerifyVerdict } from "../verify/decide.ts";
 import { parseDuration, readPolicyFile, readSafetyFile, readServicePolicyFile, resolveInvocationPath, sleepUntil, source } from "../verify/files.ts";
@@ -156,9 +156,10 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "Guardrails:",
       ...pad(GUARDRAIL_HELP),
       "",
-      "Service policy (--service), schema statsctl-policy/1, strict: schema, id, hypothesis, service, metric, direction, minChangePercent, floor, window.",
-      `  metric is one of ${SERVICE_LEVEL_METRICS.map(entry => entry.metric).join(", ")}; floor is at least the metric's default (${SERVICE_LEVEL_METRICS.map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
-      "  The output states that it shows resource levels changed, not fewer resources for the same work. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io supersede host.cpu, host.memory, and host.disk, which stay in the response marked supersededBy and which a policy can still target.",
+      "Service policy (--service), schema statsctl-policy/1, strict: schema, id, hypothesis, service, metric, operation, work, direction, minChangePercent, floor, window.",
+      `  metric is one of ${SERVICE_LEVEL_METRICS.map(entry => entry.metric).join(", ")} for resource levels, or one of ${SERVICE_WORK_METRICS.map(entry => entry.metric).join(", ")} for application work. Resource-level metrics take no operation or work; application.duration and application.failure take operation; the per-work metrics take operation and work. A work metric is reported only when the counter is complete; a service cgroup resource is divided by work only when one operation owns the service's successful events in that window.`,
+      `  floor is at least the metric's default (${[...SERVICE_LEVEL_METRICS, ...SERVICE_WORK_METRICS].map(entry => `${entry.metric} ${entry.floor}`).join(", ")}). There are no guardrails and no waiting: a window that has not settled is pending (exit 5), so run it again later.`,
+      "  The output states that resource levels and per-work ratios are descriptive, not causal. The marker's hosts are compared before and after: host metrics count every process on them, and when the service's cgroup reports in both windows its service.cpu, service.memory, and service.io supersede host.cpu, host.memory, and host.disk, which stay in the response marked supersededBy and which a policy can still target.",
       "",
       "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],
@@ -248,7 +249,7 @@ async function serviceVerification(context: CommandContext, serviceName: string)
     project: serviceName,
     windows: [{ fromMs: payload.spec.before.fromMs, toMs: payload.spec.before.toMs }, { fromMs: payload.spec.after.fromMs, toMs: payload.spec.after.toMs }],
     measurementRevision: MEASUREMENT_REVISION,
-    warnings: [{ code: "resource-levels-only", message: payload.caveat }],
+    warnings: [{ code: "resource-levels-and-work", message: payload.caveat }],
     identities: { deploymentIds: [payload.deployment.id], versionIds: [...new Set([...payload.spec.before.versionIds, ...payload.spec.after.versionIds])] },
     payload,
     exit: EXIT_FOR_VERDICT[payload.verdict]

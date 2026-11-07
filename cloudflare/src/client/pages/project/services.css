@@ -1,2 +1,20 @@
 .services-url { display: inline-block; max-width: 36ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .service-facts { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-xl); margin: 0 0 var(--space-md); color: var(--muted); font-size: var(--fs-meta); }
+.service-work { display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-md) var(--inset); }
+.service-work-chart { display: grid; grid-template-columns: minmax(0, 1fr) 2px minmax(0, 1fr); gap: var(--space-sm); align-items: stretch; min-height: 88px; }
+.service-work-half { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; }
+.service-work-label { color: var(--muted); font-size: var(--fs-meta); }
+.service-work-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; border-bottom: 1px solid var(--line); }
+.service-work-bar { flex: 1; min-width: 1px; background: var(--accent); border-radius: 1px 1px 0 0; }
+.service-work-bar.failed { background: var(--critical); }
+.service-work-marker { position: relative; background: var(--serious-text); border-radius: 1px; }
+.service-work-marker span { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-90deg); color: var(--surface); font-size: var(--fs-meta); white-space: nowrap; }
+.service-work-table th[scope="row"] { white-space: nowrap; }
+.service-work-keys { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: var(--fs-meta); }
+.service-issues { color: var(--muted); font-size: var(--fs-meta); }
+.service-issues summary { cursor: pointer; width: max-content; }
+.service-issues ul { margin: var(--space-xs) 0 0; padding-left: var(--space-lg); }
+@media (max-width: 760px) {
+  .service-work-chart { grid-template-columns: 1fr; }
+  .service-work-marker { display: none; }
+}

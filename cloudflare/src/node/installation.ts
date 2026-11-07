@@ -47,17 +47,24 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
   const clock = options.clock ?? systemClock;
   const db = new DatabaseSync(options.path);
   lockExclusively(db);
+  let core: InstallationCore;
   const scheduler = new TimerScheduler(clock, () => core.alarm(), error => {
     console.error(JSON.stringify({ event: "alarm_rejected", name: error instanceof Error ? error.name : typeof error }));
   });
   const sql = nodeSqlScopes(db);
-  const core = new InstallationCore(
-    { sql, clock, scheduler, operations: unobservedOperations },
+  const observe = createObserveService(sql.open(), { now: () => clock.now(), databaseBytes: () => sql.open().databaseBytes() }, () => KEEP_ALL_COUNTING);
+  core = new InstallationCore(
+    {
+      sql, clock, scheduler, operations: unobservedOperations,
+      readApplicationEvents: async (service, fromMs, toMs) => {
+        const events = await observe.external(service, { fromMs, toMs, limit: 5000 });
+        return { events, truncated: events.length >= 5000 };
+      }
+    },
     { projects: () => options.projects, deploymentsEnabled: () => false }
   );
   core.initialize();
   initializeStore(sql.open());
-  const observe = createObserveService(sql.open(), { now: () => clock.now(), databaseBytes: () => sql.open().databaseBytes() }, () => KEEP_ALL_COUNTING);
   void core.armRetention();
   const probes = scheduleServiceProbes({
     core, clock, fetch: options.probeFetch ?? fetch,

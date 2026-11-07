@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS, type MetricRow } from "../../src/deployments/compare.ts";
 import type { Deployment } from "../../src/deployments/model.ts";
-import { compareServiceDeployment, SERVICE_LEVEL_CAVEAT, type MinuteRollup } from "../../src/deployments/service-compare.ts";
+import { compareServiceDeployment, SERVICE_COMPARISON_CAVEAT, type MinuteRollup } from "../../src/deployments/service-compare.ts";
+import type { ExternalEvent, ExternalEventRecord } from "../../src/observe/ingest/model.ts";
 import { parseServicePolicyText } from "../../src/cli/verify/policy.ts";
 import { fakeOrigin, runCli, sendJson, tokenEnv } from "./support.ts";
 
@@ -25,10 +26,26 @@ function probeRows(window: { fromMs: number; toMs: number }, ms: number, up: num
   return rows;
 }
 
-function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, hasHealthUrl = true) {
+function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, hasHealthUrl = true, applicationEvents: readonly ExternalEventRecord[] = [], hostRollups: (hostId: string) => readonly MinuteRollup[] = () => []) {
   const { before, after } = comparisonBounds(deployment.atMs, "1h");
   const rows = hasHealthUrl ? [...probeRows(before, beforeMs, 1), ...probeRows(after, afterMs, 1)] : [];
-  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: () => [], probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false });
+  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups, probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false, applicationEvents });
+}
+
+function applicationEvent(eventId: string, atMs: number, operation: string, durationMs: number, work: Readonly<Record<string, number>>, outcome = "ok"): ExternalEventRecord {
+  const event: ExternalEvent = {
+    schemaVersion: 1, eventId, atMs, operation, outcome, durationMs, work,
+    release: "1.1.0", service: "web"
+  };
+  return { eventId, service: "web", receivedAtMs: atMs, provenance: "application", event };
+}
+
+function workEvents(window: { readonly fromMs: number; readonly toMs: number }, operation: string, durationMs: number, work: Readonly<Record<string, number>>, prefix: string): ExternalEventRecord[] {
+  const events: ExternalEventRecord[] = [];
+  for (let atMs = window.fromMs + 60_000; atMs < window.toMs; atMs += 60_000) {
+    events.push(applicationEvent(`${prefix}-${atMs}`, atMs, operation, durationMs, work));
+  }
+  return events;
 }
 
 function policyFile(name: string, over: Record<string, unknown> = {}): string {
@@ -68,10 +85,10 @@ await test("verify --service reads one comparison and judges resource levels wit
   const improved = await verify(comparisonFor(CANDIDATE, now, 400, 40), []);
   assert.equal(improved.run.code, 0, improved.run.stdout + improved.run.stderr);
   assert.equal(improved.document.payload?.verdict, "improved");
-  assert.equal(improved.document.payload?.caveat, SERVICE_LEVEL_CAVEAT);
+  assert.equal(improved.document.payload?.caveat, SERVICE_COMPARISON_CAVEAT);
   assert.deepEqual(improved.urls, [`/api/v1/services/web/deployments/${CANDIDATE.id}/comparison?window=1h`]);
-  assert.ok(improved.document.warnings?.some(warning => warning.code === "resource-levels-only"));
-  assert.deepEqual(improved.document.payload?.sources.map(source => source.status), ["unavailable", "unavailable", "available"]);
+  assert.ok(improved.document.warnings?.some(warning => warning.code === "resource-levels-and-work"));
+  assert.deepEqual(improved.document.payload?.sources.map(source => source.status), ["unavailable", "unavailable", "available", "unavailable"]);
 
   const regressed = await verify(comparisonFor(CANDIDATE, now, 40, 400), []);
   assert.equal(regressed.run.code, 7);
@@ -83,7 +100,7 @@ await test("verify --service reads one comparison and judges resource levels wit
 
   const text = await runCliText(comparisonFor(CANDIDATE, now, 400, 40));
   assert.match(text, /service verdict improved/u);
-  assert.match(text, /cannot show fewer resources for the same work/u);
+  assert.match(text, /per-work ratios are descriptive/u);
 });
 
 async function runCliText(body: unknown): Promise<string> {
@@ -132,7 +149,83 @@ await test("a host policy whose metric the service's cgroup supersedes is still 
   const cgroup = await verify(body, [], policyFile("cgroup.json", { metric: "service.cpu", floor: 0.02 }));
   assert.equal(cgroup.run.code, 0, cgroup.run.stdout);
   assert.equal(cgroup.document.payload?.verdict, "improved");
-  assert.deepEqual(cgroup.document.payload?.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "available"], ["probe", "unavailable"]]);
+  assert.deepEqual(cgroup.document.payload?.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "available"], ["probe", "unavailable"], ["application", "unavailable"]]);
+});
+
+await test("application work is summarised per successful operation, and a cgroup resource is divided by work only when one operation owns it", () => {
+  const now = AT + 3 * HOUR;
+  const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  const events = [...workEvents(before, "note.save", 20, { saves: 1 }, "before"), ...workEvents(after, "note.save", 10, { saves: 1 }, "after")];
+  const rollups = cgroupRollups(CANDIDATE, 1, 0.5);
+  const body = comparisonFor(CANDIDATE, now, 0, 0, false, events, hostId => rollups.get(hostId) ?? []);
+  assert.equal(body.work.length, 1);
+  assert.equal(body.work[0]?.operation, "note.save");
+  assert.equal(body.work[0]?.before.meanDurationMs, 20);
+  assert.equal(body.work[0]?.after.meanDurationMs, 10);
+  assert.equal(body.work[0]?.before.work[0]?.durationPerUnitMs, 20);
+  assert.equal(body.work[0]?.after.work[0]?.durationPerUnitMs, 10);
+  assert.equal(body.metrics.find(metric => metric.metric === "application.note.save.duration")?.verdict, "improved");
+  assert.equal(body.metrics.find(metric => metric.metric === "application.note.save.saves.duration")?.verdict, "improved");
+  const cpu = body.metrics.find(metric => metric.metric === "application.note.save.saves.cpu");
+  assert.ok(cpu !== undefined);
+  assert.ok(cpu.before !== null && cpu.after !== null);
+  assert.ok(cpu.before > cpu.after);
+  assert.deepEqual(body.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "available"], ["probe", "unavailable"], ["application", "available"]]);
+});
+
+await test("an incomplete work counter and a shared cgroup make their ratios unavailable with the reason, never zero", () => {
+  const now = AT + 3 * HOUR;
+  const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  const incomplete = [...workEvents(before, "note.save", 20, { saves: 1 }, "incomplete"), applicationEvent("missing-saves", before.fromMs + 1, "note.save", 20, {})];
+  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, false, incomplete, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
+  const incompleteMeasurement = incompleteBody.work[0]?.before.work[0];
+  assert.equal(incompleteMeasurement?.complete, false);
+  assert.equal(incompleteMeasurement?.durationPerUnitMs, null);
+  assert.match(incompleteMeasurement?.reason ?? "", /incomplete/u);
+  const incompleteMetric = incompleteBody.metrics.find(metric => metric.metric === "application.note.save.saves.duration");
+  assert.equal(incompleteMetric?.before, null);
+  assert.match(incompleteMetric?.reason ?? "", /incomplete/u);
+
+  const shared = [...workEvents(before, "note.save", 20, { saves: 1 }, "save"), ...workEvents(before, "note.open", 20, { reads: 1 }, "open"), ...workEvents(after, "note.save", 10, { saves: 1 }, "save-after"), ...workEvents(after, "note.open", 10, { reads: 1 }, "open-after")];
+  const sharedBody = comparisonFor(CANDIDATE, now, 0, 0, false, shared, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
+  const sharedCpu = sharedBody.metrics.find(metric => metric.metric === "application.note.save.saves.cpu");
+  assert.equal(sharedCpu?.before, null);
+  assert.match(sharedCpu?.reason ?? "", /cgroup covers 2 operations/u);
+  assert.equal(sharedBody.metrics.find(metric => metric.metric === "application.note.save.duration")?.verdict, "improved");
+});
+
+await test("work policies require an operation and, for per-work metrics, a work key; level metrics reject both", () => {
+  const policy = (over: Record<string, unknown> = {}) => JSON.stringify({
+    schema: "statsctl-policy/1", id: "work", hypothesis: "Saving a note takes less work after the change.", service: "web",
+    metric: "application.durationPerWork", operation: "note.save", work: "saves", direction: "decrease", minChangePercent: 10, floor: 0.01, window: "1h", ...over
+  });
+  assert.equal(parseServicePolicyText(policy()).operation, "note.save");
+  assert.equal(parseServicePolicyText(policy()).work, "saves");
+  assert.throws(() => parseServicePolicyText(policy({ operation: undefined })), /operation must be/u);
+  assert.throws(() => parseServicePolicyText(policy({ work: undefined })), /work must be/u);
+  assert.throws(() => parseServicePolicyText(policy({ metric: "application.duration", work: "saves" })), /remove work/u);
+  assert.throws(() => parseServicePolicyText(policy({ metric: "host.cpu", operation: "note.save", work: "saves" })), /remove operation and work/u);
+  assert.throws(() => parseServicePolicyText(policy({ operation: "Note.Save" })), /operation must be/u);
+});
+
+await test("verify --service judges a typed per-work metric and reports an incomplete counter as insufficient data", async () => {
+  const now = AT + 3 * HOUR;
+  const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  const events = [...workEvents(before, "note.save", 20, { saves: 1 }, "policy-before"), ...workEvents(after, "note.save", 10, { saves: 1 }, "policy-after")];
+  const body = comparisonFor(CANDIDATE, now, 0, 0, false, events);
+  const workPolicy = policyFile("work.json", { metric: "application.durationPerWork", operation: "note.save", work: "saves", floor: 0.01 });
+  const improved = await verify(body, [], workPolicy);
+  assert.equal(improved.run.code, 0, improved.run.stdout + improved.run.stderr);
+  assert.equal(improved.document.payload?.verdict, "improved");
+  assert.equal(improved.document.payload?.target.before, 20);
+  assert.equal(improved.document.payload?.target.after, 10);
+
+  const incomplete = [...workEvents(before, "note.save", 20, { saves: 1 }, "policy-incomplete"), applicationEvent("policy-missing", before.fromMs + 1, "note.save", 20, {}), ...workEvents(after, "note.save", 10, { saves: 1 }, "policy-after-complete")];
+  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, false, incomplete);
+  const insufficient = await verify(incompleteBody, [], workPolicy);
+  assert.equal(insufficient.run.code, 5, insufficient.run.stdout);
+  assert.equal(insufficient.document.payload?.verdict, "insufficient-data");
+  assert.ok(insufficient.document.payload?.reasons.some(reason => reason.code === "target-unavailable" && /incomplete/u.test(reason.message)));
 });
 
 await test("a window that has not settled is pending and exits 5", async () => {

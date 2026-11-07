@@ -21,6 +21,7 @@ export interface MetricComparison {
   readonly deltaPercent: number | null;
   readonly verdict: Verdict;
   readonly supersededBy?: string;
+  readonly reason?: string;
 }
 export type ReasonCode =
   | "unsettled" | "disabled" | "not-ready" | "expired" | "truncated" | "stale-history" | "split" | "baseline-missing" | "baseline-split" | "overlap"

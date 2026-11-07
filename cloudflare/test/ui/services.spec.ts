@@ -7,9 +7,10 @@ import { comparisonBounds, DEPLOYMENT_BUCKET_MS } from "../../src/deployments/co
 import { INGEST_MEDIA_TYPE } from "../../src/ingest/http.ts";
 import { BUILT_ASSETS, openAssets } from "../../src/node/assets.ts";
 import { openNodeInstallation, type NodeInstallation } from "../../src/node/installation.ts";
-import { createStatsServer } from "../../src/node/server.ts";
+import { createStatsServer, observeHandler } from "../../src/node/server.ts";
 import type { ProbeFetch } from "../../src/projects/probes.ts";
 import { HostSeries, SAMPLE_STEP_MS, SAMPLES_PER_BUCKET, type HostLevels } from "../support/service-data.ts";
+import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
 
 const ORIGIN = "http://127.0.0.1:4176";
 const LOGIN = "services@example.com";
@@ -60,6 +61,15 @@ async function ingest(host: { hostId: string; token: string }, series: HostSerie
   }
 }
 
+function activity(window: { readonly fromMs: number; readonly toMs: number }, durationMs: number, prefix: string): ExternalEvent[] {
+  const events: ExternalEvent[] = [];
+  for (let atMs = window.fromMs + 60_000; atMs < window.toMs; atMs += 60_000) {
+    const eventId = `${prefix}-${atMs}`;
+    events.push({ schemaVersion: 1, eventId, atMs, operation: "note.save", outcome: "ok", durationMs, work: { saves: 1 }, release: "1.1.0", service: "web" });
+  }
+  return events;
+}
+
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
@@ -96,9 +106,10 @@ test.beforeAll(async () => {
   const batchToken = await createService({ name: "batch", hostIds: [batchHost.hostId] });
   await mark("batch", batchToken, "2.0.0", [batchHost.hostId], FIRST_AT);
   await mark("batch", batchToken, "2.1.0", [batchHost.hostId], SECOND_AT);
+  await installation.observe.ingestExternal("web", [...activity(before, 40, "before"), ...activity(after, 55, "after")]);
   nowMs = NOW;
 
-  server = createStatsServer({ installation: request => installation.core.fetch(request), assets: await openAssets(BUILT_ASSETS), allowedLogins: new Set([LOGIN]), transport: "tcp" });
+  server = createStatsServer({ installation: request => installation.core.fetch(request), observe: observeHandler(installation), assets: await openAssets(BUILT_ASSETS), allowedLogins: new Set([LOGIN]), transport: "tcp" });
   await new Promise<void>(resolve => server.listen(4176, "127.0.0.1", resolve));
 });
 
@@ -147,7 +158,12 @@ test("a service page compares its cgroup in place of host levels, labels the sou
   await expect(page.getByText("Service cgroup: web cgroup on 1 host, used for service.cpu, service.memory, service.io")).toBeVisible();
   await expect(comparison.getByRole("row", { name: /Health probe mean response time/u })).toContainText("40");
   await expect(comparison.getByRole("row", { name: /Host memory pressure/u })).toContainText("unavailable");
-  await expect(page.getByText("resource levels", { exact: false }).first()).toBeAttached();
+  await expect(page.getByText(/Application: \d+ successful events/u)).toBeVisible();
+  const operations = page.getByRole("table", { name: "Application operations" });
+  await expect(operations.getByRole("row", { name: /note\.save/u })).toContainText("40");
+  await expect(operations.getByRole("row", { name: /note\.save/u })).toContainText("55");
+  await expect(page.getByText("0 open issues").first()).toBeVisible();
+  await expect(page.getByText("per-work ratios are descriptive", { exact: false }).first()).toBeAttached();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.locator("main.content")).toHaveScreenshot("service-web.webp");
 });
@@ -159,6 +175,7 @@ test("a service with no host data and no health URL shows every source unavailab
   await expect(page.getByText("No verdict")).toBeVisible();
   await expect(page.getByText("Health probe: unavailable, The service has no health URL.")).toBeVisible();
   await expect(page.getByText("Service cgroup: unavailable, No host reported the service's cgroup in both windows; host metrics are used.")).toBeVisible();
+  await expect(page.getByText(/0 open issues|issues unavailable/u).first()).toBeVisible();
   await expect(page.locator("main.content")).toHaveScreenshot("service-batch.webp");
 });
 

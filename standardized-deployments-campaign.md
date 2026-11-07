@@ -9,7 +9,7 @@ Repositories: `/Users/josh/d/stats`, `/Users/josh/d/tansu`, `/Users/josh/d/nicef
 ## Status
 
 Goal: standard deployments + Stats application telemetry.
-Accepted: `S1`, `S2`, `S3`, `S4`, `S5`, `S6`, `S7`, `S8`, `S9`, `S10`, `S11`. Next: `S12`.
+Accepted: `S1`, `S2`, `S3`, `S4`, `S5`, `S6`, `S7`, `S8`, `S9`, `S10`, `S11`, `S12`. Next: `S13`.
 Released: `v0.1.0` with macOS and Linux agent binaries, `statsctl`, `install.sh`, and `SHA256SUMS`.
 Red: none. Parked: producer registry publication (owner action; `make publish-producer` needs R2 S3 credentials and `make publish-producer-crate` was not attempted). `S11` uses the local `@stats/producer` file dependency until D3 is published.
 

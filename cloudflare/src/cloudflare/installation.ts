@@ -5,6 +5,7 @@ import { cloudflareSqlScopes } from "./sql.ts";
 import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
 import { deploymentsEnabled } from "./deployments/collector.ts";
 import type { DeploymentPoll } from "../deployments/model.ts";
+import type { ExternalEventRecord } from "../observe/ingest/model.ts";
 import type { OperationRun } from "../operations.ts";
 import type { CollectorRun } from "../projects/store.ts";
 import type { SystemInfo } from "../protocol.ts";
@@ -15,8 +16,24 @@ export class Installation extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     const clock = cloudflareClock(() => this.env);
+    const observe = "OBSERVE" in this.env ? this.env.OBSERVE : undefined;
     this.core = new InstallationCore(
-      { sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations },
+      {
+        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations,
+        ...(observe === undefined ? {} : {
+          readApplicationEvents: async (service: string, fromMs: number, toMs: number) => {
+            const url = new URL(`https://observe/${encodeURIComponent(service)}/external`);
+            url.searchParams.set("from", String(fromMs));
+            url.searchParams.set("to", String(toMs));
+            url.searchParams.set("limit", "5000");
+            const response = await observe.fetch(new Request(url));
+            if (!response.ok) throw new Error(`observe external read failed (${response.status})`);
+            const body = await response.json() as { readonly events?: unknown };
+            if (!Array.isArray(body.events)) throw new Error("observe external read returned no events array");
+            return { events: body.events as readonly ExternalEventRecord[], truncated: body.events.length >= 5000 };
+          }
+        })
+      },
       { projects: () => this.env.PROJECTS, deploymentsEnabled: () => deploymentsEnabled(this.env) }
     );
     void ctx.blockConcurrencyWhile(async () => {

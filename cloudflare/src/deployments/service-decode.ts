@@ -1,7 +1,7 @@
 import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
 import { decodeDeploymentComparison } from "./decode.ts";
 import type { ComparisonWindow } from "./compare.ts";
-import { SOURCE_NAMES, type ServiceComparison, type SourceStatus } from "./service-compare.ts";
+import { SOURCE_NAMES, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WorkSummary } from "./service-compare.ts";
 import { UUID, annotation, record, type Deployment } from "./model.ts";
 
 function string(value: unknown, limit: number): string {
@@ -83,6 +83,56 @@ export function decodeServiceDeploymentHistory(value: unknown, service: string):
   return { projectId: service, worker: string(item["worker"], 63), enabled: true, sync: null, versions: [], deployments, markers };
 }
 
+function nullableNumber(value: unknown): number | null {
+  return value === null ? null : numberValue(value);
+}
+
+function numberValue(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid service number");
+  return value;
+}
+
+function booleanValue(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new Error("invalid service boolean");
+  return value;
+}
+
+function workBucket(value: unknown): WorkBucket {
+  const item = record(value);
+  return { atMs: time(item["atMs"]), successes: numberValue(item["successes"]), failures: numberValue(item["failures"]) };
+}
+
+function workMeasurement(value: unknown): WorkMeasurement {
+  const item = record(value);
+  return {
+    key: string(item["key"], 32),
+    total: numberValue(item["total"]),
+    complete: booleanValue(item["complete"]),
+    durationPerUnitMs: nullableNumber(item["durationPerUnitMs"]),
+    cpuPerUnit: nullableNumber(item["cpuPerUnit"]),
+    ioPerUnit: nullableNumber(item["ioPerUnit"]),
+    reason: nullableString(item["reason"], 1000)
+  };
+}
+
+function workSide(value: unknown): WorkSide {
+  const item = record(value);
+  return {
+    successes: numberValue(item["successes"]),
+    failures: numberValue(item["failures"]),
+    failureRate: nullableNumber(item["failureRate"]),
+    meanDurationMs: nullableNumber(item["meanDurationMs"]),
+    throughputPerMinute: nullableNumber(item["throughputPerMinute"]),
+    work: list(item["work"], 16, workMeasurement),
+    buckets: list(item["buckets"], 10_000, workBucket)
+  };
+}
+
+function workSummary(value: unknown): WorkSummary {
+  const item = record(value);
+  return { operation: string(item["operation"], 64), before: workSide(item["before"]), after: workSide(item["after"]) };
+}
+
 export function decodeServiceComparison(value: unknown, deploymentId: string, window: ComparisonWindow): ServiceComparison {
   const item = record(value);
   const sources = list(item["sources"], SOURCE_NAMES.length, (raw): SourceStatus => {
@@ -92,5 +142,5 @@ export function decodeServiceComparison(value: unknown, deploymentId: string, wi
     if (name === undefined || (status !== "available" && status !== "unavailable")) throw new Error("invalid service source");
     return { source: name, status, detail: string(source["detail"], 200) };
   });
-  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources };
+  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources, work: item["work"] === undefined ? [] : list(item["work"], 64, workSummary) };
 }

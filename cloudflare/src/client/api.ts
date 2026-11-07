@@ -2,6 +2,8 @@ import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/h
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
 import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
+import { decodeIssues } from "../observe/client/decode.ts";
+import type { IssueSummary, Page } from "../observe/core/store.ts";
 import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
 
@@ -219,6 +221,10 @@ export type { Service };
 
 export function getServices(signal: AbortSignal): Promise<readonly Service[]> {
   return getJson("/api/v1/services", decodeServices, signal);
+}
+
+export function getServiceIssues(service: string, signal: AbortSignal): Promise<Page<IssueSummary>> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/issues?state=open&limit=50`, decodeIssues, signal);
 }
 
 export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {

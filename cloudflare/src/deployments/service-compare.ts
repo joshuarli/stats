@@ -1,21 +1,81 @@
 import { combineRollups, rollupPoints, serviceLevels, type NetPoint, type DiskPoint, type RollupPayload, type Series, type SummaryPoint } from "../aggregate.ts";
 import { MINUTE_MS } from "../limits.ts";
+import type { ExternalEventRecord } from "../observe/ingest/model.ts";
 import { bucketRows, DEPLOYMENT_BUCKET_MS, gateDeployment, judge, presentMean, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type MetricRow, type WindowBounds } from "./compare.ts";
 import type { Deployment } from "./model.ts";
 
 export const SERVICE_SETTLE_MS = 15 * MINUTE_MS;
 export const SERVICE_PROBE_NAME = "health";
 export const MIN_BUCKET_COVERAGE_MS = 150_000;
+export const SUCCESSFUL_OUTCOME = "ok";
 
-export const SERVICE_LEVEL_CAVEAT = "Resource levels only: a service does not report its own work counts, so this cannot show fewer resources for the same work.";
+export const SERVICE_COMPARISON_CAVEAT = "Resource levels and per-work ratios are descriptive, not causal. A per-work ratio is shown only when the resource is attributable and the work counter is complete; otherwise it is unavailable.";
+
+export type WorkMetricKind = "application.duration" | "application.failure" | "application.durationPerWork" | "application.cpuPerWork" | "application.ioPerWork";
+
+export interface WorkMetricDefinition {
+  readonly metric: WorkMetricKind;
+  readonly label: string;
+  readonly unit: string;
+  readonly floor: number;
+  readonly needsWork: boolean;
+}
+
+export const SERVICE_WORK_METRICS: readonly WorkMetricDefinition[] = [
+  { metric: "application.duration", label: "Application duration per successful event", unit: "ms", floor: 1, needsWork: false },
+  { metric: "application.failure", label: "Application failure share", unit: "%", floor: 1, needsWork: false },
+  { metric: "application.durationPerWork", label: "Application duration per work unit", unit: "ms", floor: 0.01, needsWork: true },
+  { metric: "application.cpuPerWork", label: "Service CPU per work unit", unit: "CPU-s", floor: 0.0001, needsWork: true },
+  { metric: "application.ioPerWork", label: "Service I/O per work unit", unit: "B", floor: 1, needsWork: true }
+];
+
+export function applicationMetricName(metric: WorkMetricKind, operation: string, work?: string): string {
+  if (metric === "application.duration") return `application.${operation}.duration`;
+  if (metric === "application.failure") return `application.${operation}.failure`;
+  if (work === undefined) throw new Error("a per-work metric needs a work key");
+  const suffix = metric === "application.durationPerWork" ? "duration" : metric === "application.cpuPerWork" ? "cpu" : "io";
+  return `application.${operation}.${work}.${suffix}`;
+}
+
+export interface WorkBucket {
+  readonly atMs: number;
+  readonly successes: number;
+  readonly failures: number;
+}
+
+export interface WorkMeasurement {
+  readonly key: string;
+  readonly total: number;
+  readonly complete: boolean;
+  readonly durationPerUnitMs: number | null;
+  readonly cpuPerUnit: number | null;
+  readonly ioPerUnit: number | null;
+  readonly reason: string | null;
+}
+
+export interface WorkSide {
+  readonly successes: number;
+  readonly failures: number;
+  readonly failureRate: number | null;
+  readonly meanDurationMs: number | null;
+  readonly throughputPerMinute: number | null;
+  readonly work: readonly WorkMeasurement[];
+  readonly buckets: readonly WorkBucket[];
+}
+
+export interface WorkSummary {
+  readonly operation: string;
+  readonly before: WorkSide;
+  readonly after: WorkSide;
+}
 
 export interface MinuteRollup {
   readonly bucketMs: number;
   readonly payload: RollupPayload;
 }
 
-export type SourceName = "hosts" | "cgroup" | "probe";
-export const SOURCE_NAMES: readonly SourceName[] = ["hosts", "cgroup", "probe"];
+export type SourceName = "hosts" | "cgroup" | "probe" | "application";
+export const SOURCE_NAMES: readonly SourceName[] = ["hosts", "cgroup", "probe", "application"];
 
 export interface SourceStatus {
   readonly source: SourceName;
@@ -26,6 +86,7 @@ export interface SourceStatus {
 export interface ServiceComparison extends DeploymentComparison {
   readonly hostIds: readonly string[];
   readonly sources: readonly SourceStatus[];
+  readonly work: readonly WorkSummary[];
 }
 
 interface LevelMetric {
@@ -120,12 +181,138 @@ export interface ServiceComparisonInput {
   readonly window: ComparisonWindow;
   readonly now: number;
   readonly truncated: boolean;
+  readonly applicationEvents?: readonly ExternalEventRecord[];
+  readonly applicationTruncated?: boolean;
+  readonly applicationProblem?: string | null;
 }
 
-function sourceStatuses(input: ServiceComparisonInput, metrics: readonly MetricComparison[]): SourceStatus[] {
+interface WorkBucketAccumulator {
+  atMs: number;
+  successes: number;
+  failures: number;
+}
+
+interface WorkAccumulator {
+  successes: number;
+  failures: number;
+  durationMs: number;
+  work: Map<string, { present: number; total: number }>;
+  buckets: Map<number, WorkBucketAccumulator>;
+}
+
+function summarizeWorkSide(events: readonly ExternalEventRecord[], bounds: WindowBounds, cpuCores: number | null, ioBytesPerSec: number | null): Map<string, WorkSide> {
+  const byOperation = new Map<string, WorkAccumulator>();
+  for (const record of events) {
+    const event = record.event;
+    if (event.atMs < bounds.fromMs || event.atMs >= bounds.toMs) continue;
+    const operation: WorkAccumulator = byOperation.get(event.operation) ?? {
+      successes: 0, failures: 0, durationMs: 0, work: new Map<string, { present: number; total: number }>(), buckets: new Map<number, WorkBucketAccumulator>()
+    };
+    const success = event.outcome === SUCCESSFUL_OUTCOME;
+    const bucketAt = Math.floor(event.atMs / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS;
+    const bucket: WorkBucketAccumulator = operation.buckets.get(bucketAt) ?? { atMs: bucketAt, successes: 0, failures: 0 };
+    if (success) {
+      operation.successes += 1;
+      operation.durationMs += event.durationMs;
+      bucket.successes += 1;
+      for (const [key, value] of Object.entries(event.work)) {
+        const count: { present: number; total: number } = operation.work.get(key) ?? { present: 0, total: 0 };
+        count.present += 1;
+        count.total += value;
+        operation.work.set(key, count);
+      }
+    } else {
+      operation.failures += 1;
+      bucket.failures += 1;
+    }
+    operation.buckets.set(bucketAt, bucket);
+    byOperation.set(event.operation, operation);
+  }
+  const successfulOperations = [...byOperation].filter(([, value]) => value.successes > 0);
+  const seconds = (bounds.toMs - bounds.fromMs) / 1000;
+  const minimumMinutes = (bounds.toMs - bounds.fromMs) / 60_000;
+  return new Map([...byOperation].map(([operation, value]) => {
+    const keys = [...value.work].map(([key, count]) => {
+      const complete = value.successes > 0 && count.present === value.successes && count.total > 0;
+      const reasons: string[] = [];
+      if (value.successes === 0) reasons.push("no successful events");
+      else if (count.present !== value.successes) reasons.push(`the work counter is incomplete: ${count.present} of ${value.successes} successful events reported ${key}`);
+      else if (count.total === 0) reasons.push(`no ${key} work units were reported`);
+      if (successfulOperations.length !== 1) reasons.push(`the service cgroup covers ${successfulOperations.length} operations`);
+      if (cpuCores === null) reasons.push("the service cgroup reported no CPU level in this window");
+      if (ioBytesPerSec === null) reasons.push("the service cgroup reported no I/O level in this window");
+      const perUnit = complete ? value.durationMs / count.total : null;
+      return {
+        key, total: count.total, complete,
+        durationPerUnitMs: perUnit,
+        cpuPerUnit: complete && successfulOperations.length === 1 && cpuCores !== null ? cpuCores * seconds / count.total : null,
+        ioPerUnit: complete && successfulOperations.length === 1 && ioBytesPerSec !== null ? ioBytesPerSec * seconds / count.total : null,
+        reason: reasons.length === 0 ? null : reasons.join("; ")
+      };
+    });
+    const total = value.successes + value.failures;
+    return [operation, {
+      successes: value.successes,
+      failures: value.failures,
+      failureRate: total === 0 ? null : value.failures / total * 100,
+      meanDurationMs: value.successes === 0 ? null : value.durationMs / value.successes,
+      throughputPerMinute: minimumMinutes === 0 ? null : total / minimumMinutes,
+      work: keys.sort((left, right) => left.key.localeCompare(right.key)),
+      buckets: [...value.buckets.values()].sort((left, right) => left.atMs - right.atMs)
+    }];
+  }));
+}
+
+function comparisonReason(before: WorkMeasurement | undefined, after: WorkMeasurement | undefined): string | undefined {
+  const sides = [before?.reason === null ? undefined : before?.reason, after?.reason === null ? undefined : after?.reason].filter((reason): reason is string => reason !== undefined);
+  if (sides.length === 0) return undefined;
+  return [...new Set(sides)].join("; ");
+}
+
+function workMetric(metric: string, label: string, unit: string, before: number | null, after: number | null, floor: number, blocked: boolean): MetricComparison {
+  return { metric, label, unit, before, after, ...judge(before, after, floor, blocked) };
+}
+
+function workMetrics(work: readonly WorkSummary[], blocked: boolean, unavailableReason?: string): MetricComparison[] {
+  const metrics: MetricComparison[] = [];
+  const add = (metric: string, label: string, unit: string, before: number | null, after: number | null, floor: number, reason?: string) => {
+    const unavailable = unavailableReason === undefined ? undefined : `comparison windows are not comparable: ${unavailableReason}`;
+    const compared = workMetric(metric, label, unit, unavailable === undefined ? before : null, unavailable === undefined ? after : null, floor, blocked);
+    const detail = unavailable ?? reason;
+    metrics.push(detail === undefined ? compared : { ...compared, reason: detail });
+  };
+  for (const summary of work) {
+    const operation = summary.operation;
+    add(applicationMetricName("application.duration", operation), `${operation} duration per successful event`, "ms", summary.before.meanDurationMs, summary.after.meanDurationMs, 1);
+    add(applicationMetricName("application.failure", operation), `${operation} failure share`, "%", summary.before.failureRate, summary.after.failureRate, 1);
+    const keys = [...new Set([...summary.before.work, ...summary.after.work].map(item => item.key))].sort();
+    for (const key of keys) {
+      const before = summary.before.work.find(item => item.key === key);
+      const after = summary.after.work.find(item => item.key === key);
+      const reason = comparisonReason(before, after);
+      add(applicationMetricName("application.durationPerWork", operation, key), `${operation} duration per ${key}`, `ms/${key}`, before?.durationPerUnitMs ?? null, after?.durationPerUnitMs ?? null, 0.01, reason);
+      add(applicationMetricName("application.cpuPerWork", operation, key), `${operation} service CPU per ${key}`, `CPU-s/${key}`, before?.cpuPerUnit ?? null, after?.cpuPerUnit ?? null, 0.0001, reason);
+      add(applicationMetricName("application.ioPerWork", operation, key), `${operation} service I/O per ${key}`, `B/${key}`, before?.ioPerUnit ?? null, after?.ioPerUnit ?? null, 1, reason);
+    }
+  }
+  return metrics;
+}
+
+function sourceStatuses(input: ServiceComparisonInput, metrics: readonly MetricComparison[], work: readonly WorkSummary[]): SourceStatus[] {
   const measured = (source: SourceName) => SERVICE_LEVEL_METRICS.filter(entry => entry.source === source && metrics.some(metric => metric.metric === entry.metric && metric.before !== null && metric.after !== null));
   const hosts = `${input.hostIds.length} ${input.hostIds.length === 1 ? "host" : "hosts"}`;
   const cgroup = measured("cgroup");
+  const successes = work.reduce((total, summary) => total + summary.before.successes + summary.after.successes, 0);
+  const applicationMeasured = metrics.some(metric => metric.metric.startsWith("application.") && metric.before !== null && metric.after !== null);
+  const application = input.applicationProblem !== null && input.applicationProblem !== undefined
+    ? { source: "application" as const, status: "unavailable" as const, detail: `Application telemetry unavailable: ${input.applicationProblem}` }
+    : input.applicationTruncated === true
+      ? { source: "application" as const, status: "unavailable" as const, detail: "Application telemetry was truncated for this window; a partial count is not used." }
+      : work.length === 0
+      ? { source: "application" as const, status: "unavailable" as const, detail: "No application events were reported in either window." }
+      : !applicationMeasured
+        ? { source: "application" as const, status: "unavailable" as const, detail: "Per-work ratios are unavailable because the comparison windows are not comparable." }
+        : { source: "application" as const, status: "available" as const, detail: `${successes} successful events across ${work.length} ${work.length === 1 ? "operation" : "operations"}` };
   return [
     measured("hosts").length > 0
       ? { source: "hosts", status: "available", detail: hosts }
@@ -137,11 +324,14 @@ function sourceStatuses(input: ServiceComparisonInput, metrics: readonly MetricC
       ? { source: "probe", status: "unavailable", detail: "The service has no health URL." }
       : measured("probe").length > 0
         ? { source: "probe", status: "available", detail: "health URL" }
-        : { source: "probe", status: "unavailable", detail: "No probe results in both windows." }
+        : { source: "probe", status: "unavailable", detail: "No probe results in both windows." },
+    application
   ];
 }
 
-/** Descriptive comparison of resource levels around a pushed marker, not a causal claim and not work-normalised. A service's cgroup series supersedes the matching host series when it has values in both windows; the host rows stay in the response, marked supersededBy and listed after the rest. */
+const EMPTY_WORK_SIDE: WorkSide = { successes: 0, failures: 0, failureRate: null, meanDurationMs: null, throughputPerMinute: null, work: [], buckets: [] };
+
+/** Descriptive comparison of resource levels and per-work application ratios around a pushed marker, not a causal claim. A service's cgroup series supersedes the matching host series when it has values in both windows; the host rows stay in the response, marked supersededBy and listed after the rest. A cgroup resource is divided by work only when one operation owns the service's successful events in that window. */
 export function compareServiceDeployment(input: ServiceComparisonInput): ServiceComparison {
   const gate = gateDeployment({
     deployment: input.deployment, deployments: input.deployments, window: input.window, now: input.now, settleMs: SERVICE_SETTLE_MS,
@@ -162,24 +352,32 @@ export function compareServiceDeployment(input: ServiceComparisonInput): Service
   };
   const shown = raw.filter(({ entry }) => entry.source !== "cgroup" || usable.has(entry.metric));
   const chosen = [...shown.filter(({ entry }) => supersededBy(entry.metric) === undefined), ...shown.filter(({ entry }) => supersededBy(entry.metric) !== undefined)];
-  if (usable.size === 0) gate.block("no-data", "No source reported enough data in both windows; missing data is not zero.");
+  const events = input.applicationEvents ?? [];
+  const beforeWork = summarizeWorkSide(events, gate.before, read(gate.before, "service.cpu"), read(gate.before, "service.io"));
+  const afterWork = summarizeWorkSide(events, gate.after, read(gate.after, "service.cpu"), read(gate.after, "service.io"));
+  const operations = [...new Set([...beforeWork.keys(), ...afterWork.keys()])].sort();
+  const work = operations.map((operation): WorkSummary => ({ operation, before: beforeWork.get(operation) ?? EMPTY_WORK_SIDE, after: afterWork.get(operation) ?? EMPTY_WORK_SIDE }));
+  const workHasData = work.some(summary => summary.before.meanDurationMs !== null && summary.after.meanDurationMs !== null);
+  if (usable.size === 0 && !workHasData) gate.block("no-data", "No source reported enough data in both windows; missing data is not zero.");
   const blocked = gate.reasons.length > 0;
-  const metrics = chosen.map(({ entry, before, after }): MetricComparison => {
+  const levelMetrics = chosen.map(({ entry, before, after }): MetricComparison => {
     const replacement = supersededBy(entry.metric);
     return { metric: entry.metric, label: entry.label, unit: entry.unit, before, after, ...judge(before, after, entry.floor, blocked), ...(replacement === undefined ? {} : { supersededBy: replacement }) };
   });
+  const metrics = [...levelMetrics, ...workMetrics(work, blocked, gate.reasons.length === 0 ? undefined : gate.reasons.join("; "))];
   const cgroupUsed = shown.some(({ entry }) => entry.source === "cgroup");
   const warnings = [
     ...gate.warnings,
-    SERVICE_LEVEL_CAVEAT,
+    SERVICE_COMPARISON_CAVEAT,
     cgroupUsed
       ? "Host metrics include every process on the host; cgroup metrics cover only the processes in the service's unit. Heuristic signals, not significance tests or proof of causation."
       : "Host rollups include every process on the host, not only this service. Heuristic signals, not significance tests or proof of causation.",
+    "Application latency is measured by the application; a successful event has outcome \"ok\". Application work counts are the application's own measurements, and a missing key makes that ratio unavailable.",
     "Probe times are not user-request latency."
   ];
   return {
     deploymentId: input.deployment.id, window: input.window, before: gate.before, after: gate.after, readyAtMs: gate.readyAtMs,
     beforeInvocations: null, afterInvocations: null, spec: gate.spec, reasons: gate.reasons, reasonCodes: gate.reasonCodes, deferredObjects: false,
-    analyticsInvocations: { before: [], after: [] }, warnings, metrics, hostIds: input.hostIds, sources: sourceStatuses(input, metrics)
+    analyticsInvocations: { before: [], after: [] }, warnings, metrics, hostIds: input.hostIds, sources: sourceStatuses(input, metrics, work), work
   };
 }
