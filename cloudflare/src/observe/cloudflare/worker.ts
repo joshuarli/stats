@@ -70,6 +70,6 @@ export default {
   async fetch(request: Request, env: ObserveEnv): Promise<Response> {
     const match = SERVICE_PATH.exec(new URL(request.url).pathname);
     if (match === null || !isObservedService(match[1]!)) return Response.json({ error: { code: "not_found", message: "unknown observed service" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
-    return handleApi(request, match[2]!, store(env, match[1]));
+    return handleApi(request, match[2]!, store(env, match[1]), match[1]!);
   }
 } satisfies ExportedHandler<ObserveEnv>;

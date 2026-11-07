@@ -5,6 +5,8 @@ import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
+import { encodeEvent } from "../ingest/codec.ts";
+import { MAX_BATCHES_PER_WINDOW, PROVENANCE, RATE_LIMIT_WINDOW_MS, type ExternalEvent, type ExternalEventRecord, type ExternalFilter, type ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
 
 export type IssueState = "open" | "resolved";
@@ -396,7 +398,23 @@ const STATEMENTS = [
     filter_revision INTEGER NOT NULL,
     PRIMARY KEY (bucket_at, version, stage, outcome, route)
   ) WITHOUT ROWID`,
-  ...COUNT_STATEMENTS
+  ...COUNT_STATEMENTS,
+  `CREATE TABLE IF NOT EXISTS observe_external_events (
+    service TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    event_at INTEGER NOT NULL,
+    provenance TEXT NOT NULL CHECK (provenance = '${PROVENANCE}'),
+    payload TEXT NOT NULL,
+    PRIMARY KEY (service, event_id)
+  ) WITHOUT ROWID`,
+  "CREATE INDEX IF NOT EXISTS observe_external_events_time ON observe_external_events (service, event_at)",
+  `CREATE TABLE IF NOT EXISTS observe_ingest_windows (
+    service TEXT NOT NULL,
+    window_start INTEGER NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (service, window_start)
+  ) WITHOUT ROWID`
 ];
 
 export function initializeStore(db: SqlStatements): void {
@@ -562,6 +580,58 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
     recordWriteCost(db, nowMs, "ingest", result.accepted, db.rowsWritten() - writtenBefore);
   });
   return result;
+}
+
+export function ingestExternal(db: SqlStatements, service: string, events: readonly ExternalEvent[], nowMs: number): ExternalIngest {
+  const windowStart = nowMs - (nowMs % RATE_LIMIT_WINDOW_MS);
+  return db.transaction((): ExternalIngest => {
+    const count = db.rows<{ count: number }>("SELECT count FROM observe_ingest_windows WHERE service = ? AND window_start = ?", service, windowStart)[0]?.count ?? 0;
+    if (count >= MAX_BATCHES_PER_WINDOW) return { ok: false, code: "rate_limited" };
+    db.run(
+      "INSERT INTO observe_ingest_windows (service, window_start, count) VALUES (?, ?, 1) ON CONFLICT (service, window_start) DO UPDATE SET count = count + 1",
+      service, windowStart
+    );
+    const stored = db.rows<{ event_id: string; payload: string }>(
+      "SELECT event_id, payload FROM observe_external_events WHERE service = ? AND event_id IN (SELECT value FROM json_each(?))",
+      service, JSON.stringify(events.map(event => event.eventId))
+    );
+    const prior = new Map(stored.map(row => [row.event_id, row.payload]));
+    for (const event of events) {
+      const previous = prior.get(event.eventId);
+      if (previous !== undefined && previous !== encodeEvent(event)) return { ok: false, code: "event_conflict" };
+    }
+    const writtenBefore = db.rowsWritten();
+    let accepted = 0;
+    let duplicate = 0;
+    for (const event of events) {
+      if (prior.has(event.eventId)) {
+        duplicate += 1;
+        continue;
+      }
+      db.run(
+        "INSERT INTO observe_external_events (event_id, service, received_at, event_at, provenance, payload) VALUES (?, ?, ?, ?, ?, ?)",
+        event.eventId, service, nowMs, event.atMs, PROVENANCE, encodeEvent(event)
+      );
+      accepted += 1;
+    }
+    recordWriteCost(db, nowMs, "ingest", accepted, db.rowsWritten() - writtenBefore);
+    return { ok: true, accepted, duplicate };
+  });
+}
+
+export function readExternalEvents(db: SqlStatements, service: string, nowMs: number, filter: ExternalFilter = {}): readonly ExternalEventRecord[] {
+  const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
+  const limit = Math.min(Math.max(filter.limit ?? 1000, 1), 5000);
+  return db.rows<{ event_id: string; service: string; received_at: number; payload: string }>(
+    "SELECT event_id, service, received_at, payload FROM observe_external_events WHERE service = ? AND event_at >= ? AND event_at <= ? ORDER BY event_at, event_id LIMIT ?",
+    service, fromMs, toMs, limit
+  ).map(row => ({
+    eventId: row.event_id,
+    service: row.service,
+    receivedAtMs: row.received_at,
+    provenance: PROVENANCE,
+    event: JSON.parse(row.payload) as ExternalEvent
+  }));
 }
 
 function keptCount(invocation: PreparedInvocation, nowMs: number): CountDelta {
@@ -802,6 +872,12 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
     db.run(`DELETE FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline})`, rolloutCutoff, rolloutCutoff);
     db.run("DELETE FROM observe_version_labels WHERE updated_at <= ? AND version NOT IN (SELECT version FROM observe_rollout_shares)", rolloutCutoff);
     db.run("DELETE FROM observe_artifacts WHERE rowid NOT IN (SELECT rowid FROM observe_artifacts ORDER BY uploaded_at DESC, version DESC, file DESC LIMIT ?)", MAX_ARTIFACTS);
+    const expiredExternal = count(db, "SELECT COUNT(*) AS n FROM observe_external_events WHERE received_at <= ? OR event_at <= ?", cutoff, cutoff);
+    db.run(
+      "DELETE FROM observe_external_events WHERE event_id IN (SELECT event_id FROM observe_external_events WHERE received_at <= ? OR event_at <= ? ORDER BY event_at LIMIT ?)",
+      cutoff, cutoff, CLEANUP_BATCH
+    );
+    db.run("DELETE FROM observe_ingest_windows WHERE window_start < ?", nowMs - 2 * RATE_LIMIT_WINDOW_MS);
     const evicted = evict(db);
     recordHealth(db, nowMs, [
       ...Array.from({ length: evicted.invocations }, (): HealthEvent => ({ counter: "evicted", reason: "invocations", example: null })),
@@ -810,8 +886,8 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
       ...Array.from({ length: Math.max(outcomeExcess, 0) }, (): HealthEvent => ({ counter: "evicted", reason: "outcomes", example: null }))
     ]);
     recordWriteCost(db, nowMs, "cleanup", Math.min(expiredInvocations, CLEANUP_BATCH) + evicted.invocations, db.rowsWritten() - writtenBefore);
-    const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH);
-    return { deleted, evicted: evicted.invocations + evicted.occurrences, more: expiredInvocations > CLEANUP_BATCH || expiredOccurrences > CLEANUP_BATCH };
+    const deleted = Math.min(expiredInvocations, CLEANUP_BATCH) + Math.min(expiredOccurrences, CLEANUP_BATCH) + Math.min(expiredExternal, CLEANUP_BATCH);
+    return { deleted, evicted: evicted.invocations + evicted.occurrences, more: expiredInvocations > CLEANUP_BATCH || expiredOccurrences > CLEANUP_BATCH || expiredExternal > CLEANUP_BATCH };
   });
 }
 

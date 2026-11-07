@@ -161,7 +161,7 @@ async function observe(request, response, servicePath, url) {
   if (scenarioStore !== undefined) {
     const body = request.method === "POST" ? await readBody(request) : undefined;
     const headers = { "content-type": request.headers["content-type"] ?? "" };
-    const answer = await handleApi(new Request(`https://observe/${route}${url.search}`, { method: request.method, headers, body }), `/${route}`, scenarioStore);
+    const answer = await handleApi(new Request(`https://observe/${route}${url.search}`, { method: request.method, headers, body }), `/${route}`, scenarioStore, service);
     const payload = Buffer.from(await answer.arrayBuffer());
     response.writeHead(answer.status, { "Content-Type": answer.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" });
     return response.end(payload);

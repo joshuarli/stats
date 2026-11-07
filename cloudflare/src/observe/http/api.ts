@@ -3,6 +3,8 @@ import { OPERATION_IDS, type OperationId } from "../producer/channel.ts";
 import type { ObserveService } from "../core/service.ts";
 import { MAX_ARTIFACT_BYTES, MAX_LABEL_BYTES, MAX_PAGE_SIZE, MAX_ROLLOUTS_PER_BATCH, OPERATION_BUCKET_MS, RETENTION_MS } from "../core/limits.ts";
 import { ARTIFACT_FILE, VERSION, type ObservedRollout, type VersionLabel } from "../core/model.ts";
+import { decodeBatch } from "../ingest/codec.ts";
+import { MAX_BATCH_BYTES, type ExternalFilter } from "../ingest/model.ts";
 import { readLimitedText } from "../../body.ts";
 
 
@@ -182,9 +184,23 @@ async function readState(request: Request): Promise<IssueState> {
   return issueState((body as { state?: unknown }).state);
 }
 
-export async function handleApi(request: Request, path: string, store: ObserveService): Promise<Response> {
+export async function handleApi(request: Request, path: string, store: ObserveService, service: string, nowMs: number = Date.now()): Promise<Response> {
   const url = new URL(request.url);
   try {
+    if (path === "/ingest/observe/v1/batches") {
+      if (request.method !== "POST") return failure(405, "invalid_request", "method not allowed");
+      params(url, []);
+      if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return failure(415, "unsupported_media_type", "application/json required");
+      const declared = request.headers.get("content-length");
+      if (declared !== null && Number(declared) > MAX_BATCH_BYTES) return failure(413, "too_large", `batch exceeds ${MAX_BATCH_BYTES} bytes`);
+      const body = await readLimitedText(request, MAX_BATCH_BYTES);
+      if (body === null) return failure(413, "too_large", `batch exceeds ${MAX_BATCH_BYTES} bytes`);
+      const decoded = decodeBatch(body, { service, nowMs });
+      if (!decoded.ok) return failure(400, decoded.code, decoded.message);
+      const result = await store.ingestExternal(service, decoded.batch.events);
+      if (!result.ok) return result.code === "rate_limited" ? failure(429, "rate_limited", "too many batches in this minute") : failure(409, "event_conflict", "an event id was already stored with different content");
+      return json({ accepted: result.accepted, duplicate: result.duplicate }, result.accepted > 0 ? 202 : 200);
+    }
     const artifact = /^\/artifacts\/([^/]+)\/([^/]+)$/u.exec(path);
     if (artifact !== null) {
       if (request.method !== "PUT") return failure(405, "invalid_request", "method not allowed");
@@ -232,6 +248,21 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
     if (path === "/explore") return json(await store.explore(exploreFilter(params(url, ["from", "to", "route"]))));
     if (path === "/objects") return json(await store.objects(exploreFilter(params(url, ["from", "to"]))));
     if (path === "/window") return json(await store.window(windowQuery(params(url, ["from", "to", "operation", "class"]))));
+    if (path === "/external") {
+      const values = params(url, ["from", "to", "limit"]);
+      const filter: { -readonly [K in keyof ExternalFilter]: ExternalFilter[K] } = {};
+      const fromMs = milliseconds(values, "from");
+      const toMs = milliseconds(values, "to");
+      if (fromMs !== undefined) filter.fromMs = fromMs;
+      if (toMs !== undefined) filter.toMs = toMs;
+      const limit = values.get("limit");
+      if (limit !== undefined) {
+        const value = Number(limit);
+        if (!/^\d{1,4}$/u.test(limit) || value < 1 || value > 5000) throw new BadRequest("invalid limit");
+        filter.limit = value;
+      }
+      return json({ events: await store.external(service, filter) });
+    }
     const trace = /^\/traces\/([^/]+)$/u.exec(path);
     if (trace !== null) {
       if (!TRACE_ID.test(trace[1]!)) throw new BadRequest("invalid trace id");

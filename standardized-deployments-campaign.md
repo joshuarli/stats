@@ -9,7 +9,7 @@ Repositories: `/Users/josh/d/stats`, `/Users/josh/d/tansu`, `/Users/josh/d/nicef
 ## Status
 
 Goal: standard deployments + Stats application telemetry.
-Accepted: `S1`, `S2`. Next: `S3`.
+Accepted: `S1`, `S2`, `S3`. Next: `S4`.
 Red: none. Parked: none.
 
 ## Charter

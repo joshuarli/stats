@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Artifact, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
+import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import { initializeStore, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery } from "../core/store.ts";
 import { createObserveService, type ArtifactOutcome, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
@@ -54,4 +55,6 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   async trace(traceId: string): Promise<TraceDetail | null> { return this.service.trace(traceId); }
   async health(): Promise<ServiceHealth> { return this.service.health(); }
   async artifact(artifact: Artifact): Promise<ArtifactOutcome> { return this.service.artifact(artifact); }
+  async ingestExternal(service: string, events: readonly ExternalEvent[]): Promise<ExternalIngest> { return this.service.ingestExternal(service, events); }
+  async external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]> { return this.service.external(service, filter); }
 }

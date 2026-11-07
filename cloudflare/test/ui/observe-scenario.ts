@@ -206,7 +206,7 @@ export function scenarioStore(scenario: Scenario, now: number): ObserveService {
 }
 
 export async function answer(scenario: Scenario, now: number, request: Request): Promise<Response> {
-  return handleApi(request, new URL(request.url).pathname, scenarioStore(scenario, now));
+  return handleApi(request, new URL(request.url).pathname, scenarioStore(scenario, now), "stats");
 }
 
 export function scenarioComparison(scenario: Scenario, deploymentId: string, window: "1h" | "6h" | "24h"): object | null {

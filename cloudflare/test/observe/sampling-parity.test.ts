@@ -61,7 +61,7 @@ for (const service of ["stats", "usr-memories"] as const) {
     const to = T0 + 3_600_000;
     const aligned = T0 - (T0 % 300_000);
     for (const path of ["/health", `/explore?from=${from}&to=${to}`, `/objects?from=${from}&to=${to}`, `/traces?from=${from}&to=${to}`, `/window?from=${aligned}&to=${aligned + 3_600_000}`, `/traces/${hex(2, 32)}`]) {
-      const text = JSON.stringify(await (await handleApi(new Request(`https://o.test${path}`), path.split("?")[0]!, api)).json());
+      const text = JSON.stringify(await (await handleApi(new Request(`https://o.test${path}`), path.split("?")[0]!, api, service)).json());
       assert.ok(!text.includes("sampling") && !text.includes("observed"), path);
     }
   });

@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "service": "tansu",
+  "nowMs": 1793966400000,
+  "golden": "golden.json",
+  "base": {
+    "schemaVersion": 1,
+    "eventId": "01J8Z9K4Q7Y6V5X3W2T1S0R9P8",
+    "atMs": 1793966340000,
+    "operation": "note.save",
+    "outcome": "ok",
+    "durationMs": 42,
+    "work": {
+      "bytes": 1200,
+      "revisions": 1
+    },
+    "release": "9df651c1a2b3",
+    "service": "tansu",
+    "instance": "tansu-1",
+    "host": "lisa",
+    "trace": {
+      "traceId": "0123456789abcdef0123456789abcdef",
+      "spanId": "0123456789abcdef"
+    }
+  },
+  "cases": [
+    {
+      "name": "not json",
+      "text": "{",
+      "code": "invalid_json"
+    },
+    {
+      "name": "root array",
+      "body": [],
+      "code": "invalid_batch"
+    },
+    {
+      "name": "empty events",
+      "body": {
+        "events": []
+      },
+      "code": "invalid_batch"
+    },
+    {
+      "name": "extra root field",
+      "body": {
+        "events": [],
+        "extra": true
+      },
+      "code": "invalid_batch"
+    },
+    {
+      "name": "schema version",
+      "events": [
+        {
+          "schemaVersion": 2
+        }
+      ],
+      "code": "invalid_schema_version"
+    },
+    {
+      "name": "event id type",
+      "events": [
+        {
+          "eventId": 7
+        }
+      ],
+      "code": "invalid_event_id"
+    },
+    {
+      "name": "event id space",
+      "events": [
+        {
+          "eventId": "bad id"
+        }
+      ],
+      "code": "invalid_event_id"
+    },
+    {
+      "name": "event id long",
+      "events": [
+        {
+          "eventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_event_id"
+    },
+    {
+      "name": "duplicate event id",
+      "events": [
+        {},
+        {}
+      ],
+      "code": "duplicate_event_id"
+    },
+    {
+      "name": "expired",
+      "events": [
+        {
+          "atMs": 1793361600000
+        }
+      ],
+      "code": "expired_event"
+    },
+    {
+      "name": "future",
+      "events": [
+        {
+          "atMs": 1793967000000
+        }
+      ],
+      "code": "future_event"
+    },
+    {
+      "name": "operation uppercase",
+      "events": [
+        {
+          "operation": "Note.Save"
+        }
+      ],
+      "code": "invalid_operation"
+    },
+    {
+      "name": "operation long",
+      "events": [
+        {
+          "operation": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_operation"
+    },
+    {
+      "name": "outcome uppercase",
+      "events": [
+        {
+          "outcome": "OK"
+        }
+      ],
+      "code": "invalid_outcome"
+    },
+    {
+      "name": "outcome long",
+      "events": [
+        {
+          "outcome": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_outcome"
+    },
+    {
+      "name": "duration negative",
+      "events": [
+        {
+          "durationMs": -1
+        }
+      ],
+      "code": "invalid_duration"
+    },
+    {
+      "name": "duration float",
+      "events": [
+        {
+          "durationMs": 1.5
+        }
+      ],
+      "code": "invalid_duration"
+    },
+    {
+      "name": "work key case",
+      "events": [
+        {
+          "work": {
+            "Bytes": 1
+          }
+        }
+      ],
+      "code": "invalid_work"
+    },
+    {
+      "name": "work key long",
+      "events": [
+        {
+          "work": {
+            "ccccccccccccccccccccccccccccccccc": 1
+          }
+        }
+      ],
+      "code": "invalid_work"
+    },
+    {
+      "name": "work count negative",
+      "events": [
+        {
+          "work": {
+            "bytes": -1
+          }
+        }
+      ],
+      "code": "invalid_work"
+    },
+    {
+      "name": "work too many",
+      "events": [
+        {
+          "work": {
+            "k0": 1,
+            "k1": 1,
+            "k2": 1,
+            "k3": 1,
+            "k4": 1,
+            "k5": 1,
+            "k6": 1,
+            "k7": 1,
+            "k8": 1,
+            "k9": 1,
+            "k10": 1,
+            "k11": 1,
+            "k12": 1,
+            "k13": 1,
+            "k14": 1,
+            "k15": 1,
+            "k16": 1
+          }
+        }
+      ],
+      "code": "invalid_work"
+    },
+    {
+      "name": "release space",
+      "events": [
+        {
+          "release": "has space"
+        }
+      ],
+      "code": "invalid_release"
+    },
+    {
+      "name": "release long",
+      "events": [
+        {
+          "release": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_release"
+    },
+    {
+      "name": "wrong service",
+      "events": [
+        {
+          "service": "other"
+        }
+      ],
+      "code": "invalid_service"
+    },
+    {
+      "name": "instance space",
+      "events": [
+        {
+          "instance": "bad instance"
+        }
+      ],
+      "code": "invalid_instance"
+    },
+    {
+      "name": "instance long",
+      "events": [
+        {
+          "instance": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_instance"
+    },
+    {
+      "name": "host space",
+      "events": [
+        {
+          "host": "bad host"
+        }
+      ],
+      "code": "invalid_host"
+    },
+    {
+      "name": "host long",
+      "events": [
+        {
+          "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "code": "invalid_host"
+    },
+    {
+      "name": "trace invalid",
+      "events": [
+        {
+          "trace": {
+            "traceId": "abc",
+            "spanId": "0123456789abcdef"
+          }
+        }
+      ],
+      "code": "invalid_trace"
+    },
+    {
+      "name": "trace extra",
+      "events": [
+        {
+          "trace": {
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "spanId": "0123456789abcdef",
+            "extra": 1
+          }
+        }
+      ],
+      "code": "invalid_trace"
+    },
+    {
+      "name": "unknown event field",
+      "events": [
+        {
+          "extra": true
+        }
+      ],
+      "code": "invalid_event"
+    }
+  ]
+}

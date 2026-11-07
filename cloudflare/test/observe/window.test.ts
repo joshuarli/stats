@@ -72,7 +72,7 @@ await test("the window is half-open and sums operation, outcome and observed cou
 await test("the window route validates its bounds and filters strictly", async () => {
   const db = database();
   const service = createObserveService(db, { now: () => START + 10 * H, databaseBytes: () => 0 });
-  const get = (query: string) => handleApi(new Request(`https://observe.test/window${query}`), "/window", service);
+  const get = (query: string) => handleApi(new Request(`https://observe.test/window${query}`), "/window", service, "stats");
   const ok = await get(`?from=${START}&to=${START + H}&operation=host.ingest`);
   assert.equal(ok.status, 200);
   assert.equal(decodeStatsWindow(await ok.json()).operation, "host.ingest");
@@ -87,5 +87,5 @@ await test("the window route validates its bounds and filters strictly", async (
     `?from=${START}&from=${START}&to=${START + H}`, `?from=-300000&to=0`
   ];
   for (const query of invalid) assert.equal((await get(query)).status, 400, query);
-  assert.equal((await handleApi(new Request("https://observe.test/window", { method: "POST" }), "/window", service)).status, 405);
+  assert.equal((await handleApi(new Request("https://observe.test/window", { method: "POST" }), "/window", service, "stats")).status, 405);
 });
