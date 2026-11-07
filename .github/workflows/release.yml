@@ -34,8 +34,9 @@ jobs:
         run: make agent-build
       - name: Save the cargo registry for the macOS job
         run: |
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
           mkdir -p "$GITHUB_WORKSPACE/.cargo-registry"
-          cp -a "$HOME/.cargo/registry/." "$GITHUB_WORKSPACE/.cargo-registry/"
+          cp -a "$cargo_home/registry/." "$GITHUB_WORKSPACE/.cargo-registry/"
       - name: Upload cargo registry
         uses: actions/upload-artifact@v4
         with:
@@ -66,8 +67,9 @@ jobs:
           path: .cargo-registry
       - name: Restore the cargo registry
         run: |
-          mkdir -p "$HOME/.cargo/registry"
-          cp -a "$GITHUB_WORKSPACE/.cargo-registry/." "$HOME/.cargo/registry/"
+          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          mkdir -p "$cargo_home/registry"
+          cp -a "$GITHUB_WORKSPACE/.cargo-registry/." "$cargo_home/registry/"
       - name: Build agent (macOS arm64)
         run: |
           cd agent
