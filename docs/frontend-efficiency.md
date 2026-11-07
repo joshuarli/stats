@@ -276,3 +276,44 @@ Changes in `cloudflare/src/client/queries.ts`, `FleetPage.tsx`, `ProjectsPage.ts
 | `resolving`, `mutation`, `mutationError` | `createObservability` | Ephemeral | — | Scoped to active issue mutation; `mutationError` clears on issue or filter change |
 | `selected` deployment & `comparisonState` | `createDeployments` | URL + Remote | `deployment` + `window` | `ComparisonState` union (`ok` / `error`) prevents simultaneous value and error; `stale()` marks `aria-busy="true"` while next comparison loads |
 
+
+## Route payloads and loading (F6)
+
+Measured with `node cloudflare/scripts/bench-bundle.mjs --compare .work/frontend-baseline.json` on the production `vite build`; gzip is level 9. Bytes are initial JavaScript, meaning entry, `modulepreload`, and the static graph of the route's page chunk.
+
+| Route | Baseline (`576c99d`) | F6 start (`c59ba2d`) | F6 | Ratio to baseline | Gate | Result |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| `fleet` | 79,916 | 80,577 | 81,081 | 101.5% | ≤ 105% | pass |
+| `host` | 120,878 | 121,597 | 122,119 | 101.0% | ≤ 105% | pass |
+| `projects` (rows collapsed) | 127,784 | 128,737 | 98,268 | 76.9% | ≤ 80% | pass |
+| `project` (sections closed) | 149,636 | 150,698 | 139,434 | 93.2% | ≤ 85% | **fail** |
+| `project` (all sections open) | 149,636 | 150,698 | 155,127 | 103.7% | ≤ 105% | pass |
+| `services` | 87,316 | 88,059 | 88,559 | 101.4% | ≤ 105% | pass |
+| `service` | 89,563 | 90,309 | 90,830 | 101.4% | ≤ 105% | pass |
+
+Boundaries kept:
+
+- **Projects trends (`pages/project/Trends.tsx`).** The overview imported `PanelChart` only for the collapsed trends row. Trends now load on the first expand inside a local `Loading` that shows the existing chart skeleton. uPlot (`shared`, 30.2 KB gzip) leaves the projects initial graph. The route drops 30.5 KB, 23.7% of its initial gzip.
+- **Project errors, requests, and modal views (`pages/project/ObserveSection.tsx`, `pages/project/Requests.tsx`).** `IssuesWidget`, `IssueDetail`, `RolloutImpactPanel`, `ObserveModal`, the request explorer, the trace timeline, and the heatmap load when their section opens, a deployment's impact panel renders, or the modal stack is non-empty. `createObservability`, its health and issue reads, `HealthMeta`, `RouteLabel`, and `observe.css` stay eager, so the header pills and section summaries keep their counts and no section opens unstyled. `duration` and `defaultSlice` moved into `Observe.tsx` because `createObservability` uses `defaultSlice`. The route drops 11.1 KB, 7.4% of its initial gzip. Deep links (`open=errors`, `open=requests`, `route=`, `trace=`, `modal=`) open the section on first render, so the chunk is requested immediately.
+
+Boundary rejected:
+
+- **Project Signals.** Lazy-loading the closed Signals section saved 1,598 bytes (1.1% of the project initial gzip), below the 5% floor, so it was reverted.
+
+Why the closed project page misses its gate: the cost ledger is part of the initial view. It selects the first cost line by default and renders that line's per-bucket `PanelChart`s, plus the month chart when the plan bill is isolated. uPlot is therefore needed on first paint. A lazy boundary around those charts would request the same chunk at once, one round trip later. Getting the route under 85% needs a product decision, such as no default ledger selection or a different budget (S9 reversal). The campaign does not make that call.
+
+Chunk graph: the fleet initial graph has no observe, project, or uPlot module, and no feature module is duplicated across chunks. Rollup now splits the common core into `state` and `api` instead of one `effect` chunk because the new lazy chunks share part of it. Every route has one more initial script request (fleet 14 → 15 in `bench-ui`), and the fleet bytes stay within 0.6% of the F6 start.
+
+Browser routes (`bench-ui.mjs --runs 3`, default fixture, raw preview bytes; not production gzip):
+
+| Route | F3 JS KB | F6 JS KB | F3 API requests (cold / warm) | F6 API requests (cold / warm) | uPlot chunk requested |
+| --- | ---: | ---: | --- | --- | --- |
+| `fleet` | 203.6 | 203.7 | 9 / 8 | 9 / 8 | no |
+| `host` | 310.3 | 310.4 | 3 / 2 | 3 / 2 | yes |
+| `projects` | 326.3 | 251.9 | 10 / 9 | 10 / 9 | no (was yes) |
+| `project` (closed) | 399.8 | 359.8 | 11 / 10 | 11 / 10 | yes (cost ledger) |
+| `project-open` | 399.8 | 403.1 | 15 / 14 | 15 / 14 | yes |
+| `services` | 222.1 | 222.4 | 3 / 2 | 3 / 2 | no |
+| `service` | 228.9 | 229.2 | 3 / 2 | 3 / 2 | no |
+
+Tests: `test/ui/dashboard.spec.ts` checks that the projects overview loads chart code only when a row expands. `test/ui/observe.spec.ts` checks that a closed project page loads the errors, requests, and trace views only when one opens. Both failed on the pre-F6 build. Existing replay, layout, and observe goldens pass unchanged.

@@ -987,7 +987,11 @@ grid, passing through series that already share a gap-free axis. Host and fleet 
 project data and the project list refresh every five minutes to match the
 collector cron, while the manual Refresh button is immediate. Routes are `/`
 for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
-browser never sees a host token or an operator secret.
+browser never sees a host token or an operator secret. Each route is its own lazy chunk. Chart code (uPlot) loads only when a chart
+renders: the projects overview fetches it when a row first expands its trends,
+and the project page fetches its errors, requests, trace, and modal views when a
+section or modal first opens. Health and issue counts for the header pills stay
+eager.
 
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its
