@@ -104,14 +104,25 @@ export function createServiceDeployments(serviceName: () => string, range: () =>
   return createDeployments("service", serviceName, range, refreshKey, () => true);
 }
 
+type ComparisonState =
+  | { readonly kind: "ok"; readonly value: AnyComparison }
+  | { readonly kind: "error"; readonly message: string };
+
 function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean) {
   const routes = ROUTES[kind];
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
   const window = createMemo(() => WINDOW_FOR_RANGE[range()]);
-  const [comparison, setComparison] = createSignal<AnyComparison | null>(null);
+  const [comparisonState, setComparisonState] = createSignal<ComparisonState | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
-  const [comparisonError, setComparisonError] = createSignal<string | null>(null);
+  const comparison = (): AnyComparison | null => {
+    const state = comparisonState();
+    return state?.kind === "ok" ? state.value : null;
+  };
+  const comparisonError = (): string | null => {
+    const state = comparisonState();
+    return state?.kind === "error" ? state.message : null;
+  };
   let linkPending = true;
   const { now, showWindow } = useTelemetry();
 
@@ -135,14 +146,13 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
     if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    setComparisonError(null);
-    if (query.id === "") { setComparison(null); return; }
+    if (query.id === "") { setComparisonState(null); return; }
+    setComparisonState(current => current?.kind === "error" ? null : current);
     void read("Deployment comparison", `/api/v1/${routes.collection}/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => routes.comparison(value, query.id, query.window)).then(value => {
-      if (!controller.signal.aborted) setComparison(value);
+      if (!controller.signal.aborted) setComparisonState({ kind: "ok", value });
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setComparison(null);
-      setComparisonError(error instanceof Error ? error.message : "Deployment comparison unavailable");
+      setComparisonState({ kind: "error", message: error instanceof Error ? error.message : "Deployment comparison unavailable" });
     });
   });
 

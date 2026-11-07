@@ -61,14 +61,17 @@ function bandParam(band: Band | null): string | null {
   return band.kind === "slow" ? "slow" : `cell:${band.fromMs}:${band.toMs}:${band.minWallMs}:${band.maxWallMs ?? ""}`;
 }
 
-interface IssueFilter {
-  readonly state: IssueState;
-  readonly introducedIn: string | null;
+type KeyedResult<T> =
+  | { readonly kind: "ok"; readonly key: string; readonly value: T }
+  | { readonly kind: "error"; readonly key: string; readonly message: string };
+
+function keyedValue<T>(result: KeyedResult<T> | null, key: string | null): T | null {
+  return key !== null && result?.kind === "ok" && result.key === key ? result.value : null;
 }
 
-type FilterAnswer<T> = IssueFilter & T;
-
-const sameIssueFilter = (left: IssueFilter, right: IssueFilter): boolean => left.state === right.state && left.introducedIn === right.introducedIn;
+function keyedError<T>(result: KeyedResult<T> | null, key: string | null): string | null {
+  return key !== null && result?.kind === "error" && result.key === key ? result.message : null;
+}
 
 export type ModalView =
   | { readonly kind: "issue"; readonly fingerprint: string }
@@ -100,13 +103,11 @@ export function createObservability(
   const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
   const [modals, setModals] = createSignal<readonly ModalView[]>(parseModal(readParam("modal")));
   const [health, setHealth] = createSignal<ObserveHealth | null>(null);
-  const [traces, setTraces] = createSignal<Page<TraceSummary> | null>(null);
-  const [exploration, setExploration] = createSignal<Exploration | null>(null);
   const [band, setBand] = createSignal<Band | null>(parseBand(readParam("band")));
-  const [answeredIssues, setAnsweredIssues] = createSignal<FilterAnswer<{ readonly page: Page<IssueSummary> }> | null>(null);
-  const [failedIssues, setFailedIssues] = createSignal<FilterAnswer<{ readonly message: string }> | null>(null);
-  const [exploreError, setExploreError] = createSignal<string | null>(null);
-  const [occurrencesError, setOccurrencesError] = createSignal<string | null>(null);
+  const [issueResult, setIssueResult] = createSignal<KeyedResult<Page<IssueSummary>> | null>(null);
+  const [exploreResult, setExploreResult] = createSignal<KeyedResult<{ readonly exploration: Exploration; readonly traces: Page<TraceSummary> }> | null>(null);
+  const [traceResult, setTraceResult] = createSignal<KeyedResult<TraceDetail> | null>(null);
+  const [occurrencesResult, setOccurrencesResult] = createSignal<KeyedResult<Page<Occurrence>> | null>(null);
   const [mutationError, setMutationError] = createSignal<string | null>(null);
   const [traceFilter, setTraceFilter] = createSignal<TraceFilter>(readParam("traces") === "failed" ? "failed" : "all");
   const [route, setRoute] = createSignal<string | null>(readParam("route"));
@@ -118,21 +119,20 @@ export function createObservability(
   const [traceId, setTraceId] = createSignal<string | null>(initialTrace !== null && TRACE_ID.test(initialTrace) ? initialTrace : null);
   const [issueId, setIssueId] = createSignal<string | null>(initialIssue !== null && FINGERPRINT.test(initialIssue) ? initialIssue : null);
   const [slice, setSlice] = createSignal<string | null>(null);
-  const [trace, setTrace] = createSignal<TraceDetail | null>(null);
-  const [traceError, setTraceError] = createSignal<string | null>(null);
-  const [occurrences, setOccurrences] = createSignal<Page<Occurrence> | null>(null);
   const [mutation, setMutation] = createSignal(0);
-  const issueFilter = (): IssueFilter => ({ state: issueState(), introducedIn: introducedIn() });
-  const issues = createMemo(() => {
-    const answered = answeredIssues();
-    return answered !== null && sameIssueFilter(answered, issueFilter()) ? answered.page : null;
-  });
-  const issuesError = createMemo(() => {
-    const failed = failedIssues();
-    return failed !== null && sameIssueFilter(failed, issueFilter()) ? failed.message : null;
-  });
+  const issueKey = () => `${issueState()}:${introducedIn() ?? ""}`;
+  const exploreKey = () => `${windowKey()}|${traceFilter()}|${route() ?? ""}|${bandParam(band()) ?? ""}`;
+  const issues = createMemo(() => keyedValue(issueResult(), issueKey()));
+  const issuesError = createMemo(() => keyedError(issueResult(), issueKey()));
+  const exploration = createMemo(() => keyedValue(exploreResult(), exploreKey())?.exploration ?? null);
+  const traces = createMemo(() => keyedValue(exploreResult(), exploreKey())?.traces ?? null);
+  const exploreError = createMemo(() => keyedError(exploreResult(), exploreKey()));
+  const trace = createMemo(() => keyedValue(traceResult(), traceId()));
+  const traceError = createMemo(() => keyedError(traceResult(), traceId()));
+  const occurrences = createMemo(() => keyedValue(occurrencesResult(), issueId()));
+  const occurrencesError = createMemo(() => keyedError(occurrencesResult(), issueId()));
 
-  createEffect(() => ({ tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
+  createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     void Promise.all([
@@ -141,13 +141,12 @@ export function createObservability(
     ]).then(([nextHealth, nextIssues]) => {
       if (controller.signal.aborted) return;
       setHealth(nextHealth);
-      setAnsweredIssues({ state: query.state, introducedIn: query.introduced, page: nextIssues });
-      setFailedIssues(null);
+      setIssueResult({ kind: "ok", key: query.key, value: nextIssues });
       if (issueId() === null || !nextIssues.items.some(issue => issue.fingerprint === issueId())) selectIssue(nextIssues.items[0]?.fingerprint ?? null, false);
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailedIssues({ state: query.state, introducedIn: query.introduced, message: message(cause, "The observability collector is unavailable") }); });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setIssueResult({ kind: "error", key: query.key, message: message(cause, "The observability collector is unavailable") }); });
   });
 
-  createEffect(() => ({ tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()), active: exploring() }), query => {
+  createEffect(() => ({ key: exploreKey(), tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()), active: exploring() }), query => {
     if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
@@ -169,30 +168,26 @@ export function createObservability(
       }
       const nextTraces = await read(`/traces?${traceQuery}`, controller.signal, decodeTraces);
       if (controller.signal.aborted) return;
-      setExploration(nextExploration);
-      setTraces(nextTraces);
-      setExploreError(null);
-      if (traceId() === null || current !== null) {
+      setExploreResult({ kind: "ok", key: query.key, value: { exploration: nextExploration, traces: nextTraces } });
+      if (traceId() === null || current !== null || readParam("trace") === null) {
         const first = nextTraces.items.find(item => item.traceId !== null)?.traceId ?? null;
         if (traceId() === null || !nextTraces.items.some(item => item.traceId === traceId())) selectTrace(first, false);
       }
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setExploreError(message(cause, "The observability collector is unavailable")); });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setExploreResult({ kind: "error", key: query.key, message: message(cause, "The observability collector is unavailable") }); });
   });
 
   createEffect(() => ({ id: traceId(), tick: refreshKey() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (query.id === null) { setTrace(null); setTraceError(null); return; }
+    if (query.id === null) { setTraceResult(null); return; }
     const id = query.id;
     void read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
       if (controller.signal.aborted) return;
-      setTrace(value);
-      setTraceError(null);
+      setTraceResult({ kind: "ok", key: id, value });
       if (!value.invocations.some(invocation => invocation.key === slice())) setSlice(defaultSlice(value));
     }).catch((cause: unknown) => {
       if (controller.signal.aborted) return;
-      setTrace(null);
-      setTraceError(message(cause, "Trace unavailable"));
+      setTraceResult({ kind: "error", key: id, message: message(cause, "Trace unavailable") });
     });
   });
 
@@ -200,19 +195,21 @@ export function createObservability(
     if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (query.id === null) { setOccurrences(null); setOccurrencesError(null); return; }
-    void read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
+    if (query.id === null) { setOccurrencesResult(null); return; }
+    const id = query.id;
+    void read(`/issues/${id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
       if (controller.signal.aborted) return;
-      setOccurrences(value);
-      setOccurrencesError(null);
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesError(message(cause, "Occurrences unavailable")); });
+      setOccurrencesResult({ kind: "ok", key: id, value });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesResult({ kind: "error", key: id, message: message(cause, "Occurrences unavailable") }); });
   });
 
   function selectTrace(id: string | null, remember = true): void {
+    if (id !== traceId()) setSlice(null);
     setTraceId(id);
     if (remember) writeParam("trace", id);
   }
   function selectIssue(id: string | null, remember = true): void {
+    if (id !== issueId()) setMutationError(null);
     setIssueId(id);
     if (remember) writeParam("issue", id);
   }
@@ -471,20 +468,18 @@ function IssueLinks(props: { readonly title: string; readonly hint: string; read
 }
 
 export function RolloutImpactPanel(props: { readonly deploymentId: string; readonly refreshKey: string; readonly observe: Observability }): JSX.Element {
-  const [impact, setImpact] = createSignal<RolloutImpact | null>(null);
-  const [error, setError] = createSignal<string | null>(null);
+  const [result, setResult] = createSignal<KeyedResult<RolloutImpact> | null>(null);
+  const impact = () => keyedValue(result(), props.deploymentId);
+  const error = () => keyedError(result(), props.deploymentId);
   createEffect(() => ({ id: props.deploymentId, tick: props.refreshKey }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    if (impact()?.rolloutId !== query.id) setImpact(null);
     void props.observe.read(`/rollouts/${query.id}/impact`, controller.signal, value => decodeImpact(value, query.id)).then(value => {
       if (controller.signal.aborted) return;
-      setImpact(value);
-      setError(null);
+      setResult({ kind: "ok", key: query.id, value });
     }).catch((cause: unknown) => {
       if (controller.signal.aborted) return;
-      setImpact(null);
-      setError(message(cause, "Deployment errors unavailable"));
+      setResult({ kind: "error", key: query.id, message: message(cause, "Deployment errors unavailable") });
     });
   });
   const summary = (value: RolloutImpact) => {
@@ -520,18 +515,17 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
 }
 
 function IssueModalBody(props: { readonly fingerprint: string; readonly observe: Observability }): JSX.Element {
-  const [issue, setIssue] = createSignal<IssueSummary | null>(null);
-  const [occurrences, setOccurrences] = createSignal<Page<Occurrence> | null>(null);
-  const [failure, setFailure] = createSignal<string | null>(null);
+  const [result, setResult] = createSignal<KeyedResult<{ readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> }> | null>(null);
+  const issue = () => keyedValue(result(), props.fingerprint)?.issue ?? null;
+  const occurrences = () => keyedValue(result(), props.fingerprint)?.occurrences ?? null;
+  const failure = () => keyedError(result(), props.fingerprint);
   createEffect(() => ({ id: props.fingerprint, mutation: props.observe.mutation() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     void Promise.all([props.observe.read(`/issues/${query.id}`, controller.signal, decodeIssue), props.observe.read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences)]).then(([nextIssue, nextOccurrences]) => {
       if (controller.signal.aborted) return;
-      setIssue(nextIssue);
-      setOccurrences(nextOccurrences);
-      setFailure(null);
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailure(message(cause, "Issue unavailable")); });
+      setResult({ kind: "ok", key: query.id, value: { issue: nextIssue, occurrences: nextOccurrences } });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setResult({ kind: "error", key: query.id, message: message(cause, "Issue unavailable") }); });
   });
   return (
     <>
@@ -542,18 +536,18 @@ function IssueModalBody(props: { readonly fingerprint: string; readonly observe:
 }
 
 function TraceModalBody(props: { readonly traceId: string; readonly read: ObserveRead }): JSX.Element {
-  const [detail, setDetail] = createSignal<TraceDetail | null>(null);
-  const [failure, setFailure] = createSignal<string | null>(null);
+  const [result, setResult] = createSignal<KeyedResult<TraceDetail> | null>(null);
   const [slice, setSlice] = createSignal<string | null>(null);
+  const detail = () => keyedValue(result(), props.traceId);
+  const failure = () => keyedError(result(), props.traceId);
   createEffect(() => props.traceId, id => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     void props.read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
       if (controller.signal.aborted) return;
-      setDetail(value);
-      setFailure(null);
+      setResult({ kind: "ok", key: id, value });
       setSlice(defaultSlice(value));
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setFailure(message(cause, "Trace unavailable")); });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setResult({ kind: "error", key: id, message: message(cause, "Trace unavailable") }); });
   });
   return (
     <>
