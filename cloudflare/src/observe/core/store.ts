@@ -874,7 +874,7 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
     db.run("DELETE FROM observe_artifacts WHERE rowid NOT IN (SELECT rowid FROM observe_artifacts ORDER BY uploaded_at DESC, version DESC, file DESC LIMIT ?)", MAX_ARTIFACTS);
     const expiredExternal = count(db, "SELECT COUNT(*) AS n FROM observe_external_events WHERE received_at <= ? OR event_at <= ?", cutoff, cutoff);
     db.run(
-      "DELETE FROM observe_external_events WHERE event_id IN (SELECT event_id FROM observe_external_events WHERE received_at <= ? OR event_at <= ? ORDER BY event_at LIMIT ?)",
+      "DELETE FROM observe_external_events WHERE (service, event_id) IN (SELECT service, event_id FROM observe_external_events WHERE received_at <= ? OR event_at <= ? ORDER BY event_at LIMIT ?)",
       cutoff, cutoff, CLEANUP_BATCH
     );
     db.run("DELETE FROM observe_ingest_windows WHERE window_start < ?", nowMs - 2 * RATE_LIMIT_WINDOW_MS);

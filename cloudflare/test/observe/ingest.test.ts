@@ -108,6 +108,18 @@ await test("cleanup expires external events and allows their ids to be stored ag
   assert.equal(count(db), 1);
 });
 
+await test("cleanup keeps a shared event id in a service whose row is not expired", () => {
+  const db = database();
+  const eventId = "shared-event-id";
+  const expired = { ...events[0]!, eventId, atMs: manifest.nowMs };
+  const fresh = { ...events[1]!, eventId, atMs: manifest.nowMs + RETENTION_MS };
+  assert.ok(ingestExternal(db, "service-a", [expired], manifest.nowMs).ok);
+  assert.ok(ingestExternal(db, "service-b", [fresh], manifest.nowMs + RETENTION_MS).ok);
+  cleanup(db, manifest.nowMs + RETENTION_MS + 1_000);
+  assert.deepEqual(readExternalEvents(db, "service-a", manifest.nowMs + RETENTION_MS + 1_000), []);
+  assert.equal(readExternalEvents(db, "service-b", manifest.nowMs + RETENTION_MS + 1_000).length, 1);
+});
+
 await test("the ingest route caps the body before parse, deduplicates, and authenticates nothing itself", async () => {
   const db = database();
   const service = createObserveService(db, { now: () => manifest.nowMs, databaseBytes: () => 0 });
