@@ -1,11 +1,11 @@
-import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history";
+import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history.ts";
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
 import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
 import { decodeIssues } from "../observe/client/decode.ts";
 import type { IssueSummary, Page } from "../observe/core/store.ts";
 import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
-import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history";
+import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history.ts";
 
 export interface Host {
   readonly hostId: string;
@@ -135,24 +135,90 @@ function statusMessage(status: number): string {
 interface ConditionalEntry<T> {
   readonly etag: string;
   readonly value: T;
+  readonly bytes: number;
 }
 
-type ConditionalCache<T> = Map<string, ConditionalEntry<T>>;
+export const CONDITIONAL_CACHE_LIMIT = 32;
+export const CONDITIONAL_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
-const CONDITIONAL_CACHE_LIMIT = 32;
-const summaryCache: ConditionalCache<SummaryHistory> = new Map();
-const hostCache: ConditionalCache<HostHistories> = new Map();
-const fleetCache: ConditionalCache<FleetHistories> = new Map();
-const projectCache: ConditionalCache<ProjectHistories> = new Map();
+export class ConditionalCache<T> {
+  private readonly entries = new Map<string, ConditionalEntry<T>>();
+  private readonly sequences = new Map<string, number>();
+  private nextSequence = 0;
+  private retainedBytes = 0;
+  readonly maxEntries: number;
+  readonly maxBytes: number;
 
-function rememberConditional<T>(cache: ConditionalCache<T>, path: string, etag: string, value: T): void {
-  cache.delete(path);
-  cache.set(path, { etag, value });
-  while (cache.size > CONDITIONAL_CACHE_LIMIT) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
+  constructor(maxEntries = CONDITIONAL_CACHE_LIMIT, maxBytes = CONDITIONAL_CACHE_MAX_BYTES) {
+    this.maxEntries = maxEntries;
+    this.maxBytes = maxBytes;
   }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get bytes(): number {
+    return this.retainedBytes;
+  }
+
+  begin(path: string): number {
+    const seq = ++this.nextSequence;
+    this.sequences.set(path, seq);
+    return seq;
+  }
+
+  peek(path: string): ConditionalEntry<T> | undefined {
+    return this.entries.get(path);
+  }
+
+  touch(path: string, expectedEtag?: string): T | undefined {
+    const existing = this.entries.get(path);
+    if (existing === undefined) return undefined;
+    if (expectedEtag !== undefined && existing.etag !== expectedEtag) return existing.value;
+    this.entries.delete(path);
+    this.entries.set(path, existing);
+    return existing.value;
+  }
+
+  remember(path: string, seq: number, etag: string, value: T, bytes: number): boolean {
+    if (this.sequences.get(path) !== seq) return false;
+    const previous = this.entries.get(path);
+    if (previous !== undefined) {
+      this.entries.delete(path);
+      this.retainedBytes -= previous.bytes;
+    }
+    if (bytes > this.maxBytes || this.maxEntries <= 0) return false;
+    this.entries.set(path, { etag, value, bytes });
+    this.retainedBytes += bytes;
+    while (this.entries.size > this.maxEntries || this.retainedBytes > this.maxBytes) {
+      const oldest = this.entries.entries().next();
+      if (oldest.done) break;
+      const [oldestKey, oldestEntry] = oldest.value;
+      this.entries.delete(oldestKey);
+      this.retainedBytes -= oldestEntry.bytes;
+    }
+    return true;
+  }
+
+  clear(): void {
+    this.entries.clear();
+    this.sequences.clear();
+    this.nextSequence = 0;
+    this.retainedBytes = 0;
+  }
+}
+
+const summaryCache = new ConditionalCache<SummaryHistory>();
+const hostCache = new ConditionalCache<HostHistories>();
+const fleetCache = new ConditionalCache<FleetHistories>();
+const projectCache = new ConditionalCache<ProjectHistories>();
+
+export function resetHistoryCaches(): void {
+  summaryCache.clear();
+  hostCache.clear();
+  fleetCache.clear();
+  projectCache.clear();
 }
 
 async function send(path: string, headers: Record<string, string>, signal: AbortSignal): Promise<Response> {
@@ -172,6 +238,17 @@ function contract<T>(decode: () => T): T {
   }
 }
 
+export function openHistoryFrame<T>(
+  input: ArrayBuffer | Uint8Array,
+  decode: (root: HistoryView) => T
+): { readonly value: T; readonly retainedBytes: number } {
+  const opened = openHistory(input);
+  return {
+    value: decode(opened.root),
+    retainedBytes: input.byteLength * (opened.zeroCopy ? 1 : 2)
+  };
+}
+
 async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal): Promise<T> {
   const response = await send(path, { Accept: "application/json" }, signal);
   if (!response.ok) throw new ApiFailure(response.status, statusMessage(response.status));
@@ -188,26 +265,43 @@ async function getJson<T>(path: string, decode: (value: unknown) => T, signal: A
   return contract(() => decode(body));
 }
 
-async function getHistory<T>(path: string, decode: (root: HistoryView) => T, cache: ConditionalCache<T>, signal: AbortSignal): Promise<T> {
-  const cached = cache.get(path);
-  const response = await send(path, cached === undefined ? {} : { "If-None-Match": cached.etag }, signal);
+export async function getHistory<T>(
+  path: string,
+  decode: (root: HistoryView) => T,
+  cache: ConditionalCache<T>,
+  signal: AbortSignal
+): Promise<T> {
+  const seq = cache.begin(path);
+  const cached = cache.peek(path);
+  let response = await send(path, cached === undefined ? {} : { "If-None-Match": cached.etag }, signal);
   if (response.status === 304) {
     if (cached === undefined) throw new ApiFailure(0, "The response was not modified but no cached copy exists.");
-    return cached.value;
+    const responseEtag = response.headers.get("etag");
+    if (responseEtag === null || responseEtag === cached.etag) {
+      cache.touch(path, cached.etag);
+      return cached.value;
+    }
+    response = await send(path, {}, signal);
+    if (response.status === 304) {
+      throw new ApiFailure(0, "The response was not modified but no cached copy exists.");
+    }
   }
   if (!response.ok) throw new ApiFailure(response.status, statusMessage(response.status));
   if ((response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase() !== HISTORY_CONTENT_TYPE) {
     throw new ApiFailure(0, "The response was not telemetry history. Sign in through Cloudflare Access.");
   }
-  let bytes: ArrayBuffer;
+  let bytes: ArrayBuffer | Uint8Array;
   try {
     bytes = await response.arrayBuffer();
   } catch (error) {
     throw new ApiFailure(0, "The response could not be read.", error);
   }
-  const value = contract(() => decode(openHistory(bytes).root));
+  if (signal.aborted) {
+    throw new ApiFailure(0, "The request was cancelled.");
+  }
+  const { value, retainedBytes } = contract(() => openHistoryFrame(bytes, decode));
   const etag = response.headers.get("etag");
-  if (etag !== null) rememberConditional(cache, path, etag, value);
+  if (etag !== null) cache.remember(path, seq, etag, value, retainedBytes);
   return value;
 }
 
