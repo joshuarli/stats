@@ -249,3 +249,77 @@ await test("--service refuses --project, --wait, and a policy for another servic
   assert.equal(node.code, 2);
   assert.equal((JSON.parse(node.stdout) as Document).error?.code, "unsupported_on_target");
 });
+
+function withApplicationRead(read: { readonly applicationTruncated?: boolean; readonly applicationProblem?: string }, events: readonly ExternalEventRecord[]) {
+  const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  const rollups = cgroupRollups(CANDIDATE, 1, 0.5);
+  return compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: hostId => rollups.get(hostId) ?? [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], hasHealthUrl: true, window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: events, ...read });
+}
+
+function completeEvents(): ExternalEventRecord[] {
+  const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  return [...workEvents(before, "note.save", 20, { saves: 1 }, "b"), ...workEvents(after, "note.save", 10, { saves: 1 }, "a")];
+}
+
+const WORK_POLICY = { metric: "application.cpuPerWork", operation: "note.save", work: "saves", floor: 0.0001 };
+
+for (const [name, read, code] of [
+  ["a truncated application read", { applicationTruncated: true }, "application-truncated"],
+  ["a failed application read", { applicationProblem: "the observe store did not answer" }, "application-unavailable"]
+] as const) {
+  await test(`${name} suppresses every application-derived metric and the verdicts that depend on them, and keeps host and cgroup levels`, async () => {
+    const body = withApplicationRead(read, completeEvents());
+    assert.equal(body.applicationSuppression?.code, code);
+    assert.equal(body.applicationCoverage, null);
+    assert.deepEqual(body.work, []);
+    assert.deepEqual(body.metrics.filter(metric => metric.metric.startsWith("application.")), []);
+    assert.equal(body.metrics.find(metric => metric.metric === "service.cpu")?.verdict, "improved");
+    assert.equal(body.sources.find(source => source.source === "application")?.status, "unavailable");
+    const verdict = await verify(body, [], policyFile(`${code}.json`, WORK_POLICY));
+    assert.equal(verdict.run.code, 5, verdict.run.stdout);
+    assert.equal(verdict.document.payload?.verdict, "insufficient-data");
+    assert.equal(verdict.document.payload?.target.before, null);
+    assert.ok(verdict.document.payload?.reasons.some(reason => reason.code === code));
+    const duration = await verify(body, [], policyFile(`${code}-duration.json`, { metric: "application.duration", operation: "note.save", floor: 1 }));
+    assert.equal(duration.document.payload?.verdict, "insufficient-data");
+  });
+}
+
+await test("a window with application gaps while the service was up is not complete coverage and withholds CPU and I/O per work", async () => {
+  const { after } = comparisonBounds(CANDIDATE.atMs, "1h");
+  const silent = new Set([after.fromMs + 2 * DEPLOYMENT_BUCKET_MS, after.fromMs + 5 * DEPLOYMENT_BUCKET_MS]);
+  const events = completeEvents().filter(record => !silent.has(Math.floor(record.event.atMs / DEPLOYMENT_BUCKET_MS) * DEPLOYMENT_BUCKET_MS));
+  const body = withApplicationRead({}, events);
+  assert.equal(body.applicationCoverage?.after.completeness, "gaps-observed");
+  assert.equal(body.applicationCoverage?.after.emptyBucketsWhileUp, 2);
+  assert.equal(body.applicationCoverage?.before.emptyBucketsWhileUp, 0);
+  for (const name of ["cpu", "io"]) {
+    const metric = body.metrics.find(entry => entry.metric === `application.note.save.saves.${name}`);
+    assert.equal(metric?.after, null);
+    assert.equal(metric?.verdict, "insufficient-data");
+    assert.equal(metric?.reasonCode, "application-gap");
+    assert.equal(metric?.basis, "observed-work");
+  }
+  assert.notEqual(body.metrics.find(entry => entry.metric === "application.note.save.saves.duration")?.after, null);
+  const verdict = await verify(body, [], policyFile("gap.json", WORK_POLICY));
+  assert.equal(verdict.document.payload?.verdict, "insufficient-data");
+  assert.ok(verdict.document.payload?.reasons.some(reason => reason.code === "application-gap" && /2 of 12 after/u.test(reason.message)));
+});
+
+await test("a clean window compares per-work CPU as before but labels it per observed work and never claims completeness", async () => {
+  const body = withApplicationRead({}, completeEvents());
+  assert.equal(body.applicationSuppression, null);
+  assert.equal(body.applicationCoverage?.before.completeness, "unproven");
+  assert.equal(body.applicationCoverage?.after.completeness, "unproven");
+  assert.equal(body.applicationCoverage?.after.emptyBucketsWhileUp, 0);
+  assert.deepEqual(body.applicationCoverage?.after.unrecorded, ["producer-drops", "rejected-batches", "sequence-gaps"]);
+  const cpu = body.metrics.find(entry => entry.metric === "application.note.save.saves.cpu");
+  assert.equal(cpu?.verdict, "improved");
+  assert.equal(cpu?.basis, "observed-work");
+  assert.equal(cpu?.reasonCode, undefined);
+  assert.match(cpu?.label ?? "", /per observed saves/u);
+  assert.equal(body.metrics.find(entry => entry.metric === "application.note.save.saves.duration")?.basis, undefined);
+  const verdict = await verify(body, [], policyFile("clean.json", WORK_POLICY));
+  assert.equal(verdict.document.payload?.verdict, "improved");
+  assert.ok(verdict.document.payload?.reasons.some(reason => reason.code === "observed-work" && /producer-drops/u.test(reason.message)));
+});

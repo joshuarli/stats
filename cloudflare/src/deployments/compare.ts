@@ -11,6 +11,8 @@ export function isComparisonWindow(value: string): value is ComparisonWindow {
 export type MetricRow = { readonly metric: string; readonly bucket_ms: number; readonly value: number };
 export interface WindowBounds { readonly fromMs: number; readonly toMs: number }
 export type Verdict = "improved" | "regressed" | "unchanged" | "insufficient-data" | "confounded";
+export type MetricReasonCode = "application-truncated" | "application-unavailable" | "application-gap";
+export const METRIC_REASON_CODES: readonly MetricReasonCode[] = ["application-truncated", "application-unavailable", "application-gap"];
 export interface MetricComparison {
   readonly metric: string;
   readonly label: string;
@@ -22,6 +24,8 @@ export interface MetricComparison {
   readonly verdict: Verdict;
   readonly supersededBy?: string;
   readonly reason?: string;
+  readonly reasonCode?: MetricReasonCode;
+  readonly basis?: "observed-work";
 }
 export type ReasonCode =
   | "unsettled" | "disabled" | "not-ready" | "expired" | "truncated" | "stale-history" | "split" | "baseline-missing" | "baseline-split" | "overlap"

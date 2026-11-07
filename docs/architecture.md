@@ -624,7 +624,24 @@ project `DeploymentComparison` (invocation counts are `null` and
 - `sources`, `[{ source: "hosts" | "cgroup" | "probe" | "application", status: "available" | "unavailable", detail }]`,
   always in that order; an available `cgroup` names the metrics it supplied,
   and an available `application` names the successful event count and
-  operation count.
+  operation count and says the ratios are per observed work;
+- `applicationSuppression`, `null` or `{ code, detail }` with `code`
+  `application-truncated` (the event read reached its 5,000-event limit) or
+  `application-unavailable` (the target has no reader, or the observe store did
+  not answer). Either one withholds every application-derived value: `work` is
+  empty, no `application.*` metric is returned, and `application` is
+  `unavailable`. A policy on an application metric is then `insufficient-data`
+  with that code as its reason. Host, cgroup and probe levels are unaffected;
+- `applicationCoverage`, `null` when suppressed, otherwise `{ before, after }`
+  with `{ buckets, bucketsWithEvents, emptyBucketsWhileUp, completeness,
+  unrecorded }` per window. `emptyBucketsWhileUp` counts five-minute buckets
+  with no application event in which the health probe was up or the service's
+  cgroup reported. `completeness` is `gaps-observed` when that count is not
+  zero and otherwise `unproven`; it is never `complete`, because `unrecorded`
+  (`producer-drops`, `rejected-batches`, `sequence-gaps`) names evidence Stats
+  does not keep: the producer's `dropped` and `queued` counters stay in the
+  producer process, a rejected or rate-limited batch is not stored, and event
+  ids are opaque, not a sequence.
 
 Resource metrics are levels, each the mean of five-minute buckets in the
 window, and a bucket counts only when every compared host reported at least
@@ -641,6 +658,15 @@ stream, read through the observe service for the two windows:
 | `application.<operation>.duration` (ms per successful event), `application.<operation>.failure` (%) | external events whose `outcome` is `ok` for the duration; all outcomes for the failure share |
 | `application.<operation>.<work>.duration` (ms per unit), `.cpu` (CPU-seconds per unit), `.io` (B per unit) | successful external events with that work key in every event; `.cpu` and `.io` only when one operation owns the service's cgroup in that window |
 
+`.cpu` and `.io` divide a window's cgroup resource by the work the events
+reported, so they are per observed work, not per completed work: their metric
+carries `basis: "observed-work"` and a label reading "per observed". When either
+window has `gaps-observed` coverage they are `null` with `reasonCode`
+`application-gap`, since a missing event would inflate the ratio. `.duration`
+sums only observed events and is unaffected. `statsctl verify --service` adds
+the `application-gap`, `application-truncated`, `application-unavailable` or
+`observed-work` reason to the verdict.
+
 A cgroup metric supersedes its host counterpart (`service.cpu` for `host.cpu`,
 `service.memory` for `host.memory`, `service.io` for `host.disk`) only when it
 has a value in both windows; the host row then stays in the response, listed
@@ -656,7 +682,7 @@ with no value in a window is `null`, never zero, and its verdict is
 `insufficient-data`. When no metric has a value on both sides, the comparison
 carries the reason code `no-data`. An application work counter is complete only
 when every successful event of that operation in the window reports the key; a
-missing key, a missing side, truncated telemetry, or a cgroup shared by more
+missing key, a missing side, or a cgroup shared by more
 than one operation makes the affected per-work metric `null` with a reason.
 When the deployment gate withholds the comparison, application ratios are
 `unavailable` rather than shown with a confounded verdict. The warnings state

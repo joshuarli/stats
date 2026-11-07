@@ -187,7 +187,13 @@ Telemetry must never fail or block the application operation that produced it.
 - When Stats is unreachable or slow, events are dropped after the bounded
   retries. There is no disk spool in this version, and the application
   continues. Inspect `dropped`, `sent`, `duplicates`, `batches`, `retries`, and
-  `lastError` from the producer's `stats()`.
+  `lastError` from the producer's `stats()`. These counters do not reach Stats:
+  the protocol has no field for them, so a service comparison cannot tell a
+  dropped event from one that never happened. It reports per-work CPU and I/O as
+  per observed work, withholds them for a five-minute bucket with no events
+  while the service was up, and withholds every application metric when the
+  event read is truncated or fails (`docs/architecture.md`, Service comparison).
+  Check `dropped` before trusting a comparison.
 - `flush()` and `shutdown()` drain within their bounds and do not throw for a
   dropped batch. Call `shutdown()` before process exit.
 

@@ -673,7 +673,13 @@ again) or insufficient-data (a source or counter is unavailable), 6 unchanged
 or confounded, 7 regressed. Every output states that resource levels and
 per-work ratios are descriptive, not causal. A per-work ratio is unavailable,
 with the reason, when the operation's counter is incomplete or the service
-cgroup is shared by more than one operation. Host metrics include every process
+cgroup is shared by more than one operation. Service CPU and I/O per work are
+per observed work, and the verdict says so: Stats does not record producer
+drops, rejected batches or sequence gaps. A truncated or failed application read
+makes every application metric `insufficient-data` with reason code
+`application-truncated` or `application-unavailable`, and a five-minute bucket
+with no events while the service was up does the same for CPU and I/O per work
+with `application-gap`. Host metrics include every process
 on the hosts the marker names; when the agents on those hosts report the
 service's cgroup in both windows, `service.cpu`, `service.memory`, and
 `service.io` supersede `host.cpu`, `host.memory`, and `host.disk`. The host rows

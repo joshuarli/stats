@@ -53,6 +53,12 @@ export function decideService(policy: ServicePolicy, comparison: ServiceComparis
   if (pending) reasons.push({ code: "pending", message: comparison.reasons.find((_, index) => PENDING_CODES.includes(comparison.reasonCodes[index]!)) ?? "waiting for the after window to settle" });
   if (target.verdict === "confounded") reasons.push({ code: "confounded", message: `the comparison is blocked by ${blocking.join(", ")}` });
   if (row?.supersededBy !== undefined) reasons.push({ code: "superseded", message: `${policy.metric} is judged as asked, but the service's cgroup reported in both windows, so ${row.supersededBy} is the better measure` });
+  if (policy.operation !== null && comparison.applicationSuppression !== null) reasons.push({ code: comparison.applicationSuppression.code, message: comparison.applicationSuppression.detail });
+  if (row?.reasonCode === "application-gap" && comparison.applicationCoverage !== null) {
+    const { before, after } = comparison.applicationCoverage;
+    reasons.push({ code: "application-gap", message: `${metricName(policy)}: ${before.emptyBucketsWhileUp} of ${before.buckets} before and ${after.emptyBucketsWhileUp} of ${after.buckets} after five-minute buckets had no application events while the service was up` });
+  }
+  if (row?.basis === "observed-work" && target.verdict !== "insufficient-data") reasons.push({ code: "observed-work", message: `${metricName(policy)} divides by observed work; ${comparison.applicationCoverage?.after.unrecorded.join(", ") ?? "producer drops"} are not recorded, so completion is unproven` });
   if (row?.reason !== undefined) reasons.push({ code: "target-unavailable", message: `${metricName(policy)}: ${row.reason}` });
   if (target.verdict === "insufficient-data") {
     const status = comparison.sources.find(item => item.source === sourceOf(policy));

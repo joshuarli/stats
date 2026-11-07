@@ -1,7 +1,7 @@
 import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
 import { decodeDeploymentComparison } from "./decode.ts";
 import type { ComparisonWindow } from "./compare.ts";
-import { SOURCE_NAMES, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WorkSummary } from "./service-compare.ts";
+import { SOURCE_NAMES, UNRECORDED_COVERAGE_EVIDENCE, type ApplicationCoverage, type ApplicationSuppression, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WindowCoverage, type WorkSummary } from "./service-compare.ts";
 import { UUID, annotation, record, type Deployment } from "./model.ts";
 
 function string(value: unknown, limit: number): string {
@@ -133,6 +133,32 @@ function workSummary(value: unknown): WorkSummary {
   return { operation: string(item["operation"], 64), before: workSide(item["before"]), after: workSide(item["after"]) };
 }
 
+function windowCoverage(value: unknown): WindowCoverage {
+  const item = record(value);
+  const completeness = item["completeness"];
+  if (completeness !== "unproven" && completeness !== "gaps-observed") throw new Error("invalid application completeness");
+  const unrecorded = list(item["unrecorded"], UNRECORDED_COVERAGE_EVIDENCE.length, raw => {
+    const known = UNRECORDED_COVERAGE_EVIDENCE.find(entry => entry === raw);
+    if (known === undefined) throw new Error("invalid unrecorded coverage evidence");
+    return known;
+  });
+  return { buckets: numberValue(item["buckets"]), bucketsWithEvents: numberValue(item["bucketsWithEvents"]), emptyBucketsWhileUp: numberValue(item["emptyBucketsWhileUp"]), completeness, unrecorded };
+}
+
+function applicationCoverage(value: unknown): ApplicationCoverage | null {
+  if (value === null) return null;
+  const item = record(value);
+  return { before: windowCoverage(item["before"]), after: windowCoverage(item["after"]) };
+}
+
+function applicationSuppression(value: unknown): ApplicationSuppression | null {
+  if (value === null) return null;
+  const item = record(value);
+  const code = item["code"];
+  if (code !== "application-truncated" && code !== "application-unavailable") throw new Error("invalid application suppression");
+  return { code, detail: string(item["detail"], 200) };
+}
+
 export function decodeServiceComparison(value: unknown, deploymentId: string, window: ComparisonWindow): ServiceComparison {
   const item = record(value);
   const sources = list(item["sources"], SOURCE_NAMES.length, (raw): SourceStatus => {
@@ -142,5 +168,5 @@ export function decodeServiceComparison(value: unknown, deploymentId: string, wi
     if (name === undefined || (status !== "available" && status !== "unavailable")) throw new Error("invalid service source");
     return { source: name, status, detail: string(source["detail"], 200) };
   });
-  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources, work: item["work"] === undefined ? [] : list(item["work"], 64, workSummary) };
+  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources, work: item["work"] === undefined ? [] : list(item["work"], 64, workSummary), applicationSuppression: applicationSuppression(item["applicationSuppression"]), applicationCoverage: applicationCoverage(item["applicationCoverage"]) };
 }
