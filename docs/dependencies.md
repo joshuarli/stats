@@ -100,3 +100,28 @@ bundles it: measured on 2026-11-04 it grew that Worker from 14.8 to 20.5 KB
 gzipped, and the `stats` Worker and the dashboard do not include it.
 `@jridgewell/sourcemap-codec` is a direct dev dependency at the same
 version so tests can build small maps.
+
+## Alchemy for deployment (declined 2026-11-07)
+
+Stats stays on `cf` and `cloudflare.config.ts` rather than adopting Alchemy as
+infrastructure as code. The config is already typed and declarative: the
+SQLite `Installation` Durable Object, every binding, the crons and the tail
+consumer. The only orchestration is deploying `stats-observe` before `stats`
+and reading the new version ID for source-map upload.
+
+Alchemy would cost more than it saves here:
+
+- It has no Analytics SQL query binding, only Analytics Engine writes, and the
+  dashboard depends on `ANALYTICS_SQL: bindings.analytics()`.
+- Adopting the existing Workers means trusting a beta tool's plan against the
+  `Installation` namespace, which holds all host history. Its docs do not cover
+  adopting Durable Object namespaces or deploying Vite's prebuilt Build Output.
+- Its state store is one more thing to back up across beta migrations, and the
+  bindings would be declared twice, since Vite and the Miniflare test stack read
+  `cloudflare.config.ts`.
+- Plans and drift detection pay off with many resources or deployers; Stats has
+  two Workers, one operator and one deploy path, and `cf deploy --dry-run`
+  already shows a plan.
+
+Revisit if Alchemy ships an Analytics SQL binding and documented prebuilt
+Build Output deploys, or if Stats needs resources `cf` cannot declare.
