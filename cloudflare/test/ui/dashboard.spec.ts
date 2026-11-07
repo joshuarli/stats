@@ -612,6 +612,24 @@ test("the projects table compares each project's settled window with the one bef
   await expect(detail).toHaveCount(0);
 });
 
+function watchChartCode(page: Page): () => Promise<boolean> {
+  const scripts: Promise<string>[] = [];
+  page.on("response", response => { if (new URL(response.url()).pathname.endsWith(".js")) scripts.push(response.text()); });
+  return async () => (await Promise.all(scripts)).some(script => script.includes("u-over"));
+}
+
+test("the projects overview loads chart code only when a row expands to its trends", async ({ page }) => {
+  await mock(page, { probes: true });
+  const chartCodeLoaded = watchChartCode(page);
+  await page.goto("/#/projects");
+  const row = page.locator(".projects-row", { hasText: "stuff" });
+  await expect(row).toContainText("$");
+  expect(await chartCodeLoaded()).toBe(false);
+  await row.getByRole("button", { name: "Show stuff trends" }).click();
+  await expect(page.locator(".projects-detail").getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  expect(await chartCodeLoaded()).toBe(true);
+});
+
 test("a stale collector is flagged on the projects page and the project page", async ({ page }) => {
   await mock(page, { collector: "stale" });
   await page.goto("/#/projects");
