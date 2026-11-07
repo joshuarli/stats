@@ -162,10 +162,18 @@ export class ConditionalCache<T> {
     return this.retainedBytes;
   }
 
+  get pending(): number {
+    return this.sequences.size;
+  }
+
   begin(path: string): number {
     const seq = ++this.nextSequence;
     this.sequences.set(path, seq);
     return seq;
+  }
+
+  finish(path: string, seq: number): void {
+    if (this.sequences.get(path) === seq) this.sequences.delete(path);
   }
 
   peek(path: string): ConditionalEntry<T> | undefined {
@@ -272,6 +280,20 @@ export async function getHistory<T>(
   signal: AbortSignal
 ): Promise<T> {
   const seq = cache.begin(path);
+  try {
+    return await fetchHistory(path, decode, cache, seq, signal);
+  } finally {
+    cache.finish(path, seq);
+  }
+}
+
+async function fetchHistory<T>(
+  path: string,
+  decode: (root: HistoryView) => T,
+  cache: ConditionalCache<T>,
+  seq: number,
+  signal: AbortSignal
+): Promise<T> {
   const cached = cache.peek(path);
   let response = await send(path, cached === undefined ? {} : { "If-None-Match": cached.etag }, signal);
   if (response.status === 304) {

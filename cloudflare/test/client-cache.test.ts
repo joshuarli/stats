@@ -485,6 +485,27 @@ const cases: readonly (readonly [string, () => Promise<void>])[] = [
     }
   ],
   [
+    "settled, failed, and evicted requests leave no per-path request sequence behind",
+    async () => {
+      const cache = new ConditionalCache<SummaryHistory>(4);
+      const frame = makeSummaryBytes({
+        points: [{ atMs: 15_000, coverageMs: 15_000, partial: false, cpu: { user: 5, system: 1, idle: 94 } }]
+      });
+      await withStubbedFetch(
+        req => req.url.includes("fail") ? new Response("no", { status: 500 }) : historyResponse(frame, `"etag-${req.url}"`),
+        async () => {
+          const signal = new AbortController().signal;
+          for (let index = 0; index < 40; index += 1) {
+            await getHistory(`/window-${index}`, decodeSummary, cache, signal);
+            await rejectsApiFailure(() => getHistory(`/fail-${index}`, decodeSummary, cache, signal), 500);
+          }
+          equal(cache.size, 4);
+          equal(cache.pending, 0, "expected no request sequence to outlive its request");
+        }
+      );
+    }
+  ],
+  [
     "entry limit evicts the 33rd oldest entry while keeping the 32 newest",
     async () => {
       const cache = new ConditionalCache<SummaryHistory>();
