@@ -128,7 +128,9 @@ node cloudflare/scripts/api.mjs /hosts | jaq -r '.hosts[] | [.hostId, .name] | @
 4. **Deploy the binary-only server**: `make worker-deploy`. Note the printed
    `Current Version ID`. `make worker-deploy` deploys `stats-observe` first,
    then `stats`; `make stats-deploy` deploys only `stats` (and registers its
-   source map), for changes that leave the observe companion untouched.
+   source map, keyed by the version the latest `stats` deployment serves at
+   100%, read from `cf workers deployments list`), for changes that leave the
+   observe companion untouched.
 5. **Run the binary smoke test** against production: `make smoke-deployed`.
    It checks that `GET /ingest/v2/batches` is 405, the v1 path is 410,
    JSON is 415, a version-1 STB2 header is `unknown_version`, and a valid STB2

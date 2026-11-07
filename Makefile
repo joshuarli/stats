@@ -101,11 +101,8 @@ worker-deploy: auth-ready work-ready worker-bundle observe-deploy stats-deploy
 
 stats-deploy: auth-ready work-ready worker-bundle
 	@set -eu; \
-	log='$(CURDIR)/.work/tmp/stats-deploy.log'; \
-	status=0; (cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')) > "$$log" 2>&1 || status=$$?; \
-	cat "$$log"; test "$$status" -eq 0; \
-	version=$$(sed -n 's/.*Current Version ID: \([0-9a-f-]*\).*/\1/p' "$$log" | tail -1); \
-	test -n "$$version" || { echo 'cf deploy printed no version ID, so the source map was not registered' >&2; exit 1; }; \
+	(cd cloudflare && cf deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')); \
+	version=$$(cd cloudflare && cf workers deployments list --worker stats --per-page 1 | jaq -er '.deployments[0].versions | if length == 1 and .[0].percentage == 100 then .[0].version_id else error("the latest stats deployment does not serve one version at 100%, so the source map was not registered") end'); \
 	$(MAKE) observe-sourcemap VERSION="$$version"
 
 observe-sourcemap: node-ready
