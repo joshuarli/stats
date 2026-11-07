@@ -278,7 +278,13 @@ function createNetworkTracker(page) {
   };
 }
 
+async function waitForSelector(page, selector) {
+  await page.waitForFunction(sel => document.querySelector(sel) !== null, selector, { timeout: 30_000 });
+}
+
 async function readCdpState(cdp) {
+  await cdp.send("HeapProfiler.collectGarbage");
+  await new Promise(resolveWait => setTimeout(resolveWait, 25));
   await cdp.send("HeapProfiler.collectGarbage");
   const [{ metrics }, heap] = await Promise.all([
     cdp.send("Performance.getMetrics"),
@@ -444,7 +450,7 @@ async function runRetentionTrace(steps) {
   await cdp.send("Performance.enable");
 
   await page.goto(`${activeBase}/#/`, { waitUntil: "load" });
-  await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+  await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
   await tracker.waitForQuiet();
 
   const checkpoints = [];
@@ -473,20 +479,20 @@ async function runRetentionTrace(steps) {
       const host = hosts[(step + Math.floor(step / 2)) % hosts.length];
       const range = rangeCycle[step % rangeCycle.length];
       await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/host/${host.hostId}`);
-      await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
+      await waitForSelector(page, ".chart-plot .uplot");
       await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 3) {
       const project = projects[step % projects.length];
       const range = rangeCycle[step % 3];
       await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/project/${project.id}`);
-      await page.waitForSelector('[aria-label="Cost ledger"], main.content .empty-state', { timeout: 30_000 });
+      await waitForSelector(page, '[aria-label="Cost ledger"], main.content .empty-state');
       await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 4) {
       await page.evaluate(() => { window.location.hash = "#/projects"; });
-      await page.waitForSelector('table[aria-label="Projects"] tbody tr', { timeout: 30_000 });
+      await waitForSelector(page, 'table[aria-label="Projects"] tbody tr');
     } else {
       await page.evaluate(() => { window.location.hash = "#/"; });
-      await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+      await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
       const totalPages = Math.max(1, Math.ceil(hosts.length / 10));
       if (totalPages > 1) {
         const targetPage = ((Math.floor(step / 5) - 1) % totalPages) + 1;
@@ -510,7 +516,7 @@ async function runRetentionTrace(steps) {
   }
 
   await page.evaluate(() => { window.location.hash = "#/"; });
-  await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+  await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
   await tracker.waitForQuiet(100, 5_000);
   const finalOnFleet = await readCdpState(cdp);
   const uplotRootsOnFleet = await page.evaluate(() => document.querySelectorAll(".uplot").length);
@@ -590,7 +596,7 @@ async function measureConditionalHistoryAndCharts() {
     tracker.reset();
     if (range === "1h") {
       await page.goto(`${activeBase}/#/host/${primaryHost.hostId}?range=1h`, { waitUntil: "load" });
-      await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
+      await waitForSelector(page, ".chart-plot .uplot");
     } else {
       await page.getByRole("button", { name: range, exact: true }).click();
     }
@@ -615,7 +621,7 @@ async function measureConditionalHistoryAndCharts() {
     tracker.reset();
     if (range === "1h") {
       await page.evaluate(projectId => { window.location.hash = `#/project/${projectId}?range=1h`; }, statsProject.id);
-      await page.waitForSelector('[aria-label="Cost ledger"]', { timeout: 30_000 });
+      await waitForSelector(page, '[aria-label="Cost ledger"]');
     } else {
       await page.getByRole("button", { name: range, exact: true }).click();
     }
@@ -637,10 +643,11 @@ async function measureConditionalHistoryAndCharts() {
   await tracker.waitForQuiet();
   const chartStart = performance.now();
   await page.evaluate(() => { window.location.hash = "#/"; });
-  await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+  await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
+  await tracker.waitForQuiet();
   const hostNavStart = performance.now();
   await page.evaluate(hostId => { window.location.hash = `#/host/${hostId}?range=1h`; }, primaryHost.hostId);
-  await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
+  await waitForSelector(page, ".chart-plot .uplot");
   const chartReadyMs = +(performance.now() - hostNavStart).toFixed(1);
   void chartStart;
   await tracker.waitForQuiet();
@@ -657,16 +664,16 @@ async function measureConditionalHistoryAndCharts() {
   const beforeCycles = await readCdpState(cdp);
   for (let cycle = 0; cycle < 10; cycle += 1) {
     await page.evaluate(() => { window.location.hash = "#/"; });
-    await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+    await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
     await page.evaluate(hostId => { window.location.hash = `#/host/${hostId}?range=1h`; }, primaryHost.hostId);
-    await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
+    await waitForSelector(page, ".chart-plot .uplot");
   }
   await tracker.waitForQuiet(100, 5_000);
   const afterCycles = await readCdpState(cdp);
   const activePlotsOnHost = await page.evaluate(() => document.querySelectorAll(".uplot").length);
 
   await page.evaluate(() => { window.location.hash = "#/"; });
-  await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
+  await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
   await tracker.waitForQuiet(100, 5_000);
   const afterLeave = await readCdpState(cdp);
   const uplotRootsAfterLeave = await page.evaluate(() => document.querySelectorAll(".uplot").length);
@@ -726,7 +733,7 @@ for (const target of routeTargets) {
     const beforeCold = await readCdpState(cdp);
     tracker.reset();
     await page.goto(target.url, { waitUntil: "load" });
-    await page.waitForSelector(target.ready, { timeout: 30_000 });
+    await waitForSelector(page, target.ready);
     const readyMs = await page.evaluate(() => performance.now());
     await tracker.waitForQuiet();
     const paintTiming = await page.evaluate(ready => {
@@ -756,7 +763,7 @@ for (const target of routeTargets) {
     });
 
     await page.evaluate(hash => { window.location.hash = hash; }, target.pivotHash);
-    await page.waitForSelector(target.pivotReady, { timeout: 30_000 });
+    await waitForSelector(page, target.pivotReady);
     await tracker.waitForQuiet();
 
     const beforeWarm = await readCdpState(cdp);
@@ -766,7 +773,7 @@ for (const target of routeTargets) {
       window.location.hash = hash;
       return start;
     }, target.hash);
-    await page.waitForSelector(target.ready, { timeout: 30_000 });
+    await waitForSelector(page, target.ready);
     const warmReadyMs = await page.evaluate(start => performance.now() - start, warmStart);
     await tracker.waitForQuiet();
     const afterWarm = await readCdpState(cdp);
