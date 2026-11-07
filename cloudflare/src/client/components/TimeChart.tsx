@@ -80,11 +80,11 @@ function withAlpha(color: string, alpha: number): string | undefined {
 
 export function TimeChart(props: TimeChartProps): JSX.Element {
   const telemetry = useTelemetry();
-  const series = () => (typeof props.series === "function" ? props.series() : props.series);
+  const series = createMemo(() => (typeof props.series === "function" ? props.series() : props.series));
   const format = (value: number | null | undefined): string => (value === null || value === undefined ? "—" : (props.format ?? percent)(value));
   const aligned = createMemo(() => alignTracks(series().map(entry => entry.track), props.stepMs));
   const hasData = createMemo(() => aligned().columns.some(column => column.some(value => value !== null)));
-  const signature = createMemo(() => series().map(entry => `${entry.label}:${entry.color}`).join("|"));
+  const signature = createMemo(() => `${props.timeAxis !== false}|${series().map(entry => `${entry.label}:${entry.color}`).join("|")}`);
   const [hidden, setHidden] = createSignal<ReadonlySet<string>>(new Set<string>());
   const [cursor, setCursor] = createSignal<number | null>(null);
   const [span, setSpan] = createSignal<readonly [number, number]>([0, -1]);
@@ -138,11 +138,12 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     return first;
   };
 
-  const mirrored =createMemo(() => series().some(entry => entry.mirror === true));
-  const data = (): uPlot.AlignedData => {
-    const columns = aligned().columns.map((column, position) => (series()[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]));
+  const mirrored = createMemo(() => series().some(entry => entry.mirror === true));
+  const data = createMemo((): uPlot.AlignedData => {
+    const current = series();
+    const columns = aligned().columns.map((column, position) => (current[position]?.mirror === true ? column.map(value => (value === null ? null : -value)) : [...column]));
     return [aligned().times.map(time => time / 1000), ...columns];
-  };
+  });
 
   const applyView = () => {
     const times = aligned().times;
