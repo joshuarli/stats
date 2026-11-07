@@ -268,7 +268,7 @@ if (comparePath !== null) {
   const gates = [];
   const limits = {
     projects: 0.80,
-    project: 0.85,
+    project: 0.95,
     fleet: 1.05,
     host: 1.05,
     services: 1.05,
@@ -298,7 +298,7 @@ if (comparePath !== null) {
       detail: `${currentGzip} vs ${baseGzip} (${(ratio * 100).toFixed(1)}%)`
     });
   }
-  for (const routeName of ["fleet", "projects", "project"]) {
+  for (const routeName of ["fleet", "projects"]) {
     const hasUplot = routes[routeName]?.markers.includes("uplot") ?? false;
     gates.push({
       gate: `${routeName} initial graph excludes uPlot`,

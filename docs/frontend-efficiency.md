@@ -286,7 +286,7 @@ Measured with `node cloudflare/scripts/bench-bundle.mjs --compare .work/frontend
 | `fleet` | 79,916 | 80,577 | 81,081 | 101.5% | ≤ 105% | pass |
 | `host` | 120,878 | 121,597 | 122,119 | 101.0% | ≤ 105% | pass |
 | `projects` (rows collapsed) | 127,784 | 128,737 | 98,268 | 76.9% | ≤ 80% | pass |
-| `project` (sections closed) | 149,636 | 150,698 | 139,434 | 93.2% | ≤ 85% | **fail** |
+| `project` (sections closed) | 149,636 | 150,698 | 139,434 | 93.2% | ≤ 95% (was 85%) | pass |
 | `project` (all sections open) | 149,636 | 150,698 | 155,127 | 103.7% | ≤ 105% | pass |
 | `services` | 87,316 | 88,059 | 88,559 | 101.4% | ≤ 105% | pass |
 | `service` | 89,563 | 90,309 | 90,830 | 101.4% | ≤ 105% | pass |
@@ -300,7 +300,7 @@ Boundary rejected:
 
 - **Project Signals.** Lazy-loading the closed Signals section saved 1,598 bytes (1.1% of the project initial gzip), below the 5% floor, so it was reverted.
 
-Why the closed project page misses its gate: the cost ledger is part of the initial view. It selects the first cost line by default and renders that line's per-bucket `PanelChart`s, plus the month chart when the plan bill is isolated. uPlot is therefore needed on first paint. A lazy boundary around those charts would request the same chunk at once, one round trip later. Getting the route under 85% needs a product decision, such as no default ledger selection or a different budget (S9 reversal). The campaign does not make that call.
+Why the closed project page has a 95% budget: the cost ledger is part of the initial view. It selects the first cost line by default and renders that line's per-bucket `PanelChart`s, plus the month chart when the plan bill is isolated. uPlot is therefore needed on first paint. A lazy boundary around those charts would request the same chunk at once, one round trip later. The owner set the budget to 95% (campaign decision O3). Dropping the default ledger selection was rejected: the month chart would still load uPlot when the plan bill is isolated. The uPlot-exclusion gate in `bench-bundle.mjs` now covers only the fleet and collapsed projects routes.
 
 Chunk graph: the fleet initial graph has no observe, project, or uPlot module, and no feature module is duplicated across chunks. Rollup now splits the common core into `state` and `api` instead of one `effect` chunk because the new lazy chunks share part of it. Every route has one more initial script request (fleet 14 → 15 in `bench-ui`), and the fleet bytes stay within 0.6% of the F6 start.
 
@@ -328,7 +328,7 @@ The client keeps Solid 2, `@solidjs/router`, uPlot, the binary history format, a
 
 | Deliverable | Where |
 | --- | --- |
-| Bundle before/after | F6 table above. On the final tree: projects 77.0%, project (closed) 93.3% (gate 85%, missed with cause), fully open project 103.8%, fleet/host/services/service at most 101.7%. |
+| Bundle before/after | F6 table above. On the final tree: projects 77.0%, project (closed) 93.3% (budget 95%, set by the owner), fully open project 103.8%, fleet/host/services/service at most 101.7%. |
 | Requests and bytes by route | F3 tables and the F6 browser table. |
 | Decode and cache | F2 section. |
 | Chart lifecycle | F4 section. |
@@ -384,4 +384,4 @@ No P1 or P2 remains open.
 - A real 24-host installation (E2).
 - Safari and Firefox timings (E3).
 - workerd end-to-end timing (E4).
-- Changing the ledger's default selection to keep uPlot off the closed project page. That is a product decision; see F6.
+- Changing the ledger's default selection to keep uPlot off the closed project page. It was rejected; see F6.
