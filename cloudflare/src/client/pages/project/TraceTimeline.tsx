@@ -6,6 +6,7 @@ import { Icon } from "../../components/Icon";
 import { Badge } from "../../components/ui";
 import { Info } from "../../components/Info";
 import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";
+import { duration } from "./Observe";
 
 const MIN_VIEW_MS = 0.5;
 const WORKER_COLOR = 0;
@@ -40,12 +41,6 @@ export function layoutTrace(detail: TraceDetail): Layout {
   };
   const steps = [...workers.map(invocation => step(invocation, 0)), ...objects.map(invocation => step(invocation, workers.length > 0 ? 1 : 0))];
   return { steps, spanMs: Math.max(1, ...steps.map(entry => entry.endMs)), originMs };
-}
-
-export function duration(ms: number): string {
-  if (ms < 1) return ms === 0 ? "0 ms" : `${ms.toFixed(ms < 0.1 ? 2 : 1)} ms`;
-  if (ms < 1000) return `${Math.round(ms * 10) / 10} ms`;
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`;
 }
 
 const SHORTCUTS: readonly [string, string][] = [["W", "zoom in"], ["S", "zoom out"], ["A", "pan left"], ["D", "pan right"], ["F", "fit"], ["↑↓", "step"]];
@@ -267,9 +262,4 @@ export function TraceView(props: { readonly detail: TraceDetail; readonly select
       <TraceTimeline detail={props.detail} selected={props.selected} onSelect={props.onSelect} />
     </>
   );
-}
-
-export function defaultSlice(detail: TraceDetail): string | null {
-  const failing = detail.invocations.find(invocation => detail.occurrences.some(occurrence => occurrence.invocationKey === invocation.key));
-  return failing?.key ?? detail.invocations.find(invocation => invocation.stage === "worker")?.key ?? detail.invocations[0]?.key ?? null;
 }

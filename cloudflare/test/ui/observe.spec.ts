@@ -381,3 +381,16 @@ test("frames show their original source, and frames from a version without a map
   await expect(trace.locator(".frames-list li").first()).toContainText("index.js:3121");
   await expect(trace.locator(".frame-unmapped").first()).toBeVisible();
 });
+
+test("a closed project page loads the errors, requests, and trace views only when one opens", async ({ page }) => {
+  await setup(page);
+  const scripts: Promise<string>[] = [];
+  page.on("response", response => { if (new URL(response.url()).pathname.endsWith(".js")) scripts.push(response.text()); });
+  const viewCodeLoaded = async () => (await Promise.all(scripts)).some(script => script.includes("issue-list") || script.includes("route-explorer"));
+  await page.goto("/#/project/stats?range=24h");
+  await expect(page.locator("#section-errors")).toContainText("open");
+  expect(await viewCodeLoaded()).toBe(false);
+  await page.locator("#section-errors").getByRole("button").first().click();
+  await expect(page.locator("#issues").getByRole("option", { name: /RangeError/u })).toBeVisible();
+  expect(await viewCodeLoaded()).toBe(true);
+});

@@ -3,8 +3,7 @@ import type { JSX } from "@solidjs/web";
 import type { Heatmap } from "../../../observe/core/store";
 import type { ChartEvent } from "../../components/TimeChart";
 import { axisTime, count } from "../../format";
-import { duration } from "./TraceTimeline";
-import type { Band } from "./Observe";
+import { duration, type Band } from "./Observe";
 
 const RAMP = 5;
 

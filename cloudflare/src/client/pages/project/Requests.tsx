@@ -6,11 +6,11 @@ import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../co
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
 import type { SamplingSummary } from "../../../observe/core/counts";
-import { duration, TraceView } from "./TraceTimeline";
+import { TraceView } from "./TraceTimeline";
 import { LatencyHeatmap } from "./Heatmap";
 
 const LIST_PAGE = 12;
-import { HealthMeta, MOMENT, RouteLabel, type Observability } from "./Observe";
+import { duration, HealthMeta, MOMENT, RouteLabel, type Observability } from "./Observe";
 
 function statusTone(trace: TraceSummary): string {
   if (trace.failed) return "tone-bad";

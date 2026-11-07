@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, Loading, refresh, Show } from "solid-js";
+import { createMemo, createSignal, Errored, lazy, Loading, refresh, Show } from "solid-js";
 import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
@@ -21,8 +21,7 @@ import { DurableObjectsWidget } from "./project/DurableObjects";
 import { metricTrack, type ProjectHistories } from "../history";
 import { hasAnyValue, silenceMinutes, type ProjectData } from "./project/series";
 import { CpuTimeWidget, RequestsWidget, StatusWidget } from "./project/Worker";
-import { createObservability, IssuesWidget, ObserveModal, RolloutImpactPanel, type Observability } from "./project/Observe";
-import { RequestExplorerWidget } from "./project/Requests";
+import { createObservability, type Observability } from "./project/Observe";
 import { createMonthSpend, createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
 import { HOUR_MS } from "../../limits";
 import { CostLedger } from "./project/CostLedger";
@@ -35,6 +34,10 @@ import type { TimeWindow } from "../chart-data";
 
 type SectionId = "deploys" | "errors" | "requests" | "signals";
 const SECTION_IDS: readonly SectionId[] = ["deploys", "errors", "requests", "signals"];
+const IssuesWidget = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.IssuesWidget })));
+const ObserveModal = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.ObserveModal })));
+const RolloutImpactPanel = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.RolloutImpactPanel })));
+const RequestExplorerWidget = lazy(() => import("./project/Requests").then(module => ({ default: module.RequestExplorerWidget })));
 const LINKED_SECTIONS: readonly (readonly [string, SectionId])[] = [["deployment", "deploys"], ["issue", "errors"], ["issues", "errors"], ["introduced", "errors"], ["route", "requests"], ["band", "requests"], ["traces", "requests"], ["trace", "requests"]];
 
 export function ProjectPage(): JSX.Element {
@@ -252,7 +255,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
             <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
               <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
               <div class="project-main">
-                <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} />} />
+                <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <Loading fallback={<Skeleton rows={2} />}><RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} /></Loading>} />
               </div>
             </div>
           </Show>
@@ -262,13 +265,13 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
           <>
             <Section id="errors" title="Errors" open={sections().has("errors")} onToggle={() => toggleSection("errors")}
               summary={state().health() !== null ? `${state().health()?.openIssues ?? 0} open` : state().issuesError() ?? <span class="summary-pending" aria-hidden="true" />}>
-              <IssuesWidget observe={state()} />
+              <Loading fallback={<Skeleton rows={5} />}><IssuesWidget observe={state()} /></Loading>
             </Section>
             <Section id="requests" title="Requests" open={sections().has("requests")} onToggle={() => toggleSection("requests")}
               summary={`routes, latency and traces · ${observeWindowLabel()}`}>
-              <RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} />
+              <Loading fallback={<Skeleton rows={4} chart />}><RequestExplorerWidget observe={state()} windowLabel={observeWindowLabel()} /></Loading>
             </Section>
-            <ObserveModal observe={state()} refreshKey={`${projectTick()}:${manualTick()}`} />
+            <Show when={state().modals().length > 0}><Loading fallback={null}><ObserveModal observe={state()} refreshKey={`${projectTick()}:${manualTick()}`} /></Loading></Show>
           </>
         )}</Show>
 
