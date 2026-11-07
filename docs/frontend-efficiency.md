@@ -164,16 +164,18 @@ Environment: Apple Silicon macOS, Node `26.12.1`, Vite `8.3.5` (`pnpm --dir clou
 
 ### 100-navigation retention trace (`--retention 100`, `PREVIEW_SCALE=large`)
 
-The trace cycles across 24 hosts (`1h`, `6h`, `24h`, `7d`, `30d`), 12 projects, `ProjectsPage`, and all 3 `FleetPage` pagination pages (`fleetPagesExercised: 3`), recording forced-GC heap and DOM checkpoints every 25 navigations:
+The trace cycles across 24 hosts (`1h`, `6h`, `24h`, `7d`, `30d`), 12 projects, `ProjectsPage`, and all 3 `FleetPage` pagination pages (`fleetPagesExercised: 3`), recording two-pass forced-GC heap and DOM checkpoints every 25 navigations (using `waitForFunction` so Playwright creates zero undisposed `ElementHandle` references across navigations):
 
 | Step | Heap Used (KiB) | Backing Store (KiB) | DOM Nodes | Listeners | `.uplot` Roots |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0 | 6,194.1 | 1,196.5 | 2,534 | 74 | 0 |
-| 25 | 38,530.9 | 32,440.8 | 27,544 | 1,035 | 0 |
-| 50 | 61,237.7 | 56,966.8 | 50,204 | 1,927 | 0 |
-| 75 | 82,866.2 | 84,395.0 | 73,181 | 2,839 | 0 |
-| 100 | 105,535.4 | 107,984.3 | 97,023 | 3,767 | 0 |
-| Final on Fleet | 104,991.3 | 108,522.8 | 97,229 | 3,771 | 0 |
+| 0 | 5,472.4 | 1,198.4 | 2,534 | 61 | 0 |
+| 25 | 22,602.4 | 14,158.6 | 5,539 | 251 | 0 |
+| 50 | 23,148.9 | 12,524.7 | 5,585 | 251 | 0 |
+| 75 | 24,168.3 | 16,556.6 | 4,328 | 227 | 0 |
+| 100 | 28,915.9 | 16,660.5 | 5,544 | 251 | 0 |
+| Final on Fleet | 28,255.1 | 16,660.8 | 5,544 | 251 | 0 |
+
+From step 25 onward, DOM nodes and event listeners remain flat (`4,328–5,585` nodes, `227–251` listeners) and backing-store memory stabilizes around `12.5–16.7 MiB` once the four 32-entry / 8 MiB `ConditionalCache` instances reach steady state.
 
 ## Async lifecycle verification and fixes (F1)
 
@@ -243,6 +245,11 @@ Changes in `cloudflare/src/client/queries.ts`, `FleetPage.tsx`, `ProjectsPage.ts
 | `PREVIEW_SCALE=large` (24 hosts, 12 projects) | `projects` (12 rows) | cold / warm | 70 / 69 | 34 / 33 | 509,099 / 336,907 | 365,683 / 48,579 | −24 `from=0&to=0`, −12 eager `range=1h` histories (5-row equivalent: `28 → 13`) |
 | `PREVIEW_SCALE=large` (24 hosts, 12 projects) | `project` (closed) | cold / warm | 13 / 12 | 11 / 10 | 521,898 / 518,082 | 498,075 / 9,211 | −1 `/deployments/:id/comparison`, −1 `/issues/:id/occurrences` |
 
+## Chart lifecycle and rendering (F4)
 
+### Audit of `TimeChart.tsx`, `chart-data.ts`, and host/project chart widgets
 
+- **Memoized `series` and `data` in `TimeChart.tsx`:** Solid compiles JSX `series={[...]}` props containing reactive reads (`sumTracks`, `usedShare`, `metricTrack`) into getters on `props`. `TimeChart` previously defined `const series = () => ...` and `const data = () => ...` as plain functions rather than `createMemo`, causing inline series getters to re-evaluate across `aligned`, `signature`, `scoredColumns`, `sharedValue`, `mirrored`, `data`, `build`, and on every `showTooltip` cursor move (`sumTracks` across 4 disk/net fields on `threadripper/24h` costs `44.62 µs` per evaluation). Wrapping `series` and `data` in `createMemo` inside `TimeChart` ensures each chart evaluates its caller's series derivations once per telemetry change.
+- **Complete construction-prop rebuild signature (`TimeChart.tsx`):** `TimeChart` captures `props.timeAxis` when constructing the `uPlot` options (`show: props.timeAxis !== false`). In stacked widgets (`CpuWidget`, `MemoryWidget`, `DiskWidget`), `timeAxis` flips when optional subcharts (GPU, PSI, swap activity, disk busy%) appear or disappear across range switches. Including `props.timeAxis !== false` in `signature` ensures `TimeChart` rebuilds its `uPlot` instance when and only when construction-captured props (`timeAxis` or series `label:color` list) change, while telemetry ticks and same-shape range switches update in place via `chart.setData(data(), false)`.
+- **Teardown and observer/sync cleanup:** Every `TimeChart` registers `onCleanup` on both the inner `signature()` effect (`destroy()` + `telemetry.sync.unsub(current)`) and the outer component scope (`observer?.disconnect()`, `destroy()`). Across 10 `Fleet → Host → Fleet` mount/destroy cycles (`cloudflare/test/ui/charts.spec.ts` and `bench-ui.mjs --retention 100`), returning to Fleet leaves `0` `.uplot` roots, `0` active chart `ResizeObserver` targets, `+0` net DOM nodes, `+0` net event listeners, `+636.9 KiB` JS heap delta, and `-37.1 KiB` backing-store delta (well inside the `2 MiB`, `50` node, and `20` listener bounds).
 

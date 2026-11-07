@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** Executing; `F0a`, `F0b`, `F1`, `F2`, and `F3` accepted. Fleet `/system` split and 4-worker concurrency pool, settled-window `ProjectsPage` ledger without `from=0` or eager range histories, and deferred closed-section `ProjectPage` comparison/occurrences verified.
-- **Accepted:** F0a, F0b, F1, F2, F3. **Red:** none. **Parked:** none. **Next:** F4.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F4. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
+- **State:** Executing; `F0a`, `F0b`, `F1`, `F2`, `F3`, and `F4` accepted (Milestone `M2` next). Chart `series` and `data` memoization, construction-prop `timeAxis` signature, and 10-cycle mount/destroy retention bounds verified in `test/ui/charts.spec.ts`.
+- **Accepted:** F0a, F0b, F1, F2, F3, F4. **Red:** none. **Parked:** none. **Next:** F5.
+- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F5. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 
