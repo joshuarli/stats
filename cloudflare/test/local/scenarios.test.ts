@@ -32,7 +32,7 @@ function tansuTests(): string {
 
 let niceforgeOutput: string | null = null;
 function niceforgeTests(): string {
-  niceforgeOutput ??= run(NICEFORGE, "pnpm", ["exec", "vitest", "run", "--config", "vitest.forge-hosted.config.ts", "tests/forge/hosted/telemetry.hosted.ts"]);
+  niceforgeOutput ??= run(NICEFORGE, "pnpm", ["exec", "vitest", "run", "--config", "vitest.forge-hosted.config.ts", "tests/forge/hosted/telemetry.hosted.ts", "--reporter=verbose"]);
   return niceforgeOutput;
 }
 
