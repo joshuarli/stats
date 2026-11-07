@@ -59,15 +59,6 @@ Next: 91
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-81 · P3 · A leaked service deploy token cannot be rotated or revoked
-
-- **Area:** Security
-- **Where:** `cloudflare/src/core/installation/services.ts`, `docs/architecture.md` (Services and deploy markers)
-- **Problem:** The deploy token is shown once at service creation and stored as a SHA-256 verifier. No route rotates or revokes it, unlike host tokens. The token is accepted from any network on `/ingest/services/:name/deployments` and writes markers that appear on the service's timeline and feed `statsctl verify --service`, so a leaked token lets a third party forge deploys until the service is deleted, and there is no delete route either.
-- **Recommendation:** Add `POST /api/v1/admin/services/:name/rotate`, which returns a new token once and invalidates the old verifier, mirroring host rotation, with a test that the old token gets 401 after rotation.
-- **Fix with:** security
-- **Effort:** S
-
 ### STA-84 · P3 · The 24 hour observe coverage record for the telemetry foundation is unread
 
 - **Area:** Operability
