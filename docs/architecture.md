@@ -825,8 +825,8 @@ count, including the object's own fetch events, until retention. Every Worker
 and route query keeps only stateless invocations, so a project's own Durable
 Object fetch, RPC, and alarm events are excluded from those series and appear
 only under Durable Objects. Everything is parsed before anything is
-stored, so a failed run stores no metrics: it records a run with a fixed detail,
-writes one `collector_failed` log line, and rethrows so the cron shows it.
+stored, so a failed run stores no metrics: it records a run with its failing query kind and status in detail,
+writes one `collector_failed` log line naming the query and status, and rethrows so the cron shows it.
 
 **Storage** (schema version 7; version 5 dropped Worker, route, R2 operation, and D1
 history before 2026-11-01 20:40 UTC, which was weighted by a mismatched

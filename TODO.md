@@ -50,15 +50,6 @@ Next: 91
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-53 · P3 · A failed collector run cannot be traced to its Analytics query
-
-- **Area:** Projects
-- **Where:** `cloudflare/src/cloudflare/projects/collector.ts:53` (`run`), `:70` (`collector_failed`), the stats `scheduled` handler
-- **Problem:** Read from stats-observe traces, collector history and `events.durableObjectsInvocations` on 2026-11-06, over 2026-11-04 01:00Z to 2026-11-06 05:00Z (618 recorded scheduled invocations, 620 five-minute slots). Missing runs are Cloudflare's: the 09:35Z and 09:40Z crons on 2026-11-05 never started (no scheduled tail event, no Durable Object `jsrpc` in their buckets, while ingest traces continued every minute), and the 09:30Z cron started at 10:31:36Z, 61 minutes late, and recorded its run with `atMs` 09:30:48Z. That is 3 slots in 620 with no on-time run, in one 15 minute event. The failed runs are ours to explain but not yet explainable: 8 of 618 (1.3%) ended `exception`, and all 8 are an uncaught `AnalyticsSQLAPIError` thrown by `input.analytics.query` in `run` (`collector.ts:53`, awaited through `Promise.all` at `:57`). The 10:05Z run that read 32,064,861 rows in 5.2 s is one of them; the four failures in the 24 hour collector history read 44.0M, 15.7M, 32.1M and 31.6M rows against a median of 46M, so they do not follow row count, and two failed in under 0.5 s. The observe occurrence has no message, `collector_failed` carries no detail, and the run record does not store which query was in flight, so which of the per-project queries failed and with which status is unknown.
-- **Recommendation:** Record the failing query kind and the Analytics error status in the failed run's `detail` and in the `collector_failed` log line, then read the next few failures. If they are 429 or 5xx from the Analytics API, retry that one query once inside the run and document the rate; if one query kind fails, fix that query.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests

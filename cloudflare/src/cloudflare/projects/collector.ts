@@ -40,19 +40,46 @@ interface CollectorResult {
   readonly metricRowsWritten: number;
 }
 
+function errorStatus(error: unknown): number | string | null {
+  if (typeof error === "object" && error !== null) {
+    if ("status" in error && (typeof error.status === "number" || typeof error.status === "string")) return error.status;
+    if ("statusCode" in error && (typeof error.statusCode === "number" || typeof error.statusCode === "string")) return error.statusCode;
+    if ("code" in error && (typeof error.code === "number" || typeof error.code === "string")) return error.code;
+  }
+  return null;
+}
+
 export async function runCollector(input: CollectorInput): Promise<CollectorResult> {
   const startedAt = Date.now();
   const elapsed = () => Math.max(0, Date.now() - startedAt);
   let queries = 0;
   let rowsRead = 0;
+  const failure: { current: { kind: string; status: number | string | null } | null } = { current: null };
   try {
     const projects = parseProjects(input.projectsJson);
     const startMs = windowStartMs(input.now);
-    const run = async (bound: BoundQuery): Promise<readonly unknown[]> => {
+    const run = async (kind: string, bound: BoundQuery): Promise<readonly unknown[]> => {
       queries += 1;
-      const result = await input.analytics.query(bound);
-      rowsRead += result.statistics.rows_read;
-      return result.data;
+      try {
+        const result = await input.analytics.query(bound);
+        rowsRead += result.statistics.rows_read;
+        return result.data;
+      } catch (error) {
+        const status = errorStatus(error);
+        if (status === 429 || (typeof status === "number" && status >= 500 && status < 600)) {
+          queries += 1;
+          try {
+            const retried = await input.analytics.query(bound);
+            rowsRead += retried.statistics.rows_read;
+            return retried.data;
+          } catch (retryError) {
+            failure.current ??= { kind, status: errorStatus(retryError) ?? status };
+            throw retryError;
+          }
+        }
+        failure.current ??= { kind, status };
+        throw error;
+      }
     };
     const collected = await Promise.all(projects.map((project) => collectProject(project, startMs, run, input.probeFetch, input.now)));
     const { metricRowsWritten } = await input.store.recordCollectorRun({
@@ -67,12 +94,17 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
     });
     return { queries, metricRowsWritten };
   } catch (error) {
-    console.error(JSON.stringify({ event: "collector_failed" }));
+    const status = failure.current?.status ?? errorStatus(error);
+    const query = failure.current?.kind ?? null;
+    const detail = query !== null
+      ? (status !== null ? `collector_failed:${query}:${status}` : `collector_failed:${query}`)
+      : "collector_failed";
+    console.error(JSON.stringify({ event: "collector_failed", ...(query !== null ? { query } : {}), ...(status !== null ? { status } : {}) }));
     try {
       await input.store.recordCollectorRun({
         ok: false,
         atMs: input.now + elapsed(),
-        detail: "collector_failed",
+        detail,
         rowsRead,
         durationMs: elapsed(),
         upstreamQueries: queries,
@@ -88,7 +120,7 @@ export async function runCollector(input: CollectorInput): Promise<CollectorResu
 async function collectProject(
   project: ProjectConfig,
   startMs: number,
-  run: (bound: BoundQuery) => Promise<readonly unknown[]>,
+  run: (kind: string, bound: BoundQuery) => Promise<readonly unknown[]>,
   probeFetch: ProbeFetch,
   now: number,
 ): Promise<ProjectPoints> {
@@ -96,14 +128,14 @@ async function collectProject(
   const hasNamespaces = project.durableObjectNamespaces.length > 0;
   const hasDatabases = project.d1Databases.length > 0;
   const [worker, routes, durableObjects, operations, storage, d1, d1Statements, d1Storage, probes] = await Promise.all([
-    run(workerQuery(project.worker, startMs)),
-    run(routeQuery(project.worker, startMs)),
-    hasNamespaces ? run(durableObjectQuery(project.durableObjectNamespaces, startMs)) : [],
-    hasBuckets ? run(r2OperationsQuery(project.buckets, startMs)) : [],
-    hasBuckets ? run(r2StorageQuery(project.buckets, startMs)) : [],
-    hasDatabases ? run(d1Query(project.d1Databases, startMs)) : [],
-    hasDatabases ? run(d1StatementQuery(project.d1Databases, startMs)) : [],
-    hasDatabases ? run(d1StorageQuery(project.d1Databases, startMs)) : [],
+    run("worker", workerQuery(project.worker, startMs)),
+    run("routes", routeQuery(project.worker, startMs)),
+    hasNamespaces ? run("durableObjects", durableObjectQuery(project.durableObjectNamespaces, startMs)) : [],
+    hasBuckets ? run("r2Operations", r2OperationsQuery(project.buckets, startMs)) : [],
+    hasBuckets ? run("r2Storage", r2StorageQuery(project.buckets, startMs)) : [],
+    hasDatabases ? run("d1", d1Query(project.d1Databases, startMs)) : [],
+    hasDatabases ? run("d1Statements", d1StatementQuery(project.d1Databases, startMs)) : [],
+    hasDatabases ? run("d1Storage", d1StorageQuery(project.d1Databases, startMs)) : [],
     runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
   const points: MetricPoint[] = [

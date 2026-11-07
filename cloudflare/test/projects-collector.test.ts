@@ -27,14 +27,23 @@ function fixtureRows(): Rows {
   };
 }
 
-function fakeAnalytics(rows: Rows, options: { failOn?: "operations" } = {}): AnalyticsQuery & { calls: BoundQuery[] } {
+function fakeAnalytics(rows: Rows, options: { failOn?: "operations"; status?: number; retrySuccess?: boolean } = {}): AnalyticsQuery & { calls: BoundQuery[] } {
   const calls: BoundQuery[] = [];
+  let attempts = 0;
   return {
     calls,
     async query(request) {
       calls.push(request);
       if (request.query.includes("r2CombinedOperations")) {
-        if (options.failOn === "operations") throw new Error("analytics unavailable");
+        if (options.failOn === "operations") {
+          attempts += 1;
+          if (options.retrySuccess && attempts > 1) {
+            return { data: rows.operations, statistics: { rows_read: 100 } };
+          }
+          const error = new Error("analytics unavailable");
+          if (options.status !== undefined) Object.assign(error, { status: options.status });
+          throw error;
+        }
         return { data: rows.operations, statistics: { rows_read: 100 } };
       }
       if (request.query.includes("r2CombinedStorage")) return { data: rows.storage, statistics: { rows_read: 10 } };
@@ -184,16 +193,36 @@ describe("collector", () => {
     });
   });
 
-  it("records a failed run, writes no metrics, logs one fixed line, and rethrows", async () => {
+  it("records a failed run, writes no metrics, logs failing query, and rethrows", async () => {
     const store = stub();
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(collect(store, fakeAnalytics(fixtureRows(), { failOn: "operations" }))).rejects.toThrow("analytics unavailable");
     expect(log).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "collector_failed" }));
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "collector_failed", query: "r2Operations" }));
     await inside(store, (sql) => {
       expect(sql.exec("SELECT count(*) AS total FROM project_samples").one().total).toBe(0);
       expect(sql.exec("SELECT count(*) AS total FROM project_hours").one().total).toBe(0);
-      expect(sql.exec("SELECT ok, detail FROM collector_runs").toArray()).toEqual([{ ok: 0, detail: "collector_failed" }]);
+      expect(sql.exec("SELECT ok, detail FROM collector_runs").toArray()).toEqual([{ ok: 0, detail: "collector_failed:r2Operations" }]);
+    });
+  });
+
+  it("records error status in detail and logs, and retries 5xx queries once", async () => {
+    const store = stub();
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(collect(store, fakeAnalytics(fixtureRows(), { failOn: "operations", status: 500 }))).rejects.toThrow("analytics unavailable");
+    expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "collector_failed", query: "r2Operations", status: 500 }));
+    await inside(store, (sql) => {
+      expect(sql.exec("SELECT ok, detail FROM collector_runs WHERE ok = 0").toArray()).toEqual([{ ok: 0, detail: "collector_failed:r2Operations:500" }]);
+    });
+  });
+
+  it("succeeds if a 429 query succeeds on its single retry", async () => {
+    const store = stub();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const result = await collect(store, fakeAnalytics(fixtureRows(), { failOn: "operations", status: 429, retrySuccess: true }));
+    expect(result.queries).toBeGreaterThan(0);
+    await inside(store, (sql) => {
+      expect(sql.exec("SELECT count(*) AS total FROM project_samples").one().total).toBeGreaterThan(0);
     });
   });
 
