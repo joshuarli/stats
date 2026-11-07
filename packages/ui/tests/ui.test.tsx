@@ -12,6 +12,7 @@ import {
   Pagination,
   Panel,
   Segmented,
+  Shell,
   Skeleton
 } from "../src/index";
 
@@ -124,5 +125,29 @@ describe("@joshuarli/ui", () => {
     const html = renderToString(() => <Icon name="activity" size={20} />);
     expect(html).toContain("ui-icon");
     expect(html).toContain('width="20"');
+  });
+
+  it("renders the Shell markup contract", () => {
+    const html = renderToString(() => (
+      <Shell
+        brand={{ href: "/runs", name: "niceforge" }}
+        nav={[
+          { label: "Main", items: [{ href: "/runs", label: "Runs", current: true }, { href: "/source", label: "Source" }] },
+          { label: "CI", heading: true, items: [{ href: "/runners", label: "Runners" }] }
+        ]}
+        foot={<button type="submit">Sign out</button>}
+      >
+        <p>Body</p>
+      </Shell>
+    ));
+    expect(html).toContain('class="ui-shell"');
+    expect(html).toContain('class="ui-side-brand"');
+    expect(html).toContain('aria-label="Main"');
+    expect(html).toContain('aria-current="page"');
+    expect(html.match(/aria-current/gu)).toHaveLength(1);
+    expect(html).toContain('aria-labelledby="ui-side-group-1"');
+    expect(html).toContain('class="ui-side-group" id="ui-side-group-1"');
+    expect(html).toContain("ui-side-foot");
+    expect(html).toMatch(/<main class="ui-main" id="main" tabindex="-1">.*Body/su);
   });
 });

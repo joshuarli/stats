@@ -11,3 +11,4 @@ export { Pagination, type PaginationProps } from "./components/Pagination";
 export { Meter, type MeterProps } from "./components/Meter";
 export { PageHeader, type PageHeaderProps } from "./components/PageHeader";
 export { Icon, type IconProps, type IconName } from "./components/Icon";
+export { Shell, SideNav, groupId, type ShellProps, type ShellBrand, type NavGroup, type NavItem } from "./components/Shell";

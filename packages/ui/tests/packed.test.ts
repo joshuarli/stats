@@ -18,7 +18,7 @@ describe("packed artifact contract", () => {
       const data = JSON.parse(output.slice(jsonStart, jsonEnd)) as Record<string, { filename: string; files: readonly { path: string }[] }>;
       const tarballInfo = data["@joshuarli/ui"] ?? Object.values(data)[0];
       assert.ok(tarballInfo !== undefined, "Expected tarball info in json output");
-      assert.equal(tarballInfo.filename, "joshuarli-ui-0.1.0.tgz");
+      assert.equal(tarballInfo.filename, "joshuarli-ui-0.2.0.tgz");
 
       const paths = tarballInfo.files.map(f => f.path);
       assert.ok(paths.includes("package.json"), "Missing package.json");
@@ -54,7 +54,8 @@ describe("packed artifact contract", () => {
       "Pagination",
       "Meter",
       "PageHeader",
-      "Icon"
+      "Icon",
+      "Shell"
     ];
 
     for (const name of expectedExports) {
@@ -101,5 +102,32 @@ describe("packed artifact contract", () => {
     assert.match(styles, /\.ui-skeleton/u);
     assert.match(styles, /\.ui-pagination/u);
     assert.match(styles, /\.ui-meter/u);
+    assert.match(styles, /\.ui-shell/u);
+    assert.match(styles, /\.ui-side-nav a\[aria-current\]/u);
+  });
+
+  it("overrides every color token in the dark scheme and keeps light unchanged", () => {
+    const tokens = readFileSync(resolve(distDir, "tokens.css"), "utf8");
+    const darkStart = tokens.indexOf("@media (prefers-color-scheme: dark)");
+    assert.ok(darkStart > 0, "Missing dark scheme block");
+    assert.match(tokens, /color-scheme: light dark;/u);
+    const light = tokens.slice(0, darkStart);
+    const dark = tokens.slice(darkStart);
+    const isColor = (value: string): boolean => /^(#|rgb)/u.test(value);
+    const lightColors = [...light.matchAll(/(--ui-[\w-]+):\s*([^;]+);/gu)]
+      .filter(match => isColor(match[2] ?? ""))
+      .map(match => match[1] ?? "");
+    assert.ok(lightColors.length > 20);
+    for (const name of lightColors) {
+      assert.match(dark, new RegExp(`${name}:`, "u"), `Dark scheme is missing ${name}`);
+    }
+  });
+
+  it("declares solid-js and @solidjs/web as optional peers", () => {
+    const manifest = JSON.parse(readFileSync(resolve(uiDir, "package.json"), "utf8")) as {
+      peerDependenciesMeta: Record<string, { optional: boolean }>;
+    };
+    assert.equal(manifest.peerDependenciesMeta["solid-js"]?.optional, true);
+    assert.equal(manifest.peerDependenciesMeta["@solidjs/web"]?.optional, true);
   });
 });
