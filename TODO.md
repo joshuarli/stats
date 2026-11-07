@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 96
+Next: 99
 
 ### STA-92 · P2 · The cost ledger can show figures from the previous time window
 
@@ -35,6 +35,15 @@ Next: 96
 - **Problem:** Two fixes the observability campaign report already identified: a deep-linked trace keeps refreshing while the Requests section is closed, and the issue modal can show the enclosing section's occurrence error instead of the modal issue's own error.
 - **Recommendation:** Fix the ownership boundaries, not a rewrite of `Observe.tsx`: tie the trace refresh to the open Requests section, and give the modal its own occurrence load and error. Add a focused test for each.
 - **Fix with:** root-cause
+- **Effort:** S
+
+### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
+
+- **Area:** Services
+- **Where:** `cloudflare/src/cli/commands/deployments.ts` (`statsctl deploy mark`), `POST /ingest/services/:name/deployments`, `docs/integration.md` (rollback markers, `atMs`)
+- **Problem:** The integration contract says a rollback marker's `atMs` is the rollback time, but `statsctl deploy mark` has no way to pass one, so the server stamps the receive time. A producer that records a pending marker durably and retries it later (Niceforge `2d4ba07`, tansu's `deploy-sync`) moves the deployment to whenever Stats accepted it, which shifts the comparison windows.
+- **Recommendation:** Accept an optional activation time on the marker (`--at-ms`, bounded by the 7-day retention and no more than 5 minutes in the future, as for events) that is part of the marker's identity for the 409 rule, and have producers send the time they recorded at activation.
+- **Fix with:** do
 - **Effort:** S
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
