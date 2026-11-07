@@ -56,14 +56,14 @@ async function provision(stack: Stack, name: string): Promise<{ readonly hostId:
   return { hostId: host.hostId, ...created };
 }
 
-function batch(now: number): { readonly text: string; readonly events: readonly unknown[] } {
+function batch(now: number): { readonly text: string; readonly events: readonly Record<string, unknown>[] } {
   const decoded = decodeBatch(golden, { service: SERVICE, nowMs: manifest.nowMs });
   assert.equal(decoded.ok, true, "the golden batch decodes");
   const events = decoded.batch.events.map((event, index) => ({ ...event, atMs: now - 120_000 + index * 60_000 }));
   return { text: JSON.stringify({ events }), events };
 }
 
-async function ingest(stack: Stack, token: string, text: string): Promise<Response> {
+async function ingest(stack: Stack, token: string, text: string) {
   return stack.anonymous(`/ingest/observe/v1/${SERVICE}/batches`, {
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: text
   });
@@ -144,7 +144,9 @@ await test("scenario F: content, paths, credentials, and headers from an applica
   await withWorkerd(async stack => {
     const credentials = await provision(stack, SERVICE);
     const secret = "DO-NOT-STORE-7f6c";
-    const malformed = JSON.stringify({ events: [{ ...batch(NOW).events[0], note: secret, path: `/private/${secret}` }] });
+    const [first] = batch(NOW).events;
+    assert.ok(first !== undefined);
+    const malformed = JSON.stringify({ events: [{ ...first, note: secret, path: `/private/${secret}` }] });
     assert.equal((await ingest(stack, credentials.ingestToken, malformed)).status, 400);
     assert.deepEqual(await external(stack, NOW, SERVICE), []);
     const encoded = await external(stack, NOW, SERVICE);
