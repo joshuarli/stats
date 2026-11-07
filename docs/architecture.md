@@ -232,7 +232,8 @@ is a logical row count, and `statsctl verify` does not accept
 `stats-observe` must accept `operation` before `stats` emits it. A tail that
 does not know the kind rejects the whole invocation as `rejected-invalid`, so
 never roll `stats-observe` back below the version that accepts `operation`
-while `stats` emits it.
+while `stats` emits it. Application producers send the separate external-event
+protocol specified in [the integration contract](integration.md).
 
 `SqlAccount` (`src/sql-account.ts`) wraps `SqlStorage.exec`. It adds each
 cursor's `rowsRead`, `rowsWritten` and one statement to its totals once the
@@ -516,7 +517,9 @@ A service is a named set of agent hosts that deploy scripts report releases
 for. Services are rows in the Installation database, created through the admin
 API on either target, so adding one needs no redeploy. The code is
 `src/core/installation/services.ts`, and both targets reach it through
-`handleStatsRequest` in `src/core/http.ts`.
+`handleStatsRequest` in `src/core/http.ts`. The cross-repository contract for
+service identity, credentials, health, telemetry, rollback, and correlation is
+[the integration contract](integration.md).
 
 `POST /api/v1/admin/services` takes `{ name, hostIds, healthUrl?, unit? }`
 as `application/json`, at most 8 KiB, and needs the target's human auth:
@@ -528,11 +531,15 @@ as `application/json`, at most 8 KiB, and needs the target's human auth:
 | `healthUrl` | Optional. `https:`, or `http:` on a host ending in `.ts.net`, with no credentials or fragment, at most 2048 characters. |
 | `unit` | Optional. A systemd unit or container name: `^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$`. |
 
-It answers `201` with the service and a new deploy `token`. The token is in
-that response only. The server keeps its SHA-256 verifier in
-`services.token_hash`, and the token cannot be read back or rotated in this
-version. `GET /api/v1/services` answers `{ "services": [...] }`, and
-`GET /api/v1/services/:name` answers one service; neither carries the token.
+It answers `201` with the service, `deployToken`, and `ingestToken`. Both
+tokens are in that response only. The server keeps their SHA-256 verifiers in
+`services.token_hash` and `services.ingest_token_hash`, and neither can be read
+back. `POST /api/v1/admin/services/:name/rotate` returns `{ "name", "deployToken" }`;
+`POST /api/v1/admin/services/:name/token/rotate` returns `{ "name", "ingestToken" }`;
+`DELETE /api/v1/admin/services/:name` removes the service, both verifiers, and
+its markers. Each token authenticates only its own route.
+`GET /api/v1/services` answers `{ "services": [...] }`, and
+`GET /api/v1/services/:name` answers one service; neither carries a token.
 
 `POST /ingest/services/:name/deployments` records a deploy marker. Its only
 credential is `Authorization: Bearer <deploy token>`. It skips Access and
@@ -662,8 +669,8 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
   does not reach storage, and duplicates compare this text.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 30 days.
-- `services`: one row per service, with its deploy token verifier and its
-  host ids as a sorted JSON array (schema version 8).
+- `services`: one row per service, with its deploy and ingest token verifiers
+  and its host ids as a sorted JSON array (schema version 9).
 - `service_deployments`: deploy markers keyed by `(service, markerId)`, with
   the `Deployment` JSON and the marker's host ids, for 30 days.
 
