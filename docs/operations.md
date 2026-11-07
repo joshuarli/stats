@@ -5,7 +5,7 @@
 `make agent-build` runs `agent/scripts/build-static.sh`. It requires Docker
 and `curl`. It downloads the pinned
 [llvm-prebuilt-musl](https://github.com/laputa-systems/llvm-prebuilt-musl/releases)
-release `llvm-musl-23.1.5-2f0b039` for each architecture into
+release `llvm-musl-23.1.5-c4f9b08` for each architecture into
 `.work/llvm-agent-build/`, verifies its sha256, and builds each musl target
 with `cargo build --locked` in a container of the matching architecture
 (`agent/build/Dockerfile`: Alpine 3.23 by digest, `musl-dev` headers, rustup
