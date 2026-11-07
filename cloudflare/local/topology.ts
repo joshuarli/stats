@@ -175,7 +175,7 @@ function tailLabelWrapper(producer: string, versionId: string | null, mainModule
   const version = versionId === null ? "" : `, scriptVersion: event.scriptVersion ?? { id: ${JSON.stringify(versionId)} }`;
   return `import collector from "./${mainModule}";
 export * from "./${mainModule}";
-export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(producer)}${version} })), env, ctx); } };`;
+export default { ...collector, tail(events, env, ctx) { return collector.tail(events.map(event => ({ ...event, scriptName: event.scriptName ?? ${JSON.stringify(producer)}${version} })), { ...env, TEST_IDLE_FLUSH_MS: "50" }, ctx); } };`;
 }
 
 function observeProject(observe: BuiltWorker): string {

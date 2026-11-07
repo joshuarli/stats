@@ -97,7 +97,7 @@ async function startShop(): Promise<Shop> {
 
 async function sendAll(shop: Shop, requests: readonly (readonly [string, string])[]): Promise<(string | null)[]> {
   const traceIds: (string | null)[] = [];
-  for (let at = 0; at < requests.length; at += 200) traceIds.push(...await Promise.all(requests.slice(at, at + 200).map(([path, method]) => shop.send(path, method))));
+  for (let at = 0; at < requests.length; at += 50) traceIds.push(...await Promise.all(requests.slice(at, at + 50).map(([path, method]) => shop.send(path, method))));
   return traceIds;
 }
 

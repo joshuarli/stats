@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
@@ -158,7 +158,7 @@ export interface Rig {
 }
 
 export async function startRig(): Promise<Rig> {
-  execFileSync("pnpm", ["run", "build:observe"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  if (!existsSync(OBSERVE_BUNDLE)) execFileSync("pnpm", ["run", "build:observe"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
   const persist = mkdtempSync(join(tmpdir(), "budget-"));
   const mf = new Miniflare({
     ...convertV4MiniflareOptions({ workers: [{

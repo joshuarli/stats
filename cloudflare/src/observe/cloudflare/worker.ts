@@ -58,6 +58,7 @@ export default {
       await deliverSampled({
         buffer: bufferOf(service), batch, nowMs, now: () => Date.now(), sink: store(env, service), defer: work => ctx.waitUntil(work),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+        ...(env.TEST_IDLE_FLUSH_MS !== undefined ? { idleFlushMs: Number(env.TEST_IDLE_FLUSH_MS) } : {}),
         onDeferredFailure: error => console.error(JSON.stringify({ event: "observe_count_flush_failed", service, message: error instanceof Error ? error.message : "unknown" }))
       });
     }));

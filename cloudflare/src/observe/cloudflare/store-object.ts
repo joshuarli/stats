@@ -9,6 +9,7 @@ import { CloudflareSql } from "../../cloudflare/sql.ts";
 
 export interface ObserveEnv {
   readonly STORE: DurableObjectNamespace<ObservationStore>;
+  readonly TEST_IDLE_FLUSH_MS?: string;
 }
 
 function policyOf(name: string | undefined): CountingPolicy {

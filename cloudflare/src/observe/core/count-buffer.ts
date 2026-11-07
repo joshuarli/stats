@@ -54,16 +54,16 @@ export class CountBuffer {
     return this.#counts.size > 0 || this.#pending.length > 0;
   }
 
-  needsIdleTimer(nowMs: number): boolean {
-    return this.#holdsWork() && nowMs - this.#timerArmedAtMs >= IDLE_FLUSH_MS / 2;
+  needsIdleTimer(nowMs: number, idleMs = IDLE_FLUSH_MS): boolean {
+    return this.#holdsWork() && nowMs - this.#timerArmedAtMs >= idleMs / 2;
   }
 
   armIdleTimer(nowMs: number): void {
     this.#timerArmedAtMs = nowMs;
   }
 
-  isIdle(nowMs: number): boolean {
-    return this.#holdsWork() && nowMs - this.#lastAddedAtMs >= IDLE_FLUSH_MS / 2;
+  isIdle(nowMs: number, idleMs = IDLE_FLUSH_MS): boolean {
+    return this.#holdsWork() && nowMs - this.#lastAddedAtMs >= idleMs / 2;
   }
 
   isDue(nowMs: number): boolean {
@@ -120,6 +120,7 @@ export interface SampledDelivery {
   readonly sink: CountSink;
   readonly defer: (work: Promise<void>) => void;
   readonly sleep: (ms: number) => Promise<void>;
+  readonly idleFlushMs?: number | undefined;
   readonly onDeferredFailure: (error: unknown) => void;
 }
 
@@ -149,9 +150,10 @@ export async function deliverSampled(delivery: SampledDelivery): Promise<void> {
 
 function armIdleTimer(delivery: SampledDelivery): void {
   const { buffer, nowMs, sink } = delivery;
-  if (!buffer.needsIdleTimer(nowMs)) return;
+  const idleMs = delivery.idleFlushMs ?? IDLE_FLUSH_MS;
+  if (!buffer.needsIdleTimer(nowMs, idleMs)) return;
   buffer.armIdleTimer(nowMs);
-  delivery.defer(delivery.sleep(IDLE_FLUSH_MS).then(async () => {
-    if (buffer.isIdle(delivery.now())) await send(buffer, sink, buffer.seal([], [], true));
+  delivery.defer(delivery.sleep(idleMs).then(async () => {
+    if (buffer.isIdle(delivery.now(), idleMs)) await send(buffer, sink, buffer.seal([], [], true));
   }).catch(delivery.onDeferredFailure));
 }

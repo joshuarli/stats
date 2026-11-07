@@ -7,15 +7,16 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "test": "node scripts/check-config.mjs && vite build && pnpm run build:observe && pnpm run test:unit && pnpm run test:cli && pnpm run test:observe-e2e && pnpm run test:local && vitest run",
+    "test": "node scripts/test-runner.mjs",
     "test:unit": "node --experimental-strip-types --test test/binary/*.test.ts test/ingest/*.test.ts test/deployments/*.test.ts test/cost/*.test.ts test/scripts/*.test.ts test/observe/*.test.ts test/node/*.test.ts",
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && pnpm run typecheck:binary && pnpm run typecheck:deployments && pnpm run typecheck:observe",
+    "typecheck": "node scripts/typecheck.mjs",
     "lint": "oxlint --type-aware src test bench observe-worker vite.config.ts playwright.config.ts",
     "prebuild": "pnpm --filter @joshuarli/ui build",
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",
+    "build:all": "node scripts/build-all.mjs",
     "statsctl": "node --experimental-strip-types src/cli/statsctl.ts",
     "observe": "node --experimental-strip-types src/observe/client/cli.ts",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
