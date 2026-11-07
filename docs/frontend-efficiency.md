@@ -317,3 +317,71 @@ Browser routes (`bench-ui.mjs --runs 3`, default fixture, raw preview bytes; not
 | `service` | 228.9 | 229.2 | 3 / 2 | 3 / 2 | no |
 
 Tests: `test/ui/dashboard.spec.ts` checks that the projects overview loads chart code only when a row expands. `test/ui/observe.spec.ts` checks that a closed project page loads the errors, requests, and trace views only when one opens. Both failed on the pre-F6 build. Existing replay, layout, and observe goldens pass unchanged.
+
+## Final report (F7, F8)
+
+### Architectural assessment
+
+The client keeps Solid 2, `@solidjs/router`, uPlot, the binary history format, and ETag revalidation. Loading stays on `loadQuery` inside `createMemo` with `createUpdateEffect` refreshes (S1). A failed load keeps the previous value only when it refreshes the same key (`RefreshRetention`). A change of subject, range, zoom, or fleet page that fails reaches the page's error boundary instead. The conditional history cache is one `ConditionalCache` type: 32 entries, 8 MiB of retained bytes, recency touched on `304`, newest-started request installs, and no per-path state outlives a request. Observability results are keyed unions (`KeyedResult<T>`). Charts update in place and rebuild only on construction fields. Route chunks follow what renders (F6).
+
+### Results by deliverable
+
+| Deliverable | Where |
+| --- | --- |
+| Bundle before/after | F6 table above. On the final tree: projects 77.0%, project (closed) 93.3% (gate 85%, missed with cause), fully open project 103.8%, fleet/host/services/service at most 101.7%. |
+| Requests and bytes by route | F3 tables and the F6 browser table. |
+| Decode and cache | F2 section. |
+| Chart lifecycle | F4 section. |
+| Heap and retention | F0b retention trace and F4 cycles. |
+| State ownership | F5 inventory. |
+
+### Code and dependency changes
+
+No runtime or dev dependency was added or removed. There is no server, wire, auth, agent, or ingest change, and no screenshot golden changed. Client-internal contracts that changed:
+
+- `loadQuery` and `loadFleetRows` take a `RefreshOnError<T>` (`key`, `previous`, `retention`, `onError`) instead of positional `previous` and `onRefreshError` arguments.
+- `createProjectLedger` takes `Accessor<TimeWindow>` (no null window).
+- `ConditionalCache` gains `finish` and `pending`.
+- `duration` and `defaultSlice` moved from `TraceTimeline.tsx` to `Observe.tsx`.
+
+### Accepted commits
+
+The campaign runs from `320b3b4` (F0a) through `c4ede4a` (F8). `git log --oneline 576c99d..c4ede4a` lists them; `8316fb8` (Nanoshop policy) is not campaign work. `c59ba2d` fixed the local Niceforge scenario test: Vitest 5 stopped printing passing test names, so the test now pins `--reporter=verbose`. That was a pre-existing red outside the frontend.
+
+### Tests and outcomes on the final tree
+
+| Command | Result |
+| --- | --- |
+| `make fixtures`, `make lint` | pass |
+| `make cloudflare-test` | pass (326 Workers-runtime tests and all Node suites) |
+| `make dashboard-test` | pass (158 Playwright tests, including the Node target) |
+| `make node-e2e`, `make smoke-local`, `make integration-local` | pass |
+
+### F8 review findings
+
+| Finding | Severity | Outcome |
+| --- | --- | --- |
+| Projects rows refetched both ledger windows on every 10 s clock tick, even when paused or hidden: 122 requests in ten paused minutes for one row. `latest()` tracks its read. | P2 (measured as worse) | Fixed in `6bdd5e5`, with a test in `lifecycle.spec.ts` |
+| A failed load after a range, zoom, or fleet page change kept the previous subject's data under the new label | P2 | Fixed in `f3dd67e`, with a test in `lifecycle.spec.ts` |
+| The cache's per-path sequence map was never pruned | P3 | Fixed in `00b623b`, with a test in `client-cache.test.ts` |
+| Unreachable null ledger window, and exports with no outside consumer | P3 | Fixed in `c4ede4a` |
+| A projects row whose later ledger load fails keeps the earlier ledger's trends and still runs the fallback fetch | P3 | Open |
+| A host-list refresh error on Fleet can be cleared by the rows refresh succeeding in the same `Promise.all` | P3 | Open |
+| The trace-detail effect is not gated on the Requests section, so a deep-linked trace refetches while Requests is closed | P3 | Open |
+| `PROJECT_BUCKET_WIDTHS_MS` duplicates the server's bucket widths and point limit | P3 | Open |
+| Inside the issue modal, `IssueDetail` shows the section's occurrence error, not the modal issue's (predates the campaign) | P3 | Open |
+
+No P1 or P2 remains open.
+
+### Rejected experiments
+
+- **Lazy project Signals section.** It saved 1,598 bytes gzip (1.1% of the route), below the 5% floor, and was reverted.
+- **Lazy cost-ledger charts.** Not attempted. The ledger renders them in the initial view, so a boundary would move the same uPlot chunk later in the same load, not remove it.
+
+### Deliberately out of scope
+
+- Production CDN compression and caching (E1).
+- A real 24-host installation (E2).
+- Safari and Firefox timings (E3).
+- workerd end-to-end timing (E4).
+- Changing the ledger's default selection to keep uPlot off the closed project page. That is a product decision; see F6.

@@ -319,6 +319,29 @@ tests. `cloudflare/scripts/capture-project.sh stats` also
 saves the production observe responses, which `make preview` serves from
 `/api/observe/stats/*`.
 
+## Dashboard lifecycle and payload checks
+
+These run under `make dashboard-test` and use deferred routes and Playwright's
+clock, never sleeps:
+
+- `cloudflare/test/ui/lifecycle.spec.ts` covers subject changes, aborts, polling
+  boundaries, refresh errors, deferred project sections, and the projects ledger
+  window.
+- `cloudflare/test/ui/charts.spec.ts` covers chart mount, update, and teardown.
+- `cloudflare/test/ui/observe-lifecycle.spec.ts` covers keyed observability
+  results.
+- `dashboard.spec.ts` and `observe.spec.ts` check that chart code and the
+  project observability views load only when they first render.
+
+`cloudflare/test/client-cache.test.ts` (`node --experimental-strip-types --test`)
+covers the conditional history cache with a stubbed `fetch`.
+
+The payload measurements are `node cloudflare/scripts/bench-bundle.mjs --compare
+.work/frontend-baseline.json` (gzip per route against a saved baseline) and
+`node cloudflare/scripts/bench-ui.mjs --runs 3 --json --out PATH` (browser route
+requests and timings). `docs/frontend-efficiency.md` records the method and
+results.
+
 ## Screenshot goldens
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in

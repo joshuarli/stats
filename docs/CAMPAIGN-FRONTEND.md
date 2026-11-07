@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** Executing; `F0a`, `F0b`, `F1`, `F2`, `F3`, `F4`, and `F5` accepted. Keyed observability results (`KeyedResult<T>`) and deployment comparison state (`ComparisonState`) verified in `test/ui/observe-lifecycle.spec.ts`, `test/ui/observe.spec.ts`, and `test/ui/replay.spec.ts`.
-- **Accepted:** F0a, F0b, F1, F2, F3, F4, F5. **Red:** none. **Parked:** none. **Next:** F6.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F6. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
+- **State:** Closed. F0a through F8 accepted. The final report and every measurement are in `docs/frontend-efficiency.md`.
+- **Accepted:** F0a, F0b, F1, F2, F3, F4, F5, F6, F7, F8. **Red:** none. **Parked:** none. **Open P1/P2:** none.
+- **Gate exception (owner decision):** the S9 gate for the closed project page (≤ 85% of baseline initial gzip) is not met; the page is at 93.2%. Its initial view renders cost-ledger charts: the default-selected line's detail and the month chart. uPlot therefore loads on first paint, and no chunk boundary can remove it. Meeting the gate needs either a product change (no default ledger selection) or a new budget under the S9 reversal.
 
 ## Charter
 
