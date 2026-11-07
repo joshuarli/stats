@@ -221,5 +221,28 @@ The four history caches (`summaryCache`, `hostCache`, `fleetCache`, `projectCach
 | `synthetic/host-bundle-240` | 119,392 | 79.2 | 2.8 | 3.9 |
 | `synthetic/host-bundle-900` | 431,080 | 218.8 | 4.3 | 3.9 |
 
+## Request and byte reductions (F3)
+
+Changes in `cloudflare/src/client/queries.ts`, `FleetPage.tsx`, `ProjectsPage.tsx`, `ProjectPage.tsx`, `Deployments.tsx`, `Observe.tsx`, and `ledger-load.ts`:
+
+- **Fleet `/system` cadence and per-mount reuse (`O2`, `S4`):** `FleetPage` keeps a per-mount `FleetRowCache` (`systems` and `histories` maps). `/api/v1/hosts/:id/system` is requested on initial mount, when a host newly enters the visible 10-host page, and on manual refresh (`Refresh` button), and omitted on the automatic 15-second live tick (`1 /hosts + 10 histories + 0 /system = 11` requests on a 10-host fleet tick, down from `21`). Filtering and sorting reuse the already-loaded `FleetRowCache` entries and issue `0` host requests. `FleetPage` continues to request `summary,disks,nets,filesystems` because each fleet row renders disk and network throughput sparklines and root filesystem use alongside CPU, memory, and load.
+- **Bounded concurrency scheduler (`S4`):** `mapLimit` runs a bounded 4-worker pool instead of 4-item `Promise.all` batches, starting the next visible host as soon as any in-flight host finishes while preserving output order and shared `AbortSignal` cancellation.
+- **Projects overview settled-window ledger and trends reuse (`S5`):** `ProjectsPage` computes each row's settled window directly (`settledRangeWindow(rangeMs[range()], now)`) and passes `Accessor<TimeWindow | null>` to `createProjectLedger`, eliminating both the 6 bogus `from=0&to=0` ledger requests and the eager per-row `range=` history requests on collapsed rows. Expanded `<Trends>` reads the ledger's `histories` when the ledger loaded, and fetches the `range=` history on expand only if the ledger failed.
+- **Closed project section deferral (`S5`):** `createProjectDeployments` gates `/comparison` on `() => sections().has("deploys")`, and `createObservability` gates `/occurrences` on `() => sections().has("errors")`, while keeping `/health` and open `/issues` eager for the header and section summary pills.
+
+### API requests and bytes before vs after F3 (`bench-ui.mjs`, 3-run medians)
+
+| Fixture | Route | Mode | Baseline API Reqs | F3 API Reqs | Baseline API Bytes | F3 API Bytes | Removed requests |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| Default (4 hosts, 3 projects) | `fleet` | cold / warm | 9 / 8 | 9 / 8 | 336,426 / 1,102 | 336,426 / 1,102 | Warm 15 s tick drops 4 `/system` requests (`9 → 5`) |
+| Default (4 hosts, 3 projects) | `projects` | cold / warm | 19 / 18 | 10 / 9 | 119,246 / 4,602 | 82,895 / 4,003 | −6 `from=0&to=0`, −3 eager `range=1h` histories |
+| Default (4 hosts, 3 projects) | `project` (closed) | cold / warm | 13 / 12 | 11 / 10 | 515,528 / 29,844 | 491,106 / 5,422 | −1 `/deployments/:id/comparison`, −1 `/issues/:id/occurrences` |
+| Default (4 hosts, 3 projects) | `project-open` | cold / warm | 16 / 15 | 15 / 14 | 553,808 / 68,124 | 552,440 / 66,756 | −1 `/deployments/:id/comparison` (`deploys` remains closed) |
+| Default (4 hosts, 3 projects) | `services` / `service` | cold / warm | 3 / 2 | 3 / 2 | 908 / 272 | 908 / 272 | Unchanged |
+| `PREVIEW_SCALE=large` (24 hosts, 12 projects) | `fleet` (10 visible) | cold / warm | 21 / 20 | 21 / 20 | 1,017,138 / 2,778 | 1,017,138 / 2,778 | Warm 15 s tick on 10 visible hosts: `1 /hosts + 10 histories + 0 /system = 11` (baseline `21`) |
+| `PREVIEW_SCALE=large` (24 hosts, 12 projects) | `projects` (12 rows) | cold / warm | 70 / 69 | 34 / 33 | 509,099 / 336,907 | 365,683 / 48,579 | −24 `from=0&to=0`, −12 eager `range=1h` histories (5-row equivalent: `28 → 13`) |
+| `PREVIEW_SCALE=large` (24 hosts, 12 projects) | `project` (closed) | cold / warm | 13 / 12 | 11 / 10 | 521,898 / 518,082 | 498,075 / 9,211 | −1 `/deployments/:id/comparison`, −1 `/issues/:id/occurrences` |
+
+
 
 

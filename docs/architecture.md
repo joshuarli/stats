@@ -725,7 +725,7 @@ collector run, plus the requested window and kinds (a host's range window also
 carries its resolved end and resolution) and the frame format
 (`:stc1`), so a validator never matches a different representation. The match
 is weak, so a `W/` prefix added by an intermediary still revalidates. The
-dashboard sends `If-None-Match` and reuses its decoded history on `304`, so a
+dashboard sends `If-None-Match` and reuses its decoded history on `304` (retaining at most 32 entries and 8 MiB per history cache), so a
 poll that finds no new source data returns before building history. The `304`
 carries `ETag` and `Vary: Accept-Encoding`, never `Content-Encoding`.
 
@@ -983,7 +983,7 @@ response is validated once and wrapped in tables (`columns.ts`, `history.ts`): a
 time axis plus named numeric columns whose absent cells are `null`, converted to
 chart arrays only for the columns a view reads. `state.ts` owns the range, zoom
 stack, and live-refresh state; `chart-data.ts` aligns series onto a shared time
-grid, passing through series that already share a gap-free axis. Host and fleet data refresh every 15 seconds;
+grid, passing through series that already share a gap-free axis. Host and fleet histories refresh every 15 seconds (fleet system metadata loads on mount, when a host enters the visible page, and on manual refresh);
 project data and the project list refresh every five minutes to match the
 collector cron, while the manual Refresh button is immediate. Routes are `/`
 for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
@@ -1008,7 +1008,7 @@ settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still arriving.
 The project page keeps its deployments, errors, request explorer, and charts
 in sections that start closed; the open sections live in the URL's `open`
 parameter, and a deep link such as `deployment=` or `route=` opens its
-section. The request explorer loads only while its section is open. Long lists
+section. The deployment comparison, issue occurrences, and request explorer load only while their sections are open. Long lists
 show their first rows and a "Show more" control, so the page scrolls as one
 page. Widgets collapse, and the choice persists in `localStorage`. `make preview` serves the
 built client from the captured API fixtures with a frozen clock.
