@@ -40,26 +40,35 @@ const previewScript = resolve(scriptDir, "preview.mjs");
 async function isPreviewReady(url) {
   try {
     const response = await fetch(`${url}/api/v1/hosts`);
-    return response.ok;
+    if (!response.ok) return false;
+    const body = await response.json();
+    const count = body.hosts?.length ?? 0;
+    if ((process.env.PREVIEW_SCALE ?? "default") === "large") return count >= 24;
+    return count > 0 && count < 24;
   } catch {
     return false;
   }
 }
 
+let activeBase = base;
 async function ensurePreview(url) {
   if (await isPreviewReady(url)) return null;
   const parsed = new URL(url);
+  const targetPort = option("--base", null) !== null || process.env.BASE !== undefined
+    ? (parsed.port || "4174")
+    : String(4174 + Math.floor(Math.random() * 500) + 1);
+  activeBase = `http://${parsed.hostname}:${targetPort}`;
   const child = spawn(process.execPath, [previewScript], {
-    env: { ...process.env, PREVIEW_PORT: parsed.port || "4174" },
+    env: { ...process.env, PREVIEW_PORT: targetPort },
     stdio: "ignore"
   });
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    if (await isPreviewReady(url)) return child;
+    if (await isPreviewReady(activeBase)) return child;
     await new Promise(resolveWait => setTimeout(resolveWait, 25));
   }
   child.kill();
-  throw new Error(`preview did not become ready at ${url}`);
+  throw new Error(`preview did not become ready at ${activeBase}`);
 }
 
 const spawnedPreview = await ensurePreview(base);
@@ -73,14 +82,14 @@ const cleanupPreview = () => {
 process.on("exit", cleanupPreview);
 
 async function fetchJson(path) {
-  const response = await fetch(base + path);
-  if (!response.ok) throw new Error(`${base}${path} returned ${response.status}`);
+  const response = await fetch(activeBase + path);
+  if (!response.ok) throw new Error(`${activeBase}${path} returned ${response.status}`);
   return response.json();
 }
 
 async function fetchOptionalJson(path, fallback) {
   try {
-    const response = await fetch(base + path);
+    const response = await fetch(activeBase + path);
     if (!response.ok) return fallback;
     return await response.json();
   } catch {
@@ -213,7 +222,7 @@ function createNetworkTracker(page) {
 
   page.on("request", request => {
     const url = new URL(request.url());
-    if (url.origin !== new URL(base).origin) return;
+    if (url.origin !== new URL(activeBase).origin) return;
     active += 1;
     pending.set(request, { path: url.pathname + url.search, method: request.method() });
   });
@@ -359,7 +368,7 @@ const routeTargets = [
   {
     name: "fleet",
     hash: "#/",
-    url: `${base}/#/`,
+    url: `${activeBase}/#/`,
     pivotHash: "#/services",
      pivotReady: "main.content .widget, main.content .empty-state, main.content .error-state",
     ready: 'table[aria-label="Fleet hosts"] tbody tr'
@@ -367,7 +376,7 @@ const routeTargets = [
   ...(primaryHost === undefined ? [] : [{
     name: "host",
     hash: `#/host/${primaryHost.hostId}`,
-    url: `${base}/#/host/${primaryHost.hostId}`,
+    url: `${activeBase}/#/host/${primaryHost.hostId}`,
     pivotHash: "#/",
     pivotReady: 'table[aria-label="Fleet hosts"] tbody tr',
     ready: ".chart-plot .uplot"
@@ -375,7 +384,7 @@ const routeTargets = [
   {
     name: "projects",
     hash: "#/projects",
-    url: `${base}/#/projects`,
+    url: `${activeBase}/#/projects`,
     pivotHash: "#/",
     pivotReady: 'table[aria-label="Fleet hosts"] tbody tr',
     ready: 'table[aria-label="Projects"] tbody tr'
@@ -383,7 +392,7 @@ const routeTargets = [
   ...(statsProject === undefined ? [] : [{
     name: "project",
     hash: `#/project/${statsProject.id}`,
-    url: `${base}/#/project/${statsProject.id}`,
+    url: `${activeBase}/#/project/${statsProject.id}`,
     pivotHash: "#/projects",
     pivotReady: 'table[aria-label="Projects"] tbody tr',
     ready: '[aria-label="Cost ledger"]'
@@ -391,7 +400,7 @@ const routeTargets = [
   {
     name: "services",
     hash: "#/services",
-    url: `${base}/#/services`,
+    url: `${activeBase}/#/services`,
     pivotHash: "#/",
     pivotReady: 'table[aria-label="Fleet hosts"] tbody tr',
     ready: 'table[aria-label="Services"] tbody tr, main.content .empty-state, main.content .error-state'
@@ -399,7 +408,7 @@ const routeTargets = [
   {
     name: "service",
     hash: `#/service/${primaryServiceName}`,
-    url: `${base}/#/service/${primaryServiceName}`,
+    url: `${activeBase}/#/service/${primaryServiceName}`,
     pivotHash: "#/services",
     pivotReady: 'table[aria-label="Services"] tbody tr, main.content .empty-state, main.content .error-state',
     ready: "#service-work, main.content .empty-state, main.content .error-state"
@@ -407,7 +416,7 @@ const routeTargets = [
   ...(statsProject === undefined ? [] : [{
     name: "project-open",
     hash: `#/project/${statsProject.id}?open=errors,requests`,
-    url: `${base}/#/project/${statsProject.id}?open=errors,requests`,
+    url: `${activeBase}/#/project/${statsProject.id}?open=errors,requests`,
     pivotHash: "#/projects",
     pivotReady: 'table[aria-label="Projects"] tbody tr',
     ready: "#route-explorer .route-table, #route-explorer .observe-empty"
@@ -434,7 +443,7 @@ async function runRetentionTrace(steps) {
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
 
-  await page.goto(`${base}/#/`, { waitUntil: "load" });
+  await page.goto(`${activeBase}/#/`, { waitUntil: "load" });
   await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
   await tracker.waitForQuiet();
 
@@ -463,13 +472,15 @@ async function runRetentionTrace(steps) {
     if (mode === 1 || mode === 2) {
       const host = hosts[(step + Math.floor(step / 2)) % hosts.length];
       const range = rangeCycle[step % rangeCycle.length];
-      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/host/${host.hostId}?range=${range}`);
+      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/host/${host.hostId}`);
       await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
+      await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 3) {
       const project = projects[step % projects.length];
       const range = rangeCycle[step % 3];
-      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/project/${project.id}?range=${range}`);
+      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/project/${project.id}`);
       await page.waitForSelector('[aria-label="Cost ledger"], main.content .empty-state', { timeout: 30_000 });
+      await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 4) {
       await page.evaluate(() => { window.location.hash = "#/projects"; });
       await page.waitForSelector('table[aria-label="Projects"] tbody tr', { timeout: 30_000 });
@@ -478,18 +489,17 @@ async function runRetentionTrace(steps) {
       await page.waitForSelector('table[aria-label="Fleet hosts"] tbody tr', { timeout: 30_000 });
       const totalPages = Math.max(1, Math.ceil(hosts.length / 10));
       if (totalPages > 1) {
-        const targetPage = ((step / 5) % totalPages) + 1;
+        const targetPage = ((Math.floor(step / 5) - 1) % totalPages) + 1;
         const nextBtn = page.getByRole("button", { name: "Next page" });
-        const prevBtn = page.getByRole("button", { name: "Previous page" });
-        if (targetPage > 1 && await nextBtn.isEnabled()) {
+        if (targetPage >= 2 && await nextBtn.isEnabled()) {
           await nextBtn.click();
+          await tracker.waitForQuiet(60, 5_000);
           fleetPagesVisited.add(2);
-          if (targetPage > 2 && await nextBtn.isEnabled()) {
+          if (targetPage >= 3 && await nextBtn.isEnabled()) {
             await nextBtn.click();
+            await tracker.waitForQuiet(60, 5_000);
             fleetPagesVisited.add(3);
           }
-        } else if (await prevBtn.isEnabled()) {
-          await prevBtn.click();
         }
       }
     }
@@ -542,14 +552,14 @@ async function measurePreviewNodeTimings() {
   const timings = {};
   for (const [label, path] of probes) {
     for (let warmup = 0; warmup < 3; warmup += 1) {
-      const response = await fetch(base + path);
+      const response = await fetch(activeBase + path);
       await response.arrayBuffer();
     }
     const samplesMs = [];
     let bytes = 0;
     for (let iter = 0; iter < 15; iter += 1) {
       const start = process.hrtime.bigint();
-      const response = await fetch(base + path);
+      const response = await fetch(activeBase + path);
       const buf = await response.arrayBuffer();
       bytes = buf.byteLength;
       samplesMs.push(Number(process.hrtime.bigint() - start) / 1e6);
@@ -579,7 +589,7 @@ async function measureConditionalHistoryAndCharts() {
   for (const range of ["1h", "24h", "7d"]) {
     tracker.reset();
     if (range === "1h") {
-      await page.goto(`${base}/#/host/${primaryHost.hostId}?range=1h`, { waitUntil: "load" });
+      await page.goto(`${activeBase}/#/host/${primaryHost.hostId}?range=1h`, { waitUntil: "load" });
       await page.waitForSelector(".chart-plot .uplot", { timeout: 30_000 });
     } else {
       await page.getByRole("button", { name: range, exact: true }).click();
@@ -793,7 +803,7 @@ cleanupPreview();
 
 const output = {
   generatedAt: new Date().toISOString(),
-  base,
+  base: activeBase,
   scale: process.env.PREVIEW_SCALE ?? "default",
   fixture: {
     hosts: hosts.length,

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
@@ -11,6 +12,8 @@ const cloudflare = normalize(join(fileURLToPath(new URL(".", import.meta.url)), 
 const assets = join(cloudflare, ".cloudflare", "output", "v0", "workers", "default", "assets");
 const captures = join(cloudflare, "test", "ui", "captures");
 const port = Number(process.env.PREVIEW_PORT ?? 4174);
+const previewScale = process.env.PREVIEW_SCALE ?? "default";
+if (!["default", "large"].includes(previewScale)) throw new Error("PREVIEW_SCALE must be default or large");
 const hour = 3_600_000;
 const day = 24 * hour;
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
@@ -60,13 +63,50 @@ for (const capture of capturesFound) {
   } catch {}
   try {
     for (const project of await readJson(join(capture.directory, "projects.json"))) {
-      if (project.id === capture.projectId) projectsById.set(project.id, capture);
-      const listed = projects.findIndex(entry => entry.id === project.id);
-      if (listed === -1) projects.push(shift(project, shiftFor(capture)));
-      else if (project.id === capture.projectId) projects[listed] = shift(project, shiftFor(capture));
+      if (project.id !== capture.projectId || projectsById.has(project.id)) continue;
+      projectsById.set(project.id, capture);
+      projects.push(shift(project, shiftFor(capture)));
     }
   } catch {}
 }
+
+if (previewScale === "large") {
+  const baseHosts = [...hosts];
+  while (hosts.length < 24 && baseHosts.length > 0) {
+    const idx = hosts.length + 1;
+    const template = baseHosts[(idx - 1) % baseHosts.length];
+    const baseCapture = hostsById.get(template.hostId);
+    const syntheticHostId = `h_${idx.toString(16).padStart(32, "0")}`;
+    hostsById.set(syntheticHostId, { ...baseCapture, hostId: syntheticHostId });
+    hosts.push({
+      ...template,
+      hostId: syntheticHostId,
+      name: `${template.name}-${idx}`
+    });
+  }
+  const baseProjects = projects.filter(entry => projectsById.has(entry.id));
+  while (projects.length < 12 && baseProjects.length > 0) {
+    const idx = projects.length + 1;
+    const template = baseProjects[(idx - 1) % baseProjects.length];
+    const baseCapture = projectsById.get(template.id);
+    const syntheticId = `${template.id}-${idx}`;
+    projectsById.set(syntheticId, { ...baseCapture, projectId: syntheticId });
+    projects.push({
+      ...template,
+      id: syntheticId,
+      name: `${template.name} ${idx}`,
+      worker: template.worker === "" ? "" : `${template.worker}-${idx}`
+    });
+  }
+}
+
+const services = hosts.length === 0 ? [] : [{
+  name: "web",
+  hostIds: [hosts[0].hostId],
+  healthUrl: "https://web.ts.net/health",
+  unit: "web.service",
+  createdAtMs: hosts[0].createdAtMs
+}];
 
 async function captureFile(capture, name) {
   try {
@@ -115,10 +155,16 @@ function sliceHistory(body, fromMs, toMs) {
 }
 
 async function history(capture, kind, url) {
+  const withIdentity = body => {
+    if (body === undefined) return undefined;
+    if (typeof body.hostId === "string" && typeof capture.hostId === "string") return { ...body, hostId: capture.hostId };
+    if (typeof body.projectId === "string" && typeof capture.projectId === "string") return { ...body, projectId: capture.projectId };
+    return body;
+  };
   const range = url.searchParams.get("range");
   if (range !== null) {
     const chosen = await captureFile(capture, `${kind}-${range}.json`) ?? await closest(capture, kind, range);
-    return chosen === undefined ? undefined : shift(chosen, shiftFor(capture));
+    return chosen === undefined ? undefined : withIdentity(shift(chosen, shiftFor(capture)));
   }
   const fromMs = Number(url.searchParams.get("from"));
   const toMs = Number(url.searchParams.get("to"));
@@ -126,15 +172,21 @@ async function history(capture, kind, url) {
     const found = await captureFile(capture, `${kind}-${candidate}.json`);
     if (found === undefined) continue;
     const shifted = shift(found, shiftFor(capture));
-    if (shifted.fromMs <= fromMs) return sliceHistory(shifted, fromMs, toMs);
+    if (shifted.fromMs <= fromMs) return withIdentity(sliceHistory(shifted, fromMs, toMs));
   }
   const reference = await closest(capture, kind, rangeForSpan(toMs - fromMs));
-  return reference === undefined ? undefined : emptyHistory(reference, fromMs, toMs);
+  return reference === undefined ? undefined : withIdentity(emptyHistory(reference, fromMs, toMs));
 }
 
-function frame(response, body) {
+function frame(request, response, body) {
   const encoded = encodeHistory(body);
-  response.writeHead(200, { "Content-Type": HISTORY_CONTENT_TYPE, "Cache-Control": "no-store" });
+  const etag = `W/"${createHash("sha256").update(encoded).digest("hex").slice(0, 16)}"`;
+  if (request.headers["if-none-match"] === etag) {
+    response.writeHead(304, { ETag: etag, "Cache-Control": "no-store", Vary: "Accept-Encoding" });
+    response.end();
+    return;
+  }
+  response.writeHead(200, { "Content-Type": HISTORY_CONTENT_TYPE, ETag: etag, "Cache-Control": "no-store", Vary: "Accept-Encoding" });
   response.end(encoded);
 }
 
@@ -192,6 +244,13 @@ const server = createServer(async (request, response) => {
     const path = decodeURIComponent(url.pathname);
     if (path === "/api/v1/hosts") return json(response, { hosts });
     if (path === "/api/v1/projects") return json(response, projects);
+    if (path === "/api/v1/services") return json(response, { services });
+    const serviceDeploys = /^\/api\/v1\/services\/([^/]+)\/deployments$/u.exec(path);
+    if (serviceDeploys !== null) {
+      const svcName = decodeURIComponent(serviceDeploys[1]);
+      if (!services.some(entry => entry.name === svcName)) return json(response, { error: { code: "not_found", message: "unknown service" } }, 404);
+      return json(response, { projectId: svcName, worker: svcName, enabled: true, sync: null, versions: [], deployments: [], markers: [] });
+    }
     const deployed = /^\/api\/v1\/projects\/([^/]+)\/deployments(?:\/([^/]+)\/comparison)?$/u.exec(path);
     if (deployed !== null && scenario !== undefined && deployed[1] === "stats") {
       if (deployed[2] === undefined) return json(response, scenario.deployments);
@@ -200,12 +259,13 @@ const server = createServer(async (request, response) => {
       return body === null ? json(response, { error: { code: "not_found", message: "no comparison in the scenario" } }, 404) : json(response, body);
     }
     if (deployed !== null) {
-      const capture = projectsById.get(deployed[1]);
+      const targetProjectId = decodeURIComponent(deployed[1]);
+      const capture = projectsById.get(targetProjectId);
       const window = url.searchParams.get("window") ?? "1h";
       const file = deployed[2] === undefined ? "deployments.json" : `comparison-${window}.json`;
       const body = capture === undefined || !["1h", "6h", "24h"].includes(window) ? undefined : await captureFile(capture, file);
       if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
-      return json(response, shift(deployed[2] === undefined ? body : { ...body, deploymentId: deployed[2] }, shiftFor(capture)));
+      return json(response, shift(deployed[2] === undefined ? { ...body, projectId: targetProjectId } : { ...body, deploymentId: deployed[2] }, shiftFor(capture)));
     }
     if (path.startsWith("/api/observe/")) return observe(request, response, path.slice("/api/observe/".length), url);
     const host = /^\/api\/v1\/hosts\/([^/]+)\/(system|history)$/u.exec(path);
@@ -226,14 +286,15 @@ const server = createServer(async (request, response) => {
           if (body === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
           histories[kind] = body;
         }
-        return frame(response, { hostId: capture.hostId, histories });
+        return frame(request, response, { hostId: capture.hostId, histories });
       }
       const body = await history(capture, url.searchParams.get("kind") ?? "summary", url);
-      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(response, body);
+      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(request, response, body);
     }
     const project = /^\/api\/v1\/projects\/([^/]+)\/history$/u.exec(path);
     if (project !== null) {
-      const capture = projectsById.get(decodeURIComponent(project[1]));
+      const targetProjectId = decodeURIComponent(project[1]);
+      const capture = projectsById.get(targetProjectId);
       if (capture === undefined) return json(response, { error: { code: "not_found", message: "unknown project" } }, 404);
       const kinds = url.searchParams.get("kinds");
       if (kinds !== null) {
@@ -244,13 +305,13 @@ const server = createServer(async (request, response) => {
           else if (kind !== "worker" && kind !== "collector") {
             const base = await history(capture, "worker", url);
             if (base === undefined) return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
-            histories[kind] = emptyHistory({ ...base, kind }, base.fromMs, base.toMs);
+            histories[kind] = emptyHistory({ ...base, kind, projectId: targetProjectId }, base.fromMs, base.toMs);
           } else return json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404);
         }
-        return frame(response, { projectId: decodeURIComponent(project[1]), histories });
+        return frame(request, response, { projectId: targetProjectId, histories });
       }
       const body = await history(capture, url.searchParams.get("kind") ?? "worker", url);
-      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(response, body);
+      return body === undefined ? json(response, { error: { code: "not_found", message: "no capture for that request" } }, 404) : frame(request, response, body);
     }
 
     const relative = path === "/" ? "/index.html" : path;

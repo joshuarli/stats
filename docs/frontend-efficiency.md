@@ -138,3 +138,40 @@ Environment: Apple Silicon macOS, Node `26.12.1`, Vite `8.3.5` (`pnpm --dir clou
 | `/api/v1/hosts/:id/history?range=1h&kinds=summary,disks,nets,filesystems,block` | 67,568 | 2.86 | 3.09 | 4.16 |
 | `/api/v1/projects/stats/history?range=1h&kinds=worker,routes,r2,collector,durable-objects` | 9,400 | 0.74 | 0.82 | 1.28 |
 | `/api/observe/stats/health` | 335 | 2.60 | 2.70 | 3.02 |
+
+## Scale fixture and 100-navigation retention baseline (F0b)
+
+`PREVIEW_SCALE=large` synthesizes 24 hosts (spanning 3 fleet pages: 10 + 10 + 4), 12 projects, and 1 service from the repository captures in `cloudflare/scripts/preview.mjs`.
+
+### Browser route baseline (`PREVIEW_SCALE=large`, 3-run medians)
+
+| Route | Mode | FCP (ms) | LCP (ms) | Ready (ms) | JS (B) | CSS (B) | API (B) | Reqs (asset / json / history / observe) | Heap Used (KiB) | Backing (KiB) | DOM Nodes | Listeners | Task / Script (ms) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| `fleet` | cold | 1,600 | 2,364 | 2,386.0 | 206,526 | 39,017 | 1,017,138 | 26 (`5 / 11 / 10 / 0`) | 6,248.0 | 1,196.4 | 2,534 | 74 | 83.9 / 11.7 |
+| `fleet` | warm | — | — | 784.4 | 0 | 0 | 2,778 | 20 (`0 / 10 / 10 / 0`) | 6,931.4 | 1,216.4 | 4,806 | 121 | 34.2 / 1.7 |
+| `host` | cold | 2,384 | 2,596 | 2,608.4 | 315,652 | 40,661 | 71,685 | 14 (`11 / 2 / 1 / 0`) | 5,528.8 | 382.9 | 1,948 | 217 | 120.4 / 21.7 |
+| `host` | warm | — | — | 59.5 | 0 | 0 | 301 | 2 (`0 / 1 / 1 / 0`) | 7,510.1 | 1,374.8 | 5,473 | 339 | 55.9 / 6.2 |
+| `projects` | cold | 2,500 | 2,696 | 3,146.7 | 331,732 | 46,204 | 509,099 | 84 (`14 / 10 / 60 / 0`) | 4,494.8 | 750.3 | 940 | 93 | 114.7 / 28.5 |
+| `projects` | warm | — | — | 280.8 | 0 | 0 | 336,907 | 69 (`0 / 9 / 60 / 0`) | 6,635.8 | 1,836.6 | 4,267 | 185 | 53.9 / 10.8 |
+| `project` | cold | 2,984 | 3,384 | 3,690.9 | 406,967 | 66,841 | 521,898 | 29 (`16 / 4 / 4 / 5`) | 4,512.8 | 877.9 | 990 | 88 | 92.3 / 28.0 |
+| `project` | warm | — | — | 779.3 | 0 | 0 | 518,082 | 12 (`0 / 3 / 4 / 5`) | 6,134.1 | 1,622.3 | 2,399 | 160 | 36.5 / 7.4 |
+| `services` | cold | 1,928 | 1,952 | 1,962.7 | 225,430 | 46,206 | 4,088 | 14 (`11 / 3 / 0 / 0`) | 2,720.6 | 223.1 | 234 | 45 | 50.3 / 13.6 |
+| `services` | warm | — | — | 26.7 | 0 | 0 | 272 | 2 (`0 / 2 / 0 / 0`) | 4,600.1 | 1,216.1 | 2,665 | 89 | 10.0 / 2.0 |
+| `service` | cold | 2,016 | 2,028 | 2,040.3 | 232,359 | 47,011 | 4,088 | 16 (`13 / 3 / 0 / 0`) | 2,770.9 | 230.0 | 273 | 41 | 66.4 / 14.9 |
+| `service` | warm | — | — | 25.8 | 0 | 0 | 272 | 2 (`0 / 2 / 0 / 0`) | 3,014.1 | 234.1 | 447 | 47 | 15.7 / 1.7 |
+| `project-open` | cold | 2,988 | 3,480 | 4,204.4 | 406,967 | 66,841 | 560,178 | 32 (`16 / 4 / 4 / 8`) | 6,563.8 | 884.7 | 2,832 | 102 | 156.1 / 43.3 |
+| `project-open` | warm | — | — | 1,287.4 | 0 | 0 | 556,362 | 15 (`0 / 3 / 4 / 8`) | 9,162.9 | 1,628.7 | 5,665 | 188 | 75.7 / 15.6 |
+
+### 100-navigation retention trace (`--retention 100`, `PREVIEW_SCALE=large`)
+
+The trace cycles across 24 hosts (`1h`, `6h`, `24h`, `7d`, `30d`), 12 projects, `ProjectsPage`, and all 3 `FleetPage` pagination pages (`fleetPagesExercised: 3`), recording forced-GC heap and DOM checkpoints every 25 navigations:
+
+| Step | Heap Used (KiB) | Backing Store (KiB) | DOM Nodes | Listeners | `.uplot` Roots |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 0 | 6,194.1 | 1,196.5 | 2,534 | 74 | 0 |
+| 25 | 38,530.9 | 32,440.8 | 27,544 | 1,035 | 0 |
+| 50 | 61,237.7 | 56,966.8 | 50,204 | 1,927 | 0 |
+| 75 | 82,866.2 | 84,395.0 | 73,181 | 2,839 | 0 |
+| 100 | 105,535.4 | 107,984.3 | 97,023 | 3,767 | 0 |
+| Final on Fleet | 104,991.3 | 108,522.8 | 97,229 | 3,771 | 0 |
+
