@@ -1,16 +1,6 @@
 Prefix: STA
 Next: 91
 
-### STA-31 · P3 · Collector store write still costs about 26 ms of Durable Object CPU per run
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/projects/store.ts:57`, `cloudflare/src/projects/store.ts:101`
-- **Problem:** `events.durableObjectsInvocations` shows the cron's store write (`invocationType = 'jsrpc'`) at 19 to 37 ms per run before 2026-11-01 20:30, and 22 to 28 ms for the four runs after `edfeea3` replaced the per-point SELECT with one range read. The route and Durable Object metrics added about 80 points per project in the same window, so the change probably absorbed that cost rather than cutting the old one. `rebuildHour` still runs two SELECTs and an INSERT for every changed metric and hour. Unproven: which of the two dominates.
-- **Status (2026-11-06):** read from production, observational only (no before and after pair, so no speedup is claimed). `Installation.recordCollectorRun` object invocations in the 618 scheduled traces from 2026-11-04 01:00Z to 2026-11-06 05:00Z (617 with one such call): CPU median 26 ms, p90 45, p99 66, max 99, mean 28.3, wall median 192 ms. By day the median is 22 ms (272 runs), 27 ms (286) and 37 ms (59, partial day, p90 64), so the cost is rising, not flat. Slowest tenth of runs 58.2 ms against 11.1 ms for the fastest tenth; the upstream rows the run read explain little of it (correlation 0.13, 285 runs). `statsctl observe operations --project stats --window 24h` reports `collector.record` as 282 runs, 9,137 ms CPU, 1,264,467 rows read, 61,342 rows written and 78,813 statements, which is 4,484 rows read, 217 rows written and 279 statements per run. With one INSERT per changed point and a SELECT, SELECT and INSERT per changed metric and hour, 279 statements and 217 rows written solve to about 186 sample INSERTs and 31 rebuilt hours, so the per-point INSERTs are about two thirds of the statements and the two SELECTs per hour about a fifth. That estimate assumes the few other statements per run are negligible and that CPU follows statement count, which is unproven; batching only the hour rebuild, as recommended below, would reach the smaller share. Next step: a local run of `upsertPoints` with the production point and hour counts, timing the sample INSERT loop against the hour rebuild, before choosing.
-- **Recommendation:** Read the stored `project_hours` values for the affected hours in one query and compute the hour aggregates in one grouped query, then write only the changed rows. Compare `jsrpc` CPU from the same dataset before and after.
-- **Fix with:** make-it-fast
-- **Effort:** S
-
 ### STA-33 · P3 · Ingest CPU tail of 35 to 47 ms is unexplained
 
 - **Area:** Performance

@@ -93,11 +93,9 @@ export function upsertPoints(sql: SqlDatabase, project: string, points: readonly
     const hourMs = Math.floor(point.bucketMs / HOUR_MS) * HOUR_MS;
     changedHours.set(`${point.metric}\n${hourMs}`, { metric: point.metric, hourMs });
   }
-  for (const { metric, hourMs } of changedHours.values()) {
-    const written = rebuildHour(sql, project, metric, hourMs);
-    rowsWritten += written;
-    if (written > 0) hours += 1;
-  }
+  const rebuilt = rebuildHours(sql, project, changedHours);
+  rowsWritten += rebuilt.rowsWritten;
+  hours += rebuilt.hours;
   return { rowsWritten, samples, hours };
 }
 
@@ -118,32 +116,78 @@ function storedValues(sql: SqlDatabase, project: string, points: readonly Metric
   return stored;
 }
 
-function rebuildHour(sql: SqlDatabase, project: string, metric: string, hourMs: number): number {
-  const fold = { sum: "SUM", max: "MAX", min: "MIN" }[aggregationOf(metric)];
-  const rebuilt = sql.rows<{ value: number }>(
-    `SELECT ${fold}(value) AS value FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms >= ? AND bucket_ms < ?`,
-    project,
-    metric,
-    hourMs,
-    hourMs + HOUR_MS,
-  )[0]!.value;
-  const existing = sql.rows<{ value: number }>(
-    "SELECT value FROM project_hours WHERE project = ? AND metric = ? AND hour_ms = ?",
-    project,
-    metric,
-    hourMs,
-  )[0];
-  if (existing !== undefined && existing.value === rebuilt) {
-    return 0;
+function storedHours(sql: SqlDatabase, project: string, changed: Iterable<{ metric: string; hourMs: number }>): Map<string, number> {
+  const stored = new Map<string, number>();
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const item of changed) {
+    earliest = Math.min(earliest, item.hourMs);
+    latest = Math.max(latest, item.hourMs);
   }
-  return rowsWrittenBy(
-    sql,
-    "INSERT INTO project_hours (project, metric, hour_ms, value) VALUES (?, ?, ?, ?) ON CONFLICT (project, metric, hour_ms) DO UPDATE SET value = excluded.value",
-    project,
-    metric,
-    hourMs,
-    rebuilt,
+  if (!Number.isFinite(earliest)) return stored;
+  sql.each<{ metric: string; hour_ms: number; value: number }>(
+    "SELECT metric, hour_ms, value FROM project_hours INDEXED BY project_hours_by_hour WHERE project = ? AND hour_ms >= ? AND hour_ms <= ?",
+    [project, earliest, latest],
+    (row) => stored.set(`${row.metric}\n${row.hour_ms}`, row.value),
   );
+  return stored;
+}
+
+function rebuildHours(
+  sql: SqlDatabase,
+  project: string,
+  changedHours: Map<string, { metric: string; hourMs: number }>,
+): { rowsWritten: number; hours: number } {
+  if (changedHours.size === 0) return { rowsWritten: 0, hours: 0 };
+  const existing = storedHours(sql, project, changedHours.values());
+  const byFold = new Map<string, { metric: string; hourMs: number }[]>();
+  for (const item of changedHours.values()) {
+    const fold = { sum: "SUM", max: "MAX", min: "MIN" }[aggregationOf(item.metric)];
+    let list = byFold.get(fold);
+    if (list === undefined) {
+      list = [];
+      byFold.set(fold, list);
+    }
+    list.push(item);
+  }
+
+  let rowsWritten = 0;
+  let hours = 0;
+  for (const [fold, items] of byFold.entries()) {
+    let earliest = Number.POSITIVE_INFINITY;
+    let latest = Number.NEGATIVE_INFINITY;
+    const metrics = new Set<string>();
+    for (const item of items) {
+      earliest = Math.min(earliest, item.hourMs);
+      latest = Math.max(latest, item.hourMs + HOUR_MS);
+      metrics.add(item.metric);
+    }
+    const metricList = [...metrics];
+    const placeholders = metricList.map(() => "?").join(", ");
+    const rows = sql.rows<{ metric: string; hour_ms: number; value: number }>(
+      `SELECT metric, (bucket_ms / ${HOUR_MS}) * ${HOUR_MS} AS hour_ms, ${fold}(value) AS value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (${placeholders}) GROUP BY metric, hour_ms`,
+      project,
+      earliest,
+      latest,
+      ...metricList,
+    );
+    for (const row of rows) {
+      const key = `${row.metric}\n${row.hour_ms}`;
+      if (!changedHours.has(key)) continue;
+      const current = existing.get(key);
+      if (current === row.value) continue;
+      rowsWritten += rowsWrittenBy(
+        sql,
+        "INSERT INTO project_hours (project, metric, hour_ms, value) VALUES (?, ?, ?, ?) ON CONFLICT (project, metric, hour_ms) DO UPDATE SET value = excluded.value",
+        project,
+        row.metric,
+        row.hour_ms,
+        row.value,
+      );
+      hours += 1;
+    }
+  }
+  return { rowsWritten, hours };
 }
 
 export function recordRun(sql: SqlDatabase, run: CollectorRun): number {
