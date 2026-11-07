@@ -253,3 +253,26 @@ Changes in `cloudflare/src/client/queries.ts`, `FleetPage.tsx`, `ProjectsPage.ts
 - **Complete construction-prop rebuild signature (`TimeChart.tsx`):** `TimeChart` captures `props.timeAxis` when constructing the `uPlot` options (`show: props.timeAxis !== false`). In stacked widgets (`CpuWidget`, `MemoryWidget`, `DiskWidget`), `timeAxis` flips when optional subcharts (GPU, PSI, swap activity, disk busy%) appear or disappear across range switches. Including `props.timeAxis !== false` in `signature` ensures `TimeChart` rebuilds its `uPlot` instance when and only when construction-captured props (`timeAxis` or series `label:color` list) change, while telemetry ticks and same-shape range switches update in place via `chart.setData(data(), false)`.
 - **Teardown and observer/sync cleanup:** Every `TimeChart` registers `onCleanup` on both the inner `signature()` effect (`destroy()` + `telemetry.sync.unsub(current)`) and the outer component scope (`observer?.disconnect()`, `destroy()`). Across 10 `Fleet → Host → Fleet` mount/destroy cycles (`cloudflare/test/ui/charts.spec.ts` and `bench-ui.mjs --retention 100`), returning to Fleet leaves `0` `.uplot` roots, `0` active chart `ResizeObserver` targets, `+0` net DOM nodes, `+0` net event listeners, `+636.9 KiB` JS heap delta, and `-37.1 KiB` backing-store delta (well inside the `2 MiB`, `50` node, and `20` listener bounds).
 
+## Observability state ownership (F5)
+
+### State classification inventory (`Observe.tsx`, `Requests.tsx`, `TraceTimeline.tsx`, `Deployments.tsx`, `Heatmap.tsx`)
+
+| State | Owner | Class | URL parameter / query key | Lifecycle rule |
+| --- | --- | --- | --- | --- |
+| `issueState` (`"open" \| "resolved"`) | `createObservability` | URL | `issues` (`resolved` when non-default) | Synced via `readParam`/`writeParam`; changing clears `issueId` and `mutationError` |
+| `introducedIn` (`string \| null`) | `createObservability` | URL | `introduced` | Validated against `VERSION`; changing clears `issueId` and `mutationError` |
+| `issueId` (`string \| null`) | `createObservability` | URL / ephemeral fallback | `issue` | Auto-selects first issue without writing URL when `issueId` is unset or absent from loaded page; explicit click writes `issue` |
+| `issueResult` (`KeyedResult<Page<IssueSummary>>`) | `createObservability` | Remote | `${issueState}:${introducedIn ?? ""}` | Keyed union (`ok` / `error`); returns `null` immediately when filter changes, retains on same-key refresh |
+| `occurrencesResult` (`KeyedResult<Page<Occurrence>>`) | `createObservability` | Remote | `issueId` | Keyed union (`ok` / `error`); returns `null` immediately when `issueId` changes, retains on same-issue refresh/mutation |
+| `route` (`string \| null`) | `createObservability` | URL | `route` | Synced via `readParam`/`writeParam`; changing resets `band` to `null` |
+| `band` (`Band \| null`) | `createObservability` | URL | `band` (`slow` or `cell:...`) | Synced via `readParam`/`writeParam` |
+| `traceFilter` (`"all" \| "failed"`) | `createObservability` | URL | `traces` (`failed` when non-default) | Synced via `readParam`/`writeParam` |
+| `exploreWindow` (`windowKey` / `windowAt`) | `ProjectPage` → `createObservability` | URL | `range`, `from`, `to` | Derived from global telemetry `range()` and `view()` |
+| `exploreResult` (`KeyedResult<{ exploration, traces }>`) | `createObservability` | Remote | `${windowKey}\|${traceFilter}\|${route ?? ""}\|${bandParam ?? ""}` | Keyed union (`ok` / `error`); returns `null` immediately when window, filter, route, or band changes |
+| `traceId` (`string \| null`) | `createObservability` | URL / ephemeral fallback | `trace` | Auto-selects first trace when unset or when filter/route/band changes without an explicit `trace` param; explicit click writes `trace` and resets `slice` |
+| `traceResult` (`KeyedResult<TraceDetail>`) | `createObservability` | Remote | `traceId` | Keyed union (`ok` / `error`); returns `null` immediately when `traceId` changes, retains on same-trace refresh |
+| `slice` (`string \| null`) and timeline `view` (`[number, number]`) | `createObservability` / `TraceTimeline` | Ephemeral | — | Reset to `defaultSlice(detail)` and `fit()` when `traceId` changes |
+| `modals` (`readonly ModalView[]`) | `createObservability` | URL (top) + ephemeral stack | `modal` (`issue:...`, `trace:...`, `deployment:...`) | Top modal synced to `modal`; `IssueModalBody`, `TraceModalBody`, and `RolloutImpactPanel` each use `KeyedResult` keyed by subject ID |
+| `resolving`, `mutation`, `mutationError` | `createObservability` | Ephemeral | — | Scoped to active issue mutation; `mutationError` clears on issue or filter change |
+| `selected` deployment & `comparisonState` | `createDeployments` | URL + Remote | `deployment` + `window` | `ComparisonState` union (`ok` / `error`) prevents simultaneous value and error; `stale()` marks `aria-busy="true"` while next comparison loads |
+

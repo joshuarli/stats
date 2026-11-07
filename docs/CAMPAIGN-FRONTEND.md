@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** Executing; `F0a`, `F0b`, `F1`, `F2`, `F3`, and `F4` accepted (Milestone `M2` next). Chart `series` and `data` memoization, construction-prop `timeAxis` signature, and 10-cycle mount/destroy retention bounds verified in `test/ui/charts.spec.ts`.
-- **Accepted:** F0a, F0b, F1, F2, F3, F4. **Red:** none. **Parked:** none. **Next:** F5.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F5. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
+- **State:** Executing; `F0a`, `F0b`, `F1`, `F2`, `F3`, `F4`, and `F5` accepted. Keyed observability results (`KeyedResult<T>`) and deployment comparison state (`ComparisonState`) verified in `test/ui/observe-lifecycle.spec.ts`, `test/ui/observe.spec.ts`, and `test/ui/replay.spec.ts`.
+- **Accepted:** F0a, F0b, F1, F2, F3, F4, F5. **Red:** none. **Parked:** none. **Next:** F6.
+- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F6. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 
