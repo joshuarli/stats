@@ -28,6 +28,24 @@ Next: 99
 - **Fix with:** root-cause
 - **Effort:** S
 
+### STA-96 · P2 · `statsctl observe operations --project tansu` is rejected because tansu is not an observed service
+
+- **Area:** CLI
+- **Where:** `OBSERVED_SERVICES` and the `statsctl observe` project resolution in `cloudflare/src/cli/`, `cloudflare/src/observe/services.ts`
+- **Problem:** `observe operations` only accepts services in `OBSERVED_SERVICES`, the Cloudflare tail-observed Workers. A service that reports external application telemetry (tansu) is not in that list, so its stored operation events cannot be read from the CLI even though `GET /api/observe/<service>/external` serves them.
+- **Recommendation:** Add a service-scoped application observation command (for example `statsctl observe application --service NAME`) over the external-events read, or unify service discovery so both source kinds resolve a name. Keep Cloudflare tail observation and external application telemetry as distinct sources with their own provenance; do not let one name list stand for both. Add a CLI test that a registered service with external events is readable and an unknown name is still rejected.
+- **Fix with:** architect
+- **Effort:** M
+
+### STA-97 · P2 · External application failures do not populate the issue-occurrence model
+
+- **Area:** Observe
+- **Where:** `cloudflare/src/observe/ingest/` (external events), `cloudflare/src/observe/core/store.ts` (`observe_external_events`, issue occurrences), `docs/integration.md` section 5
+- **Problem:** A failing external operation is stored as an operation and outcome event, but nothing maps it to an issue group, because the telemetry contract carries no error code or fingerprint. The dashboard can show failed operations for a service with no issue groups behind them.
+- **Recommendation:** If grouped application errors are intended, add a bounded, validated error-code and fingerprint field to the telemetry contract (closed character set and length, no free-text messages or stack traces) and group on it; otherwise state in `docs/integration.md` that application failures are counted, not grouped. Add a contract test for the field's bounds and a test that equal fingerprints group.
+- **Fix with:** architect
+- **Effort:** M
+
 ### STA-95 · P3 · Observe explorer lifecycle: hidden trace refresh and the issue modal's error source
 
 - **Area:** Dashboard
