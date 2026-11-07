@@ -46,6 +46,9 @@ export const NANOSHOP_ROUTES = [
   { name: "admin-settings-shipping-save", method: "POST", pattern: "/admin/settings/shipping" },
   { name: "admin-settings-identity", method: "GET", pattern: "/admin/settings/identity" },
   { name: "admin-settings-identity-save", method: "POST", pattern: "/admin/settings/identity" },
+  { name: "admin-site", method: "GET", pattern: "/admin/site" },
+  { name: "admin-site-edit", method: "POST", pattern: "/admin/site" },
+  { name: "admin-site-preview", method: "GET", pattern: "/admin/site/preview" },
   { name: "admin-pages", method: "GET", pattern: "/admin/pages" },
   { name: "admin-orders", method: "GET", pattern: "/admin/orders" },
   { name: "admin-operations", method: "GET", pattern: "/admin/operations" },
@@ -77,7 +80,7 @@ export const NANOSHOP_ROUTES = [
   { name: "webhook", method: "POST", pattern: "/webhooks/stripe" }
 ] as const;
 
-export const NANOSHOP_RPC_METHODS = ["syncCatalog", "readCart", "addToCart", "setCartQuantity", "removeCartItem", "commerceCommand", "commerceQuery"] as const;
+export const NANOSHOP_RPC_METHODS = ["syncCatalog", "readCart", "addToCart", "setCartQuantity", "removeCartItem", "commerceCommand", "commerceQuery", "site"] as const;
 
 export const NANOSHOP_EXTRA_OPERATIONS = ["store.alarm", "worker.scheduled", "payment.unknown", "payment.blocked", "work.dead", "inventory.invariant", "email.failed", "provider.error"] as const;
 
