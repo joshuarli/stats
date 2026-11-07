@@ -7,6 +7,7 @@ const ProjectsPage = lazy(() => import("./pages/ProjectsPage").then(module => ({
 const ProjectPage = lazy(() => import("./pages/ProjectPage").then(module => ({ default: module.ProjectPage })));
 const ServicesPage = lazy(() => import("./pages/ServicesPage").then(module => ({ default: module.ServicesPage })));
 const ServicePage = lazy(() => import("./pages/ServicePage").then(module => ({ default: module.ServicePage })));
+const GalleryPage = lazy(() => import("./pages/GalleryPage").then(module => ({ default: module.GalleryPage })));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage").then(module => ({ default: module.NotFoundPage })));
 
 export const Router = createRouter({
@@ -17,6 +18,7 @@ export const Router = createRouter({
     { path: "/project/:projectId", component: ProjectPage, matchFilters: { projectId: /^[a-z][a-z0-9-]{0,31}$/ } },
     { path: "/services", component: ServicesPage },
     { path: "/service/:serviceName", component: ServicePage, matchFilters: { serviceName: /^[a-z][a-z0-9-]{0,31}$/ } },
+    { path: "/gallery", component: GalleryPage },
     { path: "*404", component: NotFoundPage }
   ],
   history: hashHistory()

@@ -9,8 +9,13 @@ import { startStack, SCRATCH, type Stack } from "../../local/stack.ts";
 import { addHost } from "../../local/seed.ts";
 
 const STATS = resolve(import.meta.dirname, "../..");
-const TANSU = resolve(STATS, "../../tansu");
-const NICEFORGE = resolve(STATS, "../../niceforge");
+function peer(name: string): string {
+  let dir = STATS;
+  while (dir !== "/" && !dir.endsWith("/stats")) dir = resolve(dir, "..");
+  return resolve(dir, "..", name);
+}
+const TANSU = peer("tansu");
+const NICEFORGE = peer("niceforge");
 const FIXTURES = resolve(STATS, "../fixtures/observe-ingest");
 const manifest = JSON.parse(readFileSync(join(FIXTURES, "manifest.json"), "utf8")) as { readonly service: string; readonly nowMs: number; readonly golden: string };
 const golden = readFileSync(join(FIXTURES, manifest.golden), "utf8").trim();

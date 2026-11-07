@@ -7,12 +7,12 @@
     "node": "26.12.1"
   },
   "scripts": {
-    "typecheck": "pnpm --filter @stats/telemetry typecheck",
+    "typecheck": "pnpm --filter @joshuarli/ui typecheck && pnpm --filter @stats/telemetry typecheck",
     "lint": "pnpm --filter @stats/telemetry lint",
-    "test": "pnpm run test:fixtures && pnpm run test:agent && pnpm --filter @stats/telemetry test",
+    "test": "pnpm run test:fixtures && pnpm run test:agent && pnpm --filter @joshuarli/ui test && pnpm --filter @stats/telemetry test",
     "test:fixtures": "node scripts/check-fixtures.mjs",
     "test:agent": "cargo test --manifest-path agent/Cargo.toml --all-targets",
     "test:ui": "pnpm --filter @stats/telemetry test:ui",
-    "build": "pnpm --filter @stats/telemetry build"
+    "build": "pnpm --filter @joshuarli/ui build && pnpm --filter @stats/telemetry build"
   }
 }

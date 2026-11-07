@@ -1,18 +1,25 @@
-import { createEffect, createSignal, For, Show, type ParentProps } from "solid-js";
+import {
+  Badge as UiBadge,
+  CollapsiblePanel as UiCollapsiblePanel,
+  EmptyState as UiEmptyState,
+  ErrorState as UiErrorState,
+  type IconName,
+  Meter as UiMeter,
+  Notice as UiNotice,
+  Pagination as UiPagination,
+  Segmented as UiSegmented,
+  Skeleton as UiSkeleton,
+  type Tone as UiTone
+} from "@joshuarli/ui";
+import { createSignal, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Icon, type IconName } from "./Icon";
 import { errorMessage } from "../format";
 import { HEALTH_GLYPH, HEALTH_LABEL, type Health } from "../health";
 
-export type Tone = "ok" | "warn" | "bad" | "neutral" | "info" | "accent";
+export type Tone = UiTone;
 
 export function Badge(props: { readonly tone: Tone; readonly children: JSX.Element; readonly dot?: boolean }): JSX.Element {
-  return (
-    <span class={`badge badge-${props.tone}`}>
-      {props.dot === true ? <span class="badge-dot" aria-hidden="true" /> : null}
-      {props.children}
-    </span>
-  );
+  return <UiBadge tone={props.tone} dot={props.dot} class={`badge badge-${props.tone}`}>{props.children}</UiBadge>;
 }
 
 export function EntityCell(props: {
@@ -80,62 +87,28 @@ export function Widget(props: ParentProps<{
   readonly expandable?: boolean | undefined;
   readonly id?: string | undefined;
 }>): JSX.Element {
-  const [expanded, setExpanded] = createSignal(false);
-  const [slotHeight, setSlotHeight] = createSignal(0);
-  let section: HTMLElement | undefined;
-  createEffect(expanded, open => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setExpanded(false);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  });
   const collapsed = () => props.id !== undefined && collapsedWidgets().has(props.id);
   const toggleCollapsed = () => {
     const id = props.id;
     if (id === undefined) return;
     storeCollapsed(collapsed() ? new Set([...collapsedWidgets()].filter(entry => entry !== id)) : new Set([...collapsedWidgets(), id]));
   };
-  const toggleExpanded = () => {
-    if (!expanded()) setSlotHeight(section?.getBoundingClientRect().height ?? 0);
-    setExpanded(value => !value);
-  };
-  const classes = () => ["widget", props.class, expanded() ? "expanded" : undefined, collapsed() ? "collapsed" : undefined].filter(Boolean).join(" ");
+
   return (
-    <>
-      <Show when={expanded()}>
-        <button class="veil" type="button" aria-label="Close expanded chart" tabindex="-1" onClick={() => setExpanded(false)} />
-      </Show>
-      <Show when={expanded()}>
-        <div class={props.class === undefined ? "widget-slot" : `widget-slot ${props.class}`} style={`height:${slotHeight()}px`} aria-hidden="true" />
-      </Show>
-      <section class={classes()} id={props.id} ref={(element) => { section = element; }}>
-        <header class="widget-head">
-          <div class="widget-title">
-            <h2>{props.title}</h2>
-          </div>
-          <div class="widget-meta">
-            {props.meta}
-            <Show when={props.expandable === true}>
-              <button class="icon-button expand" type="button" aria-label={`${expanded() ? "Collapse" : "Expand"} ${props.title}`} aria-pressed={expanded() ? "true" : "false"} disabled={collapsed()} onClick={toggleExpanded}>
-                <Icon name="expand" size={12} />
-              </button>
-            </Show>
-            <Show when={props.id !== undefined}>
-              <button class="icon-button collapse" type="button" aria-label={`${collapsed() ? "Show" : "Hide"} ${props.title}`} aria-expanded={collapsed() ? "false" : "true"} onClick={toggleCollapsed}>
-                <Icon name={collapsed() ? "chevronRight" : "sortDown"} size={14} />
-              </button>
-            </Show>
-          </div>
-        </header>
-        <Show when={!collapsed()}>
-          <div class={props.bodyClass === undefined ? "widget-body" : `widget-body ${props.bodyClass}`}>{props.children}</div>
-        </Show>
-      </section>
-    </>
+    <UiCollapsiblePanel
+      title={props.title}
+      meta={props.meta}
+      id={props.id}
+      expandable={props.expandable}
+      collapsible={props.id !== undefined}
+      collapsed={collapsed()}
+      onToggleCollapsed={toggleCollapsed}
+      class={["widget", props.class].filter(Boolean).join(" ")}
+      slotClass={props.class}
+      bodyClass={props.bodyClass}
+    >
+      {props.children}
+    </UiCollapsiblePanel>
   );
 }
 
@@ -163,59 +136,32 @@ export function MetricValue(props: { readonly text: string }): JSX.Element {
 }
 
 export function EmptyState(props: { readonly title: string; readonly detail?: string | undefined; readonly icon?: IconName | undefined; readonly action?: JSX.Element | undefined }): JSX.Element {
-  return (
-    <div class="empty-state">
-      <span class="empty-icon"><Icon name={props.icon ?? "activity"} size={22} /></span>
-      <p class="empty-title">{props.title}</p>
-      {props.detail === undefined ? null : <p class="empty-detail">{props.detail}</p>}
-      {props.action === undefined ? null : <div class="empty-action">{props.action}</div>}
-    </div>
-  );
+  return <UiEmptyState title={props.title} detail={props.detail} icon={props.icon} action={props.action} class="empty-state" />;
 }
 
 export function ErrorState(props: { readonly error: unknown; readonly retry?: (() => void) | undefined; readonly compact?: boolean | undefined }): JSX.Element {
   return (
-    <div class={props.compact === true ? "error-state compact" : "error-state"} role="alert">
-      <span class="error-icon"><Icon name="alert" size={18} /></span>
-      <div>
-        <p class="error-title">Telemetry could not be loaded</p>
-        <p class="error-detail">{errorMessage(props.error)}</p>
-      </div>
-      {props.retry === undefined ? null : (
-        <button class="btn btn-small" type="button" onClick={props.retry}>
-          Retry
-        </button>
-      )}
-    </div>
+    <UiErrorState
+      title="Telemetry could not be loaded"
+      detail={errorMessage(props.error)}
+      retry={props.retry}
+      compact={props.compact}
+      class={props.compact === true ? "error-state compact" : "error-state"}
+    />
   );
 }
 
 export function Skeleton(props: { readonly rows?: number | undefined; readonly chart?: boolean | undefined; readonly class?: string | undefined }): JSX.Element {
-  return (
-    <div class={props.class === undefined ? "skeleton" : `skeleton ${props.class}`} aria-hidden="true">
-      {Array.from({ length: props.rows ?? 3 }, () => <span class="skeleton-line" />)}
-      {props.chart === true ? <span class="skeleton-chart" /> : null}
-    </div>
-  );
+  return <UiSkeleton rows={props.rows} chart={props.chart} class={["skeleton", props.class].filter(Boolean).join(" ")} />;
 }
 
 export function Notice(props: { readonly tone?: "info" | "warn" | undefined; readonly children: JSX.Element }): JSX.Element {
-  return (
-    <div class={`notice notice-${props.tone ?? "info"}`}>
-      <Icon name={props.tone === "warn" ? "alert" : "info"} size={15} />
-      <span>{props.children}</span>
-    </div>
-  );
+  const legacyTone = props.tone === "warn" ? "notice-warn" : "notice-info";
+  return <UiNotice tone={props.tone} class={`notice ${legacyTone}`}>{props.children}</UiNotice>;
 }
 
 export function Segmented<T extends string>(props: { readonly label: string; readonly value: T; readonly options: readonly [T, string][]; readonly onChange: (value: T) => void }): JSX.Element {
-  return (
-    <div class="segmented" role="group" aria-label={props.label}>
-      <For each={props.options}>{([value, label]) => (
-        <button type="button" class="segment" aria-pressed={props.value === value ? "true" : "false"} onClick={() => props.onChange(value)}>{label}</button>
-      )}</For>
-    </div>
-  );
+  return <UiSegmented label={props.label} value={props.value} options={props.options} onChange={props.onChange} class="segmented" />;
 }
 
 export function Pagination(props: {
@@ -226,46 +172,11 @@ export function Pagination(props: {
   readonly total: number;
   readonly onChange: (page: number) => void;
 }): JSX.Element {
-  return (
-    <div class="pagination">
-      <span>
-        Showing <strong>{props.from}</strong>–<strong>{props.to}</strong> of <strong>{props.total}</strong>
-      </span>
-      <div class="pagination-actions">
-        <button
-          class="btn btn-icon"
-          type="button"
-          aria-label="Previous page"
-          disabled={props.page <= 1}
-          onClick={() => props.onChange(props.page - 1)}
-        >
-          <Icon name="chevronLeft" size={14} />
-        </button>
-        <span>
-          Page {props.page} of {props.pages}
-        </span>
-        <button
-          class="btn btn-icon"
-          type="button"
-          aria-label="Next page"
-          disabled={props.page >= props.pages}
-          onClick={() => props.onChange(props.page + 1)}
-        >
-          <Icon name="chevronRight" size={14} />
-        </button>
-      </div>
-    </div>
-  );
+  return <UiPagination {...props} class="pagination" />;
 }
 
 export function Meter(props: { readonly value: number | undefined; readonly warn: number; readonly bad: number }): JSX.Element {
-  const clamped = () => props.value === undefined || !Number.isFinite(props.value) ? 0 : Math.min(100, Math.max(0, props.value));
-  const tone = () => props.value === undefined ? "tone-neutral" : props.value >= props.bad ? "tone-bad" : props.value >= props.warn ? "tone-warn" : "tone-neutral";
-  return (
-    <div class="meter" aria-hidden="true">
-      <span class={tone()} style={`width:${clamped().toFixed(1)}%`} />
-    </div>
-  );
+  return <UiMeter value={props.value} warn={props.warn} bad={props.bad} class="meter" />;
 }
 
 export interface PagedList<T> {

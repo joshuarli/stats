@@ -1,3 +1,4 @@
+import { PageHeader as UiPageHeader } from "@joshuarli/ui";
 import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 
@@ -7,11 +8,13 @@ export function PageHeader(props: ParentProps<{
   readonly mark?: JSX.Element | undefined;
 }>): JSX.Element {
   return (
-    <header class="page-header">
-      {props.mark === undefined ? null : <span class="page-mark">{props.mark}</span>}
-      <h1>{props.title}</h1>
-      {props.titleExtra}
+    <UiPageHeader
+      title={props.title}
+      titleExtra={props.titleExtra}
+      mark={props.mark}
+      class="page-header"
+    >
       {props.children}
-    </header>
+    </UiPageHeader>
   );
 }
