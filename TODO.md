@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 91
+Next: 92
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
@@ -127,3 +127,12 @@ Next: 91
 - **Recommendation:** Run `cargo update --dry-run` in each workspace, upgrade what the pinned nightly accepts, and record removals in docs/dependencies.md.
 - **Fix with:** none
 - **Effort:** S
+
+### STA-91 · P3 · Block-latency histograms need bpftrace and root on every host
+
+- **Area:** Agent
+- **Where:** `bpf/`, `agent/src/` (`blockLatencyFile`), `README.md` (agent config), `AGENTS.md` (invariants)
+- **Problem:** The only latency distribution the dashboard can show comes from the optional `bpf/` bpftrace collector, which needs bpftrace installed, root, and a separate unit that writes `blockLatencyFile`. Almost no host runs it. The unprivileged per-disk means from `/proc/diskstats` hide tails: a few multi-second stalls inside a 15 second interval move a mean far less than they hurt, and a mean cannot show a bimodal device.
+- **Recommendation:** Add an opt-in block-latency histogram inside the agent: a pure-Rust eBPF loader (for example `aya`) with an embedded, prebuilt probe, so a host needs no bpftrace and no second service. Loading needs `CAP_BPF` and `CAP_PERFMON` (or `CAP_SYS_ADMIN` on older kernels) and a kernel with BTF, and the agent runs as the unprivileged user `stats`, so grant them with ambient capabilities in the unit, or run a separate helper, and fall back to an absent `block` group when the load fails. It complements the diskstats means and does not replace them. It would supersede the optional `blockLatencyFile` and the `bpf/` collector, which then get deleted. The static musl build, the dependency weight, and the "baseline agent never loads BPF" invariant need an owner decision first: the loader must stay opt-in and out of the baseline path.
+- **Fix with:** architect
+- **Effort:** L
