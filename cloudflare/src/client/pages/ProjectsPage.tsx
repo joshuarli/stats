@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, latest as readLatest, lazy, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, refresh, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
@@ -133,7 +133,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
 
   const window = createMemo((): TimeWindow | null => {
     refreshKey();
-    return settledRangeWindow(rangeMs[range()], readLatest(now));
+    return settledRangeWindow(rangeMs[range()], untrack(now));
   });
   const ready = () => window() !== null;
   const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, refreshKey, null, () => null);

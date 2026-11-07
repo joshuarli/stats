@@ -715,6 +715,29 @@ test("projects overview requests no from=0 or eager range history, reuses ledger
   await expect(page.locator(".projects-trends")).toHaveCount(2);
 });
 
+test("a paused projects overview requests no ledger history as the wall clock rolls past a bucket", async ({ page }) => {
+  await installBaseRoutes(page);
+  const historyUrls: string[] = [];
+  await page.route("**/api/v1/projects", route => route.fulfill({
+    json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }]
+  }));
+  await page.route("**/api/v1/projects/*/deployments", route => route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } }));
+  await page.route("**/api/v1/projects/*/history*", async route => {
+    const url = new URL(route.request().url());
+    historyUrls.push(`${url.pathname}${url.search}`);
+    await fulfillHistory(route, projectBundle("alpha", 500));
+  });
+
+  await page.goto("/#/projects");
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("/mo");
+  await page.getByRole("button", { name: /^Live/u }).click();
+  await expect(page.getByRole("button", { name: /^Live/u })).toHaveAttribute("aria-pressed", "false");
+  const settled = historyUrls.length;
+  await page.clock.runFor(10 * 60_000);
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("/mo");
+  expect(historyUrls.slice(settled)).toEqual([]);
+});
+
 test("closed project page defers comparison and occurrences until their sections open", async ({ page }) => {
   await installBaseRoutes(page);
   const scenario = await buildScenario(NOW);
