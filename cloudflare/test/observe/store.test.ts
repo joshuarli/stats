@@ -47,14 +47,22 @@ void test("health names each conflict's key source and the fields that differ fr
   const db = database();
   const untraced = { trace: null, kind: "rpc", stage: "object", objectId: OBJECT, label: "Installation.ingest" } as const;
   ingest(db, await prepare(worker(1, { cpuMs: 2 }), worker(2, { ...untraced, wallMs: 40 })), NOW);
-  ingest(db, await prepare(worker(1, { cpuMs: 9 }), worker(2, { ...untraced, wallMs: 41, outcome: "exception" }), worker(1, { cpuMs: 2 })), NOW);
+  ingest(db, await prepare(worker(1, { cpuMs: 9 }), worker(2, { ...untraced, wallMs: 40, outcome: "exception" }), worker(1, { cpuMs: 2 })), NOW);
   const reasons = health(db, NOW).reasons;
   assert.deepEqual(reasons.filter(reason => reason.counter === "conflict").sort((a, b) => a.reason.localeCompare(b.reason)), [
-    { counter: "conflict", reason: "fallback", count: 1, example: "rpc Installation.ingest; differs: outcome, wall_ms" },
+    { counter: "conflict", reason: "fallback", count: 1, example: "rpc Installation.ingest; differs: outcome" },
     { counter: "conflict", reason: "span", count: 1, example: "fetch GET /api/v1/hosts; differs: cpu_ms" }
   ]);
   assert.deepEqual(reasons.find(reason => reason.counter === "duplicate"), { counter: "duplicate", reason: "span", count: 1, example: "fetch GET /api/v1/hosts" });
   assert.equal(health(db, NOW).conflict, 2);
+});
+
+void test("same-millisecond untraced invocations with different wall times produce distinct keys", async () => {
+  const db = database();
+  const untraced = { trace: null, kind: "rpc", stage: "object", objectId: OBJECT, label: "Installation.knownDeploymentVersions" } as const;
+  const result = ingest(db, await prepare(worker(1, { ...untraced, wallMs: 2 }), worker(2, { ...untraced, wallMs: 4 })), NOW);
+  assert.equal(result.accepted, 2);
+  assert.equal(result.conflict, 0);
 });
 
 void test("rejections, expiries, and issue capacity are counted by reason", async () => {

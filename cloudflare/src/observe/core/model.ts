@@ -188,7 +188,7 @@ export async function prepareInvocation(input: ObservedInvocation, policy: Messa
     errors
   };
   const key = input.trace === null
-    ? (await sha256Hex(["observe.key.v1", input.version ?? "", input.objectId ?? "", input.kind, input.label, String(input.eventAtMs)].join("\u0000"))).slice(0, 32)
+    ? (await sha256Hex(["observe.key.v1", input.version ?? "", input.objectId ?? "", input.kind, input.label, String(input.eventAtMs), String(input.wallMs), String(input.cpuMs)].join("\u0000"))).slice(0, 32)
     : input.trace.spanId;
   const digest = await sha256Hex(JSON.stringify(fields));
   return { ok: true, invocation: { key, keySource: input.trace === null ? "fallback" : "span", digest, ...fields, ...(input.serviceOperation === undefined ? {} : { serviceOperation: input.serviceOperation }) } };
