@@ -357,6 +357,26 @@ test("rapid A to B to C to A navigation aborts intermediate loads and settles on
   await expect(page.locator(".strip-cell", { hasText: "CPU" })).toContainText("20%");
 });
 
+test("a range change whose history fails never keeps the previous range's charts", async ({ page }) => {
+  await installBaseRoutes(page);
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    const range = new URL(route.request().url()).searchParams.get("range") ?? "1h";
+    if (range === "7d") {
+      await route.fulfill({ status: 500, json: { error: { code: "internal", message: "failed" } } });
+      return;
+    }
+    await fulfillHistory(route, hostBundle(HOST_A, "1h", 25));
+  });
+
+  await page.goto(`/#/host/${HOST_A}`);
+  await expect(page.locator(".strip-cell", { hasText: "CPU" })).toContainText("27%");
+
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("The telemetry service returned 500.");
+  await expect(page.getByRole("region", { name: "Charts" })).toHaveCount(0);
+  await expect(page.locator(".strip-cell", { hasText: "CPU" })).toHaveCount(0);
+});
+
 test("range change while a history downloads aborts the earlier range across resolutions", async ({ page }) => {
   await installBaseRoutes(page);
   const gate7d = createGate();

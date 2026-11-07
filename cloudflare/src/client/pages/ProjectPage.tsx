@@ -6,7 +6,8 @@ import { getProjectHistories, type Project } from "../api";
 import { age, errorMessage, percent } from "../format";
 import { collectorStatus } from "../status";
 import { createUpdateEffect } from "../effect";
-import { loadProjects, loadQuery } from "../queries";
+import { createRefreshRetention, loadProjects, loadQuery } from "../queries";
+import { windowParams } from "../history-path";
 import { useTelemetry, PROJECT_REFRESH_TICKS, rangeMs } from "../state";
 import { PageHeader } from "../components/PageHeader";
 import { Info } from "../components/Info";
@@ -98,11 +99,11 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
   const hasDatabases = () => props.project.d1Databases.length > 0;
   const kinds = () => historyKinds(props.project);
+  const retention = createRefreshRetention();
   const histories = createMemo<ProjectHistories>(previous =>
     loadQuery(
       signal => getProjectHistories(id(), query(), kinds(), signal),
-      previous,
-      error => setRefreshError(error === null ? null : errorMessage(error))
+      { key: `${id()}|${windowParams(query())}`, previous, retention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) }
     )
   );
   const worker = () => histories().worker;

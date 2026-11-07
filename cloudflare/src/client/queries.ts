@@ -3,24 +3,38 @@ import { getFleetHistories, getHosts, getProjects, getServices, getSystem, type 
 import type { DiskSeries, FilesystemSeries, FleetHistories, NetSeries, SummaryTable } from "./history";
 import { windowParams } from "./history-path";
 
-export function loadQuery<T>(
-  load: (signal: AbortSignal) => Promise<T>,
-  previous?: T,
-  onRefreshError?: (error: unknown) => void
-): Promise<T> {
+export interface RefreshRetention {
+  settledKey: string | null;
+}
+
+export function createRefreshRetention(): RefreshRetention {
+  return { settledKey: null };
+}
+
+export interface RefreshOnError<T> {
+  readonly key: string;
+  readonly previous: T | undefined;
+  readonly retention: RefreshRetention;
+  readonly onError: (error: unknown) => void;
+}
+
+export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>, refresh?: RefreshOnError<T>): Promise<T> {
   const controller = new AbortController();
   onCleanup(() => controller.abort());
   const promise = load(controller.signal);
-  if (previous === undefined || onRefreshError === undefined) return promise;
+  if (refresh === undefined) return promise;
   return promise.then(
     value => {
-      if (!controller.signal.aborted) onRefreshError(null);
+      if (!controller.signal.aborted) {
+        refresh.retention.settledKey = refresh.key;
+        refresh.onError(null);
+      }
       return value;
     },
     (error: unknown) => {
-      if (controller.signal.aborted) throw error;
-      onRefreshError(error);
-      return previous;
+      if (controller.signal.aborted || refresh.previous === undefined || refresh.retention.settledKey !== refresh.key) throw error;
+      refresh.onError(error);
+      return refresh.previous;
     }
   );
 }
@@ -75,8 +89,7 @@ export async function mapLimit<T, R>(values: readonly T[], limit: number, run: (
 export function loadFleetRows(
   hosts: readonly Host[],
   query: HistoryQuery,
-  previous?: readonly FleetRow[],
-  onRefreshError?: (error: unknown) => void,
+  refresh?: Omit<RefreshOnError<readonly FleetRow[]>, "key">,
   cache?: FleetRowCache
 ): Promise<readonly FleetRow[]> {
   const queryKey = windowParams(query);
@@ -108,5 +121,5 @@ export function loadFleetRows(
       nets: history.nets.series,
       filesystems: history.filesystems.series
     };
-  }), previous, onRefreshError);
+  }), refresh === undefined ? undefined : { ...refresh, key: `${hosts.map(host => host.hostId).join(",")}|${queryKey}` });
 }

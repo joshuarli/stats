@@ -6,7 +6,8 @@ import { getHostHistories, getSystem, type Host } from "../api";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
 import { createUpdateEffect } from "../effect";
-import { loadQuery } from "../queries";
+import { createRefreshRetention, loadQuery } from "../queries";
+import { windowParams } from "../history-path";
 import { statusFor } from "../status";
 import { useTelemetry } from "../state";
 import { OsLogo } from "../components/OsLogo";
@@ -61,11 +62,11 @@ function HostView(props: { readonly host: Host }): JSX.Element {
   const [psiWindow, setPsiWindow] = createSignal<PsiWindow>("300");
 
   const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
+  const retention = createRefreshRetention();
   const histories = createMemo<HostHistories>(previous =>
     loadQuery(
       signal => getHostHistories(hostId(), query(), signal),
-      previous,
-      error => setRefreshError(error === null ? null : errorMessage(error))
+      { key: `${hostId()}|${windowParams(query())}`, previous, retention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) }
     )
   );
   const summary = () => histories().summary;

@@ -4,7 +4,7 @@ import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
 import { alignTracks, sumTracks, worstTrack } from "../chart-data";
 import { cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
-import { loadFleetRows, type FleetRow, type FleetRowCache } from "../queries";
+import { createRefreshRetention, loadFleetRows, type FleetRow, type FleetRowCache } from "../queries";
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host } from "../api";
@@ -68,12 +68,12 @@ export function FleetPage(): JSX.Element {
   const pages = createMemo(() => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)));
   const currentPage = createMemo(() => Math.min(page(), pages()));
   const pageHosts = createMemo(() => filtered().slice((currentPage() - 1) * PAGE_SIZE, currentPage() * PAGE_SIZE));
+  const rowsRetention = createRefreshRetention();
   const rows = createMemo<readonly FleetRow[]>(previous =>
     loadFleetRows(
       pageHosts(),
       query(),
-      previous,
-      error => setRefreshError(error === null ? null : errorMessage(error)),
+      { previous, retention: rowsRetention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) },
       rowCache
     )
   );
