@@ -149,12 +149,12 @@
 .ui-side { position: sticky; top: 0; height: 100vh; box-sizing: border-box; padding: 14px var(--ui-space-sm); display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; }
 .ui-side-top { display: flex; align-items: center; padding: 0 6px; }
 .ui-side-brand { display: inline-flex; align-items: center; gap: var(--ui-space-sm); color: var(--ui-text); font-size: var(--ui-fs-title); font-weight: 600; letter-spacing: -.01em; text-decoration: none; }
-.ui-side-brand:hover { opacity: .7; }
+.ui-side-brand:hover { opacity: .7; text-decoration: none; }
 .ui-side-brand svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .ui-side-body { display: flex; flex: 1; flex-direction: column; gap: 14px; min-height: 0; }
 .ui-side-nav { display: grid; gap: var(--ui-space-2xs); }
-.ui-side-nav a, .ui-side-foot :is(a, button) { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: var(--ui-side-link-height); padding: 0 10px; border: 0; border-radius: var(--ui-radius-xl); background: transparent; color: var(--ui-text-2); font: inherit; text-decoration: none; cursor: pointer; }
-.ui-side-nav a:hover, .ui-side-foot :is(a, button):hover { background: var(--ui-hover); color: var(--ui-text); }
+.ui-side-nav a, .ui-side-foot :is(a, button) { display: flex; align-items: center; gap: 10px; box-sizing: border-box; height: var(--ui-side-link-height); padding: 0 10px; border: 0; border-radius: var(--ui-radius-xl); background: transparent; color: var(--ui-text-2); box-shadow: none; font: inherit; text-decoration: none; cursor: pointer; }
+.ui-side-nav a:hover, .ui-side-foot :is(a, button):hover { background: var(--ui-hover); color: var(--ui-text); text-decoration: none; }
 .ui-side-nav a[aria-current] { background: var(--ui-hover); color: var(--ui-text); font-weight: 500; }
 .ui-side-nav svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .ui-side-group { padding: 0 10px; color: var(--ui-muted); font-size: var(--ui-fs-label); letter-spacing: var(--ui-caps-tracking); text-transform: uppercase; }

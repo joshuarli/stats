@@ -49,7 +49,8 @@ class names the components render.
 
 All tokens are `--ui-*` custom properties on `:root`: color (`bg`, `surface`, `text`, `text-2`,
 `muted`, `line`, `line-strong`, `hover`, `accent`, `good`/`ok`, `serious`/`warn`,
-`critical`/`bad`, `viz-*`, `s0` to `s7`), type (`font`, `mono`, `fs-*`), spacing (`space-*`),
+`critical`/`bad`, tinted backgrounds `accent-soft`, `ok-soft`, `warn-soft` and `bad-soft`,
+`viz-*`, `s0` to `s7`), type (`font`, `mono`, `fs-*`), spacing (`space-*`),
 sizes (`control*`, `row-height*`, `side-width`, `side-link-height`), radius, shadow and z-index.
 
 `tokens.css` declares `color-scheme: light dark`. The light values are the defaults, and a

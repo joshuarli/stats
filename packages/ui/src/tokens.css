@@ -16,6 +16,10 @@
   --ui-ok: var(--ui-good);
   --ui-warn: var(--ui-serious);
   --ui-bad: var(--ui-critical);
+  --ui-accent-soft: color-mix(in srgb, var(--ui-accent) 15%, transparent);
+  --ui-ok-soft: color-mix(in srgb, var(--ui-ok) 12%, var(--ui-surface));
+  --ui-warn-soft: color-mix(in srgb, var(--ui-warn) 12%, var(--ui-surface));
+  --ui-bad-soft: color-mix(in srgb, var(--ui-bad) 12%, var(--ui-surface));
   --ui-viz-blue: #2a78d6;
   --ui-viz-aqua: #1baf7a;
   --ui-viz-violet: #6250d6;

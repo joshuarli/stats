@@ -18,7 +18,7 @@ describe("packed artifact contract", () => {
       const data = JSON.parse(output.slice(jsonStart, jsonEnd)) as Record<string, { filename: string; files: readonly { path: string }[] }>;
       const tarballInfo = data["@joshuarli/ui"] ?? Object.values(data)[0];
       assert.ok(tarballInfo !== undefined, "Expected tarball info in json output");
-      assert.equal(tarballInfo.filename, "joshuarli-ui-0.2.0.tgz");
+      assert.equal(tarballInfo.filename, "joshuarli-ui-0.3.0.tgz");
 
       const paths = tarballInfo.files.map(f => f.path);
       assert.ok(paths.includes("package.json"), "Missing package.json");
