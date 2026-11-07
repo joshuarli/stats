@@ -1,5 +1,5 @@
 import * as vitest from "vitest";
-import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
+import { HISTORY_CONTENT_TYPE, openHistory } from "../src/binary/history.ts";
 import {
   ApiFailure,
   CONDITIONAL_CACHE_LIMIT,
@@ -14,7 +14,7 @@ import {
   resetHistoryCaches
 } from "../src/client/api.ts";
 import { alignTracks, sumTracks, windowTracks, worstTrack } from "../src/client/chart-data.ts";
-import { decodeSummary, type SummaryHistory } from "../src/client/history.ts";
+import { decodeHostHistories, decodeSummary, type SummaryHistory } from "../src/client/history.ts";
 import { encodeHistory } from "./support/history.ts";
 
 function check(condition: boolean, message = "assertion failed"): void {
@@ -775,6 +775,32 @@ const cases: readonly (readonly [string, () => Promise<void>])[] = [
           );
         }
       );
+    }
+  ],
+  [
+    "decodeHostHistories traverses filesystems once",
+    async () => {
+      const root = openHistory(makeHostBundleBytes("host-a", 10)).root;
+      check(root.form === "bundle", "expected bundle root");
+      if (root.form !== "bundle") return;
+      let filesystemReads = 0;
+      const entries = root.entries.map(item =>
+        item.name === "filesystems"
+          ? {
+              get name(): string {
+                return "filesystems";
+              },
+              get history() {
+                filesystemReads += 1;
+                return item.history;
+              }
+            }
+          : item
+      );
+      const decoded = decodeHostHistories({ ...root, entries });
+      equal(filesystemReads, 1, "expected filesystems entry to be decoded once");
+      equal(decoded.filesystems.series[0]?.table.cells("total"), [1_000]);
+      equal(decoded.block.series[0]?.table.cells("p50Us"), [10]);
     }
   ]
 ];

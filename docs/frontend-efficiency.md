@@ -195,4 +195,31 @@ Confirmed lifecycle defects fixed in F1:
 - **Unkeyed `<HostView>` (`HostPage.tsx`):** `<Show when={host()}>` was not keyed by `hostId`, so navigating from Host A to Host B reused Host A's component instance and held Host A's telemetry under Host B's `<PageHeader>` during the transition. Keying `<Show when={host()?.hostId} keyed>` (matching `ProjectPage.tsx` and `ServicePage.tsx`) disposes Host A immediately.
 - **Refresh error tearing down settled data (`queries.ts`, `FleetPage.tsx`, `HostPage.tsx`, `ProjectPage.tsx`):** A failed `refresh()` rejected the memo's promise even when `previous` telemetry was already settled, triggering `<Errored>` to tear down the active charts/table in addition to showing the `refreshError` `<Notice tone="warn">`. Passing `previous` and `onRefreshError` into `loadQuery` preserves the settled telemetry on refresh failure while surfacing the warning notice.
 
+## Conditional cache and decode (F2)
+
+### Conditional cache (`cloudflare/src/client/api.ts`, `cloudflare/test/client-cache.test.ts`)
+
+The four history caches (`summaryCache`, `hostCache`, `fleetCache`, `projectCache`) now share `ConditionalCache<T>` with:
+
+- **32-entry cap (`CONDITIONAL_CACHE_LIMIT = 32`) and 8 MiB retained-bytes cap (`CONDITIONAL_CACHE_MAX_BYTES = 8 * 1024 * 1024`) per cache.** Retained bytes equal `bytes.byteLength` when `openHistory` reports `zeroCopy: true`, and `2 * bytes.byteLength` when `zeroCopy: false` (unaligned buffer view).
+- **Recency touch on `304`.** A matching `304` moves the cached entry to the newest LRU position before returning its value.
+- **Mismatched `304` ETag retry.** A `304` whose `ETag` differs from the cached entry's `ETag` retries once without `If-None-Match`.
+- **Per-path request sequence ordering.** `cache.begin(path)` assigns a monotonically increasing sequence number when a request starts; `cache.remember(path, seq, ...)` installs only when `seq` is still the latest sequence for `path`, preventing a slower older response from overwriting a faster newer response.
+
+### Single-traversal host bundle decode (`cloudflare/src/client/history.ts`, `cloudflare/scripts/bench-history.mjs`)
+
+`decodeHostHistories()` previously spread `decodeFleetHistories(root)` and then decoded `filesystems` a second time. Removing the duplicate `filesystems` decode keeps `decodeHostHistories()` to a single traversal per kind (`summary`, `disks`, `nets`, `filesystems`, `block`).
+
+`node --experimental-strip-types --expose-gc cloudflare/scripts/bench-history.mjs --quick` (20 iterations × 5 rounds):
+
+| Bundle | Frame bytes | `binaryOpenValidated` (µs) | `clientDecodeFleet` (µs) | `clientDecodeHost` (µs) |
+| --- | ---: | ---: | ---: | ---: |
+| `threadripper/1h` | 85,688 | 40.2 | 3.0 | 3.5 |
+| `threadripper/24h` | 249,208 | 78.1 | 2.8 | 3.1 |
+| `sentry/6h` | 440,448 | 143.1 | 3.8 | 4.4 |
+| `sentry/24h` | 443,432 | 136.4 | 5.3 | 5.7 |
+| `synthetic/host-bundle-240` | 119,392 | 79.2 | 2.8 | 3.9 |
+| `synthetic/host-bundle-900` | 431,080 | 218.8 | 4.3 | 3.9 |
+
+
 

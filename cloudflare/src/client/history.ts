@@ -167,7 +167,6 @@ export function decodeHostHistories(root: HistoryView): HostHistories {
   const bundle = bundled(root);
   return {
     ...decodeFleetHistories(root),
-    filesystems: devicesFrom(entry(bundle, "filesystems"), "filesystems"),
     block: devicesFrom(entry(bundle, "block"), "block")
   };
 }

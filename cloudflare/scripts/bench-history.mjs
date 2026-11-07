@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { cpus, platform, arch } from "node:os";
 import { gzipSync, brotliCompressSync, constants } from "node:zlib";
 import { openHistory } from "../src/binary/history.ts";
+import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories } from "../src/client/history.ts";
 import { encodeHostBundle, encodeProjectBundle, encodeProjectHistory, hostHistoryColumns } from "../src/history-frame.ts";
 import { compact, encodeHistory, readHistory } from "../test/support/history.ts";
 import { encodeStored, decodeStored } from "../test/binary/storage-candidate.ts";
@@ -63,20 +64,26 @@ for (const { name, value } of bundles()) {
   const expected = readHistory(encodeHistory(value));
   assert.deepEqual(readHistory(encoded), "hostId" in value ? compact(expected) : expected);
   const columns = "hostId" in value && "histories" in value ? Object.values(value.histories).map(history => hostHistoryColumns(history)) : null;
+  const isHostBundle = "hostId" in value && "histories" in value && "block" in value.histories;
+  const isProjectBundle = "projectId" in value && "histories" in value && "worker" in value.histories;
+  const openedRoot = openHistory(encoded).root;
   results.push({ name, format: "history", json: compressed(Buffer.from(json)), binary: compressed(encoded),
     jsonEncode: measure(() => JSON.stringify(value)),
     binaryExtractAndEncode: measure(encode),
     binaryEncodeCachedColumns: columns === null ? null : measure(() => encodeHostBundle(value.hostId, columns)),
     jsonParse: measure(() => JSON.parse(json)),
-    binaryOpenValidated: measure(() => openHistory(encoded)) });
+    binaryOpenValidated: measure(() => openHistory(encoded)),
+    clientDecodeFleet: isHostBundle ? measure(() => decodeFleetHistories(openedRoot)) : null,
+    clientDecodeHost: isHostBundle ? measure(() => decodeHostHistories(openedRoot)) : null,
+    clientDecodeProject: isProjectBundle ? measure(() => decodeProjectHistories(openedRoot)) : null });
 }
-for (const filename of readdirSync(join(root, "fixtures/v1")).filter(name => /^batch-(full|minimal|macos|system)\.json$/u.test(name))) {
-  const batch = JSON.parse(readFileSync(join(root, "fixtures/v1", filename), "utf8"));
+for (const filename of readdirSync(join(root, "fixtures/v2/sources")).filter(name => /^(linux|macos)-normal\.json$|^minimal\.json$|^system\.json$|^u64-boundaries\.json$/u.test(name))) {
+  const batch = JSON.parse(readFileSync(join(root, "fixtures/v2/sources", filename), "utf8"));
   for (const [index, value] of batch.samples.entries()) {
     const json = JSON.stringify(value);
     const encoded = encodeStored("sample", value);
     assert.deepEqual(decodeStored("sample", encoded), value);
-    results.push({ name: `fixtures/v1/${filename}#sample-${index}`, format: "storage", json: compressed(Buffer.from(json)), binary: compressed(encoded),
+    results.push({ name: `fixtures/v2/sources/${filename}#sample-${index}`, format: "storage", json: compressed(Buffer.from(json)), binary: compressed(encoded),
       jsonEncode: measure(() => JSON.stringify(value)), binaryEncode: measure(() => encodeStored("sample", value)),
       jsonDecode: measure(() => JSON.parse(json)), binaryDecodeToObjects: measure(() => decodeStored("sample", encoded)) });
   }
