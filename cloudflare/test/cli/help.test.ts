@@ -24,12 +24,12 @@ await test("every help path works offline without a credential command or a sock
   const marker = join(scratch, "auth-ran");
   const origin = await fakeOrigin((_, response) => { response.end("{}"); });
   try {
-    for (const path of helpPaths) {
+    await Promise.all(helpPaths.map(async path => {
       const run = await runCli(path, { STATSCTL_AUTH_COMMAND: `touch ${marker}`, STATS_URL: origin.origin });
       assert.equal(run.code, 0, `${path.join(" ")}: ${run.stderr}`);
       assert.ok(run.stdout.length > 100, path.join(" "));
       assert.equal(run.stderr, "");
-    }
+    }));
     assert.equal(existsSync(marker), false, "a credential command ran");
     assert.equal(origin.connections(), 0, "help opened a socket");
     assert.deepEqual(origin.seen, []);

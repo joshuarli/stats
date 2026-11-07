@@ -97,7 +97,7 @@ async function startShop(): Promise<Shop> {
 
 async function sendAll(shop: Shop, requests: readonly (readonly [string, string])[]): Promise<(string | null)[]> {
   const traceIds: (string | null)[] = [];
-  for (let at = 0; at < requests.length; at += 50) traceIds.push(...await Promise.all(requests.slice(at, at + 50).map(([path, method]) => shop.send(path, method))));
+  for (let at = 0; at < requests.length; at += 200) traceIds.push(...await Promise.all(requests.slice(at, at + 200).map(([path, method]) => shop.send(path, method))));
   return traceIds;
 }
 
@@ -107,7 +107,7 @@ function keptByTraceHash(traceId: string | null): boolean {
 
 async function startClearOfBucketEnd(): Promise<void> {
   const intoBucket = Date.now() % COUNT_BUCKET_MS;
-  if (intoBucket > COUNT_BUCKET_MS - 60_000) await new Promise(resolve => setTimeout(resolve, COUNT_BUCKET_MS - intoBucket + 1_000));
+  if (intoBucket > COUNT_BUCKET_MS - 8_000) await new Promise(resolve => setTimeout(resolve, COUNT_BUCKET_MS - intoBucket + 1_000));
 }
 
 await test("a sampled service is counted exactly, keeps a trace's Worker and Durable Object invocations together, and keeps every failure", async () => {

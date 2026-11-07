@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, it as test } from "node:test";
 import { EXIT } from "../../src/cli/exit.ts";
 import { useColour } from "../../src/cli/text.ts";
 import { authorized, deploymentHistory, fakeOrigin, observeHealth, projectEntry, runCli, sendJson, TOKEN, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
@@ -23,24 +23,25 @@ function errorOf(stdout: string): { code: string; message: string } {
 
 const jsonRun = (origin: FakeOrigin, args: readonly string[], extra: Record<string, string> = {}) => runCli([...args, "--json", "--origin", origin.origin], tokenEnv(extra));
 
-await test("the exit code map matches the contract", () => {
-  assert.deepEqual({ ...EXIT }, { ok: 0, usage: 2, auth: 3, transport: 4, pending: 5, unchanged: 6, regressed: 7, findings: 8 });
-});
+await describe("contract", { concurrency: true }, () => {
+  void test("the exit code map matches the contract", () => {
+    assert.deepEqual({ ...EXIT }, { ok: 0, usage: 2, auth: 3, transport: 4, pending: 5, unchanged: 6, regressed: 7, findings: 8 });
+  });
 
-await test("unknown options, missing selectors, and conflicting selectors exit 2", async () => {
-  const cases: string[][] = [
-    ["projects", "--bogus"], ["projects", "extra"], ["health"], ["health", "--project", "Bad Id"], ["nosuch"], ["observe"], ["--json"],
-    ["cost", "--project", "stats", "--all"], ["cost", "--from", "1"], ["cost", "--window", "1h", "--month-to-date"], ["snapshot", "--project", "stats"],
-    ["compare", "--project", "stats"], ["check", "ingest"], ["projects", "--origin", "http://example.com"], ["projects", "--origin", "not a url"]
-  ];
-  for (const args of cases) {
-    const run = await runCli(args, tokenEnv());
-    assert.equal(run.code, EXIT.usage, `${args.join(" ")}: ${run.stdout}${run.stderr}`);
-    assert.notEqual(run.stderr, "", args.join(" "));
-  }
-});
+  void test("unknown options, missing selectors, and conflicting selectors exit 2", async () => {
+    const cases: string[][] = [
+      ["projects", "--bogus"], ["projects", "extra"], ["health"], ["health", "--project", "Bad Id"], ["nosuch"], ["observe"], ["--json"],
+      ["cost", "--project", "stats", "--all"], ["cost", "--from", "1"], ["cost", "--window", "1h", "--month-to-date"], ["snapshot", "--project", "stats"],
+      ["compare", "--project", "stats"], ["check", "ingest"], ["projects", "--origin", "http://example.com"], ["projects", "--origin", "not a url"]
+    ];
+    await Promise.all(cases.map(async args => {
+      const run = await runCli(args, tokenEnv());
+      assert.equal(run.code, EXIT.usage, `${args.join(" ")}: ${run.stdout}${run.stderr}`);
+      assert.notEqual(run.stderr, "", args.join(" "));
+    }));
+  });
 
-await test("a usage error in --json mode is one failure document", async () => {
+  void test("a usage error in --json mode is one failure document", async () => {
   const run = await runCli(["cost", "--project", "stats", "--all", "--json"]);
   assert.equal(run.code, EXIT.usage);
   const parsed = document(run.stdout);
@@ -51,7 +52,7 @@ await test("a usage error in --json mode is one failure document", async () => {
   assert.match((parsed["error"] as { message: string }).message, /--project and --all/);
 });
 
-await test("projects returns a sorted payload inside one statsctl/1 document", async () => {
+  void test("projects returns a sorted payload inside one statsctl/1 document", async () => {
   await withOrigin((request, response) => {
     if (!authorized(request)) return sendJson(response, {}, 401);
     sendJson(response, [projectEntry("stats"), projectEntry("alpha", { collector: { lastRunAtMs: null, lastSuccessAtMs: null, lastError: "boom", stale: true } })]);
@@ -72,7 +73,7 @@ await test("projects returns a sorted payload inside one statsctl/1 document", a
   });
 });
 
-await test("text mode prints a table, no escape codes, and nothing on stdout from diagnostics", async () => {
+void test("text mode prints a table, no escape codes, and nothing on stdout from diagnostics", async () => {
   await withOrigin((_, response) => { sendJson(response, [projectEntry("stats")]); }, async origin => {
     for (const extra of [{}, { NO_COLOR: "1" }, { NO_COLOR: "" }]) {
       const run = await runCli(["projects", "--origin", origin.origin], tokenEnv(extra));
@@ -84,7 +85,7 @@ await test("text mode prints a table, no escape codes, and nothing on stdout fro
   });
 });
 
-await test("colour is only for an interactive terminal without NO_COLOR", () => {
+void test("colour is only for an interactive terminal without NO_COLOR", () => {
   assert.equal(useColour({}, true, false), true);
   assert.equal(useColour({ NO_COLOR: "1" }, true, false), false);
   assert.equal(useColour({}, false, false), false);
@@ -92,7 +93,7 @@ await test("colour is only for an interactive terminal without NO_COLOR", () => 
   assert.equal(useColour({ TERM: "dumb" }, true, false), false);
 });
 
-await test("an HTML login page, 401, 403, and a redirect are authentication failures", async () => {
+void test("an HTML login page, 401, 403, and a redirect are authentication failures", async () => {
   const replies: [string, Handler][] = [
     ["login_page", (_, response) => { response.writeHead(200, { "content-type": "text/html" }); response.end("<!doctype html><title>Sign in</title>"); }],
     ["login_page", (_, response) => { response.writeHead(200, { "content-type": "application/json" }); response.end("<html>Sign in</html>"); }],
@@ -110,7 +111,7 @@ await test("an HTML login page, 401, 403, and a redirect are authentication fail
   }
 });
 
-await test("a redirect to another origin never carries the credential", async () => {
+void test("a redirect to another origin never carries the credential", async () => {
   await withOrigin((_, response) => { sendJson(response, []); }, async other => {
     await withOrigin((_, response) => { response.writeHead(307, { location: `${other.origin}/api/v1/projects` }).end(); }, async origin => {
       const run = await jsonRun(origin, ["projects"]);
@@ -122,7 +123,7 @@ await test("a redirect to another origin never carries the credential", async ()
   });
 });
 
-await test("malformed JSON, a wrong shape, and an oversized body are contract failures with exit 4", async () => {
+void test("malformed JSON, a wrong shape, and an oversized body are contract failures with exit 4", async () => {
   const replies: [string, Handler][] = [
     ["malformed_json", (_, response) => { response.writeHead(200, { "content-type": "application/json" }); response.end("{not json"); }],
     ["contract", (_, response) => { sendJson(response, [{ id: "stats" }]); }],
@@ -140,7 +141,7 @@ await test("malformed JSON, a wrong shape, and an oversized body are contract fa
   }
 });
 
-await test("failure output is exactly one document on stdout and a diagnostic on stderr", async () => {
+void test("failure output is exactly one document on stdout and a diagnostic on stderr", async () => {
   await withOrigin((_, response) => { response.writeHead(401).end(); }, async origin => {
     const run = await jsonRun(origin, ["health", "--project", "stats"]);
     assert.equal(run.code, EXIT.auth);
@@ -150,7 +151,7 @@ await test("failure output is exactly one document on stdout and a diagnostic on
   });
 });
 
-await test("only GET network-class failures are retried, at most twice", async () => {
+void test("only GET network-class failures are retried, at most twice", async () => {
   let calls = 0;
   await withOrigin((_, response) => {
     calls += 1;
@@ -169,7 +170,7 @@ await test("only GET network-class failures are retried, at most twice", async (
   });
 });
 
-await test("a missing credential exits 3 and says how to log in, without starting a login", async () => {
+void test("a missing credential exits 3 and says how to log in, without starting a login", async () => {
   await withOrigin((_, response) => { sendJson(response, []); }, async origin => {
     for (const command of ["exit 1", "printf ''", "sleep 0.01; exit 3"]) {
       const run = await jsonRun(origin, ["projects"], { STATSCTL_AUTH_COMMAND: command });
@@ -181,7 +182,7 @@ await test("a missing credential exits 3 and says how to log in, without startin
   });
 });
 
-await test("the credential header name is configurable and the token never reaches argv", async () => {
+void test("the credential header name is configurable and the token never reaches argv", async () => {
   await withOrigin((request, response) => {
     if (request.headers["x-access"] !== TOKEN) return void response.writeHead(401).end();
     sendJson(response, []);
@@ -213,7 +214,7 @@ function healthOrigin(overrides: { deployments?: Handler; health?: Handler; proj
   };
 }
 
-await test("health reports collector, deployment sync, and observe independently as healthy", async () => {
+void test("health reports collector, deployment sync, and observe independently as healthy", async () => {
   await withOrigin(healthOrigin(), async origin => {
     const run = await jsonRun(origin, ["health", "--project", "stats"]);
     assert.equal(run.code, EXIT.ok, run.stdout + run.stderr);
@@ -228,7 +229,7 @@ await test("health reports collector, deployment sync, and observe independently
   });
 });
 
-await test("a 200 alone is not healthy, and one failing section does not hide the others", async () => {
+void test("a 200 alone is not healthy, and one failing section does not hide the others", async () => {
   const stale = { collector: { lastRunAtMs: 1, lastSuccessAtMs: null, lastError: "quota", stale: true } };
   await withOrigin(healthOrigin({
     projects: [projectEntry("stats", stale)],
@@ -249,7 +250,7 @@ await test("a 200 alone is not healthy, and one failing section does not hide th
   });
 });
 
-await test("deployment sync problems and truncation are reasons, not a pass", async () => {
+void test("deployment sync problems and truncation are reasons, not a pass", async () => {
   await withOrigin(healthOrigin({
     deployments: (_, response) => { sendJson(response, deploymentHistory("stats", { sync: { lastAttemptAtMs: 5, lastSuccessAtMs: 4, error: "api", truncated: true } })); }
   }), async origin => {
@@ -260,7 +261,7 @@ await test("deployment sync problems and truncation are reasons, not a pass", as
   });
 });
 
-await test("only stats is observed; other projects report unavailable:not_observed without an observe request", async () => {
+void test("only stats is observed; other projects report unavailable:not_observed without an observe request", async () => {
   await withOrigin(healthOrigin(), async origin => {
     const run = await jsonRun(origin, ["health", "--project", "other"]);
     assert.equal(run.code, EXIT.ok, run.stdout);
@@ -273,7 +274,7 @@ await test("only stats is observed; other projects report unavailable:not_observ
   });
 });
 
-await test("health on an unknown project is a usage error and a total outage reports the first failure", async () => {
+void test("health on an unknown project is a usage error and a total outage reports the first failure", async () => {
   await withOrigin(healthOrigin(), async origin => {
     const run = await jsonRun(origin, ["health", "--project", "ghost"]);
     assert.equal(run.code, EXIT.usage);
@@ -286,12 +287,14 @@ await test("health on an unknown project is a usage error and a total outage rep
   });
 });
 
-await test("an observe payload that fails the strict decoder is a contract reason", async () => {
-  await withOrigin(healthOrigin({ health: (_, response) => { sendJson(response, { newestAtMs: "now" }); } }), async origin => {
-    const run = await jsonRun(origin, ["health", "--project", "stats"]);
-    assert.equal(run.code, EXIT.ok);
-    const payload = document(run.stdout)["payload"] as Record<string, { state: string; reasons: { code: string }[] }>;
-    assert.equal(payload["observe"]?.state, "unavailable");
-    assert.deepEqual(payload["observe"]?.reasons.map(reason => reason.code), ["contract"]);
+  void test("an observe payload that fails the strict decoder is a contract reason", async () => {
+    await withOrigin(healthOrigin({ health: (_, response) => { sendJson(response, { newestAtMs: "now" }); } }), async origin => {
+      const run = await jsonRun(origin, ["health", "--project", "stats"]);
+      assert.equal(run.code, EXIT.ok);
+      const payload = document(run.stdout)["payload"] as Record<string, { state: string; reasons: { code: string }[] }>;
+      assert.equal(payload["observe"]?.state, "unavailable");
+      assert.deepEqual(payload["observe"]?.reasons.map(reason => reason.code), ["contract"]);
+    });
   });
 });
+

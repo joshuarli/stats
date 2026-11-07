@@ -1,4 +1,4 @@
-import test from "node:test";
+import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 import { LOG_CALL, untilExists, withWorkspace, type Outcome, type Script } from "./harness.ts";
 
@@ -32,20 +32,22 @@ const SCRIPTS = [
   { script: "deploy-host.sh", args: ["threadripper"] }
 ] as const;
 
-for (const { script, args } of SCRIPTS) {
-  for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
-    await test(`${script} removes its scratch state on ${signal}, then dies by ${signal} so a calling shell or make loop stops too`, async () => {
-      const outcome = await interrupt(script, args, signal);
-      assert.deepEqual([outcome.code, outcome.signal], [null, signal]);
-      assert.deepEqual(outcome.leftovers, []);
-      if (script !== "deploy-host.sh") assert.equal(outcome.log.length, 1);
-    });
+await describe("signals", { concurrency: true }, () => {
+  for (const { script, args } of SCRIPTS) {
+    for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"] as const) {
+      void test(`${script} removes its scratch state on ${signal}, then dies by ${signal} so a calling shell or make loop stops too`, async () => {
+        const outcome = await interrupt(script, args, signal);
+        assert.deepEqual([outcome.code, outcome.signal], [null, signal]);
+        assert.deepEqual(outcome.leftovers, []);
+        if (script !== "deploy-host.sh") assert.equal(outcome.log.length, 1);
+      });
+    }
   }
-}
 
-await test("deploy-host.sh removes the remote temp file once and runs nothing after the signal", async () => {
-  const outcome = await interrupt("deploy-host.sh", ["threadripper"], "SIGTERM");
-  assert.equal(outcome.signal, "SIGTERM");
-  assert.equal(outcome.log.filter(line => line.includes("rm -f '/tmp/stats.t1'")).length, 1);
-  assert.match(outcome.log.at(-1) ?? "", /rm -f '\/tmp\/stats\.t1'/u);
+  void test("deploy-host.sh removes the remote temp file once and runs nothing after the signal", async () => {
+    const outcome = await interrupt("deploy-host.sh", ["threadripper"], "SIGTERM");
+    assert.equal(outcome.signal, "SIGTERM");
+    assert.equal(outcome.log.filter(line => line.includes("rm -f '/tmp/stats.t1'")).length, 1);
+    assert.match(outcome.log.at(-1) ?? "", /rm -f '\/tmp\/stats\.t1'/u);
+  });
 });
