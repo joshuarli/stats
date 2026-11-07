@@ -65,7 +65,7 @@ function decodeSide(value: unknown): ComparisonSide {
   const deploymentId = side["deploymentId"] === null ? null : string(side["deploymentId"], 36);
   const fromMs = time(side["fromMs"]), toMs = time(side["toMs"]);
   if (toMs <= fromMs) throw new Error("invalid comparison side");
-  return { deploymentId, versionIds: array(side["versionIds"], 2, item => string(item, 36)), fromMs, toMs };
+  return { deploymentId, versionIds: array(side["versionIds"], 2, item => string(item, 128)), fromMs, toMs };
 }
 
 function decodeScope(value: unknown): ComparisonScope | null {

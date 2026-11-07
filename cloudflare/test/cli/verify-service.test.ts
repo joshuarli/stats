@@ -7,6 +7,7 @@ import type { Deployment } from "../../src/deployments/model.ts";
 import { compareServiceDeployment, SERVICE_COMPARISON_CAVEAT, type MinuteRollup } from "../../src/deployments/service-compare.ts";
 import type { ExternalEvent, ExternalEventRecord } from "../../src/observe/ingest/model.ts";
 import { parseServicePolicyText } from "../../src/cli/verify/policy.ts";
+import { decodeServiceComparison } from "../../src/deployments/service-decode.ts";
 import { fakeOrigin, runCli, sendJson, tokenEnv } from "./support.ts";
 
 const SCRATCH_ROOT = resolve(import.meta.dirname, "../../../.work/tmp");
@@ -101,6 +102,16 @@ await test("verify --service reads one comparison and judges resource levels wit
   const text = await runCliText(comparisonFor(CANDIDATE, now, 400, 40));
   assert.match(text, /service verdict improved/u);
   assert.match(text, /per-work ratios are descriptive/u);
+});
+
+await test("a comparison between git commit markers decodes as the dashboard and verify read it", () => {
+  const previous = marker(1, AT - 2 * HOUR, "64b6076b3ebbf6ecced0b62712d46fa60cce52d6");
+  const candidate = marker(2, AT, "21271f5b889b1ae1dbc058d89158828ad653d3af");
+  const { before, after } = comparisonBounds(candidate.atMs, "1h");
+  const value = compareServiceDeployment({ service: "web", deployment: candidate, deployments: [previous, candidate], hostIds: [HOST], hostRollups: () => [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], hasHealthUrl: true, window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: [] });
+  const decoded = decodeServiceComparison(JSON.parse(JSON.stringify(value)), candidate.id, "1h");
+  assert.deepEqual(decoded.spec.before.versionIds, ["64b6076b3ebbf6ecced0b62712d46fa60cce52d6"]);
+  assert.deepEqual(decoded.spec.after.versionIds, ["21271f5b889b1ae1dbc058d89158828ad653d3af"]);
 });
 
 async function runCliText(body: unknown): Promise<string> {
