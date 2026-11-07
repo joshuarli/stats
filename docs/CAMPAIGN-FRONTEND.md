@@ -3,9 +3,9 @@
 ## Status
 
 - **Goal:** the Stats dashboard does less work without losing a capability: fewer requests and bytes on the routes that matter, no stale telemetry across subjects, a byte-bounded history cache, charts that update instead of rebuild, and observability state that cannot show one query's data under another. Solid 2, `@solidjs/router`, uPlot, the binary history format, ETags, and both deployment targets stay.
-- **State:** Ready for execution at `6791d3f`. The tree is clean; `make fixtures` 0.29 s, `make lint` 0.76 s, `make cloudflare-test` 71.3 s, and `make dashboard-test` 29.2 s (131 passed) are green. Baseline tables were measured at `1de3eac`; F0a re-pins them at the start commit.
-- **Accepted:** none. **Red:** none. **Parked:** none. **Next:** F0a.
-- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F0a. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
+- **State:** Executing; `F0a` accepted. Baseline tables and bundle/browser JSON artifacts are pinned at `576c99d`.
+- **Accepted:** F0a. **Red:** none. **Parked:** none. **Next:** F0b.
+- **Resume:** `Execute docs/CAMPAIGN-FRONTEND.md from item F0b. Verify the start precondition, read the item, own only its files, and finish on its acceptance command.`
 
 ## Charter
 
