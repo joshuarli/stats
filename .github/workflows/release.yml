@@ -9,6 +9,7 @@ on:
       tag:
         description: 'Release tag (e.g. v0.1.0)'
         required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -129,10 +130,17 @@ jobs:
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            tag="${{ inputs.tag }}"
+            if [ -z "$tag" ]; then
+              version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' agent/Cargo.toml | head -n 1)
+              tag="v$version"
+            fi
           else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            tag="${GITHUB_REF#refs/tags/}"
           fi
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          printf 'releasing %s\n' "$tag"
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
