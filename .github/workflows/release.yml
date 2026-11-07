@@ -34,14 +34,26 @@ jobs:
         run: make agent-build
       - name: Save the cargo registry for the macOS job
         run: |
-          cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+          cargo_registry=
+          for candidate in "${CARGO_HOME:-}" "$HOME/.cargo" /usr/local/cargo; do
+            [ -n "$candidate" ] || continue
+            registry="$candidate/registry"
+            [ -d "$registry" ] || continue
+            if [ -n "$(find "$registry" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+              cargo_registry=$registry
+              break
+            fi
+          done
+          test -n "$cargo_registry" || { echo "cargo registry not found" >&2; exit 1; }
+          rm -rf "$GITHUB_WORKSPACE/.cargo-registry"
           mkdir -p "$GITHUB_WORKSPACE/.cargo-registry"
-          cp -a "$cargo_home/registry/." "$GITHUB_WORKSPACE/.cargo-registry/"
+          cp -a "$cargo_registry/." "$GITHUB_WORKSPACE/.cargo-registry/"
       - name: Upload cargo registry
         uses: actions/upload-artifact@v4
         with:
           name: cargo-registry
           path: .cargo-registry
+          include-hidden-files: true
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
