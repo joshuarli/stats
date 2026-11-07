@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS } from "../../src/deployments/compare.ts";
-import type { ServiceComparison } from "../../src/deployments/service-compare.ts";
+import { SERVICE_COMPARISON_CAVEAT, type ServiceComparison } from "../../src/deployments/service-compare.ts";
 import { openNodeInstallation } from "../../src/node/installation.ts";
 import { nextProbeAtMs } from "../../src/node/probes.ts";
 import type { ProbeFetch } from "../../src/projects/probes.ts";
@@ -79,10 +79,11 @@ await test("a service comparison reports host level changes around a marker and 
     assert.equal(metric(result, "host.pressure.memory").before, null);
     assert.equal(metric(result, "host.pressure.memory").verdict, "insufficient-data");
     assert.equal(metric(result, "probe.health.ms").before, null);
-    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "unavailable"], ["probe", "unavailable"]]);
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "unavailable"], ["probe", "unavailable"], ["application", "unavailable"]]);
+    assert.match(result.sources[3]!.detail, /no application telemetry reader/u);
     assert.ok(result.metrics.every(entry => !entry.metric.startsWith("service.")));
     assert.match(result.sources[2]!.detail, /no health URL/u);
-    assert.ok(result.warnings.some(warning => /fewer resources for the same work/u.test(warning)));
+    assert.ok(result.warnings.includes(SERVICE_COMPARISON_CAVEAT));
     assert.deepEqual(result.hostIds, [host.hostId]);
   } finally {
     harness.close();
@@ -115,7 +116,7 @@ await test("a service's cgroup series replaces the host series it covers when bo
     assert.equal(metric(result, "service.memory").verdict, "regressed");
     assert.equal(metric(result, "service.io").before, 0);
     assert.equal(metric(result, "service.io").verdict, "unchanged");
-    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "available"], ["probe", "unavailable"]]);
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "available"], ["cgroup", "available"], ["probe", "unavailable"], ["application", "unavailable"]]);
     assert.match(result.sources[1]!.detail, /^api cgroup on 1 host, used for service\.cpu, service\.memory, service\.io$/u);
     assert.ok(result.warnings.some(warning => /cgroup metrics cover only the processes in the service's unit/u.test(warning)));
 
@@ -163,7 +164,7 @@ await test("a service comparison with no host data says so and invents no values
     const result = await comparison(harness, "quiet", deploymentId);
     assert.ok(result.reasonCodes.includes("no-data"));
     assert.ok(result.metrics.every(entry => entry.before === null && entry.after === null && entry.verdict === "insufficient-data"));
-    assert.deepEqual(result.sources.map(source => source.status), ["unavailable", "unavailable", "unavailable"]);
+    assert.deepEqual(result.sources.map(source => source.status), ["unavailable", "unavailable", "unavailable", "unavailable"]);
   } finally {
     harness.close();
   }
@@ -220,7 +221,7 @@ await test("probe results land in the comparison, and a failing probe after the 
     assert.equal(metric(result, "probe.health.failure").before, 0);
     assert.equal(metric(result, "probe.health.failure").after, 100);
     assert.equal(metric(result, "probe.health.failure").verdict, "regressed");
-    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "unavailable"], ["probe", "available"]]);
+    assert.deepEqual(result.sources.map(source => [source.source, source.status]), [["hosts", "unavailable"], ["cgroup", "unavailable"], ["probe", "available"], ["application", "unavailable"]]);
   } finally {
     harness.close();
   }
