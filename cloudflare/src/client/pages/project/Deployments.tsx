@@ -96,15 +96,15 @@ export type ProjectDeployments = ReturnType<typeof createDeployments>;
 const DEPLOYMENT_PAGE = 8;
 const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "30d": "24h" };
 
-export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string) {
-  return createDeployments("project", projectId, range, refreshKey);
+export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean = () => true) {
+  return createDeployments("project", projectId, range, refreshKey, active);
 }
 
 export function createServiceDeployments(serviceName: () => string, range: () => Range, refreshKey: () => string) {
-  return createDeployments("service", serviceName, range, refreshKey);
+  return createDeployments("service", serviceName, range, refreshKey, () => true);
 }
 
-function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string) {
+function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean) {
   const routes = ROUTES[kind];
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
@@ -131,7 +131,8 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
     }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Deployment history unavailable"); });
   });
 
-  createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey() }), query => {
+  createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey(), active: active() }), query => {
+    if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     setComparisonError(null);

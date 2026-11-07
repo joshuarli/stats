@@ -88,7 +88,14 @@ function modalParam(view: ModalView | undefined): string | null {
   return view.kind === "issue" ? `issue:${view.fingerprint}` : view.kind === "trace" ? `trace:${view.traceId}` : `deployment:${view.id}`;
 }
 
-export function createObservability(service: ObservedService, refreshKey: () => string, windowKey: () => string, windowAt: () => TimeWindow, exploring: () => boolean) {
+export function createObservability(
+  service: ObservedService,
+  refreshKey: () => string,
+  windowKey: () => string,
+  windowAt: () => TimeWindow,
+  exploring: () => boolean,
+  errorsOpen: () => boolean = () => true
+) {
   const base = observeBase(service);
   const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
   const [modals, setModals] = createSignal<readonly ModalView[]>(parseModal(readParam("modal")));
@@ -189,7 +196,8 @@ export function createObservability(service: ObservedService, refreshKey: () => 
     });
   });
 
-  createEffect(() => ({ id: issueId(), tick: refreshKey(), mutation: mutation() }), query => {
+  createEffect(() => ({ id: issueId(), tick: refreshKey(), mutation: mutation(), active: errorsOpen() }), query => {
+    if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (query.id === null) { setOccurrences(null); setOccurrencesError(null); return; }

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { HISTORY_CONTENT_TYPE } from "../../src/binary/history";
 import { fulfillHistory } from "./history-route";
+import { answer, buildScenario, scenarioComparison } from "./observe-scenario";
 
 const HOST_A = "h_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HOST_B = "h_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -567,4 +568,196 @@ test("disposal during an active chart load aborts the load and leaves no uplot r
   gate.release();
   const uplotCount = await page.evaluate(() => document.querySelectorAll(".uplot").length);
   expect(uplotCount).toBe(0);
+});
+
+test("fleet requests /system only on mount and manual refresh, and filtering or sorting issues no host requests", async ({ page }) => {
+  await installBaseRoutes(page);
+  let systemCalls = 0;
+  let historyCalls = 0;
+
+  await page.route("**/api/v1/hosts/*/system", route => {
+    systemCalls += 1;
+    const id = /\/hosts\/([^/]+)\/system/u.exec(route.request().url())?.[1] ?? HOST_A;
+    const label = id === HOST_A ? "alpha" : id === HOST_B ? "bravo" : "charlie";
+    return route.fulfill({
+      json: {
+        reportedAtMs: NOW,
+        system: { agent: "0.4.0", hostname: `${label}.internal`, os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } }
+      }
+    });
+  });
+
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    historyCalls += 1;
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1] ?? HOST_A;
+    const cpu = id === HOST_A ? 40 : id === HOST_B ? 20 : 60;
+    await fulfillHistory(route, fleetBundle(id, "1h", cpu));
+  });
+
+  await page.goto("/#/");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("charlie-node");
+  expect(systemCalls).toBe(3);
+  expect(historyCalls).toBe(3);
+
+  await page.getByRole("searchbox", { name: "Search hosts" }).fill("bravo");
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).locator("tbody tr")).toHaveCount(1);
+  expect(systemCalls).toBe(3);
+  expect(historyCalls).toBe(3);
+
+  await page.getByRole("searchbox", { name: "Search hosts" }).fill("");
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).locator("tbody tr")).toHaveCount(3);
+  expect(systemCalls).toBe(3);
+  expect(historyCalls).toBe(3);
+
+  await page.getByRole("columnheader", { name: "Host" }).getByRole("button").click();
+  expect(systemCalls).toBe(3);
+  expect(historyCalls).toBe(3);
+
+  await page.clock.runFor(15_000);
+  await expect.poll(() => historyCalls).toBe(6);
+  expect(systemCalls).toBe(3);
+
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => historyCalls).toBe(9);
+  await expect.poll(() => systemCalls).toBe(6);
+});
+
+test("fleet scheduler keeps concurrency at most 4, starts the 5th host before slow earlier hosts finish, and requests only visible page hosts", async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const twelveHosts = Array.from({ length: 12 }, (_, index) => {
+    const hex = index.toString(16).padStart(2, "0");
+    return {
+      hostId: `h_${hex.repeat(16)}`,
+      name: `node-${String(index + 1).padStart(2, "0")}`,
+      createdAtMs: NOW - 86_400_000,
+      revoked: false,
+      lastReceivedAtMs: NOW - 5_000,
+      online: true
+    };
+  });
+  const slowGate = createGate();
+  const seenHosts = new Set<string>();
+  let inFlightHistories = 0;
+  let maxInFlightHistories = 0;
+  let fifthStartedWhileSlowPending = false;
+  let slowPending = true;
+
+  await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts: twelveHosts } }));
+  await page.route("**/api/v1/services", route => route.fulfill({ json: { services: [] } }));
+  await page.route("**/api/v1/hosts/*/system", route => route.fulfill({
+    json: { reportedAtMs: NOW, system: { agent: "0.4.0", hostname: "node", os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } } }
+  }));
+
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1] ?? twelveHosts[0]!.hostId;
+    seenHosts.add(id);
+    inFlightHistories += 1;
+    if (inFlightHistories > maxInFlightHistories) maxInFlightHistories = inFlightHistories;
+    if (id === twelveHosts[4]!.hostId && slowPending) fifthStartedWhileSlowPending = true;
+    if (id === twelveHosts[0]!.hostId || id === twelveHosts[1]!.hostId || id === twelveHosts[2]!.hostId) {
+      await slowGate.wait;
+    }
+    inFlightHistories -= 1;
+    await fulfillHistory(route, fleetBundle(id, "1h", 25));
+  });
+
+  await page.goto("/#/");
+  await expect.poll(() => fifthStartedWhileSlowPending).toBe(true);
+  slowPending = false;
+  slowGate.release();
+
+  await expect(page.getByRole("table", { name: "Fleet hosts" }).locator("tbody tr")).toHaveCount(10);
+  expect(maxInFlightHistories).toBeLessThanOrEqual(4);
+  expect(seenHosts.size).toBe(10);
+  expect(seenHosts.has(twelveHosts[10]!.hostId)).toBe(false);
+  expect(seenHosts.has(twelveHosts[11]!.hostId)).toBe(false);
+});
+
+test("projects overview requests no from=0 or eager range history, reuses ledger histories for trends, and falls back to range history on ledger failure", async ({ page }) => {
+  await installBaseRoutes(page);
+  const historyUrls: string[] = [];
+
+  await page.route("**/api/v1/projects", route => route.fulfill({
+    json: [
+      { id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } },
+      { id: "broken", name: "broken", worker: "broken", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }
+    ]
+  }));
+  await page.route("**/api/v1/projects/*/deployments", route => {
+    const projectId = /\/projects\/([^/]+)\/deployments/u.exec(route.request().url())?.[1] ?? "alpha";
+    return route.fulfill({ json: { projectId, worker: projectId, enabled: true, sync: null, deployments: [], versions: [] } });
+  });
+  await page.route("**/api/v1/projects/*/history*", async route => {
+    const url = new URL(route.request().url());
+    historyUrls.push(`${url.pathname}${url.search}`);
+    if (url.pathname.includes("/projects/broken/") && url.searchParams.has("from")) {
+      await route.fulfill({ status: 500, json: { error: { code: "internal", message: "ledger failed" } } });
+      return;
+    }
+    const projectId = url.pathname.includes("/projects/broken/") ? "broken" : "alpha";
+    await fulfillHistory(route, projectBundle(projectId, 500));
+  });
+
+  await page.goto("/#/projects");
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("alpha");
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("unavailable");
+
+  expect(historyUrls.some(url => url.includes("from=0"))).toBe(false);
+  expect(historyUrls.some(url => url.includes("range="))).toBe(false);
+
+  const countBeforeAlphaExpand = historyUrls.length;
+  await page.getByRole("button", { name: "Show alpha trends" }).click();
+  await expect(page.locator(".projects-trends").first()).toBeVisible();
+  expect(historyUrls.length).toBe(countBeforeAlphaExpand);
+
+  await page.getByRole("button", { name: "Show broken trends" }).click();
+  await expect.poll(() => historyUrls.some(url => url.includes("/projects/broken/history?range=1h"))).toBe(true);
+  await expect(page.locator(".projects-trends")).toHaveCount(2);
+});
+
+test("closed project page defers comparison and occurrences until their sections open", async ({ page }) => {
+  await installBaseRoutes(page);
+  const scenario = await buildScenario(NOW);
+  let comparisonCalls = 0;
+  let occurrenceCalls = 0;
+  let healthCalls = 0;
+  let issuesCalls = 0;
+
+  await page.route("**/api/v1/projects", route => route.fulfill({
+    json: [
+      { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }
+    ]
+  }));
+  await page.route("**/api/v1/projects/stats/deployments", route => route.fulfill({ json: scenario.deployments }));
+  await page.route("**/api/v1/projects/stats/deployments/*/comparison*", route => {
+    comparisonCalls += 1;
+    const match = /\/deployments\/([^/]+)\/comparison/u.exec(route.request().url());
+    const body = scenarioComparison(scenario, match?.[1] ?? "", "1h");
+    return route.fulfill({ json: body ?? {} });
+  });
+  await page.route("**/api/v1/projects/stats/history*", route => fulfillHistory(route, projectBundle("stats", 1_000)));
+  await page.route("**/api/observe/stats/**", async route => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.slice("/api/observe/stats".length);
+    if (path === "/health") healthCalls += 1;
+    if (path === "/issues") issuesCalls += 1;
+    if (path.endsWith("/occurrences")) occurrenceCalls += 1;
+    const response = await answer(scenario, NOW, new Request(`https://observe${path}${url.search}`, { method: route.request().method() }));
+    return route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() });
+  });
+
+  await page.goto("/#/project/stats");
+  await expect(page.getByRole("heading", { name: "stats", level: 1 })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+  await expect.poll(() => healthCalls).toBe(1);
+  await expect.poll(() => issuesCalls).toBe(1);
+  expect(comparisonCalls).toBe(0);
+  expect(occurrenceCalls).toBe(0);
+
+  await page.getByRole("button", { name: /Deployments/u }).click();
+  await expect.poll(() => comparisonCalls).toBe(1);
+  expect(occurrenceCalls).toBe(0);
+
+  await page.getByRole("button", { name: /Errors/u }).click();
+  await expect.poll(() => occurrenceCalls).toBe(1);
 });

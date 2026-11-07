@@ -7,10 +7,19 @@ import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
 import { previousWindowOf } from "../../../cost/ledger.ts";
 import { utcMonthOf, type PlanMonthInput } from "../../../cost/report.ts";
+import { HOUR_MS, MINUTE_MS, PROJECT_SETTLE_MS } from "../../../limits.ts";
 import { assembleProjectLedger, baselineMethodsRetained, historyKinds, ledgerHistories, objectMethodsOf, observeObjectsPath, settledWindow, type ProjectLedger } from "../../project-ledger.ts";
 import type { ObjectMethods } from "../../../cost/ledger.ts";
 
 export { historyKinds, ledgerHistories, settledWindow, type ProjectLedger };
+
+const PROJECT_BUCKET_WIDTHS_MS = [5 * MINUTE_MS, 15 * MINUTE_MS, HOUR_MS, 3 * HOUR_MS] as const;
+
+export function settledRangeWindow(rangeSpanMs: number, nowMs: number): TimeWindow {
+  const stepMs = PROJECT_BUCKET_WIDTHS_MS.find(width => rangeSpanMs / width <= 900) ?? 3 * HOUR_MS;
+  const toMs = Math.floor((nowMs - PROJECT_SETTLE_MS) / stepMs) * stepMs;
+  return { fromMs: toMs - rangeSpanMs, toMs };
+}
 
 export type Baseline =
   | { readonly kind: "loaded"; readonly histories: ProjectHistories }
@@ -31,14 +40,21 @@ export interface ObjectMethodSource {
   readonly now: Accessor<number>;
 }
 
-export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
+export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow | null>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
   const [load, setLoad] = createSignal<LedgerLoad | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => {
     const bounds = window();
-    return `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
+    return bounds === null
+      ? `${project().id}:none:${refreshKey()}`
+      : `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
   }, () => {
     const current = window();
+    if (current === null) {
+      setLoad(null);
+      setError(null);
+      return;
+    }
     const previous = previousWindowOf(current);
     const kinds = historyKinds(project());
     const controller = new AbortController();
@@ -73,11 +89,12 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
       planMonth: planMonth() ?? undefined
     });
   });
+  const histories = () => load()?.current ?? null;
   const baselineError = () => {
     const loaded = load();
     return loaded?.baseline.kind === "failed" ? loaded.baseline.message : null;
   };
-  return { ledger, error, baselineError };
+  return { ledger, histories, error, baselineError };
 }
 
 export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {

@@ -4,7 +4,7 @@ import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
 import { alignTracks, sumTracks, worstTrack } from "../chart-data";
 import { cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
-import { loadFleetRows, type FleetRow } from "../queries";
+import { loadFleetRows, type FleetRow, type FleetRowCache } from "../queries";
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host } from "../api";
@@ -43,12 +43,16 @@ function compareHosts(sort: Sort): (left: Host, right: Host) => number {
 }
 
 export function FleetPage(): JSX.Element {
-  const { query, hosts, now, refreshHosts, tick } = useTelemetry();
+  const { query, hosts, now, refreshHosts, tick, manualTick } = useTelemetry();
   const [search, setSearch] = createSignal("");
   const [selected, setSelected] = createSignal<ReadonlySet<StatusLabel>>(new Set<StatusLabel>());
   const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
   const [page, setPage] = createSignal(1);
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
+  const rowCache: FleetRowCache = {
+    systems: new Map(),
+    histories: new Map()
+  };
 
   const filtered = createMemo(() => {
     const text = search().trim().toLowerCase();
@@ -69,19 +73,28 @@ export function FleetPage(): JSX.Element {
       pageHosts(),
       query(),
       previous,
-      error => setRefreshError(error === null ? null : errorMessage(error))
+      error => setRefreshError(error === null ? null : errorMessage(error)),
+      rowCache
     )
   );
 
-  const doRefresh = async () => {
+  let lastManualTick = manualTick();
+  const doRefresh = async (includeSystem: boolean) => {
     setRefreshError(null);
+    rowCache.histories.clear();
+    if (includeSystem) rowCache.systems.clear();
     try {
       await Promise.all([refreshHosts(), refresh(rows)]);
     } catch (error) {
       setRefreshError(errorMessage(error));
     }
   };
-  createUpdateEffect(() => tick(), () => { void doRefresh(); });
+  createUpdateEffect(() => tick(), () => {
+    const manual = manualTick();
+    const includeSystem = manual !== lastManualTick;
+    lastManualTick = manual;
+    void doRefresh(includeSystem);
+  });
 
   const counts = createMemo(() => {
     const all = hosts();

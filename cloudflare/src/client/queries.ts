@@ -1,6 +1,7 @@
 import { onCleanup } from "solid-js";
 import { getFleetHistories, getHosts, getProjects, getServices, getSystem, type HistoryQuery, type Host, type HostSystem, type Project, type Service } from "./api";
-import type { DiskSeries, FilesystemSeries, NetSeries, SummaryTable } from "./history";
+import type { DiskSeries, FilesystemSeries, FleetHistories, NetSeries, SummaryTable } from "./history";
+import { windowParams } from "./history-path";
 
 export function loadQuery<T>(
   load: (signal: AbortSignal) => Promise<T>,
@@ -49,12 +50,25 @@ export interface FleetRow {
   readonly filesystems: readonly FilesystemSeries[];
 }
 
-async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: T) => Promise<R>): Promise<R[]> {
+export interface FleetRowCache {
+  readonly systems: Map<string, HostSystem | null>;
+  readonly histories: Map<string, { readonly queryKey: string; readonly history: FleetHistories }>;
+}
+
+export async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: T, index: number) => Promise<R>): Promise<R[]> {
   if (limit < 1) throw new Error("limit must be positive");
-  const results: R[] = [];
-  for (let index = 0; index < values.length; index += limit) {
-    results.push(...await Promise.all(values.slice(index, index + limit).map(run)));
-  }
+  if (values.length === 0) return [];
+  const results = Array.from<R>({ length: values.length });
+  let nextIndex = 0;
+  const workerCount = Math.min(limit, values.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await run(values[index]!, index);
+    }
+  });
+  await Promise.all(workers);
   return results;
 }
 
@@ -62,10 +76,26 @@ export function loadFleetRows(
   hosts: readonly Host[],
   query: HistoryQuery,
   previous?: readonly FleetRow[],
-  onRefreshError?: (error: unknown) => void
+  onRefreshError?: (error: unknown) => void,
+  cache?: FleetRowCache
 ): Promise<readonly FleetRow[]> {
+  const queryKey = windowParams(query);
   return loadQuery(signal => mapLimit(hosts, 4, async host => {
-    const [history, system] = await Promise.all([getFleetHistories(host.hostId, query, signal), getSystem(host.hostId, signal)]);
+    const knownHistory = cache?.histories.get(host.hostId);
+    const hasSystem = cache?.systems.has(host.hostId) === true;
+    const historyPromise = knownHistory !== undefined && knownHistory.queryKey === queryKey
+      ? Promise.resolve(knownHistory.history)
+      : getFleetHistories(host.hostId, query, signal).then(loaded => {
+          if (!signal.aborted) cache?.histories.set(host.hostId, { queryKey, history: loaded });
+          return loaded;
+        });
+    const systemPromise = hasSystem
+      ? Promise.resolve(cache!.systems.get(host.hostId) ?? null)
+      : getSystem(host.hostId, signal).then(loaded => {
+          if (!signal.aborted) cache?.systems.set(host.hostId, loaded);
+          return loaded;
+        });
+    const [history, system] = await Promise.all([historyPromise, systemPromise]);
     return {
       host,
       system,

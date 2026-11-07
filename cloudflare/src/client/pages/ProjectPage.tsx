@@ -151,7 +151,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     return { fromMs: end - Math.min(rangeMs[range()], RETENTION_MS), toMs: end };
   };
   const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
-  const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => sections().has("requests")) : null;
+  const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => sections().has("requests"), () => sections().has("errors")) : null;
   const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
   const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
   const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
@@ -173,7 +173,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     requestAnimationFrame(() => document.getElementById(`section-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
-  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`);
+  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`, () => sections().has("deploys"));
   const deploymentsSettled = () => deployments.history() !== null || deployments.historyError() !== null;
   const events = createMemo(() => deployments.events().map(event => ({ ...event, onSelect: () => { openSection("deploys"); event.onSelect(); } })));
   const latest = () => deployments.history()?.deployments[0];

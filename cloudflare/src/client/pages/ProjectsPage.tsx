@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, latest as readLatest, Loading, onCleanup, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
@@ -12,7 +12,7 @@ import { createUpdateEffect } from "../effect";
 import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
 import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
-import { createProjectLedger, historyKinds, settledWindow } from "./project/ledger-load";
+import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
 import { MONTH_MS, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
 import { ratio } from "../math.ts";
 import { provisionalFromMs } from "./project/series";
@@ -111,22 +111,13 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const refreshKey = () => `${projectTick()}:${manualTick()}`;
   const [open, setOpen] = createSignal(false);
-  const [histories, setHistories] = createSignal<ProjectHistories | null>(null);
+  const [fallbackHistories, setFallbackHistories] = createSignal<ProjectHistories | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
   const [deploymentsSettled, setDeploymentsSettled] = createSignal(false);
   const [deploymentsError, setDeploymentsError] = createSignal<string | null>(null);
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
 
-  createEffect(() => `${props.project.id}:${range()}:${refreshKey()}`, () => {
-    const controller = new AbortController();
-    onCleanup(() => controller.abort());
-    void getProjectHistories(props.project.id, { range: range() }, historyKinds(props.project), controller.signal).then(value => {
-      if (controller.signal.aborted) return;
-      setHistories(value);
-      setHistoryError(null);
-    }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(errorMessage(error)); });
-  });
   createEffect(() => `${props.project.id}:${refreshKey()}`, () => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
@@ -143,13 +134,41 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   });
 
   const window = createMemo((): TimeWindow | null => {
-    const loaded = histories();
-    return loaded === null ? null : settledWindow(loaded.worker, rangeMs[range()], null);
+    refreshKey();
+    return settledRangeWindow(rangeMs[range()], readLatest(now));
   });
   const ready = () => window() !== null;
-  const { ledger, error: ledgerError } = createProjectLedger(() => props.project, () => window() ?? { fromMs: 0, toMs: 0 }, () => `${ready()}:${refreshKey()}`, null, () => null);
+  const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, refreshKey, null, () => null);
   const loaded = () => ready() ? ledger() : null;
-  const failure = () => historyError() ?? ledgerError();
+  const failure = () => ledgerError();
+  const trendHistories = () => ledgerHistories() ?? fallbackHistories();
+
+  createEffect(
+    () => ({
+      active: open() && ledgerError() !== null,
+      id: props.project.id,
+      range: range(),
+      tick: refreshKey()
+    }),
+    query => {
+      if (!query.active) {
+        if (!open()) {
+          setFallbackHistories(null);
+          setHistoryError(null);
+        }
+        return;
+      }
+      const controller = new AbortController();
+      onCleanup(() => controller.abort());
+      void getProjectHistories(query.id, { range: query.range }, historyKinds(props.project), controller.signal).then(value => {
+        if (controller.signal.aborted) return;
+        setFallbackHistories(value);
+        setHistoryError(null);
+      }).catch((error: unknown) => {
+        if (!controller.signal.aborted) setHistoryError(errorMessage(error));
+      });
+    }
+  );
 
   const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
   const perDay = (amount: Amount): Amount => ({ now: amount.now / DAYS_PER_MONTH, before: amount.before === null ? null : amount.before / DAYS_PER_MONTH });
@@ -240,7 +259,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
       <Show when={open()}>
         <tr class="projects-detail">
           <td colspan="8">
-            <Show when={histories()} fallback={failure() === null ? <Skeleton rows={2} chart /> : <ErrorState error={new Error(failure() ?? "")} compact />}>{value => <Trends project={props.project} histories={value()} />}</Show>
+            <Show when={trendHistories()} fallback={historyError() === null ? <Skeleton rows={2} chart /> : <ErrorState error={new Error(historyError() ?? "")} compact />}>{value => <Trends project={props.project} histories={value()} />}</Show>
           </td>
         </tr>
       </Show>
@@ -250,7 +269,12 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
 
 function Trends(props: { readonly project: Project; readonly histories: ProjectHistories }): JSX.Element {
   const worker = () => props.histories.worker;
-  const common = () => ({ min: 0, compact: true, stepMs: worker().stepMs, provisionalFromMs: provisionalFromMs(worker()) });
+  const common = () => ({
+    min: 0,
+    compact: true,
+    stepMs: worker().stepMs,
+    ...(worker().range === undefined ? {} : { provisionalFromMs: provisionalFromMs(worker()) })
+  });
   const calls = () => metricTrack(worker(), "worker.invocations");
   const probe = () => props.project.probes[0];
   const bucket = () => props.project.buckets[0];
