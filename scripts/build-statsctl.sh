@@ -14,20 +14,22 @@ mkdir -p "$repo/dist"
 out="$repo/dist/statsctl-$version.mjs"
 
 # Bundle with esbuild using Node APIs at runtime
-if [ -f node_modules/.bin/esbuild ]; then
-  node_modules/.bin/esbuild src/cli/statsctl.ts \
-    --bundle \
-    --platform=node \
-    --format=esm \
-    --target=node20 \
-    --outfile="$out" \
-    --banner:js="#!/usr/bin/env node
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
+if [ -x node_modules/.bin/esbuild ]; then
+  esbuild=node_modules/.bin/esbuild
+elif [ -x ../node_modules/.bin/esbuild ]; then
+  esbuild=../node_modules/.bin/esbuild
 else
-  # Fallback: use node to run bundler if available differently
-  echo "esbuild not found, trying to bundle manually" >&2
+  echo "esbuild not found; add it to cloudflare devDependencies and run pnpm install" >&2
   exit 1
 fi
+"$esbuild" src/cli/statsctl.ts \
+  --bundle \
+  --platform=node \
+  --format=esm \
+  --target=node20 \
+  --outfile="$out" \
+  --banner:js="#!/usr/bin/env node
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
 
 # Make executable
 chmod +x "$out"

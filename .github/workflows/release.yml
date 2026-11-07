@@ -22,12 +22,24 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - name: Install the pinned Rust toolchain and musl targets
+        run: |
+          toolchain=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$toolchain" --profile minimal --component llvm-tools \
+            --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
+      - name: Fetch the macOS dependency sources for the macOS job
+        run: cd agent && cargo fetch --locked --target aarch64-apple-darwin
       - name: Build agent (Linux musl)
         run: make agent-build
+      - name: Save the cargo registry for the macOS job
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.cargo-registry"
+          cp -a "$HOME/.cargo/registry/." "$GITHUB_WORKSPACE/.cargo-registry/"
+      - name: Upload cargo registry
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-registry
+          path: .cargo-registry
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -38,15 +50,27 @@ jobs:
             agent/dist/SHA256SUMS
 
   build-agent-macos:
+    needs: build-agent-linux
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install the pinned Rust toolchain
+        run: |
+          toolchain=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$toolchain" --profile minimal
+      - name: Download the cargo registry from the Linux job
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-registry
+          path: .cargo-registry
+      - name: Restore the cargo registry
+        run: |
+          mkdir -p "$HOME/.cargo/registry"
+          cp -a "$GITHUB_WORKSPACE/.cargo-registry/." "$HOME/.cargo/registry/"
       - name: Build agent (macOS arm64)
         run: |
           cd agent
-          cargo build --release --locked
+          cargo build --release --locked --offline
           mkdir -p dist
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
           cp target/release/stats "dist/stats-$version-aarch64-apple-darwin"
@@ -95,14 +119,10 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release
-          # Agent binaries
           find artifacts/agent-linux -type f -name 'stats-*' -exec cp {} release/ \;
           find artifacts/agent-macos -type f -name 'stats-*' -exec cp {} release/ \;
-          # statsctl
           find artifacts/statsctl -type f -name 'statsctl-*' -exec cp {} release/ \;
-          # Installer
           cp install.sh release/
-          # Combined checksums
           (cd release && sha256sum stats-* statsctl-*.mjs install.sh > SHA256SUMS)
           ls -la release/
       - name: Determine tag
