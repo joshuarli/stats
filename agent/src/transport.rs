@@ -66,9 +66,19 @@ fn classify_kind(kind: ErrorKind, detail: String) -> TransportError {
     }
 }
 
-fn classify_status(status: u16, retry_after: Option<Duration>) -> TransportError {
+const MAX_REJECTION_BYTES: usize = 512;
+const MAX_REJECTION_CHARS: usize = 200;
+
+fn rejection_reason(body: &[u8]) -> String {
+    String::from_utf8_lossy(body).chars().filter(|character| character.is_ascii_graphic() || *character == ' ').take(MAX_REJECTION_CHARS).collect()
+}
+
+fn classify_status(status: u16, retry_after: Option<Duration>, reason: Option<&str>) -> TransportError {
     match status {
-        400 | 404 | 413 | 422 => TransportError::Permanent(format!("server returned {status}")),
+        400 | 404 | 413 | 422 => TransportError::Permanent(match reason {
+            Some(reason) => format!("server returned {status}: {reason}"),
+            None => format!("server returned {status}"),
+        }),
         410 | 415 => TransportError::Protocol(format!("server returned {status}: it does not accept ingest protocol v2")),
         401 | 403 => TransportError::Credential(format!("server returned {status}")),
         429 => TransportError::RateLimited(retry_after),
@@ -197,7 +207,8 @@ impl HttpTransport {
         let status = response.status().as_u16();
         if !(200..=299).contains(&status) {
             let retry_after = header_text(&response, header::RETRY_AFTER).and_then(|value| value.parse::<u64>().ok()).map(Duration::from_secs);
-            return Err(classify_status(status, retry_after));
+            let reason = read_bounded(response.body_mut(), started + timeout, MAX_REJECTION_BYTES).ok().map(|body| rejection_reason(&body)).filter(|reason| !reason.is_empty());
+            return Err(classify_status(status, retry_after, reason.as_deref()));
         }
         if status != 200 || header_text(&response, header::CONTENT_TYPE) != Some(ACK_MEDIA_TYPE) {
             return Err(TransportError::Protocol(format!("server returned {status} without an {ACK_MEDIA_TYPE} acknowledgment")));
@@ -472,18 +483,28 @@ mod tests {
     #[test]
     fn classifies_only_caller_errors_as_permanent() {
         for status in [400, 404, 413, 422] {
-            assert!(matches!(classify_status(status, None), TransportError::Permanent(_)), "{status}");
+            assert!(matches!(classify_status(status, None, None), TransportError::Permanent(_)), "{status}");
         }
         for status in [410, 415] {
-            assert!(matches!(classify_status(status, None), TransportError::Protocol(_)), "{status}");
+            assert!(matches!(classify_status(status, None, None), TransportError::Protocol(_)), "{status}");
         }
         for status in [401, 403] {
-            assert!(matches!(classify_status(status, None), TransportError::Credential(_)), "{status}");
+            assert!(matches!(classify_status(status, None, None), TransportError::Credential(_)), "{status}");
         }
         for status in [408, 425, 409, 418, 500, 502, 503, 504] {
-            assert!(matches!(classify_status(status, None), TransportError::Retryable(_)), "{status}");
+            assert!(matches!(classify_status(status, None, None), TransportError::Retryable(_)), "{status}");
         }
-        assert!(matches!(classify_status(429, Some(Duration::from_secs(2))), TransportError::RateLimited(Some(delay)) if delay == Duration::from_secs(2)));
+        assert!(matches!(classify_status(429, Some(Duration::from_secs(2)), None), TransportError::RateLimited(Some(delay)) if delay == Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn a_permanent_rejection_names_the_server_reason_without_control_characters() {
+        let body = b"{\"error\":{\"code\":\"invalid_frame\",\"message\":\"disk head sets a reserved bit\"}}\n\x1b[2J";
+        let reason = rejection_reason(body);
+        assert_eq!(reason, "{\"error\":{\"code\":\"invalid_frame\",\"message\":\"disk head sets a reserved bit\"}}[2J");
+        let TransportError::Permanent(message) = classify_status(400, None, Some(&reason)) else { panic!("400 is permanent") };
+        assert!(message.starts_with("server returned 400: {\"error\":{\"code\":\"invalid_frame\""), "{message}");
+        assert_eq!(rejection_reason(&[b'x'; 1000]).len(), MAX_REJECTION_CHARS);
     }
 
     #[test]
