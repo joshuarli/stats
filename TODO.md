@@ -1,16 +1,6 @@
 Prefix: STA
 Next: 91
 
-### STA-33 · P3 · Ingest CPU tail of 35 to 47 ms is unexplained
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/core/installation/installation.ts:479` (`ingest`)
-- **Problem:** The slowest HTTP calls with 49-byte (ingest) responses took 33 to 47 ms of CPU on 2026-11-01, against 5.3 ms for the average HTTP call. A Node microbenchmark of the pure-JS phases on the v1 `batch-full.json` fixture (now `bench/legacy-v1/`) came to about 0.8 ms per ingest, 0.64 ms of it the hour rebuild, so the tail is not JS. SQLite work or a cold wake is the suspect. Unproven.
-- **Status (2026-11-06):** the tail is smaller now and is CPU, not waiting. From 36 random five-minute windows in the last 23 hours, 1,078 ingest traces (about 9% of the roughly 11,500 calls, none of the windows truncated), Worker plus Durable Object CPU is median 5 ms, p90 10, p95 14, p99 20, max 33; the 2026-11-01 range of 33 to 47 ms was a maximum over a whole day, so the two maxima are not comparable. The slowest 5% (65 traces, mean 17.0 ms CPU) against the faster half (580 traces, mean 4.1 ms): Durable Object wall 48.6 ms against 35.2 ms and request wall 90.8 ms against 61.9 ms. Wall minus CPU is 31.6 ms against 31.1 ms, so the extra wall is the extra CPU and there is no extra waiting or cold wake. CPU does not vary by version (medians 4 to 6 ms across seven versions) or by minute within the cron's five minutes (median 5 to 6 ms). `statsctl observe operations --project stats --window 24h` gives `host.ingest` at 8,653 calls, 6.2 ms mean CPU, 16.5 rows written, 49.1 rows read and 18.6 statements per call. The ticket's comparison cannot be done: traces carry no SQLite statement spans, only per-operation totals, so the statements and rows of a slow call are unknown. Sorting traces by wall (`order=slowest`) finds waiting, not CPU: the 50 slowest by wall have median CPU 6 ms, the same as all calls.
-- **Recommendation:** Compare the SQLite statement spans (query, rows read and written) of slow and fast ingest traces, now that the Worker samples traces, and compare their wall time against CPU. Do not move the hour rebuild until that shows it matters, because deferring it changes how fresh the 30-day charts are.
-- **Fix with:** make-it-fast
-- **Effort:** M
-
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
