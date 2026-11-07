@@ -112,7 +112,9 @@ observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }
 	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' OBSERVE_AUTH_COMMAND="cf access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
 
-worker-test: cloudflare-test dashboard-test lint
+worker-test: work-ready node-ready
+	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
+	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:all
 
 deploy: auth-ready work-ready
 	@scripts/step.sh 'fixtures' $(MAKE) --no-print-directory fixtures

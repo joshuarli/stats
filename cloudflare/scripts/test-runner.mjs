@@ -63,8 +63,10 @@ const observeE2eArgs = ["--experimental-strip-types", "--test",
   "test/observe-e2e/agent-memory.test.ts", "test/observe-e2e/external.test.ts", "test/observe-e2e/sampling.test.ts", "test/observe-e2e/sourcemap.test.ts", "test/observe-e2e/tail.test.ts", "test/observe-e2e/trace-determinism.test.ts"
 ];
 
-const localArgs = ["--experimental-strip-types", "--test",
-  "test/local/analytics.test.ts", "test/local/bench.test.ts", "test/local/collection.test.ts", "test/local/launcher.test.ts", "test/local/outbound.test.ts", "test/local/producer.test.ts", "test/local/scenarios.test.ts", "test/local/stack.test.ts", "test/local/topology.test.ts", "test/local/upgrade.test.ts"
+const scenariosArgs = ["--experimental-strip-types", "--test", "test/local/scenarios.test.ts"];
+
+const localOtherArgs = ["--experimental-strip-types", "--test",
+  "test/local/analytics.test.ts", "test/local/bench.test.ts", "test/local/collection.test.ts", "test/local/launcher.test.ts", "test/local/outbound.test.ts", "test/local/producer.test.ts", "test/local/stack.test.ts", "test/local/topology.test.ts", "test/local/upgrade.test.ts"
 ];
 
 try {
@@ -74,9 +76,10 @@ try {
   ]);
   await Promise.all([
     run("observe e2e tests", NODE, observeE2eArgs),
-    run("worker vitest", VITEST, ["run"])
+    run("worker vitest", VITEST, ["run"]),
+    run("local scenarios", NODE, scenariosArgs),
+    run("local stack tests", NODE, localOtherArgs)
   ]);
-  await run("local stack tests", NODE, localArgs);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

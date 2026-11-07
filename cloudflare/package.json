@@ -17,6 +17,7 @@
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",
     "build:all": "node scripts/build-all.mjs",
+    "test:all": "node scripts/worker-test.mjs",
     "statsctl": "node --experimental-strip-types src/cli/statsctl.ts",
     "observe": "node --experimental-strip-types src/observe/client/cli.ts",
     "test:binary": "node --experimental-strip-types --test test/binary/*.test.ts",
