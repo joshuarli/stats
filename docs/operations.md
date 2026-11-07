@@ -662,19 +662,23 @@ pnpm --dir cloudflare -s statsctl verify --service stats-node --deployment lates
 ```
 
 The policy is strict JSON, schema `statsctl-policy/1`, with `id`, `hypothesis`,
-`service`, `metric`, `direction`, `minChangePercent`, `floor`, and `window`.
-`metric` is one of the level metrics in
-[Service comparison](architecture.md#service-comparison); there are no
-guardrails and no waiting. It makes one read. Exit 0 improved, 5 pending (the
-after window has not settled; run it again) or insufficient-data (a source is
-unavailable), 6 unchanged or confounded, 7 regressed. Every output states that
-it shows resource levels changed, not fewer resources for the same work. Host
-metrics include every process on the hosts the marker names; when the agents
-on those hosts report the service's cgroup in both windows, `service.cpu`,
-`service.memory`, and `service.io` supersede `host.cpu`, `host.memory`, and
-`host.disk`. The host rows stay in the response after the rest, marked
-`supersededBy`, so a policy on a host metric is still judged and carries a
-reason naming the better measure.
+`service`, `metric`, `operation`, `work`, `direction`, `minChangePercent`,
+`floor`, and `window`. `metric` is one of the level metrics or application
+metrics in [Service comparison](architecture.md#service-comparison). A level
+metric rejects `operation` and `work`; `application.duration` and
+`application.failure` require `operation`; the per-work metrics require
+`operation` and `work`. There are no guardrails and no waiting. It makes one
+read. Exit 0 improved, 5 pending (the after window has not settled; run it
+again) or insufficient-data (a source or counter is unavailable), 6 unchanged
+or confounded, 7 regressed. Every output states that resource levels and
+per-work ratios are descriptive, not causal. A per-work ratio is unavailable,
+with the reason, when the operation's counter is incomplete or the service
+cgroup is shared by more than one operation. Host metrics include every process
+on the hosts the marker names; when the agents on those hosts report the
+service's cgroup in both windows, `service.cpu`, `service.memory`, and
+`service.io` supersede `host.cpu`, `host.memory`, and `host.disk`. The host rows
+stay in the response after the rest, marked `supersededBy`, so a policy on a
+host metric is still judged and carries a reason naming the better measure.
 
 The Node server probes each service's `healthUrl` every five minutes. A Node
 container with no network sees every probe fail, so its probe failure share is

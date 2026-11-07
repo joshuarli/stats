@@ -233,8 +233,12 @@ Reads:
   Access or the tailnet identity, never a service token.
 - `statsctl service deployments --service NAME` and
   `statsctl verify --service NAME` use the marker history. Verification compares
-  resource levels around a marker; it cannot claim fewer resources for the same
-  work until a work-normalized metric is attributable.
+  resource levels and per-work application ratios around a marker. The
+  application metrics are `application.duration` (ms per successful event),
+  `application.failure` (failure share), and, for a named work counter,
+  `application.durationPerWork` (ms per unit), `application.cpuPerWork`
+  (CPU-seconds per unit), and `application.ioPerWork` (bytes per unit). A
+  policy names the `operation`, and the per-work kinds also name `work`.
 
 Provenance and privacy:
 
@@ -243,7 +247,12 @@ Provenance and privacy:
   ratio.
 - `work` counts are the application's own measurements. A per-work ratio is
   valid only when the resource is attributable and the counter is complete;
-  otherwise report `unavailable`.
+  otherwise report `unavailable`. The counter is complete only when every
+  successful (`outcome: "ok"`) event of that operation in the window reports
+  it. A service cgroup resource is divided by work only when exactly one
+  operation owned the service's successful events in that window; otherwise
+  the ratio is unavailable with the reason. An unset, missing, or truncated
+  event window is unavailable, never zero.
 - Never send note titles or bodies, repository contents, filenames, paths,
   credentials, headers, environment values, or raw job output. Only bounded
   operation/outcome labels, counters, and optional instance/host labels belong

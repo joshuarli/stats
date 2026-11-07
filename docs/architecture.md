@@ -613,11 +613,15 @@ project `DeploymentComparison` (invocation counts are `null` and
 `analyticsInvocations` is empty) plus:
 
 - `hostIds`, the hosts named in the marker, which are the hosts compared;
-- `sources`, `[{ source: "hosts" | "cgroup" | "probe", status: "available" | "unavailable", detail }]`,
-  always in that order; an available `cgroup` names the metrics it supplied.
+- `sources`, `[{ source: "hosts" | "cgroup" | "probe" | "application", status: "available" | "unavailable", detail }]`,
+  always in that order; an available `cgroup` names the metrics it supplied,
+  and an available `application` names the successful event count and
+  operation count.
 
-Metrics are levels, each the mean of five-minute buckets in the window, and a
-bucket counts only when every compared host reported at least 150 s of it:
+Resource metrics are levels, each the mean of five-minute buckets in the
+window, and a bucket counts only when every compared host reported at least
+150 s of it. Application metrics come from the service's external event
+stream, read through the observe service for the two windows:
 
 | Metric | Source |
 | --- | --- |
@@ -626,6 +630,8 @@ bucket counts only when every compared host reported at least 150 s of it:
 | `host.net` (rx + tx excluding `lo`, B/s), `host.disk` (read + write, B/s) | host one-minute rollups |
 | `service.cpu` (cores), `service.memory` (`memory.current`, B), `service.io` (read + write, B/s) | the service's cgroup in host one-minute rollups, from agents configured with the service |
 | `probe.health.ms`, `probe.health.failure` (%) | service health probes, only when `healthUrl` is set |
+| `application.<operation>.duration` (ms per successful event), `application.<operation>.failure` (%) | external events whose `outcome` is `ok` for the duration; all outcomes for the failure share |
+| `application.<operation>.<work>.duration` (ms per unit), `.cpu` (CPU-seconds per unit), `.io` (B per unit) | successful external events with that work key in every event; `.cpu` and `.io` only when one operation owns the service's cgroup in that window |
 
 A cgroup metric supersedes its host counterpart (`service.cpu` for `host.cpu`,
 `service.memory` for `host.memory`, `service.io` for `host.disk`) only when it
@@ -640,11 +646,15 @@ Hosts are averaged, so a host that has no bucket makes that bucket absent. A
 window needs 75% of its buckets, as probe metrics do for projects. A metric
 with no value in a window is `null`, never zero, and its verdict is
 `insufficient-data`. When no metric has a value on both sides, the comparison
-carries the reason code `no-data`. The warnings always include that the
-comparison shows resource levels, not fewer resources for the same work,
-because a service does not report its own work counts, and that host metrics
-include every process on the host (and, when cgroup metrics were used, that
-those cover only the service's unit).
+carries the reason code `no-data`. An application work counter is complete only
+when every successful event of that operation in the window reports the key; a
+missing key, a missing side, truncated telemetry, or a cgroup shared by more
+than one operation makes the affected per-work metric `null` with a reason.
+When the deployment gate withholds the comparison, application ratios are
+`unavailable` rather than shown with a confounded verdict. The warnings state
+that resource levels and per-work ratios are descriptive, not causal, and that
+host metrics include every process on the host (and, when cgroup metrics were
+used, that those cover only the service's unit).
 
 Probes on the Node target run on the scheduler port every five minutes, on the
 bucket boundary (`src/node/probes.ts`), with `runProbes` from
