@@ -472,7 +472,11 @@ The state is:
 
 A comparison is `reconciled` only if both sides are. On 2026-11-05 from 06:05
 to 06:50 UTC, 246 Worker events were observed against an analytics estimate of
-220: a spread of 11.8%, inside a bound of 64%.
+220: a spread of 11.8%, inside a bound of 64%. Over the closed 24-hour window
+from 2026-11-05 05:55Z to 2026-11-06 05:55Z, all 24 hours reconciled with no
+missing buckets: 14,598 observed Worker events against an analytics estimate
+of 14,940 (2.3% spread overall, bound 1,087; hourly spreads 0.2% to 56.9%, all
+within sampling bounds).
 
 ## Node server
 

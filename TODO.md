@@ -59,15 +59,6 @@ Next: 91
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-84 · P3 · The 24 hour observe coverage record for the telemetry foundation is unread
-
-- **Area:** Operability
-- **Where:** `cloudflare/src/compare/coverage.ts`, `docs/architecture.md` (Operations and coverage)
-- **Problem:** Coverage reconciled in each hourly window checked on 2026-11-05 (spreads of 3% to 25%, inside the sampling bound), but the full record for 2026-11-05 05:55Z to 2026-11-06 05:55Z has not been read, and the scratch script meant to read it was not kept. No `statsctl` command reads observe coverage over an arbitrary window, so the claim in docs/architecture.md that coverage catches gross loss rests on single hours. `verify` blocks on any coverage state other than `reconciled`, so a gap shows up there first as insufficient data.
-- **Recommendation:** Read the closed 24 hour window once: sum observed events at the `worker` stage per five-minute bucket from `GET /api/observe/stats/window` against `worker.invocations` from project history, apply the rule in `src/compare/coverage.ts` per hour, and record the spread in docs/architecture.md. If an hour is `partial`, root-cause it. Consider exposing coverage over `--window` in `statsctl health`.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
