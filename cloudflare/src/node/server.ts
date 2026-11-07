@@ -3,16 +3,30 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createBrotliCompress, createGzip } from "node:zlib";
-import { handleStatsRequest, type StatsTarget } from "../core/http.ts";
+import { handleStatsRequest, type ObserveService, type StatsTarget } from "../core/http.ts";
+import { handleApi } from "../observe/http/api.ts";
+import type { NodeInstallation } from "./installation.ts";
 import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
   readonly installation: (request: Request) => Promise<Response>;
+  readonly observe?: ObserveService;
   readonly assets: AssetReader;
   readonly allowedLogins: ReadonlySet<string>;
   readonly transport: "tcp" | "unix";
 }
+
+export function observeHandler(installation: Pick<NodeInstallation, "observe" | "now">): ObserveService {
+  return (target, init) => {
+    const url = new URL(target);
+    const match = /^\/([a-z][a-z0-9-]{0,31})(\/.*)$/u.exec(url.pathname);
+    if (match === null) return Promise.resolve(Response.json({ error: { code: "not_found", message: "unknown observe route" } }, { status: 404, headers: { "Cache-Control": "no-store" } }));
+    return handleApi(new Request(`https://observe${match[2]}${url.search}`, init), match[2]!, installation.observe, match[1]!, installation.now());
+  };
+}
+
+const UNAVAILABLE: ObserveService = () => Promise.resolve(Response.json({ error: { code: "unavailable", message: "observability is not available on this target" } }, { status: 503, headers: { "Cache-Control": "no-store" } }));
 
 const FALLBACK_ORIGIN = "http://stats.internal";
 
@@ -65,10 +79,20 @@ function failed(outgoing: ServerResponse, error: unknown): void {
 }
 
 export function statsRequestListener(options: NodeStatsOptions): (incoming: IncomingMessage, outgoing: ServerResponse) => void {
-  const shared = { installation: options.installation, assets: options.assets, observe: null };
+  const shared = { installation: options.installation, assets: options.assets, observe: options.observe ?? UNAVAILABLE };
   return (incoming, outgoing) => {
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
-    const target: StatsTarget = { ...shared, authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers, options.allowedLogins)) };
+    const target: StatsTarget = {
+      ...shared,
+      authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers, options.allowedLogins)),
+      authorizeIngest: async (service, token) => {
+        const response = await options.installation(new Request("https://installation/ingest/observe-auth", {
+          method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }
+        }));
+        return response.status === 204;
+      },
+      serviceExists: async service => (await options.installation(new Request(`https://installation/services/${encodeURIComponent(service)}`))).status === 200
+    };
     void (async () => {
       let request: Request;
       try {

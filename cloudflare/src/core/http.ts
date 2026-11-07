@@ -4,6 +4,8 @@ import { readLimitedText } from "../body.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS, mediaProblem } from "../ingest/http.ts";
 import { MAX_BODY_BYTES } from "../limits.ts";
 import { MAX_ARTIFACT_BYTES } from "../observe/core/limits.ts";
+import { MAX_BATCH_BYTES } from "../observe/ingest/model.ts";
+import { isObservedService } from "../observe/services.ts";
 import { MAX_MARKER_BODY_BYTES } from "./installation/services.ts";
 
 export type AuthDecision =
@@ -14,6 +16,8 @@ export type ObserveService = (target: string, init?: RequestInit) => Promise<Res
 
 export interface StatsTarget {
   readonly authorize: (request: Request) => Promise<AuthDecision>;
+  readonly authorizeIngest: (service: string, token: string) => Promise<boolean>;
+  readonly serviceExists: (service: string) => Promise<boolean>;
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: (request: Request) => Promise<Response>;
   readonly observe: ObserveService | null;
@@ -117,6 +121,8 @@ async function markDeployment(request: Request, target: StatsTarget, path: strin
 async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {
   const decision = await target.authorize(request);
   if (!decision.ok) return denied(decision);
+  const serviceName = /^\/api\/observe\/([a-z][a-z0-9-]{0,31})(?:\/|$)/u.exec(path)?.[1];
+  if (serviceName !== undefined && !isObservedService(serviceName) && !await target.serviceExists(serviceName)) return error(404, "not_found", "unknown observed service");
   if (target.observe === null) return error(503, "unavailable", "observability is not available on this target");
   const url = new URL(request.url);
   const service = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
@@ -158,6 +164,24 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     return secure(await target.installation(internal(request, "/ingest")));
   }
   if (request.method === "POST" && SERVICE_MARKER_PATH.test(path)) return markDeployment(request, target, path);
+  if (path.startsWith("/ingest/observe/")) {
+    const match = /^\/ingest\/observe\/v1\/([a-z][a-z0-9-]{0,31})\/batches$/u.exec(path);
+    if (match === null) return error(404, "not_found", "unknown ingest route");
+    if (request.method !== "POST") return error(405, "invalid_request", "POST required");
+    const token = bearerToken(request.headers.get("authorization"));
+    if (token === null) return error(401, "unauthorized", "a service ingest token is required");
+    if (!await target.authorizeIngest(match[1]!, token)) return error(401, "unauthorized", "ingest credential rejected");
+    if (!isJson(request)) return error(415, "unsupported_media_type", "application/json required");
+    const declared = request.headers.get("content-length");
+    if (declared !== null && Number(declared) > MAX_BATCH_BYTES) return error(413, "too_large", "batch exceeds the body cap");
+    if (target.observe === null) return error(503, "unavailable", "observability is not available on this target");
+    return secure(await target.observe(`https://observe/${match[1]}/ingest/observe/v1/batches`, {
+      method: "POST",
+      headers: { "content-type": request.headers.get("content-type") ?? "application/json" },
+      body: request.body,
+      duplex: "half"
+    } as RequestInit));
+  }
   if (path.startsWith("/api/v1/")) {
     const decision = await target.authorize(request);
     if (!decision.ok) return denied(decision);

@@ -35,6 +35,16 @@ export default {
     markInvocation();
     return handleStatsRequest(request, {
       authorize: candidate => verifyAccess(candidate, env),
+      authorizeIngest: async (service, token) => {
+        const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request("https://installation/ingest/observe-auth", {
+          method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }
+        }));
+        return response.status === 204;
+      },
+      serviceExists: async service => {
+        const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request(`https://installation/services/${encodeURIComponent(service)}`));
+        return response.status === 200;
+      },
       installation: internal => env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(internal),
       assets: asset => env.ASSETS.fetch(asset),
       observe: (target, init) => env.OBSERVE.fetch(target, init)

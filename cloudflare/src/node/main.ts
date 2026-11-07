@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError, type Listen } from "./config.ts";
 import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
-import { createStatsServer } from "./server.ts";
+import { createStatsServer, observeHandler } from "./server.ts";
 import { listenOnSocket } from "./socket.ts";
 
 function listenOn(server: Server, listen: Listen): Promise<void> {
@@ -27,7 +27,13 @@ async function main(): Promise<void> {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
   }
-  const server = createStatsServer({ installation: request => installation.core.fetch(request), assets, allowedLogins: config.allowedLogins, transport: config.listen.kind === "unix" ? "unix" : "tcp" });
+  const server = createStatsServer({
+    installation: request => installation.core.fetch(request),
+    observe: observeHandler(installation),
+    assets,
+    allowedLogins: config.allowedLogins,
+    transport: config.listen.kind === "unix" ? "unix" : "tcp"
+  });
   let draining = false;
   const inFlight = new Set<ServerResponse>();
   server.on("request", (_incoming, outgoing: ServerResponse) => {

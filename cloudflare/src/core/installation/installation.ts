@@ -25,7 +25,7 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateDeployToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
+import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -690,6 +690,11 @@ export class InstallationCore {
       if (purge !== null && request.method === "DELETE") {
         const result = await this.purgeHost(purge[1]!);
         return result.ok ? new Response(null, { status: 204 }) : failure(result.code, result.message, result.status);
+      }
+      if (path === "/ingest/observe-auth" && request.method === "POST") {
+        const service = request.headers.get("x-observe-service");
+        if (service === null || !await authenticateIngestToken(sql, service, bearerToken(request.headers.get("authorization")))) return failure("unauthorized", "ingest credential rejected", 401);
+        return new Response(null, { status: 204 });
       }
       if (path === "/admin/services" && request.method === "POST") {
         const result = await createService(sql, await readLimitedText(request, MAX_SERVICE_BODY_BYTES), this.now());

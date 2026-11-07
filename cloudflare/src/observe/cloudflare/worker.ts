@@ -1,6 +1,6 @@
 import { NOTHING_UNSENT, OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
-import { groupByService, isObservedService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
+import { groupByService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
 import { POLICIES } from "../core/policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { COUNT_FLUSH_INTERVAL_MS, CountBuffer, deliverSampled } from "../core/count-buffer.ts";
@@ -35,7 +35,7 @@ function capOf(service: ObservedService): AlwaysKeptCap {
   return cap;
 }
 
-function store(env: ObserveEnv, service: ObservedService): DurableObjectStub<ObservationStore> {
+function store(env: ObserveEnv, service: string): DurableObjectStub<ObservationStore> {
   return env.STORE.getByName(service);
 }
 
@@ -69,7 +69,7 @@ export default {
 
   async fetch(request: Request, env: ObserveEnv): Promise<Response> {
     const match = SERVICE_PATH.exec(new URL(request.url).pathname);
-    if (match === null || !isObservedService(match[1]!)) return Response.json({ error: { code: "not_found", message: "unknown observed service" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
-    return handleApi(request, match[2]!, store(env, match[1]), match[1]!);
+    if (match === null) return Response.json({ error: { code: "not_found", message: "unknown observed service" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    return handleApi(request, match[2]!, store(env, match[1]!), match[1]!);
   }
 } satisfies ExportedHandler<ObserveEnv>;
