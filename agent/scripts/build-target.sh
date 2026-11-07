@@ -10,11 +10,24 @@ arch=${target%%-*}
 clang="$TOOLCHAIN/bin/clang"
 readobj="$TOOLCHAIN/bin/llvm-readobj"
 dist=/repo/agent/dist
+unwind=$CARGO_HOME/unwind
+
+mkdir -p "$unwind"
+"$clang" --target="$arch-linux-musl" -shared -nostdlib -fuse-ld=lld \
+  -Wl,-soname,libgcc_s.so.1 -Wl,--whole-archive "$TOOLCHAIN/lib/libunwind.a" -Wl,--no-whole-archive \
+  -L/usr/lib -o "$unwind/libgcc_s.so.1"
+ln -sf libgcc_s.so.1 "$unwind/libgcc_s.so"
+export LD_LIBRARY_PATH=$unwind
+export LIBRARY_PATH=$unwind
 
 export "CC_$suffix=$clang"
 export "AR_$suffix=$TOOLCHAIN/bin/llvm-ar"
 export "CFLAGS_$suffix=--target=$arch-linux-musl --sysroot=/"
-export "CARGO_TARGET_${upper}_LINKER=$clang"
+case "$arch" in
+  aarch64) linker=/repo/agent/scripts/static-pie-clang.sh ;;
+  *) linker=$clang ;;
+esac
+export "CARGO_TARGET_${upper}_LINKER=$linker"
 export "CARGO_TARGET_${upper}_RUSTFLAGS=-Clink-self-contained=no -Clink-arg=--target=$arch-linux-musl -Clink-arg=--sysroot=/"
 
 cd /repo/agent

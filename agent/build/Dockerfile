@@ -10,7 +10,7 @@ ENV RUSTUP_HOME=/usr/local/rustup
 ENV PATH=/usr/local/cargo/bin:$PATH
 ENV RUSTUP_TOOLCHAIN=${RUST_CHANNEL}
 
-RUN apk add --no-cache ca-certificates curl libgcc musl-dev \
+RUN apk add --no-cache ca-certificates curl musl-dev \
  && arch=$(uname -m) \
  && curl --proto '=https' --tlsv1.2 -fsSL -o /tmp/rustup-init \
       "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${arch}-unknown-linux-musl/rustup-init" \
@@ -20,6 +20,5 @@ RUN apk add --no-cache ca-certificates curl libgcc musl-dev \
       --default-toolchain none \
  && CARGO_HOME=/usr/local/cargo rustup toolchain install "${RUST_CHANNEL}" --profile minimal \
       --target "${RUST_TARGET}" \
- && ln -s libgcc_s.so.1 /usr/lib/libgcc_s.so \
  && rm /tmp/rustup-init \
  && chmod -R a+rX /usr/local/rustup /usr/local/cargo
