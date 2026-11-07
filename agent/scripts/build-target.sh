@@ -12,11 +12,7 @@ readobj="$TOOLCHAIN/bin/llvm-readobj"
 dist=/repo/agent/dist
 unwind=$CARGO_HOME/unwind
 
-mkdir -p "$unwind"
-"$clang" --target="$arch-linux-musl" -shared -nostdlib -fuse-ld=lld \
-  -Wl,-soname,libgcc_s.so.1 -Wl,--whole-archive "$TOOLCHAIN/lib/libunwind.a" -Wl,--no-whole-archive \
-  -L/usr/lib -o "$unwind/libgcc_s.so.1"
-ln -sf libgcc_s.so.1 "$unwind/libgcc_s.so"
+/repo/agent/scripts/build-libgcc-s.sh "$TOOLCHAIN" "$arch" "$unwind"
 export LD_LIBRARY_PATH=$unwind
 export LIBRARY_PATH=$unwind
 
