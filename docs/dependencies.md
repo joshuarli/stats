@@ -11,6 +11,10 @@ HTTPS, replacing
 `serde`, `serde_json`, `ureq`, `rustls` with `ring`, and `rustls-native-certs`.
 TLS now runs on Graviola through `h12tiny-tls-system`. The h12tiny crates come
 from the `mycrates` registry configured in `agent/.cargo/config.toml`.
+`rustc-hash` 2 provides the hash collections of `agent/src/parse.rs`, because
+the fleet bans `BTreeMap` and `BTreeSet`. The two parsers whose order is
+observable, `parse_diskstats` and `parse_mounts`, sort their `Vec` by the key
+the map used to order, so output order is unchanged.
 The binary ingest codec (`agent/src/wire.rs`, `cloudflare/src/ingest/`) is
 written by hand against `docs/protocol.md` and adds no dependency on either
 side: no serialization framework, schema compiler, WASM, or compression

@@ -1,5 +1,6 @@
 use crate::model::{Cpu, CpuInfo, Disk, DiskId, FileSystem, FileSystemType, Hundredths, Mem, Psi, PsiFull, PsiGroup, SwapActivity, Thousandths, FILESYSTEM_TYPES};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::HashSet;
 
 fn parse_u64(text: &str) -> Option<u64> {
     if text.is_empty() || text.len() > 20 || !text.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -63,7 +64,7 @@ pub fn parse_cpu(bytes: &[u8]) -> Option<Cpu> {
 
 pub fn parse_meminfo(bytes: &[u8]) -> Option<Mem> {
     let text = std::str::from_utf8(bytes).ok()?;
-    let mut values = BTreeMap::new();
+    let mut values = FxHashMap::default();
     for line in text.lines() {
         let Some((key, rest)) = line.split_once(':') else { continue };
         let Some(value) = rest.split_whitespace().next() else { continue };
@@ -103,8 +104,8 @@ pub fn parse_cpuinfo(bytes: &[u8], max_mhz: Option<u32>) -> Option<CpuInfo> {
     let text = std::str::from_utf8(bytes).ok()?;
     let mut threads = 0_u32;
     let mut model = None;
-    let mut sockets = BTreeSet::new();
-    let mut cores = BTreeSet::new();
+    let mut sockets = FxHashSet::default();
+    let mut cores = FxHashSet::default();
     let mut physical: Option<String> = None;
     let mut core: Option<String> = None;
     let mut counted = false;
@@ -165,7 +166,7 @@ pub fn parse_vmstat_swap(bytes: &[u8], page_size: u64) -> Option<SwapActivity> {
 
 pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk>> {
     let text = std::str::from_utf8(bytes).ok()?;
-    let mut devices = BTreeMap::new();
+    let mut devices = FxHashMap::default();
     for line in text.lines() {
         let fields: Vec<&str> = line.split_whitespace().take(14).collect();
         if fields.len() < 14 {
@@ -197,6 +198,7 @@ pub fn parse_diskstats(bytes: &[u8], whole: &HashSet<String>) -> Option<Vec<Disk
         );
     }
     let mut devices: Vec<Disk> = devices.into_values().collect();
+    devices.sort_by_cached_key(|disk: &Disk| disk.id.to_string());
     devices.truncate(16);
     Some(devices)
 }
@@ -278,7 +280,7 @@ pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)
         Ok(text) => text,
         Err(_) => return Vec::new(),
     };
-    let mut mounts = BTreeMap::new();
+    let mut mounts = FxHashMap::default();
     for line in text.lines() {
         let fields: Vec<&str> = line.split_whitespace().take(4).collect();
         if fields.len() < 3 {
@@ -294,6 +296,8 @@ pub fn parse_mounts(bytes: &[u8], include_virtual: bool) -> Vec<(String, String)
         }
         mounts.insert(mount, (fs_type.to_owned(), fields[0].to_owned()));
     }
+    let mut mounts: Vec<(String, (String, String))> = mounts.into_iter().collect();
+    mounts.sort_by(|left, right| left.0.cmp(&right.0));
     let mut block_devices = HashSet::new();
     mounts
         .into_iter()
