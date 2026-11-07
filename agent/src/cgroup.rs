@@ -19,6 +19,9 @@ pub fn unit_cgroup(unit: &str) -> Option<PathBuf> {
     if !valid_unit(unit) {
         return None;
     }
+    if let Some(name) = unit.strip_prefix("openrc.") {
+        return (!name.is_empty()).then(|| PathBuf::from(unit));
+    }
     if let Some(stem) = unit.strip_suffix(".scope") {
         let runtime_slice = if stem.starts_with("libpod-") || stem.starts_with("machine-") { "machine.slice" } else { "system.slice" };
         return (!stem.is_empty() && !stem.contains('@')).then(|| Path::new(runtime_slice).join(unit));
@@ -140,7 +143,9 @@ mod tests {
         assert_eq!(path("stats.slice").as_deref(), Some("stats.slice"));
         assert_eq!(path("stats-node.slice").as_deref(), Some("stats.slice/stats-node.slice"));
         assert_eq!(path("a-b-c.slice").as_deref(), Some("a.slice/a-b.slice/a-b-c.slice"));
-        for invalid in ["", "nginx", "nginx.socket", ".service", "../x.service", "a/b.service", "@x.service", "a@b@c.service", "x@y.scope", ".scope", ".slice", "-.slice", "-a.slice", "a-.slice", "a--b.slice", "a@b.slice"] {
+        assert_eq!(path("openrc.tansu").as_deref(), Some("openrc.tansu"));
+        assert_eq!(path("openrc.tansu-http-redirect").as_deref(), Some("openrc.tansu-http-redirect"));
+        for invalid in ["", "nginx", "nginx.socket", ".service", "../x.service", "a/b.service", "@x.service", "a@b@c.service", "x@y.scope", ".scope", ".slice", "-.slice", "-a.slice", "a-.slice", "a--b.slice", "a@b.slice", "openrc."] {
             assert_eq!(unit_cgroup(invalid), None, "{invalid}");
         }
         assert_eq!(unit_cgroup(&format!("{}.service", "a".repeat(121))), None);

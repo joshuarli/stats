@@ -110,7 +110,7 @@ fn resolve_services(units: &[ServiceConfig]) -> Result<Vec<ServiceCgroup>, Confi
         if services.iter().any(|known| known.name == unit.name) {
             return Err(ConfigError::new(format!("service {} is listed twice", unit.name)));
         }
-        let cgroup = unit_cgroup(&unit.unit).ok_or_else(|| ConfigError::new(format!("service {} unit {:?} must be a systemd .service unit or a container .scope", unit.name, unit.unit)))?;
+        let cgroup = unit_cgroup(&unit.unit).ok_or_else(|| ConfigError::new(format!("service {} unit {:?} must be a systemd .service unit, a container .scope, or an openrc.<name> cgroup", unit.name, unit.unit)))?;
         services.push(ServiceCgroup { name: unit.name.clone(), cgroup });
     }
     Ok(services)
@@ -404,9 +404,9 @@ mod tests {
             write(&path, &valid_config(&token).replace('}', &format!(r#","services":{services}}}"#)), 0o600);
             load(&path)
         };
-        let config = with("agent.json", r#"[{"name":"stats-node","unit":"stats-node.service"},{"name":"web","unit":"docker-0123abcd.scope"}]"#).unwrap();
+        let config = with("agent.json", r#"[{"name":"tansu","unit":"openrc.tansu"},{"name":"stats-node","unit":"stats-node.service"},{"name":"web","unit":"docker-0123abcd.scope"}]"#).unwrap();
         let resolved: Vec<(&str, String)> = config.services.iter().map(|service| (service.name.as_str(), service.cgroup.display().to_string())).collect();
-        assert_eq!(resolved, [("stats-node", "system.slice/stats-node.service".to_owned()), ("web", "system.slice/docker-0123abcd.scope".to_owned())]);
+        assert_eq!(resolved, [("tansu", "openrc.tansu".to_owned()), ("stats-node", "system.slice/stats-node.service".to_owned()), ("web", "system.slice/docker-0123abcd.scope".to_owned())]);
         assert!(with("agent-none.json", "[]").unwrap().services.is_empty());
 
         let many = (0..17).map(|index| format!(r#"{{"name":"s{index}","unit":"s{index}.service"}}"#)).collect::<Vec<_>>().join(",");
