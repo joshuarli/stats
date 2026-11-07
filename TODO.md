@@ -1,5 +1,41 @@
 Prefix: STA
-Next: 92
+Next: 96
+
+### STA-92 · P2 · The cost ledger can show figures from the previous time window
+
+- **Area:** Dashboard
+- **Where:** `cloudflare/src/client/pages/project/ledger-load.ts:43` (`createProjectLedger`), its consumers
+- **Problem:** `createProjectLedger()` keeps the previous successful `LedgerLoad` while a new time-window request is outstanding, and the returned ledger does not check that the stored `window` (`:66`) matches the current one. If the operator changes the range and the replacement request fails, the old figures stay visible under the new range. The campaign graded a related problem P3; promoted to P2 because it shows wrong cost data without any indication.
+- **Recommendation:** Key the result explicitly by project, window and the other query parameters (plan month, refresh key, object-method source), and show previous data only for an identical key; otherwise show the loading or failed state. Add a test: same project, range change, replacement request fails, assert the old figures are not shown under the new range.
+- **Fix with:** root-cause
+- **Effort:** S
+
+### STA-93 · P2 · A successful history refresh can hide a failed host-directory refresh on the fleet page
+
+- **Area:** Dashboard
+- **Where:** `cloudflare/src/client/pages/FleetPage.tsx:51,87,119` (`refreshError`, `Promise.all([refreshHosts(), refresh(rows)])`)
+- **Problem:** `refreshHosts()` and `refresh(rows)` run concurrently and both write the one `refreshError` signal. If the host request fails first, its catch sets the error, and the later successful rows refresh clears it through `onError(null)`, so the page shows an outdated host directory with no warning. For a monitoring product a hidden stale directory is a correctness problem, not a cosmetic one.
+- **Recommendation:** Give the host-directory refresh and the history refresh independent error ownership and derive the displayed warning from both. Add a deterministic out-of-order completion test: hosts fail first, rows succeed second, the warning stays.
+- **Fix with:** root-cause
+- **Effort:** S
+
+### STA-94 · P2 · A malformed stored preference can stop the dashboard from starting
+
+- **Area:** Dashboard
+- **Where:** `cloudflare/src/client/components/ui.tsx:56-61` (`COLLAPSED_KEY`, `JSON.parse` of `stats.collapsed` at module evaluation)
+- **Problem:** The collapsed-widget state is read from `localStorage` with an unguarded `JSON.parse()` while the module evaluates, so one malformed `stats.collapsed` value throws before the dashboard mounts. Binary frames are validated rigorously, but a broken JSON preference can take out the whole UI.
+- **Recommendation:** Tolerate invalid persisted state: on a parse failure or a value that is not an array of known widget keys, fall back to an empty set (and stop reading it on every evaluation if that matters). Add a startup test with corrupted storage.
+- **Fix with:** root-cause
+- **Effort:** S
+
+### STA-95 · P3 · Observe explorer lifecycle: hidden trace refresh and the issue modal's error source
+
+- **Area:** Dashboard
+- **Where:** `cloudflare/src/client/pages/project/Observe.tsx` (Requests section trace refresh, issue modal occurrence state)
+- **Problem:** Two fixes the observability campaign report already identified: a deep-linked trace keeps refreshing while the Requests section is closed, and the issue modal can show the enclosing section's occurrence error instead of the modal issue's own error.
+- **Recommendation:** Fix the ownership boundaries, not a rewrite of `Observe.tsx`: tie the trace refresh to the open Requests section, and give the modal its own occurrence load and error. Add a focused test for each.
+- **Fix with:** root-cause
+- **Effort:** S
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
