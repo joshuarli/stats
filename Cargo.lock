@@ -274,7 +274,7 @@ dependencies = [
 [[package]]
 name = "h12tiny-client-sync"
 version = "0.7.0"
-source = "sparse+https://crates.17166969.xyz/current/registry/"
+source = "sparse+http://127.0.0.1:50855/index/"
 checksum = "4ef7862202992a23100a6347155bda3cab6a237cd161a4d3998ccdaebbb65207"
 dependencies = [
  "h12tiny-client-normalize",
