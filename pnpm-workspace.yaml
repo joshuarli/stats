@@ -1,5 +1,6 @@
 packages:
   - cloudflare
+  - packages/*
 allowBuilds:
   esbuild: true
   workerd: true

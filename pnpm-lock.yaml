@@ -252,6 +252,12 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2))
 
+  packages/producer:
+    devDependencies:
+      tsrs:
+        specifier: 0.20.1-ts7.1.0-beta
+        version: 0.20.1-ts7.1.0-beta
+
 packages:
 
   '@ampproject/remapping@2.3.0':

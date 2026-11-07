@@ -1,0 +1,27 @@
+{
+  "name": "@stats/producer",
+  "version": "0.1.0",
+  "description": "Bounded, non-blocking application telemetry producer for Stats",
+  "type": "module",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsrs -p tsconfig.json",
+    "prepack": "pnpm run build"
+  },
+  "devDependencies": {
+    "tsrs": "0.20.1-ts7.1.0-beta"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

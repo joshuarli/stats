@@ -138,7 +138,11 @@ function statsctl(env: Readonly<Record<string, string>>, service: string): Promi
   return new Promise(resolve => child.on("close", status => resolve({ status, stdout, stderr })));
 }
 
-await test("a checkout with simulated payment through a producer export reaches statsctl as exact counts by operation name, with the rows each invocation published", async t => {
+const NANOSHOP_SKIP = process.env["NANOSHOP_DIR"] === undefined || process.env["NANOSHOP_DIR"] === ""
+  ? "NANOSHOP_DIR is not set; this test needs a Nanoshop checkout"
+  : false;
+
+await test("a checkout with simulated payment through a producer export reaches statsctl as exact counts by operation name, with the rows each invocation published", { skip: NANOSHOP_SKIP }, async t => {
   const nanoshop = nanoshopCheckout();
   const manifest = JSON.parse(readFileSync(join(PRODUCER_EXPORT, "producer-export.json"), "utf8")) as Manifest;
   const [tenant] = manifest.tenants as [Manifest["tenants"][number]];

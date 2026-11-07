@@ -9,8 +9,8 @@ Repositories: `/Users/josh/d/stats`, `/Users/josh/d/tansu`, `/Users/josh/d/nicef
 ## Status
 
 Goal: standard deployments + Stats application telemetry.
-Accepted: `S1`, `S2`, `S3`, `S4`. Next: `S5`.
-Red: none. Parked: none.
+Accepted: `S1`, `S2`, `S3`, `S4`, `S5`. Next: `S6`.
+Red: none. Parked: producer registry publication (owner action; `make publish-producer` needs R2 S3 credentials and `make publish-producer-crate` was not attempted).
 
 ## Charter
 

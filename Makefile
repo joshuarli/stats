@@ -4,10 +4,11 @@ STATS_DOMAIN ?= stats.17166969.xyz
 STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
 SSH ?= local
+STUFF_DIR ?= ../stuff
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -189,6 +190,12 @@ release: agent-build
 build-statsctl: work-ready node-ready
 	@scripts/build-statsctl.sh
 	@cp dist/statsctl-$$(grep '^version' agent/Cargo.toml | head -1 | sed -n 's/version = "\(.*\)"/\1/p').mjs dist/statsctl.mjs 2>/dev/null || true
+
+publish-producer: work-ready node-ready
+	cd $(CURDIR) && LOCKFILE=pnpm-lock.yaml PROJECT=stats-producer STUFF_DIR='$(STUFF_DIR)' sh '$(STUFF_DIR)'/deploy/publish mynpm
+
+publish-producer-crate: work-ready
+	cd $(CURDIR) && CRATES='stats-producer' STUFF_DIR='$(STUFF_DIR)' sh '$(STUFF_DIR)'/deploy/publish mycrates
 
 release-artifacts: work-ready node-ready
 	@set -eu; \
