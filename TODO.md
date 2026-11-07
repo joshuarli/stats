@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 99
+Next: 100
 
 ### STA-92 · P2 · The cost ledger can show figures from the previous time window
 
@@ -43,6 +43,15 @@ Next: 99
 - **Where:** `cloudflare/src/observe/ingest/` (external events), `cloudflare/src/observe/core/store.ts` (`observe_external_events`, issue occurrences), `docs/integration.md` section 5
 - **Problem:** A failing external operation is stored as an operation and outcome event, but nothing maps it to an issue group, because the telemetry contract carries no error code or fingerprint. The dashboard can show failed operations for a service with no issue groups behind them.
 - **Recommendation:** If grouped application errors are intended, add a bounded, validated error-code and fingerprint field to the telemetry contract (closed character set and length, no free-text messages or stack traces) and group on it; otherwise state in `docs/integration.md` that application failures are counted, not grouped. Add a contract test for the field's bounds and a test that equal fingerprints group.
+- **Fix with:** architect
+- **Effort:** M
+
+### STA-99 · P2 · Application telemetry cannot prove completeness because producer drops never reach Stats
+
+- **Area:** Services
+- **Where:** the application telemetry protocol (`docs/integration.md` section 5), `@stats/producer` and the Rust `stats-producer` (their `dropped`/`queued` counters), the comparison's `applicationCoverage` (`cloudflare/src/deployments/service-compare.ts`)
+- **Problem:** The comparison now labels per-work CPU and I/O as per observed work and reports coverage as `unproven` or `gaps-observed`, never complete, because the producers' dropped and queued counts stay local, rejected batches are not stored, and event ids carry no sequence. So Stats can never tell CPU per completed work from CPU per observed work, even for a healthy service.
+- **Recommendation:** Extend the protocol so each batch carries the producer's cumulative accepted, dropped and queued counts and a per-producer sequence (a schema and fixture change across the TypeScript and Rust producers and the decoder), then let the comparison report `complete` only when the counts reconcile across the window and keep `unproven` otherwise. Deploy the decoder before the producers.
 - **Fix with:** architect
 - **Effort:** M
 
