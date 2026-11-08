@@ -19,15 +19,6 @@ Next: 100
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-94 · P2 · A malformed stored preference can stop the dashboard from starting
-
-- **Area:** Dashboard
-- **Where:** `cloudflare/src/client/components/ui.tsx:56-61` (`COLLAPSED_KEY`, `JSON.parse` of `stats.collapsed` at module evaluation)
-- **Problem:** The collapsed-widget state is read from `localStorage` with an unguarded `JSON.parse()` while the module evaluates, so one malformed `stats.collapsed` value throws before the dashboard mounts. Binary frames are validated rigorously, but a broken JSON preference can take out the whole UI.
-- **Recommendation:** Tolerate invalid persisted state: on a parse failure or a value that is not an array of known widget keys, fall back to an empty set (and stop reading it on every evaluation if that matters). Add a startup test with corrupted storage.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-96 · P2 · `statsctl observe operations --project tansu` is rejected because tansu is not an observed service
 
 - **Area:** CLI

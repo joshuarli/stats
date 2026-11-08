@@ -935,6 +935,18 @@ test("widgets in the signals section collapse and stay collapsed after a reload"
   await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
 });
 
+for (const stored of ["{not json", "\"worker-cpu\"", "{\"worker-cpu\":true}", "[\"worker-cpu\",7,null]"]) {
+  test(`a stored collapse preference of ${stored} does not stop the dashboard from starting`, async ({ page }) => {
+    await page.addInitScript((value: string) => window.localStorage.setItem("stats.collapsed", value), stored);
+    await mock(page);
+    await page.goto("/#/project/stuff?open=signals");
+    await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+    const cpu = page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u });
+    if (stored.startsWith("[")) await expect(cpu).toHaveCount(0);
+    else await expect(cpu).toBeVisible();
+  });
+}
+
 test("configured probes surface endpoint health and a down endpoint marks the pill", async ({ page }) => {
   const options = { probes: true, probeDown: false };
   const requests = await mock(page, options);

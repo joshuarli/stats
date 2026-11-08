@@ -58,7 +58,8 @@ const COLLAPSED_KEY = "stats.collapsed";
 function readCollapsed(): ReadonlySet<string> {
   const raw = window.localStorage.getItem(COLLAPSED_KEY);
   if (raw === null) return new Set<string>();
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return new Set<string>(); }
   return new Set<string>(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []);
 }
 
