@@ -41,9 +41,9 @@
     "@solidjs/vite-plugin": "3.0.0-next.54",
     "@solidjs/web": "2.0.0-rc.20",
     "solid-js": "2.0.0-rc.20",
-    "tsrs": "0.20.1-ts7.1.0-beta",
-    "vite": "8.3.5",
-    "vitest": "5.0.5"
+    "tsrs": "0.23.0-ts7.1.0-beta",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": ">=20"
