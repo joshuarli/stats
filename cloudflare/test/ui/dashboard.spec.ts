@@ -935,6 +935,22 @@ test("widgets in the signals section collapse and stay collapsed after a reload"
   await expect(page.locator("#worker-cpu").getByRole("img", { name: /^Worker average CPU time;/u })).toHaveCount(0);
 });
 
+for (const pageName of ["fleet", "host"] as const) {
+  test(`a failed host-directory refresh on the ${pageName} page is reported, not hidden by a later history refresh`, async ({ page }) => {
+    await mock(page);
+    await page.goto(pageName === "fleet" ? "/" : `/#/host/${hostId}`);
+    await expect(page.getByRole("heading", { name: "alpha" }).or(page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" })).first()).toBeVisible();
+    await page.route("**/api/v1/hosts", route => route.abort("failed"));
+    await page.route("**/api/v1/hosts/*/history*", async route => {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      await route.fallback();
+    });
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await page.waitForTimeout(900);
+    await expect(page.locator(".notice-warn, .error-state").first()).toBeVisible();
+  });
+}
+
 for (const stored of ["{not json", "\"worker-cpu\"", "{\"worker-cpu\":true}", "[\"worker-cpu\",7,null]"]) {
   test(`a stored collapse preference of ${stored} does not stop the dashboard from starting`, async ({ page }) => {
     await page.addInitScript((value: string) => window.localStorage.setItem("stats.collapsed", value), stored);

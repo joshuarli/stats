@@ -10,15 +10,6 @@ Next: 100
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-93 · P2 · A successful history refresh can hide a failed host-directory refresh on the fleet page
-
-- **Area:** Dashboard
-- **Where:** `cloudflare/src/client/pages/FleetPage.tsx:51,87,119` (`refreshError`, `Promise.all([refreshHosts(), refresh(rows)])`)
-- **Problem:** `refreshHosts()` and `refresh(rows)` run concurrently and both write the one `refreshError` signal. If the host request fails first, its catch sets the error, and the later successful rows refresh clears it through `onError(null)`, so the page shows an outdated host directory with no warning. For a monitoring product a hidden stale directory is a correctness problem, not a cosmetic one.
-- **Recommendation:** Give the host-directory refresh and the history refresh independent error ownership and derive the displayed warning from both. Add a deterministic out-of-order completion test: hosts fail first, rows succeed second, the warning stays.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-96 · P2 · `statsctl observe operations --project tansu` is rejected because tansu is not an observed service
 
 - **Area:** CLI
