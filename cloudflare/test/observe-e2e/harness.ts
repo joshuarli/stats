@@ -43,6 +43,7 @@ export default {
 export type StatsInit = NonNullable<Parameters<Miniflare["dispatchFetch"]>[1]>;
 export type Response = Awaited<ReturnType<Miniflare["dispatchFetch"]>>;
 export type Collector = "attached" | "crashing" | "absent";
+export type StatsClock = "fixed" | "wall";
 
 export interface Harness {
   readonly mf: Miniflare;
@@ -108,9 +109,9 @@ export default {
   };
 }
 
-export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE): Promise<Harness> {
+export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE, clock: StatsClock = "fixed"): Promise<Harness> {
   const persist = mkdtempSync(join(tmpdir(), "observe-e2e-"));
-  const { ENVIRONMENT, PROJECTS, WORKER_NAME, ...secrets } = VARS;
+  const { ENVIRONMENT, PROJECTS, WORKER_NAME, TEST_NOW_MS, ...secrets } = VARS;
   const statsCollector: TopologyCollector = collector === "crashing" ? { kind: "replaced", script: CRASHING_CONSUMER } : { kind: collector };
   const agentMemory = process.env.AGENT_MEMORY_DIR;
   const memoriesCollector = collector === "crashing"
@@ -121,7 +122,7 @@ export async function start(collector: Collector, bindings: Record<string, strin
     : agentMemoryWorker(agentMemory);
   const mf = openWorkers(STATS, OBSERVE, {
     text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME!, ...bindings },
-    secrets: { ...secrets, DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
+    secrets: { ...secrets, ...(clock === "fixed" ? { TEST_NOW_MS: TEST_NOW_MS! } : {}), DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
     analytics: "unbound",
     collector: statsCollector,
     outbound,
@@ -150,7 +151,7 @@ export async function start(collector: Collector, bindings: Record<string, strin
     observe: async path => (await (await mf.getWorker("stats-observe")).fetch(`https://observe/stats${path}`)).json(),
     observeService: async (service, path) => (await (await mf.getWorker("stats-observe")).fetch(`https://observe/${service}${path}`)).json(),
     memories: async path => (await mf.getWorker("usr-memories")).fetch(`https://memories.example${path}`),
-    scheduled: async () => stats.scheduled({ cron: "*/5 * * * *", scheduledTime: new Date(Number(VARS["TEST_NOW_MS"])) }),
+    scheduled: async () => stats.scheduled({ cron: "*/5 * * * *", scheduledTime: clock === "fixed" ? new Date(Number(TEST_NOW_MS)) : new Date() }),
     stop,
     dispose: async () => { await stop(); rmSync(persist, { recursive: true, force: true }); }
   };

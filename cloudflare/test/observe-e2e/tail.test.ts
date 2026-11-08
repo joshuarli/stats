@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { accessHeaders, createHost, HOST_NAME, ingest, SECRET_QUERY, start, until, VARS, workerTraces, ORIGIN, type Collector, type IssueSummary, type Page, type TraceDetail, type TraceSummary } from "./harness.ts";
+import { accessHeaders, createHost, HOST_NAME, ingest, SECRET_QUERY, start, until, workerTraces, ORIGIN, type Collector, type IssueSummary, type Page, type TraceDetail, type TraceSummary } from "./harness.ts";
 
 function listing(root: string): string[] {
   return readdirSync(root, { recursive: true }).map(String);
@@ -158,7 +158,7 @@ const DEPLOYED_VERSION = "2221f9c2-9bd2-4011-bebb-52133d498752";
 const STATS_PROJECT = { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
 
 await test("a polled Cloudflare deployment reaches the store as a rollout, readable only through Access", async () => {
-  const atMs = Number(VARS["TEST_NOW_MS"]) - 3_600_000;
+  const atMs = Date.now() - 3_600_000;
   const cloudflare = (request: Request): Response => {
     const path = new URL(request.url).pathname;
     if (path.endsWith("/deployments")) {
@@ -167,7 +167,7 @@ await test("a polled Cloudflare deployment reaches the store as a rollout, reada
     if (path.endsWith(`/versions/${DEPLOYED_VERSION}`)) return Response.json({ success: true, result: { id: DEPLOYED_VERSION, annotations: { "workers/tag": "v9.9.9" } } });
     return new Response("not found", { status: 404 });
   };
-  const harness = await start("attached", { PROJECTS: JSON.stringify([STATS_PROJECT]) }, cloudflare);
+  const harness = await start("attached", { PROJECTS: JSON.stringify([STATS_PROJECT]) }, cloudflare, "wall");
   try {
     await harness.scheduled().catch(() => undefined);
     const impact = await until(() => harness.observe(`/rollouts/${DEPLOYMENT}/impact`) as Promise<{ rolloutId?: string }>, value => value.rolloutId === DEPLOYMENT, "the forwarded rollout");
