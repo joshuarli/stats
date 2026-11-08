@@ -35,6 +35,11 @@ await test("the same external batch reads back normalized on workerd", async () 
     assert.deepEqual(body.events.map(entry => entry.event), batch.events);
     assert.ok(body.events.every(entry => entry.provenance === "application"));
 
+    const totals = await harness.stats(`/api/observe/${OBSERVE_SERVICE}/external/operations?from=${now - 300_000}&to=${now}`, { headers: await accessHeaders() });
+    assert.equal(totals.status, 200, await totals.clone().text());
+    const summary = await totals.json() as { operations: { operation: string; events: number }[] };
+    assert.equal(summary.operations.reduce((sum, row) => sum + row.events, 0), batch.events.length);
+
     assert.equal((await post(deployToken, batch.text)).status, 401);
     assert.equal((await post(null, batch.text)).status, 401);
     assert.equal((await post(ingestToken, JSON.stringify({ events: [] }))).status, 400);
