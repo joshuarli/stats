@@ -70,7 +70,7 @@ const localOtherArgs = ["--experimental-strip-types", "--test",
 try {
   await Promise.all([
     run("build assets and workers", NODE, [join(ROOT, "scripts/build-all.mjs")]),
-    run("typecheck", NODE, [join(ROOT, "scripts/typecheck.mjs")]),
+    run("typecheck", "pnpm", ["run", "typecheck"]),
     run("oxlint", OXLINT, ["--type-aware", "src", "test", "bench", "observe-worker", "vite.config.ts", "playwright.config.ts"])
   ]);
   await Promise.all([

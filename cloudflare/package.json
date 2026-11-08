@@ -11,7 +11,7 @@
     "test:unit": "node --experimental-strip-types --test test/binary/*.test.ts test/ingest/*.test.ts test/deployments/*.test.ts test/cost/*.test.ts test/scripts/*.test.ts test/observe/*.test.ts test/node/*.test.ts",
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "typecheck": "node scripts/typecheck.mjs",
+    "typecheck": "tsrs -p tsconfig.json --noEmit --fast && tsrs -p binary.tsconfig.json --noEmit --fast && tsrs -p deployments.tsconfig.json --noEmit --fast && tsrs -p observe.tsconfig.json --noEmit --fast",
     "lint": "oxlint --type-aware src test bench observe-worker vite.config.ts playwright.config.ts",
     "build": "vite build",
     "build:observe": "vite build --config observe-worker/vite.config.ts",

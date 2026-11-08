@@ -16,9 +16,14 @@
   ],
   "scripts": {
     "build": "tsrs -p tsconfig.json",
+    "typecheck": "tsrs -p tsconfig.json --noEmit",
+    "lint": "oxlint --type-aware src",
+    "check": "pnpm run lint && pnpm run typecheck",
     "prepack": "pnpm run build"
   },
   "devDependencies": {
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
     "tsrs": "0.23.0-ts7.1.0-beta"
   },
   "engines": {
