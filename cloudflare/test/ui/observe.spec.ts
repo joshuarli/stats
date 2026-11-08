@@ -362,7 +362,7 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
   await expect(dialog.locator(".wf-fill").first()).toBeVisible();
-  await expect(dialog.locator(".modal-body")).toHaveScreenshot("stats-trace-modal.webp");
+  await expect(dialog.locator(".ui-modal-body")).toHaveScreenshot("stats-trace-modal.webp");
 });
 
 test("frames show their original source, and frames from a version without a map say so", async ({ page }) => {

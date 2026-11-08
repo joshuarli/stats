@@ -168,12 +168,12 @@ importers:
 
   cloudflare:
     dependencies:
-      '@joshuarli/ui':
-        specifier: workspace:*
-        version: link:../packages/ui
       '@jridgewell/trace-mapping':
         specifier: 0.3.31
         version: 0.3.31
+      '@laputa-systems/ui-dashboard':
+        specifier: 0.4.0
+        version: 0.4.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)
       '@solidjs/router':
         specifier: 2.0.0-next.43
         version: 2.0.0-next.43(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)
@@ -238,27 +238,6 @@ importers:
       tsrs:
         specifier: 0.23.0-ts7.1.0-beta
         version: 0.23.0-ts7.1.0-beta
-
-  packages/ui:
-    devDependencies:
-      '@solidjs/vite-plugin':
-        specifier: 3.0.0-next.54
-        version: 3.0.0-next.54(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)(supports-color@10.2.2)(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2))
-      '@solidjs/web':
-        specifier: 2.0.0-rc.20
-        version: 2.0.0-rc.20(solid-js@2.0.0-rc.20)
-      solid-js:
-        specifier: 2.0.0-rc.20
-        version: 2.0.0-rc.20
-      tsrs:
-        specifier: 0.23.0-ts7.1.0-beta
-        version: 0.23.0-ts7.1.0-beta
-      vite:
-        specifier: 8.3.6
-        version: 8.3.6(@types/node@26.6.6)(esbuild@0.28.2)
-      vitest:
-        specifier: 5.1.0
-        version: 5.1.0(@types/node@26.6.6)(vite@8.3.6(@types/node@26.6.6)(esbuild@0.28.2))
 
 packages:
 
@@ -792,6 +771,18 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@laputa-systems/ui-dashboard@0.4.0':
+    resolution: {integrity: sha512-T4yH91m7auzAC+e4NVtCv7dX+5e23Xj0hyCt4AwQDEHXoI5P8fq9o7cuOAGTtNBCOQSRJKHtZhw5VFQ40OFwMQ==, tarball: https://npm.17166969.xyz/current/-/tarballs/4f8c87f759bb6aecc00be7b8355b42bfb757fb97b6dd78f48720ade00c100c41d7a08e4ff1fabda3b72e380193b4d04239049124a1ed661c39545438d0e17031.tgz}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@solidjs/web': '>=2.0.0-rc.18'
+      solid-js: '>=2.0.0-rc.18'
+    peerDependenciesMeta:
+      '@solidjs/web':
+        optional: true
+      solid-js:
+        optional: true
 
   '@napi-rs/wasm-runtime@1.2.6':
     resolution: {integrity: sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw==}
@@ -2184,6 +2175,11 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@laputa-systems/ui-dashboard@0.4.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)':
+    optionalDependencies:
+      '@solidjs/web': 2.0.0-rc.20(solid-js@2.0.0-rc.20)
+      solid-js: 2.0.0-rc.20
 
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)':
     dependencies:

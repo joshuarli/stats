@@ -15,7 +15,7 @@ import {
   Segmented,
   Skeleton,
   type Tone
-} from "@joshuarli/ui";
+} from "@laputa-systems/ui-dashboard";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 
@@ -49,7 +49,7 @@ export function GalleryPage(): JSX.Element {
     <div style="padding: 24px; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
       <PageHeader
         title="Component Gallery"
-        titleExtra={<Badge tone="accent">@joshuarli/ui</Badge>}
+        titleExtra={<Badge tone="accent">@laputa-systems/ui-dashboard</Badge>}
         mark={<Icon name="activity" size={24} />}
       />
 

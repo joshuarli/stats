@@ -1,4 +1,4 @@
-.observe .widget-body { display: flex; flex-direction: column; gap: var(--space-sm); }
+.observe .ui-panel-body { display: flex; flex-direction: column; gap: var(--space-sm); }
 .observe-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
 .observe-count { margin-left: auto; color: var(--muted); font-size: var(--fs-meta); }
 .observe-select select { min-height: var(--control); padding: 0 var(--space-lg) 0 var(--space-sm); border-radius: var(--radius-md); box-shadow: var(--outline); background: var(--surface); font-size: var(--fs-meta); max-width: 280px; }
@@ -13,8 +13,8 @@
 .trace-layout, .issue-layout { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); align-items: start; margin: 0 calc(-1 * var(--inset)) calc(-1 * var(--inset)); border-top: 1px solid var(--line); }
 .trace-list, .issue-list { align-self: stretch; border-right: 1px solid var(--line); }
 .trace-detail, .issue-detail { min-width: 0; padding: var(--space-md) var(--inset); position: sticky; top: calc(var(--topbar-h, var(--topbar-height)) + var(--gap)); }
-.widget.expanded .trace-layout, .widget.expanded .issue-layout { flex: 1; min-height: 0; align-items: stretch; }
-.widget.expanded :is(.trace-list, .issue-list, .trace-detail, .issue-detail) { overflow-y: auto; position: static; }
+.widget.ui-panel-expanded .trace-layout, .widget.ui-panel-expanded .issue-layout { flex: 1; min-height: 0; align-items: stretch; }
+.widget.ui-panel-expanded :is(.trace-list, .issue-list, .trace-detail, .issue-detail) { overflow-y: auto; position: static; }
 
 
 .trace-list-head, .trace-row { display: grid; grid-template-columns: var(--dot-sm) minmax(0, 1fr) 84px 44px 64px; align-items: center; gap: var(--space-sm); padding: 0 var(--inset); }
@@ -133,7 +133,7 @@
 .explore-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
 
 .heatmap { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto 180px 6px auto; gap: 0 var(--space-xs); }
-.widget.expanded .heatmap { grid-template-rows: auto 260px 6px auto; }
+.widget.ui-panel-expanded .heatmap { grid-template-rows: auto 260px 6px auto; }
 .heatmap-axis { position: relative; color: var(--muted); font-size: var(--fs-glyph); }
 .heatmap-axis span { position: absolute; right: 0; transform: translateY(50%); }
 .heatmap-axis .heatmap-unit { top: -2px; bottom: auto; transform: none; }

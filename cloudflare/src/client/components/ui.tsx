@@ -10,7 +10,7 @@ import {
   Segmented as UiSegmented,
   Skeleton as UiSkeleton,
   type Tone as UiTone
-} from "@joshuarli/ui";
+} from "@laputa-systems/ui-dashboard";
 import { createSignal, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { errorMessage } from "../format";

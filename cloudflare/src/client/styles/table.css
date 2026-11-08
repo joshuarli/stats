@@ -64,7 +64,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .pagination-actions { display: flex; align-items: center; gap: var(--space-sm); }
 
 .flush-table { margin: var(--space-md) calc(-1 * var(--inset)) calc(-1 * var(--inset)); border-top: 1px solid var(--line); }
-.widget-body > .flush-table:first-child { margin-top: 0; }
+.ui-panel-body > .flush-table:first-child { margin-top: 0; }
 .table-more { display: flex; padding: var(--space-sm) var(--inset); border-top: 1px solid var(--line); }
 .panel-label { font-size: var(--fs-label); font-weight: 500; color: var(--muted); margin: var(--space-md) 0 0; }
 .panel-label:first-child { margin-top: 0; }

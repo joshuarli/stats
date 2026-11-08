@@ -11,7 +11,7 @@ import { windowParams } from "../history-path";
 import { statusFor } from "../status";
 import { useTelemetry } from "../state";
 import { OsLogo } from "../components/OsLogo";
-import { PageHeader } from "../components/PageHeader";
+import { PageHeader } from "@laputa-systems/ui-dashboard";
 import { SectionBar, type SectionLink } from "../components/SectionBar";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";

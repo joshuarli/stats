@@ -3,7 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { duration } from "../chart-data";
 import { dateTime } from "../format";
 import { rangeLabels, ranges, useTelemetry } from "../state";
-import { Icon } from "./Icon";
+import { Icon } from "@laputa-systems/ui-dashboard";
 
 export function TimeBar(): JSX.Element {
   const { range, chooseRange, view, canZoomOut, live, zoomOut, resetZoom, pan, toggleLive, requestRefresh } = useTelemetry();

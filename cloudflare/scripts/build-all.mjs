@@ -16,7 +16,6 @@ function run(command, args) {
 }
 
 await run("node", [join(ROOT, "scripts/check-config.mjs")]);
-await run("pnpm", ["--filter", "@joshuarli/ui", "build"]);
 await Promise.all([
   run(VITE, ["build"]),
   run(VITE, ["build", "--config", "observe-worker/vite.config.ts"])

@@ -4,8 +4,8 @@
 .chart:has(> .chart-empty) .chart-plot { height: 44px; }
 .chart-plot .uplot { font-family: var(--font); }
 .chart-empty { position: absolute; inset: 0; display: grid; place-items: center start; padding-left: var(--space-xs); color: var(--muted); background: var(--surface); font-size: var(--fs-meta); }
-.widget.expanded .chart { flex: 1 1 auto; }
-.widget.expanded .chart .chart-plot { flex: 1 1 auto; height: auto; min-height: 176px; }
+.widget.ui-panel-expanded .chart { flex: 1 1 auto; }
+.widget.ui-panel-expanded .chart .chart-plot { flex: 1 1 auto; height: auto; min-height: 176px; }
 
 .u-hz .u-cursor-x { border-right: 1px solid var(--muted); opacity: .45; }
 .u-select { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 1px 0 var(--accent), inset -1px 0 var(--accent); }

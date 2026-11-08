@@ -40,6 +40,6 @@ kbd {
   border: 0;
 }
 
-.icon { flex: none; display: block; }
+.ui-icon { flex: none; display: block; }
 
 @keyframes pulse { 50% { opacity: .35; } }

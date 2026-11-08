@@ -58,11 +58,11 @@ test("the project page's estimated cost equals statsctl cost from the same stack
 test("a failing collection shows the failed collector, and a later good run clears it", async ({ page }) => {
   expect(await collect(TICK - BUCKET_MS, { ...ANCHORED, "states.r2CombinedStorage": { kind: "fail" } })).toBe("exception");
   await open(page, "/#/project/stuff?open=signals");
-  await expect(page.locator(".page-header .badge").first()).toContainText("failing");
+  await expect(page.locator(".ui-page-header .badge").first()).toContainText("failing");
   await expect(page.locator("#collector .collector-error")).toHaveText("Last run failed: collector_failed:r2Storage");
   expect(await collect(TICK, ANCHORED)).toBe("ok");
   await open(page, "/#/project/stuff?open=signals");
-  await expect(page.locator(".page-header .badge").first()).toContainText("collecting");
+  await expect(page.locator(".ui-page-header .badge").first()).toContainText("collecting");
   await expect(page.locator("#collector .collector-error")).toHaveCount(0);
 });
 

@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Icon } from "./Icon";
+import { Icon } from "@laputa-systems/ui-dashboard";
 import { axisTicks, place, type Axis } from "../waterfall";
 
 export interface WaterfallRow {

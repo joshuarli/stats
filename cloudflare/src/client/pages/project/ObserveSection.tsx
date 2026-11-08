@@ -4,7 +4,7 @@ import { age, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../components/ui";
 import { decodeImpact, decodeIssue, decodeOccurrences, decodeTrace } from "../../../observe/client/decode";
-import { Modal } from "../../components/Modal";
+import { Modal } from "@laputa-systems/ui-dashboard";
 import { Info, Term } from "../../components/Info";
 import type { IssueRef, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, VersionStats } from "../../../observe/core/store";
 import { routeShift, type RouteShift } from "../../../observe/client/impact";

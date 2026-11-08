@@ -1,7 +1,6 @@
 import { createEffect, createSignal, createUniqueId, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Icon } from "./Icon";
-import { Modal } from "./Modal";
+import { Icon, Modal } from "@laputa-systems/ui-dashboard";
 
 const TIP_WIDTH = 280;
 const EDGE = 8;

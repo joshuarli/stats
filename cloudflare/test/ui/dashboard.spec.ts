@@ -670,7 +670,7 @@ test("a stale collector is flagged on the projects page and the project page", a
   await expect(page.getByRole("table", { name: "Projects" })).toContainText("stale");
   await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "stuff" }).click();
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
-  await expect(page.locator(".page-header")).toContainText("stale");
+  await expect(page.locator(".ui-page-header")).toContainText("stale");
   await page.getByRole("button", { name: "About Collector status" }).click();
   await expect(page.getByRole("dialog", { name: "Collector status" })).toContainText("The collector has not succeeded recently");
 });
@@ -1150,7 +1150,7 @@ for (const { name, path, options, expandable } of FULL_PAGES) {
   test(`the ${name} page keeps every widget's collapse control on the same right inset`, async ({ page }) => {
     await openPage(page, path, options);
     const insets = await page.locator(".widget").evaluateAll(widgets => widgets.map(widget => {
-      const button = widget.querySelector(".collapse")?.getBoundingClientRect();
+      const button = widget.querySelector(".ui-panel-collapse")?.getBoundingClientRect();
       return button === undefined ? null : Math.round((widget.getBoundingClientRect().right - button.right) * 10) / 10;
     }));
     expect(new Set(insets.filter(inset => inset !== null)).size).toBe(1);
@@ -1173,11 +1173,11 @@ for (const { name, path, options, expandable } of FULL_PAGES) {
       return { id: entry.id, x: Math.round(rect.x), y: Math.round(rect.y + window.scrollY), width: Math.round(rect.width) };
     }));
     const before = await positions();
-    await page.locator(`#${expandable} .expand`).click();
-    await expect(page.locator(`#${expandable}.expanded`)).toBeVisible();
+    await page.locator(`#${expandable} .ui-panel-expand`).click();
+    await expect(page.locator(`#${expandable}.ui-panel-expanded`)).toBeVisible();
     expect(await positions()).toEqual(before);
     await page.keyboard.press("Escape");
-    await expect(page.locator(`#${expandable}.expanded`)).toHaveCount(0);
+    await expect(page.locator(`#${expandable}.ui-panel-expanded`)).toHaveCount(0);
     expect(await positions()).toEqual(before);
   });
 
@@ -1188,14 +1188,14 @@ for (const { name, path, options, expandable } of FULL_PAGES) {
         const rect = widget.querySelector(selector)?.getBoundingClientRect();
         return rect === undefined ? null : { x: rect.x - widget.getBoundingClientRect().x, y: rect.y - widget.getBoundingClientRect().y, height: rect.height };
       };
-      return { id: widget.id, title: box("h2"), expand: box(".expand"), collapse: box(".collapse") };
+      return { id: widget.id, title: box("h2"), expand: box(".ui-panel-expand"), collapse: box(".ui-panel-collapse") };
     }));
     const before = await headerBoxes();
     const ids = before.map(entry => entry.id);
-    for (const id of ids) await page.locator(`#${id} .collapse`).click();
+    for (const id of ids) await page.locator(`#${id} .ui-panel-collapse`).click();
     const after = await headerBoxes();
     expect(after).toEqual(before);
-    const margins = await page.locator(".widget.collapsed").evaluateAll(widgets => widgets.map(widget => {
+    const margins = await page.locator(".widget.ui-panel-collapsed").evaluateAll(widgets => widgets.map(widget => {
       const widgetRect = widget.getBoundingClientRect();
       const title = widget.querySelector("h2")?.getBoundingClientRect();
       return title === undefined ? null : Math.abs((title.top - widgetRect.top) - (widgetRect.bottom - title.bottom));

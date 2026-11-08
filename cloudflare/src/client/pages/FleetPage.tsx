@@ -8,7 +8,7 @@ import { createRefreshRetention, loadFleetRows, type FleetRow, type FleetRowCach
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host } from "../api";
-import { Icon } from "../components/Icon";
+import { Icon } from "@laputa-systems/ui-dashboard";
 import { Sparkline } from "../components/Sparkline";
 import { OsLogo } from "../components/OsLogo";
 import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, Widget } from "../components/ui";

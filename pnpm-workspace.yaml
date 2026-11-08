@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   esbuild: true
   workerd: true
+minimumReleaseAgeExclude:
+  - '@laputa-systems/ui-dashboard@0.4.0'

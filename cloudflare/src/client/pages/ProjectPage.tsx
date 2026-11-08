@@ -9,7 +9,7 @@ import { createUpdateEffect } from "../effect";
 import { createRefreshRetention, loadProjects, loadQuery } from "../queries";
 import { windowParams } from "../history-path";
 import { useTelemetry, PROJECT_REFRESH_TICKS, rangeMs } from "../state";
-import { PageHeader } from "../components/PageHeader";
+import { PageHeader } from "@laputa-systems/ui-dashboard";
 import { Info } from "../components/Info";
 import { Badge, EmptyState, ErrorState, Notice, Skeleton, Widget } from "../components/ui";
 import { CollectorWidget } from "./project/Collector";

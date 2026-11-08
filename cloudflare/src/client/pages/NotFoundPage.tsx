@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { PageHeader } from "../components/PageHeader";
+import { PageHeader } from "@laputa-systems/ui-dashboard";
 import { EmptyState } from "../components/ui";
 
 export function NotFoundPage(): JSX.Element {

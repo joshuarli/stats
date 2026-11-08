@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { InvocationSummary, Occurrence, TraceDetail } from "../../../observe/core/store";
 import { isInApp } from "../../../observe/core/stack";
-import { Icon } from "../../components/Icon";
+import { Icon } from "@laputa-systems/ui-dashboard";
 import { Badge } from "../../components/ui";
 import { Info } from "../../components/Info";
 import { Waterfall, WaterfallSummary, type WaterfallRow } from "../../components/Waterfall";

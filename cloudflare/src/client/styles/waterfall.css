@@ -20,8 +20,8 @@
 .wf .wf-step { padding-left: calc(var(--inset) + var(--depth, 0) * var(--space-xl)); padding-right: var(--space-md); }
 .wf-name { display: flex; align-items: center; gap: var(--space-sm); width: 100%; min-width: 0; text-align: left; }
 .wf-lead { display: grid; place-items: center; flex: none; width: 14px; color: var(--muted); }
-.wf-toggle .icon { transition: transform .12s; }
-.wf-toggle[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.wf-toggle .ui-icon { transition: transform .12s; }
+.wf-toggle[aria-expanded="true"] .ui-icon { transform: rotate(90deg); }
 .wf-toggle::after { content: ""; position: absolute; inset: 0; }
 .wf-toggle:focus-visible { outline: 0; }
 .wf-toggle:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
@@ -52,7 +52,7 @@
 .wf tr.wf-detail td { padding: var(--space-xs) var(--inset) var(--space-md) calc(var(--inset) + 14px + var(--space-sm)); height: auto; }
 
 .wf-callout { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--critical) 11%, var(--surface)); color: var(--critical); overflow-wrap: anywhere; }
-.wf-callout .icon { flex: none; }
+.wf-callout .ui-icon { flex: none; }
 .wf-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-sm); }
 .wf-panel { min-width: 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
 .wf-panel-title { margin: 0 0 var(--space-sm); color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--caps-tracking); text-transform: uppercase; }
@@ -74,5 +74,5 @@
   .wf-stat { padding-inline: var(--space-md); }
 }
 
-.widget-body.wf-body { container: wf / inline-size; overflow: hidden; border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+.ui-panel-body.wf-body { container: wf / inline-size; overflow: hidden; border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
 .wf-chart { padding: 0 var(--inset) var(--inset); }
