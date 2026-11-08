@@ -8,7 +8,8 @@ import { useTelemetry } from "../../state";
 import type { PsiWindow } from "../../psi";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
-import { EmptyState, HealthMark, Meter, Widget } from "../../components/ui";
+import { EmptyState, Meter } from "@laputa-systems/ui-dashboard";
+import { HealthMark, Widget } from "../../components/ui";
 import { PressureChart } from "./Psi";
 import { colorsFor, PanelLabel, perSecond, activeSeries, topSeries, PanelChart } from "./shared";
 

@@ -88,7 +88,7 @@ test("selecting trace B while B is deferred clears trace A's timeline immediatel
 
   await traceRows.nth(1).click();
   await expect(detail.locator(".tl")).toHaveCount(0);
-  await expect(detail.locator(".skeleton")).toBeVisible();
+  await expect(detail.locator(".ui-skeleton")).toBeVisible();
 
   gateB.release();
   await expect(detail.locator(".tl")).toBeVisible();
@@ -117,7 +117,7 @@ test("selecting issue B while B's occurrences are deferred clears issue A's fram
   await expect(issues.locator(".issue-detail .issue-head")).toContainText("TypeError");
   await expect(issues.locator(".issue-detail .frames")).toHaveCount(0);
   await expect(issues.locator(".occurrence-table tbody tr")).toHaveCount(0);
-  await expect(issues.locator(".issue-detail .skeleton")).toBeVisible();
+  await expect(issues.locator(".issue-detail .ui-skeleton")).toBeVisible();
 
   gateB.release();
   await expect(issues.locator(".issue-detail .frames-head")).toContainText("TypeError");
@@ -151,7 +151,7 @@ test("changing route, band, or window while exploration is deferred clears the p
   await expect(page).toHaveURL(/route=GET/u);
   await expect(explorer.locator(".explore-head")).toHaveCount(0);
   await expect(explorer.locator(".trace-row")).toHaveCount(0);
-  await expect(explorer.locator(".skeleton")).toBeVisible();
+  await expect(explorer.locator(".ui-skeleton")).toBeVisible();
 
   routeGate.release();
   await expect(explorer.locator(".explore-head")).toContainText(`Latency · ${HISTORY_ROUTE}`);
@@ -161,7 +161,7 @@ test("changing route, band, or window while exploration is deferred clears the p
   await explorer.getByRole("button", { name: "≥ p95" }).click();
   await expect(page).toHaveURL(/band=slow/u);
   await expect(explorer.locator(".trace-row")).toHaveCount(0);
-  await expect(explorer.locator(".skeleton")).toBeVisible();
+  await expect(explorer.locator(".ui-skeleton")).toBeVisible();
 
   bandGate.release();
   await expect(explorer.locator(".hot-summary")).toContainText("Calls at or above p95");
@@ -170,7 +170,7 @@ test("changing route, band, or window while exploration is deferred clears the p
   mode = "window";
   await page.getByRole("button", { name: "6h", exact: true }).click();
   await expect(explorer.locator(".trace-row")).toHaveCount(0);
-  await expect(explorer.locator(".skeleton")).toBeVisible();
+  await expect(explorer.locator(".ui-skeleton")).toBeVisible();
 
   windowGate.release();
   await expect(explorer.locator(".trace-row").first()).toBeVisible();
@@ -193,10 +193,10 @@ test("switching issue-state filter from Open to Resolved while Resolved is defer
   await issues.getByRole("button", { name: "Resolved", exact: true }).click();
   await expect(page).toHaveURL(/issues=resolved/u);
   await expect(issues.locator(".issue-item")).toHaveCount(0);
-  await expect(issues.locator(".skeleton")).toBeVisible();
+  await expect(issues.locator(".ui-skeleton")).toBeVisible();
 
   resolvedGate.release();
-  await expect(issues.locator(".skeleton")).toHaveCount(0);
+  await expect(issues.locator(".ui-skeleton")).toHaveCount(0);
   await expect(issues).toContainText("No resolved issues with occurrences in the last 7 days.");
 });
 
@@ -218,7 +218,7 @@ test("modal stack navigation, back/close, and URL deep links isolate modal state
   blockIssueModal = true;
   await dialog.getByRole("button", { name: /RangeError/u }).click();
   await expect(page).toHaveURL(/modal=issue/u);
-  await expect(page.getByRole("dialog", { name: "Issue" }).locator(".skeleton")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Issue" }).locator(".ui-skeleton")).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Issue" })).not.toContainText("1 new issue group");
 
   issueGate.release();

@@ -277,7 +277,7 @@ async function settleApiRequests(page: Page): Promise<void> {
 }
 
 async function expectStableLayout(page: Page, testInfo: TestInfo, name: string): Promise<void> {
-  await expect(page.locator(".skeleton")).toHaveCount(0);
+  await expect(page.locator(".ui-skeleton")).toHaveCount(0);
   await settleApiRequests(page);
   const { total, records } = await page.evaluate(() => window.layoutShift);
   testInfo.annotations.push({ type: "layout-shift", description: `${name} ${testInfo.project.name} ${total.toFixed(4)}` });

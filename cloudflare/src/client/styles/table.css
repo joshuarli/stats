@@ -43,12 +43,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .fleet-table-scroll .entity-cell { align-items: flex-start; }
 .fleet-table-scroll .entity-cell > .status-dot { margin-top: calc((var(--line-height) - var(--dot)) / 2); }
 
-.meter { width: 44px; height: 6px; border-radius: var(--radius-pill); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
-.meter span { display: block; height: 100%; border-radius: inherit; }
-.meter .tone-neutral { --tone: var(--accent); }
-.meter .tone-warn { --tone: var(--warn); }
-.meter .tone-bad { --tone: var(--bad); }
-.meter span, .capacity-fill { background: color-mix(in srgb, var(--tone, var(--accent)) 26%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--accent)) 55%, var(--surface)); }
+.capacity-fill { background: color-mix(in srgb, var(--tone, var(--accent)) 26%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone, var(--accent)) 55%, var(--surface)); }
 
 .capacity { display: flex; align-items: center; gap: var(--space-lg); }
 .capacity-with-state { display: flex; align-items: center; gap: var(--space-sm); }
@@ -58,10 +53,6 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .capacity-fill.tone-bad { --tone: var(--bad); }
 .capacity-label { display: flex; gap: var(--space-sm); }
 .capacity-label span { color: var(--muted); }
-
-.pagination { display: flex; align-items: center; justify-content: space-between; padding: var(--space-md) var(--inset); border-top: 1px solid var(--line); color: var(--muted); font-size: var(--fs-meta); }
-.pagination strong { color: var(--text); font-weight: 450; }
-.pagination-actions { display: flex; align-items: center; gap: var(--space-sm); }
 
 .flush-table { margin: var(--space-md) calc(-1 * var(--inset)) calc(-1 * var(--inset)); border-top: 1px solid var(--line); }
 .ui-panel-body > .flush-table:first-child { margin-top: 0; }
@@ -83,16 +74,13 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   .fleet-table-scroll .cpu-cell { display: grid; grid-template-columns: auto auto; grid-template-areas: "spark spark" "value meter"; align-items: center; justify-content: start; gap: var(--space-xs) var(--space-sm); }
   .fleet-table-scroll .cpu-cell > .spark-inline { grid-area: spark; width: 100%; min-width: 72px; }
   .fleet-table-scroll .cpu-cell > span { grid-area: value; }
-  .fleet-table-scroll .cpu-cell > .meter { grid-area: meter; width: 36px; }
+  .fleet-table-scroll .cpu-cell > .ui-meter { grid-area: meter; width: 36px; }
 }
 
 @media (max-width: 640px) {
   .table-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
   .search { width: 100%; max-width: none; min-height: var(--control-touch); padding: 0 var(--space-md); border-radius: var(--radius-md); box-shadow: var(--outline); }
   .search input { font-size: 16px; } /* iOS Safari zooms the page when a focused input is under 16px. */
-  .pagination { flex-wrap: wrap; justify-content: center; gap: var(--space-sm); }
-  .pagination-actions { width: 100%; justify-content: space-between; }
-  .pagination .btn-icon { width: var(--control-touch); min-height: var(--control-touch); }
 
   .fleet-table-scroll, .projects-table-scroll { overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
   :is(.fleet-table-scroll, .projects-table-scroll) .data-table { border-collapse: separate; border-spacing: 0; }

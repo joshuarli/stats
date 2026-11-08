@@ -8,10 +8,10 @@ import { createRefreshRetention, loadFleetRows, type FleetRow, type FleetRowCach
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host } from "../api";
-import { Icon } from "@laputa-systems/ui-dashboard";
+import { EmptyState, Icon, Meter, Pagination, Skeleton } from "@laputa-systems/ui-dashboard";
 import { Sparkline } from "../components/Sparkline";
 import { OsLogo } from "../components/OsLogo";
-import { EmptyState, EntityCell, ErrorState, Meter, Notice, Pagination, Skeleton, Widget } from "../components/ui";
+import { EntityCell, ErrorState, Notice, Widget } from "../components/ui";
 import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
 
@@ -211,7 +211,7 @@ function FleetDashboard(props: {
         <div class="table-toolbar">
           <StatusChips counts={props.counts} selected={props.selected} toggle={props.toggle} />
           <label class="search">
-            <span class="sr-only">Search hosts</span>
+            <span class="ui-sr-only">Search hosts</span>
             <span class="search-icon"><Icon name="search" size={13} /></span>
             <input type="search" placeholder="Filter hosts" value={props.search} onInput={event => props.setSearch(event.currentTarget.value)} />
           </label>

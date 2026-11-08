@@ -62,4 +62,17 @@ test.describe("component gallery", () => {
     await expandButton.click();
     await expect(page.locator(".ui-panel-collapsed")).toHaveCount(0);
   });
+
+  test("a dark operating-system scheme renders the same light gallery", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    await page.goto("/#/gallery");
+    await expect(page.locator(".ui-page-header")).toBeVisible();
+    const gallery = page.locator(".content");
+    const light = await gallery.screenshot({ animations: "disabled" });
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light");
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(250, 250, 249)");
+    await expect(page.locator(".ui-panel").first()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    expect((await gallery.screenshot({ animations: "disabled" })).equals(light)).toBe(true);
+  });
 });

@@ -1,14 +1,9 @@
 import {
-  Badge as UiBadge,
+  Badge,
   CollapsiblePanel as UiCollapsiblePanel,
-  EmptyState as UiEmptyState,
   ErrorState as UiErrorState,
-  type IconName,
-  Meter as UiMeter,
   Notice as UiNotice,
-  Pagination as UiPagination,
   Segmented as UiSegmented,
-  Skeleton as UiSkeleton,
   type Tone as UiTone
 } from "@laputa-systems/ui-dashboard";
 import { createSignal, Show, type ParentProps } from "solid-js";
@@ -17,10 +12,6 @@ import { errorMessage } from "../format";
 import { HEALTH_GLYPH, HEALTH_LABEL, type Health } from "../health";
 
 export type Tone = UiTone;
-
-export function Badge(props: { readonly tone: Tone; readonly children: JSX.Element; readonly dot?: boolean }): JSX.Element {
-  return <UiBadge tone={props.tone} dot={props.dot} class={`badge badge-${props.tone}`}>{props.children}</UiBadge>;
-}
 
 export function EntityCell(props: {
   readonly marker: JSX.Element;
@@ -121,7 +112,7 @@ export function HealthMark(props: { readonly health: Health | undefined | (() =>
         <Show when={health() !== "ok" || props.showOk === true}>
           <span class={`health health-${health()}`}>
             <span class="health-icon" aria-hidden="true">{HEALTH_GLYPH[health()]}</span>
-            <span class={props.labelled === true && health() !== "ok" ? "health-text" : "sr-only"}>{HEALTH_LABEL[health()]}</span>
+            <span class={props.labelled === true && health() !== "ok" ? "health-text" : "ui-sr-only"}>{HEALTH_LABEL[health()]}</span>
           </span>
         </Show>
       )}
@@ -136,10 +127,6 @@ export function MetricValue(props: { readonly text: string }): JSX.Element {
   return match === null ? props.text : <>{match[1]}<span class="tile-unit">{match[2]}</span></>;
 }
 
-export function EmptyState(props: { readonly title: string; readonly detail?: string | undefined; readonly icon?: IconName | undefined; readonly action?: JSX.Element | undefined }): JSX.Element {
-  return <UiEmptyState title={props.title} detail={props.detail} icon={props.icon} action={props.action} class="empty-state" />;
-}
-
 export function ErrorState(props: { readonly error: unknown; readonly retry?: (() => void) | undefined; readonly compact?: boolean | undefined }): JSX.Element {
   return (
     <UiErrorState
@@ -147,13 +134,8 @@ export function ErrorState(props: { readonly error: unknown; readonly retry?: ((
       detail={errorMessage(props.error)}
       retry={props.retry}
       compact={props.compact}
-      class={props.compact === true ? "error-state compact" : "error-state"}
     />
   );
-}
-
-export function Skeleton(props: { readonly rows?: number | undefined; readonly chart?: boolean | undefined; readonly class?: string | undefined }): JSX.Element {
-  return <UiSkeleton rows={props.rows} chart={props.chart} class={["skeleton", props.class].filter(Boolean).join(" ")} />;
 }
 
 export function Notice(props: { readonly tone?: "info" | "warn" | undefined; readonly children: JSX.Element }): JSX.Element {
@@ -163,21 +145,6 @@ export function Notice(props: { readonly tone?: "info" | "warn" | undefined; rea
 
 export function Segmented<T extends string>(props: { readonly label: string; readonly value: T; readonly options: readonly [T, string][]; readonly onChange: (value: T) => void }): JSX.Element {
   return <UiSegmented label={props.label} value={props.value} options={props.options} onChange={props.onChange} class="segmented" />;
-}
-
-export function Pagination(props: {
-  readonly page: number;
-  readonly pages: number;
-  readonly from: number;
-  readonly to: number;
-  readonly total: number;
-  readonly onChange: (page: number) => void;
-}): JSX.Element {
-  return <UiPagination {...props} class="pagination" />;
-}
-
-export function Meter(props: { readonly value: number | undefined; readonly warn: number; readonly bad: number }): JSX.Element {
-  return <UiMeter value={props.value} warn={props.warn} bad={props.bad} class="meter" />;
 }
 
 export interface PagedList<T> {

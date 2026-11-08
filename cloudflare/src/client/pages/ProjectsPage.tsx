@@ -6,7 +6,8 @@ import { loadProjects } from "../queries";
 import { collectorStatus } from "../status";
 import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../state";
 import { metricTrack, type MetricHistory, type ProjectHistories } from "../history";
-import { EntityCell, EmptyState, ErrorState, Skeleton, StateCell, Widget } from "../components/ui";
+import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
+import { EntityCell, ErrorState, StateCell, Widget } from "../components/ui";
 import { createUpdateEffect } from "../effect";
 import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
@@ -60,7 +61,7 @@ function Projects(): JSX.Element {
                 <th scope="col" class="numeric">Est. cost</th>
                 <th scope="col">Last deploy</th>
                 <th scope="col">Collector</th>
-                <th scope="col"><span class="sr-only">Trends</span></th>
+                <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
             <For each={projects()}>{(project) => <ProjectRow project={project} />}</For>

@@ -236,7 +236,7 @@ test("host A to B navigation aborts A's deferred history and renders only B", as
 
   await page.goto(`/#/host/${HOST_A}`);
   await expect(page.getByRole("heading", { name: "alpha-node", level: 1 })).toBeVisible();
-  await expect(page.locator(".skeleton").first()).toBeVisible();
+  await expect(page.locator(".ui-skeleton").first()).toBeVisible();
 
   await page.evaluate(id => { window.location.hash = `#/host/${id}`; }, HOST_B);
   await expect(page.getByRole("heading", { name: "bravo-node", level: 1 })).toBeVisible();

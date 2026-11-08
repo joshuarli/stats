@@ -2,9 +2,9 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import type { JSX } from "@solidjs/web";
 import { age, count } from "../../format";
 import { useTelemetry } from "../../state";
-import { createPagedList, Segmented, ShowMore, Skeleton, Widget } from "../../components/ui";
+import { createPagedList, Segmented, ShowMore, Widget } from "../../components/ui";
 import { decodeImpact, decodeIssue, decodeOccurrences, decodeTrace } from "../../../observe/client/decode";
-import { Modal } from "@laputa-systems/ui-dashboard";
+import { Modal, Skeleton } from "@laputa-systems/ui-dashboard";
 import { Info, Term } from "../../components/Info";
 import type { IssueRef, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, VersionStats } from "../../../observe/core/store";
 import { routeShift, type RouteShift } from "../../../observe/client/impact";
@@ -93,7 +93,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
       <div class="observe-toolbar">
         <Segmented label="Issue state" value={o.issueState()} options={[["open", "Open"], ["resolved", "Resolved"]]} onChange={o.filterIssues} />
         <label class="observe-select">
-          <span class="sr-only">Introduced in</span>
+          <span class="ui-sr-only">Introduced in</span>
           <select value={o.introducedIn() ?? ""} onChange={event => o.filterIntroduced(event.currentTarget.value === "" ? null : event.currentTarget.value)}>
             <option value="">Any version</option>
             <For each={introducedVersions()}>{([version, label]) => <option value={version}>Introduced in {label}</option>}</For>

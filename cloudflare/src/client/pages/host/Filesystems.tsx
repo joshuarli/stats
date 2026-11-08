@@ -6,7 +6,8 @@ import { healthOf, LIMITS } from "../../health";
 import { lastCell, usedShare } from "../../metrics";
 import { CapacityBar } from "../../components/CapacityBar";
 import type { ChartEvent } from "../../components/TimeChart";
-import { EmptyState, HealthMark, Widget } from "../../components/ui";
+import { EmptyState } from "@laputa-systems/ui-dashboard";
+import { HealthMark, Widget } from "../../components/ui";
 import { colorsFor, activeSeries, topSeries, PanelChart } from "./shared";
 
 export function FilesystemsWidget(props: {

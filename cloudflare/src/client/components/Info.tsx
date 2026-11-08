@@ -61,7 +61,7 @@ export function Term(props: { readonly hint: string; readonly children: string }
       >
         {props.children}
       </button>
-      <span id={id} class="sr-only">{props.hint}</span>
+      <span id={id} class="ui-sr-only">{props.hint}</span>
       <Show when={tip()}>{place => (
         <span class="term-tip" aria-hidden="true" style={`left:${place().left}px;${place().top === null ? `bottom:${place().bottom}px` : `top:${place().top}px`}`}>{props.hint}</span>
       )}</Show>

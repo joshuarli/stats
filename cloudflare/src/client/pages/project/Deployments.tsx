@@ -4,7 +4,8 @@ import { ApiFailure } from "../../api";
 import { age, count } from "../../format";
 import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
-import { createPagedList, jumpTo, ShowMore, Skeleton, Widget } from "../../components/ui";
+import { Skeleton } from "@laputa-systems/ui-dashboard";
+import { createPagedList, jumpTo, ShowMore, Widget } from "../../components/ui";
 import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../../deployments/service-decode";
@@ -239,7 +240,7 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
                 <td class="numeric" title={metric.verdict.replaceAll("-", " ")}>
                   {sourcesOf(props.comparison) !== null && metric.before === null && metric.after === null ? "unavailable" : movement(metric)}
                   <Show when={delta(metric)}>{text => <span class={`deployment-delta ${VERDICT_CLASS[metric.verdict]}`}>({text()})</span>}</Show>
-                  <span class="sr-only">, {metric.verdict.replaceAll("-", " ")}</span>
+                  <span class="ui-sr-only">, {metric.verdict.replaceAll("-", " ")}</span>
                 </td>
               </tr>
             )}</For>

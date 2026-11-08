@@ -8,7 +8,8 @@ import { netDrops, netErrors, netFaults } from "../../metrics";
 import { useTelemetry } from "../../state";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
-import { EmptyState, HealthMark, Widget } from "../../components/ui";
+import { EmptyState } from "@laputa-systems/ui-dashboard";
+import { HealthMark, Widget } from "../../components/ui";
 import { PanelLabel, perSecond, activeSeries, PanelChart } from "./shared";
 
 const TABLE_LIMIT = 8;

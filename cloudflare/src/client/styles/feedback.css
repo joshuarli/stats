@@ -1,22 +1,6 @@
 .notice { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--accent) 6%, transparent); color: var(--text-2); }
 .notice-warn { background: color-mix(in srgb, var(--warn) 10%, transparent); }
 
-.empty-state { display: grid; justify-items: center; gap: var(--space-xs); padding: var(--space-3xl) var(--space-lg); text-align: center; }
-.empty-icon { color: var(--muted); margin-bottom: var(--space-xs); }
-.empty-title { margin: 0; font-weight: 500; }
-.empty-detail { margin: 0; color: var(--muted); }
-.empty-action { margin-top: var(--space-md); }
-
-.error-state { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--inset); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad) 35%, transparent); }
-.error-state.compact { padding: var(--space-md); }
-.error-icon { color: var(--bad); display: flex; }
-.error-title { margin: 0; font-weight: 500; }
-.error-detail { margin: 0; color: var(--muted); }
-.error-state .btn { margin-left: auto; }
-
-.skeleton { display: grid; gap: var(--space-md); }
-.skeleton-line { display: block; height: var(--space-md); border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
-.skeleton-chart { display: block; height: 140px; border-radius: var(--radius-md); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
 .summary-pending { display: inline-block; width: 6em; height: 1em; vertical-align: middle; border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
 .boot-pending { display: block; width: 180px; height: 16px; margin: 0; border-radius: var(--radius-sm); background: var(--hover); animation: pulse 2.4s ease-in-out infinite; }
 .page-skeleton { max-width: 360px; }

@@ -959,7 +959,7 @@ for (const pageName of ["fleet", "host"] as const) {
     });
     await page.getByRole("button", { name: "Refresh" }).click();
     await page.waitForTimeout(900);
-    await expect(page.locator(".notice-warn, .error-state").first()).toBeVisible();
+    await expect(page.locator(".notice-warn, .ui-error-state").first()).toBeVisible();
   });
 }
 
@@ -1095,11 +1095,11 @@ test("a status pill keeps its place and background when hovered", async ({ page 
   const table = page.getByRole("table", { name: "Projects" });
   const cell = table.locator(".state-cell").first();
   const before = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
-  await cell.locator(".badge").hover({ force: true });
+  await cell.locator(".ui-badge").hover({ force: true });
   const after = await cell.evaluate(element => { const style = getComputedStyle(element); return [style.backgroundColor, style.paddingTop, style.cursor]; });
   expect(after).toEqual(before);
   expect(before[1]).toBe("0px");
-  const pill = await cell.locator(".badge").boundingBox();
+  const pill = await cell.locator(".ui-badge").boundingBox();
   const name = await table.getByRole("link", { name: "stuff" }).boundingBox();
   expect(Math.abs((pill!.y + pill!.height / 2) - (name!.y + name!.height / 2))).toBeLessThan(14);
 });
@@ -1143,7 +1143,7 @@ async function openPage(page: Page, path: string, options: Parameters<typeof moc
   await mock(page, options);
   await page.goto(path);
   await expect(page.locator(".charts > .widget").first()).toBeVisible();
-  await expect(page.locator(".chart-empty, .skeleton")).toHaveCount(0);
+  await expect(page.locator(".chart-empty, .ui-skeleton")).toHaveCount(0);
 }
 
 for (const { name, path, options, expandable } of FULL_PAGES) {

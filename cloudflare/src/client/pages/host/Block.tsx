@@ -5,7 +5,8 @@ import type { BlockSeries } from "../../history";
 import { LIMITS } from "../../health";
 import { lastCell } from "../../metrics";
 import { TimeChart, type ChartEvent } from "../../components/TimeChart";
-import { EmptyState, Widget } from "../../components/ui";
+import { EmptyState } from "@laputa-systems/ui-dashboard";
+import { Widget } from "../../components/ui";
 
 export function BlockWidget(props: { readonly series: readonly BlockSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const table = createMemo(() => props.series.at(0)?.table);
