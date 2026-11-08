@@ -107,6 +107,15 @@ production:
   5 in-app function names. `stats` is unminified, so function names are stable
   across builds and grouping needs no source map. A message, with digits and
   long hex runs normalized, is used only when there is no in-app frame.
+- **Application failures.** An application telemetry event whose outcome is
+  not `ok` and that carries `error.code` (`docs/integration.md`, section 5)
+  adds one occurrence with source `application`, no message and no frames, to
+  the issue whose fingerprint is SHA-256 over `GROUPING_VERSION`,
+  `application`, the service, the operation, and the code. The event's
+  `release` is the occurrence version and its trace id, when present, the
+  occurrence trace. The occurrence is written in the same transaction as the
+  event, so a duplicate event id adds none. A failure without a code is
+  counted in the operation totals and never grouped.
 - **Retention.** `expires_at = min(event time, first receipt) + 7 days`. Every
   query filters on `expires_at > now`, so an expired row is unreadable before
   cleanup runs. Events already expired, or more than 5 minutes in the future,

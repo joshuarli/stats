@@ -227,7 +227,9 @@ export function ErrorFrames(props: { readonly occurrence: Pick<Occurrence, "name
         <Show when={props.occurrence.operation}>{operation => <span class="op-tag">{operation()}</span>}</Show>
         <span class="cell-note">{props.occurrence.source}</span>
       </div>
-      <p class={props.occurrence.message === null ? "frames-message withheld" : "frames-message"}>{props.occurrence.message ?? <>Message withheld <Info title="Withheld message">Only listed error types keep their text.</Info></>}</p>
+      <Show when={props.occurrence.source !== "application"} fallback={<p class="frames-message withheld">Error code reported by the application; application telemetry carries no message or stack.</p>}>
+        <p class={props.occurrence.message === null ? "frames-message withheld" : "frames-message"}>{props.occurrence.message ?? <>Message withheld <Info title="Withheld message">Only listed error types keep their text.</Info></>}</p>
+      </Show>
       <ol class="frames-list">
         <For each={props.occurrence.frames}>{frame => {
           const shown = () => frame.original ?? frame;

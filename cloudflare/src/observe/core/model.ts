@@ -81,6 +81,8 @@ export function isFailedInvocation(invocation: { readonly errorCount: number; re
 
 export type InvocationKind = "fetch" | "rpc" | "alarm" | "scheduled";
 export type ErrorSource = "uncaught" | "caught";
+export const OCCURRENCE_SOURCES = ["uncaught", "caught", "application"] as const satisfies readonly (ErrorSource | "application")[];
+export type OccurrenceSource = typeof OCCURRENCE_SOURCES[number];
 
 export interface ServiceOperationReading {
   readonly name: string;

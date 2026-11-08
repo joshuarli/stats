@@ -1,13 +1,14 @@
 import { MAX_FUTURE_SKEW_MS, RETENTION_MS } from "../core/limits.ts";
 import {
-  EVENT_ID, HOST, INGEST_SCHEMA_VERSION, INSTANCE, MAX_DURATION_MS, MAX_EVENTS, MAX_WORK_MEASUREMENTS, MAX_WORK_VALUE,
-  OPERATION, OUTCOME, RELEASE, SERVICE_SLUG, SPAN_ID, TRACE_ID, WORK_KEY,
-  type ExternalBatch, type ExternalDecode, type ExternalDecodeCode, type ExternalEvent, type ExternalTrace
+  ERROR_CODE, EVENT_ID, HOST, INGEST_SCHEMA_VERSION, INSTANCE, MAX_DURATION_MS, MAX_EVENTS, MAX_WORK_MEASUREMENTS, MAX_WORK_VALUE,
+  OPERATION, OUTCOME, RELEASE, SERVICE_SLUG, SPAN_ID, SUCCESS_OUTCOME, TRACE_ID, WORK_KEY,
+  type ExternalBatch, type ExternalDecode, type ExternalDecodeCode, type ExternalError, type ExternalEvent, type ExternalTrace
 } from "./model.ts";
 
-const EVENT_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace"] as const;
+const EVENT_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace", "error"] as const;
 const REQUIRED_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service"] as const;
 const TRACE_KEYS = ["traceId", "spanId"] as const;
+const ERROR_KEYS = ["code"] as const;
 
 export interface DecodeOptions {
   readonly service: string;
@@ -36,6 +37,12 @@ function traceOf(value: unknown): ExternalTrace | null {
   if (!isRecord(value) || Object.keys(value).length !== TRACE_KEYS.length || !TRACE_KEYS.every(key => key in value)) return null;
   const { traceId, spanId } = value;
   return typeof traceId === "string" && TRACE_ID.test(traceId) && typeof spanId === "string" && SPAN_ID.test(spanId) ? { traceId, spanId } : null;
+}
+
+function errorOf(value: unknown): ExternalError | null {
+  if (!isRecord(value) || Object.keys(value).length !== ERROR_KEYS.length || !ERROR_KEYS.every(key => key in value)) return null;
+  const { code } = value;
+  return typeof code === "string" && ERROR_CODE.test(code) ? { code } : null;
 }
 
 function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): ExternalDecode | ExternalEvent {
@@ -70,6 +77,10 @@ function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): Ext
   if (host !== undefined && (typeof host !== "string" || !HOST.test(host))) return fail("invalid_host", "host must be 1-128 letters, digits, or ._:- starting with a letter or digit");
   const trace = value["trace"];
   if (trace !== undefined && traceOf(trace) === null) return fail("invalid_trace", "trace must hold a nonzero 32-hex traceId and 16-hex spanId");
+  const raised = value["error"];
+  const error = raised === undefined ? undefined : errorOf(raised);
+  if (error === null) return fail("invalid_error", "error must be exactly { code } with 1-64 lowercase letters, digits, or _.- starting with a letter");
+  if (error !== undefined && outcome === SUCCESS_OUTCOME) return fail("invalid_error", `error is allowed only when outcome is not ${SUCCESS_OUTCOME}`);
   seen.add(eventId);
   return {
     schemaVersion: INGEST_SCHEMA_VERSION,
@@ -83,7 +94,8 @@ function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): Ext
     service,
     ...(instance === undefined ? {} : { instance: instance as string }),
     ...(host === undefined ? {} : { host: host as string }),
-    ...(trace === undefined ? {} : { trace: trace as ExternalTrace })
+    ...(trace === undefined ? {} : { trace: trace as ExternalTrace }),
+    ...(error === undefined ? {} : { error })
   };
 }
 
@@ -127,7 +139,8 @@ function plainEvent(event: ExternalEvent): Record<string, unknown> {
     service: event.service,
     ...(event.instance === undefined ? {} : { instance: event.instance }),
     ...(event.host === undefined ? {} : { host: event.host }),
-    ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } })
+    ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } }),
+    ...(event.error === undefined ? {} : { error: { code: event.error.code } })
   };
 }
 

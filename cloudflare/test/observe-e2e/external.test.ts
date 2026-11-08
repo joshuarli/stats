@@ -40,6 +40,22 @@ await test("the same external batch reads back normalized on workerd", async () 
     const summary = await totals.json() as { operations: { operation: string; events: number }[] };
     assert.equal(summary.operations.reduce((sum, row) => sum + row.events, 0), batch.events.length);
 
+    const failed = { ...batch.events[0]!, outcome: "error", error: { code: "db.timeout" } };
+    const failures = JSON.stringify({ events: [{ ...failed, eventId: "failed-1" }, { ...failed, eventId: "failed-2", atMs: failed.atMs + 1 }, { ...failed, eventId: "uncoded-1", error: undefined }] });
+    const grouped = await post(ingestToken, failures);
+    assert.equal(grouped.status, 202, await grouped.clone().text());
+    assert.deepEqual(await (await post(ingestToken, failures)).json(), { accepted: 0, duplicate: 3 });
+    const issues = await harness.stats(`/api/observe/${OBSERVE_SERVICE}/issues`, { headers: await accessHeaders() });
+    assert.equal(issues.status, 200, await issues.clone().text());
+    const listed = (await issues.json() as { items: { fingerprint: string; name: string; operation: string | null; occurrences: number; frame: string | null }[] }).items;
+    assert.deepEqual(listed.map(({ name, operation, occurrences, frame }) => ({ name, operation, occurrences, frame })), [{ name: "db.timeout", operation: failed.operation, occurrences: 2, frame: null }]);
+    const occurrences = await harness.stats(`/api/observe/${OBSERVE_SERVICE}/issues/${listed[0]!.fingerprint}/occurrences`, { headers: await accessHeaders() });
+    assert.equal(occurrences.status, 200, await occurrences.clone().text());
+    const items = (await occurrences.json() as { items: { source: string; version: string | null; traceId: string | null; message: string | null; frames: unknown[] }[] }).items;
+    assert.deepEqual(items.map(({ source, version, traceId, message, frames }) => ({ source, version, traceId, message, frames })), Array.from({ length: 2 }, () => ({
+      source: "application", version: failed.release, traceId: failed.trace?.traceId ?? null, message: null, frames: []
+    })));
+
     assert.equal((await post(deployToken, batch.text)).status, 401);
     assert.equal((await post(null, batch.text)).status, 401);
     assert.equal((await post(ingestToken, JSON.stringify({ events: [] }))).status, 400);

@@ -110,6 +110,7 @@ exactly these fields; an unknown field rejects the whole batch:
 | `instance` | Optional, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. |
 | `host` | Optional, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`. |
 | `trace` | Optional `{ traceId, spanId }`: a non-zero 32-character lowercase hex `traceId` and a non-zero 16-character lowercase hex `spanId`. |
+| `error` | Optional `{ code }`, only when `outcome` is not `ok`. `code` matches `^[a-z][a-z0-9_.-]{0,63}$` and has no other fields. |
 
 Caps and rejection:
 
@@ -121,7 +122,9 @@ Caps and rejection:
   `invalid_schema_version`, `invalid_event_id`, `duplicate_event_id`,
   `invalid_time`, `expired_event`, `future_event`, `invalid_operation`,
   `invalid_outcome`, `invalid_duration`, `invalid_work`, `invalid_release`,
-  `invalid_service`, `invalid_instance`, `invalid_host`, or `invalid_trace`.
+  `invalid_service`, `invalid_instance`, `invalid_host`, `invalid_trace`, or
+  `invalid_error`. `invalid_error` covers an `error` that is not exactly
+  `{ code }`, a code outside its pattern, and an `error` on an `ok` event.
 - A service may send at most 120 batches in a fixed 60-second window; the next
   request is `429 rate_limited`.
 - A successful new batch answers `202` with `{ "accepted": N, "duplicate": M }`.
@@ -136,6 +139,29 @@ Caps and rejection:
   `cpuMs`, or with a host counter.
 - Optional fields that are absent stay absent. Required counts may be a real
   `0`; an absent measurement never becomes `0`.
+
+Grouping:
+
+- A failing event with `error.code` is grouped as an issue. Stats derives the
+  issue's fingerprint, a 64-character lowercase hex SHA-256 over the service,
+  the operation, and the code, so events with the same operation and code share
+  one issue and a different operation or code is a separate issue. A producer
+  never supplies a fingerprint.
+- Each new event adds one occurrence with source `application`, the event's
+  `release` as its version, its trace id when present, and no message or stack
+  frames. The issue is named by the code and opens or reopens like any other.
+  A duplicate event id adds no occurrence. Occurrences expire with the 7-day
+  retention.
+- A failure without `error` is counted, not grouped: it appears in the
+  operation's `failed` total and the `application.failure` share, and never in
+  `/api/observe/:service/issues`.
+- `GET /api/observe/:service/issues` and
+  `GET /api/observe/:service/issues/:fingerprint/occurrences` read these issues
+  behind Access or the tailnet identity, and the dashboard's service page lists
+  the open ones.
+- The `@stats/producer` and `stats-producer` 0.1.0 packages have no `error`
+  field, so a service grouping failures must send events through a producer
+  release that adds it.
 
 The golden frame and the malformed corpus are in `fixtures/observe-ingest/`.
 JSON object order is not significant; the golden file is the canonical encoder
@@ -272,8 +298,12 @@ Provenance and privacy:
   event window is unavailable, never zero.
 - Never send note titles or bodies, repository contents, filenames, paths,
   credentials, headers, environment values, or raw job output. Only bounded
-  operation/outcome labels, counters, and optional instance/host labels belong
-  in telemetry.
+  operation/outcome labels, error codes, counters, and optional instance/host
+  labels belong in telemetry.
+- An error code is a fixed label the application chooses from its own closed
+  set, such as `db.timeout`, never an exception message, a stack, or text
+  derived from input. The pattern admits no spaces or uppercase, which keeps
+  out messages, but it cannot tell a fixed code from an embedded identifier.
 
 ## Producer versions
 

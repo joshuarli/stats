@@ -1,12 +1,12 @@
 import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PAGE_SIZE, MAX_RETAINED_INVOCATIONS, MAX_RETAINED_OCCURRENCES, MAX_TRACE_INVOCATIONS, RETENTION_MS, CLEANUP_INTERVAL_MS, ROLLOUT_RETENTION_MS, MAX_ARTIFACTS, OPERATION_BUCKET_MS, MAX_RETAINED_OPERATION_ROWS, OUTCOME_BUCKET_MS, MAX_RETAINED_OUTCOME_ROWS, MAX_OUTCOME_ROUTES_PER_CLASS, OBSERVE_FILTER_REVISION } from "./limits.ts";
-import { isFailedInvocation, NOTHING_UNSENT, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type Flush, type UnsentTally, type InvocationKind, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
+import { isFailedInvocation, NOTHING_UNSENT, OCCURRENCE_SOURCES, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type Flush, type UnsentTally, type InvocationKind, type OccurrenceSource, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
 import { encodeEvent } from "../ingest/codec.ts";
-import { MAX_BATCHES_PER_WINDOW, PROVENANCE, RATE_LIMIT_WINDOW_MS, type ExternalEvent, type ExternalEventRecord, type ExternalFilter, type ExternalIngest } from "../ingest/model.ts";
+import { MAX_BATCHES_PER_WINDOW, PROVENANCE, RATE_LIMIT_WINDOW_MS, type ApplicationFailure, type ExternalEvent, type ExternalEventRecord, type ExternalFilter, type ExternalIngest, type ReceivedEvent } from "../ingest/model.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
 
 export type IssueState = "open" | "resolved";
@@ -111,7 +111,7 @@ export interface Occurrence {
   readonly traceId: string | null;
   readonly atMs: number;
   readonly version: string | null;
-  readonly source: PreparedError["source"];
+  readonly source: OccurrenceSource;
   readonly operation: string | null;
   readonly name: string;
   readonly message: string | null;
@@ -269,6 +269,45 @@ const OPERATION_WORK_COLUMNS = [
 
 type OperationWorkColumn = typeof OPERATION_WORK_COLUMNS[number];
 
+const OCCURRENCE_SOURCE_CHECK = `source IN (${OCCURRENCE_SOURCES.map(source => `'${source}'`).join(", ")})`;
+const OCCURRENCE_COPIED_COLUMNS = "id, invocation_key, ordinal, fingerprint, observed_at, trace_id, version, has_stack, propagated, source, operation, name, message, frames";
+
+function occurrencesTable(name: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${name} (
+    id INTEGER PRIMARY KEY,
+    invocation_key TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    trace_id TEXT,
+    version TEXT,
+    has_stack INTEGER NOT NULL CHECK (has_stack IN (0, 1)),
+    propagated INTEGER NOT NULL CHECK (propagated IN (0, 1)),
+    source TEXT NOT NULL CHECK (${OCCURRENCE_SOURCE_CHECK}),
+    operation TEXT,
+    name TEXT NOT NULL,
+    message TEXT,
+    frames TEXT NOT NULL,
+    UNIQUE (invocation_key, ordinal)
+  )`;
+}
+
+const OCCURRENCE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_issue ON observe_occurrences (fingerprint, observed_at)",
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_time ON observe_occurrences (observed_at)",
+  "CREATE INDEX IF NOT EXISTS observe_occurrences_trace ON observe_occurrences (trace_id) WHERE trace_id IS NOT NULL"
+];
+
+function upgradeOccurrenceSources(db: SqlStatements): void {
+  const table = db.rows<{ sql: string }>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'observe_occurrences'")[0];
+  if (table === undefined || table.sql.includes(OCCURRENCE_SOURCE_CHECK)) return;
+  db.run(occurrencesTable("observe_occurrences_next"));
+  db.run(`INSERT INTO observe_occurrences_next (${OCCURRENCE_COPIED_COLUMNS}) SELECT ${OCCURRENCE_COPIED_COLUMNS} FROM observe_occurrences`);
+  db.run("DROP TABLE observe_occurrences");
+  db.run("ALTER TABLE observe_occurrences_next RENAME TO observe_occurrences");
+  for (const index of OCCURRENCE_INDEXES) db.run(index);
+}
+
 const STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS observe_invocations (
     key TEXT PRIMARY KEY,
@@ -290,26 +329,8 @@ const STATEMENTS = [
   ) WITHOUT ROWID`,
   "CREATE INDEX IF NOT EXISTS observe_invocations_time ON observe_invocations (observed_at)",
   "CREATE INDEX IF NOT EXISTS observe_invocations_trace ON observe_invocations (trace_id) WHERE trace_id IS NOT NULL",
-  `CREATE TABLE IF NOT EXISTS observe_occurrences (
-    id INTEGER PRIMARY KEY,
-    invocation_key TEXT NOT NULL,
-    ordinal INTEGER NOT NULL,
-    fingerprint TEXT NOT NULL,
-    observed_at INTEGER NOT NULL,
-    trace_id TEXT,
-    version TEXT,
-    has_stack INTEGER NOT NULL CHECK (has_stack IN (0, 1)),
-    propagated INTEGER NOT NULL CHECK (propagated IN (0, 1)),
-    source TEXT NOT NULL CHECK (source IN ('uncaught', 'caught')),
-    operation TEXT,
-    name TEXT NOT NULL,
-    message TEXT,
-    frames TEXT NOT NULL,
-    UNIQUE (invocation_key, ordinal)
-  )`,
-  "CREATE INDEX IF NOT EXISTS observe_occurrences_issue ON observe_occurrences (fingerprint, observed_at)",
-  "CREATE INDEX IF NOT EXISTS observe_occurrences_time ON observe_occurrences (observed_at)",
-  "CREATE INDEX IF NOT EXISTS observe_occurrences_trace ON observe_occurrences (trace_id) WHERE trace_id IS NOT NULL",
+  occurrencesTable("observe_occurrences"),
+  ...OCCURRENCE_INDEXES,
   `CREATE TABLE IF NOT EXISTS observe_issues (
     fingerprint TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -421,6 +442,7 @@ export function initializeStore(db: SqlStatements): void {
   db.transaction(() => {
     for (const statement of STATEMENTS) db.run(statement);
     upgradeCountEntriesView(db);
+    upgradeOccurrenceSources(db);
     if (!db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at")) {
       db.run("ALTER TABLE observe_issues ADD COLUMN resolved_at INTEGER");
     }
@@ -582,7 +604,7 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
   return result;
 }
 
-export function ingestExternal(db: SqlStatements, service: string, events: readonly ExternalEvent[], nowMs: number): ExternalIngest {
+export function ingestExternal(db: SqlStatements, service: string, received: readonly ReceivedEvent[], nowMs: number): ExternalIngest {
   const windowStart = nowMs - (nowMs % RATE_LIMIT_WINDOW_MS);
   return db.transaction((): ExternalIngest => {
     const count = db.rows<{ count: number }>("SELECT count FROM observe_ingest_windows WHERE service = ? AND window_start = ?", service, windowStart)[0]?.count ?? 0;
@@ -593,17 +615,18 @@ export function ingestExternal(db: SqlStatements, service: string, events: reado
     );
     const stored = db.rows<{ event_id: string; payload: string }>(
       "SELECT event_id, payload FROM observe_external_events WHERE service = ? AND event_id IN (SELECT value FROM json_each(?))",
-      service, JSON.stringify(events.map(event => event.eventId))
+      service, JSON.stringify(received.map(({ event }) => event.eventId))
     );
     const prior = new Map(stored.map(row => [row.event_id, row.payload]));
-    for (const event of events) {
+    for (const { event } of received) {
       const previous = prior.get(event.eventId);
       if (previous !== undefined && previous !== encodeEvent(event)) return { ok: false, code: "event_conflict" };
     }
     const writtenBefore = db.rowsWritten();
     let accepted = 0;
     let duplicate = 0;
-    for (const event of events) {
+    const capacity: HealthEvent[] = [];
+    for (const { event, failure } of received) {
       if (prior.has(event.eventId)) {
         duplicate += 1;
         continue;
@@ -612,8 +635,12 @@ export function ingestExternal(db: SqlStatements, service: string, events: reado
         "INSERT INTO observe_external_events (event_id, service, received_at, event_at, provenance, payload) VALUES (?, ?, ?, ?, ?, ?)",
         event.eventId, service, nowMs, event.atMs, PROVENANCE, encodeEvent(event)
       );
+      if (failure !== null && !insertApplicationOccurrence(db, event, failure, Math.min(event.atMs, nowMs))) {
+        capacity.push({ counter: "issue_capacity", reason: "issues_full", example: failure.code });
+      }
       accepted += 1;
     }
+    recordHealth(db, nowMs, capacity);
     recordWriteCost(db, nowMs, "ingest", accepted, db.rowsWritten() - writtenBefore);
     return { ok: true, accepted, duplicate };
   });
@@ -819,24 +846,39 @@ function insertOccurrence(db: SqlStatements, invocation: PreparedInvocation, err
     error.source, error.operation, error.name, error.message, formatFrames(error.frames)
   );
   if (traceId !== null && hasStack) {
-    db.run(`UPDATE observe_occurrences SET propagated = 1 WHERE ${sameError} AND has_stack = 0 AND propagated = 0`, traceId, error.name, error.message, cutoff);
+    db.run(`UPDATE observe_occurrences SET propagated = 1 WHERE ${sameError} AND has_stack = 0 AND propagated = 0 AND source <> 'application'`, traceId, error.name, error.message, cutoff);
   }
   if (propagated) return true;
-  return upsertIssue(db, error, observedAt);
+  return upsertIssue(db, { fingerprint: error.fingerprint, name: error.name, operation: error.operation, frame: representativeFrame(error.frames) }, observedAt);
 }
 
-function upsertIssue(db: SqlStatements, error: PreparedError, observedAt: number): boolean {
-  const issue = db.rows<{ state: IssueState; state_at: number }>("SELECT state, state_at FROM observe_issues WHERE fingerprint = ?", error.fingerprint)[0];
+interface IssueGroup {
+  readonly fingerprint: string;
+  readonly name: string;
+  readonly operation: string | null;
+  readonly frame: string | null;
+}
+
+function upsertIssue(db: SqlStatements, group: IssueGroup, observedAt: number): boolean {
+  const issue = db.rows<{ state: IssueState; state_at: number }>("SELECT state, state_at FROM observe_issues WHERE fingerprint = ?", group.fingerprint)[0];
   if (issue === undefined) {
     const count = db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]?.n ?? 0;
     if (count >= MAX_ISSUES) return false;
-    db.run("INSERT INTO observe_issues (fingerprint, name, operation, frame, state, state_at) VALUES (?, ?, ?, ?, 'open', ?)", error.fingerprint, error.name, error.operation, representativeFrame(error.frames), observedAt);
+    db.run("INSERT INTO observe_issues (fingerprint, name, operation, frame, state, state_at) VALUES (?, ?, ?, ?, 'open', ?)", group.fingerprint, group.name, group.operation, group.frame, observedAt);
     return true;
   }
   if (issue.state === "resolved" && observedAt > issue.state_at) {
-    db.run("UPDATE observe_issues SET state = 'open', state_at = ? WHERE fingerprint = ?", observedAt, error.fingerprint);
+    db.run("UPDATE observe_issues SET state = 'open', state_at = ? WHERE fingerprint = ?", observedAt, group.fingerprint);
   }
   return true;
+}
+
+function insertApplicationOccurrence(db: SqlStatements, event: ExternalEvent, failure: ApplicationFailure, observedAt: number): boolean {
+  db.run(
+    "INSERT INTO observe_occurrences (invocation_key, ordinal, fingerprint, observed_at, trace_id, version, has_stack, propagated, source, operation, name, message, frames) VALUES (?, 0, ?, ?, ?, ?, 0, 0, 'application', ?, ?, NULL, ?)",
+    failure.invocationKey, failure.fingerprint, observedAt, event.trace?.traceId ?? null, event.release, event.operation, failure.code, formatFrames([])
+  );
+  return upsertIssue(db, { fingerprint: failure.fingerprint, name: failure.code, operation: event.operation, frame: null }, observedAt);
 }
 
 function healthBucket(nowMs: number): number {
@@ -1137,7 +1179,7 @@ export function rolloutImpact(db: SqlStatements, nowMs: number, rolloutId: strin
 
 interface OccurrenceRow {
   id: number; invocation_key: string; trace_id: string | null; observed_at: number; version: string | null;
-  source: PreparedError["source"]; operation: string | null; name: string; message: string | null; frames: string;
+  source: OccurrenceSource; operation: string | null; name: string; message: string | null; frames: string;
 }
 
 const OCCURRENCE_COLUMNS = "id, invocation_key, trace_id, observed_at, version, source, operation, name, message, frames";

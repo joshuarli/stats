@@ -2,7 +2,8 @@ import { describe, it as test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { prepareInvocation, prepareRollout, type MessagePolicy, type ObservedError, type ObservedInvocation, type Preparation } from "../../src/observe/core/model.ts";
-import { cleanup, DURATION_EDGES, explore, health, objectMethods, ingest, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState } from "../../src/observe/core/store.ts";
+import { receiveEvents } from "../../src/observe/ingest/failures.ts";
+import { cleanup, DURATION_EDGES, explore, health, objectMethods, ingest, ingestExternal, initializeStore, issueOccurrences, listIssues, listTraces, nextCleanupAt, readIssue, readTrace, recordRollouts, rolloutImpact, setIssueState } from "../../src/observe/core/store.ts";
 import type { SqlStatements } from "../../src/core/sql.ts";
 import { MAX_ISSUES, MAX_RETAINED_INVOCATIONS, RETENTION_MS } from "../../src/observe/core/limits.ts";
 
@@ -412,6 +413,37 @@ void test("opening a store from before rollouts adds the resolution column and k
   initializeStore(db);
   assert.ok(db.rows<{ name: string }>("PRAGMA table_info(observe_issues)").some(column => column.name === "resolved_at"));
   assert.equal(db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_issues")[0]!.n, 1);
+});
+
+void test("opening a store from before application occurrences rebuilds the table and keeps every row, id and index", async () => {
+  const legacy = new DatabaseSync(":memory:");
+  legacy.exec(`CREATE TABLE observe_occurrences (
+    id INTEGER PRIMARY KEY, invocation_key TEXT NOT NULL, ordinal INTEGER NOT NULL, fingerprint TEXT NOT NULL, observed_at INTEGER NOT NULL, trace_id TEXT, version TEXT,
+    has_stack INTEGER NOT NULL CHECK (has_stack IN (0, 1)), propagated INTEGER NOT NULL CHECK (propagated IN (0, 1)), source TEXT NOT NULL CHECK (source IN ('uncaught', 'caught')),
+    operation TEXT, name TEXT NOT NULL, message TEXT, frames TEXT NOT NULL, UNIQUE (invocation_key, ordinal))`);
+  legacy.exec("CREATE INDEX observe_occurrences_issue ON observe_occurrences (fingerprint, observed_at)");
+  legacy.exec("CREATE INDEX observe_occurrences_time ON observe_occurrences (observed_at)");
+  legacy.exec("CREATE INDEX observe_occurrences_trace ON observe_occurrences (trace_id) WHERE trace_id IS NOT NULL");
+  legacy.exec("CREATE TABLE observe_issues (fingerprint TEXT PRIMARY KEY, name TEXT NOT NULL, operation TEXT, frame TEXT, state TEXT NOT NULL CHECK (state IN ('open', 'resolved')), state_at INTEGER NOT NULL, resolved_at INTEGER) WITHOUT ROWID");
+  const fingerprint = "a".repeat(64);
+  legacy.exec(`INSERT INTO observe_issues VALUES ('${fingerprint}', 'TypeError', NULL, 'failB (src/index.ts:15)', 'open', ${T0}, NULL)`);
+  legacy.exec(`INSERT INTO observe_occurrences VALUES (7, 'k1', 0, '${fingerprint}', ${T0}, '${traceId(1)}', 'v1', 1, 0, 'uncaught', NULL, 'TypeError', 'cause b', 'failB\tsrc/index.ts\t15\t13')`);
+  legacy.exec(`INSERT INTO observe_occurrences VALUES (12, 'k2', 1, '${fingerprint}', ${T0 + 1}, NULL, NULL, 0, 1, 'caught', 'ingest.store', 'TypeError', NULL, '')`);
+  const db = wrap(legacy);
+  const before = db.rows("SELECT * FROM observe_occurrences ORDER BY id");
+  initializeStore(db);
+  initializeStore(db);
+  assert.deepEqual(db.rows("SELECT * FROM observe_occurrences ORDER BY id"), before);
+  assert.deepEqual(db.rows<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'observe_occurrences' ORDER BY name").map(row => row.name), [
+    "observe_occurrences_issue", "observe_occurrences_time", "observe_occurrences_trace", "sqlite_autoindex_observe_occurrences_1"
+  ]);
+  assert.equal(db.rows("SELECT name FROM sqlite_master WHERE name = 'observe_occurrences_next'").length, 0);
+  assert.equal(listIssues(db, T0 + 2).items[0]?.occurrences, 1);
+  const [received] = await receiveEvents("tansu", [{
+    schemaVersion: 1, eventId: "after-upgrade", atMs: T0, operation: "note.save", outcome: "error", durationMs: 1, work: {}, release: "r1", service: "tansu", error: { code: "db.timeout" }
+  }]);
+  assert.ok(ingestExternal(db, "tansu", [received!], T0 + 2).ok);
+  assert.deepEqual(db.rows<{ id: number; source: string }>("SELECT id, source FROM observe_occurrences ORDER BY id").map(row => ({ ...row })), [{ id: 7, source: "uncaught" }, { id: 12, source: "caught" }, { id: 13, source: "application" }]);
 });
 
 void test("an issue a rollout introduced stays new in it when it also appears on a later version", async () => {

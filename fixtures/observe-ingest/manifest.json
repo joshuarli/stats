@@ -321,6 +321,111 @@
         }
       ],
       "code": "invalid_event"
+    },
+    {
+      "name": "error code long",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error code character",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": "db timeout"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error code uppercase",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": "DbTimeout"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error code leading digit",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": "1timeout"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error code type",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": 7
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error on ok",
+      "events": [
+        {
+          "outcome": "ok",
+          "error": {
+            "code": "db.timeout"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error extra",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {
+            "code": "db.timeout",
+            "message": "connection reset"
+          }
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error missing code",
+      "events": [
+        {
+          "outcome": "error",
+          "error": {}
+        }
+      ],
+      "code": "invalid_error"
+    },
+    {
+      "name": "error not object",
+      "events": [
+        {
+          "outcome": "error",
+          "error": "db.timeout"
+        }
+      ],
+      "code": "invalid_error"
     }
   ]
 }

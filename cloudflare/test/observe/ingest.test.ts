@@ -4,10 +4,12 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { RETENTION_MS } from "../../src/observe/core/limits.ts";
 import { createObserveService } from "../../src/observe/core/service.ts";
-import { cleanup, ingestExternal, readExternalEvents } from "../../src/observe/core/store.ts";
+import { cleanup, ingestExternal as storeExternal, readExternalEvents } from "../../src/observe/core/store.ts";
+import { receiveEvents } from "../../src/observe/ingest/failures.ts";
 import { decodeBatch, encodeBatch } from "../../src/observe/ingest/codec.ts";
-import { MAX_BATCH_BYTES, MAX_BATCHES_PER_WINDOW, MAX_EVENTS, PROVENANCE, type ExternalEvent } from "../../src/observe/ingest/model.ts";
+import { MAX_BATCH_BYTES, MAX_BATCHES_PER_WINDOW, MAX_EVENTS, PROVENANCE, type ExternalEvent, type ExternalIngest } from "../../src/observe/ingest/model.ts";
 import { handleApi } from "../../src/observe/http/api.ts";
+import { decodeIssues, decodeOccurrences } from "../../src/observe/client/decode.ts";
 import { database } from "./support.ts";
 
 const FIXTURES = resolve(import.meta.dirname, "../../../fixtures/observe-ingest");
@@ -35,6 +37,10 @@ const options = { service: manifest.service, nowMs: manifest.nowMs };
 const valid = decodeBatch(golden, options);
 if (!valid.ok) throw new Error(`golden batch did not decode: ${valid.code}`);
 const events = valid.batch.events;
+
+async function ingestExternal(db: ReturnType<typeof database>, service: string, batch: readonly ExternalEvent[], nowMs: number): Promise<ExternalIngest> {
+  return storeExternal(db, service, await receiveEvents(service, batch), nowMs);
+}
 
 function count(db: ReturnType<typeof database>): number {
   return db.rows<{ n: number }>("SELECT COUNT(*) AS n FROM observe_external_events")[0]?.n ?? 0;
@@ -80,11 +86,11 @@ await test("a batch may carry at most 128 events, and every label is bounded", (
   if (!longWork.ok) assert.equal(longWork.code, "invalid_work");
 });
 
-await test("a replayed batch stores nothing twice and a conflicting event id stores nothing", () => {
+await test("a replayed batch stores nothing twice and a conflicting event id stores nothing", async () => {
   const db = database();
-  assert.deepEqual(ingestExternal(db, manifest.service, events, manifest.nowMs), { ok: true, accepted: 2, duplicate: 0 });
+  assert.deepEqual(await ingestExternal(db, manifest.service, events, manifest.nowMs), { ok: true, accepted: 2, duplicate: 0 });
   assert.equal(count(db), 2);
-  assert.deepEqual(ingestExternal(db, manifest.service, events, manifest.nowMs + 1_000), { ok: true, accepted: 0, duplicate: 2 });
+  assert.deepEqual(await ingestExternal(db, manifest.service, events, manifest.nowMs + 1_000), { ok: true, accepted: 0, duplicate: 2 });
   assert.equal(count(db), 2);
   const records = readExternalEvents(db, manifest.service, manifest.nowMs + 1_000);
   assert.equal(records.length, 2);
@@ -93,28 +99,28 @@ await test("a replayed batch stores nothing twice and a conflicting event id sto
   assert.deepEqual(records.map(record => record.receivedAtMs), [manifest.nowMs, manifest.nowMs]);
 
   const changed: ExternalEvent[] = [{ ...events[0]!, durationMs: events[0]!.durationMs + 1 }, events[1]!];
-  assert.deepEqual(ingestExternal(db, manifest.service, changed, manifest.nowMs + 2_000), { ok: false, code: "event_conflict" });
+  assert.deepEqual(await ingestExternal(db, manifest.service, changed, manifest.nowMs + 2_000), { ok: false, code: "event_conflict" });
   assert.equal(count(db), 2);
 });
 
-await test("cleanup expires external events and allows their ids to be stored again", () => {
+await test("cleanup expires external events and allows their ids to be stored again", async () => {
   const db = database();
-  assert.ok(ingestExternal(db, manifest.service, [events[0]!], manifest.nowMs).ok);
+  assert.ok((await ingestExternal(db, manifest.service, [events[0]!], manifest.nowMs)).ok);
   const later = manifest.nowMs + RETENTION_MS + 1_000;
   cleanup(db, later);
   assert.equal(count(db), 0);
   assert.deepEqual(readExternalEvents(db, manifest.service, later), []);
-  assert.deepEqual(ingestExternal(db, manifest.service, [{ ...events[0]!, atMs: later }], later), { ok: true, accepted: 1, duplicate: 0 });
+  assert.deepEqual(await ingestExternal(db, manifest.service, [{ ...events[0]!, atMs: later }], later), { ok: true, accepted: 1, duplicate: 0 });
   assert.equal(count(db), 1);
 });
 
-await test("cleanup keeps a shared event id in a service whose row is not expired", () => {
+await test("cleanup keeps a shared event id in a service whose row is not expired", async () => {
   const db = database();
   const eventId = "shared-event-id";
   const expired = { ...events[0]!, eventId, atMs: manifest.nowMs };
   const fresh = { ...events[1]!, eventId, atMs: manifest.nowMs + RETENTION_MS };
-  assert.ok(ingestExternal(db, "service-a", [expired], manifest.nowMs).ok);
-  assert.ok(ingestExternal(db, "service-b", [fresh], manifest.nowMs + RETENTION_MS).ok);
+  assert.ok((await ingestExternal(db, "service-a", [expired], manifest.nowMs)).ok);
+  assert.ok((await ingestExternal(db, "service-b", [fresh], manifest.nowMs + RETENTION_MS)).ok);
   cleanup(db, manifest.nowMs + RETENTION_MS + 1_000);
   assert.deepEqual(readExternalEvents(db, "service-a", manifest.nowMs + RETENTION_MS + 1_000), []);
   assert.equal(readExternalEvents(db, "service-b", manifest.nowMs + RETENTION_MS + 1_000).length, 1);
@@ -173,10 +179,10 @@ await test("application operations total in the store by operation over a half-o
   const event = (index: number, operation: string, outcome: string, durationMs: number, atMs = at + index) => ({ ...manifest.base, eventId: `agg-${String(index).padStart(20, "0")}`, atMs, operation, outcome, durationMs });
   const saves = Array.from({ length: 5100 }, (_, index) => event(index, "note.save", index % 100 === 0 ? "error" : "ok", index % 2 === 0 ? 10 : 30));
   for (let start = 0; start < saves.length; start += MAX_EVENTS) {
-    const ingested = ingestExternal(db, manifest.service, saves.slice(start, start + MAX_EVENTS) as unknown as ExternalEvent[], manifest.nowMs);
+    const ingested = await ingestExternal(db, manifest.service, saves.slice(start, start + MAX_EVENTS) as unknown as ExternalEvent[], manifest.nowMs);
     assert.ok(ingested.ok);
   }
-  assert.ok(ingestExternal(db, manifest.service, [event(6000, "spool.ingest", "ok", 2), event(6001, "spool.ingest", "ok", 4, manifest.nowMs - 10_000)] as unknown as ExternalEvent[], manifest.nowMs).ok);
+  assert.ok((await ingestExternal(db, manifest.service, [event(6000, "spool.ingest", "ok", 2), event(6001, "spool.ingest", "ok", 4, manifest.nowMs - 10_000)] as unknown as ExternalEvent[], manifest.nowMs)).ok);
 
   const read = await handleApi(new Request(`https://observe.test/external/operations?from=${at}&to=${manifest.nowMs - 10_000}`), "/external/operations", service, manifest.service, manifest.nowMs);
   assert.equal(read.status, 200, await read.clone().text());
@@ -191,4 +197,131 @@ await test("application operations total in the store by operation over a half-o
   assert.equal(extra.status, 400);
   const empty = await handleApi(new Request(`https://observe.test/external/operations?from=${at}`), "/external/operations", service, "other-service", manifest.nowMs);
   assert.deepEqual((await empty.json() as { operations: unknown[] }).operations, []);
+});
+
+const FAILED_AT = manifest.nowMs - 60_000;
+
+function failing(eventId: string, operation: string, code: string | null, outcome = "error"): Record<string, unknown> {
+  return { ...manifest.base, eventId, atMs: FAILED_AT, operation, outcome, ...(code === null ? {} : { error: { code } }) };
+}
+
+function coded(eventId: string, atMs: number, code: string): ExternalEvent {
+  return { ...events[0]!, eventId, atMs, outcome: "error", error: { code } };
+}
+
+async function post(service: ReturnType<typeof createObserveService>, batch: readonly Record<string, unknown>[]): Promise<Response> {
+  return handleApi(request(JSON.stringify({ events: batch })), BATCH_PATH, service, manifest.service, manifest.nowMs);
+}
+
+async function read(service: ReturnType<typeof createObserveService>, path: string): Promise<unknown> {
+  const response = await handleApi(new Request(`https://observe.test${path}`), path, service, manifest.service, manifest.nowMs);
+  assert.equal(response.status, 200, await response.clone().text());
+  return response.json();
+}
+
+function rowCount(db: ReturnType<typeof database>, table: string): number {
+  return db.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)[0]!.n;
+}
+
+await test("a failing event's error code is a bounded closed-set label that encodes canonically", () => {
+  const code = `a${"z09_.-".repeat(10)}abc`;
+  assert.equal(code.length, 64);
+  const decoded = decodeBatch(JSON.stringify({ events: [failing("coded-1", "note.save", code)] }), options);
+  assert.ok(decoded.ok);
+  assert.deepEqual(decoded.batch.events[0]?.error, { code });
+  const encoded = encodeBatch(decoded.batch);
+  assert.ok(encoded.endsWith(`"trace":{"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef"},"error":{"code":"${code}"}}]}`), encoded);
+  const again = decodeBatch(encoded, options);
+  assert.ok(again.ok);
+  assert.equal(encodeBatch(again.batch), encoded);
+});
+
+await test("equal operation and error code group into one issue whose occurrences are the failing events", async () => {
+  const db = database();
+  const service = createObserveService(db, { now: () => manifest.nowMs, databaseBytes: () => 0 });
+  const untraced = failing("fail-3", "note.save", "db.timeout");
+  delete untraced["trace"];
+  const batch = [
+    failing("fail-1", "note.save", "db.timeout"),
+    failing("fail-2", "note.save", "db.timeout", "timeout"),
+    { ...untraced, release: "r2" },
+    failing("fail-4", "note.save", "quota_exceeded"),
+    failing("fail-5", "note.search", "db.timeout"),
+    failing("fail-6", "note.save", null),
+    { ...manifest.base, eventId: "ok-1", atMs: FAILED_AT }
+  ];
+  const first = await post(service, batch);
+  assert.equal(first.status, 202, await first.clone().text());
+  assert.deepEqual(await first.json(), { accepted: 7, duplicate: 0 });
+  const replay = await post(service, batch);
+  assert.deepEqual(await replay.json(), { accepted: 0, duplicate: 7 });
+
+  const issues = decodeIssues(await read(service, "/issues"));
+  assert.deepEqual(issues.items.map(issue => `${issue.operation} ${issue.name} ${issue.occurrences} ${issue.state} ${issue.frame}`).sort(), [
+    "note.save db.timeout 3 open null",
+    "note.save quota_exceeded 1 open null",
+    "note.search db.timeout 1 open null"
+  ]);
+  const grouped = issues.items.find(issue => issue.operation === "note.save" && issue.name === "db.timeout")!;
+  assert.equal(grouped.firstAtMs, FAILED_AT);
+  assert.equal(grouped.versions, 2);
+
+  const occurrences = decodeOccurrences(await read(service, `/issues/${grouped.fingerprint}/occurrences`));
+  assert.equal(occurrences.items.length, 3);
+  for (const occurrence of occurrences.items) {
+    assert.deepEqual({ source: occurrence.source, name: occurrence.name, operation: occurrence.operation, message: occurrence.message, frames: occurrence.frames, atMs: occurrence.atMs }, {
+      source: "application", name: "db.timeout", operation: "note.save", message: null, frames: [], atMs: FAILED_AT
+    });
+  }
+  assert.deepEqual(occurrences.items.map(item => item.version), ["r2", "9df651c1a2b3", "9df651c1a2b3"]);
+  assert.deepEqual(occurrences.items.map(item => item.traceId), [null, "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef"]);
+  assert.equal(new Set(occurrences.items.map(item => item.invocationKey)).size, 3);
+  assert.equal(rowCount(db, "observe_occurrences"), 5);
+});
+
+await test("a resolved application issue reopens on a later failure with its code", async () => {
+  let now = manifest.nowMs;
+  const db = database();
+  const service = createObserveService(db, { now: () => now, databaseBytes: () => 0 });
+  const [received] = await receiveEvents(manifest.service, [coded("first", FAILED_AT, "db.timeout")]);
+  assert.ok(storeExternal(db, manifest.service, [received!], now).ok);
+  const fingerprint = received!.failure!.fingerprint;
+  assert.equal(await service.setIssueState(fingerprint, "resolved"), true);
+  assert.equal((await service.issue(fingerprint))?.state, "resolved");
+  now += 1_000;
+  assert.ok((await ingestExternal(db, manifest.service, [coded("second", now, "db.timeout")], now)).ok);
+  const reopened = await service.issue(fingerprint);
+  assert.equal(reopened?.state, "open");
+  assert.equal(reopened?.occurrences, 2);
+});
+
+await test("the grouping key is derived from the service, operation and code, never supplied by the client", async () => {
+  const event = coded("one-event", FAILED_AT, "db.timeout");
+  const [a, b, otherOperation] = await receiveEvents("tansu", [event, { ...event, eventId: "another-event" }, { ...event, operation: "note.search" }]);
+  const [otherService] = await receiveEvents("niceforge", [event]);
+  assert.equal(a!.failure!.fingerprint, b!.failure!.fingerprint);
+  assert.match(a!.failure!.fingerprint, /^[0-9a-f]{64}$/u);
+  assert.notEqual(a!.failure!.invocationKey, b!.failure!.invocationKey);
+  assert.notEqual(a!.failure!.fingerprint, otherOperation!.failure!.fingerprint);
+  assert.notEqual(a!.failure!.fingerprint, otherService!.failure!.fingerprint);
+  assert.equal((await receiveEvents("tansu", [{ ...events[0]!, outcome: "error" }]))[0]?.failure, null);
+});
+
+await test("cleanup expires application occurrences and their issue with the event", async () => {
+  const db = database();
+  assert.ok((await ingestExternal(db, manifest.service, [coded("expiring", FAILED_AT, "db.timeout")], manifest.nowMs)).ok);
+  assert.equal(rowCount(db, "observe_issues"), 1);
+  cleanup(db, FAILED_AT + RETENTION_MS);
+  assert.equal(rowCount(db, "observe_occurrences"), 0);
+  assert.equal(rowCount(db, "observe_issues"), 0);
+  assert.equal(count(db), 0);
+});
+
+await test("an event id stored again after its event expired adds an occurrence even while the old one awaits cleanup", async () => {
+  const db = database();
+  assert.ok((await ingestExternal(db, manifest.service, [coded("reused-id", FAILED_AT, "db.timeout")], manifest.nowMs)).ok);
+  db.run("DELETE FROM observe_external_events");
+  const later = FAILED_AT + RETENTION_MS;
+  assert.deepEqual(await ingestExternal(db, manifest.service, [coded("reused-id", later, "db.timeout")], later), { ok: true, accepted: 1, duplicate: 0 });
+  assert.equal(rowCount(db, "observe_occurrences"), 2);
 });

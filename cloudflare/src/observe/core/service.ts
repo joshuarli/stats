@@ -9,6 +9,7 @@ import {
   KEEP_ALL_COUNTING, type ArtifactResult, type CleanupResult, type CountingPolicy, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
   type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery, type ExternalOperationsWindow
 } from "./store.ts";
+import { receiveEvents } from "../ingest/failures.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements } from "../../core/sql.ts";
 
@@ -123,7 +124,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
       if (problem !== null) return { problem };
       return { result: recordArtifact(db, { ...artifact, digest: await sha256Hex(artifact.map) }, clock.now()) };
     },
-    ingestExternal: async (service, events) => ingestExternal(db, service, events, clock.now()),
+    ingestExternal: async (service, events) => ingestExternal(db, service, await receiveEvents(service, events), clock.now()),
     external: async (service, filter) => readExternalEvents(db, service, clock.now(), filter),
     externalOperations: async (service, filter) => summarizeExternalOperations(db, service, clock.now(), filter),
     ingest: (preparations, outcomes, counts, flush) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush)),

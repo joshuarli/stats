@@ -10,8 +10,8 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly failWhen?: (method: string, path: string) => boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
-  const scenario = options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now));
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+  const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
   const services = new Set<string>();
@@ -425,4 +425,20 @@ test("the issue modal reports its own occurrence failure, not the Errors section
   await expect(dialog.locator("table.occurrence-table tbody tr").first()).toBeVisible();
   await expect(page.locator("#issues .notice-warn")).toBeVisible();
   await expect(dialog.locator(".notice-warn")).toHaveCount(0);
+});
+
+test("an application issue grouped by error code opens with its occurrences and no stack", async ({ page }) => {
+  const scenario = await buildScenario(now);
+  const store = scenarioStore(scenario, now);
+  const failure = { schemaVersion: 1, atMs: now - 60_000, operation: "spool.drain", outcome: "error", durationMs: 12, work: {}, release: "r7", service: "stats", error: { code: "spool.lock_timeout" } } as const;
+  expect(await store.ingestExternal("stats", [{ ...failure, eventId: "drain-1" }, { ...failure, eventId: "drain-2", atMs: now - 30_000 }])).toEqual({ ok: true, accepted: 2, duplicate: 0 });
+  const issue = (await store.issues({})).items.find(item => item.name === "spool.lock_timeout")!;
+  await setup(page, { scenario });
+  await page.goto(`/#/project/stats?range=24h&open=errors&modal=issue:${issue.fingerprint}`);
+  const dialog = page.getByRole("dialog", { name: "Issue" });
+  await expect(dialog).toContainText("spool.lock_timeout");
+  await expect(dialog).toContainText("Error code reported by the application");
+  await expect(dialog.locator(".frames-list li")).toHaveCount(0);
+  await expect(dialog.locator("table.occurrence-table tbody tr")).toHaveCount(2);
+  await expect(dialog.locator("table.occurrence-table tbody")).toContainText("application");
 });

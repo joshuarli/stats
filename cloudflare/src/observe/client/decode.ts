@@ -3,7 +3,7 @@ import type { ExternalOperationsWindow, InvocationWindowRow, LagTotals, Operatio
 import type { CountedRoute, SamplingHealth, SamplingSummary } from "../core/counts.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
-import { OPERATION, OUTCOME_CLASSES, type ErrorSource, type InvocationKind, type Stage, type SummaryTotals } from "../core/model.ts";
+import { OCCURRENCE_SOURCES, OPERATION, OUTCOME_CLASSES, type InvocationKind, type Stage, type SummaryTotals } from "../core/model.ts";
 import { OPERATION_IDS } from "../producer/channel.ts";
 
 export interface ObserveHealth extends Health {
@@ -105,7 +105,6 @@ function page<T>(value: unknown, decode: (item: unknown) => T, what: string): Pa
 
 const STAGES: readonly Stage[] = ["worker", "object"];
 const KINDS: readonly InvocationKind[] = ["fetch", "rpc", "alarm", "scheduled"];
-const SOURCES: readonly ErrorSource[] = ["uncaught", "caught"];
 const STATES: readonly IssueState[] = ["open", "resolved"];
 
 function original(value: unknown): OriginalPosition | null {
@@ -150,7 +149,7 @@ function occurrence(value: unknown): Occurrence {
     traceId: nullableText(fields["traceId"], "occurrence trace", 32),
     atMs: integer(fields["atMs"], "occurrence time"),
     version: nullableText(fields["version"], "occurrence version", 64),
-    source: oneOf(fields["source"], SOURCES, "occurrence source"),
+    source: oneOf(fields["source"], OCCURRENCE_SOURCES, "occurrence source"),
     operation: nullableText(fields["operation"], "occurrence operation", 64),
     name: text(fields["name"], "occurrence name", 128),
     message: nullableText(fields["message"], "occurrence message", 512),

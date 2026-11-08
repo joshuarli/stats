@@ -18,10 +18,16 @@ export const HOST = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const WORK_KEY = /^[a-z][a-z0-9_]{0,31}$/u;
 export const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
 export const SPAN_ID = /^(?!0{16})[0-9a-f]{16}$/u;
+export const ERROR_CODE = /^[a-z][a-z0-9_.-]{0,63}$/u;
+export const SUCCESS_OUTCOME = "ok";
 
 export interface ExternalTrace {
   readonly traceId: string;
   readonly spanId: string;
+}
+
+export interface ExternalError {
+  readonly code: string;
 }
 
 export interface ExternalEvent {
@@ -37,6 +43,18 @@ export interface ExternalEvent {
   readonly instance?: string;
   readonly host?: string;
   readonly trace?: ExternalTrace;
+  readonly error?: ExternalError;
+}
+
+export interface ApplicationFailure {
+  readonly fingerprint: string;
+  readonly invocationKey: string;
+  readonly code: string;
+}
+
+export interface ReceivedEvent {
+  readonly event: ExternalEvent;
+  readonly failure: ApplicationFailure | null;
 }
 
 export interface ExternalBatch {
@@ -76,7 +94,8 @@ export type ExternalDecodeCode =
   | "invalid_service"
   | "invalid_instance"
   | "invalid_host"
-  | "invalid_trace";
+  | "invalid_trace"
+  | "invalid_error";
 
 export type ExternalDecode =
   | { readonly ok: true; readonly batch: ExternalBatch }

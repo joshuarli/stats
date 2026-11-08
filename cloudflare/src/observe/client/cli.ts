@@ -168,7 +168,7 @@ async function run(command: string, positional: readonly string[], values: Recor
       const occurrences = await call(context, `/issues/${id}/occurrences?limit=10`, decodeOccurrences);
       const first = occurrences.items[0];
       if (first === undefined) throw new Exit(EXIT.notFound, "no retained occurrences");
-      return print(occurrences.items, () => [`${first.name}${first.operation === null ? "" : ` [${first.operation}]`} ${first.message ?? "(message withheld)"}`, ...first.frames.map(frame => `  at ${frame.fn ?? "?"} (${frame.file}:${frame.line}:${frame.column})`), "", ...table(occurrences.items.map(item => [new Date(item.atMs).toISOString(), item.version?.slice(0, 8) ?? "-", item.traceId ?? "-"]), new Set())]);
+      return print(occurrences.items, () => [`${first.name}${first.operation === null ? "" : ` [${first.operation}]`} ${first.source === "application" ? "(application error code)" : first.message ?? "(message withheld)"}`, ...first.frames.map(frame => `  at ${frame.fn ?? "?"} (${frame.file}:${frame.line}:${frame.column})`), "", ...table(occurrences.items.map(item => [new Date(item.atMs).toISOString(), item.version?.slice(0, 8) ?? "-", item.traceId ?? "-"]), new Set())]);
     }
     case "resolve":
     case "reopen": {
