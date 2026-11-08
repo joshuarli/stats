@@ -159,7 +159,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
   const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
   const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
-    () => props.project, ledgerWindow, () => `${projectTick()}:${manualTick()}`,
+    () => props.project, ledgerWindow, () => { const zoomed = view(); return zoomed === null ? "settled-hour" : `${zoomed.fromMs}:${zoomed.toMs}`; }, () => `${projectTick()}:${manualTick()}`,
     observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now },
     monthSpend.spend
   );

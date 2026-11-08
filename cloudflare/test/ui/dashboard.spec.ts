@@ -634,6 +634,18 @@ test("the projects table compares each project's settled window with the one bef
   await expect(detail).toHaveCount(0);
 });
 
+test("a projects row does not keep the previous range's figures when the new range fails to load", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/projects");
+  const row = page.locator(".projects-row", { hasText: "stuff" });
+  await expect(row).toContainText("$3.12/mo");
+  await page.route("**/api/v1/projects/stuff/history*", route => route.abort("failed"));
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(row).toContainText("unavailable");
+  await expect(row).not.toContainText("$3.12/mo");
+  await expect(row).not.toContainText("288,000");
+});
+
 function watchChartCode(page: Page): () => Promise<boolean> {
   const scripts: Promise<string>[] = [];
   page.on("response", response => { if (new URL(response.url()).pathname.endsWith(".js")) scripts.push(response.text()); });

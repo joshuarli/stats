@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 100
 
-### STA-92 · P2 · The cost ledger can show figures from the previous time window
-
-- **Area:** Dashboard
-- **Where:** `cloudflare/src/client/pages/project/ledger-load.ts:43` (`createProjectLedger`), its consumers
-- **Problem:** `createProjectLedger()` keeps the previous successful `LedgerLoad` while a new time-window request is outstanding, and the returned ledger does not check that the stored `window` (`:66`) matches the current one. If the operator changes the range and the replacement request fails, the old figures stay visible under the new range. The campaign graded a related problem P3; promoted to P2 because it shows wrong cost data without any indication.
-- **Recommendation:** Key the result explicitly by project, window and the other query parameters (plan month, refresh key, object-method source), and show previous data only for an identical key; otherwise show the loading or failed state. Add a test: same project, range change, replacement request fails, assert the old figures are not shown under the new range.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-96 · P2 · `statsctl observe operations --project tansu` is rejected because tansu is not an observed service
 
 - **Area:** CLI

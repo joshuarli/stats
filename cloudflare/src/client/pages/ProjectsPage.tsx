@@ -135,7 +135,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     refreshKey();
     return settledRangeWindow(rangeMs[range()], untrack(now));
   });
-  const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, refreshKey, null, () => null);
+  const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, range, refreshKey, null, () => null);
   const loaded = ledger;
   const failure = () => ledgerError();
   const trendHistories = () => ledgerHistories() ?? fallbackHistories();

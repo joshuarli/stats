@@ -26,6 +26,7 @@ export type Baseline =
   | { readonly kind: "failed"; readonly message: string };
 
 interface LedgerLoad {
+  readonly scope: string;
   readonly window: TimeWindow;
   readonly previous: TimeWindow;
   readonly current: ProjectHistories;
@@ -40,14 +41,20 @@ export interface ObjectMethodSource {
   readonly now: Accessor<number>;
 }
 
-export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
-  const [load, setLoad] = createSignal<LedgerLoad | null>(null);
+export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, scope: Accessor<string>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
+  const [stored, setLoad] = createSignal<LedgerLoad | null>(null);
+  const requestedScope = () => `${project().id}|${scope()}`;
+  const load = (): LedgerLoad | null => {
+    const loaded = stored();
+    return loaded !== null && loaded.scope === requestedScope() ? loaded : null;
+  };
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => {
     const bounds = window();
     return `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
   }, () => {
     const current = window();
+    const requested = requestedScope();
     const previous = previousWindowOf(current);
     const kinds = historyKinds(project());
     const controller = new AbortController();
@@ -63,7 +70,7 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
       methods
     ]).then(([histories, baseline, objectMethods]) => {
       if (controller.signal.aborted) return;
-      setLoad({ window: current, previous, current: histories, baseline, objectMethods, loadedAtMs: Date.now() });
+      setLoad({ scope: requested, window: current, previous, current: histories, baseline, objectMethods, loadedAtMs: Date.now() });
       setError(null);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(errorMessage(cause));
