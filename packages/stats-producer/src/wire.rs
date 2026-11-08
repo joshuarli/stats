@@ -14,6 +14,11 @@ pub struct WireTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WireError {
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireEvent {
     #[deser(rename = "schemaVersion")]
     pub schema_version: u8,
@@ -34,6 +39,8 @@ pub struct WireEvent {
     pub host: Option<String>,
     #[deser(default, skip_serializing_if = Option::is_none)]
     pub trace: Option<WireTrace>,
+    #[deser(default, skip_serializing_if = Option::is_none)]
+    pub error: Option<WireError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +83,16 @@ mod tests {
     }
 
     #[test]
+    fn the_failing_golden_frame_round_trips_with_error_last() {
+        let golden = include_str!("../../../fixtures/observe-ingest/golden-error.json");
+        let batch = decode_batch(golden).unwrap();
+        assert_eq!(batch.events.len(), 3);
+        assert_eq!(batch.events[0].error, Some(WireError { code: "db.timeout".to_owned() }));
+        assert_eq!(batch.events[2].error, None);
+        assert_eq!(encode_batch(&batch).unwrap(), golden.trim().as_bytes());
+    }
+
+    #[test]
     fn optional_fields_are_omitted_and_work_is_sorted() {
         let mut event = WireEvent {
             schema_version: 1,
@@ -90,6 +107,7 @@ mod tests {
             instance: None,
             host: None,
             trace: None,
+            error: None,
         };
         let text = String::from_utf8(encode_batch(&WireBatch { events: vec![event.clone()] }).unwrap()).unwrap();
         assert_eq!(text, r#"{"events":[{"schemaVersion":1,"eventId":"event-1","atMs":1,"operation":"note.save","outcome":"ok","durationMs":1,"work":{"a":2,"z":1},"release":"r1","service":"tansu"}]}"#);

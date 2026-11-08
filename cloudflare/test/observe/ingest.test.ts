@@ -56,6 +56,15 @@ function request(body: string, headers: Record<string, string> = { "content-type
   return new Request(`https://observe.test${BATCH_PATH}${query}`, { method: "POST", headers, body });
 }
 
+await test("the failing golden batch decodes to its canonical encoding with error last", () => {
+  const failing = readFileSync(join(FIXTURES, "golden-error.json"), "utf8").trim();
+  const decoded = decodeBatch(failing, options);
+  assert.ok(decoded.ok);
+  assert.equal(encodeBatch(decoded.batch), failing);
+  const first = (JSON.parse(failing) as { events: Record<string, unknown>[] }).events[0]!;
+  assert.equal(Object.keys(first).at(-1), "error");
+});
+
 await test("the golden batch decodes to its canonical encoding", () => {
   assert.equal(encodeBatch(valid.batch), golden);
   assert.equal(events.length, 2);

@@ -1,9 +1,9 @@
 import {
-  encodeBatch, EVENT_ID, HOST, INSTANCE, MAX_BATCH_BYTES, MAX_DURATION_MS, MAX_EVENTS, OPERATION, OUTCOME, RELEASE, SERVICE, TRACE_ID, SPAN_ID,
+  encodeBatch, ERROR_CODE, EVENT_ID, HOST, INSTANCE, MAX_BATCH_BYTES, MAX_DURATION_MS, MAX_EVENTS, OPERATION, OUTCOME, RELEASE, SERVICE, SUCCESS_OUTCOME, TRACE_ID, SPAN_ID,
   workOf, type OperationEvent, type Trace
 } from "./protocol.ts";
 
-export type { OperationEvent, Trace } from "./protocol.ts";
+export type { EventError, OperationEvent, Trace } from "./protocol.ts";
 export { MAX_BATCH_BYTES, MAX_EVENTS, SCHEMA_VERSION } from "./protocol.ts";
 
 const MAX_ACK_BYTES = 4096;
@@ -47,6 +47,7 @@ export interface OperationInput {
   readonly instance?: string;
   readonly host?: string;
   readonly trace?: Trace;
+  readonly errorCode?: string;
 }
 
 export interface ProducerStats {
@@ -155,6 +156,7 @@ export function createProducer(config?: ProducerConfig | null): Producer {
     if (instance !== undefined && !INSTANCE.test(instance)) return null;
     if (host !== undefined && !HOST.test(host)) return null;
     if (input.trace !== undefined && (!TRACE_ID.test(input.trace.traceId) || !SPAN_ID.test(input.trace.spanId))) return null;
+    if (input.errorCode !== undefined && (typeof input.errorCode !== "string" || !ERROR_CODE.test(input.errorCode) || input.outcome === SUCCESS_OUTCOME)) return null;
     return {
       schemaVersion: 1,
       eventId,
@@ -167,7 +169,8 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       service,
       ...(instance === undefined ? {} : { instance }),
       ...(host === undefined ? {} : { host }),
-      ...(input.trace === undefined ? {} : { trace: input.trace })
+      ...(input.trace === undefined ? {} : { trace: input.trace }),
+      ...(input.errorCode === undefined ? {} : { error: { code: input.errorCode } })
     };
   }
 

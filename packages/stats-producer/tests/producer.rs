@@ -240,3 +240,54 @@ fn an_unconfigured_producer_is_a_no_op() {
     producer.shutdown().unwrap();
     assert_eq!(producer.stats(), zeros());
 }
+
+fn failing(error_code: Option<&str>, outcome: &str) -> OperationEvent {
+    let mut event = OperationEvent::new("note.save", outcome, 1);
+    event.error_code = error_code.map(str::to_owned);
+    event
+}
+
+#[test]
+fn an_error_code_is_sent_after_the_other_fields() {
+    let receiver = receiver(vec![response("202 Accepted", r#"{"accepted":1,"duplicate":0}"#)]);
+    let producer = Producer::new(config(&receiver.endpoint)).unwrap();
+    let mut event = failing(Some("db.timeout"), "error");
+    event.trace = Some(stats_producer::Trace { trace_id: "0123456789abcdef0123456789abcdef".to_owned(), span_id: "0123456789abcdef".to_owned() });
+    event.event_id = Some("e1".to_owned());
+    event.at_ms = Some(1);
+    producer.record(event);
+    producer.flush().unwrap();
+    let (_, body) = split(&receiver.request.recv_timeout(Duration::from_secs(2)).unwrap());
+    assert_eq!(
+        body,
+        r#"{"events":[{"schemaVersion":1,"eventId":"e1","atMs":1,"operation":"note.save","outcome":"error","durationMs":1,"work":{},"release":"9df651c1a2b3","service":"tansu","trace":{"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef"},"error":{"code":"db.timeout"}}]}"#
+    );
+    producer.shutdown().unwrap();
+}
+
+#[test]
+fn an_invalid_error_code_or_one_on_an_ok_event_is_dropped() {
+    let receiver = receiver(vec![response("202 Accepted", r#"{"accepted":1,"duplicate":0}"#)]);
+    let producer = Producer::new(config(&receiver.endpoint)).unwrap();
+    let too_long = "a".repeat(65);
+    let rejected = [
+        failing(Some("db.timeout"), "ok"),
+        failing(Some(""), "error"),
+        failing(Some("db timeout"), "error"),
+        failing(Some("DbTimeout"), "error"),
+        failing(Some("1timeout"), "error"),
+        failing(Some(&too_long), "error"),
+    ];
+    let count = rejected.len() as u64;
+    for event in rejected {
+        producer.record(event);
+    }
+    producer.flush().unwrap();
+    let stats = producer.stats();
+    assert_eq!((stats.dropped, stats.sent, stats.batches), (count, 0, 0));
+    assert_eq!(stats.last_error.as_deref(), Some("invalid_event"));
+    producer.record(failing(Some(&"a".repeat(64)), "error"));
+    producer.flush().unwrap();
+    assert_eq!(producer.stats().sent, 1);
+    producer.shutdown().unwrap();
+}

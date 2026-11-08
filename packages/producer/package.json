@@ -1,6 +1,6 @@
 {
   "name": "@stats/producer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Bounded, non-blocking application telemetry producer for Stats",
   "type": "module",
   "license": "UNLICENSED",

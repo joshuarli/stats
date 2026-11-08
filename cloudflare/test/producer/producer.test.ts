@@ -108,6 +108,63 @@ await test("the producer encodes the golden frame exactly and accepts a duplicat
   }
 });
 
+await test("the producer encodes the failing golden frame with its error codes exactly", async () => {
+  const manifest = JSON.parse(readFileSync(join(FIXTURES, "manifest.json"), "utf8")) as { nowMs: number };
+  const golden = readFileSync(join(FIXTURES, "golden-error.json"), "utf8").trim();
+  const decoded = decodeBatch(golden, { service: SERVICE, nowMs: manifest.nowMs });
+  assert.ok(decoded.ok);
+  assert.deepEqual(decoded.batch.events.map(event => event.error?.code), ["db.timeout", "upstream-unavailable", undefined]);
+  const server = await serve((_request, _index, response) => json(response, { accepted: 3, duplicate: 0 }));
+  try {
+    const producer = createProducer(configure(server.endpoint, { batchSize: 3 }));
+    for (const event of decoded.batch.events) {
+      producer.record({
+        operation: event.operation,
+        outcome: event.outcome,
+        durationMs: event.durationMs,
+        work: event.work,
+        eventId: event.eventId,
+        atMs: event.atMs,
+        ...(event.instance === undefined ? {} : { instance: event.instance }),
+        ...(event.host === undefined ? {} : { host: event.host }),
+        ...(event.trace === undefined ? {} : { trace: event.trace }),
+        ...(event.error === undefined ? {} : { errorCode: event.error.code })
+      });
+    }
+    await producer.flush();
+    assert.equal(server.received.length, 1);
+    assert.equal(server.received[0]!.body, golden);
+    assert.equal(encodeBatch(decoded.batch), golden);
+  } finally {
+    await server.close();
+  }
+});
+
+await test("an error code on an ok event or outside its pattern is dropped without a request", async () => {
+  const server = await serve((_request, _index, response) => json(response, { accepted: 1, duplicate: 0 }));
+  try {
+    const producer = createProducer(configure(server.endpoint, { batchSize: 1 }));
+    const rejected = [
+      { outcome: "ok", errorCode: "db.timeout" },
+      { outcome: "error", errorCode: "" },
+      { outcome: "error", errorCode: "db timeout" },
+      { outcome: "error", errorCode: "DbTimeout" },
+      { outcome: "error", errorCode: "1timeout" },
+      { outcome: "error", errorCode: "a".repeat(65) },
+      { outcome: "error", errorCode: 7 as unknown as string }
+    ];
+    for (const input of rejected) producer.record({ operation: "note.save", durationMs: 1, ...input });
+    await producer.flush();
+    assert.equal(server.received.length, 0);
+    assert.deepEqual(producer.stats(), { queued: 0, dropped: rejected.length, sent: 0, duplicates: 0, batches: 0, retries: 0, lastError: "invalid_event" });
+    producer.record({ operation: "note.save", outcome: "error", durationMs: 1, errorCode: "a".repeat(64) });
+    await producer.flush();
+    assert.equal(server.received.length, 1);
+  } finally {
+    await server.close();
+  }
+});
+
 await test("a 401 retries once when the token provider has rotated", async () => {
   let token = "old-token";
   const server = await serve((request, index, response) => {

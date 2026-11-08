@@ -12,11 +12,12 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub use wire::{MAX_BATCH_BYTES, MAX_EVENTS};
-use wire::{decode_ack, encode_batch, WireBatch, WireEvent, WireTrace, MAX_ACK_BYTES};
+use wire::{decode_ack, encode_batch, WireBatch, WireError, WireEvent, WireTrace, MAX_ACK_BYTES};
 
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_WORK_VALUE: u64 = 1_000_000_000_000;
 const MAX_WORK_MEASUREMENTS: usize = 16;
+const SUCCESS_OUTCOME: &str = "ok";
 const CONTENT_TYPE: &str = "application/json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +37,7 @@ pub struct OperationEvent {
     pub instance: Option<String>,
     pub host: Option<String>,
     pub trace: Option<Trace>,
+    pub error_code: Option<String>,
 }
 
 impl OperationEvent {
@@ -50,6 +52,7 @@ impl OperationEvent {
             instance: None,
             host: None,
             trace: None,
+            error_code: None,
         }
     }
 }
@@ -568,6 +571,10 @@ fn normalize(event: OperationEvent, config: &Config) -> Option<WireEvent> {
     if trace.as_ref().is_some_and(|trace| !valid_trace(trace)) {
         return None;
     }
+    let error = event.error_code.map(|code| WireError { code });
+    if error.as_ref().is_some_and(|error| !valid_error_code(&error.code) || event.outcome == SUCCESS_OUTCOME) {
+        return None;
+    }
     Some(WireEvent {
         schema_version: 1,
         event_id,
@@ -581,6 +588,7 @@ fn normalize(event: OperationEvent, config: &Config) -> Option<WireEvent> {
         instance,
         host,
         trace,
+        error,
     })
 }
 
@@ -610,6 +618,10 @@ fn valid_label(text: &str) -> bool {
 
 fn valid_work_key(text: &str) -> bool {
     token(text, 32, u8::is_ascii_lowercase, |byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn valid_error_code(text: &str) -> bool {
+    token(text, 64, u8::is_ascii_lowercase, |byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'.' | b'-'))
 }
 
 fn valid_trace(trace: &WireTrace) -> bool {

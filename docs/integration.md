@@ -159,9 +159,11 @@ Grouping:
   `GET /api/observe/:service/issues/:fingerprint/occurrences` read these issues
   behind Access or the tailnet identity, and the dashboard's service page lists
   the open ones.
-- The `@stats/producer` and `stats-producer` 0.1.0 packages have no `error`
-  field, so a service grouping failures must send events through a producer
-  release that adds it.
+- The `@stats/producer` and `stats-producer` 0.1.x packages have no `error`
+  field. From 0.2.0 a producer sets it with `errorCode` (TypeScript) or
+  `error_code` (Rust) and drops an event whose code is invalid or whose outcome
+  is `ok`. `fixtures/observe-ingest/golden-error.json` is the canonical frame
+  both producers reproduce byte for byte.
 
 The golden frame and the malformed corpus are in `fixtures/observe-ingest/`.
 JSON object order is not significant; the golden file is the canonical encoder
@@ -309,8 +311,8 @@ Provenance and privacy:
 
 | Package | Version | Registry |
 | --- | --- | --- |
-| `@stats/producer` | 0.1.0 | `https://npm.17166969.xyz` |
-| `stats-producer` | 0.1.0 | `https://crates.17166969.xyz` |
+| `@stats/producer` | 0.2.0 | `https://npm.17166969.xyz` |
+| `stats-producer` | 0.2.0 | `https://crates.17166969.xyz` |
 
 Publication is an owner action: run `make publish-producer` and
 `make publish-producer-crate` from a checkout whose registry credentials are

@@ -15,10 +15,16 @@ export const HOST = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const WORK_KEY = /^[a-z][a-z0-9_]{0,31}$/u;
 export const TRACE_ID = /^(?!0{32})[0-9a-f]{32}$/u;
 export const SPAN_ID = /^(?!0{16})[0-9a-f]{16}$/u;
+export const ERROR_CODE = /^[a-z][a-z0-9_.-]{0,63}$/u;
+export const SUCCESS_OUTCOME = "ok";
 
 export interface Trace {
   readonly traceId: string;
   readonly spanId: string;
+}
+
+export interface EventError {
+  readonly code: string;
 }
 
 export interface OperationEvent {
@@ -34,6 +40,7 @@ export interface OperationEvent {
   readonly instance?: string;
   readonly host?: string;
   readonly trace?: Trace;
+  readonly error?: EventError;
 }
 
 export function workOf(value: Readonly<Record<string, number>>): Readonly<Record<string, number>> | null {
@@ -61,7 +68,8 @@ function plainEvent(event: OperationEvent): Record<string, unknown> {
     service: event.service,
     ...(event.instance === undefined ? {} : { instance: event.instance }),
     ...(event.host === undefined ? {} : { host: event.host }),
-    ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } })
+    ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } }),
+    ...(event.error === undefined ? {} : { error: { code: event.error.code } })
   };
 }
 

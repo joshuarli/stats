@@ -24,6 +24,18 @@ producer.record(event);
 producer.shutdown()?;
 ```
 
+A failing operation may set `error_code`, a fixed label from the application's
+own closed set matching `^[a-z][a-z0-9_.-]{0,63}$`. Stats groups coded failures
+into issues. Never put a message, stack, or input-derived text in it. An event
+with an invalid code, or a code on outcome `ok`, is dropped and counted as
+`invalid_event`.
+
+```rust
+let mut event = OperationEvent::new("note.save", "error", 30);
+event.error_code = Some("db.timeout".to_owned());
+producer.record(event);
+```
+
 A `ProducerConfig` with an empty endpoint, service, token, or release is
 disabled: it opens no connection and `record` is a no-op.
 
@@ -48,4 +60,4 @@ disabled: it opens no connection and `record` is a no-op.
 `Producer` is `Send + Sync`; share it behind an `Arc` when several threads
 record events.
 
-Version 0.1.0.
+Version 0.2.0.

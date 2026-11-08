@@ -19,6 +19,16 @@ producer.record({ operation: "note.save", outcome: "ok", durationMs: 12, work: {
 await producer.flush();
 ```
 
+A failing operation may carry `errorCode`, a fixed label from the
+application's own closed set matching `^[a-z][a-z0-9_.-]{0,63}$`. Stats groups
+coded failures into issues. Never put a message, stack, or input-derived text
+in it. An event with an invalid code, or a code on outcome `ok`, is dropped and
+counted as `invalid_event`.
+
+```ts
+producer.record({ operation: "note.save", outcome: "error", durationMs: 30, errorCode: "db.timeout" });
+```
+
 `createProducer()` with no config, or with an empty endpoint, service, release,
 or static token, returns a no-op producer that opens no connections.
 
@@ -44,4 +54,4 @@ or static token, returns a no-op producer that opens no connections.
 Call `shutdown()` before process exit to flush the queue and stop the flush
 timer.
 
-Version 0.1.0.
+Version 0.2.0.
