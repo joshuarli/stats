@@ -7,8 +7,8 @@
     "node": ">=26.13.0"
   },
   "scripts": {
-    "typecheck": "pnpm --filter @stats/telemetry typecheck",
-    "lint": "pnpm --filter @stats/telemetry lint",
+    "typecheck": "pnpm --filter @stats/telemetry --filter @stats/producer typecheck",
+    "lint": "pnpm --filter @stats/telemetry --filter @stats/producer lint",
     "test": "pnpm run test:fixtures && pnpm run test:agent && pnpm --filter @stats/telemetry test",
     "test:fixtures": "node scripts/check-fixtures.mjs",
     "test:agent": "cargo test --manifest-path agent/Cargo.toml --all-targets",
