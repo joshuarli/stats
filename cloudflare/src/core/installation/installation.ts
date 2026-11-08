@@ -43,6 +43,7 @@ export interface InstallationPorts {
   readonly clock: Clock;
   readonly scheduler: Scheduler;
   readonly operations: OperationSink;
+  readonly probesServices: boolean;
   readonly readApplicationEvents?: (service: string, fromMs: number, toMs: number) => Promise<{ readonly events: readonly ExternalEventRecord[]; readonly truncated: boolean }>;
 }
 
@@ -774,7 +775,7 @@ export class InstallationCore {
       "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (?, ?)",
       serviceProbeOwner(name), bounds.before.fromMs, bounds.after.toMs, `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`
     );
-    return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, hasHealthUrl: service.healthUrl !== null, window, now, truncated: history.deployments.length >= MARKERS_LISTED, applicationEvents, applicationTruncated, applicationProblem }));
+    return json(compareServiceDeployment({ service: name, deployment, deployments: history.deployments, hostIds: marker.hostIds, hostRollups, probeRows, probeSource: service.healthUrl === null ? "no-health-url" : this.ports.probesServices ? "probed" : "not-probed", window, now, truncated: history.deployments.length >= MARKERS_LISTED, applicationEvents, applicationTruncated, applicationProblem }));
   }
 
   async collectServiceProbes(fetch: ProbeFetch): Promise<void> {

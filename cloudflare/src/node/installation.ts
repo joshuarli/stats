@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { Clock } from "../core/ports.ts";
 import { InstallationCore } from "../core/installation/installation.ts";
+import { APPLICATION_EVENT_READ_LIMIT } from "../deployments/service-compare.ts";
 import { createObserveService, type ObserveService } from "../observe/core/service.ts";
 import { initializeStore, KEEP_ALL_COUNTING } from "../observe/core/store.ts";
 import type { OperationSink } from "../operations.ts";
@@ -55,10 +56,10 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
   const observe = createObserveService(sql.open(), { now: () => clock.now(), databaseBytes: () => sql.open().databaseBytes() }, () => KEEP_ALL_COUNTING);
   core = new InstallationCore(
     {
-      sql, clock, scheduler, operations: unobservedOperations,
+      sql, clock, scheduler, operations: unobservedOperations, probesServices: true,
       readApplicationEvents: async (service, fromMs, toMs) => {
-        const events = await observe.external(service, { fromMs, toMs, limit: 5000 });
-        return { events, truncated: events.length >= 5000 };
+        const events = await observe.external(service, { fromMs, toMs, limit: APPLICATION_EVENT_READ_LIMIT });
+        return { events, truncated: events.length >= APPLICATION_EVENT_READ_LIMIT };
       }
     },
     { projects: () => options.projects, deploymentsEnabled: () => false }

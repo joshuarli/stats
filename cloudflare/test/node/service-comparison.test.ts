@@ -148,6 +148,51 @@ await test("a cgroup that reports in only one window leaves the host series in p
     assert.equal(metric(result, "host.cpu").verdict, "regressed");
     assert.ok(result.metrics.every(entry => !entry.metric.startsWith("service.")));
     assert.equal(result.sources[1]!.status, "unavailable");
+    assert.equal(result.sources[1]!.detail, "The service's cgroup reported after the marker but not before it, so it has no baseline; host metrics are used.");
+  } finally {
+    harness.close();
+  }
+});
+
+await test("while the after window is still open, a source measured before the marker says it is waiting for that window, not that nothing reported", async () => {
+  const harness = openHarness("[]", { probesServices: true });
+  try {
+    const host = await createHost(harness, "open-1");
+    const token = await createService(harness, { name: "open", hostIds: [host.hostId], healthUrl: "https://open.example.com/health" });
+    const markerAtMs = NOW_MS - 20 * 60_000;
+    await mark(harness, "open", token, "v1", "1.0.0", [host.hostId], FIRST_MARKER_AT_MS);
+    const deploymentId = await mark(harness, "open", token, "v2", "1.1.0", [host.hostId], markerAtMs);
+    const { before, after } = comparisonBounds(markerAtMs, "1h");
+    const series = new HostSeries(host.hostId);
+    await ingestWindow(harness, host, before, () => BEFORE, series);
+    await ingestWindow(harness, host, { fromMs: after.fromMs, toMs: NOW_MS - DEPLOYMENT_BUCKET_MS }, () => AFTER, series);
+    harness.setNow(NOW_MS);
+
+    const result = await comparison(harness, "open", deploymentId);
+    assert.ok(result.reasonCodes.includes("not-ready"));
+    assert.ok(metric(result, "host.cpu").before !== null);
+    assert.equal(metric(result, "host.cpu").after, null);
+    const closes = new Date(after.toMs).toISOString();
+    assert.deepEqual(result.sources.slice(0, 3).map(source => [source.source, source.status, source.detail]), [
+      ["hosts", "unavailable", `Host rollups reported before the marker; the after window is open until ${closes} and needs 75% of its five-minute buckets.`],
+      ["cgroup", "unavailable", `The service's cgroup reported in neither window yet; the after window is open until ${closes}; host metrics are used.`],
+      ["probe", "unavailable", `Probe results reported in neither window yet; the after window is open until ${closes}.`]
+    ]);
+  } finally {
+    harness.close();
+  }
+});
+
+await test("a target that runs no health probes says so instead of reporting missing probe results", async () => {
+  const harness = openHarness();
+  try {
+    const host = await createHost(harness, "unprobed-1");
+    const token = await createService(harness, { name: "unprobed", hostIds: [host.hostId], healthUrl: "https://unprobed.example.com/health" });
+    await mark(harness, "unprobed", token, "v1", "1.0.0", [host.hostId], FIRST_MARKER_AT_MS);
+    const deploymentId = await mark(harness, "unprobed", token, "v2", "1.1.0", [host.hostId], SECOND_MARKER_AT_MS);
+    harness.setNow(NOW_MS);
+    const result = await comparison(harness, "unprobed", deploymentId);
+    assert.deepEqual(result.sources[2], { source: "probe", status: "unavailable", detail: "This target runs no health probes; only the Node server records probe results." });
   } finally {
     harness.close();
   }
@@ -187,7 +232,7 @@ await test("a service comparison withholds a verdict before the after window set
 });
 
 await test("probe results land in the comparison, and a failing probe after the marker regresses the failure share", async () => {
-  const harness = openHarness();
+  const harness = openHarness("[]", { probesServices: true });
   try {
     const host = await createHost(harness, "probed");
     const token = await createService(harness, { name: "probed", hostIds: [host.hostId], healthUrl: "https://probed.example.com/health" });

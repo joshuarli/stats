@@ -66,13 +66,13 @@ export interface Harness {
   close(): void;
 }
 
-export function openHarness(projects = "[]"): Harness {
+export function openHarness(projects = "[]", options: { readonly probesServices: boolean } = { probesServices: false }): Harness {
   let nowMs = NOW_MS;
   const clock: Clock = { now: () => nowMs };
   const db = new DatabaseSync(":memory:");
   const scheduler = new TimerScheduler(clock, () => core.alarm(), error => { throw error; });
   const core = new InstallationCore(
-    { sql: nodeSqlScopes(db), clock, scheduler, operations: unobserved },
+    { sql: nodeSqlScopes(db), clock, scheduler, operations: unobserved, probesServices: options.probesServices },
     { projects: () => projects, deploymentsEnabled: () => false }
   );
   core.initialize();

@@ -1,13 +1,14 @@
 import { combineRollups, rollupPoints, serviceLevels, type NetPoint, type DiskPoint, type RollupPayload, type Series, type SummaryPoint } from "../aggregate.ts";
 import { MINUTE_MS } from "../limits.ts";
 import type { ExternalEventRecord } from "../observe/ingest/model.ts";
-import { bucketRows, DEPLOYMENT_BUCKET_MS, gateDeployment, judge, presentMean, type Buckets, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type MetricReasonCode, type MetricRow, type WindowBounds } from "./compare.ts";
+import { bucketRows, DEPLOYMENT_BUCKET_MS, gateDeployment, judge, presentMean, PROBE_MIN_PRESENT_SHARE, type Buckets, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type MetricReasonCode, type MetricRow, type WindowBounds } from "./compare.ts";
 import type { Deployment } from "./model.ts";
 
 export const SERVICE_SETTLE_MS = 15 * MINUTE_MS;
 export const SERVICE_PROBE_NAME = "health";
 export const MIN_BUCKET_COVERAGE_MS = 150_000;
 export const SUCCESSFUL_OUTCOME = "ok";
+export const APPLICATION_EVENT_READ_LIMIT = 5000;
 
 export const SERVICE_COMPARISON_CAVEAT = "Resource levels and per-work ratios are descriptive, not causal. A per-work ratio is shown only when the resource is attributable and the work counter is complete; otherwise it is unavailable. Service CPU and I/O per work unit divide by observed work: producer drops, rejected batches and sequence gaps are not recorded, so completion is unproven.";
 
@@ -76,6 +77,8 @@ export interface MinuteRollup {
 
 export type SourceName = "hosts" | "cgroup" | "probe" | "application";
 export const SOURCE_NAMES: readonly SourceName[] = ["hosts", "cgroup", "probe", "application"];
+
+export type ProbeSource = "no-health-url" | "not-probed" | "probed";
 
 export interface SourceStatus {
   readonly source: SourceName;
@@ -202,7 +205,7 @@ export interface ServiceComparisonInput {
   readonly hostIds: readonly string[];
   readonly hostRollups: (hostId: string) => readonly MinuteRollup[];
   readonly probeRows: readonly MetricRow[];
-  readonly hasHealthUrl: boolean;
+  readonly probeSource: ProbeSource;
   readonly window: ComparisonWindow;
   readonly now: number;
   readonly truncated: boolean;
@@ -349,8 +352,25 @@ function workMetrics(work: readonly WorkSummary[], blocked: boolean, coverage: A
   return metrics;
 }
 
-function sourceStatuses(input: ServiceComparisonInput, suppression: ApplicationSuppression | null, metrics: readonly MetricComparison[], work: readonly WorkSummary[], coverage: ApplicationCoverage | null): SourceStatus[] {
+interface SideValues {
+  readonly entry: LevelMetric;
+  readonly before: number | null;
+  readonly after: number | null;
+}
+
+function missingSourceDetail(subject: string, sides: readonly SideValues[], after: WindowBounds, now: number, neither: string): string {
+  const before = sides.some(side => side.before !== null);
+  const afterMeasured = sides.some(side => side.after !== null);
+  const open = now < after.toMs ? `the after window is open until ${new Date(after.toMs).toISOString()}` : null;
+  if (before && !afterMeasured) return open === null ? `${subject} reported before the marker but not after it` : `${subject} reported before the marker; ${open} and needs ${PROBE_MIN_PRESENT_SHARE * 100}% of its five-minute buckets`;
+  if (!before && afterMeasured) return `${subject} reported after the marker but not before it, so it has no baseline`;
+  if (before && afterMeasured) return `${subject} reported in each window, but no metric in both`;
+  return open === null ? neither : `${subject} reported in neither window yet; ${open}`;
+}
+
+function sourceStatuses(input: ServiceComparisonInput, raw: readonly SideValues[], after: WindowBounds, suppression: ApplicationSuppression | null, metrics: readonly MetricComparison[], work: readonly WorkSummary[], coverage: ApplicationCoverage | null): SourceStatus[] {
   const measured = (source: SourceName) => SERVICE_LEVEL_METRICS.filter(entry => entry.source === source && metrics.some(metric => metric.metric === entry.metric && metric.before !== null && metric.after !== null));
+  const missing = (source: SourceName, subject: string, neither: string) => missingSourceDetail(subject, raw.filter(side => side.entry.source === source), after, input.now, neither);
   const hosts = `${input.hostIds.length} ${input.hostIds.length === 1 ? "host" : "hosts"}`;
   const cgroup = measured("cgroup");
   const successes = work.reduce((total, summary) => total + summary.before.successes + summary.after.successes, 0);
@@ -366,22 +386,24 @@ function sourceStatuses(input: ServiceComparisonInput, suppression: ApplicationS
   return [
     measured("hosts").length > 0
       ? { source: "hosts", status: "available", detail: hosts }
-      : { source: "hosts", status: "unavailable", detail: "No host reported enough rollups in both windows." },
+      : { source: "hosts", status: "unavailable", detail: `${missing("hosts", "Host rollups", "No host reported enough rollups in both windows")}.` },
     cgroup.length > 0
       ? { source: "cgroup", status: "available", detail: `${input.service} cgroup on ${hosts}, used for ${cgroup.map(entry => entry.metric).join(", ")}` }
-      : { source: "cgroup", status: "unavailable", detail: "No host reported the service's cgroup in both windows; host metrics are used." },
-    !input.hasHealthUrl
+      : { source: "cgroup", status: "unavailable", detail: `${missing("cgroup", "The service's cgroup", "No host reported the service's cgroup in both windows")}; host metrics are used.` },
+    input.probeSource === "no-health-url"
       ? { source: "probe", status: "unavailable", detail: "The service has no health URL." }
-      : measured("probe").length > 0
-        ? { source: "probe", status: "available", detail: "health URL" }
-        : { source: "probe", status: "unavailable", detail: "No probe results in both windows." },
+      : input.probeSource === "not-probed"
+        ? { source: "probe", status: "unavailable", detail: "This target runs no health probes; only the Node server records probe results." }
+        : measured("probe").length > 0
+          ? { source: "probe", status: "available", detail: "health URL" }
+          : { source: "probe", status: "unavailable", detail: `${missing("probe", "Probe results", "No probe results in both windows")}.` },
     application
   ];
 }
 
 function applicationSuppression(input: ServiceComparisonInput): ApplicationSuppression | null {
   if (input.applicationProblem !== null && input.applicationProblem !== undefined) return { code: "application-unavailable", detail: `Application telemetry unavailable: ${input.applicationProblem}` };
-  if (input.applicationTruncated === true) return { code: "application-truncated", detail: "Application telemetry was truncated for this window; partial events are withheld." };
+  if (input.applicationTruncated === true) return { code: "application-truncated", detail: `Application telemetry for these windows exceeded the ${APPLICATION_EVENT_READ_LIMIT}-event read limit; partial events are withheld.` };
   return null;
 }
 
@@ -436,7 +458,7 @@ export function compareServiceDeployment(input: ServiceComparisonInput): Service
   return {
     deploymentId: input.deployment.id, window: input.window, before: gate.before, after: gate.after, readyAtMs: gate.readyAtMs,
     beforeInvocations: null, afterInvocations: null, spec: gate.spec, reasons: gate.reasons, reasonCodes: gate.reasonCodes, deferredObjects: false,
-    analyticsInvocations: { before: [], after: [] }, warnings, metrics, hostIds: input.hostIds, sources: sourceStatuses(input, suppression, metrics, work, suppression === null ? coverage : null), work,
+    analyticsInvocations: { before: [], after: [] }, warnings, metrics, hostIds: input.hostIds, sources: sourceStatuses(input, raw, gate.after, suppression, metrics, work, suppression === null ? coverage : null), work,
     applicationSuppression: suppression, applicationCoverage: suppression === null ? coverage : null
   };
 }

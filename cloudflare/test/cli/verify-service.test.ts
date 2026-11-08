@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS, type MetricRow } from "../../src/deployments/compare.ts";
 import type { Deployment } from "../../src/deployments/model.ts";
-import { compareServiceDeployment, SERVICE_COMPARISON_CAVEAT, type MinuteRollup } from "../../src/deployments/service-compare.ts";
+import { compareServiceDeployment, SERVICE_COMPARISON_CAVEAT, type MinuteRollup, type ProbeSource } from "../../src/deployments/service-compare.ts";
 import type { ExternalEvent, ExternalEventRecord } from "../../src/observe/ingest/model.ts";
 import { parseServicePolicyText } from "../../src/cli/verify/policy.ts";
 import { decodeServiceComparison } from "../../src/deployments/service-decode.ts";
@@ -27,10 +27,10 @@ function probeRows(window: { fromMs: number; toMs: number }, ms: number, up: num
   return rows;
 }
 
-function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, hasHealthUrl = true, applicationEvents: readonly ExternalEventRecord[] = [], hostRollups: (hostId: string) => readonly MinuteRollup[] = () => []) {
+function comparisonFor(deployment: Deployment, now: number, beforeMs: number, afterMs: number, probeSource: ProbeSource = "probed", applicationEvents: readonly ExternalEventRecord[] = [], hostRollups: (hostId: string) => readonly MinuteRollup[] = () => []) {
   const { before, after } = comparisonBounds(deployment.atMs, "1h");
-  const rows = hasHealthUrl ? [...probeRows(before, beforeMs, 1), ...probeRows(after, afterMs, 1)] : [];
-  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups, probeRows: rows, hasHealthUrl, window: "1h", now, truncated: false, applicationEvents });
+  const rows = probeSource === "probed" ? [...probeRows(before, beforeMs, 1), ...probeRows(after, afterMs, 1)] : [];
+  return compareServiceDeployment({ service: "web", deployment, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups, probeRows: rows, probeSource, window: "1h", now, truncated: false, applicationEvents });
 }
 
 function applicationEvent(eventId: string, atMs: number, operation: string, durationMs: number, work: Readonly<Record<string, number>>, outcome = "ok"): ExternalEventRecord {
@@ -108,7 +108,7 @@ await test("a comparison between git commit markers decodes as the dashboard and
   const previous = marker(1, AT - 2 * HOUR, "64b6076b3ebbf6ecced0b62712d46fa60cce52d6");
   const candidate = marker(2, AT, "21271f5b889b1ae1dbc058d89158828ad653d3af");
   const { before, after } = comparisonBounds(candidate.atMs, "1h");
-  const value = compareServiceDeployment({ service: "web", deployment: candidate, deployments: [previous, candidate], hostIds: [HOST], hostRollups: () => [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], hasHealthUrl: true, window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: [] });
+  const value = compareServiceDeployment({ service: "web", deployment: candidate, deployments: [previous, candidate], hostIds: [HOST], hostRollups: () => [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], probeSource: "probed", window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: [] });
   const decoded = decodeServiceComparison(JSON.parse(JSON.stringify(value)), candidate.id, "1h");
   assert.deepEqual(decoded.spec.before.versionIds, ["64b6076b3ebbf6ecced0b62712d46fa60cce52d6"]);
   assert.deepEqual(decoded.spec.after.versionIds, ["21271f5b889b1ae1dbc058d89158828ad653d3af"]);
@@ -126,7 +126,7 @@ async function runCliText(body: unknown): Promise<string> {
 
 await test("a source the service lacks is insufficient-data with the reason, never a pass", async () => {
   const now = AT + 3 * HOUR;
-  const noProbe = await verify(comparisonFor(CANDIDATE, now, 0, 0, false), []);
+  const noProbe = await verify(comparisonFor(CANDIDATE, now, 0, 0, "no-health-url"), []);
   assert.equal(noProbe.run.code, 5);
   assert.equal(noProbe.document.payload?.verdict, "insufficient-data");
   assert.match(noProbe.document.payload?.reasons[0]?.message ?? "", /probe unavailable, The service has no health URL/u);
@@ -150,7 +150,7 @@ function cgroupRollups(deployment: Deployment, beforeCores: number, afterCores: 
 
 await test("a host policy whose metric the service's cgroup supersedes is still judged and says so, and the cgroup metric is judged", async () => {
   const now = AT + 3 * HOUR;
-  const body = compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: (() => { const rollups = cgroupRollups(CANDIDATE, 1, 0.5); return (hostId: string) => rollups.get(hostId) ?? []; })(), probeRows: [], hasHealthUrl: false, window: "1h", now, truncated: false });
+  const body = compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: (() => { const rollups = cgroupRollups(CANDIDATE, 1, 0.5); return (hostId: string) => rollups.get(hostId) ?? []; })(), probeRows: [], probeSource: "no-health-url", window: "1h", now, truncated: false });
   const answerable = { ...body, metrics: body.metrics.map(entry => entry.metric === "host.cpu" ? { ...entry, before: 40, after: 20, delta: -20, deltaPercent: -50, verdict: "improved" as const } : entry) };
   assert.equal(body.metrics.find(entry => entry.metric === "host.cpu")?.supersededBy, "service.cpu");
   const superseded = await verify(answerable, [], policyFile("superseded.json", { metric: "host.cpu", floor: 2 }));
@@ -168,7 +168,7 @@ await test("application work is summarised per successful operation, and a cgrou
   const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
   const events = [...workEvents(before, "note.save", 20, { saves: 1 }, "before"), ...workEvents(after, "note.save", 10, { saves: 1 }, "after")];
   const rollups = cgroupRollups(CANDIDATE, 1, 0.5);
-  const body = comparisonFor(CANDIDATE, now, 0, 0, false, events, hostId => rollups.get(hostId) ?? []);
+  const body = comparisonFor(CANDIDATE, now, 0, 0, "no-health-url", events, hostId => rollups.get(hostId) ?? []);
   assert.equal(body.work.length, 1);
   assert.equal(body.work[0]?.operation, "note.save");
   assert.equal(body.work[0]?.before.meanDurationMs, 20);
@@ -188,7 +188,7 @@ await test("an incomplete work counter and a shared cgroup make their ratios una
   const now = AT + 3 * HOUR;
   const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
   const incomplete = [...workEvents(before, "note.save", 20, { saves: 1 }, "incomplete"), applicationEvent("missing-saves", before.fromMs + 1, "note.save", 20, {})];
-  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, false, incomplete, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
+  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, "no-health-url", incomplete, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
   const incompleteMeasurement = incompleteBody.work[0]?.before.work[0];
   assert.equal(incompleteMeasurement?.complete, false);
   assert.equal(incompleteMeasurement?.durationPerUnitMs, null);
@@ -198,7 +198,7 @@ await test("an incomplete work counter and a shared cgroup make their ratios una
   assert.match(incompleteMetric?.reason ?? "", /incomplete/u);
 
   const shared = [...workEvents(before, "note.save", 20, { saves: 1 }, "save"), ...workEvents(before, "note.open", 20, { reads: 1 }, "open"), ...workEvents(after, "note.save", 10, { saves: 1 }, "save-after"), ...workEvents(after, "note.open", 10, { reads: 1 }, "open-after")];
-  const sharedBody = comparisonFor(CANDIDATE, now, 0, 0, false, shared, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
+  const sharedBody = comparisonFor(CANDIDATE, now, 0, 0, "no-health-url", shared, hostId => cgroupRollups(CANDIDATE, 1, 0.5).get(hostId) ?? []);
   const sharedCpu = sharedBody.metrics.find(metric => metric.metric === "application.note.save.saves.cpu");
   assert.equal(sharedCpu?.before, null);
   assert.match(sharedCpu?.reason ?? "", /cgroup covers 2 operations/u);
@@ -223,7 +223,7 @@ await test("verify --service judges a typed per-work metric and reports an incom
   const now = AT + 3 * HOUR;
   const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
   const events = [...workEvents(before, "note.save", 20, { saves: 1 }, "policy-before"), ...workEvents(after, "note.save", 10, { saves: 1 }, "policy-after")];
-  const body = comparisonFor(CANDIDATE, now, 0, 0, false, events);
+  const body = comparisonFor(CANDIDATE, now, 0, 0, "no-health-url", events);
   const workPolicy = policyFile("work.json", { metric: "application.durationPerWork", operation: "note.save", work: "saves", floor: 0.01 });
   const improved = await verify(body, [], workPolicy);
   assert.equal(improved.run.code, 0, improved.run.stdout + improved.run.stderr);
@@ -232,7 +232,7 @@ await test("verify --service judges a typed per-work metric and reports an incom
   assert.equal(improved.document.payload?.target.after, 10);
 
   const incomplete = [...workEvents(before, "note.save", 20, { saves: 1 }, "policy-incomplete"), applicationEvent("policy-missing", before.fromMs + 1, "note.save", 20, {}), ...workEvents(after, "note.save", 10, { saves: 1 }, "policy-after-complete")];
-  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, false, incomplete);
+  const incompleteBody = comparisonFor(CANDIDATE, now, 0, 0, "no-health-url", incomplete);
   const insufficient = await verify(incompleteBody, [], workPolicy);
   assert.equal(insufficient.run.code, 5, insufficient.run.stdout);
   assert.equal(insufficient.document.payload?.verdict, "insufficient-data");
@@ -264,7 +264,7 @@ await test("--service refuses --project, --wait, and a policy for another servic
 function withApplicationRead(read: { readonly applicationTruncated?: boolean; readonly applicationProblem?: string }, events: readonly ExternalEventRecord[]) {
   const { before, after } = comparisonBounds(CANDIDATE.atMs, "1h");
   const rollups = cgroupRollups(CANDIDATE, 1, 0.5);
-  return compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: hostId => rollups.get(hostId) ?? [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], hasHealthUrl: true, window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: events, ...read });
+  return compareServiceDeployment({ service: "web", deployment: CANDIDATE, deployments: [PREVIOUS, CANDIDATE], hostIds: [HOST], hostRollups: hostId => rollups.get(hostId) ?? [], probeRows: [...probeRows(before, 40, 1), ...probeRows(after, 40, 1)], probeSource: "probed", window: "1h", now: AT + 3 * HOUR, truncated: false, applicationEvents: events, ...read });
 }
 
 function completeEvents(): ExternalEventRecord[] {
@@ -286,6 +286,7 @@ for (const [name, read, code] of [
     assert.deepEqual(body.metrics.filter(metric => metric.metric.startsWith("application.")), []);
     assert.equal(body.metrics.find(metric => metric.metric === "service.cpu")?.verdict, "improved");
     assert.equal(body.sources.find(source => source.source === "application")?.status, "unavailable");
+    if (code === "application-truncated") assert.equal(body.applicationSuppression?.detail, "Application telemetry for these windows exceeded the 5000-event read limit; partial events are withheld.");
     const verdict = await verify(body, [], policyFile(`${code}.json`, WORK_POLICY));
     assert.equal(verdict.run.code, 5, verdict.run.stdout);
     assert.equal(verdict.document.payload?.verdict, "insufficient-data");

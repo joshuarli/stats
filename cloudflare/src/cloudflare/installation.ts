@@ -5,6 +5,7 @@ import { cloudflareSqlScopes } from "./sql.ts";
 import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
 import { deploymentsEnabled } from "./deployments/collector.ts";
 import type { DeploymentPoll } from "../deployments/model.ts";
+import { APPLICATION_EVENT_READ_LIMIT } from "../deployments/service-compare.ts";
 import type { ExternalEventRecord } from "../observe/ingest/model.ts";
 import type { OperationRun } from "../operations.ts";
 import type { CollectorRun } from "../projects/store.ts";
@@ -19,18 +20,18 @@ export class Installation extends DurableObject<Env> {
     const observe = "OBSERVE" in this.env ? this.env.OBSERVE : undefined;
     this.core = new InstallationCore(
       {
-        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations,
+        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations, probesServices: false,
         ...(observe === undefined ? {} : {
           readApplicationEvents: async (service: string, fromMs: number, toMs: number) => {
             const url = new URL(`https://observe/${encodeURIComponent(service)}/external`);
             url.searchParams.set("from", String(fromMs));
             url.searchParams.set("to", String(toMs));
-            url.searchParams.set("limit", "5000");
+            url.searchParams.set("limit", String(APPLICATION_EVENT_READ_LIMIT));
             const response = await observe.fetch(new Request(url));
             if (!response.ok) throw new Error(`observe external read failed (${response.status})`);
             const body = await response.json() as { readonly events?: unknown };
             if (!Array.isArray(body.events)) throw new Error("observe external read returned no events array");
-            return { events: body.events as readonly ExternalEventRecord[], truncated: body.events.length >= 5000 };
+            return { events: body.events as readonly ExternalEventRecord[], truncated: body.events.length >= APPLICATION_EVENT_READ_LIMIT };
           }
         })
       },

@@ -624,9 +624,13 @@ project `DeploymentComparison` (invocation counts are `null` and
 - `sources`, `[{ source: "hosts" | "cgroup" | "probe" | "application", status: "available" | "unavailable", detail }]`,
   always in that order; an available `cgroup` names the metrics it supplied,
   and an available `application` names the successful event count and
-  operation count and says the ratios are per observed work;
+  operation count and says the ratios are per observed work. An unavailable
+  `hosts`, `cgroup` or `probe` names the window it lacks: reported before the
+  marker only, after it only (no baseline), or neither, and while the after
+  window is still open it gives the time it closes. On a target that runs no
+  health probes, `probe` says so;
 - `applicationSuppression`, `null` or `{ code, detail }` with `code`
-  `application-truncated` (the event read reached its 5,000-event limit) or
+  `application-truncated` (the event read for both windows reached its 5,000-event limit, `APPLICATION_EVENT_READ_LIMIT`) or
   `application-unavailable` (the target has no reader, or the observe store did
   not answer). Either one withholds every application-derived value: `work` is
   empty, no `application.*` metric is returned, and `application` is
@@ -695,7 +699,9 @@ bucket boundary (`src/node/probes.ts`), with `runProbes` from
 `src/projects/probes.ts`. `InstallationCore.collectServiceProbes` writes
 `probe.health.up` and `probe.health.ms` to `project_samples` under the owner
 `service:<name>`, which cannot collide with a project id. The Worker target
-runs no service probes, so a service's probe source is `unavailable` there.
+runs no service probes (`InstallationPorts.probesServices` is `false`), so a
+service's probe source is `unavailable` there and says the target runs no
+probes.
 
 ## Storage and rollups
 
