@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Artifact, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
-import { initializeStore, KEEP_ALL_COUNTING, type CountingPolicy, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery } from "../core/store.ts";
+import { initializeStore, KEEP_ALL_COUNTING, type CountingPolicy, type Exploration, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact, type RolloutResult, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery, type ExternalOperationsWindow } from "../core/store.ts";
 import { createObserveService, type ArtifactOutcome, type MaintainedService, type ObserveService, type ServiceHealth } from "../core/service.ts";
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 import { POLICIES } from "../core/policies.ts";
@@ -61,4 +61,5 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
     return result;
   }
   async external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]> { return this.service.external(service, filter); }
+  async externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow> { return this.service.externalOperations(service, filter); }
 }

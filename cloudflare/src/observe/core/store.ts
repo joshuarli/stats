@@ -634,6 +634,36 @@ export function readExternalEvents(db: SqlStatements, service: string, nowMs: nu
   }));
 }
 
+export interface ExternalOperationTotals {
+  readonly operation: string;
+  readonly events: number;
+  readonly failed: number;
+  readonly durationMsSum: number;
+  readonly durationMsMax: number;
+  readonly firstAtMs: number;
+  readonly lastAtMs: number;
+}
+
+export interface ExternalOperationsWindow {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly operations: readonly ExternalOperationTotals[];
+}
+
+export function summarizeExternalOperations(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs"> = {}): ExternalOperationsWindow {
+  const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
+  const operations = db.rows<{ operation: string; events: number; failed: number; duration_sum: number; duration_max: number; first_at: number; last_at: number }>(
+    `SELECT json_extract(payload, '$.operation') AS operation, COUNT(*) AS events,
+       SUM(json_extract(payload, '$.outcome') <> 'ok') AS failed,
+       SUM(json_extract(payload, '$.durationMs')) AS duration_sum, MAX(json_extract(payload, '$.durationMs')) AS duration_max,
+       MIN(event_at) AS first_at, MAX(event_at) AS last_at
+     FROM observe_external_events WHERE service = ? AND event_at >= ? AND event_at < ?
+     GROUP BY operation ORDER BY events DESC, operation`,
+    service, fromMs, toMs
+  ).map(row => ({ operation: row.operation, events: row.events, failed: row.failed, durationMsSum: row.duration_sum, durationMsMax: row.duration_max, firstAtMs: row.first_at, lastAtMs: row.last_at }));
+  return { fromMs, toMs, operations };
+}
+
 function keptCount(invocation: PreparedInvocation, nowMs: number): CountDelta {
   return {
     bucketAt: countBucket(invocation.eventAtMs, nowMs), version: invocation.version ?? "", stage: invocation.stage, route: invocation.label, operation: invocation.serviceOperation?.name ?? "",

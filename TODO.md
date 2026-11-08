@@ -1,15 +1,6 @@
 Prefix: STA
 Next: 100
 
-### STA-96 · P2 · `statsctl observe operations --project tansu` is rejected because tansu is not an observed service
-
-- **Area:** CLI
-- **Where:** `OBSERVED_SERVICES` and the `statsctl observe` project resolution in `cloudflare/src/cli/`, `cloudflare/src/observe/services.ts`
-- **Problem:** `observe operations` only accepts services in `OBSERVED_SERVICES`, the Cloudflare tail-observed Workers. A service that reports external application telemetry (tansu) is not in that list, so its stored operation events cannot be read from the CLI even though `GET /api/observe/<service>/external` serves them.
-- **Recommendation:** Add a service-scoped application observation command (for example `statsctl observe application --service NAME`) over the external-events read, or unify service discovery so both source kinds resolve a name. Keep Cloudflare tail observation and external application telemetry as distinct sources with their own provenance; do not let one name list stand for both. Add a CLI test that a registered service with external events is readable and an unknown name is still rejected.
-- **Fix with:** architect
-- **Effort:** M
-
 ### STA-97 · P2 · External application failures do not populate the issue-occurrence model
 
 - **Area:** Observe

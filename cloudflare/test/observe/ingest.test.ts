@@ -165,3 +165,30 @@ await test("the ingest route rate-limits each service independently", async () =
   assert.equal(other.status, 202);
   assert.deepEqual(await other.json(), { accepted: 1, duplicate: 0 });
 });
+
+await test("application operations total in the store by operation over a half-open window, with no event cap", async () => {
+  const db = database();
+  const service = createObserveService(db, { now: () => manifest.nowMs, databaseBytes: () => 0 });
+  const at = manifest.nowMs - 60_000;
+  const event = (index: number, operation: string, outcome: string, durationMs: number, atMs = at + index) => ({ ...manifest.base, eventId: `agg-${String(index).padStart(20, "0")}`, atMs, operation, outcome, durationMs });
+  const saves = Array.from({ length: 5100 }, (_, index) => event(index, "note.save", index % 100 === 0 ? "error" : "ok", index % 2 === 0 ? 10 : 30));
+  for (let start = 0; start < saves.length; start += MAX_EVENTS) {
+    const ingested = ingestExternal(db, manifest.service, saves.slice(start, start + MAX_EVENTS) as unknown as ExternalEvent[], manifest.nowMs);
+    assert.ok(ingested.ok);
+  }
+  assert.ok(ingestExternal(db, manifest.service, [event(6000, "spool.ingest", "ok", 2), event(6001, "spool.ingest", "ok", 4, manifest.nowMs - 10_000)] as unknown as ExternalEvent[], manifest.nowMs).ok);
+
+  const read = await handleApi(new Request(`https://observe.test/external/operations?from=${at}&to=${manifest.nowMs - 10_000}`), "/external/operations", service, manifest.service, manifest.nowMs);
+  assert.equal(read.status, 200, await read.clone().text());
+  assert.deepEqual(await read.json(), {
+    fromMs: at, toMs: manifest.nowMs - 10_000,
+    operations: [
+      { operation: "note.save", events: 5100, failed: 51, durationMsSum: 2550 * 10 + 2550 * 30, durationMsMax: 30, firstAtMs: at, lastAtMs: at + 5099 },
+      { operation: "spool.ingest", events: 1, failed: 0, durationMsSum: 2, durationMsMax: 2, firstAtMs: at + 6000, lastAtMs: at + 6000 }
+    ]
+  });
+  const extra = await handleApi(new Request(`https://observe.test/external/operations?from=${at}&limit=5`), "/external/operations", service, manifest.service, manifest.nowMs);
+  assert.equal(extra.status, 400);
+  const empty = await handleApi(new Request(`https://observe.test/external/operations?from=${at}`), "/external/operations", service, "other-service", manifest.nowMs);
+  assert.deepEqual((await empty.json() as { operations: unknown[] }).operations, []);
+});

@@ -1,5 +1,5 @@
 import { HEALTH_COUNTERS, type HealthReason } from "../core/store.ts";
-import type { InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TracePage, VersionStats } from "../core/store.ts";
+import type { ExternalOperationsWindow, InvocationWindowRow, LagTotals, OperationWindowRow, OperationWorkField, OperationWorkTotals, OutcomeWindowRow, StatsWindow, Exploration, Health, Heatmap, ImpactState, ObjectMethods, ObjectMethodStats, RouteComparison, RouteStats, RouteVersionStats, InvocationSummary, IssueRef, IssueState, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, TracePage, VersionStats } from "../core/store.ts";
 import type { CountedRoute, SamplingHealth, SamplingSummary } from "../core/counts.ts";
 import type { OriginalPosition, SymbolicatedFrame } from "../core/stack.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
@@ -455,5 +455,32 @@ export function decodeStatsWindow(value: unknown): StatsWindow {
     lag: { operations: lagTotals(lag["operations"]), outcomes: lagTotals(lag["outcomes"]) },
     ...(fields["counts"] === undefined ? {} : { counts: list(fields["counts"], MAX_WINDOW_ROWS, countedRoute, "counts") }),
     ...withSampling(value)
+  };
+}
+
+function measure(value: unknown, what: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) refuse(value, what);
+  return value;
+}
+
+export const MAX_EXTERNAL_OPERATIONS = 1000;
+
+export function decodeExternalOperations(value: unknown): ExternalOperationsWindow {
+  const fields = record(value, "external operations");
+  return {
+    fromMs: integer(fields["fromMs"], "external operations from"),
+    toMs: integer(fields["toMs"], "external operations to"),
+    operations: list(fields["operations"], MAX_EXTERNAL_OPERATIONS, item => {
+      const row = record(item, "external operation");
+      return {
+        operation: text(row["operation"], "external operation name", 64),
+        events: integer(row["events"], "external operation events"),
+        failed: integer(row["failed"], "external operation failures"),
+        durationMsSum: measure(row["durationMsSum"], "external operation duration sum"),
+        durationMsMax: measure(row["durationMsMax"], "external operation duration max"),
+        firstAtMs: integer(row["firstAtMs"], "external operation first event"),
+        lastAtMs: integer(row["lastAtMs"], "external operation last event")
+      };
+    }, "external operations")
   };
 }

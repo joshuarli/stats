@@ -226,3 +226,32 @@ await test("observe operations totals stats's operation summaries and a sampled 
     assert.match(text.stdout, /request\.search +worker +GET \/search +4 +1 +4 ms +20 ms +- +- +- +-/u);
   });
 });
+
+await test("observe application totals a non-tail service's application events and refuses a malformed service name", async () => {
+  const totals = { fromMs: 1_000, toMs: 2_000, operations: [{ operation: "note.save", events: 40, failed: 2, durationMsSum: 800, durationMsMax: 90, firstAtMs: 1_100, lastAtMs: 1_900 }] };
+  const handle: Handler = (request, response) => {
+    if (!authorized(request)) return void response.writeHead(401).end();
+    const url = new URL(request.url ?? "/", "http://x");
+    if (url.pathname === "/api/observe/tansu/external/operations") return sendJson(response, totals);
+    return void response.writeHead(404).end();
+  };
+  await withOrigin(handle, async origin => {
+    const result = await run(origin, ["observe", "application", "--service", "tansu", "--window", "6h"]);
+    assert.equal(result.code, EXIT.ok, result.stdout + result.stderr);
+    const body = JSON.parse(result.stdout) as { project: string; windows: unknown; payload: { source: string; span: string; operations: unknown } };
+    assert.equal(body.project, "tansu");
+    assert.deepEqual(body.windows, [{ fromMs: 1_000, toMs: 2_000 }]);
+    assert.deepEqual(body.payload, { span: "6h", fromMs: 1_000, toMs: 2_000, source: "application", operations: totals.operations });
+    const query = new URL(origin.seen[0]!.url, origin.origin).searchParams;
+    assert.equal(Number(query.get("to")) - Number(query.get("from")), 21_600_000);
+    assert.equal(origin.seen[0]!.method, "GET");
+
+    const text = await run(origin, ["observe", "application", "--service", "tansu"], false);
+    assert.match(text.stdout, /note\.save\s+40\s+2\s+5\.0%\s+20 ms\s+90 ms/u);
+
+    const seen = origin.seen.length;
+    const refused = await run(origin, ["observe", "application", "--service", "../stats"]);
+    assert.equal(refused.code, EXIT.usage);
+    assert.equal(origin.seen.length, seen);
+  });
+});

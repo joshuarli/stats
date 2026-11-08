@@ -5,9 +5,9 @@ import { representativeFrame, sha256Hex } from "./grouping.ts";
 import { RETENTION_MS } from "./limits.ts";
 import { createSymbolicator } from "./symbolicate.ts";
 import {
-  cleanup, decodeFlush, eventWindow, explore, health, objectMethods, ingest, ingestExternal, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readExternalEvents, readIssue, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
+  cleanup, decodeFlush, eventWindow, explore, health, objectMethods, ingest, ingestExternal, issueOccurrences, latestFrames, listIssues, listTraces, nextCleanupAt, readArtifact, readExternalEvents, readIssue, summarizeExternalOperations, readTrace, recordArtifact, recordRollouts, rolloutImpact, setIssueState, statsWindow,
   KEEP_ALL_COUNTING, type ArtifactResult, type CleanupResult, type CountingPolicy, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
-  type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery
+  type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery, type ExternalOperationsWindow
 } from "./store.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements } from "../../core/sql.ts";
@@ -32,6 +32,7 @@ export interface ObserveService {
   artifact(artifact: Artifact): Promise<ArtifactOutcome>;
   ingestExternal(service: string, events: readonly ExternalEvent[]): Promise<ExternalIngest>;
   external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]>;
+  externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow>;
 }
 
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
@@ -124,6 +125,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
     },
     ingestExternal: async (service, events) => ingestExternal(db, service, events, clock.now()),
     external: async (service, filter) => readExternalEvents(db, service, clock.now(), filter),
+    externalOperations: async (service, filter) => summarizeExternalOperations(db, service, clock.now(), filter),
     ingest: (preparations, outcomes, counts, flush) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush)),
     cleanup: () => {
       const now = clock.now();

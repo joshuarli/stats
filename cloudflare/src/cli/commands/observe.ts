@@ -1,5 +1,6 @@
-import { decodeExploration, decodeImpact, decodeIssues, decodeStatsWindow, decodeTraces } from "../../observe/client/decode.ts";
-import type { Exploration, IssueSummary, LagTotals, Page, RolloutImpact, RouteStats, StatsWindow, TracePage } from "../../observe/core/store.ts";
+import { decodeExploration, decodeExternalOperations, decodeImpact, decodeIssues, decodeStatsWindow, decodeTraces } from "../../observe/client/decode.ts";
+import { SERVICE_NAME } from "../../protocol.ts";
+import type { Exploration, ExternalOperationTotals, IssueSummary, LagTotals, Page, RolloutImpact, RouteStats, StatsWindow, TracePage } from "../../observe/core/store.ts";
 import { OPERATION_BUCKET_MS } from "../../observe/core/limits.ts";
 import { POLICIES } from "../../observe/core/policies.ts";
 import { observeWindowPath } from "../verify/gather.ts";
@@ -369,6 +370,54 @@ export const observeOperationsCommand = defineCommand<OperationsPayload>({
     return [...lines, ...table([
       ["operation", "class", "count", "failed", "cpu", "wall", "rows read", "rows written", "statements", "lag max"],
       ...payload.operations.slice(0, TEXT_ROWS).map(row => [`${row.operation}${row.synthetic ? " (synthetic)" : ""}`, row.workloadClass || "-", String(row.count), String(row.failed), ms(row.cpuMsSum), ms(row.wallMsSum), String(row.rowsRead), String(row.rowsWritten), String(row.statements), ms(row.lag.maxMs)])
+    ]), ...omitted(payload.operations.length)];
+  }
+});
+
+export interface ApplicationPayload {
+  readonly span: string;
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly source: "application";
+  readonly operations: readonly ExternalOperationTotals[];
+}
+
+export const observeApplicationCommand = defineCommand<ApplicationPayload>({
+  name: "observe application",
+  summary: "total a service's application telemetry by operation over a window",
+  description: [
+    "Reads the application events a service reported to the external-events ingest and totals them by operation, in the store. Read-only.",
+    "This is the service's own telemetry, not Cloudflare tail observation: any service with an ingest credential has it, including services observe routes and observe operations do not accept. failed counts events whose outcome is not ok. Durations are the service's own reported durationMs."
+  ],
+  access: "read",
+  targets: ["cloudflare", "node"],
+  options: {
+    service: { type: "string", placeholder: "NAME", required: true, description: "the service that reports application telemetry, for example tansu or niceforge-forge" },
+    window
+  },
+  examples: ["statsctl observe application --service tansu --window 24h --json"],
+  limitations: [
+    "Observe retention is 7 days.",
+    "The window is half-open [from, to) and ends now; events with a future time are rejected at ingest.",
+    `Text shows the top ${TEXT_ROWS} operations by event count.`
+  ],
+  async run(context) {
+    const name = context.option("service");
+    if (name === undefined) throw usageError("missing required option --service");
+    if (!SERVICE_NAME.test(name)) throw usageError("--service must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
+    const span = trailingWindow(context);
+    const totals = await read(context, name, `/external/operations?${new URLSearchParams({ from: String(span.fromMs), to: String(span.toMs) })}`, decodeExternalOperations);
+    return { project: name, windows: [{ fromMs: totals.fromMs, toMs: totals.toMs }], payload: { span: span.span, fromMs: totals.fromMs, toMs: totals.toMs, source: "application", operations: totals.operations } };
+  },
+  render(payload) {
+    const lines = [`observe application, last ${payload.span}: [${timeText(payload.fromMs)}, ${timeText(payload.toMs)})`];
+    if (payload.operations.length === 0) return [...lines, "no application events in this window"];
+    return [...lines, ...table([
+      ["operation", "events", "failed", "failed %", "mean", "max", "last"],
+      ...payload.operations.slice(0, TEXT_ROWS).map(row => [
+        row.operation, String(row.events), String(row.failed), `${((row.failed / row.events) * 100).toFixed(1)}%`,
+        ms(Math.round(row.durationMsSum / row.events)), ms(Math.round(row.durationMsMax)), timeText(row.lastAtMs)
+      ])
     ]), ...omitted(payload.operations.length)];
   }
 });

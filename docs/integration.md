@@ -237,7 +237,17 @@ Reads:
 - `GET /api/observe/:service/external?from=<ms>&to=<ms>&limit=<n>` returns
   `{ events: [{ eventId, service, receivedAtMs, provenance, event }] }`, ordered
   by event time and then event id, bounded to the 7-day retention. It is behind
-  Access or the tailnet identity, never a service token.
+  Access or the tailnet identity, never a service token. `limit` is 1 to 5000
+  (default 1000), so a busy service's day does not fit in one read.
+- `GET /api/observe/:service/external/operations?from=<ms>&to=<ms>` totals the
+  same events by operation in the store, over the half-open `[from, to)`
+  clamped to retention, with no event cap: `{ fromMs, toMs, operations:
+  [{ operation, events, failed, durationMsSum, durationMsMax, firstAtMs,
+  lastAtMs }] }`, most events first. `failed` counts outcomes other than `ok`.
+  `statsctl observe application --service NAME --window 24h` reads it; unlike
+  `observe operations`, it accepts any service that reports application
+  telemetry, because it reads the service's own events, not Cloudflare tail
+  observation.
 - `statsctl service deployments --service NAME` and
   `statsctl verify --service NAME` use the marker history. Verification compares
   resource levels and per-work application ratios around a marker. The
