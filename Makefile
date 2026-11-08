@@ -4,7 +4,7 @@ STATS_DOMAIN ?= stats.17166969.xyz
 STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
 SSH ?= local
-STUFF_DIR ?= ../stuff
+STUFF ?= stuff
 export STATS_DOMAIN
 export STATS_URL
 
@@ -190,10 +190,12 @@ build-statsctl: work-ready node-ready
 	@cp dist/statsctl-$$(grep '^version' agent/Cargo.toml | head -1 | sed -n 's/version = "\(.*\)"/\1/p').mjs dist/statsctl.mjs 2>/dev/null || true
 
 publish-producer: work-ready node-ready
-	cd $(CURDIR) && LOCKFILE=pnpm-lock.yaml PROJECT=stats-producer STUFF_DIR='$(STUFF_DIR)' sh '$(STUFF_DIR)'/deploy/publish mynpm
+	mkdir -p '$(CURDIR)/.work/tmp/producer-pack'
+	cd packages/producer && pnpm pack --pack-destination '$(CURDIR)/.work/tmp/producer-pack'
+	$(STUFF) publish npm --tarball '$(CURDIR)'/.work/tmp/producer-pack/stats-producer-$$(jaq -r .version packages/producer/package.json).tgz
 
 publish-producer-crate: work-ready
-	cd $(CURDIR) && CRATES='stats-producer' STUFF_DIR='$(STUFF_DIR)' sh '$(STUFF_DIR)'/deploy/publish mycrates
+	$(STUFF) publish cargo -p stats-producer --registry mycrates
 
 release-artifacts: work-ready node-ready
 	@set -eu; \
