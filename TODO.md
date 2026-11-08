@@ -28,15 +28,6 @@ Next: 100
 - **Fix with:** architect
 - **Effort:** M
 
-### STA-95 · P3 · Observe explorer lifecycle: hidden trace refresh and the issue modal's error source
-
-- **Area:** Dashboard
-- **Where:** `cloudflare/src/client/pages/project/Observe.tsx` (Requests section trace refresh, issue modal occurrence state)
-- **Problem:** Two fixes the observability campaign report already identified: a deep-linked trace keeps refreshing while the Requests section is closed, and the issue modal can show the enclosing section's occurrence error instead of the modal issue's own error.
-- **Recommendation:** Fix the ownership boundaries, not a rewrite of `Observe.tsx`: tie the trace refresh to the open Requests section, and give the modal its own occurrence load and error. Add a focused test for each.
-- **Fix with:** root-cause
-- **Effort:** S
-
 ### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
 
 - **Area:** Services

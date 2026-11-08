@@ -14,7 +14,7 @@ import { defaultSlice, duration, keyedError, keyedValue, message, MOMENT, RouteL
 const ISSUE_PAGE = 12;
 const OCCURRENCE_PAGE = 10;
 
-function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly observe: Observability }): JSX.Element {
+function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly occurrencesError: string | null; readonly observe: Observability }): JSX.Element {
   const { now } = useTelemetry();
   const o = props.observe;
   const issue = () => props.issue;
@@ -37,8 +37,8 @@ function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences
         <div><dt>Last seen</dt><dd>{age(issue().lastAtMs, now())}</dd></div>
         <div><dt><Term hint="The version of the earliest retained occurrence. Unknown when that occurrence recorded no version.">Introduced in</Term></dt><dd title={issue().firstVersion ?? undefined}>{issue().firstVersion === null ? "unknown" : versionName(issue().firstVersion!, issue().firstVersionLabel)}<span class="issue-fact-note">{count(issue().versions)} {issue().versions === 1 ? "version" : "versions"}</span></dd></div>
       </dl>
-      <Show when={o.occurrencesError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
-      <Show when={representative()} fallback={o.occurrencesError() === null ? <Skeleton rows={4} /> : null}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
+      <Show when={props.occurrencesError}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={representative()} fallback={props.occurrencesError === null ? <Skeleton rows={4} /> : null}>{occurrence => <ErrorFrames occurrence={occurrence()} />}</Show>
       <h3 class="observe-subhead">Occurrences</h3>
       <div class="table-scroll" role="region" aria-label="Occurrences">
         <table class="data-table compact occurrence-table">
@@ -119,7 +119,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
               <ShowMore hidden={paged.hidden()} noun="issues" onMore={paged.more} />
             </div>
             <div class="issue-detail">
-              <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} observe={o} />}</Show>
+              <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} occurrencesError={o.occurrencesError()} observe={o} />}</Show>
             </div>
           </div>
         </Show>
@@ -252,22 +252,26 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
 }
 
 function IssueModalBody(props: { readonly fingerprint: string; readonly observe: Observability }): JSX.Element {
-  const [result, setResult] = createSignal<KeyedResult<{ readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> }> | null>(null);
-  const issue = () => keyedValue(result(), props.fingerprint)?.issue ?? null;
-  const occurrences = () => keyedValue(result(), props.fingerprint)?.occurrences ?? null;
-  const failure = () => keyedError(result(), props.fingerprint);
+  const [issueResult, setIssueResult] = createSignal<KeyedResult<IssueSummary> | null>(null);
+  const [occurrencesResult, setOccurrencesResult] = createSignal<KeyedResult<Page<Occurrence>> | null>(null);
+  const issue = () => keyedValue(issueResult(), props.fingerprint);
+  const failure = () => keyedError(issueResult(), props.fingerprint);
+  const occurrences = () => keyedValue(occurrencesResult(), props.fingerprint);
+  const occurrencesError = () => keyedError(occurrencesResult(), props.fingerprint);
   createEffect(() => ({ id: props.fingerprint, mutation: props.observe.mutation() }), query => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
-    void Promise.all([props.observe.read(`/issues/${query.id}`, controller.signal, decodeIssue), props.observe.read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences)]).then(([nextIssue, nextOccurrences]) => {
-      if (controller.signal.aborted) return;
-      setResult({ kind: "ok", key: query.id, value: { issue: nextIssue, occurrences: nextOccurrences } });
-    }).catch((cause: unknown) => { if (!controller.signal.aborted) setResult({ kind: "error", key: query.id, message: message(cause, "Issue unavailable") }); });
+    void props.observe.read(`/issues/${query.id}`, controller.signal, decodeIssue).then(value => {
+      if (!controller.signal.aborted) setIssueResult({ kind: "ok", key: query.id, value });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setIssueResult({ kind: "error", key: query.id, message: message(cause, "Issue unavailable") }); });
+    void props.observe.read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
+      if (!controller.signal.aborted) setOccurrencesResult({ kind: "ok", key: query.id, value });
+    }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesResult({ kind: "error", key: query.id, message: message(cause, "Occurrences unavailable") }); });
   });
   return (
     <>
       <Show when={failure()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
-      <Show when={issue()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <IssueDetail issue={value()} occurrences={occurrences()} observe={props.observe} />}</Show>
+      <Show when={issue()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <IssueDetail issue={value()} occurrences={occurrences()} occurrencesError={occurrencesError()} observe={props.observe} />}</Show>
     </>
   );
 }

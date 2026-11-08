@@ -394,3 +394,35 @@ test("a closed project page loads the errors, requests, and trace views only whe
   await expect(page.locator("#issues").getByRole("option", { name: /RangeError/u })).toBeVisible();
   expect(await viewCodeLoaded()).toBe(true);
 });
+
+test("a deep-linked trace stops refreshing once the Requests section is closed", async ({ page }) => {
+  const { requests } = await setup(page);
+  const traceId = "0123456789abcdef0123456789abcdef";
+  const traceReads = () => requests.filter(path => path.startsWith(`/traces/${traceId}`)).length;
+  await page.goto(`/#/project/stats?range=24h&trace=${traceId}`);
+  await expect(page.locator("#section-requests")).toHaveClass(/\bopen\b/u);
+  await expect.poll(traceReads).toBe(1);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(traceReads).toBe(2);
+  await page.locator("#section-requests").getByRole("button").first().click();
+  await expect(page.locator("#section-requests")).not.toHaveClass(/\bopen\b/u);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.locator("#section-errors")).toContainText("open");
+  await page.waitForTimeout(300);
+  expect(traceReads()).toBe(2);
+});
+
+test("the issue modal reports its own occurrence failure, not the Errors section's", async ({ page }) => {
+  const scenario = await (shared ??= buildScenario(now));
+  const issues = (await scenarioStore(scenario, now).issues({})).items;
+  const section = issues[0]!;
+  const modal = issues.find(issue => issue.fingerprint !== section.fingerprint)!;
+  await setup(page, { failWhen: (_method, path) => path.startsWith(`/issues/${section.fingerprint}/occurrences`) });
+  await page.goto(`/#/project/stats?range=24h&open=errors&issue=${section.fingerprint}&modal=issue:${modal.fingerprint}`);
+  const dialog = page.getByRole("dialog", { name: "Issue" });
+  await expect(dialog).toContainText(modal.name);
+  await expect(dialog.locator("table.occurrence-table tbody tr").first()).toBeVisible();
+  await expect(page.locator("#issues .notice-warn")).toBeVisible();
+  await expect(dialog.locator(".notice-warn")).toHaveCount(0);
+});

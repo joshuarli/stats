@@ -170,7 +170,8 @@ export function createObservability(
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setExploreResult({ kind: "error", key: query.key, message: message(cause, "The observability collector is unavailable") }); });
   });
 
-  createEffect(() => ({ id: traceId(), tick: refreshKey() }), query => {
+  createEffect(() => ({ id: traceId(), tick: refreshKey(), active: exploring() }), query => {
+    if (!query.active) return;
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     if (query.id === null) { setTraceResult(null); return; }
