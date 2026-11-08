@@ -531,7 +531,7 @@ STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
 because the image is tagged with the commit. It builds the dashboard here,
 copies `cloudflare/src`, the built assets, and `deploy/node/Dockerfile` to
 `~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
-there from `node:26.12.1-alpine`, which is the only image on the host it
+there from `node:26.13.0-alpine`, which is the only image on the host it
 uses. It then replaces the `stats-node` container, which runs as `node`
 with `--network none` and listens on `unix:/run/stats/stats.sock`. The
 container keeps the database in `~/.local/share/stats-node`, mounts the

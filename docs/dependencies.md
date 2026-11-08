@@ -1,6 +1,6 @@
 # Dependencies and toolchain
 
-Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm 12.15.0 (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
+Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm 12.18.0 (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
 
 ## Agent crates
 
@@ -34,7 +34,7 @@ Connection setup is bounded separately by the same duration.
 
 `cloudflare/src/node/` adds no dependency. It uses `node:http`, `node:sqlite`,
 `node:zlib`, and timers, and runs under the pinned Node with
-`--experimental-strip-types`. The container image is `node:26.12.1-alpine`.
+`--experimental-strip-types`. The container image is `node:26.13.0-alpine`.
 A new dependency there needs a written reason, with its build time and image
 size in the commit body.
 
