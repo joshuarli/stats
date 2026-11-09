@@ -50,4 +50,11 @@
 @media (max-width: 960px) {
   .project-body.with-rail { grid-template-columns: minmax(0, 1fr); }
 }
-.deployment-source.unavailable { color: var(--serious-text); }
+.deployment-source-pill { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+.deployment-source-pill.unavailable { color: var(--muted); }
+.deployment-source-pill.available { color: var(--text); }
+.sources-line { align-items: center; }
+.deployment-reason-details { margin-top: var(--space-2xs); }
+.deployment-reason-details summary { cursor: pointer; width: max-content; }
+.deployment-reason-details ul { margin-top: var(--space-xs); }
+.service-work-note { color: var(--muted); font-size: var(--fs-meta); margin: 0 0 var(--space-sm); }

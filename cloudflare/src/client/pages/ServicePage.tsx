@@ -76,26 +76,26 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
   };
   loadIssues();
   createUpdateEffect(() => `${serviceTick()}:${manualTick()}`, loadIssues);
-  const after = createMemo(() => comparison()?.reasons.length ? null : totals(work().map(summary => summary.after), comparison()?.after ?? null));
+  const after = createMemo(() => totals(work().map(summary => summary.after), comparison()?.after ?? null));
   const release = () => latest() === undefined ? null : deployments.title(latest()!);
   const probeText = () => {
     const source = probe();
-    if (source === null) return "probe unavailable, no comparison";
-    return source.status === "available" ? `probe available, ${source.detail}` : `probe unavailable, ${source.detail}`;
+    if (source === null) return "Health: not probed";
+    if (source.status === "available") return "Health: up";
+    if (source.detail.includes("runs no health probes")) return "Health: not probed on this target";
+    if (source.detail.includes("no health URL")) return "Health: not set";
+    return "Health: collecting";
   };
   return (
     <DeploymentEvents value={deployments.events}>
       <PageHeader title={props.service.name} />
       <p class="service-facts">
         <span>{props.service.hostIds.length} {props.service.hostIds.length === 1 ? "host" : "hosts"}</span>
-        <span>{release() === null ? "release unavailable" : `release ${release()}`}</span>
-        <span>{marker() === null ? "marker unavailable" : `marker ${marker()!.markerId}`}</span>
-        <span>{props.service.healthUrl === null ? "health probe unavailable, no health URL" : `probing ${props.service.healthUrl}`}</span>
-        <Show when={props.service.unit}>{unit => <span>unit {unit()}</span>}</Show>
+        <span>{release() === null ? "Release: —" : `Release: ${release()}`}</span>
+        <span title={marker()?.markerId ?? ""}>{latest() === undefined ? "Last deploy: —" : `Last deploy: ${age(latest()!.atMs, now())}`}</span>
         <span>{probeText()}</span>
         <span>{describeWork(after())}</span>
-        <span>{issuesUnavailable() ? "issues unavailable" : issues() === null ? "issues loading" : `${issues()!.length} open ${issues()!.length === 1 ? "issue" : "issues"}`}</span>
-        <Show when={latest()}>{deployment => <span>last deploy {deployments.title(deployment())}, {age(deployment().atMs, now())}</span>}</Show>
+        <span>{issuesUnavailable() ? "Issues: unavailable" : issues() === null ? "Issues: loading" : `${issues()!.length} open ${issues()!.length === 1 ? "issue" : "issues"}`}</span>
       </p>
       <div class="project-page">
         <Show when={settled()} fallback={<Skeleton rows={4} chart class="skeleton-deployments" />}>
@@ -148,9 +148,12 @@ function describeWork(value: Totals | null): string {
 function ServiceWork(props: { readonly comparison: ServiceComparison | null; readonly application: string | null; readonly work: readonly WorkSummary[]; readonly issues: readonly IssueSummary[] | null; readonly issuesUnavailable: boolean }): JSX.Element {
   return (
     <Widget id="service-work" class="wide" title="Application work">
-      <Show when={props.comparison !== null} fallback={<p class="panel-label">unavailable, no deployment comparison</p>}>
-        <Show when={props.work.length > 0 && props.comparison!.reasons.length === 0} fallback={<p class="panel-label">unavailable, {props.comparison!.reasons[0] ?? props.application ?? "no application telemetry"}</p>}>
+      <Show when={props.comparison !== null} fallback={<p class="panel-label">Collecting usage since the deploy…</p>}>
+        <Show when={props.work.length > 0} fallback={<p class="panel-label">{props.application ?? "Collecting usage since the deploy…"}</p>}>
           <div class="service-work">
+            <Show when={props.comparison!.reasons.length > 0}>
+              <p class="service-work-note">Collecting usage since the deploy — before/after comparison ready at the end of the window.</p>
+            </Show>
             <WorkTimeline before={props.work[0]!.before} after={props.work[0]!.after} marker={props.comparison!.after.fromMs} />
             <div class="table-scroll" role="region" aria-label="Application operations">
               <table class="data-table compact service-work-table" aria-label="Application operations">

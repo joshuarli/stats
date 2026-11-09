@@ -155,10 +155,10 @@ test("a service page compares its cgroup in place of host levels, labels the sou
   await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toHaveCount(0);
   await expect(comparison.getByRole("row", { name: /Service memory used \(cgroup\)/u })).toContainText("unchanged");
   await expect(comparison.getByRole("row", { name: /Host network throughput/u })).toContainText("regressed");
-  await expect(page.getByText("Service cgroup: web cgroup on 1 host, used for service.cpu, service.memory, service.io")).toBeVisible();
+  await expect(page.getByText("Service cgroup: Ready", { exact: true })).toBeVisible();
   await expect(comparison.getByRole("row", { name: /Health probe mean response time/u })).toContainText("40");
   await expect(comparison.getByRole("row", { name: /Host memory pressure/u })).toContainText("unavailable");
-  await expect(page.getByText(/Application: \d+ successful events/u)).toBeVisible();
+  await expect(page.getByText("Application: Ready", { exact: true })).toBeVisible();
   const operations = page.getByRole("table", { name: "Application operations" });
   await expect(operations.getByRole("row", { name: /note\.save/u })).toContainText("40");
   await expect(operations.getByRole("row", { name: /note\.save/u })).toContainText("55");
@@ -173,8 +173,8 @@ test("a service with no host data and no health URL shows every source unavailab
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toContainText("unavailable");
   await expect(page.getByText("No verdict")).toBeVisible();
-  await expect(page.getByText("Health probe: unavailable, The service has no health URL.")).toBeVisible();
-  await expect(page.getByText("Service cgroup: unavailable, No host reported the service's cgroup in both windows; host metrics are used.")).toBeVisible();
+  await expect(page.getByText("Health probe: Not set", { exact: true })).toBeVisible();
+  await expect(page.getByText("Service cgroup: Unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText(/0 open issues|issues unavailable/u).first()).toBeVisible();
   await expect(page.locator("main.content")).toHaveScreenshot("service-batch.webp");
 });

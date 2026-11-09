@@ -210,6 +210,16 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
 
 const SOURCE_LABELS: Record<SourceName, string> = { hosts: "Hosts", cgroup: "Service cgroup", probe: "Health probe", application: "Application" };
 
+function sourceLabel(source: { readonly source: SourceName; readonly status: "available" | "unavailable"; readonly detail: string }): string {
+  if (source.status === "available") return "Ready";
+  const detail = source.detail;
+  if (detail.includes("runs no health probes")) return "Not probed";
+  if (detail.includes("no health URL")) return "Not set";
+  if (detail.includes("after window is open") || detail.includes("reported before") || detail.includes("reported in neither") || detail.includes("reported after")) return "Collecting";
+  if (detail.includes("No application events")) return "No data yet";
+  return "Unavailable";
+}
+
 function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | null {
   return "sources" in comparison ? comparison.sources : null;
 }
@@ -219,15 +229,17 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
   const caveats = () => props.comparison.warnings.length;
   return (
     <>
-      <p class="deployment-windows">
+      <p class="deployment-windows sources-line">
         <Term hint={windows()}>{`${props.comparison.window} each side`}</Term>
         <Show when={sourcesOf(props.comparison)} fallback={<> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
-          <For each={sources()}>{source => <span class={`deployment-source ${source.status}`}>{SOURCE_LABELS[source.source]}: {source.status === "available" ? source.detail : `unavailable, ${source.detail}`}</span>}</For>
+          <For each={sources()}>{source => <span class={`deployment-source-pill ${source.status}`} title={source.detail}>{SOURCE_LABELS[source.source]}: {sourceLabel(source)}</span>}</For>
         )}</Show>
       </p>
       <Show when={props.comparison.reasons.length > 0}>
         <div class="notice notice-warn deployment-reasons" role="status">
-          <span><b>No verdict</b><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></span>
+          <span><b>No verdict yet</b><span>Collecting comparison data since the deploy — ready when the after window settles.</span>
+            <details class="deployment-reason-details"><summary>Why</summary><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></details>
+          </span>
         </div>
       </Show>
       <div class="table-scroll" role="region" aria-label="Deployment metric comparison">
