@@ -719,6 +719,8 @@ tables in [Cloudflare projects](#cloudflare-projects), created with
   does not reach storage, and duplicates compare this text.
 - `rollups`: keyed by `(hostId, resolution, bucket)`; one-minute buckets for
   7 days and hourly buckets for 30 days.
+- `rollup_pending_hours`: `(hostId, hour)` pairs whose hourly rollup lags its
+  minutes (schema version 10).
 - `services`: one row per service, with its deploy and ingest token verifiers
   and its host ids as a sorted JSON array (schema version 9).
 - `service_deployments`: deploy markers keyed by `(service, markerId)`, with
@@ -733,11 +735,17 @@ exact. A service's cgroup counters (`services` in a sample) roll up per service
 name: `cpuUsec` and the io byte sums each carry the interval they covered, and
 `memoryCurrent` is a gauge; a payload with no service reading has no
 `services` key, so host-only rollups are unchanged. A late sample rebuilds its minute, the minute
-of the following sample, and every hour those minutes fall in. A bucket with
+of the following sample, and marks every hour those minutes fall in pending.
+Ingest rebuilds minutes only. A pending hour is rebuilt from its minutes
+before any hourly read of that host and on every alarm, at most 1000 pending
+hours per pass, so an hourly row equals a rebuild from its minutes whenever
+it is read. Rebuilding the hour on every ingest instead parsed up to sixty
+minute payloads per batch; on 2026-11-09 that was about two thirds of the
+rows `host.ingest` read. A bucket with
 less than 80% of its span covered by usable intervals is marked partial.
 
-A Durable Object alarm deletes expired rows in batches of 1000 per tier. It
-never repairs or invents data.
+A Durable Object alarm finalizes pending hours and deletes expired rows in
+batches of 1000 per tier. It never repairs or invents data.
 
 History picks raw when the window starts within 48 hours and spans at most 12
 hours, one-minute rollups within 7 days, and hourly rollups beyond, so a zoomed

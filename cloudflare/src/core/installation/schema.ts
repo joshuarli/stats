@@ -47,6 +47,11 @@ const HOST_HISTORY_VERSIONS = `CREATE TABLE IF NOT EXISTS host_history_versions 
   host_id TEXT PRIMARY KEY,
   version INTEGER NOT NULL
 ) STRICT`;
+const ROLLUP_PENDING_HOURS = `CREATE TABLE IF NOT EXISTS rollup_pending_hours (
+  host_id TEXT NOT NULL,
+  hour_ms INTEGER NOT NULL,
+  PRIMARY KEY (host_id, hour_ms)
+) STRICT, WITHOUT ROWID`;
 export const UPSERT_ROLLUP = `INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT (host_id, resolution, bucket_ms) DO UPDATE SET coverage_ms = excluded.coverage_ms, partial = excluded.partial, payload = excluded.payload`;
 const SCHEMA_VERSION = "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)";
@@ -86,11 +91,12 @@ const MIGRATIONS: readonly Migration[] = [
         sql.run("ALTER TABLE services ADD COLUMN ingest_token_hash TEXT");
       }
     }
-  }
+  },
+  { version: 10, statements: [ROLLUP_PENDING_HOURS] }
 ];
 
-export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number }): number {
-  return Math.max(deleted.raw, deleted.minute, deleted.hour, deleted.project ?? 0) >= 1000 ? 60_000 : 600_000;
+export function retentionDelayMs(deleted: { readonly raw: number; readonly minute: number; readonly hour: number; readonly project?: number; readonly pendingHours?: number }): number {
+  return Math.max(deleted.raw, deleted.minute, deleted.hour, deleted.project ?? 0, deleted.pendingHours ?? 0) >= 1000 ? 60_000 : 600_000;
 }
 
 export function migrate(sql: SqlDatabase): void {

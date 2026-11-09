@@ -15,7 +15,7 @@ function schemaVersion(state: DurableObjectState): number {
 describe("schema migrations", () => {
   it("starts a fresh object at the current version", async () => {
     const version = await runInDurableObject(stub("migration-fresh"), async (_instance, state) => schemaVersion(state));
-    expect(version).toBe(9);
+    expect(version).toBe(10);
   });
 
   it("adds host system details to an object already at the previous version without touching its hosts", async () => {
@@ -24,7 +24,7 @@ describe("schema migrations", () => {
       state.storage.sql.exec("DROP TABLE host_system");
       state.storage.sql.exec("UPDATE schema_version SET version = 2");
       migrate(new CloudflareSql(state.storage));
-      expect(schemaVersion(state)).toBe(9);
+      expect(schemaVersion(state)).toBe(10);
       expect(state.storage.sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
       expect(state.storage.sql.exec("SELECT version FROM host_history_versions").toArray()).toEqual([{ version: 0 }]);
       expect(state.storage.sql.exec("SELECT count(*) AS total FROM host_system").one().total).toBe(0);
@@ -41,7 +41,7 @@ describe("schema migrations", () => {
       sql.exec("DROP TABLE collector_runs");
       sql.exec("UPDATE schema_version SET version = 3");
       migrate(new CloudflareSql(state.storage));
-      expect(schemaVersion(state)).toBe(9);
+      expect(schemaVersion(state)).toBe(10);
       expect(sql.exec("SELECT name FROM hosts").toArray()).toEqual([{ name: "kept" }]);
       expect(sql.exec("SELECT count(*) AS total FROM samples").one().total).toBe(1);
       const tables = sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('project_samples', 'project_hours', 'collector_runs')").toArray().map(row => row.name).sort();
@@ -101,7 +101,7 @@ describe("schema migrations", () => {
       state.storage.sql.exec("DROP INDEX samples_by_received");
       state.storage.sql.exec("UPDATE schema_version SET version = 0");
       migrate(new CloudflareSql(state.storage));
-      expect(schemaVersion(state)).toBe(9);
+      expect(schemaVersion(state)).toBe(10);
       const objects = state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE name IN ('rollups', 'samples_by_received', 'rollups_by_expiry')").toArray().map(row => row.name).sort();
       expect(objects).toEqual(["rollups", "rollups_by_expiry", "samples_by_received"]);
     });
@@ -115,7 +115,7 @@ describe("schema migrations", () => {
       sql.exec("DROP TABLE services");
       sql.exec("UPDATE schema_version SET version = 7");
       migrate(new CloudflareSql(state.storage));
-      expect(schemaVersion(state)).toBe(9);
+      expect(schemaVersion(state)).toBe(10);
       expect(sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('services', 'service_deployments') ORDER BY name").toArray().map(row => row.name)).toEqual(["service_deployments", "services"]);
       expect(sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('services') WHERE name = 'ingest_token_hash'").toArray()).toEqual([{ name: "ingest_token_hash" }]);
       expect(sql.exec("SELECT host_id, name, token_hash FROM hosts").toArray()).toEqual([{ host_id: "h_0123456789abcdef0123456789abcdef", name: "kept", token_hash: "hash" }]);
@@ -138,8 +138,21 @@ describe("schema migrations", () => {
       sql.exec("UPDATE schema_version SET version = 8");
       expect(() => sql.exec("SELECT ingest_token_hash FROM services")).toThrow(/no such column/u);
       migrate(new CloudflareSql(state.storage));
-      expect(schemaVersion(state)).toBe(9);
+      expect(schemaVersion(state)).toBe(10);
       expect(sql.exec("SELECT name, token_hash, ingest_token_hash FROM services").toArray()).toEqual([{ name: "legacy", token_hash: "deploy-verifier", ingest_token_hash: null }]);
+    });
+  });
+
+  it("adds the pending hour table to a version 9 object keeping its hour rollups", async () => {
+    await runInDurableObject(stub("migration-pending-hours"), async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("INSERT INTO rollups (host_id, resolution, bucket_ms, coverage_ms, partial, payload) VALUES ('h_0123456789abcdef0123456789abcdef', '1h', 3600000, 0, 1, '{}')");
+      sql.exec("DROP TABLE rollup_pending_hours");
+      sql.exec("UPDATE schema_version SET version = 9");
+      migrate(new CloudflareSql(state.storage));
+      expect(schemaVersion(state)).toBe(10);
+      expect(sql.exec("SELECT count(*) AS total FROM rollup_pending_hours").one().total).toBe(0);
+      expect(sql.exec("SELECT resolution, bucket_ms FROM rollups").toArray()).toEqual([{ resolution: "1h", bucket_ms: 3600000 }]);
     });
   });
 });

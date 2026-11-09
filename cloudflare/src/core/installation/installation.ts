@@ -36,6 +36,7 @@ const MAX_REQUESTS_PER_WINDOW = 6;
 
 const HISTORY_WINDOWS_KEPT = 4;
 const RETENTION_BACKLOG_ROWS = 1000;
+const PENDING_HOURS_PER_PASS = 1000;
 const COMPARISON_METRICS_SQL = "SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND (metric IN ('worker.invocations', 'worker.cpuMsSum', 'worker.status.5xx', 'do.invocations', 'do.cpuMsSum', 'do.wallMsSum', 'd1.queries', 'd1.rowsRead', 'd1.rowsWritten') OR metric LIKE 'route.%.invocations' OR metric LIKE 'r2.%.ops.%' OR metric LIKE 'probe.%.up' OR metric LIKE 'probe.%.ms')";
 
 export interface InstallationPorts {
@@ -172,6 +173,7 @@ export class InstallationCore {
     sql.transaction(() => {
       sql.run("DELETE FROM samples WHERE host_id = ?", hostId);
       sql.run("DELETE FROM rollups WHERE host_id = ?", hostId);
+      sql.run("DELETE FROM rollup_pending_hours WHERE host_id = ?", hostId);
       sql.run("DELETE FROM host_system WHERE host_id = ?", hostId);
       sql.run("DELETE FROM host_history_versions WHERE host_id = ?", hostId);
       sql.run("DELETE FROM hosts WHERE host_id = ?", hostId);
@@ -232,7 +234,20 @@ export class InstallationCore {
   private rebuildRollups(sql: SqlDatabase, hostId: string, minutes: readonly number[]): void {
     const unique = [...new Set(minutes)].sort((left, right) => left - right);
     for (const minute of unique) this.rebuildMinute(sql, hostId, minute);
-    for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) this.rebuildHour(sql, hostId, hour);
+    for (const hour of new Set(unique.map(minute => Math.floor(minute / HOUR_MS) * HOUR_MS))) {
+      sql.run("INSERT OR IGNORE INTO rollup_pending_hours (host_id, hour_ms) VALUES (?, ?)", hostId, hour);
+    }
+  }
+
+  private finalizeHours(sql: SqlDatabase, hostId: string | null): number {
+    const pending = hostId === null
+      ? sql.rows<{ host_id: string; hour_ms: number }>("SELECT host_id, hour_ms FROM rollup_pending_hours LIMIT ?", PENDING_HOURS_PER_PASS)
+      : sql.rows<{ host_id: string; hour_ms: number }>("SELECT host_id, hour_ms FROM rollup_pending_hours WHERE host_id = ?", hostId);
+    for (const row of pending) {
+      this.rebuildHour(sql, row.host_id, row.hour_ms);
+      sql.run("DELETE FROM rollup_pending_hours WHERE host_id = ? AND hour_ms = ?", row.host_id, row.hour_ms);
+    }
+    return pending.length;
   }
 
   private historyShape(query: HistoryQuery, now: number): { fromMs: number; toMs: number; resolution: HostHistoryResolution; range: { range?: RangeKey } } {
@@ -266,6 +281,7 @@ export class InstallationCore {
       const rows = this.rawRows.between(sql, hostId, fromMs, toMs, now);
       pointsFor = kind => pointsFromRows(rows, kind);
     } else {
+      if (resolution === "1h") sql.transaction(() => this.finalizeHours(sql, hostId));
       const rows = sql.rows<{ payload: string; bucket_ms: number }>("SELECT payload, bucket_ms FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms <= ? ORDER BY bucket_ms ASC", hostId, resolution, fromMs, toMs);
       const payloads = rows.map(row => JSON.parse(row.payload) as RollupPayload);
       pointsFor = kind => rollupPoints(payloads, kind);
@@ -458,6 +474,7 @@ export class InstallationCore {
     operation.describe(() => ({ operation: "cleanup.retention", synthetic: false, work: { expired, backlog } }));
     try {
       const now = this.now();
+      const finalized = sql.transaction(() => this.finalizeHours(sql, null));
       const raw = rowsWrittenBy(sql, "DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS);
       const minute = rowsWrittenBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS);
       const hour = rowsWrittenBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS);
@@ -469,7 +486,7 @@ export class InstallationCore {
         sql.run("UPDATE host_history_versions SET version = version + 1");
         this.invalidateHistory();
       }
-      await this.ports.scheduler.at(now + retentionDelayMs({ raw, minute, hour, project }));
+      await this.ports.scheduler.at(now + retentionDelayMs({ raw, minute, hour, project, pendingHours: finalized }));
     } catch (error) {
       console.error(JSON.stringify({ event: "alarm_failed", code: "internal" }));
       throw error;

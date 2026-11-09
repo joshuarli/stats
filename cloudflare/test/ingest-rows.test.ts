@@ -1,4 +1,4 @@
-import { runInDurableObject } from "cloudflare:test";
+import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { combineRollups, rollupFromRaw, type RawRow, type RollupPayload } from "../src/aggregate";
 import { parseDelta } from "../src/delta";
@@ -17,7 +17,7 @@ afterEach(() => stop());
 const SAMPLE_INDEX_ROWS = 5;
 
 describe("host.ingest writes", () => {
-  it("writes each steady two-sample batch in place, inserting a rollup row only when its bucket is new", async () => {
+  it("writes each steady two-sample batch in place, inserting a minute rollup row only when its bucket is new and marking each new hour pending", async () => {
     const batches: Ingested[] = [];
     for (let batch = 0; batch < 60; batch += 1) batches.push(await ingestBatch({ indices: [batch * 2, batch * 2 + 1], nowMs: arrivalMs(batch * 2 + 1), ...(batch === 0 ? { system: SYSTEM_INFO } : {}) }));
     const written = batches.map(entry => entry.rows.written);
@@ -28,7 +28,7 @@ describe("host.ingest writes", () => {
       if (batch === 0) return;
       const newMinute = batch % 2 === 0;
       const newHour = batch === 20;
-      expect(rows).toBe(midMinute + (newMinute ? 3 : 0) + (newHour ? 3 : 0));
+      expect(rows).toBe(midMinute + (newMinute ? 3 : 0) + (newHour ? 1 : 0));
     });
   });
 
@@ -40,8 +40,9 @@ describe("host.ingest writes", () => {
     expect(replay.rows.written).toBeLessThanOrEqual(2);
   });
 
-  it("keeps every rollup equal to a rebuild from the stored samples after late, replayed, rebooted, and backlog batches", async () => {
+  it("keeps every rollup equal to a rebuild from the stored samples once pending hours are finalized after late, replayed, rebooted, and backlog batches", async () => {
     await runSequence(MIXED_SEQUENCE);
+    await runDurableObjectAlarm(stub());
     const { minutes, hours } = await runInDurableObject(stub(), async (_instance: Installation, state) => {
       const sql = state.storage.sql;
       const stored = sql.exec<{ resolution: string; bucket_ms: number; coverage_ms: number; partial: number; payload: string }>("SELECT resolution, bucket_ms, coverage_ms, partial, payload FROM rollups WHERE host_id = ? ORDER BY resolution, bucket_ms", HOST_ID).toArray();

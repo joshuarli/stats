@@ -318,6 +318,26 @@ describe("history", () => {
     expect(alarm!).toBeLessThanOrEqual(after + 10 * 60 * 1000);
   });
 
+  it("shows the hour a batch just landed in on the month view, repaired by a late sample", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
+    const first = await frame(await history(host.hostId, "30d", "summary")) as { resolution: string; points: { coverageMs: number }[] };
+    expect(first.resolution).toBe("1h");
+    expect(first.points.map(point => point.coverageMs)).toEqual([15_000]);
+    expect((await ingest(host.token, "out-of-order-late", host.hostId)).status).toBe(200);
+    const week = await frame(await history(host.hostId, "7d", "summary")) as { points: { coverageMs: number }[] };
+    const month = await frame(await history(host.hostId, "30d", "summary")) as { points: { coverageMs: number }[] };
+    expect(month.points.map(point => point.coverageMs)).toEqual([week.points.reduce((total, point) => total + point.coverageMs, 0)]);
+  });
+
+  it("writes the hour rollup of a host that stopped sending on the alarm", async () => {
+    const host = await createHost();
+    expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
+    await runDurableObjectAlarm(stub());
+    const counts = await runInDurableObject(stub(), async (_instance: Installation, state: DurableObjectState) => state.storage.sql.exec<{ pending: number; hours: number }>("SELECT (SELECT count(*) FROM rollup_pending_hours WHERE host_id = ?) AS pending, (SELECT count(*) FROM rollups WHERE host_id = ? AND resolution = '1h') AS hours", host.hostId, host.hostId).one());
+    expect(counts).toEqual({ pending: 0, hours: 1 });
+  });
+
   it("expires raw and rolled rows on the alarm", async () => {
     const host = await createHost();
     expect((await ingest(host.token, "linux-normal", host.hostId)).status).toBe(200);
