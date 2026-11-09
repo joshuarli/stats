@@ -1,4 +1,4 @@
-use deser::{Deserialize, Serialize};
+use deser::Deserialize;
 use stats::model::{BootId, HostId, Sample, SystemInfo};
 use stats::wire::{self, Delta, MAX_BODY};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -42,18 +42,6 @@ struct Source {
     #[deser(default)]
     system: Option<SystemInfo>,
     samples: Vec<Sample>,
-}
-
-#[derive(Serialize)]
-struct LegacyBatch<'a> {
-    v: u8,
-    #[deser(rename = "hostId")]
-    host_id: &'a str,
-    #[deser(rename = "bootId")]
-    boot_id: &'a str,
-    #[deser(skip_serializing_if = Option::is_none)]
-    system: Option<&'a SystemInfo>,
-    samples: &'a [Sample],
 }
 
 const WORKLOADS: [&str; 9] = ["linux-normal", "macos-normal", "linux-single", "macos-single", "system", "linux-backlog-16", "macos-backlog-16", "high-cardinality-16", "u64-boundaries"];
@@ -103,10 +91,9 @@ fn main() {
         let boot: BootId = source.boot_id.parse().unwrap();
         let system = source.system.as_ref();
         let samples = source.samples.as_slice();
-        let mut encoders: [(&str, Box<dyn FnMut() -> usize>); 3] = [
+        let mut encoders: [(&str, Box<dyn FnMut() -> usize>); 2] = [
             ("stb2", Box::new(|| wire::encode_batch(&host, &boot, system, samples, MAX_BODY).unwrap().body.len())),
             ("stb2-absolute", Box::new(|| wire::encode_batch_with(&host, &boot, system, samples, MAX_BODY, Delta::AbsoluteOnly).unwrap().body.len())),
-            ("legacy-json", Box::new(|| deser_json::to_string(&LegacyBatch { v: 1, host_id: &source.host_id, boot_id: &source.boot_id, system, samples }).unwrap().len())),
         ];
         let counts: Vec<(u64, u64, usize)> = encoders.iter_mut().map(|(_, work)| allocations(work.as_mut())).collect();
         let rounds = interleaved(&mut encoders);

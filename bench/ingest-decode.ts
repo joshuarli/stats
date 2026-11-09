@@ -4,19 +4,10 @@ import { fileURLToPath } from "node:url";
 import { canonicalJson } from "../cloudflare/src/protocol.ts";
 import { decodeFrame } from "../cloudflare/src/ingest/frame.ts";
 import { normalizeSystem, validateSample } from "../cloudflare/src/ingest/sample.ts";
-import { parseBatch } from "./legacy-v1/protocol-v1.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "v2");
 const workloads = ["linux-normal", "macos-normal", "linux-single", "macos-single", "system", "linux-backlog-16", "macos-backlog-16", "high-cardinality-16", "u64-boundaries"];
 const rounds = 15;
-
-function legacyStore(text: string): number {
-  const parsed = parseBatch(text);
-  if (!parsed.ok) throw new Error(parsed.message);
-  let bytes = parsed.system === undefined ? 0 : canonicalJson(parsed.system).length;
-  for (const result of parsed.samples) if (result.ok) bytes += canonicalJson(result.sample).length;
-  return bytes;
-}
 
 function binaryStore(frame: Uint8Array): number {
   const decoded = decodeFrame(frame);
@@ -40,15 +31,13 @@ function calibrate(work: () => number): number {
 }
 
 console.log(`node ${process.version}, ${process.platform}/${process.arch}; ${rounds} interleaved rounds after warmup; microseconds per request, median [min-max]`);
-console.log("workload | samples | v1 JSON parse+validate+canonicalize | STB2 decode+validate+normalize+canonicalize | STB2 absolute | stored bytes equal");
+console.log("workload | samples | STB2 decode+validate+normalize+canonicalize | STB2 absolute | stored bytes equal");
 for (const name of workloads) {
-  const source = JSON.parse(readFileSync(join(root, "sources", `${name}.json`), "utf8")) as Record<string, unknown> & { samples: unknown[] };
-  const text = JSON.stringify({ v: 1, ...source });
+  const source = JSON.parse(readFileSync(join(root, "sources", `${name}.json`), "utf8")) as { samples: unknown[] };
   const frame = new Uint8Array(readFileSync(join(root, "frames", `${name}.stb2`)));
   const absolute = new Uint8Array(readFileSync(join(root, "frames", `${name}.absolute.stb2`)));
-  const fitsV1 = Buffer.byteLength(text) <= 65_536;
-  const candidates: [string, () => number][] = [...(fitsV1 ? [["legacy", () => legacyStore(text)] as [string, () => number]] : []), ["stb2", () => binaryStore(frame)], ["absolute", () => binaryStore(absolute)]];
-  const equal = (!fitsV1 || legacyStore(text) === binaryStore(frame)) && binaryStore(frame) === binaryStore(absolute);
+  const candidates: [string, () => number][] = [["stb2", () => binaryStore(frame)], ["absolute", () => binaryStore(absolute)]];
+  const equal = binaryStore(frame) === binaryStore(absolute);
   const iterations = candidates.map(([, work]) => calibrate(work));
   const samples: number[][] = candidates.map(() => []);
   for (let round = 0; round < rounds; round += 1) {
@@ -62,7 +51,5 @@ for (const name of workloads) {
     const sorted = [...values].sort((left, right) => left - right);
     return `${sorted[Math.floor(rounds / 2)]!.toFixed(1)} [${sorted[0]!.toFixed(1)}-${sorted[rounds - 1]!.toFixed(1)}]`;
   };
-  const legacy = fitsV1 ? cell(samples[0]!) : `not sendable: ${Buffer.byteLength(text)} bytes exceeds the v1 cap`;
-  const offset = fitsV1 ? 1 : 0;
-  console.log(`${name} | ${source.samples.length} | ${legacy} | ${cell(samples[offset]!)} | ${cell(samples[offset + 1]!)} | ${equal}`);
+  console.log(`${name} | ${source.samples.length} | ${cell(samples[0]!)} | ${cell(samples[1]!)} | ${equal}`);
 }

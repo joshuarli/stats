@@ -57,7 +57,7 @@ undecodable without server memory).
 
 ## Method
 
-All numbers below were recorded on 2026-11-04 on an Apple M5 Max (18 cores,
+The v1 parser, the v1 encoder comparison, and the v1 end-to-end twin were removed once v1 ingest was retired; check out `5a94fa3` to rerun them. All numbers below were recorded on 2026-11-04 on an Apple M5 Max (18 cores,
 macOS 27.0, arm64) with Node v26.12.1 and Rust nightly-2026-09-15 (rustc
 1.100.0), at commit `5a94fa3` against the baseline `9ee3319` checked out in a
 separate worktree. The machine was shared with another session's
@@ -68,7 +68,7 @@ not production CPU.
 
 ```sh
 make fixtures                                   # byte accounting and budgets
-BASELINE_WORKTREE=.work/wt/baseline make ingest-bench
+make ingest-bench   # at 5a94fa3 with BASELINE_WORKTREE=.work/wt/baseline for the v1 twins
 ```
 
 - **Bytes** come from the golden frames in `fixtures/v2/frames/`, which
@@ -83,14 +83,14 @@ BASELINE_WORKTREE=.work/wt/baseline make ingest-bench
   formatting the v1 collector did when it built strings.
 - **TypeScript ingest work** (`bench/ingest-decode.ts`): the complete work
   from body to stored strings on each side. v1 is the original `parseBatch`
-  (kept benchmark-only in `bench/legacy-v1/protocol-v1.ts`, JSON parse plus
+  (benchmark-only `bench/legacy-v1/protocol-v1.ts` at `5a94fa3`, JSON parse plus
   validation) followed by `canonicalJson` of every sample. v2 is
   `decodeFrame`, `validateSample` (domain checks and normalization), and
   `canonicalJson`. Each case is calibrated to at least 50 ms per round, then
   15 interleaved rounds; median and range. Both sides produce identical
   stored bytes for every workload (checked in the run).
 - **End to end** (`cloudflare/bench/ingest.workerd.ts` and its v1 twin
-  `bench/legacy-v1/ingest-v1.workerd.ts`): 300 distinct two-sample uploads
+  `bench/legacy-v1/ingest-v1.workerd.ts` at `5a94fa3`): 300 distinct two-sample uploads
   after 30 warmups through `SELF.fetch` into the Worker, the Durable Object,
   SQLite, and the rollup rebuild under local workerd. workerd clamps timers to
   1 ms, so the mean over 300 requests is the useful figure.

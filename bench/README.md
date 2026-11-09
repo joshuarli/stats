@@ -65,17 +65,39 @@ the first visit should transfer no bundle bytes.
 ## Ingest protocol
 
 ```sh
-BASELINE_WORKTREE=.work/wt/baseline make ingest-bench
+make ingest-bench
 ```
 
 `bench/ingest.sh` prints request and acknowledgment bytes for the fixture
 workloads (`bench/ingest-bytes.mjs`), the agent's encoder time and
 allocations (`agent/examples/ingest_bench.rs`, release), the Worker's
-complete decode-to-stored-string work against the v1 parser kept in
-`bench/legacy-v1/` (`bench/ingest-decode.ts`), and end-to-end ingest through
-the Worker and Durable Object in local workerd. With `BASELINE_WORKTREE` set
-to a checkout of a v1 commit it runs the v1 end-to-end twin there too. Method,
-results, and limits are in [`docs/binary-ingest.md`](../docs/binary-ingest.md).
+complete decode-to-stored-string work (`bench/ingest-decode.ts`), and
+end-to-end ingest through the Worker and Durable Object in local workerd.
+Method, results, and limits are in [`docs/binary-ingest.md`](../docs/binary-ingest.md).
+
+## Collection and project history
+
+```sh
+node --experimental-strip-types cloudflare/bench/collection.ts [small|production|heavy]...
+node --experimental-strip-types cloudflare/bench/capture-collection.ts
+```
+
+`cloudflare/bench/collection.ts` runs the real collector and project store
+in-process against node:sqlite. It replays one production collection
+(`cloudflare/bench/fixtures/collection.json`, every analytics response for
+the five production projects) and first seeds a week of history by replaying
+the same window shifted back in 90-minute steps. It reports CPU
+milliseconds for one collection into a new window, for a repeated collection
+that changes nothing, and for the dashboard's project history read at 1h,
+24h, and 7d. The tiers are `small` (the `stats` project), `production`
+(all five), and `heavy` (ten copies of the five under new ids). The heavy
+tier is where per-project work that grows with the project count shows up.
+
+`capture-collection.ts` refreshes the fixture with `cf`. It replaces every
+route path segment and D1 statement with a stable pseudonym of the same
+shape, so route folding behaves as it does on the real labels and nothing
+private reaches the public repository. Version segments such as `v1` stay
+verbatim.
 
 ## Durable Object rows per ingest
 
