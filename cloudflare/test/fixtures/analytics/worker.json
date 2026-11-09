@@ -7,7 +7,8 @@
       "hour": 15,
       "httpStatus": 200,
       "invocations": 16,
-      "slot": 11
+      "slot": 11,
+      "entrypoint": null
     },
     {
       "cpu_max": 1,
@@ -16,7 +17,8 @@
       "hour": 15,
       "httpStatus": 404,
       "invocations": 16,
-      "slot": 10
+      "slot": 10,
+      "entrypoint": null
     },
     {
       "cpu_max": 1,
@@ -25,7 +27,8 @@
       "hour": 16,
       "httpStatus": 200,
       "invocations": 96,
-      "slot": 0
+      "slot": 0,
+      "entrypoint": null
     },
     {
       "cpu_max": 1,
@@ -34,7 +37,8 @@
       "hour": 15,
       "httpStatus": 200,
       "invocations": 976,
-      "slot": 8
+      "slot": 8,
+      "entrypoint": null
     },
     {
       "cpu_max": 10,
@@ -43,7 +47,8 @@
       "hour": 16,
       "httpStatus": 304,
       "invocations": 80,
-      "slot": 0
+      "slot": 0,
+      "entrypoint": null
     },
     {
       "cpu_max": 14,
@@ -52,7 +57,8 @@
       "hour": 15,
       "httpStatus": 304,
       "invocations": 800,
-      "slot": 10
+      "slot": 10,
+      "entrypoint": null
     },
     {
       "cpu_max": 14,
@@ -61,7 +67,8 @@
       "hour": 15,
       "httpStatus": 304,
       "invocations": 80,
-      "slot": 11
+      "slot": 11,
+      "entrypoint": null
     },
     {
       "cpu_max": 16,
@@ -70,7 +77,8 @@
       "hour": 16,
       "httpStatus": 304,
       "invocations": 4512,
-      "slot": 1
+      "slot": 1,
+      "entrypoint": null
     },
     {
       "cpu_max": 2,
@@ -79,7 +87,8 @@
       "hour": 15,
       "httpStatus": 304,
       "invocations": 256,
-      "slot": 8
+      "slot": 8,
+      "entrypoint": null
     },
     {
       "cpu_max": 20,
@@ -88,7 +97,8 @@
       "hour": 15,
       "httpStatus": 200,
       "invocations": 688,
-      "slot": 10
+      "slot": 10,
+      "entrypoint": null
     },
     {
       "cpu_max": 28,
@@ -97,7 +107,8 @@
       "hour": 15,
       "httpStatus": 200,
       "invocations": 4464,
-      "slot": 7
+      "slot": 7,
+      "entrypoint": null
     },
     {
       "cpu_max": 3,
@@ -106,7 +117,8 @@
       "hour": 16,
       "httpStatus": 404,
       "invocations": 32,
-      "slot": 0
+      "slot": 0,
+      "entrypoint": null
     },
     {
       "cpu_max": 35,
@@ -115,7 +127,8 @@
       "hour": 16,
       "httpStatus": 200,
       "invocations": 8912,
-      "slot": 1
+      "slot": 1,
+      "entrypoint": null
     },
     {
       "cpu_max": 8,
@@ -124,7 +137,8 @@
       "hour": 15,
       "httpStatus": 404,
       "invocations": 32,
-      "slot": 11
+      "slot": 11,
+      "entrypoint": null
     },
     {
       "cpu_max": 9,
@@ -133,7 +147,8 @@
       "hour": 15,
       "httpStatus": 304,
       "invocations": 384,
-      "slot": 7
+      "slot": 7,
+      "entrypoint": null
     }
   ],
   "rows": 15,

@@ -151,19 +151,19 @@ function project(model: Scenario, id: string): ProjectConfig {
   return found;
 }
 
-export function rows(model: Scenario, query: ExpectedQuery): Record<string, string | number>[] {
+export function rows(model: Scenario, query: ExpectedQuery): Record<string, string | number | null>[] {
   const config = project(model, query.project);
   const at = slots(model, DATASET_OF[query.kind]);
   switch (query.kind) {
     case "worker":
       return at.flatMap(slotMs => WORKER_STATUSES.map(httpStatus => {
         const invocations = values.workerInvocations(model, config.id, slotMs, httpStatus);
-        return { ...workerTime(slotMs), httpStatus, invocations, cpu_sum: values.workerCpuMs(invocations), cpu_max: values.workerCpuMaxMs(slotMs) };
+        return { ...workerTime(slotMs), httpStatus, entrypoint: null, invocations, cpu_sum: values.workerCpuMs(invocations), cpu_max: values.workerCpuMaxMs(slotMs) };
       }));
     case "route":
       return at.flatMap(slotMs => ROUTE_LABELS.map((invocationLabel, label) => {
         const invocations = values.routeInvocations(config.id, slotMs, label);
-        return { ...workerTime(slotMs), invocationLabel, invocations, cpu_sum: values.workerCpuMs(invocations) };
+        return { ...workerTime(slotMs), invocationLabel, entrypoint: null, invocations, cpu_sum: values.workerCpuMs(invocations) };
       }));
     case "durableObjects":
       return at.map(slotMs => {
