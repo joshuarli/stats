@@ -121,7 +121,7 @@ pnpm --dir cloudflare run bench:workerd ingest-rows
 `cloudflare/bench/ingest-rows.workerd.ts` ingests fixture batches into the
 `Installation` object in local workerd and prints `writtenPerSample`, the
 SQLite rows written per persisted sample from cursor totals. The count is
-deterministic; it read 7.762 at `c85450f`.
+deterministic; it read 7.762 at `c85450f` and 7.254 at `1baf925`, once hourly rollups were deferred.
 
 ## Producer queue bound
 
@@ -154,7 +154,7 @@ and the `miniflare` and `workerd` versions.
 - `ingest` sends 40 warm-up batches and then 1,500 two-sample `linux-normal`
   batches to the `Installation` object, advancing its clock per batch the way
   the Durable Object rows bench does. `writtenPerSample` matches that bench:
-  7.762.
+  7.254.
 - `collection` runs one S1 collection of the production registry through the
   offline `ANALYTICS_SQL` provider.
 
