@@ -692,6 +692,7 @@ test("the project page compares a deployment's before and after windows", async 
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await page.getByText("Why").click();
   await expect(page.getByText("Another deployment overlaps the comparison windows.")).toBeVisible();
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("confounded");
 });
