@@ -71,7 +71,10 @@ config, or service unit that changed. A Linux host also needs an entry in
 rebuilds and deploys the Worker with `make worker-deploy`, runs `deploy/deployed-smoke.sh`,
 then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
 Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
-secrets in place. The `cf` session must be authenticated (`make auth-ready`).
+secrets in place. The `cf` session must be authenticated (`make auth-ready`),
+and `make deploy`, `make worker-deploy`, `make stats-deploy`, and
+`make observe-sourcemap` check the Access token up front (`make access-ready`)
+so a missing session fails before anything is built or deployed.
 
 `make worker-deploy` then registers the new stats version's source map with
 `stats-observe` (`make observe-sourcemap VERSION=...` repeats it), which needs
