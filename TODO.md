@@ -1,5 +1,14 @@
 Prefix: STA
-Next: 101
+Next: 102
+
+### STA-101 · P3 · Cloudflare target records no service health probes
+
+- **Area:** Services
+- **Where:** `cloudflare/src/deployments/service-compare.ts` (`This target runs no health probes`), `cloudflare/src/cloudflare/installation.ts` (`probesServices: false`), `cloudflare/src/node/installation.ts` (`probesServices: true`)
+- **Problem:** The Cloudflare installation never probes service health URLs, so service pages show `Health probe: unavailable` permanently. Operators get the health URL in `service create` but the dashboard can never show a probe series for services hosted elsewhere.
+- **Recommendation:** Probe health URLs on a schedule in the Cloudflare Worker (or record manual `service check` probes as the source) so the comparison has probe rows; otherwise document the limitation and hide the probe tile when `probesServices` is false.
+- **Fix with:** architect
+- **Effort:** M
 
 ### STA-99 · P2 · Application telemetry cannot prove completeness because producer drops never reach Stats
 
