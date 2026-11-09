@@ -75,6 +75,19 @@ complete decode-to-stored-string work (`bench/ingest-decode.ts`), and
 end-to-end ingest through the Worker and Durable Object in local workerd.
 Method, results, and limits are in [`docs/binary-ingest.md`](../docs/binary-ingest.md).
 
+## Ingest CPU
+
+```sh
+node --experimental-strip-types cloudflare/bench/ingest-cpu.ts
+```
+
+`cloudflare/bench/ingest-cpu.ts` sends two-sample `linux-normal` batches (200
+warmup, then 2,000) through the real `InstallationCore` ingest on node:sqlite,
+advancing the clock per batch, and reports CPU milliseconds per batch at p50,
+p90, and p99. node:sqlite commits to a file synchronously, which Durable
+Objects do not, so compare runs of this script with each other, not with
+production CPU.
+
 ## Collection and project history
 
 ```sh
