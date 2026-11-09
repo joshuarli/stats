@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 100
+Next: 101
 
 ### STA-99 · P2 · Application telemetry cannot prove completeness because producer drops never reach Stats
 
@@ -154,3 +154,12 @@ Next: 100
 - **Recommendation:** Add an opt-in block-latency histogram inside the agent: a pure-Rust eBPF loader (for example `aya`) with an embedded, prebuilt probe, so a host needs no bpftrace and no second service. Loading needs `CAP_BPF` and `CAP_PERFMON` (or `CAP_SYS_ADMIN` on older kernels) and a kernel with BTF, and the agent runs as the unprivileged user `stats`, so grant them with ambient capabilities in the unit, or run a separate helper, and fall back to an absent `block` group when the load fails. It complements the diskstats means and does not replace them. It would supersede the optional `blockLatencyFile` and the `bpf/` collector, which then get deleted. The static musl build, the dependency weight, and the "baseline agent never loads BPF" invariant need an owner decision first: the loader must stay opt-in and out of the baseline path.
 - **Fix with:** architect
 - **Effort:** L
+
+### STA-100 · P3 · h12tiny-client-sync 0.8.0 is not on the crates.io mirror
+
+- **Area:** Dependencies
+- **Where:** the Rust agent lock for `h12tiny-client-sync` 0.7.0
+- **Problem:** 0.8.0 is on the native stuff index, and so are `h12tiny-client-normalize` 0.8.0 and `h12tiny-tls-system` 0.8.0. The crates.io mirror that stats uses only has those crates through 0.7.0, so `cargo update -p h12tiny-client-sync --precise 0.8.0` cannot resolve the `^0.8.0` requirements. The 0.8 API still has the methods the callers use. Unblocks when the crates.io mirror carries the 0.8 crates, or the agent depends on the native registry the way `e` depends on `laputa-hi-lite`.
+- **Recommendation:** Import the 0.8 crates into the crates.io mirror, then bump `h12tiny-client-sync`.
+- **Fix with:** upgrade-the-world
+- **Effort:** S
