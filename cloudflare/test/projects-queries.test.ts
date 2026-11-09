@@ -86,10 +86,17 @@ describe("analytics query text", () => {
     expect(routeQuery("stats", START_MS).query).toContain(entrypoint);
   });
 
+  it("groups Worker and route events by entrypoint so loopback calls can be told apart", () => {
+    const entrypoint = "attributes['$workers.entrypoint'] AS entrypoint";
+    expect(built.worker.query).toContain(entrypoint);
+    expect(routeQuery("stuff", START_MS).query).toContain(entrypoint);
+    expect(built.worker.query).toMatch(/GROUP BY .*attributes\['\$workers\.entrypoint'\]/u);
+  });
+
   it("groups each dataset on its own time column", () => {
     expect(built.worker.query).toContain("APPROX_MAX(cpuTimeMs)");
     expect(built.r2Operations.query).toMatch(/COUNT\(\*\) AS operations/u);
-    expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus/u);
+    expect(built.worker.query).toMatch(/GROUP BY toDate\(timestamp\), toHour\(timestamp\), floor\(toMinute\(timestamp\) \/ 5\), httpStatus, /u);
     expect(built.r2Operations.query).toContain("toStartOfFiveMinutes(timestamp)");
     expect(built.d1Storage.query).toContain("MAX(databaseSizeBytes)");
     expect(built.d1Storage.query).toContain("toStartOfTenMinutes(timestamp)");
@@ -164,6 +171,21 @@ describe("worker rows", () => {
     expect(at("worker.invocations")).toBe(28);
     expect(at("worker.cpuMsSum")).toBe(40);
     expect(at("worker.cpuMsMax")).toBe(5);
+  });
+
+  it("bills only top-level fetch and scheduled invocations but keeps loopback entrypoint CPU", () => {
+    const row = { day: "2026-11-01", hour: 1, slot: 2, httpStatus: 200 };
+    const points = parseWorkerRows([
+      { ...row, entrypoint: null, invocations: 10, cpu_sum: 5, cpu_max: 1 },
+      { ...row, entrypoint: "default", invocations: 2, cpu_sum: 4, cpu_max: 3 },
+      { ...row, httpStatus: 304, entrypoint: "Registry", invocations: 7, cpu_sum: 30, cpu_max: 9 },
+    ]);
+    const at = (metric: string) => points.find((point) => point.metric === metric)?.value;
+    expect(at("worker.invocations")).toBe(12);
+    expect(at("worker.status.2xx")).toBe(12);
+    expect(at("worker.status.3xx")).toBeUndefined();
+    expect(at("worker.cpuMsSum")).toBe(39);
+    expect(at("worker.cpuMsMax")).toBe(9);
   });
 
   it("accepts decimal-string counters and rejects malformed rows", () => {

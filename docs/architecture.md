@@ -860,7 +860,15 @@ and route counts recorded before the stateless-only change keep the broader
 count, including the object's own fetch events, until retention. Every Worker
 and route query keeps only stateless invocations, so a project's own Durable
 Object fetch, RPC, and alarm events are excluded from those series and appear
-only under Durable Objects. Everything is parsed before anything is
+only under Durable Objects. Both queries also group by
+`attributes['$workers.entrypoint']`: requests, status classes, and route
+requests count only top-level invocations (no entrypoint, or `default` for
+cron), because a loopback `ctx.exports` or service binding call to a named
+entrypoint is not billed as a request. CPU still sums every stateless
+invocation, because the callee's CPU is billed. On 2026-11-09, 31.6k of
+`stuff`'s 117.5k daily stateless events were loopback calls to its `Registry`
+entrypoint. History collected before this change counts them as requests
+until it ages out. Everything is parsed before anything is
 stored, so a failed run stores no metrics: it records a run with its failing query kind and status in detail,
 writes one `collector_failed` log line naming the query and status, and rethrows so the cron shows it.
 

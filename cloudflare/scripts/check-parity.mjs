@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { parseWorkerRows } from "../src/cloudflare/projects/parse.ts";
+import { workerQuery } from "../src/projects/queries.ts";
 import { readHistory } from "../test/support/history.ts";
 
 const HOST = process.env.STATS_URL ?? "https://stats.17166969.xyz";
@@ -26,15 +28,11 @@ const stored = history.series.find((entry) => entry.metric === "worker.invocatio
 
 const now = Date.now();
 const startMs = history.fromMs;
-const body = JSON.stringify({
-  query: "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour, floor(toMinute(timestamp) / 5) AS slot, COUNT(*) AS invocations FROM logs.workersLogs WHERE scriptName = $script AND logType = 'cf-worker-event' AND attributes['$workers.executionModel'] = 'stateless' AND timestamp >= $start GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5) LIMIT 2000",
-  params: { script: SCRIPT, start: new Date(startMs).toISOString() },
-  scope: { accountTag },
-});
+const bound = workerQuery(SCRIPT, startMs);
+const body = JSON.stringify({ query: bound.query, params: bound.params, scope: { accountTag } });
 const direct = new Map();
-for (const row of JSON.parse(run("cf", ["-q", "sql", "query", "-", "--body", body])).data) {
-  const atMs = Date.parse(`${row.day}T00:00:00Z`) + row.hour * 3_600_000 + row.slot * 300_000;
-  direct.set(atMs, Number(row.invocations));
+for (const point of parseWorkerRows(JSON.parse(run("cf", ["-q", "sql", "query", "-", "--body", body])).data)) {
+  if (point.metric === "worker.invocations") direct.set(point.bucketMs, (direct.get(point.bucketMs) ?? 0) + point.value);
 }
 
 let compared = 0;

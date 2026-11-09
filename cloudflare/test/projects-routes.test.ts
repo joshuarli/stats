@@ -62,6 +62,18 @@ describe("route rows", () => {
   });
 });
 
+describe("route billing", () => {
+  it("counts a route's requests from the top-level call only and its CPU from every entrypoint", () => {
+    const rows = [
+      { ...routeRow("GET /current/index", 2, 10), entrypoint: null },
+      { ...routeRow("GET /current/index", 25, 4), entrypoint: "Registry" },
+    ];
+    const at = (metric: string) => parseRouteRows(rows).find((point) => point.metric === metric)?.value;
+    expect(at("route.GET /current/index.invocations")).toBe(10);
+    expect(at("route.GET /current/index.cpuMsSum")).toBe(27);
+  });
+});
+
 describe("Durable Object rows", () => {
   it("converts microseconds to milliseconds and counts non-success as errors", () => {
     const points = parseDurableObjectRows([

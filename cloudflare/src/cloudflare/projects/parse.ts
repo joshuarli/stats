@@ -49,13 +49,13 @@ export function parseWorkerRows(rows: readonly unknown[]): MetricPoint[] {
       count(record, "hour"),
       count(record, "slot"),
     );
-    const invocations = count(record, "invocations");
+    const invocations = billedInvocations(record);
     const cpuSum = count(record, "cpu_sum");
     const cpuMax = count(record, "cpu_max");
     points.add("worker.invocations", bucketMs, invocations);
     points.add("worker.cpuMsSum", bucketMs, cpuSum);
     points.add("worker.cpuMsMax", bucketMs, cpuMax);
-    points.add(`worker.status.${statusClass(count(record, "httpStatus"))}`, bucketMs, invocations);
+    if (invocations > 0) points.add(`worker.status.${statusClass(count(record, "httpStatus"))}`, bucketMs, invocations);
   }
   return points.list();
 }
@@ -126,7 +126,7 @@ export function parseRouteRows(rows: readonly unknown[]): MetricPoint[] {
   for (const [index, record] of records.entries()) {
     const bucketMs = workerBucketMs(text(record, "day"), count(record, "hour"), count(record, "slot"));
     const key = folded.get(labels[index] ?? "") ?? "unlabeled";
-    const invocations = count(record, "invocations");
+    const invocations = billedInvocations(record);
     const cpuSum = count(record, "cpu_sum");
     const route = perRoute.get(key) ?? { invocations: 0, cpuSum: 0, buckets: new Map<number, RouteBucket>() };
     route.invocations += invocations;
@@ -288,6 +288,14 @@ function parseUtc(value: string, pattern: RegExp, field: string): number {
     throw new RangeError(`analytics row has an invalid ${field}`);
   }
   return ms;
+}
+
+function billedInvocations(record: Record<string, unknown>): number {
+  const invocations = count(record, "invocations");
+  const entrypoint = record["entrypoint"];
+  if (entrypoint === undefined || entrypoint === null || entrypoint === "" || entrypoint === "default") return invocations;
+  if (typeof entrypoint !== "string") throw new TypeError("analytics row has a non-text entrypoint");
+  return 0;
 }
 
 function asRecord(row: unknown): Record<string, unknown> {

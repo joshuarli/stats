@@ -19,18 +19,19 @@ export const D1_DATABASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 
 const WORKER_EVENT_LOG_TYPE = "cf-worker-event";
 const WORKER_ENTRYPOINT = "attributes['$workers.executionModel'] = 'stateless'";
+const ENTRYPOINT_NAME = "attributes['$workers.entrypoint']";
 
 export function workerQuery(script: string, startMs: number): BoundQuery {
   return {
     query: [
       "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
-      "floor(toMinute(timestamp) / 5) AS slot, httpStatus,",
+      `floor(toMinute(timestamp) / 5) AS slot, httpStatus, ${ENTRYPOINT_NAME} AS entrypoint,`,
       "COUNT(*) AS invocations,",
       "SUM(cpuTimeMs) AS cpu_sum,",
       "APPROX_MAX(cpuTimeMs) AS cpu_max",
       "FROM logs.workersLogs",
       `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND ${WORKER_ENTRYPOINT} AND timestamp >= $start`,
-      "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), httpStatus",
+      `GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), httpStatus, ${ENTRYPOINT_NAME}`,
       `LIMIT ${ROW_LIMIT}`,
     ].join(" "),
     params: { script, start: isoStart(startMs) },
@@ -41,12 +42,12 @@ export function routeQuery(script: string, startMs: number): BoundQuery {
   return {
     query: [
       "SELECT toDate(timestamp) AS day, toHour(timestamp) AS hour,",
-      "floor(toMinute(timestamp) / 5) AS slot, invocationLabel,",
+      `floor(toMinute(timestamp) / 5) AS slot, invocationLabel, ${ENTRYPOINT_NAME} AS entrypoint,`,
       "COUNT(*) AS invocations,",
       "SUM(cpuTimeMs) AS cpu_sum",
       "FROM logs.workersLogs",
       `WHERE scriptName = $script AND logType = '${WORKER_EVENT_LOG_TYPE}' AND ${WORKER_ENTRYPOINT} AND timestamp >= $start`,
-      "GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), invocationLabel",
+      `GROUP BY toDate(timestamp), toHour(timestamp), floor(toMinute(timestamp) / 5), invocationLabel, ${ENTRYPOINT_NAME}`,
       `ORDER BY cpu_sum DESC LIMIT ${ROW_LIMIT}`,
     ].join(" "),
     params: { script, start: isoStart(startMs) },
