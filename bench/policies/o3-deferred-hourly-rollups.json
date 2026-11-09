@@ -1,0 +1,14 @@
+{
+  "schema": "statsctl-policy/1",
+  "id": "o3-deferred-hourly-rollups",
+  "hypothesis": "Deferring hourly rollups to hourly reads and the alarm stops host.ingest from parsing every minute rollup of its hour, cutting host.ingest SQLite rows read per persisted sample by at least 40% (offline: 22.90 to 7.25, -68%) with no loss of persisted samples.",
+  "project": "stats",
+  "operation": "host.ingest",
+  "metric": "rowsReadPerUnit",
+  "direction": "decrease",
+  "minChangePercent": 40,
+  "floor": 0.5,
+  "guardrails": ["safety-check", "failed-share", "new-issue-group", "probe-failure-share", "coverage", "ingest-persistence"],
+  "window": "1h",
+  "maxWaitMs": 14400000
+}
