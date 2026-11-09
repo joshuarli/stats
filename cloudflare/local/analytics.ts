@@ -37,6 +37,13 @@ export class ${ENTRYPOINT} extends WorkerEntrypoint {
 }
 export default { fetch() { return new Response("not found", { status: 404 }); } };`;
 
+const ENTRYPOINT_SELECT = ", attributes['$workers.entrypoint'] AS entrypoint";
+const ENTRYPOINT_GROUP = ", attributes['$workers.entrypoint']";
+
+function withoutEntrypoint(bound: BoundQuery): BoundQuery {
+  return { query: bound.query.replace(ENTRYPOINT_SELECT, "").replace(ENTRYPOINT_GROUP, ""), params: bound.params };
+}
+
 function isBound(value: unknown): value is BoundQuery {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
@@ -78,7 +85,9 @@ export function offlineAnalytics(stats: BuiltWorker): OfflineAnalytics {
     calls,
     use(next) {
       model = next;
-      expected = new Map(expectedQueries(next).map(query => [queryKey(query.bound), query]));
+      const queries = expectedQueries(next);
+      const legacy = queries.filter(query => query.kind === "worker" || query.kind === "route").map(query => ({ ...query, bound: withoutEntrypoint(query.bound) }));
+      expected = new Map([...queries, ...legacy].map(query => [queryKey(query.bound), query]));
     }
   };
 }
