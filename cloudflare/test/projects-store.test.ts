@@ -106,6 +106,31 @@ describe("project storage", () => {
     });
   });
 
+  it("reads only its own project's rows when other projects share the window", async () => {
+    await inside((_sql, state) => {
+      const window = (metric: string) => Array.from({ length: 18 }, (_, index) => point(metric, HOUR + index * BUCKET, index + 1));
+      const own = [...window("worker.invocations"), ...window("worker.cpuMsSum")];
+      const metrics = Array.from({ length: 90 }, (_, index) => `route.GET /r${index}.invocations`);
+      state.storage.transactionSync(() => {
+        for (const other of ["a", "b", "c", "d"]) upsertPoints(new CloudflareSql(state.storage), other, metrics.flatMap(window));
+        upsertPoints(new CloudflareSql(state.storage), "p", own);
+        const reader = new CloudflareSql(state.storage);
+        expect(upsertPoints(reader, "p", own).rowsWritten).toBe(0);
+        expect(reader.total().read).toBeLessThan(own.length * 2);
+      });
+    });
+  });
+
+  it("reads a project with more metrics than one statement can bind", async () => {
+    await inside((_sql, state) => {
+      const points = Array.from({ length: 250 }, (_, index) => point(`route.GET /r${index}.invocations`, HOUR, index + 1));
+      state.storage.transactionSync(() => {
+        expect(upsertPoints(new CloudflareSql(state.storage), "p", points).rowsWritten).toBeGreaterThan(0);
+        expect(upsertPoints(new CloudflareSql(state.storage), "p", points).rowsWritten).toBe(0);
+      });
+    });
+  });
+
   it("keeps projects separate and refuses metrics it cannot aggregate", async () => {
     await inside((sql, state) => {
       state.storage.transactionSync(() => {

@@ -8,6 +8,19 @@ export const PROJECT_SAMPLE_RETENTION_MS = 7 * DAY_MS;
 export const PROJECT_HOUR_RETENTION_MS = HOUR_RETENTION_MS;
 export const COLLECTOR_RUNS_KEPT = 500;
 export const PURGE_BATCH = 1000;
+const DURABLE_OBJECT_MAX_BOUND_PARAMETERS = 100;
+
+function metricChunks(metrics: Iterable<string>, otherParameters: number): string[][] {
+  const size = DURABLE_OBJECT_MAX_BOUND_PARAMETERS - otherParameters;
+  const all = [...new Set(metrics)];
+  const chunks: string[][] = [];
+  for (let start = 0; start < all.length; start += size) chunks.push(all.slice(start, start + size));
+  return chunks;
+}
+
+function placeholders(values: readonly unknown[]): string {
+  return values.map(() => "?").join(", ");
+}
 
 const PROJECT_SAMPLES = `CREATE TABLE IF NOT EXISTS project_samples (
   project TEXT NOT NULL,
@@ -108,15 +121,17 @@ function storedValues(sql: SqlDatabase, project: string, points: readonly Metric
   for (const point of points) {
     earliestMs = Math.min(earliestMs, point.bucketMs);
   }
-  sql.each<{ metric: string; bucket_ms: number; value: number }>(
-    "SELECT metric, bucket_ms, value FROM project_samples INDEXED BY project_samples_by_bucket WHERE project = ? AND bucket_ms >= ?",
-    [project, earliestMs],
-    (row) => stored.set(`${row.metric}\n${row.bucket_ms}`, row.value),
-  );
+  for (const metrics of metricChunks(points.map((point) => point.metric), 2)) {
+    sql.each<{ metric: string; bucket_ms: number; value: number }>(
+      `SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND metric IN (${placeholders(metrics)}) AND bucket_ms >= ?`,
+      [project, ...metrics, earliestMs],
+      (row) => stored.set(`${row.metric}\n${row.bucket_ms}`, row.value),
+    );
+  }
   return stored;
 }
 
-function storedHours(sql: SqlDatabase, project: string, changed: Iterable<{ metric: string; hourMs: number }>): Map<string, number> {
+function storedHours(sql: SqlDatabase, project: string, changed: readonly { metric: string; hourMs: number }[]): Map<string, number> {
   const stored = new Map<string, number>();
   let earliest = Number.POSITIVE_INFINITY;
   let latest = Number.NEGATIVE_INFINITY;
@@ -125,11 +140,13 @@ function storedHours(sql: SqlDatabase, project: string, changed: Iterable<{ metr
     latest = Math.max(latest, item.hourMs);
   }
   if (!Number.isFinite(earliest)) return stored;
-  sql.each<{ metric: string; hour_ms: number; value: number }>(
-    "SELECT metric, hour_ms, value FROM project_hours INDEXED BY project_hours_by_hour WHERE project = ? AND hour_ms >= ? AND hour_ms <= ?",
-    [project, earliest, latest],
-    (row) => stored.set(`${row.metric}\n${row.hour_ms}`, row.value),
-  );
+  for (const metrics of metricChunks(changed.map((item) => item.metric), 3)) {
+    sql.each<{ metric: string; hour_ms: number; value: number }>(
+      `SELECT metric, hour_ms, value FROM project_hours WHERE project = ? AND metric IN (${placeholders(metrics)}) AND hour_ms >= ? AND hour_ms <= ?`,
+      [project, ...metrics, earliest, latest],
+      (row) => stored.set(`${row.metric}\n${row.hour_ms}`, row.value),
+    );
+  }
   return stored;
 }
 
@@ -139,7 +156,7 @@ function rebuildHours(
   changedHours: Map<string, { metric: string; hourMs: number }>,
 ): { rowsWritten: number; hours: number } {
   if (changedHours.size === 0) return { rowsWritten: 0, hours: 0 };
-  const existing = storedHours(sql, project, changedHours.values());
+  const existing = storedHours(sql, project, [...changedHours.values()]);
   const byFold = new Map<string, { metric: string; hourMs: number }[]>();
   for (const item of changedHours.values()) {
     const fold = { sum: "SUM", max: "MAX", min: "MIN" }[aggregationOf(item.metric)];
@@ -162,15 +179,13 @@ function rebuildHours(
       latest = Math.max(latest, item.hourMs + HOUR_MS);
       metrics.add(item.metric);
     }
-    const metricList = [...metrics];
-    const placeholders = metricList.map(() => "?").join(", ");
-    const rows = sql.rows<{ metric: string; hour_ms: number; value: number }>(
-      `SELECT metric, (bucket_ms / ${HOUR_MS}) * ${HOUR_MS} AS hour_ms, ${fold}(value) AS value FROM project_samples WHERE project = ? AND bucket_ms >= ? AND bucket_ms < ? AND metric IN (${placeholders}) GROUP BY metric, hour_ms`,
+    const rows = metricChunks(metrics, 3).flatMap((metricList) => sql.rows<{ metric: string; hour_ms: number; value: number }>(
+      `SELECT metric, (bucket_ms / ${HOUR_MS}) * ${HOUR_MS} AS hour_ms, ${fold}(value) AS value FROM project_samples WHERE project = ? AND metric IN (${placeholders(metricList)}) AND bucket_ms >= ? AND bucket_ms < ? GROUP BY metric, hour_ms`,
       project,
+      ...metricList,
       earliest,
       latest,
-      ...metricList,
-    );
+    ));
     for (const row of rows) {
       const key = `${row.metric}\n${row.hour_ms}`;
       if (!changedHours.has(key)) continue;
