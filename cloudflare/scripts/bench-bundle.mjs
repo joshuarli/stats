@@ -276,11 +276,19 @@ if (comparePath !== null) {
     if (!baseRoute || !currentRoute) continue;
     const baseGzip = baseRoute.js.gzip;
     if (!Number.isFinite(baseGzip) || baseGzip <= 0) throw new Error(`Invalid baseline gzip for ${routeName}`);
+    const baseRaw = baseRoute.js.raw;
+    if (!Number.isFinite(baseRaw) || baseRaw <= 0) throw new Error(`Invalid baseline raw bytes for ${routeName}`);
     const currentGzip = currentRoute.js.gzip;
+    const currentRaw = currentRoute.js.raw;
     const ratio = +(currentGzip / baseGzip).toFixed(4);
     const deltaGzip = currentGzip - baseGzip;
-    const needsReview = currentGzip > Math.floor(baseGzip * reviewThreshold);
+    const rawRatio = +(currentRaw / baseRaw).toFixed(4);
+    const needsReview = currentGzip > Math.floor(baseGzip * reviewThreshold) || currentRaw > Math.floor(baseRaw * reviewThreshold);
     routeComparisons[routeName] = {
+      baselineRaw: baseRaw,
+      currentRaw,
+      deltaRaw: currentRaw - baseRaw,
+      rawRatio,
       baselineGzip: baseGzip,
       currentGzip,
       deltaGzip,

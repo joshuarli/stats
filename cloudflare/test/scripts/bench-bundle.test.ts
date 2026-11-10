@@ -20,6 +20,7 @@ await test("bundle growth above five percent requests review without imposing hi
     writeFileSync(join(assets, "ProjectsPage-abcdefgh.js"), 'export const label = "Projects";');
     writeFileSync(join(assets, "index-abcdefgh.css"), "body{color:black}");
     const baseline = JSON.parse(execFileSync(process.execPath, [script, "--assets", tmp, "--json"], { encoding: "utf8" }));
+    const gzip = baseline.routes.projects.js.gzip;
     baseline.routes.projects.js.gzip = Math.floor(baseline.routes.projects.js.gzip / 1.1);
     const baselinePath = join(tmp, "baseline.json");
     writeFileSync(baselinePath, JSON.stringify(baseline));
@@ -28,6 +29,12 @@ await test("bundle growth above five percent requests review without imposing hi
     const comparison = JSON.parse(result.stdout).comparison;
     assert.equal(comparison.routes.projects.needsReview, true);
     assert.equal(comparison.pass, true);
+    baseline.routes.projects.js.gzip = gzip;
+    baseline.routes.projects.js.raw = Math.floor(baseline.routes.projects.js.raw / 1.1);
+    writeFileSync(baselinePath, JSON.stringify(baseline));
+    const rawResult = spawnSync(process.execPath, [script, "--assets", tmp, "--compare", baselinePath, "--json"], { encoding: "utf8" });
+    assert.equal(rawResult.status, 0, rawResult.stderr);
+    assert.equal(JSON.parse(rawResult.stdout).comparison.routes.projects.needsReview, true);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

@@ -340,7 +340,7 @@ The payload measurements are `node cloudflare/scripts/bench-bundle.mjs --compare
 .work/frontend-baseline.json` (gzip per route against a saved baseline) and
 `node cloudflare/scripts/bench-ui.mjs --runs 3 --json --out PATH` (browser route
 requests and timings). The current benchmark records the Errors and Requests sections separately.
-The bundle comparison flags initial JavaScript growth over 5% for review. Attribute any flagged
+The bundle comparison flags initial JavaScript growth over 5% in raw or gzip bytes for review. Attribute any flagged
 growth to a user benefit; isolation checks remain separate gates. `docs/frontend-efficiency.md`
 records the earlier campaign's method and results, including its historical thresholds.
 
