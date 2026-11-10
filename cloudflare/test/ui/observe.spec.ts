@@ -192,6 +192,9 @@ test("mobile object details identify the selected method and comparison", { tag:
   const context = detail.locator(".ledger-detail-context");
   await expect(context).toBeVisible();
   await expect(context.locator("strong")).toHaveText(label!);
+  await expect(context).toContainText("wall/call");
+  await expect(context).toContainText("projected to 30 days at list price");
+  await expect(context).toContainText("Current:");
   await expect(context).toContainText("Comparison:");
   await expect(detail).toContainText("calls in window");
   const bounds = await context.evaluate(element => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
