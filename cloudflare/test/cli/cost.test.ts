@@ -116,6 +116,24 @@ await test("missing D1 rows are excluded from the CLI total and monthly bill", a
   }
 });
 
+await test("missing Durable Object wall time is excluded from the CLI total and monthly bill", async () => {
+  const origin = await serve({ projects: [{ ...STATS, missingObjectWall: true }] });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--month-to-date", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const objects = report.lines.find(line => line.id === "objects")!;
+    assert.equal(objects.usage.kind === "objects" && objects.usage.wallMs, null);
+    assert.ok(report.total.pricedMeters.includes("durableObjectRequests"));
+    assert.ok(report.total.excluded.some(entry => entry.meter === "durableObjectGbSeconds" && entry.reason === "no-data"));
+    assert.equal(report.planBill.usage?.durableObjectGbSeconds, null);
+    assert.ok(report.planBill.missingBilledMeters?.includes("durableObjectGbSeconds"));
+    assert.deepEqual(report.planBill.durationProxy, { billed: false, projected: false });
+  } finally {
+    await origin.close();
+  }
+});
+
 await test("--all marks a failing project unavailable and still reports the others", async () => {
   const origin = await serve({ projects: [{ ...PLAIN, fail: url => url.searchParams.get("range") === null ? 404 : undefined }, STATS] });
   try {

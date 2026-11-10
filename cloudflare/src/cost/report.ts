@@ -82,7 +82,7 @@ export type PlanBillReport =
     readonly month: TimeWindow;
     readonly settledMs: number;
     readonly coverage: Coverage;
-    readonly usage: Omit<MeterUsage, "workerRequests" | "workerCpuMs" | "d1RowsRead" | "d1RowsWritten"> & { readonly workerRequests: number | null; readonly workerCpuMs: number | null; readonly d1RowsRead: number | null; readonly d1RowsWritten: number | null };
+    readonly usage: Omit<MeterUsage, "workerRequests" | "workerCpuMs" | "d1RowsRead" | "d1RowsWritten" | "durableObjectRequests" | "durableObjectGbSeconds"> & { readonly workerRequests: number | null; readonly workerCpuMs: number | null; readonly d1RowsRead: number | null; readonly d1RowsWritten: number | null; readonly durableObjectRequests: number | null; readonly durableObjectGbSeconds: number | null };
     readonly missingBilledMeters: readonly Meter[];
     readonly missingProjectionMeters: readonly Meter[];
     readonly durationProxy: { readonly billed: boolean; readonly projected: boolean };
@@ -103,6 +103,7 @@ export type WarningCode =
   | "meter-no-data"
   | "route-meter-no-data"
   | "statement-meter-no-data"
+  | "object-method-meter-no-data"
   | "window-partial-coverage"
   | "duration-upper-bound-proxy"
   | "object-method-sampled"
@@ -218,8 +219,17 @@ function missingD1Meters(histories: LedgerHistories, window: TimeWindow, project
   ];
 }
 
+function missingObjectMeters(histories: LedgerHistories, window: TimeWindow, project: ProjectConfig): Meter[] {
+  if (project.durableObjectNamespaces.length === 0) return [];
+  const history = histories.durableObjects;
+  return [
+    ...(history !== undefined && coveredMs(history, window, ["do.invocations"]) > 0 ? [] : ["durableObjectRequests" as const]),
+    ...(history !== undefined && coveredMs(history, window, ["do.wallMsSum"]) > 0 ? [] : ["durableObjectGbSeconds" as const])
+  ];
+}
+
 function missingMeters(histories: LedgerHistories, window: TimeWindow, project: ProjectConfig): Meter[] {
-  return [...missingWorkerMeters(histories, window, project.workerBilling), ...missingD1Meters(histories, window, project)];
+  return [...missingWorkerMeters(histories, window, project.workerBilling), ...missingD1Meters(histories, window, project), ...missingObjectMeters(histories, window, project)];
 }
 
 function reportLine(line: CostLine, parent: Source | null, input: CostReportInput): ReportLine {
@@ -229,7 +239,7 @@ function reportLine(line: CostLine, parent: Source | null, input: CostReportInpu
   const baselineCoverage = input.previous === undefined ? null : source === null ? coverageOf(undefined, input.windows.previous) : coverageOf(source.pick(input.previous), window(true), source.only);
   return {
     id: line.id, kind: line.kind, label: line.label, price: line.price, parts: line.parts, usage: line.usage, trend: line.trend,
-    coverage, baselineCoverage, confidence: line.price.kind === "priced" && ((line.kind === "worker" && missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling).length > 0) || (line.kind === "d1" && missingD1Meters(input.current, input.windows.current, input.project).length > 0) || (line.kind === "route" && line.usage.kind === "requests" && (line.usage.calls === null || line.usage.cpuMs === null)) || (line.kind === "statement" && line.usage.kind === "rows" && (line.usage.read === null || line.usage.written === null)) || (line.kind === "object-method" && input.objectMethods?.sampling?.now != null)) ? "qualified" : confidenceOf(line, coverage),
+    coverage, baselineCoverage, confidence: line.price.kind === "priced" && ((line.kind === "worker" && missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling).length > 0) || (line.kind === "d1" && missingD1Meters(input.current, input.windows.current, input.project).length > 0) || ((line.kind === "objects" || line.kind === "object-method") && missingObjectMeters(input.current, input.windows.current, input.project).length > 0) || (line.kind === "route" && line.usage.kind === "requests" && (line.usage.calls === null || line.usage.cpuMs === null)) || (line.kind === "statement" && line.usage.kind === "rows" && (line.usage.read === null || line.usage.written === null)) || (line.kind === "object-method" && input.objectMethods?.sampling?.now != null)) ? "qualified" : confidenceOf(line, coverage),
     children: line.children.map(child => reportLine(child, source, input))
   };
 }
@@ -296,8 +306,9 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
   if (input.windows.current.toMs > input.nowMs) warn("window-ends-after-now", "current", "The current window ends after the report clock, so its newest buckets cannot exist yet.");
   if (input.previous === undefined) warn("baseline-unavailable", "previous", "The previous window was not supplied, so no change is computed.");
   for (const meter of missingMeters(input.current, input.windows.current, input.project)) {
-    const label = meter === "workerCpuMs" ? "Worker CPU time" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : "D1 rows written";
-    warn("meter-no-data", meter, `${label} ${meter === "workerCpuMs" ? "was" : "were"} not collected in the current window and ${meter === "workerCpuMs" ? "is" : "are"} excluded from the total.`);
+    const label = meter === "workerCpuMs" ? "Worker CPU time" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter === "durableObjectRequests" ? "Durable Object requests" : "Durable Object wall time";
+    const singular = meter === "workerCpuMs" || meter === "durableObjectGbSeconds";
+    warn("meter-no-data", meter, `${label} ${singular ? "was" : "were"} not collected in the current window and ${singular ? "is" : "are"} excluded from the total.`);
   }
   for (const [period, sampling] of [["current", input.objectMethods?.sampling?.now], ["previous", input.objectMethods?.sampling?.before]] as const) {
     if (sampling != null) warn("object-method-sampled", period, `${period === "current" ? "Current" : "Comparison"} object methods: ${sampling.kept} of ${sampling.observed} object invocations retained in overlapping count buckets. ${period === "current" ? "Method counts and latency use retained invocations; cost shares are estimates." : "Comparison values use retained invocations."}`);
@@ -311,6 +322,9 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
     }
     if (line.kind === "statement" && line.price.kind === "priced" && line.usage.kind === "rows" && (line.usage.read === null || line.usage.written === null)) {
       warn("statement-meter-no-data", line.id, `${line.label}: ${line.usage.read === null ? "rows read" : "rows written"} data was not collected, so its cost is partial.`);
+    }
+    if (line.kind === "object-method" && line.price.kind === "priced" && missingObjectMeters(input.current, input.windows.current, input.project).length > 0) {
+      warn("object-method-meter-no-data", line.id, `${line.label}: aggregate Durable Object cost data is incomplete, so its cost is partial.`);
     }
   }
   for (const line of lines) {
@@ -344,7 +358,7 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   return {
     kind: "isolated", basis: "utc-month", assumption: "project-alone-on-account-allowances",
     month, settledMs: window.toMs, coverage,
-    usage: { ...bill.usage, workerRequests: missingBilledMeters.includes("workerRequests") ? null : bill.usage.workerRequests, workerCpuMs: missingBilledMeters.includes("workerCpuMs") ? null : bill.usage.workerCpuMs, d1RowsRead: missingBilledMeters.includes("d1RowsRead") ? null : bill.usage.d1RowsRead, d1RowsWritten: missingBilledMeters.includes("d1RowsWritten") ? null : bill.usage.d1RowsWritten },
+    usage: { ...bill.usage, workerRequests: missingBilledMeters.includes("workerRequests") ? null : bill.usage.workerRequests, workerCpuMs: missingBilledMeters.includes("workerCpuMs") ? null : bill.usage.workerCpuMs, d1RowsRead: missingBilledMeters.includes("d1RowsRead") ? null : bill.usage.d1RowsRead, d1RowsWritten: missingBilledMeters.includes("d1RowsWritten") ? null : bill.usage.d1RowsWritten, durableObjectRequests: missingBilledMeters.includes("durableObjectRequests") ? null : bill.usage.durableObjectRequests, durableObjectGbSeconds: missingBilledMeters.includes("durableObjectGbSeconds") ? null : bill.usage.durableObjectGbSeconds },
     missingBilledMeters, missingProjectionMeters,
     durationProxy: { billed: billedDurationProxy, projected: billedDurationProxy || hasDuration(input.current, input.windows.current) },
     billed: bill.billed, billedSoFar: bill.billed.values.at(-1) ?? 0,

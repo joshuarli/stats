@@ -116,6 +116,41 @@ await test("a route missing CPU is a partial contributor rather than zero CPU", 
   assert.ok(built.total.residuals.some(entry => entry.lineId === "route:unattributed"));
 });
 
+await test("missing Durable Object duration is excluded while known requests remain priced", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const object = { "do.invocations": [1_000_000, 1_000_000, 0], "do.wallMsSum": [null, null, null], "do.cpuMsSum": [100, 100, 0] };
+  const project = { ...PROJECT, durableObjectNamespaces: ["store"] };
+  const method = { label: "Store.get", requests: 4, failed: 0, cpuMs: 10, wallMs: 20, p50WallMs: 5, p95WallMs: 8 };
+  const current = histories(T0, { durableObjects: object });
+  const built = report({ current, project, objectMethods: { now: [method], before: null }, planMonth: { settledMs: month + 2 * H, histories: histories(month, { durableObjects: object }) } });
+  const objects = find(built.lines, "objects");
+  assert.equal(objects.usage.kind === "objects" && objects.usage.wallMs, null);
+  assert.equal(objects.confidence, "qualified");
+  assert.ok(built.total.pricedMeters.includes("durableObjectRequests"));
+  assert.ok(built.total.excluded.some(entry => entry.meter === "durableObjectGbSeconds" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "durableObjectGbSeconds"));
+  assert.ok(warned(built, "object-method-meter-no-data", "object:Store.get"));
+  assert.equal(find(objects.children, "object:Store.get").price.kind, "priced");
+  if (built.planBill.kind !== "isolated") throw new Error("expected partial plan bill");
+  assert.equal(built.planBill.usage.durableObjectGbSeconds, null);
+  assert.ok(built.planBill.missingBilledMeters.includes("durableObjectGbSeconds"));
+  assert.ok(built.planBill.missingProjectionMeters.includes("durableObjectGbSeconds"));
+  const zero = report({ current: histories(T0, { durableObjects: { ...object, "do.wallMsSum": [0, 0, 0] } }), project });
+  const zeroObjects = find(zero.lines, "objects");
+  assert.equal(zeroObjects.usage.kind === "objects" && zeroObjects.usage.wallMs?.now, 0);
+  assert.ok(zero.total.pricedMeters.includes("durableObjectGbSeconds"));
+  const missingCalls = report({ current: histories(T0, { durableObjects: { "do.invocations": [null, null, null], "do.wallMsSum": [500, 500, 0], "do.cpuMsSum": [null, null, null] } }), project });
+  const calls = find(missingCalls.lines, "objects");
+  assert.equal(calls.usage.kind === "objects" && calls.usage.calls, null);
+  assert.equal(calls.usage.kind === "objects" && calls.usage.cpuMs, null);
+  assert.ok(missingCalls.total.excluded.some(entry => entry.meter === "durableObjectRequests" && entry.reason === "no-data"));
+  assert.ok(missingCalls.total.pricedMeters.includes("durableObjectGbSeconds"));
+  const previous = histories(T0 - 2 * H, { durableObjects: object });
+  const currentWall = histories(T0, { durableObjects: { ...object, "do.wallMsSum": [500, 500, 0] } });
+  const later = find(report({ current: currentWall, previous, project }).lines, "objects");
+  assert.equal(later.price.kind === "priced" && later.price.monthly.before, null);
+});
+
 await test("missing D1 rows written are excluded instead of priced as zero", () => {
   const current = histories(T0, { d1: { "d1.rowsRead": [100, 100, 0], "d1.rowsWritten": [null, null, null], "d1.queries": [10, 10, 0] } });
   const built = report({ current, project: { ...PROJECT, d1Databases: ["db"] } });
@@ -162,7 +197,7 @@ await test("sampled object methods do not turn an unseen baseline into zero", ()
   const built = report({ current, previous, project: { ...PROJECT, durableObjectNamespaces: ["store"] }, objectMethods: objectMethodsOf(now, before) });
   const entry = find(find(built.lines, "objects").children, "object:Store.get");
   assert.equal(entry.price.kind, "priced");
-  if (entry.price.kind !== "priced" || entry.usage.kind !== "objects") throw new Error("expected priced object usage");
+  if (entry.price.kind !== "priced" || entry.usage.kind !== "objects" || entry.usage.calls === null) throw new Error("expected priced object usage");
   assert.equal(entry.price.monthly.before, null);
   assert.equal(entry.usage.calls.before, null);
   assert.equal(entry.price.bound, "estimate");

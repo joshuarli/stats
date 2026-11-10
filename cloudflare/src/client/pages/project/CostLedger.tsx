@@ -50,7 +50,7 @@ function Ratio(props: { readonly amount: Amount; readonly worseUp?: boolean | un
 function usageText(line: CostLine, usage: Usage): string {
   switch (usage.kind) {
     case "requests": return usage.calls === null ? "calls unavailable" : `${count(Math.round(usage.calls.now))} ${line.kind === "worker" ? "req" : "calls"}`;
-    case "objects": return `${count(Math.round(usage.calls.now))} calls`;
+    case "objects": return usage.calls === null ? "calls unavailable" : `${count(Math.round(usage.calls.now))} calls`;
     case "rows": return usage.queries === null ? (usage.read === null || usage.written === null ? "rows unavailable" : `${count(Math.round(usage.read.now + usage.written.now))} rows`) : `${count(Math.round(usage.queries.now))} queries`;
     case "stored": return bytes(usage.bytes.now);
     case "none": return "";
@@ -135,7 +135,7 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
         const wallPerCall = per(current.wallMs, current.calls);
         const cpuPerCall = per(current.cpuMs, current.calls);
         return <>
-          <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+          <Fact label="calls in window" value={current.calls === null ? "unavailable" : count(Math.round(current.calls.now))} amount={current.calls ?? undefined} />
           <Fact label="wall/call" value={wallPerCall === null ? "unavailable" : milliseconds(Number(wallPerCall.now.toPrecision(2)))} amount={wallPerCall ?? undefined} worseUp />
           <Fact label="CPU/call" value={cpuPerCall === null ? "unavailable" : milliseconds(Number(cpuPerCall.now.toPrecision(2)))} amount={cpuPerCall ?? undefined} worseUp />
           <Show when={current.latency}>{latency => <>
@@ -202,7 +202,7 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
 }
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
-  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter;
+  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter === "durableObjectRequests" ? "Durable Object requests" : meter === "durableObjectGbSeconds" ? "Durable Object wall time" : meter;
   const billedPartial = () => props.plan.missingBilledMeters.length > 0 || props.plan.coverage.fraction < 1;
   const projectedPartial = () => props.plan.missingProjectionMeters.length > 0 || props.plan.coverage.fraction < 1;
   const qualifier = (partial: boolean, proxy: boolean) => proxy ? (partial ? "partial estimate " : "estimate ") : partial ? "at least " : "";
@@ -295,7 +295,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
     const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
-    const partialWarning = () => props.report.warnings.find(warning => (warning.code === "route-meter-no-data" || warning.code === "statement-meter-no-data") && warning.subject === line().id)?.message;
+    const partialWarning = () => props.report.warnings.find(warning => (warning.code === "route-meter-no-data" || warning.code === "statement-meter-no-data" || warning.code === "object-method-meter-no-data") && warning.subject === line().id)?.message;
     return (
       <>
         <button

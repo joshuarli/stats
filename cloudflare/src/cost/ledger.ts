@@ -32,7 +32,7 @@ export interface CostPart {
 
 export type Usage =
   | { readonly kind: "requests"; readonly calls: Amount | null; readonly cpuMs: Amount | null }
-  | { readonly kind: "objects"; readonly calls: Amount; readonly wallMs: Amount; readonly cpuMs: Amount; readonly latency: { readonly p50WallMs: number; readonly p95WallMs: number; readonly failed: number } | null }
+  | { readonly kind: "objects"; readonly calls: Amount | null; readonly wallMs: Amount | null; readonly cpuMs: Amount | null; readonly latency: { readonly p50WallMs: number; readonly p95WallMs: number; readonly failed: number } | null }
   | { readonly kind: "rows"; readonly read: Amount | null; readonly written: Amount | null; readonly queries: Amount | null }
   | { readonly kind: "stored"; readonly bytes: Amount }
   | { readonly kind: "none" };
@@ -195,7 +195,7 @@ export function windowUsage(line: CostLine, histories: LedgerHistories, previous
   const usage = line.usage;
   switch (usage.kind) {
     case "requests": return { kind: "requests", calls: usage.calls === null ? null : scale(usage.calls), cpuMs: usage.cpuMs === null ? null : scale(usage.cpuMs) };
-    case "objects": return { kind: "objects", calls: scale(usage.calls), wallMs: scale(usage.wallMs), cpuMs: scale(usage.cpuMs), latency: usage.latency };
+    case "objects": return { kind: "objects", calls: usage.calls === null ? null : scale(usage.calls), wallMs: usage.wallMs === null ? null : scale(usage.wallMs), cpuMs: usage.cpuMs === null ? null : scale(usage.cpuMs), latency: usage.latency };
     case "rows": return { kind: "rows", read: usage.read === null ? null : scale(usage.read), written: usage.written === null ? null : scale(usage.written), queries: usage.queries === null ? null : scale(usage.queries) };
     case "stored":
     case "none": return usage;
@@ -301,7 +301,7 @@ function workerLine(input: LedgerInput): CostLine {
 const durationCost = (wallMs: number) => perMillion((wallMs / 1000) * DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_MILLION.durableObjectGbSeconds);
 const requestCost = (calls: number) => perMillion(calls, LIST_PRICE_PER_MILLION.durableObjectRequests);
 
-function methodLines(methods: ObjectMethods, requests: Amount, duration: Amount, scale: { readonly now: number; readonly before: number }): CostLine[] {
+function methodLines(methods: ObjectMethods, requests: Amount | null, duration: Amount | null, scale: { readonly now: number; readonly before: number }): CostLine[] {
   const totals = (list: readonly ObjectMethodStats[]) => ({ calls: list.reduce((sum, m) => sum + m.requests, 0), wall: list.reduce((sum, m) => sum + m.wallMs, 0) });
   const now = totals(methods.now);
   const before = methods.before === null ? null : totals(methods.before);
@@ -310,13 +310,13 @@ function methodLines(methods: ObjectMethods, requests: Amount, duration: Amount,
     const previous = methods.before?.find(entry => entry.label === method.label);
     const previousUnknown = before === null || methods.sampling?.before != null;
     const sampled = methods.sampling?.now != null;
-    const monthlyNow = share(method.requests, now.calls) * requests.now + share(method.wallMs, now.wall) * duration.now;
-    const monthlyBefore = before === null || requests.before === null || duration.before === null ? null
-      : previous === undefined ? (previousUnknown ? null : 0) : share(previous.requests, before.calls) * requests.before + share(previous.wallMs, before.wall) * duration.before;
+    const monthlyNow = share(method.requests, now.calls) * (requests?.now ?? 0) + share(method.wallMs, now.wall) * (duration?.now ?? 0);
+    const monthlyBefore = before === null || (requests !== null && requests.before === null) || (duration !== null && duration.before === null) ? null
+      : previous === undefined ? (previousUnknown ? null : 0) : share(previous.requests, before.calls) * (requests?.before ?? 0) + share(previous.wallMs, before.wall) * (duration?.before ?? 0);
     return {
       id: `object:${method.label}`, kind: "object-method", label: method.label,
-      price: priced(monthlyNow, monthlyBefore, sampled ? "estimate" : "upper"),
-      parts: [{ label: "requests", monthly: share(method.requests, now.calls) * requests.now, bound: "estimate" }, { label: "duration", monthly: share(method.wallMs, now.wall) * duration.now, bound: sampled ? "estimate" : "upper" }],
+      price: requests === null && duration === null ? NO_DATA : priced(monthlyNow, monthlyBefore, sampled || duration === null ? "estimate" : "upper"),
+      parts: [...(requests === null ? [] : [{ label: "requests", monthly: share(method.requests, now.calls) * requests.now, bound: "estimate" as const }]), ...(duration === null ? [] : [{ label: "duration", monthly: share(method.wallMs, now.wall) * duration.now, bound: sampled ? "estimate" as const : "upper" as const }])],
       usage: {
         kind: "objects",
         calls: { now: method.requests * scale.now, before: previous === undefined ? (previousUnknown ? null : 0) : previous.requests * scale.before },
@@ -341,12 +341,12 @@ function objectsLine(input: LedgerInput, sample: Sampler): CostLine | null {
   if (history === undefined) return null;
   if (!sample.covers(history)) return emptyLine("objects", "objects", "Durable Objects");
   const pick = (entry: LedgerHistories) => entry.durableObjects;
-  const calls = { now: sample.now(input.current, pick, "do.invocations"), before: sample.before(pick, "do.invocations") };
-  const wall = { now: sample.now(input.current, pick, "do.wallMsSum"), before: sample.before(pick, "do.wallMsSum") };
-  const cpu = { now: sample.now(input.current, pick, "do.cpuMsSum"), before: sample.before(pick, "do.cpuMsSum") };
-  const requests = { now: requestCost(calls.now), before: calls.before === null ? null : requestCost(calls.before) };
-  const duration = { now: durationCost(wall.now), before: wall.before === null ? null : durationCost(wall.before) };
-  const before = requests.before === null || duration.before === null ? null : requests.before + duration.before;
+  const calls = metricAmount(input, pick, "do.invocations");
+  const wall = metricAmount(input, pick, "do.wallMsSum");
+  const cpu = metricAmount(input, pick, "do.cpuMsSum");
+  const requests = calls === null ? null : { now: requestCost(calls.now), before: calls.before === null ? null : requestCost(calls.before) };
+  const duration = wall === null ? null : { now: durationCost(wall.now), before: wall.before === null ? null : durationCost(wall.before) };
+  const before = (requests !== null && requests.before === null) || (duration !== null && duration.before === null) ? null : (requests?.before ?? 0) + (duration?.before ?? 0);
   const scale = {
     now: MONTH_MS / Math.max(1, input.window.toMs - input.window.fromMs),
     before: MONTH_MS / Math.max(1, input.previousWindow.toMs - input.previousWindow.fromMs)
@@ -366,8 +366,8 @@ function objectsLine(input: LedgerInput, sample: Sampler): CostLine | null {
   const storageParts: CostPart[] = stored === null ? [] : [{ label: "storage", monthly: stored.now, bound: "estimate" }];
   return {
     id: "objects", kind: "objects", label: "Durable Objects",
-    price: priced(requests.now + duration.now + (stored?.now ?? 0), before === null || stored?.before === null ? null : before + (stored?.before ?? 0), "upper"),
-    parts: [{ label: "requests", monthly: requests.now, bound: "estimate" }, { label: "duration", monthly: duration.now, bound: "upper" }, ...storageParts],
+    price: requests === null && duration === null && stored === null ? NO_DATA : priced((requests?.now ?? 0) + (duration?.now ?? 0) + (stored?.now ?? 0), before === null || stored?.before === null ? null : before + (stored?.before ?? 0), duration === null ? "estimate" : "upper"),
+    parts: [...(requests === null ? [] : [{ label: "requests", monthly: requests.now, bound: "estimate" as const }]), ...(duration === null ? [] : [{ label: "duration", monthly: duration.now, bound: "upper" as const }]), ...storageParts],
     usage: { kind: "objects", calls, wallMs: wall, cpuMs: cpu, latency: null },
     trend: sumTracks([
       trendOf(metricTrack(history, "do.invocations"), history.stepMs, requestCost),
@@ -583,7 +583,7 @@ export function monthlyUsage(ledger: Ledger): MeterUsage {
   for (const line of ledger.lines) {
     const kind = line.usage;
     if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = ledger.workerBilling === "cpu-only" ? 0 : kind.calls?.now ?? 0; usage.workerCpuMs = kind.cpuMs?.now ?? 0; }
-    if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls.now; usage.durableObjectGbSeconds = (kind.wallMs.now / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
+    if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls?.now ?? 0; usage.durableObjectGbSeconds = ((kind.wallMs?.now ?? 0) / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
     if (kind.kind === "rows") { usage.d1RowsRead = kind.read?.now ?? 0; usage.d1RowsWritten = kind.written?.now ?? 0; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
     if (line.kind === "r2") usage.r2Storage = stored(line);
   }

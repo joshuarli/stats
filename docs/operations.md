@@ -332,6 +332,11 @@ imports and erasable syntax only, and none imports Solid, uPlot, or
   D1 and statement usage and excluded from priced meters. Known rows remain
   priced as a partial subtotal. Monthly D1 usage is also nullable, with omitted
   meters named in `missingBilledMeters` and `missingProjectionMeters`.
+- **Partial Durable Object costs.** Missing aggregate request, wall-time, or
+  CPU data is `null` in object usage. Missing request or wall-time meters are
+  excluded from priced meters and from monthly usage; known costs remain
+  partial, including method cost shares derived from the aggregate. Monthly
+  omissions are named in `missingBilledMeters` and `missingProjectionMeters`.
 - **Duration proxy.** `durationProxy.billed` and `durationProxy.projected`
   identify plan amounts that include summed Durable Object request wall time.
   This is an upper-bound proxy for billed duration, so those amounts are
