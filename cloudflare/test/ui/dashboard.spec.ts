@@ -665,18 +665,59 @@ test("the projects page lists projects and each row opens its page", async ({ pa
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
 });
 
-test("returning from a project keeps the projects sort and focus", async ({ page }) => {
+test("returning from a project keeps its filter, sort and focus", async ({ page }) => {
   await mock(page);
+  const configured = projects("fresh", false, PROJECT_BUCKETS, [], [])[0]!;
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [configured, { ...configured, id: "billing", name: "Billing", worker: "ledger-worker" }] }));
+  await page.route("**/api/v1/projects/billing/**", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "billing data unavailable" } } }));
   await page.goto("/#/projects");
+  const search = page.getByRole("searchbox", { name: "Search projects" });
   const table = page.getByRole("table", { name: "Projects" });
+  await expect(search).toBeVisible();
+  await page.keyboard.press("/");
+  await expect(search).toBeFocused();
+  await search.pressSequentially("l/z[]");
+  await expect(page.getByRole("button", { name: "Live" })).toHaveAttribute("aria-pressed", "true");
+  await search.fill("LEDGER-WORKER");
+  await expect(table.getByRole("link", { name: "Billing" })).toBeVisible();
+  await expect(table.getByRole("link", { name: "stuff" })).toHaveCount(0);
+  await search.fill("STUFF");
   await table.getByRole("button", { name: "Project", exact: true }).click();
   await table.getByRole("button", { name: "Project", exact: true }).click();
   await expect(table.getByRole("columnheader", { name: "Project" })).toHaveAttribute("aria-sort", "descending");
   await table.getByRole("link", { name: "stuff" }).click();
   await expect(page).toHaveURL(/#\/project\/stuff$/u);
   await page.goBack();
+  await expect(search).toHaveValue("STUFF");
   await expect(table.getByRole("columnheader", { name: "Project" })).toHaveAttribute("aria-sort", "descending");
   await expect(table.getByRole("link", { name: "stuff" })).toBeFocused();
+  await search.fill("not-a-project");
+  await expect(page.getByText("No projects match this view.")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filter" }).click();
+  await expect(search).toHaveValue("");
+  await expect(search).toBeFocused();
+  await expect(table.getByRole("link", { name: "Billing" })).toBeVisible();
+});
+
+test("filtering projects suspends hidden trends without refetching project data", async ({ page }) => {
+  const requests = await mock(page, { probes: true });
+  const configured = projects("fresh", true, PROJECT_BUCKETS, [], [])[0]!;
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [configured, { ...configured, id: "billing", name: "Billing", worker: "billing" }] }));
+  await page.route("**/api/v1/projects/billing/**", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "billing data unavailable" } } }));
+  await page.goto("/#/projects");
+  const row = page.locator(".projects-row", { hasText: "stuff" });
+  await expect(row).toContainText("$3.12/mo");
+  await row.getByRole("button", { name: "Show stuff trends" }).click();
+  await expect(page.locator(".projects-detail").getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const before = requests.length;
+  const search = page.getByRole("searchbox", { name: "Search projects" });
+  await search.fill("billing");
+  await expect(page.locator(".projects-detail")).toHaveCount(0);
+  await search.fill("");
+  await expect(page.locator(".projects-detail").getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect(requests).toHaveLength(before);
 });
 
 test("the projects table compares each project's settled window with the one before and expands to its trends", async ({ page }) => {

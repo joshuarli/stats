@@ -14,6 +14,7 @@ export interface ListState {
     returnHost: string | null;
   };
   projects: {
+    search: string;
     sort: Sort<ProjectSortKey>;
     returnProject: string | null;
   };
@@ -22,7 +23,7 @@ export interface ListState {
 export function createListState(): ListState {
   return {
     fleet: { search: "", selected: new Set(), sort: { key: "status", direction: 1 }, page: 1, returnHost: null },
-    projects: { sort: { key: "none", direction: 1 }, returnProject: null }
+    projects: { search: "", sort: { key: "none", direction: 1 }, returnProject: null }
   };
 }
 

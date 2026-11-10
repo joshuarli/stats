@@ -1,4 +1,5 @@
 .projects-basis { color: var(--muted); font-size: var(--fs-meta); }
+.projects-scroll-hint { margin: 0; padding: var(--space-xs) var(--inset) var(--space-sm); color: var(--muted); font-size: var(--fs-meta); }
 .projects-table .numeric .cell-stack { align-items: flex-end; }
 .projects-table .numeric .cell-pending { margin-left: auto; }
 @media (min-width: 900px) {

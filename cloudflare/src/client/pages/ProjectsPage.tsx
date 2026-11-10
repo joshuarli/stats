@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, refresh, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, onSettled, refresh, Show, untrack, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
@@ -6,7 +6,7 @@ import { loadProjects } from "../queries";
 import { collectorStatus } from "../status";
 import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../state";
 import { metricTrack, type MetricHistory, type ProjectHistories } from "../history";
-import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
+import { EmptyState, Icon, Skeleton } from "@laputa-systems/ui-dashboard";
 import { EntityCell, ErrorState, StateCell, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
@@ -44,10 +44,15 @@ function Projects(): JSX.Element {
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
+  const [search, setSearch] = createSignal(lists.projects.search);
   const { sort, sortBy } = createSort<ProjectSortKey>(lists.projects.sort);
   let returnProject = lists.projects.returnProject;
   lists.projects.returnProject = null;
-  onCleanup(() => { lists.projects.sort = sort(); });
+  onCleanup(() => { lists.projects.search = search(); lists.projects.sort = sort(); });
+  let searchInput: HTMLInputElement | undefined;
+  const filter = createMemo(() => search().trim().toLowerCase());
+  const matches = (project: Project) => filter() === "" || [project.name, project.id, project.worker].some(value => value.toLowerCase().includes(filter()));
+  const matchingCount = createMemo(() => projects().filter(matches).length);
   const onProjectMount = (id: string, link: HTMLAnchorElement) => {
     if (returnProject !== id) return;
     returnProject = null;
@@ -103,7 +108,17 @@ function Projects(): JSX.Element {
         bodyClass="flush"
         meta={<span class="projects-basis">Settled {range()} vs the {range()} before · cost projected to 30 days at list price</span>}
       >
-        <div class="table-scroll projects-table-scroll" role="region" aria-label="Projects table">
+        <div class="table-toolbar">
+          <label class="search">
+            <span class="ui-sr-only">Search projects</span>
+            <span class="search-icon"><Icon name="search" size={13} /></span>
+            <input ref={element => { searchInput = element; }} type="search" placeholder="Filter projects" value={search()} onInput={event => setSearch(event.currentTarget.value)} />
+          </label>
+        </div>
+        <Show when={matchingCount() === 0}>
+          <EmptyState title="No projects match this view." detail="Clear the filter to see all projects." action={<button class="btn" type="button" onClick={() => { setSearch(""); searchInput?.focus(); }}>Clear filter</button>} />
+        </Show>
+        <ProjectsTable hidden={matchingCount() === 0}>
           <table class="data-table projects-table" aria-label="Projects">
             <thead>
               <tr>
@@ -117,12 +132,31 @@ function Projects(): JSX.Element {
                 <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
-            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
+            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} visible={matches(project)} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
           </table>
-        </div>
+        </ProjectsTable>
       </Widget>
     </Show>
   );
+}
+
+function ProjectsTable(props: ParentProps<{ readonly hidden: boolean }>): JSX.Element {
+  let region: HTMLDivElement | undefined;
+  const [overflow, setOverflow] = createSignal(false);
+  onSettled(() => {
+    if (region === undefined) throw new Error("Projects table region is missing");
+    const element = region;
+    const table = element.querySelector("table");
+    if (table === null) throw new Error("Projects table is missing");
+    const update = () => setOverflow(element.scrollWidth > element.clientWidth);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    observer.observe(table);
+    update();
+    return () => observer.disconnect();
+  });
+  // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- scrollable regions need keyboard focus
+  return <><div ref={element => { region = element; }} class="table-scroll projects-table-scroll" role="region" aria-label="Projects table" aria-describedby={overflow() ? "projects-scroll-hint" : undefined} tabindex="0" hidden={props.hidden}>{props.children}</div><Show when={!props.hidden && overflow()}><p class="projects-scroll-hint" id="projects-scroll-hint">Scroll horizontally for more columns.</p></Show></>;
 }
 
 function sumIn(history: MetricHistory | undefined, metric: string, window: TimeWindow): number | null {
@@ -158,7 +192,7 @@ function Change(props: { readonly amount: Amount | null; readonly worseUp: boole
   return <Show when={text()}>{value => <span class={`projects-change${tone()}`}>{value()}</span>}</Show>;
 }
 
-function ProjectRow(props: { readonly project: Project; readonly reportMetrics: (id: string, value: ProjectMetrics) => void; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
+function ProjectRow(props: { readonly project: Project; readonly visible: boolean; readonly reportMetrics: (id: string, value: ProjectMetrics) => void; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const refreshKey = () => `${projectTick()}:${manualTick()}`;
@@ -196,7 +230,7 @@ function ProjectRow(props: { readonly project: Project; readonly reportMetrics: 
 
   createEffect(
     () => ({
-      active: open() && ledgerError() !== null,
+      active: open() && props.visible && ledgerError() !== null,
       id: props.project.id,
       range: range(),
       tick: refreshKey()
@@ -282,7 +316,7 @@ function ProjectRow(props: { readonly project: Project; readonly reportMetrics: 
   const pending = () => failure() === null ? (worker()?.price.kind === "uncollected" ? <span class="cell-note">no data</span> : <span class="cell-pending" aria-hidden="true" />) : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
 
   return (
-    <tbody class={open() ? "projects-group open" : "projects-group"}>
+    <tbody class={open() ? "projects-group open" : "projects-group"} hidden={!props.visible}>
       <tr class="projects-row">
         <td>
           <EntityCell
@@ -333,7 +367,7 @@ function ProjectRow(props: { readonly project: Project; readonly reportMetrics: 
           </button>
         </td>
       </tr>
-      <Show when={open()}>
+      <Show when={open() && props.visible}>
         <tr class="projects-detail">
           <td colspan="8">
             <Show when={trendHistories()} fallback={historyError() === null ? <Skeleton rows={2} chart /> : <ErrorState error={new Error(historyError() ?? "")} compact />}>{value => <Loading fallback={<Skeleton rows={2} chart />}><Trends project={props.project} histories={value()} /></Loading>}</Show>
