@@ -199,6 +199,14 @@ test("long work details do not squeeze operation names", async ({ page }) => {
   expect(layout.lines).toBe(1);
 });
 
+test("an unavailable service issue response releases its unread body", async ({ page }) => {
+  await page.route("**/api/observe/web/issues?*", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "collector unavailable" } } }));
+  const closed = page.waitForEvent("requestfailed", { predicate: request => request.url().includes("/api/observe/web/issues?"), timeout: 5_000 });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  await expect(page.getByText("Issues: unavailable")).toBeVisible();
+  expect((await closed).failure()).not.toBeNull();
+});
+
 test("an unknown service is a not-found state, not an empty page", async ({ page }) => {
   await page.goto(`${ORIGIN}/#/service/absent`);
   await expect(page.getByText("Service not found")).toBeVisible();

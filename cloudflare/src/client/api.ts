@@ -55,6 +55,11 @@ export class ApiFailure extends Error {
   }
 }
 
+export async function failureForResponse(response: Response, message: string, status = response.status): Promise<ApiFailure> {
+  try { await response.body?.cancel(); } catch (cause) { return new ApiFailure(status, message, cause); }
+  return new ApiFailure(status, message);
+}
+
 function isRecord(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -259,10 +264,10 @@ export function openHistoryFrame<T>(
 
 async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal): Promise<T> {
   const response = await send(path, { Accept: "application/json" }, signal);
-  if (!response.ok) throw new ApiFailure(response.status, statusMessage(response.status));
+  if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    throw new ApiFailure(0, "The response was not telemetry JSON. Sign in through Cloudflare Access.");
+    throw await failureForResponse(response, "The response was not telemetry JSON. Sign in through Cloudflare Access.", 0);
   }
   let body: unknown;
   try {
@@ -308,9 +313,9 @@ async function fetchHistory<T>(
       throw new ApiFailure(0, "The response was not modified but no cached copy exists.");
     }
   }
-  if (!response.ok) throw new ApiFailure(response.status, statusMessage(response.status));
+  if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
   if ((response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase() !== HISTORY_CONTENT_TYPE) {
-    throw new ApiFailure(0, "The response was not telemetry history. Sign in through Cloudflare Access.");
+    throw await failureForResponse(response, "The response was not telemetry history. Sign in through Cloudflare Access.", 0);
   }
   let bytes: ArrayBuffer | Uint8Array;
   try {

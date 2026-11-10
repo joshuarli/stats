@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { ApiFailure } from "../../api";
+import { ApiFailure, failureForResponse } from "../../api";
 import { age, count } from "../../format";
 import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
@@ -20,11 +20,7 @@ async function read<T>(what: "Deployment history" | "Deployment comparison", pat
   let response: Response;
   try { response = await fetch(path, { signal, credentials: "same-origin", cache: "no-store" }); }
   catch (cause) { throw new ApiFailure(0, `${what} request failed`, cause); }
-  if (!response.ok) {
-    const failure = (cause?: unknown) => new ApiFailure(response.status, `${what} unavailable (${response.status})`, cause);
-    try { await response.body?.cancel(); } catch (cause) { throw failure(cause); }
-    throw failure();
-  }
+  if (!response.ok) throw await failureForResponse(response, `${what} unavailable (${response.status})`);
   try { return decode(await response.json()); }
   catch (cause) { throw new ApiFailure(0, `Invalid ${what.toLowerCase()} response`, cause); }
 }

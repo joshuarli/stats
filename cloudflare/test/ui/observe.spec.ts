@@ -311,8 +311,10 @@ test("a failed resolve says so in the Errors section", async ({ page }) => {
   await page.goto("/#/project/stats?range=24h&section=errors");
   const issues = page.locator("#issues");
   await issues.getByRole("option", { name: /RangeError/u }).click();
+  const closed = page.waitForEvent("requestfailed", { predicate: request => request.method() === "POST" && request.url().endsWith("/state"), timeout: 5_000 });
   await issues.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(issues).toContainText("Could not mark the issue resolved (503)");
+  expect((await closed).failure()).not.toBeNull();
   await expect(issues.getByRole("alert")).toContainText("Could not mark the issue resolved (503)");
   await expect(issues.getByRole("option", { name: /RangeError/u })).toBeVisible();
   await expect(issues.getByRole("button", { name: "Resolve", exact: true })).toBeEnabled();

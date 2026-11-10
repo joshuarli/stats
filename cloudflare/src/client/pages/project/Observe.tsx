@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ActionState } from "@laputa-systems/ui-dashboard/feedback";
-import { ApiFailure } from "../../api";
+import { ApiFailure, failureForResponse } from "../../api";
 import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { readParam, writeParam } from "../../urlState";
@@ -27,9 +27,9 @@ async function readFrom<T>(base: string, path: string, signal: AbortSignal, deco
   let response: Response;
   try { response = await fetch(`${base}${path}`, { signal, credentials: "same-origin", cache: "no-store" }); }
   catch (cause) { throw new ApiFailure(0, "The observability collector could not be reached", cause); }
-  if (response.status === 404 && path.startsWith("/traces/")) throw new ApiFailure(404, "This trace has expired or was never recorded");
-  if (response.status === 404 && path.startsWith("/rollouts/")) throw new ApiFailure(404, "This deployment has not reached the collector yet; deployments are forwarded every 5 minutes");
-  if (!response.ok) throw new ApiFailure(response.status, `The observability collector is unavailable (${response.status})`);
+  if (response.status === 404 && path.startsWith("/traces/")) throw await failureForResponse(response, "This trace has expired or was never recorded");
+  if (response.status === 404 && path.startsWith("/rollouts/")) throw await failureForResponse(response, "This deployment has not reached the collector yet; deployments are forwarded every 5 minutes");
+  if (!response.ok) throw await failureForResponse(response, `The observability collector is unavailable (${response.status})`);
   try { return decode(await response.json()); }
   catch (cause) { throw new ApiFailure(0, "The observability collector sent an invalid response", cause); }
 }
@@ -237,7 +237,7 @@ export function createObservability(
     setActionState({ kind: "pending", message: state === "resolved" ? "Resolving issue…" : "Reopening issue…" });
     try {
       const response = await fetch(`${base}/issues/${fingerprint}/state`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state }) });
-      if (!response.ok) throw new ApiFailure(response.status, `Could not mark the issue ${state} (${response.status})`);
+      if (!response.ok) throw await failureForResponse(response, `Could not mark the issue ${state} (${response.status})`);
       setActionState({ kind: "succeeded", message: state === "resolved" ? "Issue resolved." : "Issue reopened." });
       setMutation(value => value + 1);
     } catch (cause) {
