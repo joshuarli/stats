@@ -82,10 +82,12 @@ lint: node-ready
 	pnpm --filter @stats/telemetry lint
 
 auth-ready:
-	@cf -q auth whoami >/dev/null
+	@out=$$(cf -q auth whoami 2>&1) || { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; }; \
+	printf '%s\n' "$$out" | rg -q 'Unable to find token for provided application|Please run login command to generate token' && { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; } || true
 
 access-ready:
-	@cf -q access token '$(STATS_URL)' >/dev/null || { echo "Access token for $(STATS_URL) is missing or expired; run: cf access login $(STATS_URL)" >&2; exit 1; }
+	@out=$$(cf -q access token '$(STATS_URL)' 2>&1) || { printf '%s\n' "$$out" >&2; echo "Access token for $(STATS_URL) is missing or expired; run: cf access login $(STATS_URL)" >&2; exit 1; }; \
+	printf '%s\n' "$$out" | rg -q 'Unable to find token for provided application|Please run login command to generate token' && { printf '%s\n' "$$out" >&2; echo "Access token for $(STATS_URL) is missing or expired; run: cf access login $(STATS_URL)" >&2; exit 1; } || true
 
 worker-check: node-ready
 	cd cloudflare && pnpm build && cf -q deploy --prebuilt --dry-run --mode production

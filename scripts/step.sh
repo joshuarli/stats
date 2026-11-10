@@ -29,6 +29,10 @@ if [ -t 1 ]; then
   printf '\r\033[K'
 fi
 
+if [ "$status" -eq 0 ] && rg -q 'Unable to find token for provided application|Please run login command to generate token' "$log" 2>/dev/null; then
+  status=1
+fi
+
 if [ "$status" -ne 0 ]; then
   printf '  \033[31m✗\033[0m %s (%ss, exit %s)\n' "$label" "$elapsed" "$status"
   tail -n 40 "$log" | sed 's/^/      /'
