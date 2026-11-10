@@ -71,6 +71,34 @@ await test("a snapshot replays offline to exactly the live payload", async () =>
   }
 });
 
+await test("a sampled object-method snapshot replays its cost qualifications", async () => {
+  const directory = scratch();
+  const file = join(directory, "sampled.json");
+  const origin = await serve({
+    projects: [STATS],
+    objectMethods: url => ({
+      fromMs: Number(url.searchParams.get("from")),
+      toMs: Number(url.searchParams.get("to")),
+      methods: [{ label: "Installation.jsrpc", requests: 4, failed: 0, cpuMs: 10, wallMs: 20, p50WallMs: 5, p95WallMs: 8 }],
+      sampling: { keepPerMillion: 100_000, kept: 4, observed: 40 }
+    })
+  });
+  try {
+    const live = await statsctl(["cost", "--project", "stats", "--json"], { origin: origin.origin });
+    const saved = await statsctl(["snapshot", "--project", "stats", "--out", file, "--json"], { origin: origin.origin });
+    assert.equal(live.code, EXIT.ok, live.stderr);
+    assert.equal(saved.code, EXIT.ok, saved.stderr);
+    const replayed = await replay(file);
+    assert.equal(replayed.ran.code, EXIT.ok, replayed.ran.stderr);
+    assert.equal(replayed.authRan, false);
+    assert.deepEqual(payloadOf(replayed.ran), payloadOf(live));
+    assert.ok(payloadOf(replayed.ran).projects[0]!.report!.warnings.some(warning => warning.code === "object-method-sampled"));
+  } finally {
+    await origin.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 await test("a snapshot holds frames, hashes, and revisions but no credential and no stack frames", async () => {
   const directory = scratch();
   try {

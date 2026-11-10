@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[] } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[]; readonly sampleObjectMethods?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -53,6 +53,11 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (method === "POST") posts.push(`${path} ${route.request().postData() ?? ""}`);
     if (method === "POST") await options.beforePost?.();
     const response = await answer(scenario, now, new Request(`https://observe${path}${url.search}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
+    if (path === "/objects" && options.sampleObjectMethods === true) {
+      const body = await response.json() as { readonly methods: readonly unknown[] };
+      const previous = Number(url.searchParams.get("to")) <= now - 2 * 60 * 60 * 1000;
+      return route.fulfill({ json: { ...body, methods: previous ? [] : body.methods, sampling: { keepPerMillion: 100_000, kept: 4, observed: 40 } } });
+    }
     return route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() });
   });
   return { requests, posts, services };
@@ -238,6 +243,22 @@ test("a failed object-method request is reported until a successful retry @mobil
   const objects = page.locator('[id="ledger-objects"]');
   if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();
   await expect(page.locator('[id^="ledger-object:"]:not([id="ledger-object:sqlite"]):not([id="ledger-object:storage"])').first()).toBeVisible();
+});
+
+test("sampled object methods disclose their basis and do not invent a zero comparison @mobile", async ({ page }) => {
+  await setup(page, { sampleObjectMethods: true });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const note = page.getByRole("note").filter({ hasText: "Current object methods" });
+  await expect(note).toContainText("4 of 40 object invocations retained");
+  await expect(note).toContainText("cost shares are estimates");
+  const objects = page.locator('[id="ledger-objects"]');
+  if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();
+  const method = page.locator('[id^="ledger-object:"]:not([id="ledger-object:sqlite"]):not([id="ledger-object:storage"])').first();
+  await expect(method).toBeVisible();
+  await expect(method.locator(".ledger-change")).toHaveText("—");
+  await expect(method.locator(".ledger-money")).not.toContainText("≤");
+  if (await method.getAttribute("aria-expanded") !== "true") await method.click();
+  await expect(page.locator(".ledger-detail-context")).toContainText("Comparison unavailable for this method");
 });
 
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {

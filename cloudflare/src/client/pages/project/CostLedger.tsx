@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { bytes, count, dollarsPrecise, milliseconds, percent } from "../../format";
 import { metricTrack } from "../../history";
 import { createSort } from "../../components/sort";
+import { Notice } from "../../components/ui";
 import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
 import { holdLast } from "../../math.ts";
@@ -336,6 +337,9 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
         </div>
         <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" role="status"><span class="ledger-month-note">Loading monthly bill…</span></div> : props.report.planBill.kind === "unavailable" && props.report.planBill.reason === "no-data" ? <MonthNoData /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
       </header>
+      <Show when={props.report.warnings.some(warning => warning.code === "object-method-sampled")}>
+        <div role="note"><Notice tone="info"><For each={props.report.warnings.filter(warning => warning.code === "object-method-sampled")}>{warning => <span>{warning.message} </span>}</For></Notice></div>
+      </Show>
       <div class="ledger-table">
         <div class="ledger-tools">
           <span class="ledger-caption">Usage and per-call figures cover the selected window</span>

@@ -58,7 +58,11 @@ export function baselineMethodsRetained(previous: TimeWindow, nowMs: number, ret
 }
 
 export function objectMethodsOf(now: ObservedObjectMethods, before: ObservedObjectMethods | null): ObjectMethods {
-  return { now: now.methods, before: before?.methods ?? null };
+  return {
+    now: now.methods,
+    before: before?.methods ?? null,
+    ...(now.sampling === undefined && before?.sampling === undefined ? {} : { sampling: { now: now.sampling ?? null, before: before?.sampling ?? null } })
+  };
 }
 
 export function assembleProjectLedger(inputs: LedgerInputs): ProjectLedger {

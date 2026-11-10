@@ -3,6 +3,7 @@ import type { Track } from "../client/columns.ts";
 import { metricTrack, type MetricHistory } from "../client/history.ts";
 import { BYTES_PER_GB, DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_GB_MONTH, LIST_PRICE_PER_MILLION, WORKERS_PAID_INCLUDED } from "./pricing.ts";
 import type { ObjectMethodStats } from "../observe/core/store.ts";
+import type { SamplingSummary } from "../observe/core/counts.ts";
 import { holdLast } from "../client/math.ts";
 import type { WorkerBilling } from "../projects/config.ts";
 
@@ -70,6 +71,7 @@ export interface LedgerHistories {
 export interface ObjectMethods {
   readonly now: readonly ObjectMethodStats[];
   readonly before: readonly ObjectMethodStats[] | null;
+  readonly sampling?: { readonly now: SamplingSummary | null; readonly before: SamplingSummary | null };
 }
 
 export interface LedgerInput {
@@ -297,16 +299,18 @@ function methodLines(methods: ObjectMethods, requests: Amount, duration: Amount,
   const share = (part: number, whole: number) => (whole > 0 ? part / whole : 0);
   return methods.now.map(method => {
     const previous = methods.before?.find(entry => entry.label === method.label);
+    const previousUnknown = before === null || methods.sampling?.before != null;
+    const sampled = methods.sampling?.now != null;
     const monthlyNow = share(method.requests, now.calls) * requests.now + share(method.wallMs, now.wall) * duration.now;
     const monthlyBefore = before === null || requests.before === null || duration.before === null ? null
-      : previous === undefined ? 0 : share(previous.requests, before.calls) * requests.before + share(previous.wallMs, before.wall) * duration.before;
+      : previous === undefined ? (previousUnknown ? null : 0) : share(previous.requests, before.calls) * requests.before + share(previous.wallMs, before.wall) * duration.before;
     return {
       id: `object:${method.label}`, kind: "object-method", label: method.label,
-      price: priced(monthlyNow, monthlyBefore, "upper"),
-      parts: [{ label: "requests", monthly: share(method.requests, now.calls) * requests.now, bound: "estimate" }, { label: "duration", monthly: share(method.wallMs, now.wall) * duration.now, bound: "upper" }],
+      price: priced(monthlyNow, monthlyBefore, sampled ? "estimate" : "upper"),
+      parts: [{ label: "requests", monthly: share(method.requests, now.calls) * requests.now, bound: "estimate" }, { label: "duration", monthly: share(method.wallMs, now.wall) * duration.now, bound: sampled ? "estimate" : "upper" }],
       usage: {
         kind: "objects",
-        calls: { now: method.requests * scale.now, before: previous === undefined ? (methods.before === null ? null : 0) : previous.requests * scale.before },
+        calls: { now: method.requests * scale.now, before: previous === undefined ? (previousUnknown ? null : 0) : previous.requests * scale.before },
         wallMs: { now: method.wallMs * scale.now, before: previous === undefined ? null : previous.wallMs * scale.before },
         cpuMs: { now: method.cpuMs * scale.now, before: previous === undefined ? null : previous.cpuMs * scale.before },
         latency: { p50WallMs: method.p50WallMs, p95WallMs: method.p95WallMs, failed: method.failed }

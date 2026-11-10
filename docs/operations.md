@@ -327,6 +327,12 @@ imports and erasable syntax only, and none imports Solid, uPlot, or
   `utc-month`, never the billing cycle. Durable Object duration from summed wall
   time is an upper bound. Every total lists its priced meters, excluded meters,
   and residuals.
+- **Sampled object methods.** When observation samples object invocations, method
+  counts and latency describe retained invocations, and allocated method costs are
+  estimates rather than upper bounds. The cost report includes an
+  `object-method-sampled` warning for each sampled window; its counts cover the
+  overlapping observation-count buckets. A method absent from a sampled comparison
+  has an unknown baseline, not zero.
 - **Compare like with like.** The ledger total and the comparator's cost per
   1,000 invocations share arithmetic but have different scopes, and each names its
   meter set.

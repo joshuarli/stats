@@ -99,6 +99,7 @@ export type WarningCode =
   | "line-no-source"
   | "window-partial-coverage"
   | "duration-upper-bound-proxy"
+  | "object-method-sampled"
   | "unattributed-residual"
   | "tail-requests-unpriced"
   | "plan-month-unavailable"
@@ -199,7 +200,7 @@ function reportLine(line: CostLine, parent: Source | null, input: CostReportInpu
   const baselineCoverage = input.previous === undefined ? null : source === null ? coverageOf(undefined, input.windows.previous) : coverageOf(source.pick(input.previous), window(true), source.only);
   return {
     id: line.id, kind: line.kind, label: line.label, price: line.price, parts: line.parts, usage: line.usage, trend: line.trend,
-    coverage, baselineCoverage, confidence: confidenceOf(line, coverage),
+    coverage, baselineCoverage, confidence: line.kind === "object-method" && input.objectMethods?.sampling?.now != null ? "qualified" : confidenceOf(line, coverage),
     children: line.children.map(child => reportLine(child, source, input))
   };
 }
@@ -262,6 +263,9 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
   const warn = (code: WarningCode, subject: string, message: string) => warnings.push({ code, subject, message });
   if (input.windows.current.toMs > input.nowMs) warn("window-ends-after-now", "current", "The current window ends after the report clock, so its newest buckets cannot exist yet.");
   if (input.previous === undefined) warn("baseline-unavailable", "previous", "The previous window was not supplied, so no change is computed.");
+  for (const [period, sampling] of [["current", input.objectMethods?.sampling?.now], ["previous", input.objectMethods?.sampling?.before]] as const) {
+    if (sampling != null) warn("object-method-sampled", period, `${period === "current" ? "Current" : "Comparison"} object methods: ${sampling.kept} of ${sampling.observed} object invocations retained in overlapping count buckets. ${period === "current" ? "Method counts and latency use retained invocations; cost shares are estimates." : "Comparison values use retained invocations."}`);
+  }
   for (const line of walk(lines)) {
     if (line.price.kind === "uncollected") {
       warn(line.price.cause === "no-data" ? "line-no-data" : "line-no-source", line.id, line.price.cause === "no-data" ? `${line.label} has no collected bucket in the window and is excluded from the total.` : `${line.label} has no collector source and is excluded from the total.`);

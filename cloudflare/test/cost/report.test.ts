@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { billedBeyondPlan, previousWindowOf, type MeterUsage } from "../../src/cost/ledger.ts";
 import { PRICING_REVISION } from "../../src/cost/pricing.ts";
 import { buildCostReport, PricingRevisionMismatch, utcMonthOf, type CostReport, type CostReportInput, type ReportLine } from "../../src/cost/report.ts";
+import { objectMethodsOf } from "../../src/client/project-ledger.ts";
 import { H, histories } from "./support.ts";
 
 const T0 = 100 * H;
@@ -18,6 +19,36 @@ function report(parts: Partial<CostReportInput> & Pick<CostReportInput, "current
 const find = (lines: readonly ReportLine[], id: string) => lines.find(entry => entry.id === id)!;
 const warned = (built: CostReport, code: string, subject: string) => built.warnings.some(entry => entry.code === code && entry.subject === subject);
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
+
+await test("sampled object methods do not turn an unseen baseline into zero", () => {
+  const metrics = { "do.invocations": [100, 100, 0], "do.wallMsSum": [1_000, 1_000, 0], "do.cpuMsSum": [100, 100, 0] };
+  const current = histories(T0, { durableObjects: metrics });
+  const previous = histories(T0 - 2 * H, { durableObjects: metrics });
+  const method = { label: "Store.get", requests: 4, failed: 0, cpuMs: 10, wallMs: 20, p50WallMs: 5, p95WallMs: 8 };
+  const sampling = { keepPerMillion: 100_000, kept: 4, observed: 40 };
+  const now = { fromMs: T0, toMs: T0 + 2 * H, methods: [method], sampling };
+  const before = { fromMs: T0 - 2 * H, toMs: T0, methods: [], sampling };
+  const built = report({ current, previous, project: { ...PROJECT, durableObjectNamespaces: ["store"] }, objectMethods: objectMethodsOf(now, before) });
+  const entry = find(find(built.lines, "objects").children, "object:Store.get");
+  assert.equal(entry.price.kind, "priced");
+  if (entry.price.kind !== "priced" || entry.usage.kind !== "objects") throw new Error("expected priced object usage");
+  assert.equal(entry.price.monthly.before, null);
+  assert.equal(entry.usage.calls.before, null);
+  assert.equal(entry.price.bound, "estimate");
+  assert.equal(entry.confidence, "qualified");
+  assert.ok(warned(built, "object-method-sampled", "current"));
+  assert.ok(warned(built, "object-method-sampled", "previous"));
+  const unsampled = report({ current, previous, project: { ...PROJECT, durableObjectNamespaces: ["store"] }, objectMethods: objectMethodsOf({ fromMs: now.fromMs, toMs: now.toMs, methods: now.methods }, { fromMs: before.fromMs, toMs: before.toMs, methods: before.methods }) });
+  const plain = find(find(unsampled.lines, "objects").children, "object:Store.get");
+  assert.equal(plain.price.kind === "priced" && plain.price.monthly.before, 0);
+  assert.equal(warned(unsampled, "object-method-sampled", "current"), false);
+  const earlierSampled = report({ current, previous, project: { ...PROJECT, durableObjectNamespaces: ["store"] }, objectMethods: objectMethodsOf({ fromMs: now.fromMs, toMs: now.toMs, methods: now.methods }, before) });
+  const mixed = find(find(earlierSampled.lines, "objects").children, "object:Store.get");
+  assert.equal(mixed.price.kind === "priced" && mixed.price.monthly.before, null);
+  assert.equal(mixed.price.kind === "priced" && mixed.price.bound, "upper");
+  assert.equal(warned(earlierSampled, "object-method-sampled", "current"), false);
+  assert.ok(warned(earlierSampled, "object-method-sampled", "previous"));
+});
 
 await test("rejects a pricing revision other than the table's", () => {
   assert.throws(() => report({ current: histories(T0, {}), pricingRevision: "2000-01-01" }), PricingRevisionMismatch);

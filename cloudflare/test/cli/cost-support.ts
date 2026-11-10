@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeProjectBundle } from "../../src/history-frame.ts";
 import { main } from "../../src/cli/run.ts";
+import type { Price } from "../../src/cost/ledger.ts";
 import type { ProjectHistory } from "../../src/projects/history.ts";
 import { authorized, fakeOrigin, projectEntry, sendJson, tokenEnv, type FakeOrigin } from "./support.ts";
 
@@ -53,6 +54,7 @@ export function historyFrame(project: WorldProject, url: URL, nowMs: number): Ui
 export interface World {
   readonly projects: readonly WorldProject[];
   readonly nowMs?: number;
+  readonly objectMethods?: (url: URL) => unknown;
 }
 
 export async function serve(world: World): Promise<FakeOrigin> {
@@ -74,6 +76,7 @@ export async function serve(world: World): Promise<FakeOrigin> {
     }
     if (url.pathname === "/api/observe/stats/objects") {
       const from = Number(url.searchParams.get("from"));
+      if (world.objectMethods !== undefined) return sendJson(response, world.objectMethods(url));
       return sendJson(response, { fromMs: from, toMs: Number(url.searchParams.get("to")), methods: [{ label: "Installation.jsrpc", requests: 5000, failed: 2, cpuMs: 900, wallMs: 4000, p50WallMs: 3, p95WallMs: 40 }] });
     }
     sendJson(response, {}, 404);
@@ -105,11 +108,11 @@ export interface Payload {
 
 export interface PresentedReportShape {
   readonly windows: { readonly current: { readonly fromMs: number; readonly toMs: number }; readonly previous: { readonly fromMs: number; readonly toMs: number } };
-  readonly lines: readonly { readonly id: string; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
+  readonly lines: readonly { readonly id: string; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
   readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown };
   readonly total: { readonly monthly: { readonly now: number } };
   readonly comparison: { readonly baseline: string };
-  readonly warnings: readonly { readonly code: string }[];
+  readonly warnings: readonly { readonly code: string; readonly subject: string }[];
 }
 
 export const documentOf = (ran: Ran): Record<string, unknown> => JSON.parse(ran.stdout) as Record<string, unknown>;

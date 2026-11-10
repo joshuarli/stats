@@ -51,6 +51,32 @@ await test("a project makes at most four requests after the shared project list 
   }
 });
 
+await test("sampled object methods report their coverage and keep a sampled-out baseline unknown", async () => {
+  const origin = await serve({
+    projects: [STATS],
+    objectMethods: url => ({
+      fromMs: Number(url.searchParams.get("from")),
+      toMs: Number(url.searchParams.get("to")),
+      methods: Number(url.searchParams.get("to")) === SETTLED_MS ? [{ label: "Installation.jsrpc", requests: 4, failed: 0, cpuMs: 10, wallMs: 20, p50WallMs: 5, p95WallMs: 8 }] : [],
+      sampling: { keepPerMillion: 100_000, kept: 4, observed: 40 }
+    })
+  });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const objects = report.lines.find(line => line.id === "objects")!;
+    const method = objects.children.find(line => line.id === "object:Installation.jsrpc")!;
+    assert.equal(method.price.kind, "priced");
+    if (method.price.kind !== "priced") throw new Error("expected a priced method");
+    assert.equal(method.price.monthly.before, null);
+    assert.equal(method.price.bound, "estimate");
+    assert.deepEqual(report.warnings.filter(warning => warning.code === "object-method-sampled").map(warning => warning.subject), ["current", "previous"]);
+  } finally {
+    await origin.close();
+  }
+});
+
 await test("--all marks a failing project unavailable and still reports the others", async () => {
   const origin = await serve({ projects: [{ ...PLAIN, fail: url => url.searchParams.get("range") === null ? 404 : undefined }, STATS] });
   try {
