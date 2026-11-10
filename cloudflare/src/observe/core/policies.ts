@@ -78,6 +78,27 @@ export const MEMORIES_OPERATIONS = [
   "status.read", "mcp.request"
 ] as const;
 
+const DISCOVER_SEGMENTS: ReadonlySet<string> = new Set([
+  "api", "v1", "operator", "bootstrap", "credentials", "makers", "review", "tasks", "results", "cancel", "revoke",
+  "mcp", "admin", "desk", "search", "assets", "ui", "artists", "sources", "terms", "places", "exhibitions", "publications"
+]);
+
+function discoverRoute(path: string): string {
+  if (path === "/") return path;
+  return path.split("/").map((segment, index) => index === 0 || segment === "" || DISCOVER_SEGMENTS.has(segment) ? segment : ":id").join("/");
+}
+
+const DISCOVER_POLICY: ServicePolicy = {
+  workerRoute: discoverRoute,
+  objectRoute: path => path === "" ? null : discoverRoute(path),
+  operations: PROFILE_OPERATIONS,
+  labelOperation: () => null,
+  operationMessages: "service",
+  sampling: KEEP_ALL,
+  captureOperations: true,
+  routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS
+};
+
 export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
   stats: {
     workerRoute: statsWorkerRoute,
@@ -123,5 +144,7 @@ export const POLICIES: Readonly<Record<ObservedService, ServicePolicy>> = {
     operationMessages: "service",
     sampling: NANOSHOP_SAMPLING,
     routesPerClass: NANOSHOP_ROUTES_PER_CLASS
-  }
+  },
+  discover: DISCOVER_POLICY,
+  "discover-preview": DISCOVER_POLICY
 };

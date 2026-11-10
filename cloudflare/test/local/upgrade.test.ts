@@ -18,7 +18,7 @@ const T = RECORDED_AT_MS;
 interface Snapshot {
   readonly hosts: unknown;
   readonly latest: unknown;
-  readonly projects: unknown;
+  readonly projects: readonly (readonly [string, unknown])[];
   readonly etag: string | null;
   readonly frame: Uint8Array;
 }
@@ -29,7 +29,7 @@ async function snapshot(stack: Stack, hostId: string): Promise<Snapshot> {
   return {
     hosts: await (await stack.fetch("/api/v1/hosts")).json(),
     latest: await (await stack.fetch(`/api/v1/hosts/${hostId}/latest`)).json(),
-    projects: (await (await stack.fetch("/api/v1/projects")).json() as { id: string; collector: unknown }[]).map(project => [project.id, project.collector]),
+    projects: (await (await stack.fetch("/api/v1/projects")).json() as { id: string; collector: unknown }[]).map(project => [project.id, project.collector] as const),
     etag: history.headers.get("etag"),
     frame: new Uint8Array(await history.arrayBuffer())
   };
@@ -56,7 +56,8 @@ await test("the candidate opens state written by the build before schema version
       const after = await snapshot(candidate, host.hostId);
       assert.deepEqual(after.hosts, before.hosts);
       assert.deepEqual(after.latest, before.latest);
-      assert.deepEqual(after.projects, before.projects);
+      const baselineIds = new Set(before.projects.map(([id]) => id));
+      assert.deepEqual(after.projects.filter(([id]) => baselineIds.has(id)), before.projects, "every baseline project keeps its collector state");
       assert.equal(after.etag, before.etag);
       assert.deepEqual(after.frame, before.frame);
       const created = await candidate.fetch("/api/v1/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "api", hostIds: [host.hostId] }) });

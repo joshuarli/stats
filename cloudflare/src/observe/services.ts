@@ -1,4 +1,4 @@
-export const OBSERVED_SERVICES = ["stats", "usr-memories", "nanoshop-storied", "nanoshop-fieldhouse", "nanoshop-tidewater"] as const;
+export const OBSERVED_SERVICES = ["stats", "usr-memories", "nanoshop-storied", "nanoshop-fieldhouse", "nanoshop-tidewater", "discover", "discover-preview"] as const;
 
 export type ObservedService = typeof OBSERVED_SERVICES[number];
 

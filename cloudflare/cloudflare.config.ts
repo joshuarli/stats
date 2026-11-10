@@ -60,6 +60,16 @@ const PROJECTS: readonly ProjectConfig[] = [
     durableObjectNamespaces: ["a7e0a4cae8794796b24d07e28fdfc0b6"],
     d1Databases: [],
     probes: []
+  },
+  {
+    id: "discover-preview",
+    name: "discover-preview",
+    worker: "discover-preview",
+    workerBilling: "requests-and-cpu",
+    buckets: ["discover-preview-artifacts"],
+    durableObjectNamespaces: ["908a7bb2206d4df396bf40a8e566d0cf"],
+    d1Databases: [],
+    probes: []
   }
 ];
 const PROJECTS_JSON = JSON.stringify(PROJECTS);

@@ -62,6 +62,16 @@ await test("usr-memories routes keep only its known path segments, so digests an
   assert.equal(label(fetchItem("https://memories.example/api/v1/status", 403), memories), "excluded");
 });
 
+await test("discover routes keep only its known path segments, so slugs and ids never become labels", () => {
+  for (const service of ["discover", "discover-preview"] as const) {
+    const discover = POLICIES[service];
+    assert.equal(label(fetchItem("https://hq.example/artists/akiko-hirai/", 200), discover), "GET /artists/:id/");
+    assert.equal(label(fetchItem("https://research.example/api/v1/operator/makers/artist:akiko-hirai/review", 200), discover), "GET /api/v1/operator/makers/:id/review");
+    assert.equal(label(fetchItem("https://research.example/mcp?token=SECRET_IN_QUERY", 200), discover), "GET /mcp");
+    assert.equal(label(fetchItem("https://hq.example/", 200), discover), "GET /");
+  }
+});
+
 await test("each service accepts only its own error operations", () => {
   const report = (operation: string) => ({ channel: OBSERVE_CHANNEL, message: { kind: "error", operation, name: "Error", message: "", stack: null } });
   const memories = POLICIES["usr-memories"];
@@ -233,7 +243,7 @@ await test("service identity comes only from the platform script name", () => {
   ]);
   assert.equal(unknown.length, 3);
   assert.deepEqual([...byService].map(([service, items]) => [service, items.length]), [["stats", 1], ["nanoshop-storied", 1]]);
-  assert.deepEqual(OBSERVED_SERVICES, ["stats", "usr-memories", "nanoshop-storied", "nanoshop-fieldhouse", "nanoshop-tidewater"]);
+  assert.deepEqual(OBSERVED_SERVICES, ["stats", "usr-memories", "nanoshop-storied", "nanoshop-fieldhouse", "nanoshop-tidewater", "discover", "discover-preview"]);
 });
 
 const SHOP_SPAN = { traceId: "9bcf42a3d155dee9563e537e144790e4", spanId: "2b1e95b0d4dcde81" };
