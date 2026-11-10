@@ -172,7 +172,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     writeParam("open", null);
   };
 
-  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`, () => true);
+  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`, () => active() === "deploys");
   const deploymentsSettled = () => deployments.history() !== null || deployments.historyError() !== null;
   const events = createMemo(() => deployments.events().map(event => ({ ...event, onSelect: () => { showSection("deploys"); event.onSelect(); } })));
   const latest = () => deployments.history()?.deployments[0];
