@@ -59,20 +59,20 @@ Errors adds one request for the feedback stylesheet. The route gates still exclu
 
 ## Route readiness
 
-Five alternating baseline–candidate pairs used the default fixture, the candidate at `24427c9`, Node 26.13.0, Chromium, 150 ms emulated latency, and 1.6 Mbit/s download throughput. Each value is the median and range in milliseconds. Cold readiness runs from navigation to the route's benchmark selector; warm readiness follows navigation away and back. The preview transfers uncompressed assets. The baseline includes the same response-body cleanup as the candidate so failed requests settle on both sides. A pair whose candidate began with a hot-process warning was discarded and replaced. The accepted runs passed the load check immediately before and after each measurement. The later service wording and sortable-header changes have not been timed: a fresh baseline run overlapped another active build and was discarded. Perf gate deferred: host busy.
+Three alternating baseline–candidate pairs used the default fixture, the candidate at `1d48ed1`, Node 26.13.0, Chromium, 150 ms emulated latency, and 1.6 Mbit/s download throughput. Each value is the median and range in milliseconds. Cold readiness runs from navigation to the route's benchmark selector; warm readiness follows navigation away and back. The preview transfers uncompressed assets. The baseline includes the same response-body cleanup as the candidate so failed requests settle on both sides. All six accepted runs passed the load check immediately before and after measurement. A preceding baseline and the fourth baseline overlapped other active work and were discarded. The intended five-pair run could not finish: perf gate deferred: host busy. Three pairs give limited evidence about the spread.
 
 | Route | Cold baseline | Cold candidate | Warm baseline | Warm candidate |
 | --- | ---: | ---: | ---: | ---: |
-| Fleet | 2,092 (2,067–2,107) | 2,163 (2,154–2,191) | 208 (205–218) | 201 (200–207) |
-| Host | 2,562 (2,540–2,601) | 2,609 (2,601–2,649) | 47 (44–56) | 50 (46–57) |
-| Projects | 2,368 (2,363–2,387) | 2,459 (2,449–2,471) | 173 (171–182) | 171 (167–179) |
-| Project Overview | 3,265 (3,262–3,281) | 3,341 (3,335–3,371) | 370 (354–375) | 378 (370–383) |
-| Project Errors | 3,459 (3,448–3,474) | 3,557 (3,533–3,597) | 348 (344–354) | 346 (342–349) |
-| Project Requests | 3,655 (3,644–3,674) | 3,713 (3,694–3,753) | 712 (700–720) | 729 (707–733) |
-| Services | 2,072 (2,060–2,092) | 2,147 (2,133–2,173) | 18 (9–21) | 17 (8–19) |
-| Service | 2,106 (2,089–2,126) | 2,191 (2,181–2,213) | 17 (7–24) | 20 (5–23) |
+| Fleet | 2,074 (2,074–2,078) | 2,177 (2,162–2,183) | 203 (200–213) | 200 (200–218) |
+| Host | 2,542 (2,522–2,553) | 2,600 (2,598–2,651) | 45 (44–45) | 45 (44–54) |
+| Projects | 2,376 (2,365–2,379) | 2,452 (2,447–2,483) | 174 (172–189) | 166 (166–186) |
+| Project Overview | 3,274 (3,262–3,278) | 3,337 (3,330–3,339) | 364 (353–366) | 367 (367–376) |
+| Project Errors | 3,450 (3,450–3,450) | 3,550 (3,550–3,556) | 340 (336–348) | 348 (331–350) |
+| Project Requests | 3,646 (3,609–3,660) | 3,705 (3,691–3,720) | 704 (704–720) | 717 (712–717) |
+| Services | 2,063 (2,047–2,081) | 2,137 (2,135–2,164) | 15 (5–21) | 11 (11–20) |
+| Service | 2,098 (2,082–2,102) | 2,185 (2,181–2,185) | 11 (6–12) | 9 (8–13) |
 
-The cold median increase exceeds the larger sample range for Fleet, Projects, Project Overview, Project Errors, Services, and Service. Host and Project Requests increases are within their observed spreads; every warm difference is within its observed spread. The extra raw assets are consistent with the cold increases under the emulated download limit, but the measurements do not isolate network transfer as the sole cause. Every run reported the same per-route API byte and request counts on both sides. A separate request audit found the same two fixture 404s on each side: the `usr-memories` deployment history and `web` issue collection. The timed harness did not retain individual response statuses, so that audit does not prove every timed response succeeded. The corrected harness now records failures for each run, including interrupted or unreadable responses, and rejects a network-idle timeout; focused regression tests cover those cases.
+The cold median increase exceeds the larger observed range on all eight routes; every warm difference is within its observed range. The extra raw assets are consistent with the cold increases under the emulated download limit, but the measurements do not isolate network transfer as the sole cause. Every run reported the same per-route API byte and request counts on both sides. The corrected harness records failures for each run, including interrupted or unreadable responses, and rejects a network-idle timeout; focused regression tests cover those cases. All six timed runs recorded only the same expected fixture 404s: the `usr-memories` deployment history and `web` issue collection. An earlier five-pair comparison at `24427c9` found cold increases beyond the observed spread on six routes; the wider sample left Host and Project Requests within spread.
 
 ## Lifecycle
 
@@ -89,5 +89,5 @@ The original large run repeatedly waited five seconds for failed responses whose
 - Library `make check`: 67 unit and packed tests, 272 Chromium tests. The library build's peak RSS was 173,424,640 bytes. Data browser JavaScript, server JavaScript, and standalone sortable-header CSS were 4,867, 5,933, and 197 gzip bytes. The archive was 194,750 bytes.
 - Stats `make dashboard-test`: 206 tests with Node 26.13.0 and the current archive installed. Earlier Chromium 157 checks used actual 200% page zoom in a 1280-pixel viewport: the resulting layout viewport was 640 CSS pixels, device pixel ratio was 2, and page width did not overflow. The [deployment](dashboard-integration/deployment-zoom.webp), [ledger](dashboard-integration/ledger-zoom.webp), and [trace stack](dashboard-integration/trace-zoom.webp) captures were reviewed. The main Stats typecheck and targeted lint passed after the sortable-header change; all four typecheck configurations passed earlier. Focused tests also checked the Worker and Node serving the generated Errors assets. The Worker test loaded the view and stylesheet; the Node test compared response bytes with the built assets.
 - Earlier candidate measurements made with Node 26.12.0 were discarded. The baseline and comparisons in this report use Node 26.13.0. The readiness results apply to the recorded fixture and emulated network; they do not establish a throughput change.
-- The cold readiness comparison above fails the performance acceptance on six routes. The memory-only and request-only checks above carry no timing claim.
+- The current cold readiness comparison fails the performance acceptance on all eight routes in the three-pair sample. The memory-only and request-only checks above carry no timing claim.
 - Rank the next work by consumer benefit: remove the unrelated Button payload while preserving its full native and hydration contracts, then repeat the paired timings on a quiet host. Extend the shared table only when another Stats need warrants it. Publish the exact prepared archive only through the established release process when publication is authorized, then verify the public lockfile and clean install.
