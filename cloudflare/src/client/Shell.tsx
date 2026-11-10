@@ -64,11 +64,23 @@ export function Shell(props: ParentProps): JSX.Element {
         search.focus();
       }
     };
+    const onHashChange = (event: HashChangeEvent) => {
+      const hash = new URL(event.newURL).hash;
+      const query = hash.indexOf("?");
+      if (query < 0) return;
+      const requested = new URLSearchParams(hash.slice(query + 1)).get("range");
+      const next = ranges.find(candidate => candidate === requested);
+      if (next === undefined || next === range()) return;
+      views.resetZoom();
+      setRange(next);
+    };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("hashchange", onHashChange);
     return () => {
       window.clearInterval(clock);
       window.clearInterval(live);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("hashchange", onHashChange);
     };
   });
 
@@ -88,7 +100,6 @@ export function Shell(props: ParentProps): JSX.Element {
   };
   createUpdateEffect(() => location.pathname, () => {
     views.resetZoom();
-    writeParam("deployment", null);
   });
   createUpdateEffect(() => `${range()}:${location.pathname}`, () => writeParam("range", range() === DEFAULT_RANGE ? null : range()));
 

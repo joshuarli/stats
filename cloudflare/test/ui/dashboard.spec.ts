@@ -821,6 +821,36 @@ test("the range, the open sections, and the selected deployment live in the URL"
   await expect(page).toHaveURL(new RegExp(`deployment=${DEPLOYMENT_ID}(&|$)`, "u"));
 });
 
+test("an explicit range in a hash navigation updates the active telemetry scope", async ({ page }) => {
+  const requests = await mock(page);
+  await page.goto("/#/project/stuff?range=6h");
+  await expect(page.getByRole("button", { name: "6h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => { window.location.hash = "#/project/stuff?range=24h&section=deploys"; });
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/[?&]range=24h(&|$)/u);
+  await expect(page.locator("#deployments")).toContainText("24h each side");
+  await expect.poll(() => requests.some(request => request.includes("/comparison?window=24h"))).toBe(true);
+  await page.goBack();
+  await expect(page.getByRole("button", { name: "6h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/[?&]range=6h(&|$)/u);
+  await page.evaluate(() => { window.location.hash = "#/?range=7d"; });
+  await expect(page.getByRole("button", { name: "7d", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/[?&]range=7d(&|$)/u);
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Projects" }).click();
+  await expect(page.getByRole("button", { name: "7d", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/[?&]range=7d(&|$)/u);
+});
+
+test("a deployment deep link survives navigation from another route", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
+  await page.evaluate(id => { window.location.hash = `#/project/stuff?range=24h&deployment=${id}`; }, EARLIER_DEPLOYMENT_ID);
+  await expect(page).toHaveURL(new RegExp(`deployment=${EARLIER_DEPLOYMENT_ID}(&|$)`, "u"));
+  await expect(page.getByRole("listbox", { name: "Deployment" }).getByRole("option", { name: /v41/u })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
+});
+
 test("choosing a deployment fetches project history for its rollout window, not a longer trailing range", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff?range=1h&open=deploys");
