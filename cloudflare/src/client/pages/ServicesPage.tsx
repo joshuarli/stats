@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Service } from "../api";
 import { age, errorMessage } from "../format";
@@ -96,7 +96,6 @@ function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (
   const [failure, setFailure] = createSignal<string | null>(null);
   createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void loadServiceDeploymentHistory(props.service.name, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setDeployments(value);
@@ -107,6 +106,7 @@ function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (
       setFailure(errorMessage(error));
       setSettled(true);
     });
+    return () => controller.abort();
   });
   const latest = () => {
     const history = deployments();
