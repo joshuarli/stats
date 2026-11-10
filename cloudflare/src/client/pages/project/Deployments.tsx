@@ -7,7 +7,7 @@ import { readParam, writeParam } from "../../urlState";
 import { Skeleton } from "@laputa-systems/ui-dashboard";
 import { createPagedList, jumpTo, ShowMore, Widget } from "../../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
-import { Info, Term } from "../../components/Info";
+import { Info } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../../deployments/service-decode";
 import type { Deployment, DeploymentHistory } from "../../../deployments/model";
@@ -88,9 +88,10 @@ const VERDICT_CLASS: Record<MetricComparison["verdict"], string> = {
 
 const RANGE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const MOMENT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+const COMPARISON_MOMENT = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 function span(bounds: { readonly fromMs: number; readonly toMs: number }): string {
-  return RANGE.formatRange(bounds.fromMs, bounds.toMs);
+  return COMPARISON_MOMENT.formatRange(bounds.fromMs, bounds.toMs);
 }
 
 export type ProjectDeployments = ReturnType<typeof createDeployments>;
@@ -226,8 +227,8 @@ function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | nu
 }
 
 function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Element {
-  const windows = () => `Before ${span(props.comparison.before)}. After ${span(props.comparison.after)}. The bucket the deployment landed in and the bucket after it are excluded.`;
   const caveats = () => props.comparison.warnings.length;
+  const waiting = () => props.comparison.reasonCodes.length > 0 && props.comparison.reasonCodes.every(code => code === "not-ready" || code === "unsettled");
   const { sort, sortBy } = createSort<"none" | "metric" | "value">({ key: "none", direction: 1 });
   const rows = () => {
     const metrics = props.comparison.metrics.filter(metric => metric.supersededBy === undefined);
@@ -246,15 +247,26 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
   };
   return (
     <>
+      <dl class="deployment-periods" aria-label="Comparison windows">
+        <div><dt>Before</dt><dd>{span(props.comparison.before)}</dd></div>
+        <div><dt>After</dt><dd>{span(props.comparison.after)}</dd></div>
+      </dl>
       <p class="deployment-windows sources-line">
-        <Term hint={windows()}>{`${props.comparison.window} each side`}</Term>
+        <span>{`${props.comparison.window} each side`}</span>
         <Show when={sourcesOf(props.comparison)} fallback={<> · {count(props.comparison.beforeInvocations ?? undefined)} → {count(props.comparison.afterInvocations ?? undefined)} invocations</>}>{sources => (
           <For each={sources()}>{source => <span class={`deployment-source-pill ${source.status}`} title={source.detail}>{SOURCE_LABELS[source.source]}: {sourceLabel(source)}</span>}</For>
         )}</Show>
       </p>
+      <p class="deployment-excluded">Time between the windows is excluded around the deployment.</p>
+      <Show when={sourcesOf(props.comparison)}>{sources => (
+        <details class="deployment-coverage">
+          <summary>Data coverage</summary>
+          <dl><For each={sources()}>{source => <div><dt>{SOURCE_LABELS[source.source]}</dt><dd>{source.detail}</dd></div>}</For></dl>
+        </details>
+      )}</Show>
       <Show when={props.comparison.reasons.length > 0}>
         <div class="notice notice-warn deployment-reasons" role="status">
-          <span><b>No verdict yet</b><span>Collecting comparison data since the deploy — ready when the after window settles.</span>
+          <span><b>{waiting() ? "No verdict yet" : "No overall verdict"}</b><span>{waiting() ? "Waiting for comparison data to settle." : "The comparison has limitations."}</span>
             <details class="deployment-reason-details"><summary>Why</summary><ul><For each={props.comparison.reasons}>{reason => <li>{reason}</li>}</For></ul></details>
           </span>
         </div>

@@ -755,9 +755,34 @@ test("the project page compares a deployment's before and after windows", async 
   const table = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(page.locator("#deployments").getByRole("status")).toContainText("No overall verdict");
+  await expect(page.locator("#deployments").getByRole("status")).not.toContainText("ready when the after window settles");
   await page.getByText("Why").click();
   await expect(page.getByText("Another deployment overlaps the comparison windows.")).toBeVisible();
   await expect(table.getByRole("row", { name: /Worker CPU/u })).toContainText("confounded");
+});
+
+test("deployment comparison shows its exact windows and excluded buckets", { tag: "@mobile" }, async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff?section=deploys");
+  const comparison = deploymentComparison("1h");
+  const labels = await page.evaluate(({ before, after }) => {
+    const format = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+    return [format.formatRange(before.fromMs, before.toMs), format.formatRange(after.fromMs, after.toMs)];
+  }, comparison);
+  const windows = page.getByLabel("Comparison windows");
+  await expect(windows.locator("dt")).toHaveText(["Before", "After"]);
+  await expect(windows.locator("dd")).toHaveText(labels);
+  await expect(page.locator("#deployments")).toContainText("Time between the windows is excluded around the deployment.");
+});
+
+test("a deployment waiting for settlement says what is pending", async ({ page }) => {
+  await mock(page);
+  await page.route(`**/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison?*`, route => route.fulfill({ json: { ...deploymentComparison("1h"), reasons: ["Waiting for settlement."], reasonCodes: ["not-ready"] } }));
+  await page.goto("/#/project/stuff?section=deploys");
+  const notice = page.locator("#deployments").getByRole("status");
+  await expect(notice).toContainText("No verdict yet");
+  await expect(notice).toContainText("Waiting for comparison data to settle.");
 });
 
 test("the deployment comparison window follows the time range", async ({ page }) => {

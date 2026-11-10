@@ -173,11 +173,22 @@ test("a service with no host data and no health URL shows every source unavailab
   await page.goto(`${ORIGIN}/#/service/batch`);
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toContainText("unavailable");
-  await expect(page.getByText("No verdict")).toBeVisible();
+  await expect(page.locator("#deployments").getByRole("status")).toContainText("No overall verdict");
+  await expect(page.locator("#deployments").getByRole("status")).not.toContainText("ready when the after window settles");
   await expect(page.getByText("Health probe: Not set", { exact: true })).toBeVisible();
   await expect(page.getByText("Service cgroup: Unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText(/0 open issues|issues unavailable/u).first()).toBeVisible();
   await expect(page.locator("main.content")).toHaveScreenshot("service-batch.webp");
+});
+
+test("service comparison explains its source coverage without hover", async ({ page }) => {
+  await page.goto(`${ORIGIN}/#/service/web`);
+  const coverage = page.locator("#deployments").getByText("Data coverage", { exact: true });
+  await coverage.click();
+  const details = coverage.locator("..");
+  await expect(details).toContainText("successful events across 1 operation");
+  await expect(details).toContainText("drops and gaps not recorded");
+  await expect(details).toContainText("1 host");
 });
 
 test("long work details do not squeeze operation names", async ({ page }) => {
