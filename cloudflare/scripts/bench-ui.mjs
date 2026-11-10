@@ -555,6 +555,57 @@ async function runRetentionTrace(steps) {
   };
 }
 
+async function measureFleetMetricSort() {
+  if (hosts.length <= 10) return null;
+  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await context.newPage();
+  await attachPreviewFallbacks(page);
+  const tracker = createNetworkTracker(page);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Performance.enable");
+  await page.goto(`${activeBase}/#/`, { waitUntil: "load" });
+  await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
+  await tracker.waitForQuiet();
+  const before = await readCdpState(cdp);
+  const start = performance.now();
+  await page.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await tracker.waitForQuiet();
+  const historyRecords = tracker.snapshot().filter(entry => entry.kind === "history");
+  const loaded = new Set(historyRecords.filter(entry => entry.status === 200 || entry.status === 304).map(entry => /^\/api\/v1\/hosts\/([^/]+)\/history/u.exec(entry.path)?.[1]).filter(Boolean));
+  if (hosts.some(host => !loaded.has(host.hostId))) throw new Error(`fleet CPU sort loaded ${loaded.size} of ${hosts.length} hosts`);
+  const values = [];
+  const ids = [];
+  for (let currentPage = 0; currentPage < Math.ceil(hosts.length / 10); currentPage += 1) {
+    const rows = await page.locator('table[aria-label="Fleet hosts"] tbody tr').evaluateAll(elements => elements.map(row => ({
+      href: row.querySelector('a[href^="#/host/"]')?.getAttribute("href") ?? "",
+      cpu: row.querySelectorAll("td")[1]?.querySelector(".metric-value-small")?.textContent?.trim() ?? ""
+    })));
+    for (const row of rows) {
+      const value = Number.parseFloat(row.cpu);
+      values.push(Number.isFinite(value) ? value : null);
+      ids.push(row.href);
+    }
+    if (currentPage + 1 < Math.ceil(hosts.length / 10)) {
+      const previous = rows[0]?.href;
+      await page.getByRole("button", { name: "Next page" }).click();
+      await page.waitForFunction(href => document.querySelector('table[aria-label="Fleet hosts"] tbody tr a[href^="#/host/"]')?.getAttribute("href") !== href, previous);
+      await tracker.waitForQuiet();
+    }
+  }
+  if (ids.length !== hosts.length || new Set(ids).size !== hosts.length) throw new Error("fleet CPU sort omitted or duplicated hosts");
+  let last = -Infinity;
+  let missing = false;
+  for (const value of values) {
+    if (value === null) { missing = true; continue; }
+    if (missing || value < last) throw new Error("fleet CPU values are not globally ordered");
+    last = value;
+  }
+  const after = await readCdpState(cdp);
+  const result = { hosts: hosts.length, historyHosts: loaded.size, historyRequests: historyRecords.length, requests: summarizeNetwork(tracker.snapshot()), sortedCpuValues: values, wallMs: +(performance.now() - start).toFixed(1), taskMs: +((after.taskDurationSec - before.taskDurationSec) * 1000).toFixed(1), scriptMs: +((after.scriptDurationSec - before.scriptDurationSec) * 1000).toFixed(1) };
+  await context.close();
+  return result;
+}
+
 async function measurePreviewNodeTimings() {
   const probes = [
     ["hosts", "/api/v1/hosts"],
@@ -810,6 +861,7 @@ for (const target of routeTargets) {
 }
 
 const { conditionalHistory, charts } = await measureConditionalHistoryAndCharts();
+const fleetMetricSort = await measureFleetMetricSort();
 const previewNodeTimings = await measurePreviewNodeTimings();
 const retention = retentionSteps > 0 ? await runRetentionTrace(retentionSteps) : null;
 
@@ -833,6 +885,7 @@ const output = {
   results,
   conditionalHistory,
   charts,
+  fleetMetricSort,
   previewNodeTimings,
   ...(retention === null ? {} : { retention })
 };

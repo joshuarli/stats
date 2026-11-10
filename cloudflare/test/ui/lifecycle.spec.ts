@@ -804,3 +804,36 @@ test("closed project page defers comparison and occurrences until their sections
   await page.getByRole("button", { name: /Errors/u }).click();
   await expect.poll(() => occurrenceCalls).toBe(1);
 });
+
+test("fleet metric sorting loads every matching host before ordering across pages", async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const hosts = Array.from({ length: 12 }, (_, index) => ({
+    hostId: `h_${index.toString(16).padStart(2, "0").repeat(16)}`,
+    name: `node-${String(index + 1).padStart(2, "0")}`,
+    createdAtMs: NOW - 86_400_000,
+    revoked: false,
+    lastReceivedAtMs: NOW - 5_000,
+    online: true
+  }));
+  const seen = new Set<string>();
+  await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts } }));
+  await page.route("**/api/v1/services", route => route.fulfill({ json: { services: [] } }));
+  await page.route("**/api/v1/hosts/*/system", route => route.fulfill({ json: { reportedAtMs: NOW, system: { agent: "0.4.0", hostname: "node", os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } } } }));
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1];
+    if (id === undefined) throw new Error("missing host ID");
+    seen.add(id);
+    const index = hosts.findIndex(host => host.hostId === id);
+    await fulfillHistory(route, fleetBundle(id, "1h", 90 - index * 5));
+  });
+  await page.goto("/#/");
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  await expect(table.locator("tbody tr")).toHaveCount(10);
+  expect(seen.size).toBe(10);
+  await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await expect.poll(() => seen.size).toBe(12);
+  await expect(table.locator("tbody tr").first()).toContainText("node-12");
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  await expect(table.locator("tbody tr").last()).toContainText("node-01");
+});
