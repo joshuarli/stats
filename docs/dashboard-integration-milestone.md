@@ -1,6 +1,6 @@
 # Dashboard integration report
 
-The issue and cost investigations work with an installed dashboard package. The milestone is **not accepted**: the package adds unrelated initial JavaScript to Fleet, Projects, Services, and Service, and the time-based performance gate is deferred because the host is busy. Version 0.6.0 remains unpublished under the campaign's release boundary, so its public registry install is unverified.
+The issue and cost investigations work with an installed dashboard package. The milestone is **not accepted**: the package adds unrelated initial JavaScript to Fleet, Projects, Services, and Service, and several cold routes exceed the measured timing spread. Version 0.6.0 remains unpublished under the campaign's release boundary, so its public registry install is unverified.
 
 ## Revisions and package
 
@@ -58,6 +58,25 @@ The default fixture contains four hosts, three projects, and one service. Each o
 
 Errors adds one request for the feedback stylesheet. The route gates still exclude uPlot and observability code from Fleet and exclude uPlot from the initial Projects graph. Deep-linked sections load their views; inactive sections do not fetch their gated data.
 
+## Route readiness
+
+Five alternating baseline–candidate pairs used the default fixture, Node 26.13.0, Chromium, 150 ms emulated latency, and 1.6 Mbit/s download throughput. Each value is the median and range in milliseconds. Cold readiness runs from navigation to the route's benchmark selector; warm readiness follows navigation away and back. The preview transfers uncompressed assets. The baseline includes the same response-body cleanup as the candidate so failed requests settle on both sides. A pair whose candidate began with a hot-process warning was discarded and replaced. The accepted runs passed the load check immediately before and after each measurement.
+
+| Route | Cold baseline | Cold candidate | Warm baseline | Warm candidate |
+| --- | ---: | ---: | ---: | ---: |
+| Fleet | 2,092 (2,067–2,107) | 2,163 (2,154–2,191) | 208 (205–218) | 201 (200–207) |
+| Host | 2,562 (2,540–2,601) | 2,609 (2,601–2,649) | 47 (44–56) | 50 (46–57) |
+| Projects | 2,368 (2,363–2,387) | 2,459 (2,449–2,471) | 173 (171–182) | 171 (167–179) |
+| Project Overview | 3,265 (3,262–3,281) | 3,341 (3,335–3,371) | 370 (354–375) | 378 (370–383) |
+| Project Errors | 3,459 (3,448–3,474) | 3,557 (3,533–3,597) | 348 (344–354) | 346 (342–349) |
+| Project Requests | 3,655 (3,644–3,674) | 3,713 (3,694–3,753) | 712 (700–720) | 729 (707–733) |
+| Services | 2,072 (2,060–2,092) | 2,147 (2,133–2,173) | 18 (9–21) | 17 (8–19) |
+| Service | 2,106 (2,089–2,126) | 2,191 (2,181–2,213) | 17 (7–24) | 20 (5–23) |
+
+The cold median increase exceeds the larger sample range for Fleet, Projects, Project Overview, Project Errors, Services, and Service. Host and Project Requests increases are within their observed spreads; every warm difference is within its observed spread. The extra raw assets are consistent with the cold increases under the emulated download limit, but the measurements do not isolate network transfer as the sole cause. Every run reported the same per-route API byte and request counts on both sides. A separate request audit found the same two fixture 404s on each side: the `usr-memories` deployment history and `web` issue collection. The timed harness did not retain individual response statuses, so that audit does not prove every timed response succeeded.
+
+## Lifecycle
+
 On the current candidate, ten Fleet-to-Host chart cycles in the default fixture left zero additional DOM nodes and listeners and zero uPlot roots after leaving the host. Forced-GC heap rose 654.8 KiB and backing storage fell 0.3 KiB. The repaired-baseline observation was +676.7 KiB heap and −0.3 KiB backing. Both are single observations, not a retained-memory trend. Host and project history revalidations returned 304 with no response body for 1h, 24h, and 7d ranges.
 
 The large fixture contains 24 hosts and 12 projects. Request-only runs found identical cold API counts on every route. Errors adds one CSS request, as in the default fixture. Projects made 50 total requests, including 38 API requests; Fleet made 27, including 21 API requests. Sorting Fleet by CPU loaded all 24 distinct histories and produced ascending values across all three pages. The baseline did the same.
@@ -71,5 +90,5 @@ The original large run repeatedly waited five seconds for failed responses whose
 - Library `make check`: 67 unit and packed tests, 270 Chromium tests. The final archive's runtime and manifest match the checked archive. The library build's peak RSS was 174,735,360 bytes. Layout browser JavaScript, server JavaScript, and CSS were 14,563, 12,290, and 2,704 gzip bytes. The archive was 193,459 bytes.
 - Stats `make dashboard-test`: 204 tests with Node 26.13.0 and the final archive installed. Chromium 157 was also checked at actual 200% page zoom in a 1280-pixel viewport: the resulting layout viewport was 640 CSS pixels, device pixel ratio was 2, and page width did not overflow. The [deployment](dashboard-integration/deployment-zoom.webp), [ledger](dashboard-integration/ledger-zoom.webp), and [trace stack](dashboard-integration/trace-zoom.webp) captures were reviewed. All four Stats typecheck configurations and focused lint checks passed. Focused tests also checked the Worker and Node serving the generated Errors assets. The Worker test loaded the view and stylesheet; the Node test compared response bytes with the built assets.
 - Earlier candidate measurements made with Node 26.12.0 were discarded. The baseline and comparisons in this report use Node 26.13.0. The measurements do not establish a latency or throughput change.
-- perf gate deferred: host busy. The candidate in an alternating timing attempt overlapped a hot process and was discarded, leaving no comparable timing series. The memory-only and request-only checks above ran without a timing claim.
+- The cold readiness comparison above fails the performance acceptance on six routes. The memory-only and request-only checks above carry no timing claim.
 - Rank the next work by consumer benefit: remove the unrelated Button payload while preserving its full native and hydration contracts, and recheck performance and lifecycle after the latest journeys. Validate table primitives against two materially different Stats tables before generalizing their API. Publish the exact prepared archive only through the established release process when publication is authorized, then verify the public lockfile and clean install.
