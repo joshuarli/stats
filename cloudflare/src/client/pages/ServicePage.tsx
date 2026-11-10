@@ -66,12 +66,12 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
   const [issuesUnavailable, setIssuesUnavailable] = createSignal(false);
   createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
     const controller = new AbortController();
+    setIssues(null);
     setIssuesUnavailable(false);
     void getServiceIssues(props.service.name, controller.signal).then(page => {
       if (!controller.signal.aborted) setIssues(page.items);
     }).catch(() => {
       if (controller.signal.aborted) return;
-      setIssues([]);
       setIssuesUnavailable(true);
     });
     return () => controller.abort();

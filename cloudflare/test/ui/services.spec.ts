@@ -319,6 +319,49 @@ test("refreshing a service aborts the older issue request", async ({ page }) => 
   }
 });
 
+test("retrying unavailable service issues does not report zero while loading", async ({ page }) => {
+  let release = () => {};
+  let releaseNext = () => {};
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const nextWait = new Promise<void>(resolve => { releaseNext = resolve; });
+  let pending = wait;
+  let requests = 0;
+  await page.route("**/api/observe/web/issues?*", async route => {
+    requests += 1;
+    if (requests === 1) {
+      await route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "collector unavailable" } } });
+      return;
+    }
+    await pending;
+    if (route.request().failure() !== null) return;
+    await route.fulfill({ json: { items: [], next: null } });
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  await expect(page.getByText("Issues: unavailable")).toBeVisible();
+  try {
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
+    await expect(page.locator(".service-facts")).toContainText("Issues: loading");
+    await expect(page.locator("#service-work")).toContainText("issues loading");
+    await expect(page.locator("main")).not.toContainText("0 open issues");
+  } finally {
+    release();
+  }
+  await expect(page.getByText("0 open issues").first()).toBeVisible();
+  const previousRequests = requests;
+  pending = nextWait;
+  try {
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => requests).toBeGreaterThan(previousRequests);
+    await expect(page.locator(".service-facts")).toContainText("Issues: loading");
+    await expect(page.locator("#service-work")).toContainText("issues loading");
+    await expect(page.locator("main")).not.toContainText("0 open issues");
+  } finally {
+    releaseNext();
+  }
+  await expect(page.getByText("0 open issues").first()).toBeVisible();
+});
+
 test("service work identifies the previous window while a comparison updates", async ({ page }) => {
   let release = () => {};
   const wait = new Promise<void>(resolve => { release = resolve; });
