@@ -22,18 +22,21 @@ export function createNetworkTracker(page, activeBase) {
     const info = pending.get(request);
     if (!info) return;
     pending.delete(request);
-    let status = failed ? 0 : 200;
+    let status = 0;
     let bytes = 0;
     try {
       const response = await request.response();
       if (response) {
         status = response.status();
+        if (failed && status < 400) status = 0;
         if (status !== 304 && !failed) {
           const body = await response.body();
           bytes = body.byteLength;
         }
       }
-    } catch {}
+    } catch {
+      if (status < 400) status = 0;
+    }
     records.push({
       path: info.path,
       kind: classifyPath(info.path),

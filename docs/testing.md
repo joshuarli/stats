@@ -341,7 +341,8 @@ The payload measurements are `node cloudflare/scripts/bench-bundle.mjs --compare
 `node cloudflare/scripts/bench-ui.mjs --runs 3 --json --out PATH` (browser route
 requests and timings). The current benchmark records the Errors and Requests sections separately.
 Each cold and warm summary includes `failedRequestsByRun`, with the path and status of requests
-that failed or returned at least 400. Status 0 means the request failed without a response. Check
+that failed or returned at least 400. Status 0 means the request failed, had no response, or its
+response body could not be read. Check
 these entries against the fixture before comparing timings. A network-idle timeout fails the run.
 The bundle comparison flags initial JavaScript growth over 5% in raw or gzip bytes for review. Attribute any flagged
 growth to a user benefit; isolation checks remain separate gates. `docs/frontend-efficiency.md`
