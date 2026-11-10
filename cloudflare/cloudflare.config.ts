@@ -62,6 +62,16 @@ const PROJECTS: readonly ProjectConfig[] = [
     probes: []
   },
   {
+    id: "discover",
+    name: "discover",
+    worker: "discover",
+    workerBilling: "requests-and-cpu",
+    buckets: ["discover-artifacts"],
+    durableObjectNamespaces: ["1e1a62fa82c846eead900da21b850f77"],
+    d1Databases: [],
+    probes: []
+  },
+  {
     id: "discover-preview",
     name: "discover-preview",
     worker: "discover-preview",
