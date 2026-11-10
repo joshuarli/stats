@@ -187,6 +187,13 @@ test("the v1.4.0 deployment shows its new issue group, its regression, and a hig
   await expect(impact.locator(".impact-rate")).toContainText("→");
   const slowRoute = impact.getByRole("region", { name: "CPU by route" }).getByRole("row").filter({ hasText: "/hosts/:host/history" }).filter({ hasText: "object" });
   await expect(slowRoute.locator(".impact-cpu-worse")).toBeVisible();
+  const routes = impact.getByRole("region", { name: "CPU by route" });
+  const routeWidth = await slowRoute.locator("td").first().evaluate(element => element.getBoundingClientRect().width);
+  expect(routeWidth).toBeGreaterThanOrEqual(140);
+  const cells = await slowRoute.locator("td").evaluateAll(elements => elements.map(element => ({ top: element.getBoundingClientRect().top, bottom: element.getBoundingClientRect().bottom })));
+  expect(cells[0]!.bottom).toBeLessThanOrEqual(cells[1]!.top);
+  const widths = await routes.evaluate(element => ({ visible: element.clientWidth, content: element.scrollWidth }));
+  expect(widths.content).toBeLessThanOrEqual(widths.visible);
   const issueLink = impact.getByRole("button", { name: /RangeError/u });
   await issueLink.click();
   const dialog = page.getByRole("dialog", { name: "Issue" });

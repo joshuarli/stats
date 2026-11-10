@@ -97,7 +97,7 @@
 .version-tag { font: var(--fs-label) var(--mono); color: var(--text-2); }
 .issue-fact-note { display: block; color: var(--muted); font-size: var(--fs-label); font-weight: 400; letter-spacing: 0; }
 
-.impact { margin-top: var(--space-md); padding-top: var(--space-sm); border-top: 1px solid var(--line); }
+.impact { container-type: inline-size; margin-top: var(--space-md); padding-top: var(--space-sm); border-top: 1px solid var(--line); }
 .impact .observe-subhead { margin-top: 0; }
 .impact-summary { margin: 0 0 var(--space-xs); font-weight: 500; }
 .impact-rate { margin: 0 0 var(--space-sm); font-size: var(--fs-meta); }
@@ -109,6 +109,16 @@
 .impact-issue b { color: var(--critical); font-weight: 600; }
 .impact .impact-cpu-head { margin-top: var(--space-md); }
 .impact-cpu { width: 100%; table-layout: fixed; }
+@container (max-width: 479px) {
+  .impact-cpu, .impact-cpu thead, .impact-cpu tbody { display: block; }
+  .impact-cpu thead tr { display: flex; justify-content: space-between; }
+  .impact-cpu thead .impact-cpu-value, .impact-cpu thead .impact-cpu-change { width: auto; }
+  .impact-cpu tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; border-bottom: 1px solid var(--line); }
+  .data-table.compact.impact-cpu tbody td { height: auto; border: 0; }
+  .impact-cpu tbody td:first-child { grid-column: 1 / -1; padding-top: var(--space-xs); }
+  .impact-cpu tbody td.numeric { padding-bottom: var(--space-xs); }
+  .impact-cpu tbody td:nth-child(2) { text-align: left; }
+}
 .impact-cpu td { vertical-align: top; overflow-wrap: anywhere; }
 .impact-cpu .impact-cpu-value { width: 9em; }
 .impact-cpu .impact-cpu-change { width: 7em; }
