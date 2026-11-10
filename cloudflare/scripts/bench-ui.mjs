@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { createNetworkTracker, summarizeNetwork } from "./bench-network.mjs";
 
-const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--json] [--out PATH]";
+const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--fleet-sort-only] [--json] [--out PATH]";
 
 const args = process.argv.slice(2);
 function option(name, fallback) {
@@ -99,6 +99,7 @@ async function fetchOptionalJson(path, fallback) {
 }
 
 const hosts = (await fetchJson("/api/v1/hosts")).hosts ?? [];
+if (args.includes("--fleet-sort-only") && hosts.length <= 10) throw new Error("fleet sort benchmark needs more than ten hosts");
 const projects = await fetchJson("/api/v1/projects");
 const rawServices = await fetchOptionalJson("/api/v1/services", { services: [] });
 const services = Array.isArray(rawServices) ? rawServices : (rawServices.services ?? []);
@@ -455,17 +456,35 @@ async function measureFleetMetricSort() {
   if (hosts.length <= 10) return null;
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency,
+    downloadThroughput: (downKbps * 1000) / 8,
+    uploadThroughput: (downKbps * 500) / 8,
+    connectionType: "cellular4g"
+  });
+  if (cpuRate > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuRate });
   await page.goto(`${activeBase}/#/`, { waitUntil: "load" });
   await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
   await tracker.waitForQuiet();
   const before = await readCdpState(cdp);
   const start = performance.now();
   await page.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await page.waitForFunction(() => document.querySelector('table[aria-label="Fleet hosts"]')?.getAttribute("aria-busy") !== "true");
   await tracker.waitForQuiet();
+  const firstPageWallMs = +(performance.now() - start).toFixed(1);
+  const firstPageState = await readCdpState(cdp);
+  const firstPage = {
+    wallMs: firstPageWallMs,
+    taskMs: +((firstPageState.taskDurationSec - before.taskDurationSec) * 1000).toFixed(1),
+    scriptMs: +((firstPageState.scriptDurationSec - before.scriptDurationSec) * 1000).toFixed(1),
+    requests: summarizeNetwork(tracker.snapshot())
+  };
+  if (firstPage.requests.failedRequests.length > 0) throw new Error("fleet CPU sort had failed requests");
   const historyRecords = tracker.snapshot().filter(entry => entry.kind === "history");
   const loaded = new Set(historyRecords.filter(entry => entry.status === 200 || entry.status === 304).map(entry => /^\/api\/v1\/hosts\/([^/]+)\/history/u.exec(entry.path)?.[1]).filter(Boolean));
   if (hosts.some(host => !loaded.has(host.hostId))) throw new Error(`fleet CPU sort loaded ${loaded.size} of ${hosts.length} hosts`);
@@ -497,7 +516,7 @@ async function measureFleetMetricSort() {
     last = value;
   }
   const after = await readCdpState(cdp);
-  const result = { hosts: hosts.length, historyHosts: loaded.size, historyRequests: historyRecords.length, requests: summarizeNetwork(tracker.snapshot()), sortedCpuValues: values, wallMs: +(performance.now() - start).toFixed(1), taskMs: +((after.taskDurationSec - before.taskDurationSec) * 1000).toFixed(1), scriptMs: +((after.scriptDurationSec - before.scriptDurationSec) * 1000).toFixed(1) };
+  const result = { firstPage, hosts: hosts.length, historyHosts: loaded.size, historyRequests: historyRecords.length, requests: summarizeNetwork(tracker.snapshot()), sortedCpuValues: values, wallMs: +(performance.now() - start).toFixed(1), taskMs: +((after.taskDurationSec - before.taskDurationSec) * 1000).toFixed(1), scriptMs: +((after.scriptDurationSec - before.scriptDurationSec) * 1000).toFixed(1) };
   await context.close();
   return result;
 }
@@ -660,6 +679,19 @@ async function measureConditionalHistoryAndCharts() {
       }
     }
   };
+}
+
+if (args.includes("--fleet-sort-only")) {
+  const fleetMetricSort = await measureFleetMetricSort();
+  await browser.close();
+  cleanupPreview();
+  const result = { scale: process.env.PREVIEW_SCALE ?? "default", latency, downKbps, cpuRate, fleetMetricSort };
+  if (outPath !== null) {
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
+  }
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(0);
 }
 
 const results = [];
