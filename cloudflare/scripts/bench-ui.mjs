@@ -479,26 +479,31 @@ async function runRetentionTrace(steps) {
   await recordCheckpoint(0);
   const rangeCycle = ["1h", "6h", "24h", "7d", "30d"];
   let fleetPagesVisited = new Set([1]);
+  const navigate = async path => page.evaluate(target => {
+    const query = window.location.hash.indexOf("?");
+    const range = query < 0 ? null : new URLSearchParams(window.location.hash.slice(query + 1)).get("range");
+    window.location.hash = range === null ? target : `${target}?range=${range}`;
+  }, path);
 
   for (let step = 1; step <= steps; step += 1) {
     const mode = step % 5;
     if (mode === 1 || mode === 2) {
       const host = hosts[(step + Math.floor(step / 2)) % hosts.length];
       const range = rangeCycle[step % rangeCycle.length];
-      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/host/${host.hostId}`);
+      await navigate(`#/host/${host.hostId}`);
       await waitForSelector(page, ".chart-plot .uplot");
       await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 3) {
       const project = projects[step % projects.length];
       const range = rangeCycle[step % 3];
-      await page.evaluate(targetHash => { window.location.hash = targetHash; }, `#/project/${project.id}`);
+      await navigate(`#/project/${project.id}`);
       await waitForSelector(page, '[aria-label="Cost ledger"], main.content .empty-state');
       await page.getByRole("button", { name: range, exact: true }).click();
     } else if (mode === 4) {
-      await page.evaluate(() => { window.location.hash = "#/projects"; });
+      await navigate("#/projects");
       await waitForSelector(page, 'table[aria-label="Projects"] tbody tr');
     } else {
-      await page.evaluate(() => { window.location.hash = "#/"; });
+      await navigate("#/");
       await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
       const totalPages = Math.max(1, Math.ceil(hosts.length / 10));
       if (totalPages > 1) {
@@ -523,7 +528,7 @@ async function runRetentionTrace(steps) {
     }
   }
 
-  await page.evaluate(() => { window.location.hash = "#/"; });
+  await navigate("#/");
   await waitForSelector(page, 'table[aria-label="Fleet hosts"] tbody tr');
   await tracker.waitForQuiet(100, 5_000);
   const finalOnFleet = await readCdpState(cdp);
