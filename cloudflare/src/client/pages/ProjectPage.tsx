@@ -26,7 +26,7 @@ import { createMonthSpend, createProjectLedger, historyKinds, settledWindow } fr
 import { HOUR_MS } from "../../limits";
 import { CostLedger } from "./project/CostLedger";
 import "./project/project.css";
-import { readParam, writeParam } from "../urlState";
+import { readParam, routeWithRange, writeParam } from "../urlState";
 import { LIMITS } from "../health";
 import { RETENTION_MS } from "../../observe/core/limits";
 import { isObservedService } from "../../observe/services";
@@ -46,7 +46,7 @@ const LINKED_SECTIONS: readonly (readonly [string, SectionId])[] = [["deployment
 
 export function ProjectPage(): JSX.Element {
   const params = useParams();
-  const { tick, manualTick } = useTelemetry();
+  const { tick, manualTick, range } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   const project = createMemo(() => projects().find(candidate => candidate.id === (params.projectId ?? "")));
@@ -62,7 +62,7 @@ export function ProjectPage(): JSX.Element {
               icon="host"
               title="Project not found"
               detail="The project id is not in this installation's configuration."
-              action={<a class="btn" href="#/projects">Back to projects</a>}
+              action={<a class="btn" href={routeWithRange("#/projects", range())}>Back to projects</a>}
             />
           }
         >

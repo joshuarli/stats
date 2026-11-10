@@ -10,6 +10,7 @@ import { createRefreshRetention, loadQuery } from "../queries";
 import { windowParams } from "../history-path";
 import { statusFor } from "../status";
 import { useTelemetry } from "../state";
+import { routeWithRange } from "../urlState";
 import { OsLogo } from "../components/OsLogo";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
 import { SectionBar, type SectionLink } from "../components/SectionBar";
@@ -30,7 +31,7 @@ import { SystemInfo } from "./host/System";
 
 export function HostPage(): JSX.Element {
   const params = useParams();
-  const { hosts } = useTelemetry();
+  const { hosts, range } = useTelemetry();
   const hostId = () => params.hostId ?? "";
   const host = createMemo(() => hosts().find(candidate => candidate.hostId === hostId()));
   return (
@@ -44,7 +45,7 @@ export function HostPage(): JSX.Element {
               icon="host"
               title="Host not found"
               detail="The host id is not in this installation, or the directory changed."
-              action={<a class="btn" href="#/">Back to hosts</a>}
+              action={<a class="btn" href={routeWithRange("#/", range())}>Back to hosts</a>}
             />
           }
         >

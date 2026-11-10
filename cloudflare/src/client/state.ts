@@ -6,6 +6,7 @@ import type { ListState } from "./list-state";
 
 export const ranges = RANGES;
 export type Range = RangeKey;
+export const DEFAULT_RANGE: Range = "1h";
 export const rangeLabels: Record<Range, string> = {
   "1h": "Past 1 hour",
   "6h": "Past 6 hours",

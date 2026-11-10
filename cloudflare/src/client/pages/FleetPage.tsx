@@ -16,6 +16,7 @@ import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
 import { compareSortValues, createSort, SortHeader, type Sort } from "../components/sort";
 import { hostStatusFilters as statusLabels, restoreListFocus, type HostSortKey as SortKey, type HostStatusFilter as StatusLabel } from "../list-state";
+import { routeWithRange } from "../urlState";
 
 const PAGE_SIZE = 10;
 const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
@@ -308,6 +309,7 @@ function FleetDashboard(props: {
 }
 
 function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
+  const { range } = useTelemetry();
   const table = () => props.row.summary;
   const timeWindow = createMemo(() => ({ fromMs: props.row.fromMs, toMs: props.row.toMs }));
   const status = createMemo(() => hostStatus(props.row.host));
@@ -382,7 +384,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
             </span>
           }
           name={props.row.host.name}
-          href={`#/host/${props.row.host.hostId}`}
+          href={routeWithRange(`#/host/${props.row.host.hostId}`, range())}
           id={props.row.host.hostId}
           note={osNote()}
           onNavigate={() => props.onNavigate(props.row.host.hostId)}

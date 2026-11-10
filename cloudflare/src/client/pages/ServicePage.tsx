@@ -5,6 +5,7 @@ import { getServiceIssues, type Service } from "../api";
 import { age } from "../format";
 import { loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
+import { routeWithRange } from "../urlState";
 import { EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
 import { ErrorState, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
@@ -20,7 +21,7 @@ import "./project/services.css";
 
 export function ServicePage(): JSX.Element {
   const params = useParams();
-  const { tick, manualTick } = useTelemetry();
+  const { tick, manualTick, range } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const services = createMemo(loadServices);
   const service = createMemo(() => services().find(candidate => candidate.name === (params.serviceName ?? "")));
@@ -31,7 +32,7 @@ export function ServicePage(): JSX.Element {
         <Show
           when={service()?.name}
           keyed
-          fallback={<EmptyState icon="host" title="Service not found" detail="The service name is not in this installation." action={<a class="btn" href="#/services">Back to services</a>} />}
+          fallback={<EmptyState icon="host" title="Service not found" detail="The service name is not in this installation." action={<a class="btn" href={routeWithRange("#/services", range())}>Back to services</a>} />}
         >
           {name => <ServiceView service={services().find(candidate => candidate.name === name)!} />}
         </Show>

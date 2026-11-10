@@ -1,3 +1,9 @@
+import { DEFAULT_RANGE, type Range } from "./state";
+
+export function routeWithRange(path: string, range: Range): string {
+  return range === DEFAULT_RANGE ? path : `${path}?range=${range}`;
+}
+
 function hashParts(): { readonly path: string; readonly params: URLSearchParams } {
   const hash = window.location.hash.replace(/^#/u, "");
   const split = hash.indexOf("?");

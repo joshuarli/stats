@@ -16,6 +16,7 @@ import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
 import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
 import { windowUsage, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
 import { restoreListFocus, type ProjectSortKey } from "../list-state";
+import { routeWithRange } from "../urlState";
 import "./project/projects.css";
 
 const Trends = lazy(() => import("./project/Trends").then(module => ({ default: module.Trends })));
@@ -287,7 +288,7 @@ function ProjectRow(props: { readonly project: Project; readonly reportMetrics: 
           <EntityCell
             marker={<span class={`status-dot tone-${status().tone}`} aria-hidden="true" />}
             name={props.project.name}
-            href={`#/project/${props.project.id}`}
+            href={routeWithRange(`#/project/${props.project.id}`, range())}
             id={props.project.worker}
             onNavigate={() => props.onNavigate(props.project.id)}
             onLinkMount={link => props.onMount(props.project.id, link)}

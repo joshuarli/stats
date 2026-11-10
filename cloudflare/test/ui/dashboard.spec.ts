@@ -851,6 +851,33 @@ test("a deployment deep link survives navigation from another route", async ({ p
   await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
 });
 
+test("browser history restores the default telemetry range", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  await expect(page).toHaveURL(/#\/$/u);
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => { window.location.hash = "#/?range=24h"; });
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.goBack();
+  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).not.toHaveURL(/range=/u);
+  await page.goForward();
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Projects" }).click();
+  await expect(page).toHaveURL(/#\/projects\?range=24h/u);
+  await page.goBack();
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => { window.location.hash = "#/"; });
+  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  await page.goBack();
+  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.goForward();
+  await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("choosing a deployment fetches project history for its rollout window, not a longer trailing range", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/#/project/stuff?range=1h&open=deploys");

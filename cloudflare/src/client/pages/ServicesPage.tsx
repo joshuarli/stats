@@ -8,6 +8,7 @@ import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
 import { EntityCell, ErrorState, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
+import { routeWithRange } from "../urlState";
 import type { DeploymentHistory } from "../../deployments/model";
 import { deploymentTitle, loadServiceDeploymentHistory } from "./project/Deployments";
 import "./project/projects.css";
@@ -88,7 +89,7 @@ function Services(): JSX.Element {
 }
 
 function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (name: string, deployAtMs: number | null) => void }): JSX.Element {
-  const { now, tick, manualTick } = useTelemetry();
+  const { now, tick, manualTick, range } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
   const [settled, setSettled] = createSignal(false);
@@ -120,7 +121,7 @@ function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (
   );
   return (
     <tr>
-      <td><EntityCell marker={<span class="status-dot tone-neutral" aria-hidden="true" />} name={props.service.name} href={`#/service/${props.service.name}`} id={props.service.unit ?? props.service.name} /></td>
+      <td><EntityCell marker={<span class="status-dot tone-neutral" aria-hidden="true" />} name={props.service.name} href={routeWithRange(`#/service/${props.service.name}`, range())} id={props.service.unit ?? props.service.name} /></td>
       <td class="numeric">{props.service.hostIds.length}</td>
       <td>{props.service.healthUrl === null ? <span class="cell-note">unavailable, no health URL</span> : <span class="mono services-url" title={props.service.healthUrl}>{props.service.healthUrl}</span>}</td>
       <td>

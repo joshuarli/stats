@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, For, Loading, onSettled, refresh, Show, type ParentProps } from "solid-js";
+import { createMemo, createSignal, Errored, For, Loading, onCleanup, onSettled, refresh, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
@@ -6,11 +6,10 @@ import { TimeBar } from "./components/TimeBar";
 import { loadHosts } from "./queries";
 import { createUpdateEffect } from "./effect";
 import type { TimeWindow } from "./chart-data";
-import { createViewState, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
-import { readParam, writeParam } from "./urlState";
+import { createViewState, DEFAULT_RANGE, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
+import { readParam, routeWithRange, writeParam } from "./urlState";
 import { createListState } from "./list-state";
 
-const DEFAULT_RANGE: Range = "1h";
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
 const SERVICE_PATH = /^\/service\/([a-z][a-z0-9-]{0,31})$/u;
 const PROJECT_PATH = /^\/project\/([a-z][a-z0-9-]{0,31})$/u;
@@ -44,6 +43,17 @@ export function Shell(props: ParentProps): JSX.Element {
   const liveQuery = createMemo<HistoryQuery>(() => ({ range: range() }));
   const query = createMemo<HistoryQuery>(() => views.view() ?? liveQuery());
   const location = useLocation();
+  const onHashChange = (event: HashChangeEvent) => {
+    const hash = new URL(event.newURL).hash;
+    const query = hash.indexOf("?");
+    const requested = query < 0 ? null : new URLSearchParams(hash.slice(query + 1)).get("range");
+    const next = ranges.find(candidate => candidate === requested) ?? DEFAULT_RANGE;
+    if (next === range()) return;
+    views.resetZoom();
+    setRange(next);
+  };
+  window.addEventListener("hashchange", onHashChange);
+  onCleanup(() => window.removeEventListener("hashchange", onHashChange));
 
   onSettled(() => {
     const clock = window.setInterval(() => setNow(Date.now()), 10_000);
@@ -64,23 +74,11 @@ export function Shell(props: ParentProps): JSX.Element {
         search.focus();
       }
     };
-    const onHashChange = (event: HashChangeEvent) => {
-      const hash = new URL(event.newURL).hash;
-      const query = hash.indexOf("?");
-      if (query < 0) return;
-      const requested = new URLSearchParams(hash.slice(query + 1)).get("range");
-      const next = ranges.find(candidate => candidate === requested);
-      if (next === undefined || next === range()) return;
-      views.resetZoom();
-      setRange(next);
-    };
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("hashchange", onHashChange);
     return () => {
       window.clearInterval(clock);
       window.clearInterval(live);
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("hashchange", onHashChange);
     };
   });
 
@@ -112,9 +110,9 @@ export function Shell(props: ParentProps): JSX.Element {
       <header class="topbar">
         <div class="topbar-start">
           <nav class="primary-nav" aria-label="Primary">
-            <a href="#/" aria-current={isHostsPath(location.pathname) ? "page" : "false"}>Hosts</a>
-            <a href="#/projects" aria-current={isProjectsPath(location.pathname) ? "page" : "false"}>Projects</a>
-            <a href="#/services" aria-current={isServicesPath(location.pathname) ? "page" : "false"}>Services</a>
+            <a href={routeWithRange("#/", range())} aria-current={isHostsPath(location.pathname) ? "page" : "false"}>Hosts</a>
+            <a href={routeWithRange("#/projects", range())} aria-current={isProjectsPath(location.pathname) ? "page" : "false"}>Projects</a>
+            <a href={routeWithRange("#/services", range())} aria-current={isServicesPath(location.pathname) ? "page" : "false"}>Services</a>
           </nav>
           <Breadcrumb />
         </div>
@@ -144,12 +142,12 @@ function Breadcrumb(): JSX.Element {
 }
 
 function HostSwitcher(props: { readonly current: string }): JSX.Element {
-  const { hosts } = useTelemetry();
+  const { hosts, range } = useTelemetry();
   return (
     <select
       class="host-switcher"
       aria-label="Switch host"
-      onChange={(event) => { window.location.hash = `#/host/${event.currentTarget.value}`; }}
+      onChange={(event) => { window.location.hash = routeWithRange(`#/host/${event.currentTarget.value}`, range()); }}
     >
       <For each={hosts()}>
         {(host) => <option value={host.hostId} selected={host.hostId === props.current}>{host.name}</option>}
