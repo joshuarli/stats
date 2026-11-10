@@ -31,7 +31,7 @@ export interface CostPart {
 }
 
 export type Usage =
-  | { readonly kind: "requests"; readonly calls: Amount; readonly cpuMs: Amount }
+  | { readonly kind: "requests"; readonly calls: Amount | null; readonly cpuMs: Amount | null }
   | { readonly kind: "objects"; readonly calls: Amount; readonly wallMs: Amount; readonly cpuMs: Amount; readonly latency: { readonly p50WallMs: number; readonly p95WallMs: number; readonly failed: number } | null }
   | { readonly kind: "rows"; readonly read: Amount; readonly written: Amount; readonly queries: Amount | null }
   | { readonly kind: "stored"; readonly bytes: Amount }
@@ -194,7 +194,7 @@ export function windowUsage(line: CostLine, histories: LedgerHistories, previous
   });
   const usage = line.usage;
   switch (usage.kind) {
-    case "requests": return { kind: "requests", calls: scale(usage.calls), cpuMs: scale(usage.cpuMs) };
+    case "requests": return { kind: "requests", calls: usage.calls === null ? null : scale(usage.calls), cpuMs: usage.cpuMs === null ? null : scale(usage.cpuMs) };
     case "objects": return { kind: "objects", calls: scale(usage.calls), wallMs: scale(usage.wallMs), cpuMs: scale(usage.cpuMs), latency: usage.latency };
     case "rows": return { kind: "rows", read: scale(usage.read), written: scale(usage.written), queries: usage.queries === null ? null : scale(usage.queries) };
     case "stored":
@@ -236,38 +236,45 @@ function routeNames(history: MetricHistory): string[] {
   return [...new Set(history.table.names().filter(name => name.startsWith(ROUTE_PREFIX)).map(name => name.slice(ROUTE_PREFIX.length, name.lastIndexOf("."))))];
 }
 
-function workerLine(input: LedgerInput, sample: Sampler): CostLine {
+function workerLine(input: LedgerInput): CostLine {
   const requestPrice = workerRequestPrice(input.workerBilling);
   const worker = (history: LedgerHistories) => history.worker;
   const routes = (history: LedgerHistories) => history.routes;
-  const callsNow = sample.now(input.current, worker, "worker.invocations");
-  const cpuNow = sample.now(input.current, worker, "worker.cpuMsSum");
-  const callsBefore = sample.before(worker, "worker.invocations");
-  const cpuBefore = sample.before(worker, "worker.cpuMsSum");
-  const cost = (calls: number, cpu: number) => perMillion(calls, requestPrice) + perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs);
-  const beforeCost = (calls: number | null, cpu: number | null) => calls === null || cpu === null ? null : cost(calls, cpu);
+  const amount = (pick: (history: LedgerHistories) => MetricHistory, name: string): Amount | null => {
+    const current = pick(input.current);
+    if (coveredMs(current, input.window, [name]) === 0) return null;
+    const covered = coveredMs(current, input.window);
+    const prior = input.previous === undefined ? undefined : pick(input.previous);
+    const priorCovered = prior === undefined || prior.fromMs > input.previousWindow.fromMs || coveredMs(prior, input.previousWindow, [name]) === 0 ? 0 : coveredMs(prior, input.previousWindow);
+    return {
+      now: inWindow(metricTrack(current, name), input.window) * MONTH_MS / covered,
+      before: prior === undefined || priorCovered === 0 ? null : inWindow(metricTrack(prior, name), input.previousWindow) * MONTH_MS / priorCovered
+    };
+  };
+  const cost = (calls: number | null, cpu: number | null) => perMillion(calls ?? 0, requestPrice) + perMillion(cpu ?? 0, LIST_PRICE_PER_MILLION.workerCpuMs);
+  const currentCost = (calls: Amount | null, cpu: Amount | null) => cost(calls?.now ?? null, cpu?.now ?? null);
+  const beforeCost = (calls: Amount | null, cpu: Amount | null) =>
+    (requestPrice > 0 && calls !== null && calls.before === null) || (cpu !== null && cpu.before === null) ? null : cost(calls?.before ?? null, cpu?.before ?? null);
+  const calls = amount(worker, "worker.invocations");
+  const cpu = amount(worker, "worker.cpuMsSum");
   const stepMs = input.current.worker.stepMs;
   const children: CostLine[] = routeNames(input.current.routes).map(route => {
-    const calls = sample.now(input.current, routes, `${ROUTE_PREFIX}${route}.invocations`);
-    const cpu = sample.now(input.current, routes, `${ROUTE_PREFIX}${route}.cpuMsSum`);
-    const callsName = `${ROUTE_PREFIX}${route}.invocations`;
-    const cpuName = `${ROUTE_PREFIX}${route}.cpuMsSum`;
-    const inBaseline = input.previous !== undefined && coveredMs(input.previous.routes, input.previousWindow, [callsName, cpuName]) > 0;
-    const before = inBaseline ? { calls: sample.before(routes, callsName), cpu: sample.before(routes, cpuName) } : { calls: null, cpu: null };
+    const calls = amount(routes, `${ROUTE_PREFIX}${route}.invocations`);
+    const cpu = amount(routes, `${ROUTE_PREFIX}${route}.cpuMsSum`);
     const callsTrack = metricTrack(input.current.routes, `${ROUTE_PREFIX}${route}.invocations`);
     const cpuTrack = metricTrack(input.current.routes, `${ROUTE_PREFIX}${route}.cpuMsSum`);
     return {
       id: `route:${route}`, kind: "route", label: route,
-      price: priced(cost(calls, cpu), beforeCost(before.calls, before.cpu)),
-      parts: [{ label: "requests", monthly: perMillion(calls, requestPrice), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpu, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
-      usage: { kind: "requests", calls: { now: calls, before: before.calls }, cpuMs: { now: cpu, before: before.cpu } },
+      price: calls === null && cpu === null ? NO_DATA : priced(currentCost(calls, cpu), beforeCost(calls, cpu)),
+      parts: [...(calls === null ? [] : [{ label: "requests", monthly: perMillion(calls.now, requestPrice), bound: "estimate" as const }]), ...(cpu === null ? [] : [{ label: "CPU", monthly: perMillion(cpu.now, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" as const }])],
+      usage: { kind: "requests", calls, cpuMs: cpu },
       trend: sumTracks([trendOf(callsTrack, stepMs, value => perMillion(value, requestPrice)), trendOf(cpuTrack, stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerCpuMs))]),
       children: []
     } satisfies CostLine;
-  }).filter(line => line.usage.kind === "requests" && (line.usage.calls.now > 0 || (line.usage.calls.before ?? 0) > 0));
-  const total = cost(callsNow, cpuNow);
+  }).filter(line => line.usage.kind === "requests" && ((line.usage.calls?.now ?? 0) > 0 || (line.usage.calls?.before ?? 0) > 0 || (line.usage.cpuMs?.now ?? 0) > 0));
+  const total = currentCost(calls, cpu);
   const routed = children.reduce((sum, line) => sum + (monthlyOf(line)?.now ?? 0), 0);
-  const totalBefore = beforeCost(callsBefore, cpuBefore);
+  const totalBefore = beforeCost(calls, cpu);
   const routedBefore = children.reduce<number | null>((sum, line) => {
     const value = monthlyOf(line)?.before ?? null;
     return sum === null || value === null ? null : sum + value;
@@ -278,9 +285,9 @@ function workerLine(input: LedgerInput, sample: Sampler): CostLine {
   }
   return {
     id: "worker", kind: "worker", label: "Worker",
-    price: priced(total, beforeCost(callsBefore, cpuBefore)),
-    parts: [{ label: "requests", monthly: perMillion(callsNow, requestPrice), bound: "estimate" }, { label: "CPU", monthly: perMillion(cpuNow, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" }],
-    usage: { kind: "requests", calls: { now: callsNow, before: callsBefore }, cpuMs: { now: cpuNow, before: cpuBefore } },
+    price: cpu === null && (requestPrice === 0 || calls === null) ? NO_DATA : priced(total, totalBefore),
+    parts: [...(calls === null ? [] : [{ label: "requests", monthly: perMillion(calls.now, requestPrice), bound: "estimate" as const }]), ...(cpu === null ? [] : [{ label: "CPU", monthly: perMillion(cpu.now, LIST_PRICE_PER_MILLION.workerCpuMs), bound: "estimate" as const }])],
+    usage: { kind: "requests", calls, cpuMs: cpu },
     trend: sumTracks([
       trendOf(metricTrack(input.current.worker, "worker.invocations"), stepMs, value => perMillion(value, requestPrice)),
       trendOf(metricTrack(input.current.worker, "worker.cpuMsSum"), stepMs, value => perMillion(value, LIST_PRICE_PER_MILLION.workerCpuMs))
@@ -571,7 +578,7 @@ export function monthlyUsage(ledger: Ledger): MeterUsage {
   const stored = (line: CostLine | undefined) => (line?.usage.kind === "stored" ? line.usage.bytes.now / BYTES_PER_GB : 0);
   for (const line of ledger.lines) {
     const kind = line.usage;
-    if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = ledger.workerBilling === "cpu-only" ? 0 : kind.calls.now; usage.workerCpuMs = kind.cpuMs.now; }
+    if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = ledger.workerBilling === "cpu-only" ? 0 : kind.calls?.now ?? 0; usage.workerCpuMs = kind.cpuMs?.now ?? 0; }
     if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls.now; usage.durableObjectGbSeconds = (kind.wallMs.now / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
     if (kind.kind === "rows") { usage.d1RowsRead = kind.read.now; usage.d1RowsWritten = kind.written.now; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
     if (line.kind === "r2") usage.r2Storage = stored(line);
@@ -593,7 +600,7 @@ export function projectedBill(bill: PlanBill, fromMs: number, toMs: number, mont
 
 export function buildLedger(input: LedgerInput): Ledger {
   const sample = sampler(input);
-  const worker = sample.covers(input.current.worker) ? workerLine(input, sample) : emptyLine("worker", "worker", "Worker");
+  const worker = sample.covers(input.current.worker) ? workerLine(input) : emptyLine("worker", "worker", "Worker");
   const lines = byCost([worker, objectsLine(input, sample), d1Line(input, sample), r2Line(input)].filter(line => line !== null));
   const entries = lines.map(line => ({ line, amount: monthlyOf(line) }));
   const now = entries.reduce((sum, entry) => sum + (entry.amount?.now ?? 0), 0);

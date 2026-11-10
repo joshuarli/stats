@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[]; readonly sampleObjectMethods?: boolean; readonly zeroWorkerCalls?: boolean; readonly zeroWorkerCpu?: boolean; readonly zeroObjectCalls?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[]; readonly sampleObjectMethods?: boolean; readonly zeroWorkerCalls?: boolean; readonly zeroWorkerCpu?: boolean; readonly zeroObjectCalls?: boolean; readonly missingRouteCpu?: boolean; readonly missingWorkerCpuProject?: string } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -34,8 +34,8 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (history !== null && kinds !== null) {
       const base = { projectId: history[1], range: "24h", fromMs: now - 86_400_000, toMs: now, stepMs: 3_600_000 };
       const body = (kind: string) => kind === "collector" ? { ...base, kind, runs: [] }
-        : kind === "worker" ? { ...base, kind, series: [{ metric: "worker.invocations", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, { metric: "worker.status.2xx", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, ...(options.zeroWorkerCpu === true ? [{ metric: "worker.cpuMsSum", values: Array.from({ length: 24 }, () => 0) }] : [])] }
-        : kind === "routes" ? { ...base, kind, series: (options.ledgerRoutes ?? []).flatMap(label => [{ metric: `route.${label}.invocations`, values: Array.from({ length: 24 }, () => 20) }, { metric: `route.${label}.cpuMsSum`, values: Array.from({ length: 24 }, () => 400) }]) }
+        : kind === "worker" ? { ...base, kind, series: [{ metric: "worker.invocations", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, { metric: "worker.status.2xx", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, ...(options.zeroWorkerCpu === true && options.missingWorkerCpuProject !== history[1] ? [{ metric: "worker.cpuMsSum", values: Array.from({ length: 24 }, () => 0) }] : [])] }
+        : kind === "routes" ? { ...base, kind, series: (options.ledgerRoutes ?? []).flatMap(label => [{ metric: `route.${label}.invocations`, values: Array.from({ length: 24 }, () => 20) }, ...(options.missingRouteCpu === true ? [] : [{ metric: `route.${label}.cpuMsSum`, values: Array.from({ length: 24 }, () => 400) }])]) }
         : kind === "durable-objects" ? { ...base, kind, series: [{ metric: "do.invocations", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 600) }, { metric: "do.wallMsSum", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 30_000) }, { metric: "do.cpuMsSum", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 9_000) }] }
         : { ...base, kind, series: [] };
       return fulfillHistory(route, { projectId: history[1], histories: Object.fromEntries(kinds.split(",").map(kind => [kind, body(kind)])) });
@@ -280,6 +280,41 @@ test("zero calls do not imply zero CPU or wall time per call @mobile", async ({ 
   options.zeroWorkerCalls = false;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(worker.locator(".ledger-unit")).toHaveText("0 ms CPU/req");
+});
+
+test("missing Worker CPU is excluded from costs and called out in both project views @mobile", async ({ page }) => {
+  await setup(page, { zeroWorkerCpu: true, missingWorkerCpuProject: "stats" });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  await expect(page.getByRole("note").filter({ hasText: "Worker CPU time was not collected" })).toContainText("excluded from the total");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
+  await expect(ledger.locator('[id="ledger-worker"] .ledger-unit')).toHaveText("CPU/req unavailable");
+  await expect(ledger.locator(".ledger-month")).toContainText("at least");
+  await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable Worker CPU data");
+  await page.goto("/#/projects?range=24h");
+  const row = page.getByRole("table", { name: "Projects" }).getByRole("row", { name: /stats/u }).first();
+  await expect(row).toContainText("partial · missing Worker data");
+  await expect(row).toContainText("unavailable");
+  const table = page.getByRole("table", { name: "Projects" });
+  await expect(table.locator("tr.projects-row").filter({ hasText: "stuff" })).toContainText("0 ms");
+  const cost = table.getByRole("columnheader", { name: "Est. cost" }).getByRole("button");
+  await cost.click();
+  await expect(table.locator("tr.projects-row").last()).toContainText("stats");
+  await cost.click();
+  await expect(table.locator("tr.projects-row").last()).toContainText("stats");
+});
+
+test("a route with missing CPU shows a partial cost and unavailable CPU per call @mobile", async ({ page }) => {
+  await setup(page, { ledgerRoutes: [HISTORY_ROUTE], zeroWorkerCpu: true, missingRouteCpu: true });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const worker = page.locator('[id="ledger-worker"]');
+  if (await worker.getAttribute("aria-expanded") !== "true") await worker.click();
+  const route = page.locator(`[id="ledger-route:${HISTORY_ROUTE}"]`);
+  await expect(route).toBeVisible();
+  await expect(route.locator(".ledger-money")).toContainText("partial");
+  await expect(route.locator(".ledger-unit")).toHaveText("CPU/call unavailable");
+  if (await route.getAttribute("aria-expanded") !== "true") await route.click();
+  await expect(page.locator(".ledger-detail-context")).toContainText("CPU data was not collected, so its cost is partial");
 });
 
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {

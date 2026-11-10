@@ -20,6 +20,81 @@ const find = (lines: readonly ReportLine[], id: string) => lines.find(entry => e
 const warned = (built: CostReport, code: string, subject: string) => built.warnings.some(entry => entry.code === code && entry.subject === subject);
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
 
+await test("missing worker CPU is excluded instead of priced as zero", () => {
+  const current = histories(T0, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [null, null, null] } });
+  const built = report({ current });
+  const worker = find(built.lines, "worker");
+  assert.equal(worker.price.kind, "priced");
+  assert.ok(built.total.pricedMeters.includes("workerRequests"));
+  assert.ok(!built.total.pricedMeters.includes("workerCpuMs"));
+  assert.ok(built.total.excluded.some(entry => entry.meter === "workerCpuMs" && entry.reason === "no-data"));
+  assert.equal(worker.confidence, "qualified");
+  assert.ok(warned(built, "meter-no-data", "workerCpuMs"));
+  assert.ok(built.total.monthly.now > 0);
+  assert.equal(worker.usage.kind === "requests" && worker.usage.cpuMs, null);
+  assert.equal(worker.parts.some(part => part.label === "CPU"), false);
+  const zero = report({ current: histories(T0, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [0, 0, 0] } }) });
+  assert.ok(zero.total.pricedMeters.includes("workerCpuMs"));
+  const zeroWorker = find(zero.lines, "worker");
+  assert.equal(zeroWorker.usage.kind === "requests" && zeroWorker.usage.cpuMs?.now, 0);
+  const previous = histories(T0 - 2 * H, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [null, null, null] } });
+  const later = report({ current: histories(T0, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [100, 100, 0] } }), previous });
+  const laterWorker = find(later.lines, "worker");
+  assert.equal(laterWorker.price.kind === "priced" && laterWorker.price.monthly.before, null);
+});
+
+await test("a monthly bill and projection name missing worker meters", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const worker = { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [null, null, null] };
+  const built = report({ current: histories(T0, { worker }), planMonth: { settledMs: month + 2 * H, histories: histories(month, { worker }) } });
+  assert.equal(built.planBill.kind, "isolated");
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.equal(built.planBill.usage.workerCpuMs, null);
+  assert.deepEqual(built.planBill.missingBilledMeters, ["workerCpuMs"]);
+  assert.deepEqual(built.planBill.missingProjectionMeters, ["workerCpuMs"]);
+  assert.ok(warned(built, "plan-month-missing-meter", "plan-bill"));
+  assert.ok(warned(built, "plan-projection-missing-meter", "plan-bill"));
+  const completeMonth = histories(month, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [0, 0, 0] } });
+  const projectionOnly = report({ current: histories(T0, { worker }), planMonth: { settledMs: month + 2 * H, histories: completeMonth } });
+  if (projectionOnly.planBill.kind !== "isolated") throw new Error("expected a partial projection");
+  assert.equal(projectionOnly.planBill.usage.workerCpuMs, 0);
+  assert.deepEqual(projectionOnly.planBill.missingBilledMeters, []);
+  assert.deepEqual(projectionOnly.planBill.missingProjectionMeters, ["workerCpuMs"]);
+  const billedOnly = report({ current: histories(T0, { worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [0, 0, 0] } }), planMonth: { settledMs: month + 2 * H, histories: histories(month, { worker }) } });
+  if (billedOnly.planBill.kind !== "isolated") throw new Error("expected a partial bill");
+  assert.deepEqual(billedOnly.planBill.missingBilledMeters, ["workerCpuMs"]);
+  assert.deepEqual(billedOnly.planBill.missingProjectionMeters, ["workerCpuMs"]);
+});
+
+await test("missing worker requests leave measured CPU available", () => {
+  const current = histories(T0, { worker: { "worker.invocations": [null, null, null], "worker.cpuMsSum": [100, 100, 0] } });
+  const built = report({ current });
+  const worker = find(built.lines, "worker");
+  assert.equal(worker.usage.kind === "requests" && worker.usage.calls, null);
+  assert.ok(built.total.pricedMeters.includes("workerCpuMs"));
+  assert.ok(built.total.excluded.some(entry => entry.meter === "workerRequests" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "workerRequests"));
+  assert.ok(built.total.monthly.now > 0);
+  const cpuOnly = report({ current, project: { ...PROJECT, workerBilling: "cpu-only" } });
+  assert.ok(cpuOnly.total.pricedMeters.includes("workerCpuMs"));
+  assert.ok(cpuOnly.total.excluded.some(entry => entry.meter === "workerRequests" && entry.reason === "tail-cpu-only"));
+  assert.equal(warned(cpuOnly, "meter-no-data", "workerRequests"), false);
+});
+
+await test("a route missing CPU is a partial contributor rather than zero CPU", () => {
+  const current = histories(T0, {
+    worker: { "worker.invocations": [100, 100, 0], "worker.cpuMsSum": [200, 200, 0] },
+    routes: { "route.GET /a.invocations": [50, 50, 0], "route.GET /a.cpuMsSum": [null, null, null] }
+  });
+  const built = report({ current });
+  const route = find(find(built.lines, "worker").children, "route:GET /a");
+  assert.equal(route.usage.kind === "requests" && route.usage.cpuMs, null);
+  assert.equal(route.confidence, "qualified");
+  assert.ok(warned(built, "route-meter-no-data", "route:GET /a"));
+  assert.ok(built.total.pricedMeters.includes("workerCpuMs"));
+  assert.ok(built.total.residuals.some(entry => entry.lineId === "route:unattributed"));
+});
+
 await test("sampled object methods do not turn an unseen baseline into zero", () => {
   const metrics = { "do.invocations": [100, 100, 0], "do.wallMsSum": [1_000, 1_000, 0], "do.cpuMsSum": [100, 100, 0] };
   const current = histories(T0, { durableObjects: metrics });
@@ -92,7 +167,7 @@ await test("a cpu-only Worker keeps its request counts but prices and bills only
   assert.equal(tail.planBill.kind, "isolated");
   if (tail.planBill.kind === "isolated" && billed.planBill.kind === "isolated") {
     assert.equal(tail.planBill.usage.workerRequests, 0);
-    assert.ok(billed.planBill.usage.workerRequests > 0);
+    assert.ok(billed.planBill.usage.workerRequests !== null && billed.planBill.usage.workerRequests > 0);
     assert.ok(tail.planBill.projectedMonthEnd < billed.planBill.projectedMonthEnd);
   }
 });

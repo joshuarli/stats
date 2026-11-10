@@ -77,6 +77,25 @@ await test("sampled object methods report their coverage and keep a sampled-out 
   }
 });
 
+await test("missing Worker CPU is excluded from the CLI total and monthly bill", async () => {
+  const origin = await serve({ projects: [{ ...STATS, missingWorkerCpu: true }] });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--month-to-date", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const worker = report.lines.find(line => line.id === "worker")!;
+    assert.equal(worker.usage.kind === "requests" && worker.usage.cpuMs, null);
+    assert.ok(!report.total.pricedMeters.includes("workerCpuMs"));
+    assert.ok(report.total.excluded.some(entry => entry.meter === "workerCpuMs" && entry.reason === "no-data"));
+    assert.equal(report.planBill.kind, "isolated");
+    assert.equal(report.planBill.usage?.workerCpuMs, null);
+    assert.ok(report.planBill.missingBilledMeters?.includes("workerCpuMs"));
+    assert.ok(report.planBill.missingProjectionMeters?.includes("workerCpuMs"));
+  } finally {
+    await origin.close();
+  }
+});
+
 await test("--all marks a failing project unavailable and still reports the others", async () => {
   const origin = await serve({ projects: [{ ...PLAIN, fail: url => url.searchParams.get("range") === null ? 404 : undefined }, STATS] });
   try {

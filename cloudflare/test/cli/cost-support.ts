@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeProjectBundle } from "../../src/history-frame.ts";
 import { main } from "../../src/cli/run.ts";
-import type { Price } from "../../src/cost/ledger.ts";
+import type { Price, Usage } from "../../src/cost/ledger.ts";
 import type { ProjectHistory } from "../../src/projects/history.ts";
 import { authorized, fakeOrigin, projectEntry, sendJson, tokenEnv, type FakeOrigin } from "./support.ts";
 
@@ -15,6 +15,7 @@ export interface WorldProject {
   readonly worker: string;
   readonly routes: number;
   readonly objects: boolean;
+  readonly missingWorkerCpu?: boolean;
   readonly fail?: (url: URL) => number | undefined;
 }
 
@@ -29,9 +30,9 @@ function series(metric: string, rows: number, base: number): { metric: string; v
   return { metric, values: Array.from({ length: rows }, (_, row) => base + (row % 5)) };
 }
 
-function metrics(project: WorldProject, kind: string, rows: number): { metric: string; values: number[] }[] {
+function metrics(project: WorldProject, kind: string, rows: number): { metric: string; values: (number | null)[] }[] {
   switch (kind) {
-    case "worker": return [series("worker.invocations", rows, 20_000), series("worker.cpuMsSum", rows, 80_000), series("worker.status.2xx", rows, 3900), series("worker.status.5xx", rows, 10)];
+    case "worker": return [series("worker.invocations", rows, 20_000), project.missingWorkerCpu === true ? { metric: "worker.cpuMsSum", values: Array.from({ length: rows }, () => null) } : series("worker.cpuMsSum", rows, 80_000), series("worker.status.2xx", rows, 3900), series("worker.status.5xx", rows, 10)];
     case "routes": return Array.from({ length: project.routes }, (_, index) => [series(`route.GET /r${String(index).padStart(2, "0")}.invocations`, rows, 300 + index), series(`route.GET /r${String(index).padStart(2, "0")}.cpuMsSum`, rows, 1000 + 100 * index)]).flat();
     case "durable-objects": return [series("do.invocations", rows, 800), series("do.errors", rows, 1), series("do.cpuMsSum", rows, 4000), series("do.cpuMsMax", rows, 30), series("do.wallMsSum", rows, 9000), series("do.storageBytes", rows, 5_000_000)];
     default: return [];
@@ -108,9 +109,9 @@ export interface Payload {
 
 export interface PresentedReportShape {
   readonly windows: { readonly current: { readonly fromMs: number; readonly toMs: number }; readonly previous: { readonly fromMs: number; readonly toMs: number } };
-  readonly lines: readonly { readonly id: string; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
-  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown };
-  readonly total: { readonly monthly: { readonly now: number } };
+  readonly lines: readonly { readonly id: string; readonly usage: Usage; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
+  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown; readonly usage?: { readonly workerCpuMs: number | null }; readonly missingBilledMeters?: readonly string[]; readonly missingProjectionMeters?: readonly string[] };
+  readonly total: { readonly monthly: { readonly now: number }; readonly pricedMeters: readonly string[]; readonly excluded: readonly { readonly meter: string; readonly reason: string }[] };
   readonly comparison: { readonly baseline: string };
   readonly warnings: readonly { readonly code: string; readonly subject: string }[];
 }

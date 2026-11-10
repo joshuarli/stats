@@ -256,6 +256,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
   );
 
   const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
+  const partialCost = () => loaded()?.report.warnings.some(warning => warning.code === "meter-no-data") ?? false;
   const workerUsage = () => {
     const line = worker();
     const value = loaded();
@@ -298,7 +299,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
       id: props.project.id,
       requests: calls()?.now ?? null,
       cpuMs: cpu()?.now ?? null,
-      cost: loaded()?.report.total.monthly.now ?? null,
+      cost: partialCost() ? null : loaded()?.report.total.monthly.now ?? null,
       errorShare: serverErrors()?.current.share ?? null,
       deployAtMs: latest()?.atMs ?? null
     }),
@@ -313,7 +314,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
     }
   );
   const cpuDuration = (value: number) => value >= 3_600_000 ? `${(value / 3_600_000).toPrecision(3)} h` : value >= 60_000 ? `${(value / 60_000).toPrecision(3)} min` : value >= 1000 ? `${(value / 1000).toPrecision(3)} s` : milliseconds(Math.round(value));
-  const pending = () => failure() === null ? (worker()?.price.kind === "uncollected" ? <span class="cell-note">no data</span> : <span class="cell-pending" aria-hidden="true" />) : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
+  const pending = () => failure() === null ? (worker()?.price.kind === "uncollected" ? <span class="cell-note">no data</span> : loaded() !== null ? <span class="cell-note">unavailable</span> : <span class="cell-pending" aria-hidden="true" />) : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
 
   return (
     <tbody class={open() ? "projects-group open" : "projects-group"} hidden={!props.visible}>
@@ -343,7 +344,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
           <Show when={cpu()} fallback={pending()}>{amount => (
             <span class="cell-stack">
               <span>{cpuDuration(amount().now)}<Change amount={amount()} worseUp /></span>
-              <span class="cell-note">{milliseconds(Number(((amount().now) / Math.max(1, calls()?.now ?? 1)).toPrecision(2)))} per request</span>
+              <span class="cell-note">{calls() === null || calls()!.now <= 0 ? "per request unavailable" : `${milliseconds(Number((amount().now / calls()!.now).toPrecision(2)))} per request`}</span>
             </span>
           )}</Show>
         </td>
@@ -351,7 +352,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
           <Show when={loaded()} fallback={pending()}>{value => (
             <span class="cell-stack">
               <span class="cell-strong">{dollarsPrecise(value().report.total.monthly.now)}/mo<Change amount={value().report.total.monthly} worseUp money /></span>
-              <span class="cell-note">{storedBytes() === null ? "no storage priced" : `incl. ${bytes(storedBytes() ?? 0)} R2`}</span>
+              <span class="cell-note">{partialCost() ? "partial · missing Worker data" : storedBytes() === null ? "no storage priced" : `incl. ${bytes(storedBytes() ?? 0)} R2`}</span>
             </span>
           )}</Show>
         </td>

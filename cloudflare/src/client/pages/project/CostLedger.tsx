@@ -19,7 +19,7 @@ const COMPONENT_COLORS: Readonly<Record<string, string>> = { worker: "var(--viz-
 const WINDOW_TIME = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 const change = (amount: Amount | null): number | null => amount === null || amount.before === null ? null : amount.now - amount.before;
-const per = (part: Amount, whole: Amount): Amount | null => whole.now <= 0 ? null : ({ now: part.now / whole.now, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
+const per = (part: Amount | null, whole: Amount | null): Amount | null => part === null || whole === null || whole.now <= 0 ? null : ({ now: part.now / whole.now, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
 
 function Delta(props: { readonly amount: Amount | null }): JSX.Element {
   const diff = () => change(props.amount);
@@ -49,7 +49,7 @@ function Ratio(props: { readonly amount: Amount; readonly worseUp?: boolean | un
 
 function usageText(line: CostLine, usage: Usage): string {
   switch (usage.kind) {
-    case "requests": return `${count(Math.round(usage.calls.now))} ${line.kind === "worker" ? "req" : "calls"}`;
+    case "requests": return usage.calls === null ? "calls unavailable" : `${count(Math.round(usage.calls.now))} ${line.kind === "worker" ? "req" : "calls"}`;
     case "objects": return `${count(Math.round(usage.calls.now))} calls`;
     case "rows": return usage.queries === null ? `${count(Math.round(usage.read.now + usage.written.now))} rows` : `${count(Math.round(usage.queries.now))} queries`;
     case "stored": return bytes(usage.bytes.now);
@@ -115,7 +115,7 @@ function Fact(props: { readonly label: string; readonly value: string; readonly 
   return <div class="ledger-fact"><b>{props.value}<Show when={props.amount}>{amount => <Ratio amount={amount()} worseUp={props.worseUp} />}</Show></b><span>{props.label}</span></div>;
 }
 
-function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories; readonly windowLabel: string; readonly windows: CostReport["windows"]; readonly onFindRoute?: ((label: string) => void) | undefined }): JSX.Element {
+function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories; readonly windowLabel: string; readonly windows: CostReport["windows"]; readonly partialWarning?: string | undefined; readonly onFindRoute?: ((label: string) => void) | undefined }): JSX.Element {
   const line = () => props.line;
   const usage = () => props.usage;
   const facts = (): JSX.Element => {
@@ -125,9 +125,9 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
       case "requests": {
         const cpuPerCall = per(current.cpuMs, current.calls);
         return <>
-          <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+          <Fact label="calls in window" value={current.calls === null ? "unavailable" : count(Math.round(current.calls.now))} amount={current.calls ?? undefined} />
           <Fact label="CPU/call" value={cpuPerCall === null ? "unavailable" : milliseconds(Number(cpuPerCall.now.toPrecision(2)))} amount={cpuPerCall ?? undefined} worseUp />
-          <Fact label="CPU in window" value={duration(current.cpuMs.now)} amount={current.cpuMs} worseUp />
+          <Fact label="CPU in window" value={current.cpuMs === null ? "unavailable" : duration(current.cpuMs.now)} amount={current.cpuMs ?? undefined} worseUp />
           {money}
         </>;
       }
@@ -192,6 +192,7 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
       <span>{props.windowLabel}, projected to 30 days at list price</span>
       <span>Current: {WINDOW_TIME.format(props.windows.current.fromMs)} – {WINDOW_TIME.format(props.windows.current.toMs)}</span>
       <span>Comparison: {WINDOW_TIME.format(props.windows.previous.fromMs)} – {WINDOW_TIME.format(props.windows.previous.toMs)}</span>
+      <Show when={props.partialWarning}>{warning => <span>{warning()}</span>}</Show>
       <Show when={line().kind === "object-method" && monthlyOf(line())?.before === null}><span>Comparison unavailable for this method</span></Show>
     </div>
     <div class="ledger-facts">{facts()}</div>
@@ -201,11 +202,12 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
 }
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
+  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter;
   return (
     <div class="ledger-month">
-      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {dollarsPrecise(props.plan.billedSoFar)} so far, {dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
+      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {props.plan.missingBilledMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.billedSoFar)} so far, {props.plan.missingProjectionMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
       <PanelChart
-        label="Billed this month"
+        label={props.plan.missingBilledMeters.length > 0 || props.plan.missingProjectionMeters.length > 0 ? "Known minimum billed this month" : "Billed this month"}
         series={() => [
           { label: "billed", color: "blue", track: props.plan.billed },
           { label: "projected", color: "blue", track: props.plan.projected, dashed: true }
@@ -214,6 +216,8 @@ function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly k
         min={0}
       />
       <span class="ledger-month-note">Usage beyond the Workers Paid allowances at list price, counted from the 1st (UTC) as if this project had the account's allowances to itself.</span>
+      <Show when={props.plan.missingBilledMeters.length > 0}><span class="ledger-month-note">The billed amount excludes unavailable {props.plan.missingBilledMeters.map(meterName).join(", ")} data.</span></Show>
+      <Show when={props.plan.missingProjectionMeters.length > 0}><span class="ledger-month-note">The projection excludes unavailable {props.plan.missingProjectionMeters.map(meterName).join(", ")} data.</span></Show>
     </div>
   );
 }
@@ -286,6 +290,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
     const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
+    const partialWarning = () => props.report.warnings.find(warning => warning.code === "route-meter-no-data" && warning.subject === line().id)?.message;
     return (
       <>
         <button
@@ -303,7 +308,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
               <Show when={partsText(line())}>{text => <small>{text()}</small>}</Show>
             </span>
           </span>
-          <span class="ledger-money">{moneyText(line())}</span>
+          <span class="ledger-money">{moneyText(line())}{partialWarning() === undefined ? "" : " partial"}</span>
           <span class="ledger-share"><i style={`width:${Math.max(0.5, share() * 100)}%;background:${rowProps.color}`} /><em>{amount() === null ? "" : percent(Math.round(share() * 1000) / 10)}</em></span>
           <span class="ledger-change"><Delta amount={amount()} /></span>
           <span class="ledger-usage">{usageText(line(), usage())}</span>
@@ -312,7 +317,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
             <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.report.windows.current} label={`${line().label} cost`} zeroBased />}</Show>
           </span>
         </button>
-        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} windowLabel={props.windowLabel} windows={props.report.windows} onFindRoute={props.onFindRoute} /></Show>
+        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} windowLabel={props.windowLabel} windows={props.report.windows} partialWarning={partialWarning()} onFindRoute={props.onFindRoute} /></Show>
         <Show when={!leaf() && open()}>
           <For each={visible()}>{child => <Row line={child} depth={rowProps.depth + 1} color={rowProps.color} />}</For>
           <Show when={hidden().length > 0}>
@@ -333,7 +338,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
           <span class="ledger-amount">{dollarsPrecise(total())}<small>/mo</small></span>
           <Delta amount={props.report.total.monthly} />
           <Show when={props.report.total.monthly.before}>{before => <span class="ledger-was">was {dollarsPrecise(before())}/mo{props.report.total.uncompared.length > 0 ? ` · change excludes ${props.report.total.uncompared.join(", ")} (no baseline)` : ""}</span>}</Show>
-          <span class="ledger-basis">{props.windowLabel}, projected to 30 days at list price</span>
+          <span class="ledger-basis">{props.report.warnings.some(warning => warning.code === "meter-no-data") ? "Partial: " : ""}{props.windowLabel}, projected to 30 days at list price</span>
         </div>
         <div class="ledger-bar" role="img" aria-label="Cost by component">
           <For each={props.report.lines}>{line => <span style={`flex:${Math.max(0, monthlyOf(line)?.now ?? 0)};background:${COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"}`} title={`${line.label} ${dollarsPrecise(monthlyOf(line)?.now)}`} />}</For>
@@ -350,6 +355,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
       <Show when={props.report.warnings.some(warning => warning.code === "object-method-sampled")}>
         <div role="note"><Notice tone="info"><For each={props.report.warnings.filter(warning => warning.code === "object-method-sampled")}>{warning => <span>{warning.message} </span>}</For></Notice></div>
       </Show>
+      <For each={props.report.warnings.filter(warning => warning.code === "meter-no-data")}>{warning => <div role="note"><Notice tone="warn">{warning.message}</Notice></div>}</For>
       <div class="ledger-table">
         <div class="ledger-tools">
           <span class="ledger-caption">Usage and per-call figures cover the selected window</span>

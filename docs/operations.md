@@ -321,6 +321,12 @@ imports and erasable syntax only, and none imports Solid, uPlot, or
   `uncollected/no-data`, and a meter with no source (Durable Object SQLite rows
   where no summary exists, R2 Class A and B) is `uncollected/no-source`. Neither
   is priced as zero.
+- **Partial Worker costs.** Missing Worker request or CPU data is `null` in
+  request usage and listed as `no-data` in excluded meters. Known Worker meters
+  remain priced, and the total is qualified as partial. A route missing one of
+  those fields is also partial. Monthly plan usage leaves a missing Worker meter
+  `null`; `missingBilledMeters` and `missingProjectionMeters` identify the
+  omitted inputs, so the corresponding amounts and charts are known minimums.
 - **Scope is stated.** The plan bill is `isolated`: it subtracts the full account
   allowance for one project, and an account total exists only when every project
   in the account is covered. Months are UTC calendar months, labelled
