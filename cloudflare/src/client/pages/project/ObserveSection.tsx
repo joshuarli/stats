@@ -345,6 +345,7 @@ function modalTitle(view: ModalView): string {
 
 export function ObserveModal(props: { readonly observe: Observability; readonly refreshKey: string }): JSX.Element {
   const o = props.observe;
+  const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : undefined;
   const top = () => o.modals().at(-1);
   const previous = () => o.modals().at(-2);
   return (
@@ -353,6 +354,7 @@ export function ObserveModal(props: { readonly observe: Observability; readonly 
         title={modalTitle(view)}
         label={modalTitle(view)}
         onClose={o.closeModals}
+        returnFocus={opener}
         onBack={previous() === undefined ? undefined : o.backModal}
         backLabel={previous() === undefined ? undefined : modalTitle(previous()!)}
       >
