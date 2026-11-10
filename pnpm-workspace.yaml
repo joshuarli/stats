@@ -5,4 +5,4 @@ allowBuilds:
   esbuild: true
   workerd: true
 minimumReleaseAgeExclude:
-  - '@laputa-systems/ui-dashboard@0.5.0'
+  - '@laputa-systems/ui-dashboard@0.6.0'

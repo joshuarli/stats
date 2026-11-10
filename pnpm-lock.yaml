@@ -172,8 +172,8 @@ importers:
         specifier: 0.3.31
         version: 0.3.31
       '@laputa-systems/ui-dashboard':
-        specifier: 0.5.0
-        version: 0.5.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)
+        specifier: 0.6.0
+        version: 0.6.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)
       '@solidjs/router':
         specifier: 2.0.0-next.43
         version: 2.0.0-next.43(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)
@@ -778,9 +778,9 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@laputa-systems/ui-dashboard@0.5.0':
-    resolution: {integrity: sha512-2wkB27G/P57HDDaQNrmHT7Vqpf54VLKEbsOhMuyGVaoywsbcqOAm+dA0vyVIvV9W2l5bVDmsrhEHEyGBqF71jQ==, tarball: https://npm.17166969.xyz/current/-/tarballs/db0901dbb1bf3f9ec70c369036b9874fb56aa5fe7854b2846ec3a132ec8655aa32c2c6dca8e026f9d034bf2548bd5f56da5e5b5439acae1107132181a85ef58d.tgz}
-    engines: {node: '>=20'}
+  '@laputa-systems/ui-dashboard@0.6.0':
+    resolution: {integrity: sha512-8RWWuguzZLmZvlnJej0gjHbKsJHDczlZyNVYhFFxoGZAsGi1xB6AJyKdUD+NAVclnbudnAFeUb8rJKVvXhHNgg==, tarball: https://npm.17166969.xyz/current/-/tarballs/f11596ba0bb364b999be59c97a3d208c76cab091c3733959c8d558845171a06640b068b5c41e8027229d503f8d0157259dbb9d9c015e51bf2b24a56f5e11cd82.tgz}
+    engines: {node: '>=26.13.0'}
     peerDependencies:
       '@solidjs/web': '>=2.0.0-rc.18'
       solid-js: '>=2.0.0-rc.18'
@@ -2182,7 +2182,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@laputa-systems/ui-dashboard@0.5.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)':
+  '@laputa-systems/ui-dashboard@0.6.0(@solidjs/web@2.0.0-rc.20(solid-js@2.0.0-rc.20))(solid-js@2.0.0-rc.20)':
     optionalDependencies:
       '@solidjs/web': 2.0.0-rc.20(solid-js@2.0.0-rc.20)
       solid-js: 2.0.0-rc.20

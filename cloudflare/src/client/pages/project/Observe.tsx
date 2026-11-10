@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import type { ActionState } from "@laputa-systems/ui-dashboard/feedback";
 import { ApiFailure } from "../../api";
 import { age, bytes, count } from "../../format";
 import { useTelemetry } from "../../state";
@@ -102,7 +103,7 @@ export function createObservability(
   const [exploreResult, setExploreResult] = createSignal<KeyedResult<{ readonly exploration: Exploration; readonly traces: Page<TraceSummary> }> | null>(null);
   const [traceResult, setTraceResult] = createSignal<KeyedResult<TraceDetail> | null>(null);
   const [occurrencesResult, setOccurrencesResult] = createSignal<KeyedResult<Page<Occurrence>> | null>(null);
-  const [mutationError, setMutationError] = createSignal<string | null>(null);
+  const [actionState, setActionState] = createSignal<ActionState>({ kind: "idle" });
   const [traceFilter, setTraceFilter] = createSignal<TraceFilter>(readParam("traces") === "failed" ? "failed" : "all");
   const [route, setRoute] = createSignal<string | null>(readParam("route"));
   const [issueState, setIssueState] = createSignal<IssueState>(readParam("issues") === "resolved" ? "resolved" : "open");
@@ -204,7 +205,6 @@ export function createObservability(
     if (remember) writeParam("trace", id);
   }
   function selectIssue(id: string | null, remember = true): void {
-    if (id !== issueId()) setMutationError(null);
     setIssueId(id);
     if (remember) writeParam("issue", id);
   }
@@ -225,20 +225,22 @@ export function createObservability(
   const openDeployment = (id: string, label: string) => openModal({ kind: "deployment", id, label });
   const [resolving, setResolving] = createSignal(false);
   const changeState = async (fingerprint: string, state: IssueState) => {
+    if (resolving()) return;
     setResolving(true);
-    setMutationError(null);
+    setActionState({ kind: "pending", message: state === "resolved" ? "Resolving issue…" : "Reopening issue…" });
     try {
       const response = await fetch(`${base}/issues/${fingerprint}/state`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ state }) });
       if (!response.ok) throw new ApiFailure(response.status, `Could not mark the issue ${state} (${response.status})`);
+      setActionState({ kind: "succeeded", message: state === "resolved" ? "Issue resolved." : "Issue reopened." });
       setMutation(value => value + 1);
     } catch (cause) {
-      setMutationError(message(cause, "Could not change the issue"));
+      setActionState({ kind: "failed", message: message(cause, "Could not change the issue") });
     } finally {
       setResolving(false);
     }
   };
 
-  return { read, modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, issuesError, exploreError, occurrencesError, mutationError, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
+  return { read, modals, backModal, closeModals, openDeployment, mutation, health, traces, exploration, band, chooseBand, issues, issuesError, exploreError, occurrencesError, actionState, traceFilter, filterTraces, route, filterRoute, issueState, filterIssues, introducedIn, filterIntroduced, traceId, selectTrace, issueId, selectIssue, openIssue, slice, setSlice, trace, traceError, occurrences, openTrace, changeState, resolving };
 }
 
 export type Observability = ReturnType<typeof createObservability>;

@@ -6,6 +6,8 @@ import { createPagedList, Segmented, ShowMore, Widget } from "../../components/u
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { decodeImpact, decodeIssue, decodeOccurrences, decodeTrace } from "../../../observe/client/decode";
 import { Modal, Skeleton } from "@laputa-systems/ui-dashboard";
+import { ActionStatus } from "@laputa-systems/ui-dashboard/feedback";
+import "@laputa-systems/ui-dashboard/styles/feedback.css";
 import { Info, Term } from "../../components/Info";
 import type { IssueRef, IssueSummary, Occurrence, Page, RolloutImpact, TraceDetail, VersionStats } from "../../../observe/core/store";
 import { routeShift, type RouteShift } from "../../../observe/client/impact";
@@ -15,7 +17,7 @@ import { defaultSlice, duration, keyedError, keyedValue, message, MOMENT, RouteL
 const ISSUE_PAGE = 12;
 const OCCURRENCE_PAGE = 10;
 
-function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly occurrencesError: string | null; readonly observe: Observability }): JSX.Element {
+function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences: Page<Occurrence> | null; readonly occurrencesError: string | null; readonly observe: Observability; readonly focusFeedback: () => void }): JSX.Element {
   const { now } = useTelemetry();
   const o = props.observe;
   const issue = () => props.issue;
@@ -40,7 +42,7 @@ function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences
           <b>{issue().name}</b>
           <Show when={issue().operation}>{operation => <span class="op-tag">{operation()}</span>}</Show>
         </div>
-        <button class="btn btn-small" type="button" disabled={o.resolving()} onClick={() => void o.changeState(issue().fingerprint, issue().state === "open" ? "resolved" : "open")}>
+        <button class="btn btn-small" type="button" disabled={o.resolving()} onClick={event => { const button = event.currentTarget; const focused = document.activeElement === button; void o.changeState(issue().fingerprint, issue().state === "open" ? "resolved" : "open"); if (focused) queueMicrotask(() => { if (document.activeElement === button || document.activeElement === document.body) props.focusFeedback(); }); }}>
           {issue().state === "open" ? "Resolve" : "Reopen"}
         </button>
       </div>
@@ -83,6 +85,7 @@ function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences
 export function IssuesWidget(props: { readonly observe: Observability }): JSX.Element {
   const { now } = useTelemetry();
   const o = props.observe;
+  let actionFeedback: HTMLDivElement | undefined;
   const items = () => o.issues()?.items ?? [];
   const paged = createPagedList(items, ISSUE_PAGE);
   createEffect(() => items().findIndex(issue => issue.fingerprint === o.issueId()), index => { if (index >= 0) paged.reveal(index); });
@@ -118,7 +121,8 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
           </select>
         </label>
       </div>
-      <Show when={o.issuesError() ?? o.mutationError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <Show when={o.issuesError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
+      <div data-action-feedback tabindex="-1" hidden={o.actionState().kind === "idle" || o.modals().length > 0} ref={element => { actionFeedback = element; }}><Show when={o.modals().length === 0}><ActionStatus state={o.actionState()} /></Show></div>
       <Show when={o.issues() !== null} fallback={o.issuesError() === null ? <Skeleton rows={5} /> : null}>
         <Show when={items().length > 0} fallback={<p class="panel-label observe-empty">{o.issueState() === "open" ? "No open issues in the last 7 days." : "No resolved issues with occurrences in the last 7 days."}</p>}>
           <div class="issue-layout">
@@ -137,7 +141,7 @@ export function IssuesWidget(props: { readonly observe: Observability }): JSX.El
               <ShowMore hidden={paged.hidden()} noun="issues" onMore={paged.more} />
             </div>
             <div class="issue-detail">
-              <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} occurrencesError={o.occurrencesError()} observe={o} />}</Show>
+              <Show when={current()}>{issue => <IssueDetail issue={issue()} occurrences={o.occurrences()} occurrencesError={o.occurrencesError()} observe={o} focusFeedback={() => actionFeedback?.focus()} />}</Show>
             </div>
           </div>
         </Show>
@@ -287,6 +291,7 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
 }
 
 function IssueModalBody(props: { readonly fingerprint: string; readonly observe: Observability }): JSX.Element {
+  let actionFeedback: HTMLDivElement | undefined;
   const [issueResult, setIssueResult] = createSignal<KeyedResult<IssueSummary> | null>(null);
   const [occurrencesResult, setOccurrencesResult] = createSignal<KeyedResult<Page<Occurrence>> | null>(null);
   const issue = () => keyedValue(issueResult(), props.fingerprint);
@@ -306,7 +311,8 @@ function IssueModalBody(props: { readonly fingerprint: string; readonly observe:
   return (
     <>
       <Show when={failure()}>{text => <div class="notice notice-warn" role="alert"><span>{text()}</span></div>}</Show>
-      <Show when={issue()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <IssueDetail issue={value()} occurrences={occurrences()} occurrencesError={occurrencesError()} observe={props.observe} />}</Show>
+      <div data-action-feedback tabindex="-1" hidden={props.observe.actionState().kind === "idle"} ref={element => { actionFeedback = element; }}><ActionStatus state={props.observe.actionState()} /></div>
+      <Show when={issue()} fallback={failure() === null ? <Skeleton rows={6} /> : null}>{value => <IssueDetail issue={value()} occurrences={occurrences()} occurrencesError={occurrencesError()} observe={props.observe} focusFeedback={() => actionFeedback?.focus()} />}</Show>
     </>
   );
 }

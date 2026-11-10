@@ -60,3 +60,13 @@ The first milestone follows an issue to an occurrence and trace. These captured-
 - [Selected trace at 390 × 844](dashboard-integration/trace-before-mobile.webp)
 
 The mobile trace places the selected invocation inside the horizontally scrolling timeline table. Its facts and stack extend beyond the visible panel. The desktop issue view retains a useful side-by-side list and details.
+
+## Candidate integration in progress
+
+The candidate is the tarball `laputa-systems-ui-dashboard-0.6.0.tgz` packed from library revision `3f7321624b852badc27acd0904e7bab39abf7602`. Two packs of that revision were byte-identical. Stats was tested with that tarball installed through pnpm, including the package's feedback stylesheet. The prepared registry lock entry was generated from the packed bytes and the registry's content-addressed URL convention using a local metadata fixture. Version 0.6.0 has not been published: the URL and a clean registry install remain unverified. The registry dry run did not finish.
+
+The issue journey now keeps an explicitly selected section across reloads, retains the selected issue when returning from a trace, and presents mobile invocation details within the visible timeline. Resolve and reopen show pending, acknowledged success, or failure, and move focus to the feedback before a selected row disappears. Existing retained data and server responses remain authoritative.
+
+The first candidate build measured Fleet at 234,821 raw and 88,367 gzip JavaScript bytes, up from 218,696 and 83,862. Its 5.37% gzip increase exceeds the 5% review threshold. The shared root package and hydration-capable Solid runtime account for the growth; the optional feedback family and its 2,024 raw, 579 gzip stylesheet stay deferred to Errors. The added shared bytes support the updated core components and their server-rendering and hydration contract, but have no demonstrated Fleet-specific benefit. A non-hydratable experimental build reduced Fleet by only 709 gzip bytes and was rejected because it breaks that contract. Further reduction or explicit acceptance remains open.
+
+The Errors graph measured 424,963 raw and 157,000 gzip JavaScript bytes and 82,701 raw and 17,563 gzip CSS bytes, compared with 412,984, 154,044, 78,753 and 16,661 respectively at baseline. These sizes are from production asset graphs, not preview transfer measurements. The candidate's request counts, lifecycle retention, deployment targets and full milestone checks are not yet verified.

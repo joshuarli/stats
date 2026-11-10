@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void> } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -50,6 +50,7 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (options.failing === true || options.failWhen?.(route.request().method(), path + url.search) === true) return route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "observe down" } } });
     const method = route.request().method();
     if (method === "POST") posts.push(`${path} ${route.request().postData() ?? ""}`);
+    if (method === "POST") await options.beforePost?.();
     const response = await answer(scenario, now, new Request(`https://observe${path}${url.search}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
     return route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "application/json", body: await response.text() });
   });
@@ -250,6 +251,29 @@ test("resolving an issue posts its new state and moves it to Resolved", async ({
   await expect(issues.getByRole("button", { name: "Reopen" })).toBeVisible();
 });
 
+test("issue actions report their outcome and preserve focus", async ({ page }) => {
+  let release: (() => void) | undefined;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const observe = await setup(page, { fresh: true, beforePost: () => wait });
+  await page.goto("/#/project/stats?range=24h&section=errors");
+  const issues = page.locator("#issues");
+  await issues.getByRole("option", { name: /RangeError/u }).click();
+  const resolve = issues.getByRole("button", { name: "Resolve", exact: true });
+  await resolve.focus();
+  await resolve.click();
+  await expect(resolve).toBeDisabled();
+  await expect(issues.getByRole("status")).toContainText("Resolving issue");
+  await expect(issues.getByRole("status")).not.toContainText("Issue resolved");
+  expect(observe.posts).toHaveLength(1);
+  release?.();
+  await expect(issues.getByRole("status")).toContainText("Issue resolved");
+  await expect(issues.locator(".issue-list").getByRole("option", { name: /RangeError/u })).toHaveCount(0);
+  await expect(issues.locator("[data-action-feedback]")).toBeFocused();
+  await issues.getByRole("button", { name: "Resolved", exact: true }).click();
+  await issues.getByRole("button", { name: "Reopen", exact: true }).click();
+  await expect(issues.getByRole("status")).toContainText("Issue reopened");
+});
+
 test("a failed resolve says so in the Errors section", async ({ page }) => {
   await setup(page, { fresh: true, failWhen: (method, path) => method === "POST" && path.endsWith("/state") });
   await page.goto("/#/project/stats?range=24h&section=errors");
@@ -257,7 +281,21 @@ test("a failed resolve says so in the Errors section", async ({ page }) => {
   await issues.getByRole("option", { name: /RangeError/u }).click();
   await issues.getByRole("button", { name: "Resolve", exact: true }).click();
   await expect(issues).toContainText("Could not mark the issue resolved (503)");
+  await expect(issues.getByRole("alert")).toContainText("Could not mark the issue resolved (503)");
+  await expect(issues.getByRole("option", { name: /RangeError/u })).toBeVisible();
   await expect(issues.getByRole("button", { name: "Resolve", exact: true })).toBeEnabled();
+});
+
+test("issue modal reports a resolution without losing focus", async ({ page }) => {
+  const scenario = await buildScenario(now);
+  const issue = (await scenarioStore(scenario, now).issues({})).items[0]!;
+  await setup(page, { scenario });
+  await page.goto(`/#/project/stats?section=errors&modal=issue:${issue.fingerprint}`);
+  const dialog = page.getByRole("dialog", { name: "Issue" });
+  await dialog.getByRole("button", { name: "Resolve", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Issue resolved");
+  await expect(dialog.locator("[data-action-feedback]")).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Reopen", exact: true })).toBeVisible();
 });
 
 test("choosing Resolved never relabels the open issues while its data is missing", async ({ page }) => {
