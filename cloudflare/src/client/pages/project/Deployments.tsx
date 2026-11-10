@@ -120,7 +120,7 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const comparison = (): AnyComparison | null => {
     const state = comparisonState();
-    return state?.kind === "ok" && state.value.deploymentId === selected() && state.value.window === window() ? state.value : null;
+    return state?.kind === "ok" && state.value.deploymentId === selected() ? state.value : null;
   };
   const comparisonError = (): string | null => {
     const state = comparisonState();
@@ -373,6 +373,7 @@ export function DeploymentsWidget(props: { readonly deployments: ProjectDeployme
           <div class="deployment-panels">
             <div class="deployment-panel">
               <Show when={comparisonError()}>{message => <div class="notice notice-warn" role="alert"><span>{message()}</span></div>}</Show>
+              <Show when={stale() && comparison() !== null}><p class="panel-label" role="status">Updating comparison; showing the previous window.</p></Show>
               <Show when={comparison()} fallback={comparisonError() === null ? <Skeleton rows={6} /> : <p class="panel-label">Comparison unavailable.</p>}>{value => (
                 <div class={stale() ? "deployment-comparison pending" : "deployment-comparison"}><ComparisonTable comparison={value()} /></div>
               )}</Show>

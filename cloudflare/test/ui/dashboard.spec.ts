@@ -1061,6 +1061,7 @@ test("the deployment table stays in place while the next comparison loads", asyn
   const detail = page.locator(".deployment-detail");
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(detail).toHaveAttribute("aria-busy", "true");
+  await expect(detail.getByRole("status")).toHaveText("Updating comparison; showing the previous window.");
   await expect(row).toContainText("improved");
   release();
   await expect(row).toContainText("confounded");
