@@ -146,6 +146,17 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   await expect(page.locator("main.content")).toHaveScreenshot("services-list.webp");
 });
 
+test("the Services list does not load the project search stylesheet", async ({ page }) => {
+  const styles: Promise<string>[] = [];
+  page.on("response", response => {
+    if (new URL(response.url()).pathname.endsWith(".css")) styles.push(response.text());
+  });
+  await page.goto(`${ORIGIN}/#/services`);
+  await expect(page.getByRole("table", { name: "Services" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect((await Promise.all(styles)).join("\n")).not.toContain(".projects-scroll-hint");
+});
+
 test("a service page compares its cgroup in place of host levels, labels the source, and keeps host-only metrics", async ({ page }) => {
   await page.goto(`${ORIGIN}/#/service/web`);
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });

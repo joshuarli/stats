@@ -11,8 +11,8 @@ import { createUpdateEffect } from "../effect";
 import { routeWithRange } from "../urlState";
 import type { DeploymentHistory } from "../../deployments/model";
 import { deploymentTitle, loadServiceDeploymentHistory } from "./project/Deployments";
-import "./project/projects.css";
 import "./project/services.css";
+import "./project/services-list.css";
 
 export function ServicesPage(): JSX.Element {
   return (
@@ -67,7 +67,7 @@ function Services(): JSX.Element {
         </Widget>
       }
     >
-      <Widget id="services" title="Services" class={isPending(services) ? "widget-pending" : undefined} bodyClass="flush" meta={<span class="projects-basis">Deployments are markers pushed by deploy scripts</span>}>
+      <Widget id="services" title="Services" class={isPending(services) ? "widget-pending" : undefined} bodyClass="flush" meta={<span class="services-basis">Deployments are markers pushed by deploy scripts</span>}>
         <div class="table-scroll" role="region" aria-label="Services table">
           <table class="data-table services-table" aria-label="Services">
             <thead>
