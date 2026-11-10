@@ -142,9 +142,15 @@ function number(value: number | null, digits = 1): string {
   return value === null ? "unavailable" : value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+function withUnit(value: number | null, unit: string): string {
+  return value === null ? "unavailable" : `${number(value)}${unit}`;
+}
+
 function describeWork(value: Totals | null): string {
   if (value === null) return "throughput unavailable";
-  return `${number(value.throughputPerMinute)} events/min after, ${number(value.failureRate)}% failed, ${number(value.meanDurationMs)} ms mean`;
+  const failure = value.failureRate === null ? "unavailable failure rate" : `${number(value.failureRate)}% failed`;
+  const latency = value.meanDurationMs === null ? "unavailable mean latency" : `${number(value.meanDurationMs)} ms mean`;
+  return `${number(value.throughputPerMinute)} events/min after, ${failure}, ${latency}`;
 }
 
 function ServiceWork(props: { readonly comparison: ServiceComparison | null; readonly application: string | null; readonly work: readonly WorkSummary[]; readonly issues: readonly IssueSummary[] | null; readonly issuesUnavailable: boolean }): JSX.Element {
@@ -192,8 +198,8 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
                     <tr>
                       <th scope="row" class="mono">{summary.operation}</th>
                       <td class="numeric">{summary.before.successes + summary.before.failures} → {summary.after.successes + summary.after.failures}</td>
-                      <td class="numeric">{number(summary.before.failureRate)}% → {number(summary.after.failureRate)}%</td>
-                      <td class="numeric">{number(summary.before.meanDurationMs)} → {number(summary.after.meanDurationMs)} ms</td>
+                      <td class="numeric">{withUnit(summary.before.failureRate, "%")} → {withUnit(summary.after.failureRate, "%")}</td>
+                      <td class="numeric">{summary.before.meanDurationMs !== null && summary.after.meanDurationMs !== null ? `${number(summary.before.meanDurationMs)} → ${number(summary.after.meanDurationMs)} ms` : `${withUnit(summary.before.meanDurationMs, " ms")} → ${withUnit(summary.after.meanDurationMs, " ms")}`}</td>
                       <td><WorkKeys summary={summary} /></td>
                     </tr>
                   )}</For>

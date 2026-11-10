@@ -217,6 +217,20 @@ test("application work does not promise that an overlapping comparison will sett
   await expect(comparison).toContainText("Another deployment overlaps the comparison windows.");
 });
 
+test("application work distinguishes unavailable rates from zero", async ({ page }) => {
+  await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
+    const response = await route.fetch();
+    const comparison = await response.json() as ServiceComparison;
+    const work = comparison.work[0]!;
+    await route.fulfill({ response, json: { ...comparison, work: [{ ...work, after: { ...work.after, successes: 0, failures: 0, failureRate: null, meanDurationMs: null, throughputPerMinute: 0 } }] } });
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  const row = page.getByRole("table", { name: "Application operations" }).getByRole("row", { name: /note\.save/u });
+  await expect(row.locator("td").nth(1)).toHaveText("0% → unavailable");
+  await expect(row.locator("td").nth(2)).toHaveText("40 ms → unavailable");
+  await expect(page.locator(".service-facts")).toContainText("0 events/min after, unavailable failure rate, unavailable mean latency");
+});
+
 test("long work details do not squeeze operation names", async ({ page }) => {
   await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
     const response = await route.fetch();
