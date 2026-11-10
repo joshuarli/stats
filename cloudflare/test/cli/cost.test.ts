@@ -116,6 +116,44 @@ await test("missing D1 rows are excluded from the CLI total and monthly bill", a
   }
 });
 
+await test("missing D1 storage leaves nullable usage, no zero-dollar part, and a named meter", async () => {
+  const origin = await serve({ projects: [{ ...STATS, missingD1Storage: true }] });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--month-to-date", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const d1 = report.lines.find(line => line.id === "d1")!;
+    assert.equal(d1.confidence, "qualified");
+    assert.ok(d1.parts.every(part => part.label !== "storage"));
+    assert.ok(report.total.excluded.some(entry => entry.meter === "d1Storage" && entry.reason === "no-data"));
+    assert.ok(report.warnings.some(warning => warning.code === "meter-no-data" && warning.subject === "d1Storage"));
+    assert.equal(report.planBill.usage?.d1Storage, null);
+    assert.ok(report.planBill.missingBilledMeters?.includes("d1Storage"));
+    assert.ok(report.planBill.missingProjectionMeters?.includes("d1Storage"));
+  } finally {
+    await origin.close();
+  }
+});
+
+await test("partial D1 storage names the meter instead of presenting a complete subtotal", async () => {
+  const origin = await serve({ projects: [{ ...STATS, partialD1Storage: true }] });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--month-to-date", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const d1 = report.lines.find(line => line.id === "d1")!;
+    assert.equal(d1.confidence, "qualified");
+    assert.ok(report.total.pricedMeters.includes("d1Storage"));
+    assert.ok(report.warnings.some(warning => warning.code === "meter-partial-data" && warning.subject === "d1Storage"));
+    assert.ok(report.planBill.usage?.d1Storage !== null);
+    assert.ok(report.planBill.partialBilledMeters?.includes("d1Storage"));
+    assert.ok(report.planBill.partialProjectionMeters?.includes("d1Storage"));
+    assert.equal(report.planBill.missingBilledMeters?.includes("d1Storage"), false);
+  } finally {
+    await origin.close();
+  }
+});
+
 await test("missing Durable Object wall time is excluded from the CLI total and monthly bill", async () => {
   const origin = await serve({ projects: [{ ...STATS, missingObjectWall: true }] });
   try {

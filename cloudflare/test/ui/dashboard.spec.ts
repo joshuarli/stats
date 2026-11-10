@@ -71,7 +71,7 @@ interface ProjectWindow {
   readonly scale: number;
 }
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow, missingD1Written = false) {
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow, missingD1Written = false, partialWorkerCpu = false, partialR2Storage = false, missingD1Storage = false) {
   const fromMs = window === undefined ? now - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
   const toMs = window?.toMs ?? now;
   const points = Math.max(1, Math.ceil((toMs - fromMs) / PROJECT_STEP));
@@ -87,7 +87,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       ...base, kind,
       series: [
         { metric: "worker.invocations", values: column(() => 1000 * scale) },
-        { metric: "worker.cpuMsSum", values: column(() => 3000 * scale) },
+        { metric: "worker.cpuMsSum", values: column(index => (partialWorkerCpu && index === points - 1 ? null : 3000 * scale)) },
         { metric: "worker.cpuMsMax", values: column(() => 12 * scale) },
         { metric: "worker.status.2xx", values: column(index => (hot(index) ? 920 : 1000) * scale) },
         { metric: "worker.status.3xx", values: column(() => 0) },
@@ -128,7 +128,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
         { metric: "d1.queries", values: column(() => 300) },
         { metric: "d1.rowsRead", values: column(() => 50_000_000) },
         { metric: "d1.rowsWritten", values: column(() => missingD1Written ? null : 100_000) },
-        { metric: `d1.${DATABASES[0]}.storageBytes`, values: column(index => (index % 3 === 0 ? 245_923_840 : null)) }
+        ...(missingD1Storage ? [] : [{ metric: `d1.${DATABASES[0]}.storageBytes`, values: column(index => (index % 3 === 0 ? 245_923_840 : null)) }])
       ]
     };
   }
@@ -158,12 +158,14 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
   }
   return {
     ...base, kind,
-    series: buckets.flatMap(bucket => [
+    series: buckets.flatMap((bucket, bucketIndex) => [
       { metric: `r2.${bucket}.ops.success`, values: column(() => 500 * scale) },
       { metric: `r2.${bucket}.ops.userError`, values: column(() => 40 * scale) },
       { metric: `r2.${bucket}.ops.other`, values: column(() => 0) },
-      { metric: `r2.${bucket}.storageBytes`, values: column(index => (index % 3 === 0 ? 300_000_000 * scale : null)) },
-      { metric: `r2.${bucket}.objects`, values: column(index => (index % 3 === 0 ? 1200 * scale : null)) }
+      ...(partialR2Storage && bucketIndex > 0 ? [] : [
+        { metric: `r2.${bucket}.storageBytes`, values: column(index => (index % 3 === 0 ? 300_000_000 * scale : null)) },
+        { metric: `r2.${bucket}.objects`, values: column(index => (index % 3 === 0 ? 1200 * scale : null)) }
+      ])
     ])
   };
 }
@@ -202,7 +204,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -221,7 +223,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
         fromMs: Number(from), toMs: Number(to),
         scale: (Number(to) - Number(from) > 6 * 3_600_000 && Number(to) - Number(from) <= 24 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
       };
-      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window, options.missingD1Written === true);
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window, options.missingD1Written === true, options.partialWorkerCpu === true, options.partialR2Storage === true, options.missingD1Storage === true);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
       return fulfillHistory(route, body(kind));
     }
@@ -1190,6 +1192,40 @@ test("missing D1 rows are identified in the total, statement, and monthly bill @
   if (await statement.getAttribute("aria-expanded") !== "true") await statement.click();
   await expect(page.locator(".ledger-detail-context")).toContainText("rows written data was not collected");
   await expect(page.locator(".ledger-fact").filter({ hasText: "rows written in window" })).toContainText("unavailable");
+});
+
+test("a partially covered Worker series marks its row and both monthly amounts partial", async ({ page }) => {
+  await mock(page, { partialWorkerCpu: true });
+  await page.goto("/#/project/stuff");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
+  await expect(ledgerRow(page, "worker").locator(".ledger-money")).toContainText("partial");
+  await expect(ledger.locator(".ledger-month").getByText("The billed amount only partly covers Worker CPU data.")).toBeVisible();
+  await expect(ledger.locator(".ledger-month").getByText("The projection only partly covers Worker CPU data.")).toBeVisible();
+  await page.goto("/#/projects");
+  const row = page.getByRole("table", { name: "Projects" }).locator("tr.projects-row").filter({ hasText: "stuff" });
+  await expect(row).toContainText("partial · missing cost data");
+});
+
+test("missing D1 storage is named and adds no zero-dollar storage part", async ({ page }) => {
+  await mock(page, { d1: true, missingD1Storage: true });
+  await page.goto("/#/project/stuff");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  const d1 = ledgerRow(page, "d1");
+  await expect(d1).not.toContainText("storage $");
+  await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
+  await expect(ledger.locator(".ledger-month")).toContainText("The billed amount excludes unavailable D1 storage data.");
+  await expect(page.getByRole("note").filter({ hasText: "D1 storage was not collected" })).toBeVisible();
+});
+
+test("partial R2 storage marks its row and the monthly amounts at mobile width @mobile", async ({ page }) => {
+  await mock(page, { partialR2Storage: true });
+  await page.goto("/#/project/stuff");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
+  await expect(ledgerRow(page, "r2").locator(".ledger-money")).toContainText("partial");
+  await expect(ledger.locator(".ledger-month").getByText("The billed amount only partly covers R2 storage data.")).toBeVisible();
+  await expect(ledger.locator(".ledger-month").getByText("The projection only partly covers R2 storage data.")).toBeVisible();
 });
 
 test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {

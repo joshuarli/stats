@@ -256,7 +256,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
   );
 
   const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
-  const partialCost = () => loaded()?.report.warnings.some(warning => warning.code === "meter-no-data") ?? false;
+  const partialCost = () => loaded()?.report.warnings.some(warning => warning.code === "meter-no-data" || warning.code === "meter-partial-data") ?? false;
   const workerUsage = () => {
     const line = worker();
     const value = loaded();

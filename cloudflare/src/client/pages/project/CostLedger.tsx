@@ -16,6 +16,13 @@ type LedgerSort = "item" | "cost" | "share" | "change";
 
 const FOLD_AFTER = 8;
 const COMPONENT_COLORS: Readonly<Record<string, string>> = { worker: "var(--viz-blue)", objects: "var(--viz-violet)", d1: "var(--viz-magenta)", r2: "var(--viz-aqua)" };
+const COMPONENT_METERS: Readonly<Record<string, readonly string[]>> = {
+  worker: ["workerRequests", "workerCpuMs"],
+  objects: ["durableObjectRequests", "durableObjectGbSeconds", "durableObjectStorage"],
+  d1: ["d1RowsRead", "d1RowsWritten", "d1Storage"],
+  r2: ["r2Storage"]
+};
+const LINE_PARTIAL_CODES: ReadonlySet<string> = new Set(["route-meter-no-data", "route-meter-partial-data", "statement-meter-no-data", "statement-meter-partial-data", "object-method-meter-no-data", "object-method-meter-partial-data"]);
 const WINDOW_TIME = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 const change = (amount: Amount | null): number | null => amount === null || amount.before === null ? null : amount.now - amount.before;
@@ -202,9 +209,9 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
 }
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
-  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter === "durableObjectRequests" ? "Durable Object requests" : meter === "durableObjectGbSeconds" ? "Durable Object wall time" : meter;
-  const billedPartial = () => props.plan.missingBilledMeters.length > 0 || props.plan.coverage.fraction < 1;
-  const projectedPartial = () => props.plan.missingProjectionMeters.length > 0 || props.plan.coverage.fraction < 1;
+  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter === "durableObjectRequests" ? "Durable Object requests" : meter === "durableObjectGbSeconds" ? "Durable Object wall time" : meter === "r2Storage" ? "R2 storage" : meter === "d1Storage" ? "D1 storage" : meter === "durableObjectStorage" ? "Durable Object storage" : meter;
+  const billedPartial = () => props.plan.missingBilledMeters.length > 0 || props.plan.partialBilledMeters.length > 0 || props.plan.coverage.fraction < 1;
+  const projectedPartial = () => props.plan.missingProjectionMeters.length > 0 || props.plan.partialProjectionMeters.length > 0 || props.plan.coverage.fraction < 1;
   const qualifier = (partial: boolean, proxy: boolean) => proxy ? (partial ? "partial estimate " : "estimate ") : partial ? "at least " : "";
   return (
     <div class="ledger-month">
@@ -222,7 +229,9 @@ function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly k
       <Show when={props.plan.coverage.fraction < 1}><span class="ledger-month-note">Worker data covers {(props.plan.coverage.fraction * 100).toFixed(1)}% of the month so far.</span></Show>
       <Show when={props.plan.durationProxy.projected}><span class="ledger-month-note">Durable Object summed request wall time can overestimate billed duration.</span></Show>
       <Show when={props.plan.missingBilledMeters.length > 0}><span class="ledger-month-note">The billed amount excludes unavailable {props.plan.missingBilledMeters.map(meterName).join(", ")} data.</span></Show>
+      <Show when={props.plan.partialBilledMeters.length > 0}><span class="ledger-month-note">The billed amount only partly covers {props.plan.partialBilledMeters.map(meterName).join(", ")} data.</span></Show>
       <Show when={props.plan.missingProjectionMeters.length > 0}><span class="ledger-month-note">The projection excludes unavailable {props.plan.missingProjectionMeters.map(meterName).join(", ")} data.</span></Show>
+      <Show when={props.plan.partialProjectionMeters.length > 0}><span class="ledger-month-note">The projection only partly covers {props.plan.partialProjectionMeters.map(meterName).join(", ")} data.</span></Show>
     </div>
   );
 }
@@ -295,7 +304,10 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
     const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
-    const partialWarning = () => props.report.warnings.find(warning => (warning.code === "route-meter-no-data" || warning.code === "statement-meter-no-data" || warning.code === "object-method-meter-no-data") && warning.subject === line().id)?.message;
+    const partialWarning = () => props.report.warnings.find(warning =>
+      (LINE_PARTIAL_CODES.has(warning.code) && warning.subject === line().id) ||
+      (warning.code === "meter-partial-data" && (COMPONENT_METERS[line().id]?.includes(warning.subject) ?? false))
+    )?.message;
     return (
       <>
         <button
@@ -343,7 +355,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
           <span class="ledger-amount">{dollarsPrecise(total())}<small>/mo</small></span>
           <Delta amount={props.report.total.monthly} />
           <Show when={props.report.total.monthly.before}>{before => <span class="ledger-was">was {dollarsPrecise(before())}/mo{props.report.total.uncompared.length > 0 ? ` · change excludes ${props.report.total.uncompared.join(", ")} (no baseline)` : ""}</span>}</Show>
-          <span class="ledger-basis">{props.report.warnings.some(warning => warning.code === "meter-no-data") ? "Partial: " : ""}{props.windowLabel}, projected to 30 days at list price</span>
+          <span class="ledger-basis">{props.report.warnings.some(warning => warning.code === "meter-no-data" || warning.code === "meter-partial-data") ? "Partial: " : ""}{props.windowLabel}, projected to 30 days at list price</span>
         </div>
         <div class="ledger-bar" role="img" aria-label="Cost by component">
           <For each={props.report.lines}>{line => <span style={`flex:${Math.max(0, monthlyOf(line)?.now ?? 0)};background:${COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"}`} title={`${line.label} ${dollarsPrecise(monthlyOf(line)?.now)}`} />}</For>

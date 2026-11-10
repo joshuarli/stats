@@ -17,6 +17,8 @@ export interface WorldProject {
   readonly objects: boolean;
   readonly missingWorkerCpu?: boolean;
   readonly missingD1Written?: boolean;
+  readonly missingD1Storage?: boolean;
+  readonly partialD1Storage?: boolean;
   readonly missingObjectWall?: boolean;
   readonly fail?: (url: URL) => number | undefined;
 }
@@ -37,7 +39,12 @@ function metrics(project: WorldProject, kind: string, rows: number): { metric: s
     case "worker": return [series("worker.invocations", rows, 20_000), project.missingWorkerCpu === true ? { metric: "worker.cpuMsSum", values: Array.from({ length: rows }, () => null) } : series("worker.cpuMsSum", rows, 80_000), series("worker.status.2xx", rows, 3900), series("worker.status.5xx", rows, 10)];
     case "routes": return Array.from({ length: project.routes }, (_, index) => [series(`route.GET /r${String(index).padStart(2, "0")}.invocations`, rows, 300 + index), series(`route.GET /r${String(index).padStart(2, "0")}.cpuMsSum`, rows, 1000 + 100 * index)]).flat();
     case "durable-objects": return [series("do.invocations", rows, 800), series("do.errors", rows, 1), series("do.cpuMsSum", rows, 4000), series("do.cpuMsMax", rows, 30), project.missingObjectWall === true ? { metric: "do.wallMsSum", values: Array.from({ length: rows }, () => null) } : series("do.wallMsSum", rows, 9000), series("do.storageBytes", rows, 5_000_000)];
-    case "d1": return [series("d1.rowsRead", rows, 1000), { metric: "d1.rowsWritten", values: Array.from({ length: rows }, () => null) }, series("d1.queries", rows, 10)];
+    case "d1": return [
+      series("d1.rowsRead", rows, 1000),
+      project.missingD1Written === true ? { metric: "d1.rowsWritten", values: Array.from({ length: rows }, () => null) } : series("d1.rowsWritten", rows, 100),
+      series("d1.queries", rows, 10),
+      ...(project.partialD1Storage === true ? [series("d1.db.storageBytes", rows, 1_000_000_000)] : [])
+    ];
     default: return [];
   }
 }
@@ -67,7 +74,7 @@ export async function serve(world: World): Promise<FakeOrigin> {
     if (!authorized(request)) return sendJson(response, {}, 401);
     const url = new URL(request.url ?? "/", "http://origin");
     if (url.pathname === "/api/v1/projects") {
-      return sendJson(response, world.projects.map(project => projectEntry(project.id, { worker: project.worker, ...(project.objects ? { durableObjectNamespaces: [NAMESPACE] } : {}), ...(project.missingD1Written === true ? { d1Databases: ["db"] } : {}) })));
+      return sendJson(response, world.projects.map(project => projectEntry(project.id, { worker: project.worker, ...(project.objects ? { durableObjectNamespaces: [NAMESPACE] } : {}), ...(project.partialD1Storage === true ? { d1Databases: ["db", "db2"] } : project.missingD1Written === true || project.missingD1Storage === true ? { d1Databases: ["db"] } : {}) })));
     }
     const history = /^\/api\/v1\/projects\/([a-z0-9-]+)\/history$/u.exec(url.pathname);
     if (history !== null) {
@@ -112,8 +119,8 @@ export interface Payload {
 
 export interface PresentedReportShape {
   readonly windows: { readonly current: { readonly fromMs: number; readonly toMs: number }; readonly previous: { readonly fromMs: number; readonly toMs: number } };
-  readonly lines: readonly { readonly id: string; readonly usage: Usage; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
-  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown; readonly usage?: { readonly workerCpuMs: number | null; readonly d1RowsWritten: number | null; readonly durableObjectGbSeconds: number | null }; readonly missingBilledMeters?: readonly string[]; readonly missingProjectionMeters?: readonly string[]; readonly durationProxy?: { readonly billed: boolean; readonly projected: boolean } };
+  readonly lines: readonly { readonly id: string; readonly confidence: string; readonly parts: readonly { readonly label: string }[]; readonly usage: Usage; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
+  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown; readonly usage?: { readonly workerCpuMs: number | null; readonly d1RowsWritten: number | null; readonly durableObjectGbSeconds: number | null; readonly r2Storage: number | null; readonly d1Storage: number | null; readonly durableObjectStorage: number | null }; readonly missingBilledMeters?: readonly string[]; readonly missingProjectionMeters?: readonly string[]; readonly partialBilledMeters?: readonly string[]; readonly partialProjectionMeters?: readonly string[]; readonly durationProxy?: { readonly billed: boolean; readonly projected: boolean } };
   readonly total: { readonly monthly: { readonly now: number }; readonly pricedMeters: readonly string[]; readonly excluded: readonly { readonly meter: string; readonly reason: string }[] };
   readonly comparison: { readonly baseline: string };
   readonly warnings: readonly { readonly code: string; readonly subject: string }[];

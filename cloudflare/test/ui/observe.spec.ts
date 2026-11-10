@@ -291,7 +291,7 @@ test("missing Worker CPU is excluded from costs and called out in both project v
   await expect(ledger.locator('[id="ledger-worker"] .ledger-unit')).toHaveText("CPU/req unavailable");
   await expect(ledger.locator(".ledger-month")).toContainText("partial estimate");
   await expect(ledger.locator(".ledger-month")).toContainText("summed request wall time can overestimate billed duration");
-  await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable Worker CPU data");
+  await expect(ledger.locator(".ledger-month")).toContainText(/excludes unavailable Worker CPU[^.]* data/u);
   await page.goto("/#/projects?range=24h");
   const row = page.getByRole("table", { name: "Projects" }).getByRole("row", { name: /stats/u }).first();
   await expect(row).toContainText("partial · missing cost data");
@@ -324,7 +324,7 @@ test("missing object duration leaves method evidence visible and costs partial @
   const ledger = page.getByRole("region", { name: "Cost ledger" });
   await expect(page.getByRole("note").filter({ hasText: "Durable Object wall time was not collected" })).toContainText("excluded from the total");
   await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
-  await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable Durable Object wall time data");
+  await expect(ledger.locator(".ledger-month")).toContainText(/excludes unavailable Durable Object wall time[^.]* data/u);
   const objects = page.locator('[id="ledger-objects"]');
   await expect(objects.locator(".ledger-unit")).toHaveText("wall/call unavailable");
   if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();

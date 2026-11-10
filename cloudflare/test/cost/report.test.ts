@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { billedBeyondPlan, previousWindowOf, type MeterUsage } from "../../src/cost/ledger.ts";
+import { billedBeyondPlan, monthlyOf, previousWindowOf, windowUsage, type MeterUsage } from "../../src/cost/ledger.ts";
 import { PRICING_REVISION } from "../../src/cost/pricing.ts";
 import { buildCostReport, PricingRevisionMismatch, utcMonthOf, type CostReport, type CostReportInput, type ReportLine } from "../../src/cost/report.ts";
 import { objectMethodsOf } from "../../src/client/project-ledger.ts";
@@ -367,6 +367,7 @@ await test("the plan bill is isolated to a UTC month, accrues held storage over 
   assert.equal(built.planBill.basis, "utc-month");
   assert.equal(built.planBill.assumption, "project-alone-on-account-allowances");
   assert.deepEqual(built.planBill.month, { fromMs: month, toMs: Date.UTC(2026, 11, 1) });
+  assert.ok(built.planBill.usage.r2Storage !== null);
   near(built.planBill.usage.r2Storage, (10 * 2) / (30 * 24));
   assert.deepEqual(built.planBill.account, { kind: "unknown", reason: "other-projects-not-covered" });
   assert.equal(built.planBill.coverage.windowMs, 2 * H);
@@ -415,6 +416,162 @@ await test("a meter is free up to its allowance and billed from the next unit", 
 await test("a window ending after the clock is flagged", () => {
   const built = report({ current: histories(T0, {}), nowMs: T0 });
   assert.ok(warned(built, "window-ends-after-now", "current"));
+});
+
+await test("a partially covered Worker series is projected from its own buckets, not its peers' emptiness", () => {
+  const current = histories(T0, { worker: { "worker.invocations": [1_000_000, null, 0], "worker.cpuMsSum": [0, 0, 0] } });
+  const built = report({ current });
+  const worker = find(built.lines, "worker");
+  near(monthlyOf(worker)!.now, 0.3 * 720);
+  assert.equal(worker.confidence, "qualified");
+  assert.ok(warned(built, "meter-partial-data", "workerRequests"));
+  assert.ok(!built.total.excluded.some(entry => entry.meter === "workerRequests"));
+  const usage = windowUsage(worker, current, undefined, WINDOW, previousWindowOf(WINDOW));
+  assert.deepEqual(usage.kind === "requests" && usage.calls, { now: 1_000_000, before: null });
+  const zero = report({ current: histories(T0, { worker: { "worker.invocations": [0, null, 0], "worker.cpuMsSum": [0, 0, 0] } }) });
+  assert.equal(find(zero.lines, "worker").confidence, "qualified");
+});
+
+await test("a partially covered route series is projected from its own buckets and stays partial", () => {
+  const current = histories(T0, {
+    worker: { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [0, 0, 0] },
+    routes: { "route.GET /a.invocations": [50, 50, 0], "route.GET /a.cpuMsSum": [10, null, 0] }
+  });
+  const built = report({ current });
+  const route = find(find(built.lines, "worker").children, "route:GET /a");
+  near(monthlyOf(route)!.now, (100 * MONTH_FACTOR * 0.3 + 10 * 720 * 0.02) / 1_000_000);
+  assert.equal(route.confidence, "qualified");
+  assert.ok(warned(built, "route-meter-partial-data", "route:GET /a"));
+});
+
+await test("a partially covered Durable Object series is projected from its own buckets", () => {
+  const current = histories(T0, { durableObjects: { "do.invocations": [100, 100, 0], "do.wallMsSum": [500, null, 0] } });
+  const objects = find(report({ current, project: { ...PROJECT, durableObjectNamespaces: ["store"] } }).lines, "objects");
+  const requests = 200 * MONTH_FACTOR * 0.15 / 1_000_000;
+  const duration = (500 * 720 / 1000) * 0.128 * 12.5 / 1_000_000;
+  near(monthlyOf(objects)!.now, requests + duration);
+  assert.equal(objects.confidence, "qualified");
+  assert.ok(warned(report({ current, project: { ...PROJECT, durableObjectNamespaces: ["store"] } }), "meter-partial-data", "durableObjectGbSeconds"));
+});
+
+await test("a partially covered Durable Object aggregate marks method shares partial", () => {
+  const current = histories(T0, { durableObjects: { "do.invocations": [100, 100, 0], "do.wallMsSum": [500, null, 0] } });
+  const method = { label: "Store.get", requests: 4, failed: 0, cpuMs: 10, wallMs: 20, p50WallMs: 5, p95WallMs: 8 };
+  const built = report({ current, project: { ...PROJECT, durableObjectNamespaces: ["store"] }, objectMethods: { now: [method], before: null } });
+  const entry = find(find(built.lines, "objects").children, "object:Store.get");
+  assert.equal(entry.confidence, "qualified");
+  assert.ok(warned(built, "object-method-meter-partial-data", "object:Store.get"));
+});
+
+await test("a partially covered D1 rows series is projected from its own buckets", () => {
+  const current = histories(T0, { d1: { "d1.rowsRead": [100, null, 0], "d1.rowsWritten": [10, 10, 0], "d1.queries": [1, 1, 0] } });
+  const built = report({ current, project: { ...PROJECT, d1Databases: ["db"] } });
+  const d1 = find(built.lines, "d1");
+  near(monthlyOf(d1)!.now, (100 * 720 * 0.001 + 20 * MONTH_FACTOR * 1) / 1_000_000);
+  assert.equal(d1.confidence, "qualified");
+  assert.ok(warned(built, "meter-partial-data", "d1RowsRead"));
+});
+
+await test("a partially covered D1 statement series is projected from its own buckets", () => {
+  const statement = (field: string) => `d1q.SELECT 1.${field}`;
+  const current = histories(T0, {
+    d1: { "d1.rowsRead": [100, 100, 0], "d1.rowsWritten": [10, 10, 0], "d1.queries": [1, 1, 0] },
+    d1Statements: { [statement("queries")]: [1, 1, 0], [statement("rowsRead")]: [10, null, 0], [statement("rowsWritten")]: [0, 0, 0] }
+  });
+  const built = report({ current, project: { ...PROJECT, d1Databases: ["db"] } });
+  const line = find(find(built.lines, "d1").children, "statement:SELECT 1");
+  near(monthlyOf(line)!.now, (10 * 720 * 0.001) / 1_000_000);
+  assert.equal(line.confidence, "qualified");
+  assert.ok(warned(built, "statement-meter-partial-data", "statement:SELECT 1"));
+});
+
+await test("storage for only some configured D1 databases is a partial subtotal, not a complete one", () => {
+  const first = "11111111-1111-1111-1111-111111111111";
+  const second = "22222222-2222-2222-2222-222222222222";
+  const current = histories(T0, {
+    d1: { "d1.rowsRead": [1, 1, 0], "d1.rowsWritten": [1, 1, 0], "d1.queries": [1, 1, 0], [`d1.${first}.storageBytes`]: [1e9, 1e9, 1e9] }
+  });
+  const project = { ...PROJECT, d1Databases: [first, second] };
+  const built = report({ current, project, planMonth: { settledMs: T0 + 2 * H, histories: current } });
+  const d1 = find(built.lines, "d1");
+  assert.equal(d1.confidence, "qualified");
+  assert.ok(warned(built, "meter-partial-data", "d1Storage"));
+  assert.ok(built.total.pricedMeters.includes("d1Storage"));
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.deepEqual(built.planBill.partialBilledMeters, ["d1Storage"]);
+  assert.deepEqual(built.planBill.partialProjectionMeters, ["d1Storage"]);
+  assert.ok(built.planBill.usage.d1Storage !== null);
+});
+
+await test("wholly missing D1 storage is named and never shown as a zero-dollar part", () => {
+  const database = "11111111-1111-1111-1111-111111111111";
+  const current = histories(T0, { d1: { "d1.rowsRead": [1, 1, 0], "d1.rowsWritten": [1, 1, 0], "d1.queries": [1, 1, 0] } });
+  const project = { ...PROJECT, d1Databases: [database] };
+  const built = report({ current, project, planMonth: { settledMs: T0 + 2 * H, histories: current } });
+  const d1 = find(built.lines, "d1");
+  assert.equal(d1.confidence, "qualified");
+  assert.ok(d1.parts.every(part => part.label !== "storage"));
+  assert.ok(built.total.excluded.some(entry => entry.meter === "d1Storage" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "d1Storage"));
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.ok(built.planBill.missingBilledMeters.includes("d1Storage"));
+  assert.ok(built.planBill.missingProjectionMeters.includes("d1Storage"));
+  assert.equal(built.planBill.usage.d1Storage, null);
+});
+
+await test("storage for only some configured R2 buckets is a partial subtotal, not a complete one", () => {
+  const current = histories(T0, { r2: { "r2.a.storageBytes": [1e9, 1e9, 1e9], "r2.b.ops.success": [1, 1, 0] } });
+  const project = { ...PROJECT, buckets: ["a", "b"] };
+  const built = report({ current, project, planMonth: { settledMs: T0 + 2 * H, histories: current } });
+  const r2 = find(built.lines, "r2");
+  assert.equal(r2.confidence, "qualified");
+  assert.ok(warned(built, "meter-partial-data", "r2Storage"));
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.deepEqual(built.planBill.partialBilledMeters, ["r2Storage"]);
+  assert.deepEqual(built.planBill.partialProjectionMeters, ["r2Storage"]);
+  assert.ok(built.planBill.usage.r2Storage !== null);
+});
+
+await test("wholly missing R2 storage is named instead of billed as zero", () => {
+  const current = histories(T0, { r2: { "r2.a.ops.success": [1, 1, 0] } });
+  const project = { ...PROJECT, buckets: ["a"] };
+  const built = report({ current, project, planMonth: { settledMs: T0 + 2 * H, histories: current } });
+  assert.equal(find(built.lines, "r2"), undefined);
+  assert.ok(built.total.excluded.some(entry => entry.meter === "r2Storage" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "r2Storage"));
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.ok(built.planBill.missingBilledMeters.includes("r2Storage"));
+  assert.ok(built.planBill.missingProjectionMeters.includes("r2Storage"));
+  assert.equal(built.planBill.usage.r2Storage, null);
+});
+
+await test("wholly missing Durable Object storage is named and qualifies its subtotal", () => {
+  const current = histories(T0, { durableObjects: { "do.invocations": [100, 100, 0], "do.wallMsSum": [500, 500, 0] } });
+  const project = { ...PROJECT, durableObjectNamespaces: ["store"] };
+  const built = report({ current, project, planMonth: { settledMs: T0 + 2 * H, histories: current } });
+  assert.equal(find(built.lines, "objects").confidence, "qualified");
+  assert.ok(built.total.excluded.some(entry => entry.meter === "durableObjectStorage" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "durableObjectStorage"));
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial plan bill");
+  assert.ok(built.planBill.missingBilledMeters.includes("durableObjectStorage"));
+  assert.ok(built.planBill.missingProjectionMeters.includes("durableObjectStorage"));
+  assert.equal(built.planBill.usage.durableObjectStorage, null);
+});
+
+await test("storage samples that stop before the window end do not price a stale window", () => {
+  const window = { fromMs: T0, toMs: T0 + 4 * H };
+  const current = histories(T0, { r2: { "r2.a.storageBytes": [1e9, null, null, null, null] } });
+  const built = report({ current, project: { ...PROJECT, buckets: ["a"] }, windows: { current: window, previous: previousWindowOf(window) }, nowMs: T0 + 5 * H });
+  assert.equal(built.lines.find(line => line.id === "r2"), undefined);
+  assert.ok(built.total.excluded.some(entry => entry.meter === "r2Storage" && entry.reason === "no-data"));
+});
+
+await test("a window whose series share their gap is partial coverage, not a partial meter", () => {
+  const current = histories(T0, { worker: { "worker.invocations": [1_000_000, null, 0], "worker.cpuMsSum": [1, null, 0] } });
+  const built = report({ current });
+  assert.equal(warned(built, "meter-partial-data", "workerRequests"), false);
+  assert.equal(warned(built, "meter-partial-data", "workerCpuMs"), false);
+  assert.ok(warned(built, "window-partial-coverage", "worker"));
 });
 
 await test("the report is deterministic and survives a JSON round trip unchanged", () => {
