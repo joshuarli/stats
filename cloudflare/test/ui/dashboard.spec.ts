@@ -716,14 +716,14 @@ test("the range, the open sections, and the selected deployment live in the URL"
   await page.goto("/#/project/stuff?range=24h");
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
   await openSection(page, "Deployments");
-  await expect(page).toHaveURL(/[?&]open=deploys(&|$)/u);
+  await expect(page).toHaveURL(/[?&]section=deploys(&|$)/u);
   await expect(page.locator("#deployments")).toContainText("24h each side");
   await page.getByRole("button", { name: "6h", exact: true }).click();
   await expect(page).toHaveURL(/[?&]range=6h(&|$)/u);
   await page.getByRole("button", { name: "1h", exact: true }).click();
   await expect(page).not.toHaveURL(/range=/u);
   await page.reload();
-  await expect(page.locator(".project-section-head", { hasText: "Deployments" })).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".project-nav-item[data-section='deploys'], .project-section-head", { hasText: "Deployments" })).toHaveAttribute("aria-expanded", "true");
 
   await page.goto(`/#/project/stuff?deployment=${EARLIER_DEPLOYMENT_ID}`);
   await page.reload();
@@ -997,7 +997,7 @@ test("configured probes surface endpoint health and a down endpoint marks the pi
 
 test("Durable Objects price requests and a duration bound, and their charts appear only for projects with namespaces", async ({ page }) => {
   const requests = await mock(page, { durableObjects: true });
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   const objects = ledgerRow(page, "objects");
   await expect(objects).toContainText("≤ $0.68");
   await expect(objects).toContainText("requests $0.52 · duration ≤ $0.17");
@@ -1005,6 +1005,7 @@ test("Durable Objects price requests and a duration bound, and their charts appe
   await objects.click();
   await expect(ledgerRow(page, "object:sqlite")).toContainText("SQLite rows and storage");
   await expect(ledgerRow(page, "object:sqlite")).toContainText("not collected");
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object average CPU time;/u })).toBeVisible();
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object SQLite storage;/u })).toHaveCount(0);
   expect(requests.some(request => request.includes("kinds=") && request.includes("durable-objects"))).toBe(true);
@@ -1012,28 +1013,30 @@ test("Durable Objects price requests and a duration bound, and their charts appe
 
 test("an object that reports its own SQLite size gets a storage chart and a priced storage line", async ({ page }) => {
   await mock(page, { durableObjects: true, objectStorageBytes: 5e9 });
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   const objects = ledgerRow(page, "objects");
   await expect(objects).toContainText("requests $0.52 · duration ≤ $0.17 · storage $1.00");
   await objects.click();
   await expect(ledgerRow(page, "object:storage")).toContainText("$1.00");
   await expect(ledgerRow(page, "object:sqlite")).toContainText("SQLite rows");
   await expect(ledgerRow(page, "object:sqlite")).not.toContainText("storage");
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#durable-objects").getByRole("img", { name: /Durable Object SQLite storage;/u })).toBeVisible();
 });
 
 test("a project without namespaces has no Durable Object line or widget and makes no request for one", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   await expect(ledgerRow(page, "worker")).toBeVisible();
   await expect(ledgerRow(page, "objects")).toHaveCount(0);
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#durable-objects")).toHaveCount(0);
   expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("durable-objects"))).toBe(false);
 });
 
 test("D1 ranks statements by list cost and adds its storage", async ({ page }) => {
   const requests = await mock(page, { d1: true });
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   const d1 = ledgerRow(page, "d1");
   await expect(page.locator(".ledger-row.depth-0").first()).toContainText("D1");
   await expect(d1).toContainText("$1296.18");
@@ -1046,15 +1049,17 @@ test("D1 ranks statements by list cost and adds its storage", async ({ page }) =
   await expect(statements.nth(2)).toContainText("INSERT INTO log VALUES (?)");
   await expect(statements.nth(2)).toContainText("$86.40");
   await expect(ledgerRow(page, `d1-storage:${DATABASES[0]}`)).toContainText("234.5 MiB");
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#d1").getByRole("img", { name: /D1 database size;/u })).toBeVisible();
   expect(requests.some(request => request.includes("kinds=") && request.includes("d1-statements"))).toBe(true);
 });
 
 test("a project without databases has no D1 line or widget and makes no D1 request", async ({ page }) => {
   const requests = await mock(page);
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   await expect(ledgerRow(page, "worker")).toBeVisible();
   await expect(ledgerRow(page, "d1")).toHaveCount(0);
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#d1")).toHaveCount(0);
   expect(requests.some(request => request.startsWith("/api/v1/projects/stuff/history") && request.includes("d1"))).toBe(false);
 });
@@ -1070,9 +1075,10 @@ test("a project without probes has no endpoints pill or widget and makes no prob
 
 test("a project without buckets shows no R2 line or widgets", async ({ page }) => {
   await mock(page, { bucketless: true, probes: true });
-  await page.goto("/#/project/stuff?open=signals");
+  await page.goto("/#/project/stuff");
   await expect(ledgerRow(page, "worker")).toBeVisible();
   await expect(ledgerRow(page, "r2")).toHaveCount(0);
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
   await expect(page.locator("#r2-operations")).toHaveCount(0);
   await expect(page.locator("#r2-storage")).toHaveCount(0);
 });
@@ -1137,7 +1143,7 @@ test("primary navigation reaches hosts and projects and the host switcher follow
 
 const FULL_PAGES: ReadonlyArray<{ readonly name: string; readonly path: string; readonly options: Parameters<typeof mock>[1]; readonly expandable: string }> = [
   { name: "host", path: `/#/host/${hostId}`, options: { accelerator: true }, expandable: "memory" },
-  { name: "project", path: "/#/project/stuff?open=deploys,signals", options: { probes: true, durableObjects: true, d1: true }, expandable: "requests" }
+  { name: "project", path: "/#/project/stuff?section=signals", options: { probes: true, durableObjects: true, d1: true }, expandable: "requests" }
 ];
 
 async function openPage(page: Page, path: string, options: Parameters<typeof mock>[1]): Promise<void> {

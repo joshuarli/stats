@@ -1,24 +1,30 @@
-.project-page { display: flex; flex-direction: column; gap: var(--gap); }
+.project-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.project-sidebar { display: flex; flex-direction: column; gap: 2px; position: sticky; top: calc(var(--topbar-height, 56px) + var(--gap)); background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: var(--space-xs); }
+.project-nav-entry { display: contents; }
+.project-nav-item { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--space-sm) var(--space-md); text-align: left; border-radius: var(--radius-md, 8px); color: var(--text-2); }
+.project-nav-item:hover { background: var(--hover); color: var(--text); }
+.project-nav-item.active, .project-nav-item[aria-current="page"] { background: var(--hover); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.project-nav-title { font-weight: 600; font-size: var(--fs-body, 14px); color: inherit; }
+.project-nav-summary { color: var(--muted); font-size: var(--fs-meta); min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-content { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.project-content > .charts { margin-top: 0; }
 .project-pills { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-left: auto; }
 .project-pill { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: var(--control-sm); padding: 0 var(--space-sm); border-radius: var(--radius-pill); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: var(--fs-meta); color: var(--text-2); background: var(--surface); font-variant-numeric: tabular-nums; }
 .project-pill:hover { color: var(--text); background: var(--hover); }
 .project-pill em { font-style: normal; color: var(--muted); }
 .project-pill.tone-warn { color: var(--serious-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--serious) 50%, transparent); }
 .project-pill.tone-bad { color: var(--critical); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--critical) 40%, transparent); }
-.project-section { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); scroll-margin-top: calc(var(--topbar-height) + var(--gap)); }
-.project-section-head { width: 100%; display: flex; align-items: baseline; gap: var(--space-md); padding: var(--space-md) var(--inset); text-align: left; border-radius: var(--radius-lg); }
-.project-section-head:hover { background: var(--hover); }
-.project-section-twist { color: var(--muted); width: 12px; transition: transform 0.12s; display: inline-block; }
-.project-section.open .project-section-twist { transform: rotate(90deg); }
-.project-section-title { font-weight: 600; font-size: var(--fs-title); }
-.project-section-summary { color: var(--muted); font-size: var(--fs-meta); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-section-body { padding: 0 var(--inset) var(--inset); display: flex; flex-direction: column; gap: var(--gap); }
-.project-section-body > .charts { margin-top: var(--space-xs); }
 .ui-skeleton.skeleton-ledger, .ui-skeleton.skeleton-deployments, .ui-skeleton.skeleton-signals { padding: var(--inset); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
 .ui-skeleton.skeleton-ledger { min-height: 1162px; }
 .ui-skeleton.skeleton-deployments { min-height: 477px; }
 .ui-skeleton.skeleton-signals { min-height: 1466px; }
 .project-pills-pending { min-height: var(--control-sm); }
+@media (max-width: 900px) {
+  .project-layout { grid-template-columns: 1fr; }
+  .project-sidebar { position: static; flex-direction: row; flex-wrap: wrap; }
+  .project-nav-item { flex: 1 1 140px; }
+  .project-nav-summary { display: none; }
+}
 @media (max-width: 640px) {
   .project-pills, .project-pills-pending { flex-basis: 100%; justify-content: flex-end; }
   .ui-skeleton.skeleton-ledger { min-height: 1581px; }

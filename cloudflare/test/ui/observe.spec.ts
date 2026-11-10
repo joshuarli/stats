@@ -61,7 +61,7 @@ const durations = async (page: Page): Promise<number[]> =>
 
 test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps it in the URL", { tag: "@mobile" }, async ({ page }) => {
   await setup(page);
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=requests");
   const explorer = page.locator("#route-explorer");
   const rows = explorer.locator(".route-table tbody tr");
   await expect(rows.nth(1)).toContainText("/ingest/v1/batches");
@@ -75,7 +75,7 @@ test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps
 
 test("the p95 view lists the slowest calls first and says where their time went", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   const explorer = page.locator("#route-explorer");
   await explorer.getByRole("button", { name: "≥ p95" }).click();
   await expect(page).toHaveURL(/band=slow/u);
@@ -89,7 +89,7 @@ test("the p95 view lists the slowest calls first and says where their time went"
 
 test("a heatmap cell narrows the calls to its time slice and duration band", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   const explorer = page.locator("#route-explorer");
   const cell = explorer.locator(".heatmap-cell").last();
   const label = await cell.getAttribute("aria-label") ?? "";
@@ -106,7 +106,7 @@ test("a heatmap cell narrows the calls to its time slice and duration band", asy
 
 test("the v1.4.0 deployment shows its new issue group, its regression, and a higher failure rate", { tag: "@mobile" }, async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.v14}`);
   const impact = page.locator("#deployments").getByRole("region", { name: "Errors after this deployment" });
   await expect(impact).toContainText("1 new issue group · 1 regression");
   await expect(impact.locator(".impact-rate")).toContainText("→");
@@ -127,7 +127,7 @@ test("the v1.4.0 deployment shows its new issue group, its regression, and a hig
 
 test("the canary is where the parser bug first appeared", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&deployment=${SCENARIO_ROLLOUTS.canary}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.canary}`);
   const impact = page.locator("#deployments").getByRole("region", { name: "Errors after this deployment" });
   await expect(impact).toContainText("1 new issue group · no regressions");
   await expect(impact.getByRole("button", { name: /TypeError/u })).toBeVisible();
@@ -135,7 +135,7 @@ test("the canary is where the parser bug first appeared", async ({ page }) => {
 
 test("choosing a deployment in the rail zooms every chart to its rollout and widens the range to reach it", async ({ page }) => {
   await setup(page);
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);
   await page.getByRole("option", { name: /v1\.3\.0 10%/u }).click();
   await expect(page).toHaveURL(/range=7d/u);
@@ -148,14 +148,14 @@ test("choosing a deployment in the rail zooms every chart to its rollout and wid
 
 test("a deployment link opens already zoomed to that rollout", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&deployment=${SCENARIO_ROLLOUTS.v13}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.v13}`);
   await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
   await expect(page).toHaveURL(/range=7d/u);
 });
 
 test("a deploy marker opens that deployment in a modal, and its issues open on top with a way back", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   await page.locator("#route-explorer .heatmap-marker").click();
   const deployment = page.getByRole("dialog");
   await expect(deployment).toContainText("1 new issue group · 1 regression");
@@ -169,7 +169,7 @@ test("a deploy marker opens that deployment in a modal, and its issues open on t
 
 test("issues show the version they appeared on and filter by it", async ({ page }) => {
   const observe = await setup(page);
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   const issues = page.locator("#issues");
   await expect(issues.getByRole("option", { name: /RangeError/u })).toContainText("since v1.4.0");
   await issues.getByLabel("Introduced in").selectOption(SCENARIO_VERSIONS[2].id);
@@ -180,7 +180,7 @@ test("issues show the version they appeared on and filter by it", async ({ page 
 
 test("an occurrence opens its trace in a modal that survives a reload", async ({ page }) => {
   await setup(page);
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   await page.locator("#issues").getByRole("option", { name: /deployments\.poll/u }).click();
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
@@ -195,7 +195,7 @@ test("an occurrence opens its trace in a modal that survives a reload", async ({
 
 test("resolving an issue posts its new state and moves it to Resolved", async ({ page }) => {
   const observe = await setup(page, { fresh: true });
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   const issues = page.locator("#issues");
   await issues.getByRole("option", { name: /RangeError/u }).click();
   await issues.getByRole("button", { name: "Resolve", exact: true }).click();
@@ -208,7 +208,7 @@ test("resolving an issue posts its new state and moves it to Resolved", async ({
 
 test("a failed resolve says so in the Errors section", async ({ page }) => {
   await setup(page, { fresh: true, failWhen: (method, path) => method === "POST" && path.endsWith("/state") });
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   const issues = page.locator("#issues");
   await issues.getByRole("option", { name: /RangeError/u }).click();
   await issues.getByRole("button", { name: "Resolve", exact: true }).click();
@@ -218,7 +218,7 @@ test("a failed resolve says so in the Errors section", async ({ page }) => {
 
 test("choosing Resolved never relabels the open issues while its data is missing", async ({ page }) => {
   await setup(page, { failWhen: (_method, path) => path.startsWith("/issues?") && path.includes("state=resolved") });
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=errors");
   const issues = page.locator("#issues");
   await expect(issues.getByRole("option", { name: /RangeError/u })).toBeVisible();
   await issues.getByRole("button", { name: "Resolved", exact: true }).click();
@@ -227,16 +227,17 @@ test("choosing Resolved never relabels the open issues while its data is missing
   await expect(issues).not.toContainText("resolved · last 7 days");
 });
 
-test("a failed route exploration is reported even while issues keep loading", async ({ page }) => {
+test("a failed route exploration is reported in the requests section", async ({ page }) => {
   await setup(page, { failWhen: (_method, path) => path.startsWith("/explore") });
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
-  await expect(page.locator("#issues .issue-item").first()).toBeVisible();
+  await page.goto("/#/project/stats?range=24h&section=requests");
   await expect(page.locator("#route-explorer")).toContainText("collector is unavailable (503)");
+  await page.locator(".project-nav-item", { hasText: "Errors" }).click();
+  await expect(page.locator("#issues .issue-item").first()).toBeVisible();
 });
 
 test("the timeline zooms with W, fits the selection with F, and steps with arrow keys", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&route=${encodeURIComponent("scheduled */5 * * * *")}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent("scheduled */5 * * * *")}`);
   const timeline = page.locator("#route-explorer .tl");
   const span = async () => {
     const text = await timeline.locator(".tl-span").textContent() ?? "";
@@ -257,9 +258,10 @@ test("the timeline zooms with W, fits the selection with F, and steps with arrow
 
 test("an unavailable collector is reported instead of an empty dataset", async ({ page }) => {
   await setup(page, { failing: true });
-  await page.goto("/#/project/stats?range=24h&open=deploys,errors,requests");
+  await page.goto("/#/project/stats?range=24h&section=requests");
   await expect(page.locator("#route-explorer")).toContainText("collector is unavailable (503)");
   await expect(page.locator("#route-explorer")).not.toContainText("No requests were observed");
+  await page.locator(".project-nav-item", { hasText: "Errors" }).click();
   await expect(page.locator("#issues")).not.toContainText("No open issues");
 });
 
@@ -277,31 +279,25 @@ test("the cost ledger splits Durable Object cost by the methods the collector ob
   expect(observe.requests.some(request => request.startsWith("/explore"))).toBe(false);
 });
 
-test("with every section open the project page scrolls as one page, with no inner vertical scroll", async ({ page }) => {
+test("the project sidebar shows one section at a time with no inner vertical scroll", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests,signals&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   await expect(page.locator("#route-explorer .trace-row").first()).toBeVisible();
-  await expect(page.locator("#issues .issue-item").first()).toBeVisible();
-  await expect(page.locator(".deployment-item").first()).toBeVisible();
-  const scrollers = await page.locator(".project-page *").evaluateAll((elements): string[] => elements.filter(element => {
+  const scrollers = () => page.locator(".project-layout *").evaluateAll((elements): string[] => elements.filter(element => {
     const style = getComputedStyle(element);
     return ["auto", "scroll"].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
   }).map(element => element.getAttribute("class") ?? element.tagName));
-  expect(scrollers).toEqual([]);
-  const traces = page.locator("#route-explorer .trace-row");
-  const shown = await traces.count();
-  expect(shown).toBeLessThanOrEqual(12);
-  const more = page.locator("#route-explorer .list-more");
-  if (await more.count() > 0) {
-    await more.click();
-    await expect.poll(() => traces.count()).toBeGreaterThan(shown);
-  }
+  expect(await scrollers()).toEqual([]);
+  await page.locator(".project-nav-item", { hasText: "Signals" }).click();
+  await expect(page.locator(".charts").first()).toBeVisible();
+  expect(await scrollers()).toEqual([]);
 });
 
 test("each observed project reads its own service", async ({ page }) => {
   const observe = await setup(page);
-  await page.goto("/#/project/usr-memories?range=24h&open=errors,requests");
+  await page.goto("/#/project/usr-memories?range=24h&section=requests");
   await expect(page.locator("#route-explorer")).toHaveCount(1);
+  await page.locator(".project-nav-item", { hasText: "Errors" }).click();
   await expect(page.locator("#issues")).toHaveCount(1);
   await expect.poll(() => [...observe.services]).toEqual(["usr-memories"]);
 });
@@ -350,14 +346,18 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
       document.head.appendChild(style);
     });
   });
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&route=${encodeURIComponent(HISTORY_ROUTE)}&band=slow&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}&band=slow`);
   const explorer = page.locator("#route-explorer");
   await expect(explorer.locator(".hot-summary")).toBeVisible();
   await expect(explorer.locator(".wf-fill").first()).toBeVisible();
-  await expect(page.locator("#deployments .impact-summary")).toBeVisible();
-  await expect(page.locator("#issues .issue-facts")).toBeVisible();
   await expect(explorer).toHaveScreenshot("stats-route-explorer.webp");
+
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  await expect(page.locator("#deployments .impact-summary")).toBeVisible();
   await expect(page.locator("#deployments")).toHaveScreenshot("stats-deployments.webp");
+
+  await page.goto(`/#/project/stats?range=24h&section=errors`);
+  await expect(page.locator("#issues .issue-facts")).toBeVisible();
   await expect(page.locator("#issues")).toHaveScreenshot("stats-issues.webp");
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();
   const dialog = page.getByRole("dialog", { name: "Trace" });
@@ -371,11 +371,11 @@ test("frames show their original source, and frames from a version without a map
   const api = scenarioStore(scenario, now);
   const poll = (await api.issues({})).items.find(issue => issue.operation === "deployments.poll")!;
   const old = (await api.occurrences(poll.fingerprint, { limit: 100 })).items.find(item => item.version === SCENARIO_VERSIONS[0].id && item.traceId !== null)!;
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&modal=issue:${poll.fingerprint}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&modal=issue:${poll.fingerprint}`);
   const issue = page.getByRole("dialog", { name: "Issue" });
   await expect(issue.locator(".frames-list li").first()).toContainText("src/deployments/collector.ts:58");
   await expect(issue.locator(".frames-list li").first()).toHaveAttribute("title", /^bundle index\.js:\d+:\d+$/u);
-  await page.goto(`/#/project/stats?range=24h&open=deploys,errors,requests&modal=trace:${old.traceId}`);
+  await page.goto(`/#/project/stats?range=24h&section=errors&modal=trace:${old.traceId}`);
   await page.reload();
   const trace = page.getByRole("dialog", { name: "Trace" });
   await expect(trace.locator(".frames-list li").first()).toContainText("index.js:3121");
@@ -390,7 +390,7 @@ test("a closed project page loads the errors, requests, and trace views only whe
   await page.goto("/#/project/stats?range=24h");
   await expect(page.locator("#section-errors")).toContainText("open");
   expect(await viewCodeLoaded()).toBe(false);
-  await page.locator("#section-errors").getByRole("button").first().click();
+  await page.locator("#section-errors .project-nav-item, #section-errors button").first().click();
   await expect(page.locator("#issues").getByRole("option", { name: /RangeError/u })).toBeVisible();
   expect(await viewCodeLoaded()).toBe(true);
 });
@@ -404,7 +404,7 @@ test("a deep-linked trace stops refreshing once the Requests section is closed",
   await expect.poll(traceReads).toBe(1);
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect.poll(traceReads).toBe(2);
-  await page.locator("#section-requests").getByRole("button").first().click();
+  await page.locator("#section-requests .project-nav-item, #section-requests button").first().click();
   await expect(page.locator("#section-requests")).not.toHaveClass(/\bopen\b/u);
   await page.getByRole("button", { name: "Refresh" }).click();
   await page.getByRole("button", { name: "Refresh" }).click();
