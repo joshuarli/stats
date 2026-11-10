@@ -319,7 +319,7 @@ test("refreshing a service aborts the older issue request", async ({ page }) => 
   }
 });
 
-test("retrying unavailable service issues does not report zero while loading", async ({ page }) => {
+test("retrying unavailable service issues does not report zero while loading @mobile", async ({ page }) => {
   let release = () => {};
   let releaseNext = () => {};
   const wait = new Promise<void>(resolve => { release = resolve; });
