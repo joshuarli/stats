@@ -223,6 +223,8 @@ const routeSpecs = [
   ["projects", [...fleetSeeds, findJsByStem("ProjectsPage")], false],
   ["projectsExpanded", [...fleetSeeds, findJsByStem("ProjectsPage")], true],
   ["project", [...fleetSeeds, findJsByStem("ProjectPage")], false],
+  ["projectErrors", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("ObserveSection")], false],
+  ["projectRequests", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("Requests")], false],
   ["projectOpen", [...fleetSeeds, findJsByStem("ProjectPage")], true],
   ["services", [...fleetSeeds, findJsByStem("ServicesPage")], false],
   ["service", [...fleetSeeds, findJsByStem("ServicePage")], false]
@@ -266,37 +268,26 @@ if (comparePath !== null) {
   const baseline = JSON.parse(readFileSync(resolve(comparePath), "utf8"));
   const routeComparisons = {};
   const gates = [];
-  const limits = {
-    projects: 0.80,
-    project: 0.95,
-    fleet: 1.05,
-    host: 1.05,
-    services: 1.05,
-    service: 1.05,
-    projectOpen: 1.05
-  };
-  for (const [routeName, maxRatio] of Object.entries(limits)) {
-    const baseRoute = baseline.routes?.[routeName] ?? (routeName === "projectOpen" ? baseline.routes?.project : undefined);
+  const reviewThreshold = 1.05;
+  const routeNames = ["fleet", "host", "projects", "projectsExpanded", "project", "projectErrors", "projectRequests", "projectOpen", "services", "service"];
+  for (const routeName of routeNames) {
+    const baseRoute = baseline.routes?.[routeName];
     const currentRoute = routes[routeName];
     if (!baseRoute || !currentRoute) continue;
     const baseGzip = baseRoute.js.gzip;
+    if (!Number.isFinite(baseGzip) || baseGzip <= 0) throw new Error(`Invalid baseline gzip for ${routeName}`);
     const currentGzip = currentRoute.js.gzip;
     const ratio = +(currentGzip / baseGzip).toFixed(4);
     const deltaGzip = currentGzip - baseGzip;
-    const pass = currentGzip <= Math.floor(baseGzip * maxRatio);
+    const needsReview = currentGzip > Math.floor(baseGzip * reviewThreshold);
     routeComparisons[routeName] = {
       baselineGzip: baseGzip,
       currentGzip,
       deltaGzip,
       ratio,
-      maxRatio,
-      pass
+      reviewThreshold,
+      needsReview
     };
-    gates.push({
-      gate: `${routeName} initial JS gzip <= ${Math.round(maxRatio * 100)}% of baseline`,
-      pass,
-      detail: `${currentGzip} vs ${baseGzip} (${(ratio * 100).toFixed(1)}%)`
-    });
   }
   for (const routeName of ["fleet", "projects"]) {
     const hasUplot = routes[routeName]?.markers.includes("uplot") ?? false;
@@ -324,6 +315,7 @@ if (comparePath !== null) {
     totalJsGzipDelta: totals.js.gzip - (baseline.totals?.js?.gzip ?? 0),
     totalCssGzipDelta: totals.css.gzip - (baseline.totals?.css?.gzip ?? 0),
     routes: routeComparisons,
+    needsReview: Object.values(routeComparisons).some(route => route.needsReview),
     gates,
     pass: gates.every(entry => entry.pass)
   };

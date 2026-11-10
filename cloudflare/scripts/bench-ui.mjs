@@ -420,9 +420,16 @@ const routeTargets = [
     ready: "#service-work, main.content .empty-state, main.content .error-state"
   },
   ...(statsProject === undefined ? [] : [{
-    name: "project-open",
-    hash: `#/project/${statsProject.id}?open=errors,requests`,
-    url: `${activeBase}/#/project/${statsProject.id}?open=errors,requests`,
+    name: "project-errors",
+    hash: `#/project/${statsProject.id}?section=errors`,
+    url: `${activeBase}/#/project/${statsProject.id}?section=errors`,
+    pivotHash: "#/projects",
+    pivotReady: 'table[aria-label="Projects"] tbody tr',
+    ready: "#issues .issue-list, #issues .observe-empty"
+  }, {
+    name: "project-requests",
+    hash: `#/project/${statsProject.id}?section=requests`,
+    url: `${activeBase}/#/project/${statsProject.id}?section=requests`,
     pivotHash: "#/projects",
     pivotReady: 'table[aria-label="Projects"] tbody tr',
     ready: "#route-explorer .route-table, #route-explorer .observe-empty"
@@ -710,6 +717,7 @@ async function measureConditionalHistoryAndCharts() {
 
 const results = [];
 for (const target of routeTargets) {
+  process.stderr.write(`Measuring ${target.name}\n`);
   const coldSamples = [];
   const warmSamples = [];
   for (let run = 0; run < runs; run += 1) {
