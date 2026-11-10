@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ActionState } from "@laputa-systems/ui-dashboard/feedback";
 import { ApiFailure, failureForResponse } from "../../api";
@@ -129,7 +129,6 @@ export function createObservability(
 
   createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void Promise.all([
       read("/health", controller.signal, decodeHealth),
       read(`/issues?${new URLSearchParams({ state: query.state, limit: "100", ...(query.introduced === null ? {} : { introducedIn: query.introduced }) })}`, controller.signal, decodeIssues)
@@ -139,12 +138,12 @@ export function createObservability(
       setIssueResult({ kind: "ok", key: query.key, value: nextIssues });
       if (issueId() === null || !nextIssues.items.some(issue => issue.fingerprint === issueId())) selectIssue(nextIssues.items[0]?.fingerprint ?? null, false);
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setIssueResult({ kind: "error", key: query.key, message: message(cause, "The observability collector is unavailable") }); });
+    return () => controller.abort();
   });
 
   createEffect(() => ({ key: exploreKey(), tick: refreshKey(), window: windowKey(), filter: traceFilter(), route: route(), band: bandParam(band()), active: exploring() }), query => {
     if (!query.active) return;
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     const { fromMs, toMs } = windowAt();
     const span = { from: String(Math.round(fromMs)), to: String(Math.round(toMs)) };
     void read(`/explore?${new URLSearchParams({ ...span, ...(query.route === null ? {} : { route: query.route }) })}`, controller.signal, decodeExploration).then(async nextExploration => {
@@ -175,13 +174,13 @@ export function createObservability(
         if (traceId() === null || !nextTraces.items.some(item => item.traceId === traceId())) selectTrace(first, false);
       }
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setExploreResult({ kind: "error", key: query.key, message: message(cause, "The observability collector is unavailable") }); });
+    return () => controller.abort();
   });
 
   createEffect(() => ({ id: traceId(), tick: refreshKey(), active: exploring() }), query => {
     if (!query.active) return;
-    const controller = new AbortController();
-    onCleanup(() => controller.abort());
     if (query.id === null) { setTraceResult(null); return; }
+    const controller = new AbortController();
     const id = query.id;
     void read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
       if (controller.signal.aborted) return;
@@ -191,18 +190,19 @@ export function createObservability(
       if (controller.signal.aborted) return;
       setTraceResult({ kind: "error", key: id, message: message(cause, "Trace unavailable") });
     });
+    return () => controller.abort();
   });
 
   createEffect(() => ({ id: issueId(), tick: refreshKey(), mutation: mutation(), active: errorsOpen() }), query => {
     if (!query.active) return;
-    const controller = new AbortController();
-    onCleanup(() => controller.abort());
     if (query.id === null) { setOccurrencesResult(null); return; }
+    const controller = new AbortController();
     const id = query.id;
     void read(`/issues/${id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
       if (controller.signal.aborted) return;
       setOccurrencesResult({ kind: "ok", key: id, value });
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesResult({ kind: "error", key: id, message: message(cause, "Occurrences unavailable") }); });
+    return () => controller.abort();
   });
 
   function selectTrace(id: string | null, remember = true): void {

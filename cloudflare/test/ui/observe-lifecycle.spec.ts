@@ -56,6 +56,7 @@ async function installBase(
     const full = path + url.search;
     if (onObserve !== undefined) {
       const custom = await onObserve(method, full, scenario);
+      if (route.request().failure() !== null) return;
       if (custom !== null) return route.fulfill({ status: custom.status, contentType: "application/json", body: custom.body });
     }
     const response = await answer(scenario, now, new Request(`https://observe${full}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
@@ -93,6 +94,79 @@ test("selecting trace B while B is deferred clears trace A's timeline immediatel
   gateB.release();
   await expect(detail.locator(".tl")).toBeVisible();
   await expect(traceRows.nth(1)).toHaveAttribute("aria-selected", "true");
+});
+
+test("leaving Requests aborts deferred exploration before it can load traces", async ({ page }) => {
+  const gate = createGate();
+  let waiting = false;
+  const traceLists: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/observe/stats/traces") traceLists.push(request.url());
+  });
+  const { aborted } = await installBase(page, async (_method, path) => {
+    if (path.startsWith("/explore?")) {
+      waiting = true;
+      await gate.promise;
+    }
+    return null;
+  });
+  await page.goto("/#/project/stats?range=24h&section=requests");
+  try {
+    await expect.poll(() => waiting).toBe(true);
+    await page.getByRole("button", { name: /Overview/u }).click();
+    await expect.poll(() => aborted.some(path => path.includes("/explore?"))).toBe(true);
+    expect(traceLists).toHaveLength(0);
+  } finally {
+    gate.release();
+  }
+});
+
+test("selecting a new trace aborts the previous trace request", async ({ page }) => {
+  const gate = createGate();
+  let firstTrace: string | null = null;
+  const { aborted } = await installBase(page, async (_method, path) => {
+    if (path.startsWith("/traces/") && firstTrace === null) {
+      firstTrace = path;
+      await gate.promise;
+    }
+    return null;
+  });
+  await page.goto("/#/project/stats?range=24h&open=requests");
+  const explorer = page.locator("#route-explorer");
+  const traceRows = explorer.locator(".trace-row");
+  await expect(traceRows.nth(1)).toBeVisible();
+  try {
+    await expect.poll(() => firstTrace).not.toBeNull();
+    await traceRows.nth(1).click();
+    await expect(explorer.locator(".trace-detail .tl")).toBeVisible();
+    await expect.poll(() => aborted.some(path => firstTrace !== null && path.endsWith(firstTrace))).toBe(true);
+    await expect(traceRows.nth(1)).toHaveAttribute("aria-selected", "true");
+  } finally {
+    gate.release();
+  }
+});
+
+test("selecting a new issue aborts the previous occurrence request", async ({ page }) => {
+  const gate = createGate();
+  let firstOccurrences: string | null = null;
+  const { aborted } = await installBase(page, async (_method, path) => {
+    if (path.includes("/occurrences") && firstOccurrences === null) {
+      firstOccurrences = path;
+      await gate.promise;
+    }
+    return null;
+  });
+  await page.goto("/#/project/stats?range=24h&section=errors");
+  const issues = page.locator("#issues");
+  await expect(issues.getByRole("option", { name: /TypeError/u })).toBeVisible();
+  try {
+    await expect.poll(() => firstOccurrences).not.toBeNull();
+    await issues.getByRole("option", { name: /TypeError/u }).click();
+    await expect(issues.locator(".issue-detail .frames-head")).toContainText("TypeError");
+    await expect.poll(() => aborted.some(path => firstOccurrences !== null && path.endsWith(firstOccurrences))).toBe(true);
+  } finally {
+    gate.release();
+  }
 });
 
 test("selecting issue B while B's occurrences are deferred clears issue A's frames and occurrence rows immediately", async ({ page }) => {
