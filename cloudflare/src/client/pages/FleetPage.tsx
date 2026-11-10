@@ -4,7 +4,7 @@ import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
 import { alignTracks, sumTracks, worstTrack } from "../chart-data";
 import { cpuUsed, lastCell, lastValue, memoryUsed, sumLatest, usedShare } from "../metrics";
-import { createRefreshRetention, loadFleetRows, type FleetRow, type FleetRowCache } from "../queries";
+import { createRefreshRetention, loadFleetMetrics, loadFleetRows, type FleetMetrics, type FleetRow, type FleetRowCache } from "../queries";
 import { statusFor, type HostStatus } from "../status";
 import { useTelemetry } from "../state";
 import type { Host } from "../api";
@@ -30,12 +30,12 @@ function hostStatus(host: Host): HostStatus {
   return statusFor(host, host.lastReceivedAtMs);
 }
 
-function fleetDiskSpace(row: FleetRow): number | undefined {
+function fleetDiskSpace(row: FleetMetrics): number | undefined {
   const trend = worstTrack(row.filesystems.map(entry => ({ times: entry.table.times, values: usedShare(entry.table) })), row.filesystemStepMs);
   return lastValue(trend.values);
 }
 
-function metricValue(row: FleetRow, key: SortKey): number | null {
+function metricValue(row: FleetMetrics, key: SortKey): number | null {
   switch (key) {
     case "cpu": return lastCell(cpuUsed(row.summary)) ?? null;
     case "memory": return lastCell(memoryUsed(row.summary)) ?? null;
@@ -48,7 +48,7 @@ function metricValue(row: FleetRow, key: SortKey): number | null {
   }
 }
 
-function compareHosts(sort: Sort<SortKey>, metricRows: ReadonlyMap<string, FleetRow>): (left: Host, right: Host) => number {
+function compareHosts(sort: Sort<SortKey>, metricRows: ReadonlyMap<string, FleetMetrics>): (left: Host, right: Host) => number {
   return (left, right) => {
     const byName = left.name.localeCompare(right.name);
     const key = sort.key;
@@ -107,7 +107,8 @@ export function FleetPage(): JSX.Element {
   });
 
   const rowsRetention = createRefreshRetention();
-  const [metricRows, setMetricRows] = createSignal<readonly FleetRow[]>([]);
+  const metricRetention = createRefreshRetention();
+  const [metricRows, setMetricRows] = createSignal<readonly FleetMetrics[]>([]);
   const [sortPending, setSortPending] = createSignal(false);
   const [sortError, setSortError] = createSignal<string | null>(null);
   createEffect(
@@ -123,7 +124,7 @@ export function FleetPage(): JSX.Element {
         let active = true;
         setSortPending(true);
         setSortError(null);
-        void loadFleetRows(hosts, queryKey, { previous: metricRows(), retention: rowsRetention, onError: error => {
+        void loadFleetMetrics(hosts, queryKey, { previous: metricRows(), retention: metricRetention, onError: error => {
           if (!active) return;
           setSortError(error === null ? null : errorMessage(error));
           if (error !== null) dispose();
@@ -141,7 +142,7 @@ export function FleetPage(): JSX.Element {
   );
 
   const sorted = createMemo(() => {
-    const rowsByKey = new Map<string, FleetRow>();
+    const rowsByKey = new Map<string, FleetMetrics>();
     if (METRIC_KEYS.has(sort().key)) for (const row of metricRows()) rowsByKey.set(row.host.hostId, row);
     return [...matching()].sort(compareHosts(sort(), rowsByKey));
   });

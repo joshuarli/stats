@@ -1030,3 +1030,56 @@ test("refreshing the project list aborts its older deployment request", async ({
     gate.release();
   }
 });
+
+test("fleet metric sorting fetches system details only for visible hosts", async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const hosts = Array.from({ length: 24 }, (_, index) => ({
+    hostId: `h_${index.toString(16).padStart(2, "0").repeat(16)}`,
+    name: `node-${String(index + 1).padStart(2, "0")}`,
+    createdAtMs: NOW - 86_400_000,
+    revoked: false,
+    lastReceivedAtMs: NOW - 5_000,
+    online: true
+  }));
+  const histories = new Set<string>();
+  const systems = new Set<string>();
+  await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts } }));
+  await page.route("**/api/v1/services", route => route.fulfill({ json: { services: [] } }));
+  await page.route("**/api/v1/hosts/*/system", route => {
+    const id = /\/hosts\/([^/]+)\/system/u.exec(route.request().url())?.[1];
+    if (id === undefined) throw new Error("missing host ID");
+    systems.add(id);
+    return route.fulfill({ json: { reportedAtMs: NOW, system: { agent: "0.4.0", hostname: "node", os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } } } });
+  });
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1];
+    if (id === undefined) throw new Error("missing host ID");
+    histories.add(id);
+    const index = hosts.findIndex(host => host.hostId === id);
+    const bundle = fleetBundle(id, "1h", index * 2);
+    if (index === 23) bundle.histories.summary.points = [];
+    else for (const point of bundle.histories.summary.points) point.cpu.system = 0;
+    await fulfillHistory(route, bundle);
+  });
+  await page.goto("/#/");
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  await expect(table.locator("tbody tr")).toHaveCount(10);
+  expect(systems.size).toBe(10);
+  await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await expect.poll(() => histories.size).toBe(24);
+  await expect(table).toHaveAttribute("aria-busy", "false");
+  expect(systems.size).toBe(10);
+  await expect(table.locator("tbody tr").first()).toContainText("node-01");
+  await expect(table.locator("tbody tr").first()).toContainText("0%");
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(table.locator("tbody tr").first()).toContainText("node-11");
+  await expect.poll(() => systems.size).toBe(20);
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(table.locator("tbody tr").last()).toContainText("node-24");
+  await expect.poll(() => systems.size).toBe(24);
+  await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await expect(table.locator("tbody tr").last()).toContainText("node-24");
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expect(table.locator("tbody tr").first()).toContainText("node-23");
+});

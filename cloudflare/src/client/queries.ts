@@ -51,9 +51,8 @@ export function loadServices(): Promise<readonly Service[]> {
   return loadQuery(signal => getServices(signal));
 }
 
-export interface FleetRow {
+export interface FleetMetrics {
   readonly host: Host;
-  readonly system: HostSystem | null;
   readonly summary: SummaryTable;
   readonly fromMs: number;
   readonly toMs: number;
@@ -62,6 +61,10 @@ export interface FleetRow {
   readonly disks: readonly DiskSeries[];
   readonly nets: readonly NetSeries[];
   readonly filesystems: readonly FilesystemSeries[];
+}
+
+export interface FleetRow extends FleetMetrics {
+  readonly system: HostSystem | null;
 }
 
 export interface FleetRowCache {
@@ -86,6 +89,40 @@ async function mapLimit<T, R>(values: readonly T[], limit: number, run: (value: 
   return results;
 }
 
+function loadFleetHistory(host: Host, query: HistoryQuery, queryKey: string, signal: AbortSignal, cache?: FleetRowCache): Promise<FleetHistories> {
+  const known = cache?.histories.get(host.hostId);
+  if (known !== undefined && known.queryKey === queryKey) return Promise.resolve(known.history);
+  return getFleetHistories(host.hostId, query, signal).then(loaded => {
+    if (!signal.aborted) cache?.histories.set(host.hostId, { queryKey, history: loaded });
+    return loaded;
+  });
+}
+
+function fleetMetrics(host: Host, history: FleetHistories): FleetMetrics {
+  return {
+    host,
+    summary: history.summary.table,
+    fromMs: history.summary.fromMs,
+    toMs: history.summary.toMs,
+    stepMs: history.summary.stepMs,
+    filesystemStepMs: history.filesystems.stepMs,
+    disks: history.disks.series,
+    nets: history.nets.series,
+    filesystems: history.filesystems.series
+  };
+}
+
+export function loadFleetMetrics(
+  hosts: readonly Host[],
+  query: HistoryQuery,
+  refresh?: Omit<RefreshOnError<readonly FleetMetrics[]>, "key">,
+  cache?: FleetRowCache
+): Promise<readonly FleetMetrics[]> {
+  const queryKey = windowParams(query);
+  return loadQuery(signal => mapLimit(hosts, 4, async host => fleetMetrics(host, await loadFleetHistory(host, query, queryKey, signal, cache))),
+    refresh === undefined ? undefined : { ...refresh, key: `${hosts.map(host => host.hostId).join(",")}|${queryKey}` });
+}
+
 export function loadFleetRows(
   hosts: readonly Host[],
   query: HistoryQuery,
@@ -94,32 +131,14 @@ export function loadFleetRows(
 ): Promise<readonly FleetRow[]> {
   const queryKey = windowParams(query);
   return loadQuery(signal => mapLimit(hosts, 4, async host => {
-    const knownHistory = cache?.histories.get(host.hostId);
-    const hasSystem = cache?.systems.has(host.hostId) === true;
-    const historyPromise = knownHistory !== undefined && knownHistory.queryKey === queryKey
-      ? Promise.resolve(knownHistory.history)
-      : getFleetHistories(host.hostId, query, signal).then(loaded => {
-          if (!signal.aborted) cache?.histories.set(host.hostId, { queryKey, history: loaded });
-          return loaded;
-        });
-    const systemPromise = hasSystem
-      ? Promise.resolve(cache!.systems.get(host.hostId) ?? null)
+    const historyPromise = loadFleetHistory(host, query, queryKey, signal, cache);
+    const systemPromise = cache?.systems.has(host.hostId) === true
+      ? Promise.resolve(cache.systems.get(host.hostId) ?? null)
       : getSystem(host.hostId, signal).then(loaded => {
           if (!signal.aborted) cache?.systems.set(host.hostId, loaded);
           return loaded;
         });
     const [history, system] = await Promise.all([historyPromise, systemPromise]);
-    return {
-      host,
-      system,
-      summary: history.summary.table,
-      fromMs: history.summary.fromMs,
-      toMs: history.summary.toMs,
-      stepMs: history.summary.stepMs,
-      filesystemStepMs: history.filesystems.stepMs,
-      disks: history.disks.series,
-      nets: history.nets.series,
-      filesystems: history.filesystems.series
-    };
+    return { ...fleetMetrics(host, history), system };
   }), refresh === undefined ? undefined : { ...refresh, key: `${hosts.map(host => host.hostId).join(",")}|${queryKey}` });
 }
