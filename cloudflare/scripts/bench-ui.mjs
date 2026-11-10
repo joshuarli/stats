@@ -274,6 +274,7 @@ function createNetworkTracker(page) {
         }
         await new Promise(resolveWait => setTimeout(resolveWait, 20));
       }
+      throw new Error(`Network did not become idle within ${timeoutMs} ms (${active} requests active)`);
     }
   };
 }
@@ -324,6 +325,7 @@ function summarizeNetwork(records) {
   }
   const requestList = records.map(record => record.path);
   const apiRequestList = records.filter(record => record.kind !== "asset").map(record => record.path);
+  const failedRequests = records.filter(record => record.status === 0 || record.status >= 400).map(record => ({ path: record.path, status: record.status }));
   return {
     requests: records.length,
     apiRequests: apiRequestList.length,
@@ -338,7 +340,8 @@ function summarizeNetwork(records) {
     observeBytes,
     jsonBytes,
     requestList,
-    apiRequestList
+    apiRequestList,
+    failedRequests
   };
 }
 
@@ -367,6 +370,7 @@ function summarizeSamples(samples) {
   summary.spreadReadyMs = spread(samples.map(sample => Math.round(sample.readyMs)));
   summary.requestList = representative?.requestList ?? [];
   summary.apiRequestList = representative?.apiRequestList ?? [];
+  summary.failedRequestsByRun = samples.map(sample => sample.failedRequests);
   return summary;
 }
 
