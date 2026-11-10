@@ -893,6 +893,33 @@ test("the cost ledger sorts its rows by any column header", async ({ page }) => 
   expect(await topLabels()).toEqual(before);
 });
 
+test("mobile ledger details identify the selected route and its comparison", { tag: "@mobile-only" }, async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/project/stuff");
+  const route = ledgerRow(page, "route:GET /api/v1/projects");
+  await expect(route).toBeVisible();
+  await route.click();
+  const detail = page.locator(".ledger-detail");
+  const context = detail.locator(".ledger-detail-context");
+  await expect(context).toContainText("GET /api/v1/projects");
+  await expect(context).toContainText("CPU/call");
+  await expect(context).toContainText("vs the hour before");
+  await expect(context).toContainText("projected to 30 days at list price");
+  const bounds = await context.evaluate(element => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
+});
+
+test("mobile ledger details identify the selected statement and units", { tag: "@mobile-only" }, async ({ page }) => {
+  await mock(page, { d1: true });
+  await page.goto("/#/project/stuff");
+  const statement = page.locator(".ledger-row.depth-1", { hasText: "SELECT * FROM big_read" });
+  await statement.click();
+  const detail = page.locator(".ledger-detail");
+  await expect(detail.locator(".ledger-detail-context")).toContainText("SELECT * FROM big_read");
+  await expect(detail).toContainText("rows read in window");
+  await expect(detail.locator(".ledger-detail-context")).toContainText("Comparison:");
+});
+
 test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {
   await mock(page, { baselineScale: 0.5 });
   await page.goto("/#/project/stuff");

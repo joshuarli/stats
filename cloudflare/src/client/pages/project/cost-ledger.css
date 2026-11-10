@@ -55,6 +55,7 @@
 .ledger-fold { width: 100%; text-align: left; padding: var(--space-xs) var(--inset) var(--space-xs) calc(var(--inset) + var(--indent) * 20px + 26px); font-size: var(--fs-meta); color: var(--muted); border-bottom: 1px solid var(--line); }
 .ledger-fold:hover { background: var(--hover); color: var(--text); }
 .ledger-detail { display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-md) var(--inset) var(--space-lg) calc(var(--inset) + 40px); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 55%, var(--surface)); }
+.ledger-detail-context { display: none; }
 .ledger-facts { display: flex; flex-wrap: wrap; gap: var(--space-md) var(--space-2xl); }
 .ledger-fact { display: flex; flex-direction: column; }
 .ledger-fact b { font-size: var(--fs-title); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -68,6 +69,8 @@
   .ledger-head > :is(:nth-child(3), :nth-child(n + 5)), .ledger-row > :is(:nth-child(3), :nth-child(n + 5)) { display: none; }
   .ledger-basis { margin-left: 0; }
   .ledger-detail { padding-left: var(--inset); }
+  .ledger-detail-context { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; color: var(--muted); font-size: var(--fs-meta); overflow-wrap: anywhere; }
+  .ledger-detail-context strong { color: var(--text); font-family: var(--mono); }
 }
 .ledger-month { display: flex; flex-direction: column; gap: var(--space-xs); }
 .ledger-month-pending { min-height: 201px; }

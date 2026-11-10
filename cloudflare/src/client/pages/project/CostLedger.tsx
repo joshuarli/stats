@@ -15,6 +15,7 @@ type LedgerSort = "item" | "cost" | "share" | "change";
 
 const FOLD_AFTER = 8;
 const COMPONENT_COLORS: Readonly<Record<string, string>> = { worker: "var(--viz-blue)", objects: "var(--viz-violet)", d1: "var(--viz-magenta)", r2: "var(--viz-aqua)" };
+const WINDOW_TIME = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 const change = (amount: Amount | null): number | null => amount === null || amount.before === null ? null : amount.now - amount.before;
 const per = (part: Amount, whole: Amount): Amount => ({ now: whole.now > 0 ? part.now / whole.now : 0, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
@@ -110,7 +111,7 @@ function Fact(props: { readonly label: string; readonly value: string; readonly 
   return <div class="ledger-fact"><b>{props.value}<Show when={props.amount}>{amount => <Ratio amount={amount()} worseUp={props.worseUp} />}</Show></b><span>{props.label}</span></div>;
 }
 
-function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories }): JSX.Element {
+function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories; readonly windowLabel: string; readonly windows: CostReport["windows"] }): JSX.Element {
   const line = () => props.line;
   const usage = () => props.usage;
   const facts = (): JSX.Element => {
@@ -173,7 +174,16 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
     }
     return <></>;
   };
-  return <div class="ledger-detail"><div class="ledger-facts">{facts()}</div>{charts()}</div>;
+  return <div class="ledger-detail">
+    <div class="ledger-detail-context">
+      <strong>{line().label}</strong>
+      <span><UnitCell line={line()} /></span>
+      <span>{props.windowLabel}, projected to 30 days at list price</span>
+      <span>Current: {WINDOW_TIME.format(props.windows.current.fromMs)} – {WINDOW_TIME.format(props.windows.current.toMs)}</span>
+      <span>Comparison: {WINDOW_TIME.format(props.windows.previous.fromMs)} – {WINDOW_TIME.format(props.windows.previous.toMs)}</span>
+    </div>
+    <div class="ledger-facts">{facts()}</div>{charts()}
+  </div>;
 }
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
@@ -288,7 +298,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
             <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.report.windows.current} label={`${line().label} cost`} zeroBased />}</Show>
           </span>
         </button>
-        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} /></Show>
+        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} windowLabel={props.windowLabel} windows={props.report.windows} /></Show>
         <Show when={!leaf() && open()}>
           <For each={visible()}>{child => <Row line={child} depth={rowProps.depth + 1} color={rowProps.color} />}</For>
           <Show when={hidden().length > 0}>
