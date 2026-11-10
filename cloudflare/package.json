@@ -55,7 +55,7 @@
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "0.3.31",
-    "@laputa-systems/ui-dashboard": "0.7.0",
+    "@laputa-systems/ui-dashboard": "0.9.0",
     "@solidjs/router": "2.0.0-next.43",
     "@solidjs/web": "2.0.0-rc.20",
     "solid-js": "2.0.0-rc.20",
