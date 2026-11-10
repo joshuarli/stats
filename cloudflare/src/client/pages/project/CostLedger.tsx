@@ -203,11 +203,14 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
   const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter;
+  const billedPartial = () => props.plan.missingBilledMeters.length > 0 || props.plan.coverage.fraction < 1;
+  const projectedPartial = () => props.plan.missingProjectionMeters.length > 0 || props.plan.coverage.fraction < 1;
+  const qualifier = (partial: boolean, proxy: boolean) => proxy ? (partial ? "partial estimate " : "estimate ") : partial ? "at least " : "";
   return (
     <div class="ledger-month">
-      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {props.plan.missingBilledMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.billedSoFar)} so far, {props.plan.missingProjectionMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
+      <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {qualifier(billedPartial(), props.plan.durationProxy.billed)}{dollarsPrecise(props.plan.billedSoFar)} so far, {qualifier(projectedPartial(), props.plan.durationProxy.projected)}{dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
       <PanelChart
-        label={props.plan.missingBilledMeters.length > 0 || props.plan.missingProjectionMeters.length > 0 ? "Known minimum billed this month" : "Billed this month"}
+        label={props.plan.durationProxy.projected ? "Estimated billed this month" : billedPartial() || projectedPartial() ? "Known minimum billed this month" : "Billed this month"}
         series={() => [
           { label: "billed", color: "blue", track: props.plan.billed },
           { label: "projected", color: "blue", track: props.plan.projected, dashed: true }
@@ -216,6 +219,8 @@ function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly k
         min={0}
       />
       <span class="ledger-month-note">Usage beyond the Workers Paid allowances at list price, counted from the 1st (UTC) as if this project had the account's allowances to itself.</span>
+      <Show when={props.plan.coverage.fraction < 1}><span class="ledger-month-note">Worker data covers {(props.plan.coverage.fraction * 100).toFixed(1)}% of the month so far.</span></Show>
+      <Show when={props.plan.durationProxy.projected}><span class="ledger-month-note">Durable Object summed request wall time can overestimate billed duration.</span></Show>
       <Show when={props.plan.missingBilledMeters.length > 0}><span class="ledger-month-note">The billed amount excludes unavailable {props.plan.missingBilledMeters.map(meterName).join(", ")} data.</span></Show>
       <Show when={props.plan.missingProjectionMeters.length > 0}><span class="ledger-month-note">The projection excludes unavailable {props.plan.missingProjectionMeters.map(meterName).join(", ")} data.</span></Show>
     </div>

@@ -85,6 +85,7 @@ export type PlanBillReport =
     readonly usage: Omit<MeterUsage, "workerRequests" | "workerCpuMs" | "d1RowsRead" | "d1RowsWritten"> & { readonly workerRequests: number | null; readonly workerCpuMs: number | null; readonly d1RowsRead: number | null; readonly d1RowsWritten: number | null };
     readonly missingBilledMeters: readonly Meter[];
     readonly missingProjectionMeters: readonly Meter[];
+    readonly durationProxy: { readonly billed: boolean; readonly projected: boolean };
     readonly billed: Track;
     readonly billedSoFar: number;
     readonly projected: Track;
@@ -110,7 +111,8 @@ export type WarningCode =
   | "plan-month-unavailable"
   | "plan-month-partial"
   | "plan-month-missing-meter"
-  | "plan-projection-missing-meter";
+  | "plan-projection-missing-meter"
+  | "plan-duration-upper-bound-proxy";
 
 export interface Warning {
   readonly code: WarningCode;
@@ -323,6 +325,7 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
   if (plan.kind === "isolated" && plan.coverage.fraction < 1) warn("plan-month-partial", "plan-bill", `The plan bill covers ${(plan.coverage.fraction * 100).toFixed(1)}% of the month so far (${plan.coverage.coveredMs} of ${plan.coverage.windowMs} ms); uncollected time is not priced.`);
   if (plan.kind === "isolated" && plan.missingBilledMeters.length > 0) warn("plan-month-missing-meter", "plan-bill", `The billed amount excludes unavailable meters: ${plan.missingBilledMeters.join(", ")}.`);
   if (plan.kind === "isolated" && plan.missingProjectionMeters.length > 0) warn("plan-projection-missing-meter", "plan-bill", `The projection excludes unavailable meters: ${plan.missingProjectionMeters.join(", ")}.`);
+  if (plan.kind === "isolated" && plan.durationProxy.projected) warn("plan-duration-upper-bound-proxy", "plan-bill", "Durable Object summed request wall time is an upper-bound proxy for billed duration and can overestimate the plan amount.");
   return warnings;
 }
 
@@ -335,12 +338,15 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   if (coverage.fraction === 0) return { kind: "unavailable", reason: "no-data" };
   const missingBilledMeters = missingMeters(input.planMonth.histories, window, input.project);
   const missingProjectionMeters = [...new Set([...missingBilledMeters, ...missingMeters(input.current, input.windows.current, input.project)])];
+  const hasDuration = (histories: LedgerHistories, window: TimeWindow) => histories.durableObjects !== undefined && coveredMs(histories.durableObjects, window, ["do.wallMsSum"]) > 0;
+  const billedDurationProxy = hasDuration(input.planMonth.histories, window);
   const projected = projectedBill(bill, window.toMs, month.toMs, monthly);
   return {
     kind: "isolated", basis: "utc-month", assumption: "project-alone-on-account-allowances",
     month, settledMs: window.toMs, coverage,
     usage: { ...bill.usage, workerRequests: missingBilledMeters.includes("workerRequests") ? null : bill.usage.workerRequests, workerCpuMs: missingBilledMeters.includes("workerCpuMs") ? null : bill.usage.workerCpuMs, d1RowsRead: missingBilledMeters.includes("d1RowsRead") ? null : bill.usage.d1RowsRead, d1RowsWritten: missingBilledMeters.includes("d1RowsWritten") ? null : bill.usage.d1RowsWritten },
     missingBilledMeters, missingProjectionMeters,
+    durationProxy: { billed: billedDurationProxy, projected: billedDurationProxy || hasDuration(input.current, input.windows.current) },
     billed: bill.billed, billedSoFar: bill.billed.values.at(-1) ?? 0,
     projected, projectedMonthEnd: projected.values.at(-1) ?? 0,
     account: { kind: "unknown", reason: "other-projects-not-covered" }

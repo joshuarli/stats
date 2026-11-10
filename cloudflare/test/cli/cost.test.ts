@@ -91,6 +91,8 @@ await test("missing Worker CPU is excluded from the CLI total and monthly bill",
     assert.equal(report.planBill.usage?.workerCpuMs, null);
     assert.ok(report.planBill.missingBilledMeters?.includes("workerCpuMs"));
     assert.ok(report.planBill.missingProjectionMeters?.includes("workerCpuMs"));
+    assert.deepEqual(report.planBill.durationProxy, { billed: true, projected: true });
+    assert.ok(report.warnings.some(warning => warning.code === "plan-duration-upper-bound-proxy"));
   } finally {
     await origin.close();
   }

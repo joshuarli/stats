@@ -112,7 +112,7 @@ export interface Payload {
 export interface PresentedReportShape {
   readonly windows: { readonly current: { readonly fromMs: number; readonly toMs: number }; readonly previous: { readonly fromMs: number; readonly toMs: number } };
   readonly lines: readonly { readonly id: string; readonly usage: Usage; readonly trend?: unknown; readonly children: readonly { readonly id: string; readonly kind: string; readonly price: Price; readonly trend?: unknown }[]; readonly omitted: { readonly count: number } | null }[];
-  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown; readonly usage?: { readonly workerCpuMs: number | null; readonly d1RowsWritten: number | null }; readonly missingBilledMeters?: readonly string[]; readonly missingProjectionMeters?: readonly string[] };
+  readonly planBill: { readonly kind: string; readonly basis?: string; readonly billed?: unknown; readonly usage?: { readonly workerCpuMs: number | null; readonly d1RowsWritten: number | null }; readonly missingBilledMeters?: readonly string[]; readonly missingProjectionMeters?: readonly string[]; readonly durationProxy?: { readonly billed: boolean; readonly projected: boolean } };
   readonly total: { readonly monthly: { readonly now: number }; readonly pricedMeters: readonly string[]; readonly excluded: readonly { readonly meter: string; readonly reason: string }[] };
   readonly comparison: { readonly baseline: string };
   readonly warnings: readonly { readonly code: string; readonly subject: string }[];

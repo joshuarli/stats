@@ -326,11 +326,17 @@ imports and erasable syntax only, and none imports Solid, uPlot, or
   remain priced, and the total is qualified as partial. A route missing one of
   those fields is also partial. Monthly plan usage leaves a missing Worker meter
   `null`; `missingBilledMeters` and `missingProjectionMeters` identify the
-  omitted inputs, so the corresponding amounts and charts are known minimums.
+  omitted inputs. Amounts with missing inputs are lower bounds only when they
+  do not include the Durable Object duration proxy.
 - **Partial D1 costs.** Missing rows-read or rows-written data is `null` in
   D1 and statement usage and excluded from priced meters. Known rows remain
   priced as a partial subtotal. Monthly D1 usage is also nullable, with omitted
   meters named in `missingBilledMeters` and `missingProjectionMeters`.
+- **Duration proxy.** `durationProxy.billed` and `durationProxy.projected`
+  identify plan amounts that include summed Durable Object request wall time.
+  This is an upper-bound proxy for billed duration, so those amounts are
+  estimates and may overstate duration charges. A report with both missing
+  meters and this proxy is partial, rather than a guaranteed minimum.
 - **Scope is stated.** The plan bill is `isolated`: it subtracts the full account
   allowance for one project, and an account total exists only when every project
   in the account is covered. Months are UTC calendar months, labelled

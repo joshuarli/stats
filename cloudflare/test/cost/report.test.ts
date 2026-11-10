@@ -66,6 +66,27 @@ await test("a monthly bill and projection name missing worker meters", () => {
   assert.deepEqual(billedOnly.planBill.missingProjectionMeters, ["workerCpuMs"]);
 });
 
+await test("monthly bills disclose the Durable Object wall-time proxy separately for each window", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const worker = { "worker.invocations": [1_000_000, 1_000_000, 0], "worker.cpuMsSum": [null, null, null] };
+  const object = { "do.invocations": [100, 100, 0], "do.wallMsSum": [500, 500, 0] };
+  const project = { ...PROJECT, durableObjectNamespaces: ["store"] };
+  const monthWithProxy = histories(month, { worker, durableObjects: object });
+  const noCurrentProxy = histories(T0, { worker });
+  const billedProxy = report({ current: noCurrentProxy, project, planMonth: { settledMs: month + 2 * H, histories: monthWithProxy } });
+  if (billedProxy.planBill.kind !== "isolated") throw new Error("expected plan bill");
+  assert.deepEqual(billedProxy.planBill.durationProxy, { billed: true, projected: true });
+  assert.ok(warned(billedProxy, "plan-duration-upper-bound-proxy", "plan-bill"));
+  const monthWithoutProxy = histories(month, { worker });
+  const projectedProxy = report({ current: histories(T0, { worker, durableObjects: object }), project, planMonth: { settledMs: month + 2 * H, histories: monthWithoutProxy } });
+  if (projectedProxy.planBill.kind !== "isolated") throw new Error("expected plan bill");
+  assert.deepEqual(projectedProxy.planBill.durationProxy, { billed: false, projected: true });
+  const noProxy = report({ current: noCurrentProxy, project, planMonth: { settledMs: month + 2 * H, histories: monthWithoutProxy } });
+  if (noProxy.planBill.kind !== "isolated") throw new Error("expected plan bill");
+  assert.deepEqual(noProxy.planBill.durationProxy, { billed: false, projected: false });
+  assert.equal(warned(noProxy, "plan-duration-upper-bound-proxy", "plan-bill"), false);
+});
+
 await test("missing worker requests leave measured CPU available", () => {
   const current = histories(T0, { worker: { "worker.invocations": [null, null, null], "worker.cpuMsSum": [100, 100, 0] } });
   const built = report({ current });

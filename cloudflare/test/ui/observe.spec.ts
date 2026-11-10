@@ -289,7 +289,8 @@ test("missing Worker CPU is excluded from costs and called out in both project v
   const ledger = page.getByRole("region", { name: "Cost ledger" });
   await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
   await expect(ledger.locator('[id="ledger-worker"] .ledger-unit')).toHaveText("CPU/req unavailable");
-  await expect(ledger.locator(".ledger-month")).toContainText("at least");
+  await expect(ledger.locator(".ledger-month")).toContainText("partial estimate");
+  await expect(ledger.locator(".ledger-month")).toContainText("summed request wall time can overestimate billed duration");
   await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable Worker CPU data");
   await page.goto("/#/projects?range=24h");
   const row = page.getByRole("table", { name: "Projects" }).getByRole("row", { name: /stats/u }).first();
