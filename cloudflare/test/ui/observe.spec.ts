@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void> } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[] } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -35,6 +35,7 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
       const base = { projectId: history[1], range: "24h", fromMs: now - 86_400_000, toMs: now, stepMs: 3_600_000 };
       const body = (kind: string) => kind === "collector" ? { ...base, kind, runs: [] }
         : kind === "worker" ? { ...base, kind, series: [{ metric: "worker.invocations", values: Array.from({ length: 24 }, () => 300) }, { metric: "worker.status.2xx", values: Array.from({ length: 24 }, () => 300) }] }
+        : kind === "routes" ? { ...base, kind, series: (options.ledgerRoutes ?? []).flatMap(label => [{ metric: `route.${label}.invocations`, values: Array.from({ length: 24 }, () => 20) }, { metric: `route.${label}.cpuMsSum`, values: Array.from({ length: 24 }, () => 400) }]) }
         : kind === "durable-objects" ? { ...base, kind, series: [{ metric: "do.invocations", values: Array.from({ length: 24 }, () => 600) }, { metric: "do.wallMsSum", values: Array.from({ length: 24 }, () => 30_000) }, { metric: "do.cpuMsSum", values: Array.from({ length: 24 }, () => 9_000) }] }
         : { ...base, kind, series: [] };
       return fulfillHistory(route, { projectId: history[1], histories: Object.fromEntries(kinds.split(",").map(kind => [kind, body(kind)])) });
@@ -116,6 +117,35 @@ test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps
   await expect(explorer.locator(".heatmap-cell").first()).toBeVisible();
   await expect(explorer.locator(".heatmap-marker")).toHaveCount(1);
   await expect(explorer.locator(".heatmap-marker")).toContainText("v1.4.0");
+});
+
+test("a ledger route opens its exact matching requests without prefetching", async ({ page }) => {
+  const observe = await setup(page, { ledgerRoutes: [HISTORY_ROUTE] });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const worker = page.locator('[id="ledger-worker"]');
+  if (await worker.getAttribute("aria-expanded") !== "true") await worker.click();
+  const route = page.locator(`[id="ledger-route:${HISTORY_ROUTE}"]`);
+  await expect(route).toBeVisible();
+  if (await route.getAttribute("aria-expanded") !== "true") await route.click();
+  expect(observe.requests.some(request => request.startsWith("/explore"))).toBe(false);
+  await page.locator(".ledger-detail").getByRole("button", { name: "Find matching requests" }).click();
+  const requests = page.getByRole("navigation", { name: "Project sections" }).getByRole("button", { name: /^Requests/u });
+  await expect(requests).toHaveAttribute("aria-current", "page");
+  await expect(requests).toBeFocused();
+  await expect(page.locator("#route-explorer .explore-head")).toContainText(`Latency · ${HISTORY_ROUTE}`);
+  await expect(page.locator("#route-explorer .route-table").getByRole("button", { name: /hosts\/:host\/history/u })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {
+  const observe = await setup(page);
+  const missing = "GET /no-exact-match";
+  await page.goto(`/#/project/stats?section=requests&route=${encodeURIComponent(missing)}`);
+  const explorer = page.locator("#route-explorer");
+  await expect(explorer).toContainText(`No retained requests match ${missing}`);
+  await expect(explorer.locator(".trace-row")).toHaveCount(0);
+  expect(observe.requests.some(request => request.startsWith("/traces?"))).toBe(false);
+  await explorer.getByRole("button", { name: "Show all requests" }).click();
+  await expect(explorer.locator(".trace-row").first()).toBeVisible();
 });
 
 test("the p95 view lists the slowest calls first and says where their time went", async ({ page }) => {

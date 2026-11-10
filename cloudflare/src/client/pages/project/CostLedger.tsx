@@ -111,7 +111,7 @@ function Fact(props: { readonly label: string; readonly value: string; readonly 
   return <div class="ledger-fact"><b>{props.value}<Show when={props.amount}>{amount => <Ratio amount={amount()} worseUp={props.worseUp} />}</Show></b><span>{props.label}</span></div>;
 }
 
-function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories; readonly windowLabel: string; readonly windows: CostReport["windows"] }): JSX.Element {
+function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories; readonly windowLabel: string; readonly windows: CostReport["windows"]; readonly onFindRoute?: ((label: string) => void) | undefined }): JSX.Element {
   const line = () => props.line;
   const usage = () => props.usage;
   const facts = (): JSX.Element => {
@@ -182,7 +182,9 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
       <span>Current: {WINDOW_TIME.format(props.windows.current.fromMs)} – {WINDOW_TIME.format(props.windows.current.toMs)}</span>
       <span>Comparison: {WINDOW_TIME.format(props.windows.previous.fromMs)} – {WINDOW_TIME.format(props.windows.previous.toMs)}</span>
     </div>
-    <div class="ledger-facts">{facts()}</div>{charts()}
+    <div class="ledger-facts">{facts()}</div>
+    <Show when={line().kind === "route" && props.onFindRoute !== undefined}><button type="button" class="link ledger-detail-action" onClick={() => props.onFindRoute?.(line().label)}>Find matching requests</button></Show>
+    {charts()}
   </div>;
 }
 
@@ -213,7 +215,7 @@ function MonthNoData(): JSX.Element {
   );
 }
 
-export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly previousHistories: LedgerHistories | undefined; readonly windowLabel: string; readonly spendPending: boolean }): JSX.Element {
+export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly previousHistories: LedgerHistories | undefined; readonly windowLabel: string; readonly spendPending: boolean; readonly onFindRoute?: ((label: string) => void) | undefined }): JSX.Element {
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
     const top = props.report.lines[0];
     const first = top?.children.find(child => !isResidual(child));
@@ -298,7 +300,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
             <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.report.windows.current} label={`${line().label} cost`} zeroBased />}</Show>
           </span>
         </button>
-        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} windowLabel={props.windowLabel} windows={props.report.windows} /></Show>
+        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} windowLabel={props.windowLabel} windows={props.report.windows} onFindRoute={props.onFindRoute} /></Show>
         <Show when={!leaf() && open()}>
           <For each={visible()}>{child => <Row line={child} depth={rowProps.depth + 1} color={rowProps.color} />}</For>
           <Show when={hidden().length > 0}>

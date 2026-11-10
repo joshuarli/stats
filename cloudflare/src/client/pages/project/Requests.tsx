@@ -148,6 +148,7 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
     <Widget id="route-explorer" class="wide observe" title="Requests by route" meta={<><span class="observe-window">{props.windowLabel}</span><HealthMeta health={o.health()} /></>} expandable>
       <Show when={o.exploreError()}>{text => <div class="notice notice-warn" role="status"><span>{text()}</span></div>}</Show>
       <Show when={exploration()} fallback={o.exploreError() === null ? <Skeleton rows={6} chart /> : null}>{value => (
+        <Show when={o.route() !== null && value().route !== o.route()} fallback={
         <Show when={value().routes.length > 0} fallback={<p class="panel-label observe-empty">No requests were observed in this window.</p>}>
           <Show when={value().sampling}>{sampling => (
             <p class="panel-label observe-sampling" role="note">Sampled: {count(sampling().kept)} of {count(sampling().observed)} invocations are kept. Request and failure counts are exact; percentiles, CPU share, and the traces below come from the kept invocations only.</p>
@@ -188,6 +189,8 @@ export function RequestExplorerWidget(props: { readonly observe: Observability; 
               <Show when={o.trace()} fallback={o.traceError() === null && items().length > 0 ? <Skeleton rows={6} /> : null}>{detail => <TraceView detail={detail()} selected={o.slice()} onSelect={o.setSlice} />}</Show>
             </div>
           </div>
+        </Show>}>
+          <p class="panel-label observe-empty" role="status">No retained requests match {o.route()} in {props.windowLabel}. <button type="button" class="link" onClick={() => o.filterRoute(null)}>Show all requests</button></p>
         </Show>
       )}</Show>
     </Widget>

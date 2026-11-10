@@ -91,6 +91,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const service = isObservedService(props.project.worker) ? props.project.worker : null;
   const [active, setActive] = createSignal<SectionId>(initialSection(service !== null));
+  let requestsButton: HTMLButtonElement | undefined;
   createEffect(() => true, () => {
     const syncSection = () => { setActive(initialSection(service !== null)); };
     window.addEventListener("hashchange", syncSection);
@@ -246,6 +247,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                 class={`project-nav-item project-section-head${active() === item.id ? " active" : ""}`}
                 aria-current={active() === item.id ? "page" : undefined}
                 aria-expanded={active() === item.id ? "true" : "false"}
+                ref={element => { if (item.id === "requests") requestsButton = element; }}
                 onClick={() => showSection(item.id)}
               >
                 <span class="project-nav-title project-section-title">{item.title}</span>
@@ -273,7 +275,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                     <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
                   )}</Show>
                   <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} class="skeleton-ledger" /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
-                    {current => <CostLedger report={current().report} histories={current().histories} previousHistories={current().previous} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
+                    {current => <CostLedger report={current().report} histories={current().histories} previousHistories={current().previous} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} onFindRoute={observe === null ? undefined : label => { observe.filterRoute(label); showSection("requests"); queueMicrotask(() => requestsButton?.focus()); }} />}
                   </Show>
                 </Show>
               </Loading>

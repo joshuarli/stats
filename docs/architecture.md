@@ -1049,6 +1049,13 @@ and the project page fetches its errors, requests, trace, and modal views when a
 section or modal first opens. Health and issue counts for the header pills stay
 eager.
 
+An observed project's selected cost-ledger route can open Requests with the
+same full route label. Ledger figures use the settled cost window; Requests
+uses the visible telemetry window and retained traces. If that exact label is
+absent from the telemetry window, the explorer reports the missing match and
+does not display other routes' traces as evidence. Non-observed projects and
+ledger items without a route identity have no such navigation.
+
 Each summary tile shows its latest value, where that value sits between the
 metric's elevated and critical limits, and a zero-based trend in the hue of its
 resource group; a tile past a limit gets a status-coloured edge and tint, and

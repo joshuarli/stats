@@ -905,6 +905,7 @@ test("mobile ledger details identify the selected route and its comparison", { t
   await expect(context).toContainText("CPU/call");
   await expect(context).toContainText("vs the hour before");
   await expect(context).toContainText("projected to 30 days at list price");
+  await expect(detail.getByRole("button", { name: "Find matching requests" })).toHaveCount(0);
   const bounds = await context.evaluate(element => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
   expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
 });

@@ -148,6 +148,12 @@ export function createObservability(
     const { fromMs, toMs } = windowAt();
     const span = { from: String(Math.round(fromMs)), to: String(Math.round(toMs)) };
     void read(`/explore?${new URLSearchParams({ ...span, ...(query.route === null ? {} : { route: query.route }) })}`, controller.signal, decodeExploration).then(async nextExploration => {
+      if (query.route !== null && nextExploration.route !== query.route) {
+        if (controller.signal.aborted) return;
+        setExploreResult({ kind: "ok", key: query.key, value: { exploration: nextExploration, traces: { items: [], next: null } } });
+        selectTrace(null, false);
+        return;
+      }
       const current = parseBand(query.band);
       const routeStats = nextExploration.routes.find(item => item.label === nextExploration.route);
       const traceQuery = new URLSearchParams({ limit: "100", ...span });
@@ -210,7 +216,7 @@ export function createObservability(
     if (remember) writeParam("issue", id);
   }
   const filterTraces = (value: TraceFilter) => { setTraceFilter(value); writeParam("traces", value === "all" ? null : value); };
-  const filterRoute = (value: string | null) => { setRoute(value); writeParam("route", value); chooseBand(null); };
+  const filterRoute = (value: string | null) => { if (value !== route()) selectTrace(null); setRoute(value); writeParam("route", value); chooseBand(null); };
   const chooseBand = (value: Band | null) => { setBand(value); writeParam("band", bandParam(value)); };
   const filterIssues = (value: IssueState) => { setIssueState(value); writeParam("issues", value === "open" ? null : value); selectIssue(null, false); };
   const filterIntroduced = (value: string | null) => { setIntroducedIn(value); writeParam("introduced", value); selectIssue(null, false); };
