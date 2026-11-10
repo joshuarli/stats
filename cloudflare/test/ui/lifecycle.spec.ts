@@ -279,7 +279,7 @@ test("project A to B navigation at the same range never shows A's data under B",
 
   await page.goto("/#/project/alpha");
   await expect(page.getByRole("heading", { name: "alpha", level: 1 })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Cost ledger" })).toContainText("288,000 req");
+  await expect(page.getByRole("region", { name: "Cost ledger" })).toContainText("3,000 req");
 
   await page.evaluate(() => { window.location.hash = "#/project/bravo"; });
   await expect(page.getByRole("heading", { name: "bravo", level: 1 })).toBeVisible();
@@ -287,7 +287,7 @@ test("project A to B navigation at the same range never shows A's data under B",
   await expect(page.locator(".skeleton-ledger")).toBeVisible();
 
   gateB.release();
-  await expect(page.getByRole("region", { name: "Cost ledger" })).toContainText("1,440,000 req");
+  await expect(page.getByRole("region", { name: "Cost ledger" })).toContainText("15,000 req");
 });
 
 test("host A to B where B fails never shows A's data under B", async ({ page }) => {

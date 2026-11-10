@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
@@ -14,13 +14,14 @@ import { OsLogo } from "../components/OsLogo";
 import { EntityCell, ErrorState, Notice, Widget } from "../components/ui";
 import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
+import { compareSortValues, createSort, SortHeader, type Sort } from "../components/sort";
 
 const PAGE_SIZE = 10;
 const statusLabels = ["online", "stale", "no samples", "revoked"] as const;
 type StatusLabel = (typeof statusLabels)[number];
 const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
-type SortKey = "name" | "status" | "seen";
-interface Sort { readonly key: SortKey; readonly direction: 1 | -1 }
+type SortKey = "name" | "status" | "cpu" | "memory" | "load" | "diskSpace" | "diskIO" | "network";
+const METRIC_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(["cpu", "memory", "load", "diskSpace", "diskIO", "network"]);
 
 function isStatusLabel(label: string): label is StatusLabel {
   return (statusLabels as readonly string[]).includes(label);
@@ -30,14 +31,42 @@ function hostStatus(host: Host): HostStatus {
   return statusFor(host, host.lastReceivedAtMs);
 }
 
-function compareHosts(sort: Sort): (left: Host, right: Host) => number {
+function fleetDiskSpace(row: FleetRow): number | undefined {
+  const trend = worstTrack(row.filesystems.map(entry => ({ times: entry.table.times, values: usedShare(entry.table) })), row.filesystemStepMs);
+  return lastValue(trend.values);
+}
+
+function metricValue(row: FleetRow, key: SortKey): number | null {
+  switch (key) {
+    case "cpu": return lastCell(cpuUsed(row.summary)) ?? null;
+    case "memory": return lastCell(memoryUsed(row.summary)) ?? null;
+    case "load": return lastCell(row.summary.cells("load.one")) ?? null;
+    case "diskSpace": return fleetDiskSpace(row) ?? null;
+    case "diskIO": return sumLatest(row.disks, entry => entry.table.cells("readBytesPerSec")) ?? null;
+    case "network": return sumLatest(row.nets, entry => entry.table.cells("rxBytesPerSec")) ?? null;
+    case "name":
+    case "status": return null;
+  }
+}
+
+function compareHosts(sort: Sort<SortKey>, metricRows: ReadonlyMap<string, FleetRow>): (left: Host, right: Host) => number {
   return (left, right) => {
     const byName = left.name.localeCompare(right.name);
-    const result = sort.key === "name"
+    const key = sort.key;
+    if (METRIC_KEYS.has(key)) {
+      const leftRow = metricRows.get(left.hostId);
+      const rightRow = metricRows.get(right.hostId);
+      const leftValue = leftRow === undefined ? null : metricValue(leftRow, key);
+      const rightValue = rightRow === undefined ? null : metricValue(rightRow, key);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return byName;
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * sort.direction || byName;
+    }
+    const result = key === "name"
       ? byName
-      : sort.key === "status"
-        ? statusRank[hostStatus(left).label] - statusRank[hostStatus(right).label] || byName
-        : (right.lastReceivedAtMs ?? 0) - (left.lastReceivedAtMs ?? 0);
+      : statusRank[hostStatus(left).label] - statusRank[hostStatus(right).label] || byName;
     return result * sort.direction;
   };
 }
@@ -46,29 +75,49 @@ export function FleetPage(): JSX.Element {
   const { query, hosts, now, refreshHosts, tick, manualTick } = useTelemetry();
   const [search, setSearch] = createSignal("");
   const [selected, setSelected] = createSignal<ReadonlySet<StatusLabel>>(new Set<StatusLabel>());
-  const [sort, setSort] = createSignal<Sort>({ key: "status", direction: 1 });
+  const { sort, sortBy } = createSort<SortKey>({ key: "status", direction: 1 });
   const [page, setPage] = createSignal(1);
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
+  const [rowsEpoch, setRowsEpoch] = createSignal(0);
   const rowCache: FleetRowCache = {
     systems: new Map(),
     histories: new Map()
   };
 
-  const filtered = createMemo(() => {
+  const matching = createMemo(() => {
     const text = search().trim().toLowerCase();
     const chosen = selected();
-    const matching = hosts().filter(host => {
+    return hosts().filter(host => {
       const label = hostStatus(host).label;
       const matchesStatus = chosen.size === 0 || (isStatusLabel(label) && chosen.has(label));
       return matchesStatus && (text.length === 0 || host.name.toLowerCase().includes(text) || host.hostId.includes(text));
     });
-    return matching.sort(compareHosts(sort()));
   });
 
-  const pages = createMemo(() => Math.max(1, Math.ceil(filtered().length / PAGE_SIZE)));
-  const currentPage = createMemo(() => Math.min(page(), pages()));
-  const pageHosts = createMemo(() => filtered().slice((currentPage() - 1) * PAGE_SIZE, currentPage() * PAGE_SIZE));
   const rowsRetention = createRefreshRetention();
+  const [metricRows, setMetricRows] = createSignal<readonly FleetRow[]>([]);
+  createEffect(
+    () => ({ key: sort().key, hosts: matching(), query: query(), epoch: rowsEpoch() }),
+    ({ key, hosts, query: queryKey }) => {
+      if (!METRIC_KEYS.has(key)) {
+        setMetricRows([]);
+        return;
+      }
+      void loadFleetRows(hosts, queryKey, { previous: metricRows(), retention: rowsRetention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) }, rowCache)
+        .then(rows => setMetricRows(rows))
+        .catch(() => {});
+    }
+  );
+
+  const sorted = createMemo(() => {
+    const rowsByKey = new Map<string, FleetRow>();
+    if (METRIC_KEYS.has(sort().key)) for (const row of metricRows()) rowsByKey.set(row.host.hostId, row);
+    return [...matching()].sort(compareHosts(sort(), rowsByKey));
+  });
+
+  const pages = createMemo(() => Math.max(1, Math.ceil(sorted().length / PAGE_SIZE)));
+  const currentPage = createMemo(() => Math.min(page(), pages()));
+  const pageHosts = createMemo(() => sorted().slice((currentPage() - 1) * PAGE_SIZE, currentPage() * PAGE_SIZE));
   const rows = createMemo<readonly FleetRow[]>(previous =>
     loadFleetRows(
       pageHosts(),
@@ -83,6 +132,7 @@ export function FleetPage(): JSX.Element {
     setRefreshError(null);
     rowCache.histories.clear();
     if (includeSystem) rowCache.systems.clear();
+    setRowsEpoch(value => value + 1);
     try {
       await Promise.all([refreshHosts(), refresh(rows)]);
     } catch (error) {
@@ -112,8 +162,6 @@ export function FleetPage(): JSX.Element {
     setPage(1);
   };
 
-  const sortBy = (key: SortKey) => setSort(current => ({ key, direction: current.key === key ? (current.direction === 1 ? -1 : 1) : 1 }));
-
   return (
     <>
       <Show when={refreshError()}>
@@ -123,7 +171,7 @@ export function FleetPage(): JSX.Element {
         <Loading fallback={<FleetSkeleton />}>
           <FleetDashboard
             rows={rows()}
-            total={filtered().length}
+            total={sorted().length}
             allTotal={counts().all}
             counts={counts()}
             selected={selected()}
@@ -181,7 +229,7 @@ function FleetDashboard(props: {
   readonly search: string;
   readonly setSearch: (value: string) => void;
   readonly clearFilters: () => void;
-  readonly sort: Sort;
+  readonly sort: Sort<SortKey>;
   readonly sortBy: (key: SortKey) => void;
   readonly page: number;
   readonly pages: number;
@@ -191,16 +239,6 @@ function FleetDashboard(props: {
 }): JSX.Element {
   const from = () => props.total === 0 ? 0 : (props.page - 1) * PAGE_SIZE + 1;
   const to = () => Math.min(props.total, props.page * PAGE_SIZE);
-  const header = (key: SortKey, label: string) => (
-    <th scope="col" aria-sort={props.sort.key === key ? (props.sort.direction === 1 ? "ascending" : "descending") : "none"}>
-      <button class="sort-button" type="button" onClick={() => props.sortBy(key)}>
-        {label}
-        <Show when={props.sort.key === key}>
-          <Icon name={props.sort.direction === 1 ? "sortUp" : "sortDown"} size={10} />
-        </Show>
-      </button>
-    </th>
-  );
   return (
     <>
       <Widget
@@ -231,13 +269,13 @@ function FleetDashboard(props: {
             <table class="data-table" aria-label="Fleet hosts">
               <thead>
                 <tr>
-                  {header("name", "Host")}
-                  <th scope="col">CPU</th>
-                  <th scope="col">Memory</th>
-                  <th scope="col">Load 1m / 5m / 15m</th>
-                  <th scope="col">Disk space</th>
-                  <th scope="col">Disk read / write</th>
-                  <th scope="col">Network in / out</th>
+                  <SortHeader label="Host" sortKey="name" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="CPU" sortKey="cpu" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="Memory" sortKey="memory" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="Load 1m / 5m / 15m" sortKey="load" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="Disk space" sortKey="diskSpace" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="Disk read / write" sortKey="diskIO" sort={props.sort} onSort={props.sortBy} />
+                  <SortHeader label="Network in / out" sortKey="network" sort={props.sort} onSort={props.sortBy} />
                 </tr>
               </thead>
               <tbody>

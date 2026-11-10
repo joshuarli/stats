@@ -2,22 +2,20 @@ import { createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { bytes, count, dollarsPrecise, milliseconds, percent } from "../../format";
 import { metricTrack } from "../../history";
-import { Segmented } from "../../components/ui";
+import { createSort } from "../../components/sort";
 import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
 import { holdLast } from "../../math.ts";
 import { WORKERS_PAID_MONTHLY_FEE } from "../../../cost/pricing.ts";
-import { isResidual, MONTH_MS, monthlyOf, type Amount, type CostLine, type LedgerHistories } from "../../../cost/ledger.ts";
+import { isResidual, monthlyOf, windowUsage, type Amount, type CostLine, type LedgerHistories, type Usage } from "../../../cost/ledger.ts";
 import type { CostReport, PlanBillReport } from "../../../cost/report.ts";
 import "./cost-ledger.css";
 
-type Order = "cost" | "change";
+type LedgerSort = "item" | "cost" | "share" | "change";
 
-const DAYS_PER_MONTH = MONTH_MS / 86_400_000;
 const FOLD_AFTER = 8;
 const COMPONENT_COLORS: Readonly<Record<string, string>> = { worker: "var(--viz-blue)", objects: "var(--viz-violet)", d1: "var(--viz-magenta)", r2: "var(--viz-aqua)" };
 
-const perDay = (amount: Amount): Amount => ({ now: amount.now / DAYS_PER_MONTH, before: amount.before === null ? null : amount.before / DAYS_PER_MONTH });
 const change = (amount: Amount | null): number | null => amount === null || amount.before === null ? null : amount.now - amount.before;
 const per = (part: Amount, whole: Amount): Amount => ({ now: whole.now > 0 ? part.now / whole.now : 0, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
 
@@ -47,18 +45,17 @@ function Ratio(props: { readonly amount: Amount; readonly worseUp?: boolean | un
   return <Show when={ratioText()}>{text => <span class={`ledger-ratio${tone()}`}>{text()}</span>}</Show>;
 }
 
-function usageText(line: CostLine): string {
-  const usage = line.usage;
+function usageText(line: CostLine, usage: Usage): string {
   switch (usage.kind) {
-    case "requests": return `${count(Math.round(perDay(usage.calls).now))} ${line.kind === "worker" ? "req" : "calls"}`;
-    case "objects": return `${count(Math.round(perDay(usage.calls).now))} calls`;
-    case "rows": return usage.queries === null ? `${count(Math.round(perDay(usage.read).now + perDay(usage.written).now))} rows` : `${count(Math.round(perDay(usage.queries).now))} queries`;
+    case "requests": return `${count(Math.round(usage.calls.now))} ${line.kind === "worker" ? "req" : "calls"}`;
+    case "objects": return `${count(Math.round(usage.calls.now))} calls`;
+    case "rows": return usage.queries === null ? `${count(Math.round(usage.read.now + usage.written.now))} rows` : `${count(Math.round(usage.queries.now))} queries`;
     case "stored": return bytes(usage.bytes.now);
     case "none": return "";
   }
 }
 
-function UnitCell(props: { readonly line: CostLine; readonly window: number }): JSX.Element {
+function UnitCell(props: { readonly line: CostLine }): JSX.Element {
   const usage = props.line.usage;
   switch (usage.kind) {
     case "requests": {
@@ -78,8 +75,7 @@ function UnitCell(props: { readonly line: CostLine; readonly window: number }): 
     case "stored": {
       if (usage.bytes.before === null) return <></>;
       const grew = usage.bytes.now - usage.bytes.before;
-      const days = props.window / 86_400_000;
-      return <>{grew >= 0 ? "+" : "−"}{bytes(Math.abs(grew) / days)}/day</>;
+      return <>{grew >= 0 ? "+" : "−"}{bytes(Math.abs(grew))} in window</>;
     }
     case "none": return <></>;
   }
@@ -114,23 +110,24 @@ function Fact(props: { readonly label: string; readonly value: string; readonly 
   return <div class="ledger-fact"><b>{props.value}<Show when={props.amount}>{amount => <Ratio amount={amount()} worseUp={props.worseUp} />}</Show></b><span>{props.label}</span></div>;
 }
 
-function Detail(props: { readonly line: CostLine; readonly histories: LedgerHistories }): JSX.Element {
+function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonly histories: LedgerHistories }): JSX.Element {
   const line = () => props.line;
+  const usage = () => props.usage;
   const facts = (): JSX.Element => {
-    const usage = line().usage;
     const money = line().parts.map(part => <Fact label={`${part.label} $/mo`} value={`${part.bound === "upper" ? "≤ " : ""}${dollarsPrecise(part.monthly)}`} />);
-    switch (usage.kind) {
+    const current = usage();
+    switch (current.kind) {
       case "requests": return <>
-        <Fact label="calls/day" value={count(Math.round(perDay(usage.calls).now))} amount={usage.calls} />
-        <Fact label="CPU/call" value={milliseconds(Number(per(usage.cpuMs, usage.calls).now.toPrecision(2)))} amount={per(usage.cpuMs, usage.calls)} worseUp />
-        <Fact label="CPU/day" value={duration(perDay(usage.cpuMs).now)} amount={usage.cpuMs} worseUp />
+        <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+        <Fact label="CPU/call" value={milliseconds(Number(per(current.cpuMs, current.calls).now.toPrecision(2)))} amount={per(current.cpuMs, current.calls)} worseUp />
+        <Fact label="CPU in window" value={duration(current.cpuMs.now)} amount={current.cpuMs} worseUp />
         {money}
       </>;
       case "objects": return <>
-        <Fact label="calls/day" value={count(Math.round(perDay(usage.calls).now))} amount={usage.calls} />
-        <Fact label="wall/call" value={milliseconds(Number(per(usage.wallMs, usage.calls).now.toPrecision(2)))} amount={per(usage.wallMs, usage.calls)} worseUp />
-        <Fact label="CPU/call" value={milliseconds(Number(per(usage.cpuMs, usage.calls).now.toPrecision(2)))} amount={per(usage.cpuMs, usage.calls)} worseUp />
-        <Show when={usage.latency}>{latency => <>
+        <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+        <Fact label="wall/call" value={milliseconds(Number(per(current.wallMs, current.calls).now.toPrecision(2)))} amount={per(current.wallMs, current.calls)} worseUp />
+        <Fact label="CPU/call" value={milliseconds(Number(per(current.cpuMs, current.calls).now.toPrecision(2)))} amount={per(current.cpuMs, current.calls)} worseUp />
+        <Show when={current.latency}>{latency => <>
           <Fact label="p50 wall" value={milliseconds(latency().p50WallMs)} />
           <Fact label="p95 wall" value={milliseconds(latency().p95WallMs)} />
           <Fact label="failed" value={count(latency().failed)} />
@@ -138,14 +135,14 @@ function Detail(props: { readonly line: CostLine; readonly histories: LedgerHist
         {money}
       </>;
       case "rows": return <>
-        <Show when={usage.queries}>{queries => <Fact label="queries/day" value={count(Math.round(perDay(queries()).now))} amount={queries()} />}</Show>
-        <Fact label="rows read/day" value={count(Math.round(perDay(usage.read).now))} amount={usage.read} worseUp />
-        <Fact label="rows written/day" value={count(Math.round(perDay(usage.written).now))} amount={usage.written} worseUp />
+        <Show when={current.queries}>{queries => <Fact label="queries in window" value={count(Math.round(queries().now))} amount={queries()} />}</Show>
+        <Fact label="rows read in window" value={count(Math.round(current.read.now))} amount={current.read} worseUp />
+        <Fact label="rows written in window" value={count(Math.round(current.written.now))} amount={current.written} worseUp />
         {money}
       </>;
       case "stored": return <>
-        <Fact label="stored" value={bytes(usage.bytes.now)} />
-        <Show when={usage.bytes.before}>{before => <Fact label="at window start" value={bytes(before())} />}</Show>
+        <Fact label="stored" value={bytes(current.bytes.now)} />
+        <Show when={current.bytes.before}>{before => <Fact label="at window start" value={bytes(before())} />}</Show>
         {money}
       </>;
       case "none": return <p class="ledger-note">{noteFor(line())}</p>;
@@ -206,7 +203,7 @@ function MonthNoData(): JSX.Element {
   );
 }
 
-export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly windowLabel: string; readonly spendPending: boolean }): JSX.Element {
+export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly previousHistories: LedgerHistories | undefined; readonly windowLabel: string; readonly spendPending: boolean }): JSX.Element {
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
     const top = props.report.lines[0];
     const first = top?.children.find(child => !isResidual(child));
@@ -215,11 +212,28 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
   const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(initial().expanded);
   const [selected, setSelected] = createSignal<string | null>(initial().selected);
   const [unfolded, setUnfolded] = createSignal<ReadonlySet<string>>(new Set());
-  const [order, setOrder] = createSignal<Order>("cost");
-  const windowMs = () => props.report.windows.current.toMs - props.report.windows.current.fromMs;
+  const { sort, sortBy } = createSort<LedgerSort>({ key: "cost", direction: -1 }, { change: -1 });
   const total = () => props.report.total.monthly.now;
 
-  const sorted = (lines: readonly CostLine[]) => order() === "cost" ? lines : [...lines].sort((left, right) => Number(isResidual(left)) - Number(isResidual(right)) || (change(monthlyOf(right)) ?? -Infinity) - (change(monthlyOf(left)) ?? -Infinity));
+  const sorted = (lines: readonly CostLine[]) => [...lines].sort((left, right) => {
+    const residual = Number(isResidual(left)) - Number(isResidual(right));
+    if (residual !== 0) return residual;
+    const direction = sort().direction;
+    if (sort().key === "item") return left.label.localeCompare(right.label) * direction;
+    const key = sort().key;
+    const value = (line: CostLine): number | null => {
+      if (key === "cost") return monthlyOf(line)?.now ?? null;
+      if (key === "share") return (monthlyOf(line)?.now ?? 0) / Math.max(1e-12, total());
+      return change(monthlyOf(line));
+    };
+    const leftValue = value(left);
+    const rightValue = value(right);
+    if (leftValue === null || rightValue === null) {
+      if (leftValue === null && rightValue === null) return left.label.localeCompare(right.label);
+      return leftValue === null ? 1 : -1;
+    }
+    return (leftValue - rightValue) * direction || left.label.localeCompare(right.label);
+  });
   const toggle = (line: CostLine) => {
     if (line.children.length > 0) {
       setExpanded(current => {
@@ -247,6 +261,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const hidden = () => ordinary().slice(visible().length);
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
+    const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
     return (
       <>
         <button
@@ -267,13 +282,13 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
           <span class="ledger-money">{moneyText(line())}</span>
           <span class="ledger-share"><i style={`width:${Math.max(0.5, share() * 100)}%;background:${rowProps.color}`} /><em>{amount() === null ? "" : percent(Math.round(share() * 1000) / 10)}</em></span>
           <span class="ledger-change"><Delta amount={amount()} /></span>
-          <span class="ledger-usage">{usageText(line())}</span>
-          <span class="ledger-unit"><UnitCell line={line()} window={windowMs()} /></span>
+          <span class="ledger-usage">{usageText(line(), usage())}</span>
+          <span class="ledger-unit"><UnitCell line={line()} /></span>
           <span class="ledger-trend">
             <Show when={trend()}>{track => <Sparkline series={[{ values: track().values }]} times={track().times} window={props.report.windows.current} label={`${line().label} cost`} zeroBased />}</Show>
           </span>
         </button>
-        <Show when={leaf() && selected() === line().id}><Detail line={line()} histories={props.histories} /></Show>
+        <Show when={leaf() && selected() === line().id}><Detail line={line()} usage={usage()} histories={props.histories} /></Show>
         <Show when={!leaf() && open()}>
           <For each={visible()}>{child => <Row line={child} depth={rowProps.depth + 1} color={rowProps.color} />}</For>
           <Show when={hidden().length > 0}>
@@ -310,11 +325,14 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">
-          <span class="ledger-caption">Per day and per call figures cover the same window</span>
-          <Segmented label="Order lines" value={order()} options={[["cost", "By cost"], ["change", "By change"]]} onChange={setOrder} />
+          <span class="ledger-caption">Usage and per-call figures cover the selected window</span>
         </div>
-        <div class="ledger-head" aria-hidden="true">
-          <span>Item</span><span class="num">$/mo</span><span>Share</span><span class="num">Δ $/mo</span><span class="num">Per day</span><span>Unit</span><span>Cost trend</span>
+        <div class="ledger-head">
+          <button class="sort-button" type="button" onClick={() => sortBy("item")}>Item</button>
+          <button class="sort-button num" type="button" onClick={() => sortBy("cost")}>$/mo</button>
+          <button class="sort-button" type="button" onClick={() => sortBy("share")}>Share</button>
+          <button class="sort-button num" type="button" onClick={() => sortBy("change")}>Δ $/mo</button>
+          <span class="num">In window</span><span>Unit</span><span>Cost trend</span>
         </div>
         <For each={sorted(props.report.lines)}>{line => <Row line={line} depth={0} color={COMPONENT_COLORS[line.id] ?? "var(--viz-neutral)"} />}</For>
         <p class="ledger-foot">

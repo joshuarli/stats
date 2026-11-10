@@ -165,6 +165,41 @@ export function coveredMs(history: MetricHistory, window: TimeWindow, only?: rea
   return buckets * history.stepMs;
 }
 
+function usageFactor(kind: LineKind, histories: LedgerHistories, window: TimeWindow): number {
+  const span = Math.max(1, window.toMs - window.fromMs);
+  switch (kind) {
+    case "worker": return MONTH_MS / Math.max(1, coveredMs(histories.worker, window));
+    case "route": return MONTH_MS / Math.max(1, coveredMs(histories.routes, window));
+    case "objects": return histories.durableObjects === undefined ? 1 : MONTH_MS / Math.max(1, coveredMs(histories.durableObjects, window));
+    case "object-method": return MONTH_MS / span;
+    case "d1": return histories.d1 === undefined ? 1 : MONTH_MS / Math.max(1, coveredMs(histories.d1, window));
+    case "statement": return histories.d1Statements === undefined ? 1 : MONTH_MS / Math.max(1, coveredMs(histories.d1Statements, window));
+    case "bucket":
+    case "d1-storage":
+    case "object-storage":
+    case "r2":
+    case "uncollected":
+    case "unrouted": return 1;
+  }
+}
+
+export function windowUsage(line: CostLine, histories: LedgerHistories, previous: LedgerHistories | undefined, window: TimeWindow, previousWindow: TimeWindow): Usage {
+  const nowFactor = usageFactor(line.kind, histories, window);
+  const beforeFactor = previous === undefined ? 1 : usageFactor(line.kind, previous, previousWindow);
+  const scale = (amount: Amount): Amount => ({
+    now: amount.now / nowFactor,
+    before: amount.before === null ? null : amount.before / beforeFactor
+  });
+  const usage = line.usage;
+  switch (usage.kind) {
+    case "requests": return { kind: "requests", calls: scale(usage.calls), cpuMs: scale(usage.cpuMs) };
+    case "objects": return { kind: "objects", calls: scale(usage.calls), wallMs: scale(usage.wallMs), cpuMs: scale(usage.cpuMs), latency: usage.latency };
+    case "rows": return { kind: "rows", read: scale(usage.read), written: scale(usage.written), queries: usage.queries === null ? null : scale(usage.queries) };
+    case "stored":
+    case "none": return usage;
+  }
+}
+
 function sampler(input: LedgerInput): Sampler {
   const cache = { now: new Map<MetricHistory, number | null>(), before: new Map<MetricHistory, number | null>() };
   const factor = (history: MetricHistory, window: TimeWindow, requireStart: boolean): number | null => {

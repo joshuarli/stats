@@ -7,6 +7,7 @@ import { loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
 import { ErrorState, Widget } from "../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import { createServiceDeployments, DeploymentRail, DeploymentsWidget } from "./project/Deployments";
 import { DeploymentEvents } from "../components/DeploymentEvents";
@@ -146,6 +147,27 @@ function describeWork(value: Totals | null): string {
 }
 
 function ServiceWork(props: { readonly comparison: ServiceComparison | null; readonly application: string | null; readonly work: readonly WorkSummary[]; readonly issues: readonly IssueSummary[] | null; readonly issuesUnavailable: boolean }): JSX.Element {
+  const { sort, sortBy } = createSort<"none" | "operation" | "events" | "failure" | "latency">({ key: "none", direction: 1 });
+  const rows = () => {
+    const key = sort().key;
+    if (key === "none") return props.work;
+    const direction = sort().direction;
+    const value = (summary: WorkSummary): number | string | null => {
+      if (key === "operation") return summary.operation;
+      if (key === "events") return summary.after.successes + summary.after.failures;
+      if (key === "failure") return summary.after.failureRate;
+      return summary.after.meanDurationMs;
+    };
+    return [...props.work].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.operation.localeCompare(right.operation);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.operation.localeCompare(right.operation);
+    });
+  };
   return (
     <Widget id="service-work" class="wide" title="Application work">
       <Show when={props.comparison !== null} fallback={<p class="panel-label">Collecting usage since the deploy…</p>}>
@@ -157,9 +179,15 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
             <WorkTimeline before={props.work[0]!.before} after={props.work[0]!.after} marker={props.comparison!.after.fromMs} />
             <div class="table-scroll" role="region" aria-label="Application operations">
               <table class="data-table compact service-work-table" aria-label="Application operations">
-                <thead><tr><th>Operation</th><th class="numeric">Events before → after</th><th class="numeric">Failure before → after</th><th class="numeric">Mean latency before → after</th><th>Work per unit</th></tr></thead>
+                <thead><tr>
+                  <SortHeader label="Operation" sortKey="operation" sort={sort()} onSort={sortBy} />
+                  <SortHeader label="Events before → after" sortKey="events" sort={sort()} onSort={sortBy} class="numeric" />
+                  <SortHeader label="Failure before → after" sortKey="failure" sort={sort()} onSort={sortBy} class="numeric" />
+                  <SortHeader label="Mean latency before → after" sortKey="latency" sort={sort()} onSort={sortBy} class="numeric" />
+                  <th>Work per unit</th>
+                </tr></thead>
                 <tbody>
-                  <For each={props.work}>{summary => (
+                  <For each={rows()}>{summary => (
                     <tr>
                       <th scope="row" class="mono">{summary.operation}</th>
                       <td class="numeric">{summary.before.successes + summary.before.failures} → {summary.after.successes + summary.after.failures}</td>

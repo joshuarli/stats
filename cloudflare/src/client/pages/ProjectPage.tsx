@@ -34,6 +34,10 @@ import type { TimeWindow } from "../chart-data";
 
 type SectionId = "overview" | "deploys" | "errors" | "requests" | "signals";
 const SECTION_IDS: readonly SectionId[] = ["overview", "deploys", "errors", "requests", "signals"];
+
+function isSectionId(value: string): value is SectionId {
+  return (SECTION_IDS as readonly string[]).includes(value);
+}
 const IssuesWidget = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.IssuesWidget })));
 const ObserveModal = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.ObserveModal })));
 const RolloutImpactPanel = lazy(() => import("./project/ObserveSection").then(module => ({ default: module.RolloutImpactPanel })));
@@ -73,9 +77,8 @@ function initialSection(observed: boolean): SectionId {
   const linked = LINKED_SECTIONS.find(([param]) => readParam(param) !== null)?.[1];
   if (linked !== undefined && (observed || (linked !== "errors" && linked !== "requests"))) return linked;
   const section = readParam("section");
-  if (section !== null && (SECTION_IDS as readonly string[]).includes(section)) {
-    const id = section as SectionId;
-    if (observed || (id !== "errors" && id !== "requests")) return id;
+  if (section !== null && isSectionId(section)) {
+    if (observed || (section !== "errors" && section !== "requests")) return section;
   }
   const opened = (readParam("open") ?? "").split(",").find((entry): entry is SectionId => (SECTION_IDS as readonly string[]).includes(entry));
   if (opened !== undefined && opened !== "overview" && (observed || (opened !== "errors" && opened !== "requests"))) return opened;
@@ -270,7 +273,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                     <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
                   )}</Show>
                   <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} class="skeleton-ledger" /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
-                    {current => <CostLedger report={current().report} histories={current().histories} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
+                    {current => <CostLedger report={current().report} histories={current().histories} previousHistories={current().previous} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} />}
                   </Show>
                 </Show>
               </Loading>

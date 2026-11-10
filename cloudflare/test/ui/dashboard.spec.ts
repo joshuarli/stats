@@ -619,7 +619,7 @@ test("the projects table compares each project's settled window with the one bef
   await mock(page, { baselineScale: 0.5, probes: true });
   await page.goto("/#/projects");
   const row = page.locator(".projects-row", { hasText: "stuff" });
-  await expect(row).toContainText("288,000");
+  await expect(row).toContainText("12,000");
   await expect(row).toContainText("2.0×");
   await expect(row).toContainText("$3.12/mo");
   await expect(row).toContainText("+$1.56");
@@ -643,7 +643,7 @@ test("a projects row does not keep the previous range's figures when the new ran
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(row).toContainText("unavailable");
   await expect(row).not.toContainText("$3.12/mo");
-  await expect(row).not.toContainText("288,000");
+  await expect(row).not.toContainText("12,000");
 });
 
 function watchChartCode(page: Page): () => Promise<boolean> {
@@ -849,7 +849,7 @@ test("the project page leads with a cost ledger and keeps every other section cl
   await expect(ledger.locator(".ledger-amount")).toHaveText("$3.12/mo");
   await expect(ledgerRow(page, "worker")).toContainText("$3.11");
   await expect(ledgerRow(page, "worker")).toContainText("requests $2.59 · CPU $0.52");
-  await expect(ledgerRow(page, "worker")).toContainText("288,000 req");
+  await expect(ledgerRow(page, "worker")).toContainText("12,000 req");
   await expect(ledgerRow(page, "worker")).toContainText("3 ms CPU/req");
   await expect(ledgerRow(page, "r2")).toContainText("$0.01");
   const routes = page.locator(".ledger-row.depth-1");
@@ -860,7 +860,7 @@ test("the project page leads with a cost ledger and keeps every other section cl
   await expect(routes.nth(1)).toContainText("GET /api/v1/projects");
   await expect(routes.nth(2)).toContainText("not attributed to a route");
   await expect(ledgerRow(page, "route:POST /ingest")).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator(".ledger-detail")).toContainText("20,160");
+  await expect(page.locator(".ledger-detail")).toContainText("840");
   await expect(page.locator(".ledger-detail").getByRole("img", { name: /^CPU time per bucket;/u })).toBeVisible();
   for (const title of ["Deployments", "Signals"]) await expect(page.locator(".project-section-head", { hasText: title })).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator(".widget")).toHaveCount(0);
@@ -871,7 +871,24 @@ test("the project page leads with a cost ledger and keeps every other section cl
 
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect.poll(() => requests.some(request => request.includes("/projects/stuff/history?range=24h&kinds=") && request.includes("worker"))).toBe(true);
-  await expect(ledgerRow(page, "worker")).toContainText("288,000 req");
+  await expect(ledgerRow(page, "worker")).toContainText("12,000 req");
+});
+
+test("the cost ledger sorts its rows by any column header", async ({ page }) => {
+  await mock(page, { durableObjects: true, d1: true });
+  await page.goto("/#/project/stuff");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  const topLabels = () => ledger.locator(".ledger-row.depth-0 .ledger-label > span").allTextContents();
+  await expect(ledgerRow(page, "worker")).toBeVisible();
+  const before = await topLabels();
+  await ledger.getByRole("button", { name: "Item", exact: true }).click();
+  const sorted = await topLabels();
+  expect(sorted).toEqual([...before].sort((left, right) => left.localeCompare(right)));
+  await ledger.getByRole("button", { name: "Item", exact: true }).click();
+  expect(await topLabels()).toEqual([...sorted].reverse());
+  await ledger.getByRole("button", { name: "$/mo", exact: true }).click();
+  await ledger.getByRole("button", { name: "$/mo", exact: true }).click();
+  expect(await topLabels()).toEqual(before);
 });
 
 test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {
@@ -896,7 +913,7 @@ test("selecting a ledger line opens its detail, and ordering by change surfaces 
   await expect(ledgerRow(page, "route:GET /api/v1/projects")).toHaveAttribute("aria-expanded", "true");
   await expect(ledgerRow(page, "route:POST /ingest")).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator(".ledger-detail")).toContainText("1.7 ms");
-  await page.getByRole("button", { name: "By change" }).click();
+  await page.getByRole("button", { name: "Δ $/mo", exact: true }).click();
   await expect(page.locator(".ledger-row.depth-0").first()).toContainText("Worker");
   await ledgerRow(page, "worker").click();
   await expect(page.locator(".ledger-row.depth-1")).toHaveCount(0);

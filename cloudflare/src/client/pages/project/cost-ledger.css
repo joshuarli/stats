@@ -20,6 +20,8 @@
 .ledger-head, .ledger-row { display: grid; grid-template-columns: minmax(220px, 2.4fr) 92px minmax(90px, 0.9fr) 84px 96px minmax(130px, 1.1fr) 112px; gap: var(--space-md); align-items: center; padding: 0 var(--inset); }
 .ledger-head { padding-top: var(--space-sm); padding-bottom: var(--space-sm); font-size: var(--fs-label); color: var(--muted); text-transform: uppercase; letter-spacing: var(--caps-tracking); border-bottom: 1px solid var(--line); }
 .ledger-head .num { text-align: right; }
+.ledger-head .sort-button { display: flex; width: 100%; }
+.ledger-head .sort-button.num { justify-content: flex-end; }
 .ledger-row { width: 100%; min-height: var(--row-height-compact); padding-top: var(--space-xs); padding-bottom: var(--space-xs); border-bottom: 1px solid var(--line); text-align: left; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
 .ledger-row:hover { background: var(--hover); }
 .ledger-row.selected { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }

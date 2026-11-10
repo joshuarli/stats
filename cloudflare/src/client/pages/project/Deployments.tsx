@@ -6,6 +6,7 @@ import { minimumZoomMs, useTelemetry, type Range } from "../../state";
 import { readParam, writeParam } from "../../urlState";
 import { Skeleton } from "@laputa-systems/ui-dashboard";
 import { createPagedList, jumpTo, ShowMore, Widget } from "../../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { Info, Term } from "../../components/Info";
 import { decodeDeploymentComparison, decodeDeploymentHistory } from "../../../deployments/decode";
 import { decodeServiceComparison, decodeServiceDeploymentHistory } from "../../../deployments/service-decode";
@@ -227,6 +228,22 @@ function sourcesOf(comparison: AnyComparison): ServiceComparison["sources"] | nu
 function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Element {
   const windows = () => `Before ${span(props.comparison.before)}. After ${span(props.comparison.after)}. The bucket the deployment landed in and the bucket after it are excluded.`;
   const caveats = () => props.comparison.warnings.length;
+  const { sort, sortBy } = createSort<"none" | "metric" | "value">({ key: "none", direction: 1 });
+  const rows = () => {
+    const metrics = props.comparison.metrics.filter(metric => metric.supersededBy === undefined);
+    const key = sort().key;
+    if (key === "none") return metrics;
+    const direction = sort().direction;
+    return [...metrics].sort((left, right) => {
+      const leftValue = key === "metric" ? left.label : left.after ?? left.before;
+      const rightValue = key === "metric" ? right.label : right.after ?? right.before;
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.label.localeCompare(right.label);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.label.localeCompare(right.label);
+    });
+  };
   return (
     <>
       <p class="deployment-windows sources-line">
@@ -244,9 +261,9 @@ function ComparisonTable(props: { readonly comparison: AnyComparison }): JSX.Ele
       </Show>
       <div class="table-scroll" role="region" aria-label="Deployment metric comparison">
         <table class="data-table compact deployment-table">
-          <thead><tr><th>Metric</th><th class="numeric">Before → after</th></tr></thead>
+          <thead><tr><SortHeader label="Metric" sortKey="metric" sort={sort()} onSort={sortBy} /><SortHeader label="Before → after" sortKey="value" sort={sort()} onSort={sortBy} class="numeric" /></tr></thead>
           <tbody>
-            <For each={props.comparison.metrics.filter(metric => metric.supersededBy === undefined)}>{metric => (
+            <For each={rows()}>{metric => (
               <tr>
                 <th scope="row">{metric.label}</th>
                 <td class="numeric" title={metric.verdict.replaceAll("-", " ")}>

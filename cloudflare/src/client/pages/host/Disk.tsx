@@ -10,6 +10,7 @@ import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, Meter } from "@laputa-systems/ui-dashboard";
 import { HealthMark, Widget } from "../../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { PressureChart } from "./Psi";
 import { colorsFor, PanelLabel, perSecond, activeSeries, topSeries, PanelChart } from "./shared";
 
@@ -22,7 +23,34 @@ export function DiskWidget(props: {
   readonly psiWindow: PsiWindow;
 }): JSX.Element {
   const { view } = useTelemetry();
+  const { sort, sortBy } = createSort<"none" | "device" | "read" | "write" | "iops" | "latency" | "queue" | "busy">({ key: "none", direction: 1 });
   const active = createMemo(() => activeSeries(props.series, props.stepMs));
+  const rows = createMemo(() => {
+    const key = sort().key;
+    if (key === "none") return active();
+    const direction = sort().direction;
+    const value = (entry: DiskSeries): number | string | null => {
+      if (key === "device") return entry.name ?? entry.id;
+      const range = windowIndexes(entry.table.times, view());
+      const row = range[1] >= range[0] ? range[1] : undefined;
+      if (row === undefined) return null;
+      if (key === "read") return entry.table.at("readBytesPerSec", row) ?? null;
+      if (key === "write") return entry.table.at("writeBytesPerSec", row) ?? null;
+      if (key === "iops") return entry.table.at("readsPerSec", row) ?? null;
+      if (key === "latency") return entry.table.at("readLatencyMs", row) ?? null;
+      if (key === "queue") return entry.table.at("queueDepth", row) ?? null;
+      return entry.table.at("busyPct", row) ?? null;
+    };
+    return [...active()].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.id.localeCompare(right.id);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.id.localeCompare(right.id);
+    });
+  });
   const shown = createMemo(() => topSeries(props.series, table => table.cells("busyPct")));
   const colors = createMemo(() => colorsFor(shown()));
   const reportsPressure = createMemo(() => props.summary.has("psi.io"));
@@ -118,9 +146,17 @@ export function DiskWidget(props: {
           </Show>
           <div class="table-scroll flush-table">
             <table class="data-table compact" aria-label="Disk activity">
-              <thead><tr><th scope="col">Device</th><th scope="col">Read</th><th scope="col">Write</th><th scope="col">IOPS read / write</th><Show when={reportsLatencyTable()}><th scope="col">Latency read / write</th></Show><Show when={reportsQueue()}><th scope="col">Queue</th></Show><Show when={reportsBusy()}><th scope="col">Busy</th><th scope="col">Trend</th></Show></tr></thead>
+              <thead><tr>
+                <SortHeader label="Device" sortKey="device" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Read" sortKey="read" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Write" sortKey="write" sort={sort()} onSort={sortBy} />
+                <SortHeader label="IOPS read / write" sortKey="iops" sort={sort()} onSort={sortBy} />
+                <Show when={reportsLatencyTable()}><SortHeader label="Latency read / write" sortKey="latency" sort={sort()} onSort={sortBy} /></Show>
+                <Show when={reportsQueue()}><SortHeader label="Queue" sortKey="queue" sort={sort()} onSort={sortBy} /></Show>
+                <Show when={reportsBusy()}><SortHeader label="Busy" sortKey="busy" sort={sort()} onSort={sortBy} /><th scope="col">Trend</th></Show>
+              </tr></thead>
               <tbody>
-                <For each={active()}>
+                <For each={rows()}>
                   {(entry) => {
                     const range = () => windowIndexes(entry.table.times, view());
                     const row = () => (range()[1] >= range()[0] ? range()[1] : undefined);

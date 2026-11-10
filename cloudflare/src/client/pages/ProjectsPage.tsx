@@ -8,16 +8,26 @@ import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../state";
 import { metricTrack, type MetricHistory, type ProjectHistories } from "../history";
 import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
 import { EntityCell, ErrorState, StateCell, Widget } from "../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
 import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
 import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
-import { MONTH_MS, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
+import { windowUsage, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
 import "./project/projects.css";
 
-const DAYS_PER_MONTH = MONTH_MS / 86_400_000;
 const Trends = lazy(() => import("./project/Trends").then(module => ({ default: module.Trends })));
+
+interface ProjectMetrics {
+  readonly requests: number | null;
+  readonly cpuMs: number | null;
+  readonly cost: number | null;
+  readonly errorShare: number | null;
+  readonly deployAtMs: number | null;
+}
+
+type ProjectSort = "none" | "name" | "requests" | "errors" | "cpu" | "cost" | "deploy" | "collector";
 
 export function ProjectsPage(): JSX.Element {
   return (
@@ -30,10 +40,45 @@ export function ProjectsPage(): JSX.Element {
 }
 
 function Projects(): JSX.Element {
-  const { range, tick, manualTick } = useTelemetry();
+  const { range, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
+  const { sort, sortBy } = createSort<ProjectSort>({ key: "none", direction: 1 });
+  const [metrics, setMetrics] = createSignal<ReadonlyMap<string, ProjectMetrics>>(new Map());
+  const reportMetrics = (id: string, value: ProjectMetrics) => setMetrics(current => {
+    const existing = current.get(id);
+    if (existing !== undefined && existing.requests === value.requests && existing.cpuMs === value.cpuMs && existing.cost === value.cost && existing.errorShare === value.errorShare && existing.deployAtMs === value.deployAtMs) return current;
+    const next = new Map(current);
+    next.set(id, value);
+    return next;
+  });
+  const sortedProjects = createMemo(() => {
+    const key = sort().key;
+    if (key === "none") return projects();
+    const direction = sort().direction;
+    const values = metrics();
+    const value = (project: Project): number | string | null => {
+      if (key === "name") return project.name;
+      if (key === "collector") return collectorStatus(project.collector, now()).label;
+      const entry = values.get(project.id);
+      if (entry === undefined) return null;
+      if (key === "requests") return entry.requests;
+      if (key === "cpu") return entry.cpuMs;
+      if (key === "cost") return entry.cost;
+      if (key === "errors") return entry.errorShare;
+      return entry.deployAtMs;
+    };
+    return [...projects()].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.id.localeCompare(right.id);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.id.localeCompare(right.id);
+    });
+  });
   return (
     <Show
       when={projects().length > 0}
@@ -54,17 +99,17 @@ function Projects(): JSX.Element {
           <table class="data-table projects-table" aria-label="Projects">
             <thead>
               <tr>
-                <th scope="col">Project</th>
-                <th scope="col" class="numeric">Requests</th>
-                <th scope="col" class="numeric">5xx</th>
-                <th scope="col" class="numeric">CPU</th>
-                <th scope="col" class="numeric">Est. cost</th>
-                <th scope="col">Last deploy</th>
-                <th scope="col">Collector</th>
+                <SortHeader label="Project" sortKey="name" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Requests" sortKey="requests" sort={sort()} onSort={sortBy} class="numeric" />
+                <SortHeader label="5xx" sortKey="errors" sort={sort()} onSort={sortBy} class="numeric" />
+                <SortHeader label="CPU" sortKey="cpu" sort={sort()} onSort={sortBy} class="numeric" />
+                <SortHeader label="Est. cost" sortKey="cost" sort={sort()} onSort={sortBy} class="numeric" />
+                <SortHeader label="Last deploy" sortKey="deploy" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Collector" sortKey="collector" sort={sort()} onSort={sortBy} />
                 <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
-            <For each={projects()}>{(project) => <ProjectRow project={project} />}</For>
+            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} reportMetrics={reportMetrics} />}</For>
           </table>
         </div>
       </Widget>
@@ -105,7 +150,7 @@ function Change(props: { readonly amount: Amount | null; readonly worseUp: boole
   return <Show when={text()}>{value => <span class={`projects-change${tone()}`}>{value()}</span>}</Show>;
 }
 
-function ProjectRow(props: { readonly project: Project }): JSX.Element {
+function ProjectRow(props: { readonly project: Project; readonly reportMetrics: (id: string, value: ProjectMetrics) => void }): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const refreshKey = () => `${projectTick()}:${manualTick()}`;
@@ -169,14 +214,19 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
   );
 
   const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
-  const perDay = (amount: Amount): Amount => ({ now: amount.now / DAYS_PER_MONTH, before: amount.before === null ? null : amount.before / DAYS_PER_MONTH });
+  const workerUsage = () => {
+    const line = worker();
+    const value = loaded();
+    if (line === undefined || value === null || value === undefined) return null;
+    return windowUsage(line, value.histories, value.previous, value.report.windows.current, value.report.windows.previous);
+  };
   const calls = () => {
-    const usage = worker()?.usage;
-    return usage?.kind === "requests" ? perDay(usage.calls) : null;
+    const usage = workerUsage();
+    return usage?.kind === "requests" ? usage.calls : null;
   };
   const cpu = () => {
-    const usage = worker()?.usage;
-    return usage?.kind === "requests" ? perDay(usage.cpuMs) : null;
+    const usage = workerUsage();
+    return usage?.kind === "requests" ? usage.cpuMs : null;
   };
   const serverErrors = () => {
     const value = loaded();
@@ -201,6 +251,25 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
     const deployment = history?.deployments[0];
     return history === null || deployment === undefined ? null : { title: deploymentTitle(history, deployment), atMs: deployment.atMs };
   };
+  createEffect(
+    () => ({
+      id: props.project.id,
+      requests: calls()?.now ?? null,
+      cpuMs: cpu()?.now ?? null,
+      cost: loaded()?.report.total.monthly.now ?? null,
+      errorShare: serverErrors()?.current.share ?? null,
+      deployAtMs: latest()?.atMs ?? null
+    }),
+    value => {
+      props.reportMetrics(value.id, {
+        requests: value.requests,
+        cpuMs: value.cpuMs,
+        cost: value.cost,
+        errorShare: value.errorShare,
+        deployAtMs: value.deployAtMs
+      });
+    }
+  );
   const cpuDuration = (value: number) => value >= 3_600_000 ? `${(value / 3_600_000).toPrecision(3)} h` : value >= 60_000 ? `${(value / 60_000).toPrecision(3)} min` : value >= 1000 ? `${(value / 1000).toPrecision(3)} s` : milliseconds(Math.round(value));
   const pending = () => failure() === null ? (worker()?.price.kind === "uncollected" ? <span class="cell-note">no data</span> : <span class="cell-pending" aria-hidden="true" />) : <span class="cell-note" title={failure() ?? undefined}>unavailable</span>;
 
@@ -216,7 +285,7 @@ function ProjectRow(props: { readonly project: Project }): JSX.Element {
           />
         </td>
         <td class="numeric">
-          <Show when={calls()} fallback={pending()}>{amount => <span class="cell-stack"><span>{count(Math.round(amount().now))}<Change amount={amount()} worseUp={null} /></span><span class="cell-note">per day</span></span>}</Show>
+          <Show when={calls()} fallback={pending()}>{amount => <span class="cell-stack"><span>{count(Math.round(amount().now))}<Change amount={amount()} worseUp={null} /></span><span class="cell-note">in {range()}</span></span>}</Show>
         </td>
         <td class="numeric">
           <Show when={serverErrors()} fallback={loaded() !== null ? <span class="cell-note">—</span> : pending()}>{value => (

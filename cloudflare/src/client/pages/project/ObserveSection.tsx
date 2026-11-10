@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { age, count } from "../../format";
 import { useTelemetry } from "../../state";
 import { createPagedList, Segmented, ShowMore, Widget } from "../../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { decodeImpact, decodeIssue, decodeOccurrences, decodeTrace } from "../../../observe/client/decode";
 import { Modal, Skeleton } from "@laputa-systems/ui-dashboard";
 import { Info, Term } from "../../components/Info";
@@ -19,7 +20,19 @@ function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences
   const o = props.observe;
   const issue = () => props.issue;
   const representative = () => props.occurrences?.items[0] ?? null;
-  const occurrences = createPagedList(() => props.occurrences?.items ?? [], OCCURRENCE_PAGE);
+  const { sort, sortBy } = createSort<"none" | "when" | "version" | "source">({ key: "none", direction: 1 });
+  const occurrenceItems = createMemo(() => {
+    const items = props.occurrences?.items ?? [];
+    const key = sort().key;
+    if (key === "none") return items;
+    const direction = sort().direction;
+    return [...items].sort((left, right) => {
+      const leftValue = key === "when" ? left.atMs : key === "version" ? (left.version ?? "") : left.source;
+      const rightValue = key === "when" ? right.atMs : key === "version" ? (right.version ?? "") : right.source;
+      return compareSortValues(leftValue, rightValue) * direction || left.atMs - right.atMs;
+    });
+  });
+  const occurrences = createPagedList(occurrenceItems, OCCURRENCE_PAGE);
   return (
     <>
       <div class="issue-head">
@@ -42,7 +55,12 @@ function IssueDetail(props: { readonly issue: IssueSummary; readonly occurrences
       <h3 class="observe-subhead">Occurrences</h3>
       <div class="table-scroll" role="region" aria-label="Occurrences">
         <table class="data-table compact occurrence-table">
-          <thead><tr><th>When</th><th>Version</th><th>Source</th><th class="numeric">Trace</th></tr></thead>
+          <thead><tr>
+            <SortHeader label="When" sortKey="when" sort={sort()} onSort={sortBy} />
+            <SortHeader label="Version" sortKey="version" sort={sort()} onSort={sortBy} />
+            <SortHeader label="Source" sortKey="source" sort={sort()} onSort={sortBy} />
+            <th class="numeric">Trace</th>
+          </tr></thead>
           <tbody>
             <For each={occurrences.visible()}>{occurrence => (
               <tr>
@@ -143,8 +161,25 @@ function cpuChange(shift: RouteShift): JSX.Element {
 const IMPACT_CPU_ROWS = 8;
 
 function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
+  const { sort, sortBy } = createSort<"significance" | "route" | "cpu" | "change">({ key: "significance", direction: 1 });
   const shifts = () => props.impact.routes.map(route => routeShift(route, props.impact.introduced)).filter(shift => shift.before !== null && shift.after !== null);
-  const shown = () => [...shifts()].sort((a, b) => Number(b.exceedsTwoStdErr) - Number(a.exceedsTwoStdErr)).slice(0, IMPACT_CPU_ROWS);
+  const shown = () => {
+    const all = [...shifts()];
+    const key = sort().key;
+    const direction = sort().direction;
+    const sorted = key === "significance"
+      ? all.sort((a, b) => Number(b.exceedsTwoStdErr) - Number(a.exceedsTwoStdErr))
+      : all.sort((a, b) => {
+        const leftValue = key === "route" ? a.label : key === "cpu" ? a.after!.cpuMeanMs : a.cpuChangeMs ?? null;
+        const rightValue = key === "route" ? b.label : key === "cpu" ? b.after!.cpuMeanMs : b.cpuChangeMs ?? null;
+        if (leftValue === null || rightValue === null) {
+          if (leftValue === null && rightValue === null) return a.label.localeCompare(b.label);
+          return leftValue === null ? 1 : -1;
+        }
+        return compareSortValues(leftValue, rightValue) * direction || a.label.localeCompare(b.label);
+      });
+    return sorted.slice(0, IMPACT_CPU_ROWS);
+  };
   return (
     <Show when={shifts().length > 0}>
       <h3 class="observe-subhead impact-cpu-head">CPU by route <Info title="CPU by route">Mean CPU from every stored invocation, recorded in whole milliseconds. A change is colored only when it exceeds twice its combined standard error. The pnpm observe deployment command lists every route.</Info></h3>
@@ -152,9 +187,9 @@ function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
         <table class="data-table compact impact-cpu">
           <thead>
             <tr>
-              <th>Route</th>
-              <th class="numeric impact-cpu-value">CPU per call</th>
-              <th class="numeric impact-cpu-change">Change</th>
+              <SortHeader label="Route" sortKey="route" sort={sort()} onSort={sortBy} />
+              <SortHeader label="CPU per call" sortKey="cpu" sort={sort()} onSort={sortBy} class="numeric impact-cpu-value" />
+              <SortHeader label="Change" sortKey="change" sort={sort()} onSort={sortBy} class="numeric impact-cpu-change" />
             </tr>
           </thead>
           <tbody>
@@ -168,7 +203,7 @@ function ImpactCpu(props: { readonly impact: RolloutImpact }): JSX.Element {
           </tbody>
         </table>
       </div>
-      <Show when={shifts().length > shown().length}><p class="observe-footnote">Showing {shown().length} of {shifts().length} routes; significant changes first.</p></Show>
+      <Show when={shifts().length > shown().length}><p class="observe-footnote">Showing {shown().length} of {shifts().length} routes{sort().key === "significance" ? "; significant changes first" : ""}.</p></Show>
     </Show>
   );
 }

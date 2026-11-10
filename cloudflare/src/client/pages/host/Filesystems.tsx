@@ -8,6 +8,7 @@ import { CapacityBar } from "../../components/CapacityBar";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState } from "@laputa-systems/ui-dashboard";
 import { HealthMark, Widget } from "../../components/ui";
+import { createSort, SortHeader } from "../../components/sort";
 import { colorsFor, activeSeries, topSeries, PanelChart } from "./shared";
 
 export function FilesystemsWidget(props: {
@@ -18,7 +19,20 @@ export function FilesystemsWidget(props: {
   const active = createMemo(() => activeSeries(props.series, props.stepMs));
   const charted = createMemo(() => topSeries(active(), usedShare));
   const colors = createMemo(() => colorsFor(charted()));
-  const rows = createMemo(() => [...active()].sort((left, right) => (lastCell(usedShare(right.table)) ?? 0) - (lastCell(usedShare(left.table)) ?? 0)));
+  const { sort, sortBy } = createSort<"mount" | "capacity">({ key: "capacity", direction: -1 });
+  const rows = createMemo(() => {
+    const direction = sort().direction;
+    return [...active()].sort((left, right) => {
+      if (sort().key === "mount") return left.id.localeCompare(right.id) * direction;
+      const leftValue = lastCell(usedShare(left.table)) ?? null;
+      const rightValue = lastCell(usedShare(right.table)) ?? null;
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.id.localeCompare(right.id);
+        return leftValue === null ? 1 : -1;
+      }
+      return (leftValue - rightValue) * direction || left.id.localeCompare(right.id);
+    });
+  });
   return (
     <Widget id="filesystems" title="Filesystems" expandable>
       {props.series.length === 0 ? <EmptyState title="No filesystem series in this range." icon="disk" /> : (
@@ -35,7 +49,7 @@ export function FilesystemsWidget(props: {
           />
           <div class="table-scroll flush-table">
             <table class="data-table compact" aria-label="Filesystem capacity">
-              <thead><tr><th scope="col" /><th scope="col">Mount</th><th scope="col">Capacity</th></tr></thead>
+              <thead><tr><th scope="col" /><SortHeader label="Mount" sortKey="mount" sort={sort()} onSort={sortBy} /><SortHeader label="Capacity" sortKey="capacity" sort={sort()} onSort={sortBy} /></tr></thead>
               <tbody>
                 <For each={rows()}>
                   {(entry) => {

@@ -2,7 +2,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { alignTracks, windowIndexes, windowStats } from "../chart-data";
+import { alignTracks, windowIndexes, windowStats, type WindowStats } from "../chart-data";
 import type { Track } from "../columns";
 import { createUpdateEffect } from "../effect";
 import { axisTime, clock, percent } from "../format";
@@ -10,6 +10,7 @@ import { episodeText, evaluate, healthOf, markersOf, type Health, type Limits } 
 import { useTelemetry } from "../state";
 import { placeEvents } from "./event-layout";
 import { HealthMark } from "./ui";
+import { compareSortValues, createSort, SortHeader } from "./sort";
 
 export type VizColor = "blue" | "aqua" | "violet" | "magenta" | "neutral" | "ghost" | "serious" | "critical" | "ramp-1" | "ramp-2" | "ramp-3" | "ramp-4" | "ramp-5";
 
@@ -137,6 +138,36 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     for (let position = 1; position < total; position += 1) if (shownText(position) !== first) return undefined;
     return first;
   };
+
+  const { sort, sortBy } = createSort<"none" | "series" | "min" | "avg" | "max" | "last">({ key: "none", direction: 1 });
+  const legendRows = createMemo(() => {
+    const rows = series().map((entry, position) => ({
+      entry,
+      position,
+      stats: windowStats(aligned().columns[position] ?? [], span()[0], span()[1])
+    }));
+    const key = sort().key;
+    if (key === "none") return rows;
+    const direction = sort().direction;
+    const value = (row: { readonly entry: ChartSeries; readonly stats: WindowStats | undefined; readonly position: number }): number | string | null => {
+      if (key === "series") return row.entry.label;
+      if (key === "min") return row.stats?.min ?? null;
+      if (key === "avg") return row.stats?.avg ?? null;
+      if (key === "max") return row.stats?.max ?? null;
+      const index = cursor();
+      const column = aligned().columns[row.position] ?? [];
+      return index === null ? (settledValue(row.position) ?? null) : (column[index] ?? null);
+    };
+    return [...rows].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.entry.label.localeCompare(right.entry.label);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.entry.label.localeCompare(right.entry.label);
+    });
+  });
 
   const mirrored = createMemo(() => series().some(entry => entry.mirror === true));
   const data = createMemo((): uPlot.AlignedData => {
@@ -659,15 +690,23 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
         <div class="chart-legend-scroll" role="region" aria-label={`${props.label} series statistics`} tabindex="0">
           <table class="chart-legend">
             <thead>
-              <tr><th /><th>Series</th><th>Min</th><th>Avg</th><th>Max</th><th>{cursor() === null ? "Last" : "At cursor"}</th></tr>
+              <tr>
+                <th />
+                <SortHeader label="Series" sortKey="series" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Min" sortKey="min" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Avg" sortKey="avg" sort={sort()} onSort={sortBy} />
+                <SortHeader label="Max" sortKey="max" sort={sort()} onSort={sortBy} />
+                <SortHeader label={cursor() === null ? "Last" : "At cursor"} sortKey="last" sort={sort()} onSort={sortBy} />
+              </tr>
             </thead>
             <tbody>
-              <For each={series()}>
-                {(entry, position) => {
-                  const stats = createMemo(() => windowStats(aligned().columns[position()] ?? [], span()[0], span()[1]));
+              <For each={legendRows()}>
+                {row => {
+                  const entry = row.entry;
                   const shown = () => {
                     const index = cursor();
-                    return index === null ? settledValue(position()) : aligned().columns[position()]?.[index] ?? undefined;
+                    const column = aligned().columns[row.position] ?? [];
+                    return index === null ? settledValue(row.position) : (column[index] ?? undefined);
                   };
                   return (
                     <tr
@@ -687,9 +726,9 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
                         </button>
                       </td>
                       <td>{entry.label}</td>
-                      <td>{format(stats()?.min)}</td>
-                      <td>{format(stats()?.avg)}</td>
-                      <td>{format(stats()?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(stats()?.max)} />}</span></td>
+                      <td>{format(row.stats?.min)}</td>
+                      <td>{format(row.stats?.avg)}</td>
+                      <td>{format(row.stats?.max)}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(row.stats?.max)} />}</span></td>
                       <td class="legend-now">{format(shown())}<span class="mark-slot">{entry.scored === false ? null : <HealthMark health={() => healthAt(shown())} />}</span></td>
                     </tr>
                   );

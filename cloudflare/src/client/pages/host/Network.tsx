@@ -10,6 +10,7 @@ import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState } from "@laputa-systems/ui-dashboard";
 import { HealthMark, Widget } from "../../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { PanelLabel, perSecond, activeSeries, PanelChart } from "./shared";
 
 const TABLE_LIMIT = 8;
@@ -25,21 +26,46 @@ function trafficPeak(entry: NetSeries): number {
 export function NetworkWidget(props: { readonly series: readonly NetSeries[]; readonly stepMs: number; readonly events: readonly ChartEvent[] }): JSX.Element {
   const { view } = useTelemetry();
   const [showAll, setShowAll] = createSignal(false);
+  const { sort, sortBy } = createSort<"none" | "interface" | "in" | "out" | "drops" | "errors">({ key: "none", direction: 1 });
   const active = createMemo(() => activeSeries(props.series, props.stepMs));
   const rows = createMemo(() => {
     const ordered = [...active()].sort((left, right) => left.id.localeCompare(right.id));
-    if (showAll() || ordered.length <= TABLE_LIMIT) return ordered;
-    const scores = new Map(ordered.map(entry => [entry.id, {
-      faults: netFaults(entry.table).some(value => value !== null && value > 0),
-      traffic: trafficPeak(entry)
-    }]));
-    const ranked = [...ordered].sort((left, right) => {
-      const leftScore = scores.get(left.id)!;
-      const rightScore = scores.get(right.id)!;
-      return Number(rightScore.faults) - Number(leftScore.faults) || rightScore.traffic - leftScore.traffic;
+    let visible = ordered;
+    if (!showAll() && ordered.length > TABLE_LIMIT) {
+      const scores = new Map(ordered.map(entry => [entry.id, {
+        faults: netFaults(entry.table).some(value => value !== null && value > 0),
+        traffic: trafficPeak(entry)
+      }]));
+      const ranked = [...ordered].sort((left, right) => {
+        const leftScore = scores.get(left.id)!;
+        const rightScore = scores.get(right.id)!;
+        return Number(rightScore.faults) - Number(leftScore.faults) || rightScore.traffic - leftScore.traffic;
+      });
+      const kept = new Set(ranked.slice(0, TABLE_LIMIT).map(entry => entry.id));
+      visible = ordered.filter(entry => kept.has(entry.id));
+    }
+    const key = sort().key;
+    if (key === "none") return visible;
+    const direction = sort().direction;
+    const value = (entry: NetSeries): number | string | null => {
+      if (key === "interface") return entry.name ?? entry.id;
+      const range = windowIndexes(entry.table.times, view());
+      const row = range[1] >= range[0] ? range[1] : undefined;
+      if (row === undefined) return null;
+      if (key === "in") return entry.table.at("rxBytesPerSec", row) ?? null;
+      if (key === "out") return entry.table.at("txBytesPerSec", row) ?? null;
+      if (key === "drops") return netDrops(entry.table)[row] ?? null;
+      return netErrors(entry.table)[row] ?? null;
+    };
+    return [...visible].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.id.localeCompare(right.id);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.id.localeCompare(right.id);
     });
-    const kept = new Set(ranked.slice(0, TABLE_LIMIT).map(entry => entry.id));
-    return ordered.filter(entry => kept.has(entry.id));
   });
   const overflow = createMemo(() => Math.max(0, active().length - TABLE_LIMIT));
   const total = (field: "rxBytesPerSec" | "txBytesPerSec" | "rxPacketsPerSec" | "txPacketsPerSec") => sumTracks(props.series.map(entry => entry.table.track(field)));
@@ -89,7 +115,14 @@ export function NetworkWidget(props: { readonly series: readonly NetSeries[]; re
           <div class="flush-table">
             <div class="table-scroll">
               <table class="data-table compact" aria-label="Network activity">
-                <thead><tr><th scope="col">Interface</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Drops</th><th scope="col">Errors</th><th scope="col">Trend</th></tr></thead>
+                <thead><tr>
+                  <SortHeader label="Interface" sortKey="interface" sort={sort()} onSort={sortBy} />
+                  <SortHeader label="In" sortKey="in" sort={sort()} onSort={sortBy} />
+                  <SortHeader label="Out" sortKey="out" sort={sort()} onSort={sortBy} />
+                  <SortHeader label="Drops" sortKey="drops" sort={sort()} onSort={sortBy} />
+                  <SortHeader label="Errors" sortKey="errors" sort={sort()} onSort={sortBy} />
+                  <th scope="col">Trend</th>
+                </tr></thead>
                 <tbody>
                   <For each={rows()}>
                     {(entry) => {

@@ -18,7 +18,7 @@
 .data-table .numeric { text-align: right; }
 .data-table tbody tr { position: relative; }
 .data-table tbody tr:hover td { background: var(--hover); }
-.sort-button { display: inline-flex; align-items: center; gap: var(--space-xs); color: inherit; }
+.sort-button { display: inline-flex; align-items: center; gap: var(--space-xs); color: inherit; text-transform: inherit; letter-spacing: inherit; }
 .sort-button:hover { color: var(--text); }
 th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button { color: var(--text); }
 

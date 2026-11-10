@@ -4,6 +4,7 @@ import { age, axisTime, count, percent } from "../../format";
 import { useTelemetry } from "../../state";
 import { Skeleton } from "@laputa-systems/ui-dashboard";
 import { createPagedList, Segmented, ShowMore, Widget } from "../../components/ui";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import type { RouteStats, TraceSummary } from "../../../observe/core/store";
 import type { SamplingSummary } from "../../../observe/core/counts";
@@ -28,24 +29,55 @@ function median(values: readonly number[]): number {
   return sorted[Math.floor((sorted.length - 1) / 2)] ?? 0;
 }
 
+type RouteSort = "none" | "route" | "requests" | "failed" | "cpu" | "p50" | "p95" | "p99" | "p95Cpu";
+
+function routeValue(route: RouteStats, key: RouteSort): number | string | null {
+  switch (key) {
+    case "route": return route.label;
+    case "requests": return route.observed ?? route.requests;
+    case "failed": return route.failed;
+    case "cpu": return route.cpuMs;
+    case "p50": return route.p50WallMs;
+    case "p95": return route.p95WallMs;
+    case "p99": return route.p99WallMs;
+    case "p95Cpu": return route.p95CpuMs;
+    case "none": return null;
+  }
+}
+
 function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly sampling: SamplingSummary | undefined; readonly selected: string | null; readonly onSelect: (route: string | null) => void }): JSX.Element {
   const sampled = () => props.sampling !== undefined;
   const observed = (route: RouteStats) => route.observed ?? route.requests;
+  const { sort, sortBy } = createSort<RouteSort>({ key: "none", direction: 1 });
   const totalCpu = createMemo(() => Math.max(1, props.routes.reduce((sum, route) => sum + route.cpuMs, 0)));
   const totals = createMemo(() => ({ requests: props.routes.reduce((sum, route) => sum + observed(route), 0), failed: props.routes.reduce((sum, route) => sum + route.failed, 0) }));
+  const sorted = createMemo(() => {
+    const key = sort().key;
+    if (key === "none") return props.routes;
+    const direction = sort().direction;
+    return [...props.routes].sort((left, right) => {
+      const leftValue = routeValue(left, key);
+      const rightValue = routeValue(right, key);
+      if (leftValue === null || rightValue === null) {
+        if (leftValue === null && rightValue === null) return left.label.localeCompare(right.label);
+        return leftValue === null ? 1 : -1;
+      }
+      return compareSortValues(leftValue, rightValue) * direction || left.label.localeCompare(right.label);
+    });
+  });
   return (
     <div class="table-scroll route-table-scroll" role="region" aria-label="Routes">
       <table class="data-table compact route-table">
         <thead>
           <tr>
-            <th>Route</th>
-            <th class="numeric">Requests</th>
-            <th class="numeric">Failed</th>
-            <th class="cpu-col">CPU share</th>
-            <th class="numeric">{sampled() ? "p50 (sampled)" : "p50"}</th>
-            <th class="numeric">{sampled() ? "p95 (sampled)" : "p95"}</th>
-            <th class="numeric">{sampled() ? "p99 (sampled)" : "p99"}</th>
-            <th class="numeric">{sampled() ? "p95 CPU (sampled)" : "p95 CPU"}</th>
+            <SortHeader label="Route" sortKey="route" sort={sort()} onSort={sortBy} />
+            <SortHeader label="Requests" sortKey="requests" sort={sort()} onSort={sortBy} class="numeric" />
+            <SortHeader label="Failed" sortKey="failed" sort={sort()} onSort={sortBy} class="numeric" />
+            <SortHeader label="CPU share" sortKey="cpu" sort={sort()} onSort={sortBy} class="cpu-col" />
+            <SortHeader label={sampled() ? "p50 (sampled)" : "p50"} sortKey="p50" sort={sort()} onSort={sortBy} class="numeric" />
+            <SortHeader label={sampled() ? "p95 (sampled)" : "p95"} sortKey="p95" sort={sort()} onSort={sortBy} class="numeric" />
+            <SortHeader label={sampled() ? "p99 (sampled)" : "p99"} sortKey="p99" sort={sort()} onSort={sortBy} class="numeric" />
+            <SortHeader label={sampled() ? "p95 CPU (sampled)" : "p95 CPU"} sortKey="p95Cpu" sort={sort()} onSort={sortBy} class="numeric" />
           </tr>
         </thead>
         <tbody>
@@ -56,7 +88,7 @@ function RouteTable(props: { readonly routes: readonly RouteStats[]; readonly sa
             <td />
             <td /><td /><td /><td />
           </tr>
-          <For each={props.routes}>{route => (
+          <For each={sorted()}>{route => (
             <tr class={props.selected === route.label ? "selected" : undefined}>
               <td><button type="button" class="route-pick" aria-pressed={props.selected === route.label ? "true" : "false"} onClick={() => props.onSelect(props.selected === route.label ? null : route.label)}><RouteLabel label={route.label} /></button></td>
               <td class="numeric">{count(observed(route))}</td>
