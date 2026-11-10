@@ -333,7 +333,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
             </button>
           )}</For>
         </div>
-        <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" aria-hidden="true" /> : props.report.planBill.kind === "unavailable" && props.report.planBill.reason === "no-data" ? <MonthNoData /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
+        <Show when={props.report.planBill.kind === "isolated" ? props.report.planBill : null} fallback={props.spendPending ? <div class="ledger-month-pending" role="status"><span class="ledger-month-note">Loading monthly bill…</span></div> : props.report.planBill.kind === "unavailable" && props.report.planBill.reason === "no-data" ? <MonthNoData /> : null}>{plan => <MonthChart plan={plan()} />}</Show>
       </header>
       <div class="ledger-table">
         <div class="ledger-tools">

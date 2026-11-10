@@ -1084,7 +1084,7 @@ test("fleet metric sorting fetches system details only for visible hosts", async
   await expect(table.locator("tbody tr").first()).toContainText("node-23");
 });
 
-test("a new settled window does not reuse an older monthly bill", async ({ page }) => {
+test("a new settled window does not reuse an older monthly bill @mobile", async ({ page }) => {
   await installBaseRoutes(page);
   const gate = createGate();
   let waiting = false;
@@ -1115,7 +1115,7 @@ test("a new settled window does not reuse an older monthly bill", async ({ page 
     await expect.poll(() => waiting).toBe(true);
     await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
     await expect(page.locator(".ledger-month")).toHaveCount(0);
-    await expect(page.locator(".ledger-month-pending")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading monthly bill" })).toBeVisible();
   } finally {
     gate.release();
   }
@@ -1157,7 +1157,7 @@ test("a project change does not reuse another project's monthly bill", async ({ 
     await expect.poll(() => waiting).toBe(true);
     await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
     await expect(page.locator(".ledger-month")).toHaveCount(0);
-    await expect(page.locator(".ledger-month-pending")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading monthly bill" })).toBeVisible();
   } finally {
     gate.release();
   }
