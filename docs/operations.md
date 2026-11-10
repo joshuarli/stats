@@ -327,6 +327,10 @@ imports and erasable syntax only, and none imports Solid, uPlot, or
   those fields is also partial. Monthly plan usage leaves a missing Worker meter
   `null`; `missingBilledMeters` and `missingProjectionMeters` identify the
   omitted inputs, so the corresponding amounts and charts are known minimums.
+- **Partial D1 costs.** Missing rows-read or rows-written data is `null` in
+  D1 and statement usage and excluded from priced meters. Known rows remain
+  priced as a partial subtotal. Monthly D1 usage is also nullable, with omitted
+  meters named in `missingBilledMeters` and `missingProjectionMeters`.
 - **Scope is stated.** The plan bill is `isolated`: it subtracts the full account
   allowance for one project, and an account total exists only when every project
   in the account is covered. Months are UTC calendar months, labelled

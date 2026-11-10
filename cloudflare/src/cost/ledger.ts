@@ -33,7 +33,7 @@ export interface CostPart {
 export type Usage =
   | { readonly kind: "requests"; readonly calls: Amount | null; readonly cpuMs: Amount | null }
   | { readonly kind: "objects"; readonly calls: Amount; readonly wallMs: Amount; readonly cpuMs: Amount; readonly latency: { readonly p50WallMs: number; readonly p95WallMs: number; readonly failed: number } | null }
-  | { readonly kind: "rows"; readonly read: Amount; readonly written: Amount; readonly queries: Amount | null }
+  | { readonly kind: "rows"; readonly read: Amount | null; readonly written: Amount | null; readonly queries: Amount | null }
   | { readonly kind: "stored"; readonly bytes: Amount }
   | { readonly kind: "none" };
 
@@ -196,7 +196,7 @@ export function windowUsage(line: CostLine, histories: LedgerHistories, previous
   switch (usage.kind) {
     case "requests": return { kind: "requests", calls: usage.calls === null ? null : scale(usage.calls), cpuMs: usage.cpuMs === null ? null : scale(usage.cpuMs) };
     case "objects": return { kind: "objects", calls: scale(usage.calls), wallMs: scale(usage.wallMs), cpuMs: scale(usage.cpuMs), latency: usage.latency };
-    case "rows": return { kind: "rows", read: scale(usage.read), written: scale(usage.written), queries: usage.queries === null ? null : scale(usage.queries) };
+    case "rows": return { kind: "rows", read: usage.read === null ? null : scale(usage.read), written: usage.written === null ? null : scale(usage.written), queries: usage.queries === null ? null : scale(usage.queries) };
     case "stored":
     case "none": return usage;
   }
@@ -236,21 +236,23 @@ function routeNames(history: MetricHistory): string[] {
   return [...new Set(history.table.names().filter(name => name.startsWith(ROUTE_PREFIX)).map(name => name.slice(ROUTE_PREFIX.length, name.lastIndexOf("."))))];
 }
 
+function metricAmount(input: LedgerInput, pick: (history: LedgerHistories) => MetricHistory | undefined, name: string): Amount | null {
+  const current = pick(input.current);
+  if (current === undefined || coveredMs(current, input.window, [name]) === 0) return null;
+  const covered = coveredMs(current, input.window);
+  const prior = input.previous === undefined ? undefined : pick(input.previous);
+  const priorCovered = prior === undefined || prior.fromMs > input.previousWindow.fromMs || coveredMs(prior, input.previousWindow, [name]) === 0 ? 0 : coveredMs(prior, input.previousWindow);
+  return {
+    now: inWindow(metricTrack(current, name), input.window) * MONTH_MS / covered,
+    before: prior === undefined || priorCovered === 0 ? null : inWindow(metricTrack(prior, name), input.previousWindow) * MONTH_MS / priorCovered
+  };
+}
+
 function workerLine(input: LedgerInput): CostLine {
   const requestPrice = workerRequestPrice(input.workerBilling);
   const worker = (history: LedgerHistories) => history.worker;
   const routes = (history: LedgerHistories) => history.routes;
-  const amount = (pick: (history: LedgerHistories) => MetricHistory, name: string): Amount | null => {
-    const current = pick(input.current);
-    if (coveredMs(current, input.window, [name]) === 0) return null;
-    const covered = coveredMs(current, input.window);
-    const prior = input.previous === undefined ? undefined : pick(input.previous);
-    const priorCovered = prior === undefined || prior.fromMs > input.previousWindow.fromMs || coveredMs(prior, input.previousWindow, [name]) === 0 ? 0 : coveredMs(prior, input.previousWindow);
-    return {
-      now: inWindow(metricTrack(current, name), input.window) * MONTH_MS / covered,
-      before: prior === undefined || priorCovered === 0 ? null : inWindow(metricTrack(prior, name), input.previousWindow) * MONTH_MS / priorCovered
-    };
-  };
+  const amount = (pick: (history: LedgerHistories) => MetricHistory, name: string): Amount | null => metricAmount(input, pick, name);
   const cost = (calls: number | null, cpu: number | null) => perMillion(calls ?? 0, requestPrice) + perMillion(cpu ?? 0, LIST_PRICE_PER_MILLION.workerCpuMs);
   const currentCost = (calls: Amount | null, cpu: Amount | null) => cost(calls?.now ?? null, cpu?.now ?? null);
   const beforeCost = (calls: Amount | null, cpu: Amount | null) =>
@@ -404,31 +406,33 @@ function d1Line(input: LedgerInput, sample: Sampler): CostLine | null {
   if (!sample.covers(history)) return emptyLine("d1", "d1", "D1");
   const pick = (entry: LedgerHistories) => entry.d1;
   const statements = (entry: LedgerHistories) => entry.d1Statements;
-  const read = { now: sample.now(input.current, pick, "d1.rowsRead"), before: sample.before(pick, "d1.rowsRead") };
-  const written = { now: sample.now(input.current, pick, "d1.rowsWritten"), before: sample.before(pick, "d1.rowsWritten") };
-  const queries = { now: sample.now(input.current, pick, "d1.queries"), before: sample.before(pick, "d1.queries") };
+  const read = metricAmount(input, pick, "d1.rowsRead");
+  const written = metricAmount(input, pick, "d1.rowsWritten");
+  const queries = metricAmount(input, pick, "d1.queries");
+  const beforeCost = (r: Amount | null, w: Amount | null) =>
+    (r !== null && r.before === null) || (w !== null && w.before === null) ? null : rowsCost(r?.before ?? 0, w?.before ?? 0);
   const statementLines: CostLine[] = input.current.d1Statements === undefined ? [] : statementNames(input.current.d1Statements).map(statement => {
     const metric = (field: string) => `${STATEMENT_PREFIX}${statement}.${field}`;
-    const r = { now: sample.now(input.current, statements, metric("rowsRead")), before: sample.before(statements, metric("rowsRead")) };
-    const w = { now: sample.now(input.current, statements, metric("rowsWritten")), before: sample.before(statements, metric("rowsWritten")) };
-    const q = { now: sample.now(input.current, statements, metric("queries")), before: sample.before(statements, metric("queries")) };
+    const r = metricAmount(input, statements, metric("rowsRead"));
+    const w = metricAmount(input, statements, metric("rowsWritten"));
+    const q = metricAmount(input, statements, metric("queries"));
     return {
       id: `statement:${statement}`, kind: "statement", label: statement,
-      price: priced(rowsCost(r.now, w.now), r.before === null || w.before === null ? null : rowsCost(r.before, w.before)),
-      parts: [{ label: "rows read", monthly: perMillion(r.now, LIST_PRICE_PER_MILLION.d1RowsRead), bound: "estimate" }, { label: "rows written", monthly: perMillion(w.now, LIST_PRICE_PER_MILLION.d1RowsWritten), bound: "estimate" }],
+      price: r === null && w === null ? NO_DATA : priced(rowsCost(r?.now ?? 0, w?.now ?? 0), beforeCost(r, w)),
+      parts: [...(r === null ? [] : [{ label: "rows read", monthly: perMillion(r.now, LIST_PRICE_PER_MILLION.d1RowsRead), bound: "estimate" as const }]), ...(w === null ? [] : [{ label: "rows written", monthly: perMillion(w.now, LIST_PRICE_PER_MILLION.d1RowsWritten), bound: "estimate" as const }])],
       usage: { kind: "rows", read: r, written: w, queries: q },
       trend: null,
       children: []
     } satisfies CostLine;
-  }).filter(line => line.usage.kind === "rows" && (line.usage.queries?.now ?? 0) + (line.usage.queries?.before ?? 0) > 0);
+  }).filter(line => line.usage.kind === "rows" && ((line.usage.queries?.now ?? 0) + (line.usage.queries?.before ?? 0) > 0 || (line.usage.read?.now ?? 0) > 0 || (line.usage.written?.now ?? 0) > 0));
   const storage = input.databases.map(database => storedLine(
     `d1-storage:${database}`, "d1-storage", `storage · ${database.slice(0, 8)}`,
     metricTrack(history, `d1.${database}.storageBytes`),
     input.previous?.d1 === undefined ? undefined : metricTrack(input.previous.d1, `d1.${database}.storageBytes`),
     input, LIST_PRICE_PER_GB_MONTH.d1Storage
   )).filter(line => line !== null);
-  const rowsNow = rowsCost(read.now, written.now);
-  const rowsBefore = read.before === null || written.before === null ? null : rowsCost(read.before, written.before);
+  const rowsNow = rowsCost(read?.now ?? 0, written?.now ?? 0);
+  const rowsBefore = beforeCost(read, written);
   const storageNow = storage.reduce((sum, line) => sum + (monthlyOf(line)?.now ?? 0), 0);
   const storageBefore = storage.every(line => monthlyOf(line)?.before !== null) ? storage.reduce((sum, line) => sum + (monthlyOf(line)?.before ?? 0), 0) : null;
   const attributed = statementLines.reduce((sum, line) => sum + (monthlyOf(line)?.now ?? 0), 0);
@@ -438,10 +442,10 @@ function d1Line(input: LedgerInput, sample: Sampler): CostLine | null {
   }
   return {
     id: "d1", kind: "d1", label: "D1",
-    price: priced(rowsNow + storageNow, rowsBefore === null || storageBefore === null ? null : rowsBefore + storageBefore),
+    price: read === null && written === null && storage.length === 0 ? NO_DATA : priced(rowsNow + storageNow, rowsBefore === null || storageBefore === null ? null : rowsBefore + storageBefore),
     parts: [
-      { label: "rows read", monthly: perMillion(read.now, LIST_PRICE_PER_MILLION.d1RowsRead), bound: "estimate" },
-      { label: "rows written", monthly: perMillion(written.now, LIST_PRICE_PER_MILLION.d1RowsWritten), bound: "estimate" },
+      ...(read === null ? [] : [{ label: "rows read", monthly: perMillion(read.now, LIST_PRICE_PER_MILLION.d1RowsRead), bound: "estimate" as const }]),
+      ...(written === null ? [] : [{ label: "rows written", monthly: perMillion(written.now, LIST_PRICE_PER_MILLION.d1RowsWritten), bound: "estimate" as const }]),
       { label: "storage", monthly: storageNow, bound: "estimate" }
     ],
     usage: { kind: "rows", read, written, queries },
@@ -580,7 +584,7 @@ export function monthlyUsage(ledger: Ledger): MeterUsage {
     const kind = line.usage;
     if (kind.kind === "requests" && line.kind === "worker") { usage.workerRequests = ledger.workerBilling === "cpu-only" ? 0 : kind.calls?.now ?? 0; usage.workerCpuMs = kind.cpuMs?.now ?? 0; }
     if (kind.kind === "objects") { usage.durableObjectRequests = kind.calls.now; usage.durableObjectGbSeconds = (kind.wallMs.now / 1000) * DURABLE_OBJECT_MEMORY_GB; usage.durableObjectStorage = stored(line.children.find(child => child.kind === "object-storage")); }
-    if (kind.kind === "rows") { usage.d1RowsRead = kind.read.now; usage.d1RowsWritten = kind.written.now; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
+    if (kind.kind === "rows") { usage.d1RowsRead = kind.read?.now ?? 0; usage.d1RowsWritten = kind.written?.now ?? 0; usage.d1Storage = line.children.filter(child => child.kind === "d1-storage").reduce((sum, child) => sum + stored(child), 0); }
     if (line.kind === "r2") usage.r2Storage = stored(line);
   }
   return usage;

@@ -71,7 +71,7 @@ interface ProjectWindow {
   readonly scale: number;
 }
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow) {
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow, missingD1Written = false) {
   const fromMs = window === undefined ? now - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
   const toMs = window?.toMs ?? now;
   const points = Math.max(1, Math.ceil((toMs - fromMs) / PROJECT_STEP));
@@ -127,7 +127,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
       series: [
         { metric: "d1.queries", values: column(() => 300) },
         { metric: "d1.rowsRead", values: column(() => 50_000_000) },
-        { metric: "d1.rowsWritten", values: column(() => 100_000) },
+        { metric: "d1.rowsWritten", values: column(() => missingD1Written ? null : 100_000) },
         { metric: `d1.${DATABASES[0]}.storageBytes`, values: column(index => (index % 3 === 0 ? 245_923_840 : null)) }
       ]
     };
@@ -136,7 +136,7 @@ function projectHistory(kind: string, range: string, spike: boolean, probeDown: 
     const statement = (name: string, queries: number, rowsRead: number, rowsWritten: number) => [
       { metric: `d1q.${name}.queries`, values: column(() => queries) },
       { metric: `d1q.${name}.rowsRead`, values: column(() => rowsRead) },
-      { metric: `d1q.${name}.rowsWritten`, values: column(() => rowsWritten) }
+      { metric: `d1q.${name}.rowsWritten`, values: column(() => missingD1Written ? null : rowsWritten) }
     ];
     return {
       ...base, kind,
@@ -202,7 +202,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -221,7 +221,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
         fromMs: Number(from), toMs: Number(to),
         scale: (Number(to) - Number(from) > 6 * 3_600_000 && Number(to) - Number(from) <= 24 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
       };
-      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window);
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window, options.missingD1Written === true);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
       return fulfillHistory(route, body(kind));
     }
@@ -1173,6 +1173,23 @@ test("mobile ledger details identify the selected statement and units", { tag: "
   await expect(detail.locator(".ledger-detail-context")).toContainText("SELECT * FROM big_read");
   await expect(detail).toContainText("rows read in window");
   await expect(detail.locator(".ledger-detail-context")).toContainText("Comparison:");
+});
+
+test("missing D1 rows are identified in the total, statement, and monthly bill @mobile", async ({ page }) => {
+  await mock(page, { d1: true, missingD1Written: true });
+  await page.goto("/#/project/stuff");
+  const ledger = page.getByRole("region", { name: "Cost ledger" });
+  await expect(ledger.locator(".ledger-basis")).toContainText("Partial:");
+  await expect(page.getByRole("note").filter({ hasText: "D1 rows written were not collected" })).toBeVisible();
+  await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable D1 rows written data");
+  const d1 = ledgerRow(page, "d1");
+  if (await d1.getAttribute("aria-expanded") !== "true") await d1.click();
+  const statement = page.locator(".ledger-row.depth-1", { hasText: "SELECT * FROM big_read" });
+  await expect(statement.locator(".ledger-money")).toContainText("partial");
+  await expect(statement.locator(".ledger-unit")).toHaveText("rows/query unavailable");
+  if (await statement.getAttribute("aria-expanded") !== "true") await statement.click();
+  await expect(page.locator(".ledger-detail-context")).toContainText("rows written data was not collected");
+  await expect(page.locator(".ledger-fact").filter({ hasText: "rows written in window" })).toContainText("unavailable");
 });
 
 test("the ledger compares each line with the window before, and says when that window cannot be read", async ({ page }) => {

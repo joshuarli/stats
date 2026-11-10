@@ -293,7 +293,7 @@ test("missing Worker CPU is excluded from costs and called out in both project v
   await expect(ledger.locator(".ledger-month")).toContainText("excludes unavailable Worker CPU data");
   await page.goto("/#/projects?range=24h");
   const row = page.getByRole("table", { name: "Projects" }).getByRole("row", { name: /stats/u }).first();
-  await expect(row).toContainText("partial · missing Worker data");
+  await expect(row).toContainText("partial · missing cost data");
   await expect(row).toContainText("unavailable");
   const table = page.getByRole("table", { name: "Projects" });
   await expect(table.locator("tr.projects-row").filter({ hasText: "stuff" })).toContainText("0 ms");

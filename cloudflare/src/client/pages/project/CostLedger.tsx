@@ -51,7 +51,7 @@ function usageText(line: CostLine, usage: Usage): string {
   switch (usage.kind) {
     case "requests": return usage.calls === null ? "calls unavailable" : `${count(Math.round(usage.calls.now))} ${line.kind === "worker" ? "req" : "calls"}`;
     case "objects": return `${count(Math.round(usage.calls.now))} calls`;
-    case "rows": return usage.queries === null ? `${count(Math.round(usage.read.now + usage.written.now))} rows` : `${count(Math.round(usage.queries.now))} queries`;
+    case "rows": return usage.queries === null ? (usage.read === null || usage.written === null ? "rows unavailable" : `${count(Math.round(usage.read.now + usage.written.now))} rows`) : `${count(Math.round(usage.queries.now))} queries`;
     case "stored": return bytes(usage.bytes.now);
     case "none": return "";
   }
@@ -71,7 +71,7 @@ function UnitCell(props: { readonly line: CostLine }): JSX.Element {
       return <>{milliseconds(Number(value.now.toPrecision(2)))} wall/call<Ratio amount={value} worseUp /></>;
     }
     case "rows": {
-      if (usage.queries === null || usage.queries.now <= 0) return <></>;
+      if (usage.queries === null || usage.queries.now <= 0 || usage.read === null || usage.written === null) return <>rows/query unavailable</>;
       const rows = { now: usage.read.now + usage.written.now, before: usage.read.before === null || usage.written.before === null ? null : usage.read.before + usage.written.before };
       const value = per(rows, usage.queries);
       if (value === null) return <></>;
@@ -148,8 +148,8 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
       }
       case "rows": return <>
         <Show when={current.queries}>{queries => <Fact label="queries in window" value={count(Math.round(queries().now))} amount={queries()} />}</Show>
-        <Fact label="rows read in window" value={count(Math.round(current.read.now))} amount={current.read} worseUp />
-        <Fact label="rows written in window" value={count(Math.round(current.written.now))} amount={current.written} worseUp />
+        <Fact label="rows read in window" value={current.read === null ? "unavailable" : count(Math.round(current.read.now))} amount={current.read ?? undefined} worseUp />
+        <Fact label="rows written in window" value={current.written === null ? "unavailable" : count(Math.round(current.written.now))} amount={current.written ?? undefined} worseUp />
         {money}
       </>;
       case "stored": return <>
@@ -202,7 +202,7 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
 }
 
 function MonthChart(props: { readonly plan: Extract<PlanBillReport, { readonly kind: "isolated" }> }): JSX.Element {
-  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter;
+  const meterName = (meter: string) => meter === "workerCpuMs" ? "Worker CPU" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : meter === "d1RowsWritten" ? "D1 rows written" : meter;
   return (
     <div class="ledger-month">
       <PanelLabel>Billed beyond the ${WORKERS_PAID_MONTHLY_FEE} plan this month: {props.plan.missingBilledMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.billedSoFar)} so far, {props.plan.missingProjectionMeters.length > 0 ? "at least " : ""}{dollarsPrecise(props.plan.projectedMonthEnd)} by month end at the rate above</PanelLabel>
@@ -290,7 +290,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
     const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
-    const partialWarning = () => props.report.warnings.find(warning => warning.code === "route-meter-no-data" && warning.subject === line().id)?.message;
+    const partialWarning = () => props.report.warnings.find(warning => (warning.code === "route-meter-no-data" || warning.code === "statement-meter-no-data") && warning.subject === line().id)?.message;
     return (
       <>
         <button

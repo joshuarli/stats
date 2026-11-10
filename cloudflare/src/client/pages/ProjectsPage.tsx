@@ -352,7 +352,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
           <Show when={loaded()} fallback={pending()}>{value => (
             <span class="cell-stack">
               <span class="cell-strong">{dollarsPrecise(value().report.total.monthly.now)}/mo<Change amount={value().report.total.monthly} worseUp money /></span>
-              <span class="cell-note">{partialCost() ? "partial · missing Worker data" : storedBytes() === null ? "no storage priced" : `incl. ${bytes(storedBytes() ?? 0)} R2`}</span>
+              <span class="cell-note">{partialCost() ? "partial · missing cost data" : storedBytes() === null ? "no storage priced" : `incl. ${bytes(storedBytes() ?? 0)} R2`}</span>
             </span>
           )}</Show>
         </td>

@@ -82,7 +82,7 @@ export type PlanBillReport =
     readonly month: TimeWindow;
     readonly settledMs: number;
     readonly coverage: Coverage;
-    readonly usage: Omit<MeterUsage, "workerRequests" | "workerCpuMs"> & { readonly workerRequests: number | null; readonly workerCpuMs: number | null };
+    readonly usage: Omit<MeterUsage, "workerRequests" | "workerCpuMs" | "d1RowsRead" | "d1RowsWritten"> & { readonly workerRequests: number | null; readonly workerCpuMs: number | null; readonly d1RowsRead: number | null; readonly d1RowsWritten: number | null };
     readonly missingBilledMeters: readonly Meter[];
     readonly missingProjectionMeters: readonly Meter[];
     readonly billed: Track;
@@ -101,6 +101,7 @@ export type WarningCode =
   | "line-no-source"
   | "meter-no-data"
   | "route-meter-no-data"
+  | "statement-meter-no-data"
   | "window-partial-coverage"
   | "duration-upper-bound-proxy"
   | "object-method-sampled"
@@ -206,6 +207,19 @@ function missingWorkerMeters(histories: LedgerHistories, window: TimeWindow, bil
   ];
 }
 
+function missingD1Meters(histories: LedgerHistories, window: TimeWindow, project: ProjectConfig): Meter[] {
+  if (project.d1Databases.length === 0) return [];
+  const history = histories.d1;
+  return [
+    ...(history !== undefined && coveredMs(history, window, ["d1.rowsRead"]) > 0 ? [] : ["d1RowsRead" as const]),
+    ...(history !== undefined && coveredMs(history, window, ["d1.rowsWritten"]) > 0 ? [] : ["d1RowsWritten" as const])
+  ];
+}
+
+function missingMeters(histories: LedgerHistories, window: TimeWindow, project: ProjectConfig): Meter[] {
+  return [...missingWorkerMeters(histories, window, project.workerBilling), ...missingD1Meters(histories, window, project)];
+}
+
 function reportLine(line: CostLine, parent: Source | null, input: CostReportInput): ReportLine {
   const source = sourceOf(line, parent);
   const window = (previous: boolean) => (previous ? input.windows.previous : input.windows.current);
@@ -213,7 +227,7 @@ function reportLine(line: CostLine, parent: Source | null, input: CostReportInpu
   const baselineCoverage = input.previous === undefined ? null : source === null ? coverageOf(undefined, input.windows.previous) : coverageOf(source.pick(input.previous), window(true), source.only);
   return {
     id: line.id, kind: line.kind, label: line.label, price: line.price, parts: line.parts, usage: line.usage, trend: line.trend,
-    coverage, baselineCoverage, confidence: line.price.kind === "priced" && ((line.kind === "worker" && missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling).length > 0) || (line.kind === "route" && line.usage.kind === "requests" && (line.usage.calls === null || line.usage.cpuMs === null)) || (line.kind === "object-method" && input.objectMethods?.sampling?.now != null)) ? "qualified" : confidenceOf(line, coverage),
+    coverage, baselineCoverage, confidence: line.price.kind === "priced" && ((line.kind === "worker" && missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling).length > 0) || (line.kind === "d1" && missingD1Meters(input.current, input.windows.current, input.project).length > 0) || (line.kind === "route" && line.usage.kind === "requests" && (line.usage.calls === null || line.usage.cpuMs === null)) || (line.kind === "statement" && line.usage.kind === "rows" && (line.usage.read === null || line.usage.written === null)) || (line.kind === "object-method" && input.objectMethods?.sampling?.now != null)) ? "qualified" : confidenceOf(line, coverage),
     children: line.children.map(child => reportLine(child, source, input))
   };
 }
@@ -234,7 +248,7 @@ const COMPONENTS: readonly Component[] = ["worker", "objects", "d1", "r2"];
 
 function metersOf(lines: readonly ReportLine[], input: CostReportInput): { priced: Meter[]; excluded: Exclusion[] } {
   const project = input.project;
-  const missingWorker = missingWorkerMeters(input.current, input.windows.current, project.workerBilling);
+  const missing = missingMeters(input.current, input.windows.current, project);
   const priced = new Set<Meter>();
   const excluded = new Map<ExcludedMeter, ExclusionReason>();
   const configured: Record<Component, boolean> = { worker: true, objects: project.durableObjectNamespaces.length > 0, d1: project.d1Databases.length > 0, r2: project.buckets.length > 0 };
@@ -243,7 +257,7 @@ function metersOf(lines: readonly ReportLine[], input: CostReportInput): { price
     const line = lines.find(entry => entry.id === component);
     for (const meter of COMPONENT_METERS[component]) {
       if (meter === "workerRequests" && project.workerBilling === "cpu-only") { excluded.set(meter, "tail-cpu-only"); continue; }
-      if (missingWorker.includes(meter)) { excluded.set(meter, "no-data"); continue; }
+      if (missing.includes(meter)) { excluded.set(meter, "no-data"); continue; }
       const storage = meter === "durableObjectStorage" || meter === "d1Storage";
       const hasStorage = line?.children.some(child => child.kind === "object-storage" || child.kind === "d1-storage") ?? false;
       if (line !== undefined && line.price.kind === "priced" && (!storage || hasStorage)) priced.add(meter);
@@ -279,8 +293,9 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
   const warn = (code: WarningCode, subject: string, message: string) => warnings.push({ code, subject, message });
   if (input.windows.current.toMs > input.nowMs) warn("window-ends-after-now", "current", "The current window ends after the report clock, so its newest buckets cannot exist yet.");
   if (input.previous === undefined) warn("baseline-unavailable", "previous", "The previous window was not supplied, so no change is computed.");
-  for (const meter of missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling)) {
-    warn("meter-no-data", meter, meter === "workerCpuMs" ? "Worker CPU time was not collected in the current window and is excluded from the total." : "Worker requests were not collected in the current window and are excluded from the total.");
+  for (const meter of missingMeters(input.current, input.windows.current, input.project)) {
+    const label = meter === "workerCpuMs" ? "Worker CPU time" : meter === "workerRequests" ? "Worker requests" : meter === "d1RowsRead" ? "D1 rows read" : "D1 rows written";
+    warn("meter-no-data", meter, `${label} ${meter === "workerCpuMs" ? "was" : "were"} not collected in the current window and ${meter === "workerCpuMs" ? "is" : "are"} excluded from the total.`);
   }
   for (const [period, sampling] of [["current", input.objectMethods?.sampling?.now], ["previous", input.objectMethods?.sampling?.before]] as const) {
     if (sampling != null) warn("object-method-sampled", period, `${period === "current" ? "Current" : "Comparison"} object methods: ${sampling.kept} of ${sampling.observed} object invocations retained in overlapping count buckets. ${period === "current" ? "Method counts and latency use retained invocations; cost shares are estimates." : "Comparison values use retained invocations."}`);
@@ -291,6 +306,9 @@ function warningsFor(input: CostReportInput, lines: readonly ReportLine[], resid
     }
     if (line.kind === "route" && line.price.kind === "priced" && line.usage.kind === "requests" && (line.usage.calls === null || line.usage.cpuMs === null)) {
       warn("route-meter-no-data", line.id, `${line.label}: ${line.usage.calls === null ? "request" : "CPU"} data was not collected, so its cost is partial.`);
+    }
+    if (line.kind === "statement" && line.price.kind === "priced" && line.usage.kind === "rows" && (line.usage.read === null || line.usage.written === null)) {
+      warn("statement-meter-no-data", line.id, `${line.label}: ${line.usage.read === null ? "rows read" : "rows written"} data was not collected, so its cost is partial.`);
     }
   }
   for (const line of lines) {
@@ -315,13 +333,13 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   const bill = planBill(input.planMonth.histories, window, input.project.buckets, input.project.d1Databases, input.project.workerBilling);
   const coverage = coverageOf(input.planMonth.histories.worker, window);
   if (coverage.fraction === 0) return { kind: "unavailable", reason: "no-data" };
-  const missingBilledMeters = missingWorkerMeters(input.planMonth.histories, window, input.project.workerBilling);
-  const missingProjectionMeters = [...new Set([...missingBilledMeters, ...missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling)])];
+  const missingBilledMeters = missingMeters(input.planMonth.histories, window, input.project);
+  const missingProjectionMeters = [...new Set([...missingBilledMeters, ...missingMeters(input.current, input.windows.current, input.project)])];
   const projected = projectedBill(bill, window.toMs, month.toMs, monthly);
   return {
     kind: "isolated", basis: "utc-month", assumption: "project-alone-on-account-allowances",
     month, settledMs: window.toMs, coverage,
-    usage: { ...bill.usage, workerRequests: missingBilledMeters.includes("workerRequests") ? null : bill.usage.workerRequests, workerCpuMs: missingBilledMeters.includes("workerCpuMs") ? null : bill.usage.workerCpuMs },
+    usage: { ...bill.usage, workerRequests: missingBilledMeters.includes("workerRequests") ? null : bill.usage.workerRequests, workerCpuMs: missingBilledMeters.includes("workerCpuMs") ? null : bill.usage.workerCpuMs, d1RowsRead: missingBilledMeters.includes("d1RowsRead") ? null : bill.usage.d1RowsRead, d1RowsWritten: missingBilledMeters.includes("d1RowsWritten") ? null : bill.usage.d1RowsWritten },
     missingBilledMeters, missingProjectionMeters,
     billed: bill.billed, billedSoFar: bill.billed.values.at(-1) ?? 0,
     projected, projectedMonthEnd: projected.values.at(-1) ?? 0,
@@ -350,7 +368,7 @@ export function buildCostReport(input: CostReportInput): CostReport {
     units: UNITS,
     total: {
       basis: "list-price-run-rate", monthly: ledger.monthly, pricedMeters: meters.priced, excluded: meters.excluded, residuals,
-      uncompared: ledger.uncompared, confidence: missingWorkerMeters(input.current, input.windows.current, input.project.workerBilling).length > 0 && confidence === "verified" ? "qualified" : confidence
+      uncompared: ledger.uncompared, confidence: missingMeters(input.current, input.windows.current, input.project).length > 0 && confidence === "verified" ? "qualified" : confidence
     },
     comparison: { baseline: ledger.monthly.before === null ? "absent" : "present", change: ledger.monthly.before === null ? null : ledger.monthly.now - ledger.monthly.before },
     lines,

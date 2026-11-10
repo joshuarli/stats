@@ -96,6 +96,24 @@ await test("missing Worker CPU is excluded from the CLI total and monthly bill",
   }
 });
 
+await test("missing D1 rows are excluded from the CLI total and monthly bill", async () => {
+  const origin = await serve({ projects: [{ ...STATS, missingD1Written: true }] });
+  try {
+    const ran = await statsctl(["cost", "--project", "stats", "--month-to-date", "--json"], { origin: origin.origin });
+    assert.equal(ran.code, EXIT.ok, ran.stderr);
+    const report = payloadOf(ran).projects[0]!.report!;
+    const d1 = report.lines.find(line => line.id === "d1")!;
+    assert.equal(d1.usage.kind === "rows" && d1.usage.written, null);
+    assert.ok(report.total.pricedMeters.includes("d1RowsRead"));
+    assert.ok(report.total.excluded.some(entry => entry.meter === "d1RowsWritten" && entry.reason === "no-data"));
+    assert.equal(report.planBill.usage?.d1RowsWritten, null);
+    assert.ok(report.planBill.missingBilledMeters?.includes("d1RowsWritten"));
+    assert.ok(report.planBill.missingProjectionMeters?.includes("d1RowsWritten"));
+  } finally {
+    await origin.close();
+  }
+});
+
 await test("--all marks a failing project unavailable and still reports the others", async () => {
   const origin = await serve({ projects: [{ ...PLAIN, fail: url => url.searchParams.get("range") === null ? 404 : undefined }, STATS] });
   try {

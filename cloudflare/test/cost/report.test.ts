@@ -95,6 +95,41 @@ await test("a route missing CPU is a partial contributor rather than zero CPU", 
   assert.ok(built.total.residuals.some(entry => entry.lineId === "route:unattributed"));
 });
 
+await test("missing D1 rows written are excluded instead of priced as zero", () => {
+  const current = histories(T0, { d1: { "d1.rowsRead": [100, 100, 0], "d1.rowsWritten": [null, null, null], "d1.queries": [10, 10, 0] } });
+  const built = report({ current, project: { ...PROJECT, d1Databases: ["db"] } });
+  const d1 = find(built.lines, "d1");
+  assert.equal(d1.usage.kind === "rows" && d1.usage.written, null);
+  assert.ok(built.total.pricedMeters.includes("d1RowsRead"));
+  assert.ok(built.total.excluded.some(entry => entry.meter === "d1RowsWritten" && entry.reason === "no-data"));
+  assert.ok(warned(built, "meter-no-data", "d1RowsWritten"));
+  assert.equal(d1.confidence, "qualified");
+  const zero = report({ current: histories(T0, { d1: { "d1.rowsRead": [100, 100, 0], "d1.rowsWritten": [0, 0, 0], "d1.queries": [10, 10, 0] } }), project: { ...PROJECT, d1Databases: ["db"] } });
+  const zeroD1 = find(zero.lines, "d1");
+  assert.equal(zeroD1.usage.kind === "rows" && zeroD1.usage.written?.now, 0);
+  assert.ok(zero.total.pricedMeters.includes("d1RowsWritten"));
+});
+
+await test("missing D1 statement and month meters remain partial", () => {
+  const month = Date.UTC(2026, 10, 1);
+  const d1 = { "d1.rowsRead": [100, 100, 0], "d1.rowsWritten": [null, null, null], "d1.queries": [10, 10, 0] };
+  const statement = { "d1q.SELECT 1.queries": [10, 10, 0], "d1q.SELECT 1.rowsRead": [100, 100, 0], "d1q.SELECT 1.rowsWritten": [null, null, null] };
+  const current = histories(T0, { d1, d1Statements: statement });
+  const built = report({ current, project: { ...PROJECT, d1Databases: ["db"] }, planMonth: { settledMs: month + 2 * H, histories: histories(month, { d1 }) } });
+  const line = find(find(built.lines, "d1").children, "statement:SELECT 1");
+  assert.equal(line.usage.kind === "rows" && line.usage.written, null);
+  assert.equal(line.confidence, "qualified");
+  assert.ok(warned(built, "statement-meter-no-data", "statement:SELECT 1"));
+  assert.equal(built.planBill.kind, "isolated");
+  if (built.planBill.kind !== "isolated") throw new Error("expected a partial bill");
+  assert.equal(built.planBill.usage.d1RowsWritten, null);
+  assert.ok(built.planBill.missingBilledMeters.includes("d1RowsWritten"));
+  assert.ok(built.planBill.missingProjectionMeters.includes("d1RowsWritten"));
+  const noQueries = histories(T0, { d1, d1Statements: { ...statement, "d1q.SELECT 1.queries": [null, null, null] } });
+  const retained = find(find(report({ current: noQueries, project: { ...PROJECT, d1Databases: ["db"] } }).lines, "d1").children, "statement:SELECT 1");
+  assert.equal(retained.usage.kind === "rows" && retained.usage.queries, null);
+});
+
 await test("sampled object methods do not turn an unseen baseline into zero", () => {
   const metrics = { "do.invocations": [100, 100, 0], "do.wallMsSum": [1_000, 1_000, 0], "do.cpuMsSum": [100, 100, 0] };
   const current = histories(T0, { durableObjects: metrics });
@@ -244,7 +279,7 @@ await test("truncated SQL labels that share a prefix stay separate statements", 
   const d1 = find(report({ current, project: { ...PROJECT, d1Databases: [database] } }).lines, "d1");
   const statements = d1.children.filter(child => child.kind === "statement");
   assert.deepEqual(statements.map(child => child.label).sort(), [`${shared} a`, `${shared} b`, "UPDATE t SET v = v.next"]);
-  const reads = (id: string) => { const usage = find(statements, id).usage; return usage.kind === "rows" ? usage.read.now / MONTH_FACTOR : NaN; };
+  const reads = (id: string) => { const usage = find(statements, id).usage; return usage.kind === "rows" && usage.read !== null ? usage.read.now / MONTH_FACTOR : NaN; };
   near(reads(`statement:${shared} a`), 10);
   near(reads(`statement:${shared} b`), 20);
 });
