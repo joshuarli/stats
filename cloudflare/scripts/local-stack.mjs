@@ -7,12 +7,14 @@ import { collectAt, seed } from "../local/seed.ts";
 import { describeUnexpected } from "../local/outbound.ts";
 import { cliEnv, startStack } from "../local/stack.ts";
 import { CLOUDFLARE_ROOT, readBuiltWorker } from "../local/topology.ts";
+import { parseProducerVars } from "../local/worker-producer.ts";
 
 const USAGE = `usage:
-  node scripts/local-stack.mjs run [--producer DIR]... [--producer-worker DIR [--service NAME]]... -- <command> [args...]       run a command against an ephemeral, seeded stack
-  node scripts/local-stack.mjs dev [--state DIR] [--port N] [--producer DIR]... [--producer-worker DIR [--service NAME]]...    serve a persistent stack until SIGINT or SIGTERM
+  node scripts/local-stack.mjs run [--producer DIR]... [--producer-worker DIR [--service NAME] [--producer-var NAME=VALUE]...]... -- <command> [args...]       run a command against an ephemeral, seeded stack
+  node scripts/local-stack.mjs dev [--state DIR] [--port N] [--producer DIR]... [--producer-worker DIR [--service NAME] [--producer-var NAME=VALUE]...]...    serve a persistent stack until SIGINT or SIGTERM
   --producer DIR hosts a producer export's Worker beside stats, tailed by stats-observe and served on its own origin
-  --producer-worker DIR hosts any cf-built Worker output directory on its own loopback port, tailed by stats-observe; --service defaults to the built Worker's name`;
+  --producer-worker DIR hosts any cf-built Worker output directory on its own loopback port, tailed by stats-observe; --service defaults to the built Worker's name
+  --producer-var NAME=VALUE adds or overrides one text binding on the hosted producer; repeatable, values are never printed`;
 const DEFAULT_STATE = join(CLOUDFLARE_ROOT, "../.work/local/state");
 const DEFAULT_PORT = 8789;
 
@@ -28,15 +30,29 @@ function shellQuote(value) {
 function producerLines(stack) {
   return [
     ...stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its outbound requests reach only ${producer.providers.map(origin => origin.origin).join(", ")}, which you start; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`),
-    ...stack.workerProducers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}; its cron is not fired here)`)
+    ...stack.workerProducers.map(producer => {
+      const names = Object.keys(producer.vars);
+      return `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}; its cron is not fired here${names.length === 0 ? "" : `; injected vars: ${names.join(", ")}`})`;
+    })
   ];
+}
+
+function producerVars(values) {
+  try {
+    return parseProducerVars(values.get("--producer-var"));
+  } catch (error) {
+    usage(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function workerProducers(values) {
   const dirs = values.get("--producer-worker");
   const services = values.get("--service");
+  const givenVars = values.get("--producer-var");
   if (services.length !== 0 && services.length !== dirs.length) usage("--service needs one value per --producer-worker, or none");
-  return dirs.map((dir, index) => ({ dir, service: services[index] ?? readBuiltWorker(dir).name }));
+  if (givenVars.length !== 0 && dirs.length === 0) usage("--producer-var needs --producer-worker");
+  const vars = producerVars(values);
+  return dirs.map((dir, index) => ({ dir, service: services[index] ?? readBuiltWorker(dir).name, vars }));
 }
 
 async function run(producers, workerProducers, command) {
@@ -80,7 +96,7 @@ function single(values, name, fallback) {
 }
 
 async function dev(args) {
-  const values = options(args, ["--state", "--port", "--producer", "--producer-worker", "--service"]);
+  const values = options(args, ["--state", "--port", "--producer", "--producer-worker", "--service", "--producer-var"]);
   const state = single(values, "--state", DEFAULT_STATE);
   const port = Number(single(values, "--port", String(DEFAULT_PORT)));
   if (!Number.isInteger(port) || port <= 0 || port > 65535) usage("--port must be a TCP port");
@@ -121,7 +137,7 @@ const [mode, ...rest] = process.argv.slice(2);
 if (mode === "run") {
   const separator = rest.indexOf("--");
   if (separator === -1) usage("run takes -- before the command");
-  const values = options(rest.slice(0, separator), ["--producer", "--producer-worker", "--service"]);
+  const values = options(rest.slice(0, separator), ["--producer", "--producer-worker", "--service", "--producer-var"]);
   process.exit(await run(values.get("--producer"), workerProducers(values), rest.slice(separator + 1)));
 } else if (mode === "dev") {
   await dev(rest);

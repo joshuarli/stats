@@ -13,12 +13,31 @@ export interface WorkerProducer {
   readonly origin: string;
   readonly port: number;
   readonly worker: BuiltWorker;
+  readonly vars: Readonly<Record<string, string>>;
 }
 
 const SUPPORTED: ReadonlySet<string> = new Set(["text", "durable-object", "assets", "r2"]);
 const RESERVED = new Set(["stats-observe"]);
+const PRODUCER_VAR_NAME = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
-export function readWorkerProducer(output: string, service: string, port: number): WorkerProducer {
+function assertProducerVarName(name: string): void {
+  if (!PRODUCER_VAR_NAME.test(name)) throw new TypeError(`${JSON.stringify(name)} is not a producer var name; use ^[A-Z][A-Z0-9_]{0,63}$`);
+}
+
+export function parseProducerVars(entries: readonly string[]): Readonly<Record<string, string>> {
+  const vars: Record<string, string> = {};
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator === -1) throw new TypeError("--producer-var needs NAME=VALUE");
+    const name = entry.slice(0, separator);
+    assertProducerVarName(name);
+    if (Object.hasOwn(vars, name)) throw new TypeError(`--producer-var ${name} is given more than once`);
+    vars[name] = entry.slice(separator + 1);
+  }
+  return vars;
+}
+
+export function readWorkerProducer(output: string, service: string, port: number, vars: Readonly<Record<string, string>> = {}): WorkerProducer {
   if (!SERVICE_NAME.test(service)) throw new TypeError(`${JSON.stringify(service)} is not a service name; use ^[a-z][a-z0-9-]{0,31}$`);
   if (RESERVED.has(service) || isObservedService(service)) throw new TypeError(`${service} is already an observed service (${OBSERVED_SERVICES.join(", ")}); use a new name for local profiling`);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new TypeError(`${output} needs a TCP port, not ${String(port)}`);
@@ -33,7 +52,8 @@ export function readWorkerProducer(output: string, service: string, port: number
   if (worker.crons.length > 0) throw new TypeError(`${worker.name} declares cron triggers ${worker.crons.join(", ")}, which the local producer does not fire; remove them or fire them from the workload`);
   const assetBindings = [...worker.env].filter(([, value]) => value.type === "assets").length;
   if (assetBindings !== (worker.assets === null ? 0 : 1)) throw new TypeError(`${worker.name} has ${assetBindings} assets bindings for ${worker.assets === null ? "no" : "one"} assets directory`);
-  return { kind: "worker", output, service, origin: `http://127.0.0.1:${port}`, port, worker };
+  for (const name of Object.keys(vars)) assertProducerVarName(name);
+  return { kind: "worker", output, service, origin: `http://127.0.0.1:${port}`, port, worker, vars };
 }
 
 function modules(worker: BuiltWorker): V4ModuleDefinition[] {
@@ -69,6 +89,7 @@ export function workerProducerOptions(producer: WorkerProducer, outbound: Outbou
         break;
     }
   }
+  for (const [key, value] of Object.entries(producer.vars)) bindings[key] = value;
   const objects = durableObjects(built);
   return {
     name: built.name,

@@ -23,6 +23,7 @@ export interface WorkerProducerStart {
   readonly dir: string;
   readonly service: string;
   readonly port?: number;
+  readonly vars?: Readonly<Record<string, string>>;
 }
 
 export interface StackStart {
@@ -81,7 +82,7 @@ async function resolveWorkerProducers(start: readonly WorkerProducerStart[]): Pr
     }
     if (ports.has(port)) throw new TypeError(`${entry.dir} and another producer both listen on 127.0.0.1:${port}`);
     ports.add(port);
-    producers.push(readWorkerProducer(entry.dir, entry.service, port));
+    producers.push(readWorkerProducer(entry.dir, entry.service, port, entry.vars ?? {}));
   }
   return producers;
 }

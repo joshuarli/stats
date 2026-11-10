@@ -66,6 +66,23 @@ collects manual traffic for `--wait` seconds:
 make -C ~/d/stats profile-local PRODUCER=<dir> PROFILE_ARGS='--wait 120'
 ```
 
+### Injecting text variables
+
+A producer sometimes needs a text binding before its workload can start, for
+example a bootstrap token hash so its first request can create an operator
+credential. `--producer-var NAME=VALUE` (repeatable) adds or overrides plain
+text bindings on the hosted producer only; `make profile-local` takes the same
+values in `PRODUCER_VARS`:
+
+```sh
+make -C ~/d/stats profile-local PRODUCER=<dir> PRODUCER_VARS='BOOTSTRAP_TOKEN_SHA256=<hex>'
+```
+
+Names must match `^[A-Z][A-Z0-9_]{0,63}$`, each value needs `=`, and a duplicate
+name is refused. Values are passed verbatim and never printed; the command logs
+only their names. This is local-only: it changes neither the deployed Workers
+nor how the stack authenticates its own routes.
+
 The same script runs directly:
 
 ```sh

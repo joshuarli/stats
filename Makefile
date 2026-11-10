@@ -163,8 +163,8 @@ reset-local:
 	rm -rf '$(CURDIR)/.work/local/state'
 
 profile-local: work-ready node-ready worker-bundle observe-bundle
-	@test -n '$(PRODUCER)' || { echo 'usage: make profile-local PRODUCER=<built output dir> [SERVICE=<name>] [WORKLOAD=<script>] [DAILY=<runs/day>] [PROFILE_ARGS=...]' >&2; exit 2; }
-	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types scripts/profile.mjs --producer-worker '$(abspath $(PRODUCER))' $(if $(SERVICE),--service '$(SERVICE)',) $(if $(WORKLOAD),--workload '$(abspath $(WORKLOAD))',) $(if $(DAILY),--daily '$(DAILY)',) $(PROFILE_ARGS)
+	@test -n '$(PRODUCER)' || { echo 'usage: make profile-local PRODUCER=<built output dir> [SERVICE=<name>] [WORKLOAD=<script>] [DAILY=<runs/day>] [PRODUCER_VARS="NAME=VALUE ..."] [PROFILE_ARGS=...]' >&2; exit 2; }
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types scripts/profile.mjs --producer-worker '$(abspath $(PRODUCER))' $(if $(SERVICE),--service '$(SERVICE)',) $(if $(WORKLOAD),--workload '$(abspath $(WORKLOAD))',) $(if $(DAILY),--daily '$(DAILY)',) $(foreach var,$(PRODUCER_VARS),--producer-var '$(var)') $(PROFILE_ARGS)
 
 profile-test: work-ready node-ready worker-bundle observe-bundle
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test test/profile/*.node.ts

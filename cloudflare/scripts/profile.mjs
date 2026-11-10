@@ -3,13 +3,15 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startStack } from "../local/stack.ts";
 import { readBuiltWorker } from "../local/topology.ts";
+import { parseProducerVars } from "../local/worker-producer.ts";
 import { DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_MILLION, PRICING_REVISION } from "../src/cost/pricing.ts";
 import { MONTH_MS } from "../src/cost/ledger.ts";
 
 const USAGE = `usage:
-  node scripts/profile.mjs --producer-worker DIR [--service NAME] [--workload FILE] [--daily N] [--wait SECONDS] [--json]
+  node scripts/profile.mjs --producer-worker DIR [--service NAME] [--producer-var NAME=VALUE]... [--workload FILE] [--daily N] [--wait SECONDS] [--json]
   --producer-worker DIR  a cf-built output directory holding worker.config.json and bundle/
   --service NAME         the observation label; defaults to the built Worker's name
+  --producer-var N=V     adds or overrides one text binding on the producer; repeatable, values are never printed
   --workload FILE        an ES module whose default export receives the producer origin; defaults to DIR/../workload.mjs or DIR/workload.mjs
   --daily N              how many times the measured workload runs per day (default 1000)
   --wait SECONDS         how long to collect manual traffic when no workload runs (default 30)
@@ -24,7 +26,7 @@ function usage(message) {
 }
 
 function options(args) {
-  const values = new Map([["--producer-worker", []], ["--service", []], ["--workload", []], ["--daily", []], ["--wait", []], ["--json", []]]);
+  const values = new Map([["--producer-worker", []], ["--service", []], ["--producer-var", []], ["--workload", []], ["--daily", []], ["--wait", []], ["--json", []]]);
   for (let index = 0; index < args.length; index += 1) {
     const name = args[index];
     if (!values.has(name)) usage(`unknown option ${name}`);
@@ -126,14 +128,22 @@ async function main(args) {
   if (output === undefined) usage("--producer-worker is required");
   const dir = resolve(output);
   const service = single(values, "--service", readBuiltWorker(dir).name);
+  let vars;
+  try {
+    vars = parseProducerVars(values.get("--producer-var"));
+  } catch (error) {
+    usage(error instanceof Error ? error.message : String(error));
+  }
   const daily = positive(values, "--daily", 1000);
   const waitSeconds = positive(values, "--wait", 30);
   const explicit = single(values, "--workload", undefined);
   const workload = explicit === undefined ? resolveWorkload(dir) : resolve(explicit);
   const json = values.get("--json").length > 0;
 
-  const stack = await startStack({ nowMs: null, workerProducers: [{ dir, service }] });
+  const stack = await startStack({ nowMs: null, workerProducers: [{ dir, service, vars }] });
   const producer = stack.workerProducers[0];
+  const names = Object.keys(producer.vars);
+  if (names.length > 0) console.error(`producer vars: ${names.join(", ")}`);
   const fromMs = Date.now() - 60_000;
   const read = () => stack.observe(service, `/profile?from=${fromMs}&to=${Date.now() + 60_000}`);
   try {
