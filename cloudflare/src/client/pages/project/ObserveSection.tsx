@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { age, count } from "../../format";
 import { useTelemetry } from "../../state";
@@ -249,7 +249,6 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
   const error = () => keyedError(result(), props.deploymentId);
   createEffect(() => ({ id: props.deploymentId, tick: props.refreshKey }), query => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void props.observe.read(`/rollouts/${query.id}/impact`, controller.signal, value => decodeImpact(value, query.id)).then(value => {
       if (controller.signal.aborted) return;
       setResult({ kind: "ok", key: query.id, value });
@@ -257,6 +256,7 @@ export function RolloutImpactPanel(props: { readonly deploymentId: string; reado
       if (controller.signal.aborted) return;
       setResult({ kind: "error", key: query.id, message: message(cause, "Deployment errors unavailable") });
     });
+    return () => controller.abort();
   });
   const summary = (value: RolloutImpact) => {
     if (value.state === "expired") return "Older than the 7 days of retained errors, so new issues cannot be told apart.";
@@ -300,13 +300,13 @@ function IssueModalBody(props: { readonly fingerprint: string; readonly observe:
   const occurrencesError = () => keyedError(occurrencesResult(), props.fingerprint);
   createEffect(() => ({ id: props.fingerprint, mutation: props.observe.mutation() }), query => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void props.observe.read(`/issues/${query.id}`, controller.signal, decodeIssue).then(value => {
       if (!controller.signal.aborted) setIssueResult({ kind: "ok", key: query.id, value });
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setIssueResult({ kind: "error", key: query.id, message: message(cause, "Issue unavailable") }); });
     void props.observe.read(`/issues/${query.id}/occurrences?limit=100`, controller.signal, decodeOccurrences).then(value => {
       if (!controller.signal.aborted) setOccurrencesResult({ kind: "ok", key: query.id, value });
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setOccurrencesResult({ kind: "error", key: query.id, message: message(cause, "Occurrences unavailable") }); });
+    return () => controller.abort();
   });
   return (
     <>
@@ -324,12 +324,12 @@ function TraceModalBody(props: { readonly traceId: string; readonly read: Observ
   const failure = () => keyedError(result(), props.traceId);
   createEffect(() => props.traceId, id => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void props.read(`/traces/${id}`, controller.signal, value => decodeTrace(value, id)).then(value => {
       if (controller.signal.aborted) return;
       setResult({ kind: "ok", key: id, value });
       setSlice(defaultSlice(value));
     }).catch((cause: unknown) => { if (!controller.signal.aborted) setResult({ kind: "error", key: id, message: message(cause, "Trace unavailable") }); });
+    return () => controller.abort();
   });
   return (
     <>

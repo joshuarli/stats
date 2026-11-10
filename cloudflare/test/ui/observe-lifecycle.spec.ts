@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
-import { answer, buildScenario, scenarioComparison, SCENARIO_ROLLOUTS, type Scenario } from "./observe-scenario";
+import { answer, buildScenario, scenarioComparison, scenarioStore, SCENARIO_ROLLOUTS, type Scenario } from "./observe-scenario";
 
 const now = Date.UTC(2026, 10, 4, 2, 0);
 const collector = { lastRunAtMs: now - 60_000, lastSuccessAtMs: now - 60_000, lastError: null, stale: false };
@@ -16,9 +16,10 @@ function createGate() {
 
 async function installBase(
   page: Page,
-  onObserve?: (method: string, path: string, scenario: Scenario) => Promise<{ status: number; body: string } | null>
+  onObserve?: (method: string, path: string, scenario: Scenario) => Promise<{ status: number; body: string } | null>,
+  fixture?: Scenario
 ) {
-  const scenario = await (shared ??= buildScenario(now));
+  const scenario = fixture ?? await (shared ??= buildScenario(now));
   const aborted: string[] = [];
   await page.clock.setFixedTime(now);
   page.on("requestfailed", request => {
@@ -363,6 +364,53 @@ test("changing deployment cancels its comparison and never shows it for another 
     await page.getByRole("option", { name: /^v1\.4\.0\b/u }).click();
     await expect.poll(() => aborted.some(path => path.includes(SCENARIO_ROLLOUTS.v13))).toBe(true);
     await expect(deployment.locator(".deployment-periods")).toHaveText(oldWindows!);
+  } finally {
+    gate.release();
+  }
+});
+
+test("changing deployment cancels the previous rollout impact request", async ({ page }) => {
+  const gate = createGate();
+  let waiting = false;
+  const { aborted } = await installBase(page, async (_method, path) => {
+    if (path.startsWith(`/rollouts/${SCENARIO_ROLLOUTS.v14}/impact`)) {
+      waiting = true;
+      await gate.promise;
+    }
+    return null;
+  });
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  try {
+    await expect.poll(() => waiting).toBe(true);
+    await page.getByRole("option", { name: /^v1\.3\.0\b/u }).click();
+    await expect.poll(() => aborted.some(path => path.includes(`/rollouts/${SCENARIO_ROLLOUTS.v14}/impact`))).toBe(true);
+    await expect(page.getByRole("region", { name: "Errors after this deployment" })).toBeVisible();
+  } finally {
+    gate.release();
+  }
+});
+
+
+test("resolving an issue cancels its previous modal occurrence request", async ({ page }) => {
+  const scenario = await buildScenario(now);
+  const issue = (await scenarioStore(scenario, now).issues({})).items[0]!;
+  const gate = createGate();
+  let waiting = false;
+  const { aborted } = await installBase(page, async (_method, path) => {
+    if (path.startsWith(`/issues/${issue.fingerprint}/occurrences`) && !waiting) {
+      waiting = true;
+      await gate.promise;
+    }
+    return null;
+  }, scenario);
+  await page.goto(`/#/project/stats?section=deploys&modal=issue:${issue.fingerprint}`);
+  const dialog = page.getByRole("dialog", { name: "Issue" });
+  try {
+    await expect.poll(() => waiting).toBe(true);
+    await dialog.getByRole("button", { name: "Resolve", exact: true }).click();
+    await expect(dialog.getByRole("status")).toContainText("Issue resolved");
+    await expect.poll(() => aborted.some(path => path.includes(`/issues/${issue.fingerprint}/occurrences`))).toBe(true);
+    await expect(dialog.getByRole("button", { name: "Reopen", exact: true })).toBeVisible();
   } finally {
     gate.release();
   }
