@@ -11,6 +11,7 @@ import { createStatsServer, observeHandler } from "../../src/node/server.ts";
 import type { ProbeFetch } from "../../src/projects/probes.ts";
 import { HostSeries, SAMPLE_STEP_MS, SAMPLES_PER_BUCKET, type HostLevels } from "../support/service-data.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
+import type { ServiceComparison } from "../../src/deployments/service-compare.ts";
 
 const ORIGIN = "http://127.0.0.1:4176";
 const LOGIN = "services@example.com";
@@ -177,6 +178,25 @@ test("a service with no host data and no health URL shows every source unavailab
   await expect(page.getByText("Service cgroup: Unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText(/0 open issues|issues unavailable/u).first()).toBeVisible();
   await expect(page.locator("main.content")).toHaveScreenshot("service-batch.webp");
+});
+
+test("long work details do not squeeze operation names", async ({ page }) => {
+  await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
+    const response = await route.fetch();
+    const comparison = await response.json() as ServiceComparison;
+    const work = comparison.work[0]!;
+    const key = "processed_objects_long_counter";
+    const measurement = { ...work.before.work[0]!, key, durationPerUnitMs: 1.234, cpuPerUnit: 0.001234, ioPerUnit: 1234 };
+    await route.fulfill({ response, json: { ...comparison, work: [{ ...work, operation: "payments.process_settlement", before: { ...work.before, work: [measurement] }, after: { ...work.after, work: [measurement] } }] } });
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  const row = page.getByRole("row", { name: /payments\.process_settlement/u });
+  const identity = row.getByRole("rowheader");
+  await expect(identity).toBeVisible();
+  await expect(row).toContainText("processed_objects_long_counter");
+  const layout = await identity.evaluate(element => { const range = document.createRange(); range.selectNodeContents(element); return { width: element.getBoundingClientRect().width, lines: range.getClientRects().length }; });
+  expect(layout.width).toBeGreaterThan(140);
+  expect(layout.lines).toBe(1);
 });
 
 test("an unknown service is a not-found state, not an empty page", async ({ page }) => {
