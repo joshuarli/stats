@@ -1,4 +1,5 @@
 @import "@laputa-systems/ui-dashboard/styles.css";
+@import "@laputa-systems/ui-dashboard/styles/sortable-header.css";
 @import "./tokens.css";
 @import "./base.css";
 @import "./controls.css";

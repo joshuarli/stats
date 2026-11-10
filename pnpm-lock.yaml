@@ -779,7 +779,7 @@ packages:
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
   '@laputa-systems/ui-dashboard@0.6.0':
-    resolution: {integrity: sha512-xevyrtQRnKZy3/4Qaagq+nll4m0Zqa9zTqJymZe/0/hR/u1UmQczYdAkEVGnu23JUjjp+MN5kg7SLxYZVg+xSA==, tarball: https://npm.17166969.xyz/current/-/tarballs/c5ebf2aed4119ca672dffe1069a82afa7965e26d19a9af734ea2729997bfd3f851feed5499073361d0241151a7bb6dc95238e9f8c379920ed22f1619560fb148.tgz}
+    resolution: {integrity: sha512-GlOb5rB0Jte4UKgsi6++S7k/Hg9mefkdB9dqv2q+vIO/EZqTa4MrYSHB2T46WHVi3jX7P3vN42Gukg1UXKpwMw==, tarball: https://npm.17166969.xyz/current/-/tarballs/1a539be6b07426d7b850a82c8bafbe4bb93f1e0f6679f91d07d76abf6abebc83bf119a936b832b6121c1d93e3a587562de35fb3f7bcde361ae920d545caa7033.tgz}
     engines: {node: '>=26.13.0'}
     peerDependencies:
       '@solidjs/web': '>=2.0.0-rc.18'

@@ -1,6 +1,7 @@
-import { createSignal, Show, type Accessor } from "solid-js";
+import { createSignal, type Accessor } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Icon } from "@laputa-systems/ui-dashboard";
+import { SortableHeader } from "@laputa-systems/ui-dashboard/data";
 
 export interface Sort<K extends string> {
   readonly key: K;
@@ -29,16 +30,5 @@ export function SortHeader<K extends string>(props: {
   readonly onSort: (key: K) => void;
   readonly class?: string | undefined;
 }): JSX.Element {
-  const active = () => props.sort.key === props.sortKey;
-  const direction = () => props.sort.direction;
-  return (
-    <th scope="col" class={props.class} aria-sort={active() ? (direction() === 1 ? "ascending" : "descending") : undefined}>
-      <button class="sort-button" type="button" onClick={() => props.onSort(props.sortKey)}>
-        {props.label}
-        <Show when={active()}>
-          <Icon name={direction() === 1 ? "sortUp" : "sortDown"} size={10} />
-        </Show>
-      </button>
-    </th>
-  );
+  return <SortableHeader label={props.label} class={props.class} buttonClass="sort-button" direction={props.sort.key === props.sortKey ? (props.sort.direction === 1 ? "ascending" : "descending") : undefined} onSort={() => props.onSort(props.sortKey)} indicator={direction => <Icon name={direction === "ascending" ? "sortUp" : "sortDown"} size={10} />} />;
 }
