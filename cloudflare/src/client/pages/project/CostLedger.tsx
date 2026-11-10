@@ -19,7 +19,7 @@ const COMPONENT_COLORS: Readonly<Record<string, string>> = { worker: "var(--viz-
 const WINDOW_TIME = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
 const change = (amount: Amount | null): number | null => amount === null || amount.before === null ? null : amount.now - amount.before;
-const per = (part: Amount, whole: Amount): Amount => ({ now: whole.now > 0 ? part.now / whole.now : 0, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
+const per = (part: Amount, whole: Amount): Amount | null => whole.now <= 0 ? null : ({ now: part.now / whole.now, before: whole.before === null || part.before === null || whole.before <= 0 ? null : part.before / whole.before });
 
 function Delta(props: { readonly amount: Amount | null }): JSX.Element {
   const diff = () => change(props.amount);
@@ -62,16 +62,19 @@ function UnitCell(props: { readonly line: CostLine }): JSX.Element {
   switch (usage.kind) {
     case "requests": {
       const value = per(usage.cpuMs, usage.calls);
+      if (value === null) return <>CPU/{props.line.kind === "worker" ? "req" : "call"} unavailable</>;
       return <>{milliseconds(Number(value.now.toPrecision(2)))} CPU/{props.line.kind === "worker" ? "req" : "call"}<Ratio amount={value} worseUp /></>;
     }
     case "objects": {
       const value = per(usage.wallMs, usage.calls);
+      if (value === null) return <>wall/call unavailable</>;
       return <>{milliseconds(Number(value.now.toPrecision(2)))} wall/call<Ratio amount={value} worseUp /></>;
     }
     case "rows": {
       if (usage.queries === null || usage.queries.now <= 0) return <></>;
       const rows = { now: usage.read.now + usage.written.now, before: usage.read.before === null || usage.written.before === null ? null : usage.read.before + usage.written.before };
       const value = per(rows, usage.queries);
+      if (value === null) return <></>;
       return <>{count(Math.round(value.now))} rows/query<Ratio amount={value} worseUp /></>;
     }
     case "stored": {
@@ -119,23 +122,30 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
     const money = line().parts.map(part => <Fact label={`${part.label} $/mo`} value={`${part.bound === "upper" ? "≤ " : ""}${dollarsPrecise(part.monthly)}`} />);
     const current = usage();
     switch (current.kind) {
-      case "requests": return <>
-        <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
-        <Fact label="CPU/call" value={milliseconds(Number(per(current.cpuMs, current.calls).now.toPrecision(2)))} amount={per(current.cpuMs, current.calls)} worseUp />
-        <Fact label="CPU in window" value={duration(current.cpuMs.now)} amount={current.cpuMs} worseUp />
-        {money}
-      </>;
-      case "objects": return <>
-        <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
-        <Fact label="wall/call" value={milliseconds(Number(per(current.wallMs, current.calls).now.toPrecision(2)))} amount={per(current.wallMs, current.calls)} worseUp />
-        <Fact label="CPU/call" value={milliseconds(Number(per(current.cpuMs, current.calls).now.toPrecision(2)))} amount={per(current.cpuMs, current.calls)} worseUp />
-        <Show when={current.latency}>{latency => <>
-          <Fact label="p50 wall" value={milliseconds(latency().p50WallMs)} />
-          <Fact label="p95 wall" value={milliseconds(latency().p95WallMs)} />
-          <Fact label="failed" value={count(latency().failed)} />
-        </>}</Show>
-        {money}
-      </>;
+      case "requests": {
+        const cpuPerCall = per(current.cpuMs, current.calls);
+        return <>
+          <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+          <Fact label="CPU/call" value={cpuPerCall === null ? "unavailable" : milliseconds(Number(cpuPerCall.now.toPrecision(2)))} amount={cpuPerCall ?? undefined} worseUp />
+          <Fact label="CPU in window" value={duration(current.cpuMs.now)} amount={current.cpuMs} worseUp />
+          {money}
+        </>;
+      }
+      case "objects": {
+        const wallPerCall = per(current.wallMs, current.calls);
+        const cpuPerCall = per(current.cpuMs, current.calls);
+        return <>
+          <Fact label="calls in window" value={count(Math.round(current.calls.now))} amount={current.calls} />
+          <Fact label="wall/call" value={wallPerCall === null ? "unavailable" : milliseconds(Number(wallPerCall.now.toPrecision(2)))} amount={wallPerCall ?? undefined} worseUp />
+          <Fact label="CPU/call" value={cpuPerCall === null ? "unavailable" : milliseconds(Number(cpuPerCall.now.toPrecision(2)))} amount={cpuPerCall ?? undefined} worseUp />
+          <Show when={current.latency}>{latency => <>
+            <Fact label="p50 wall" value={milliseconds(latency().p50WallMs)} />
+            <Fact label="p95 wall" value={milliseconds(latency().p95WallMs)} />
+            <Fact label="failed" value={count(latency().failed)} />
+          </>}</Show>
+          {money}
+        </>;
+      }
       case "rows": return <>
         <Show when={current.queries}>{queries => <Fact label="queries in window" value={count(Math.round(queries().now))} amount={queries()} />}</Show>
         <Fact label="rows read in window" value={count(Math.round(current.read.now))} amount={current.read} worseUp />

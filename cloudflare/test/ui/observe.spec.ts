@@ -10,7 +10,7 @@ const MEMORIES = { id: "usr-memories", name: "usr-memories", worker: "usr-memori
 const HISTORY_ROUTE = "GET /api/v1/hosts/:host/history";
 let shared: Promise<Scenario> | undefined;
 
-async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[]; readonly sampleObjectMethods?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
+async function setup(page: Page, options: { readonly failing?: boolean; readonly fresh?: boolean; readonly scenario?: Scenario; readonly failWhen?: (method: string, path: string) => boolean; readonly beforePost?: () => Promise<void>; readonly ledgerRoutes?: readonly string[]; readonly sampleObjectMethods?: boolean; readonly zeroWorkerCalls?: boolean; readonly zeroWorkerCpu?: boolean; readonly zeroObjectCalls?: boolean } = {}): Promise<{ readonly requests: string[]; readonly posts: string[]; readonly services: Set<string> }> {
   const scenario = options.scenario ?? (options.fresh === true ? await buildScenario(now) : await (shared ??= buildScenario(now)));
   const requests: string[] = [];
   const posts: string[] = [];
@@ -34,9 +34,9 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (history !== null && kinds !== null) {
       const base = { projectId: history[1], range: "24h", fromMs: now - 86_400_000, toMs: now, stepMs: 3_600_000 };
       const body = (kind: string) => kind === "collector" ? { ...base, kind, runs: [] }
-        : kind === "worker" ? { ...base, kind, series: [{ metric: "worker.invocations", values: Array.from({ length: 24 }, () => 300) }, { metric: "worker.status.2xx", values: Array.from({ length: 24 }, () => 300) }] }
+        : kind === "worker" ? { ...base, kind, series: [{ metric: "worker.invocations", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, { metric: "worker.status.2xx", values: Array.from({ length: 24 }, () => options.zeroWorkerCalls === true ? 0 : 300) }, ...(options.zeroWorkerCpu === true ? [{ metric: "worker.cpuMsSum", values: Array.from({ length: 24 }, () => 0) }] : [])] }
         : kind === "routes" ? { ...base, kind, series: (options.ledgerRoutes ?? []).flatMap(label => [{ metric: `route.${label}.invocations`, values: Array.from({ length: 24 }, () => 20) }, { metric: `route.${label}.cpuMsSum`, values: Array.from({ length: 24 }, () => 400) }]) }
-        : kind === "durable-objects" ? { ...base, kind, series: [{ metric: "do.invocations", values: Array.from({ length: 24 }, () => 600) }, { metric: "do.wallMsSum", values: Array.from({ length: 24 }, () => 30_000) }, { metric: "do.cpuMsSum", values: Array.from({ length: 24 }, () => 9_000) }] }
+        : kind === "durable-objects" ? { ...base, kind, series: [{ metric: "do.invocations", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 600) }, { metric: "do.wallMsSum", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 30_000) }, { metric: "do.cpuMsSum", values: Array.from({ length: 24 }, () => options.zeroObjectCalls === true ? 0 : 9_000) }] }
         : { ...base, kind, series: [] };
       return fulfillHistory(route, { projectId: history[1], histories: Object.fromEntries(kinds.split(",").map(kind => [kind, body(kind)])) });
     }
@@ -53,6 +53,10 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
     if (method === "POST") posts.push(`${path} ${route.request().postData() ?? ""}`);
     if (method === "POST") await options.beforePost?.();
     const response = await answer(scenario, now, new Request(`https://observe${path}${url.search}`, { method, headers: { "content-type": route.request().headers()["content-type"] ?? "" }, ...(method === "POST" ? { body: route.request().postData() ?? "" } : {}) }));
+    if (path === "/objects" && options.zeroObjectCalls === true) {
+      const body = await response.json() as { readonly methods: readonly unknown[] };
+      return route.fulfill({ json: { ...body, methods: [] } });
+    }
     if (path === "/objects" && options.sampleObjectMethods === true) {
       const body = await response.json() as { readonly methods: readonly unknown[] };
       const previous = Number(url.searchParams.get("to")) <= now - 2 * 60 * 60 * 1000;
@@ -259,6 +263,23 @@ test("sampled object methods disclose their basis and do not invent a zero compa
   await expect(method.locator(".ledger-money")).not.toContainText("≤");
   if (await method.getAttribute("aria-expanded") !== "true") await method.click();
   await expect(page.locator(".ledger-detail-context")).toContainText("Comparison unavailable for this method");
+});
+
+test("zero calls do not imply zero CPU or wall time per call @mobile", async ({ page }) => {
+  const options = { zeroWorkerCalls: true, zeroWorkerCpu: true, zeroObjectCalls: true };
+  await setup(page, options);
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const worker = page.locator('[id="ledger-worker"]');
+  await expect(worker).toContainText("0 req");
+  await expect(worker.locator(".ledger-unit")).toHaveText("CPU/req unavailable");
+  await expect(page.locator('[id="ledger-objects"] .ledger-unit')).toHaveText("wall/call unavailable");
+  await worker.click();
+  const detail = page.locator(".ledger-detail");
+  await expect(detail.locator(".ledger-detail-context")).toContainText("CPU/req unavailable");
+  await expect(detail.locator(".ledger-fact").filter({ hasText: "CPU/call" })).toContainText("unavailable");
+  options.zeroWorkerCalls = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(worker.locator(".ledger-unit")).toHaveText("0 ms CPU/req");
 });
 
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {
