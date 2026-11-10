@@ -709,13 +709,26 @@ test("filtering projects suspends hidden trends without refetching project data"
   await expect(row).toContainText("$3.12/mo");
   await row.getByRole("button", { name: "Show stuff trends" }).click();
   await expect(page.locator(".projects-detail").getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  const plots = page.locator(".projects-detail .uplot");
+  await expect(plots).toHaveCount(4);
   await page.waitForLoadState("networkidle");
   const before = requests.length;
   const search = page.getByRole("searchbox", { name: "Search projects" });
   await search.fill("billing");
   await expect(page.locator(".projects-detail")).toHaveCount(0);
+  await expect(page.locator(".uplot")).toHaveCount(0);
+  await page.setViewportSize({ width: 768, height: 900 });
   await search.fill("");
   await expect(page.locator(".projects-detail").getByRole("img", { name: /^stuff requests;/u })).toBeVisible();
+  await expect(plots).toHaveCount(4);
+  const plotsFit = () => plots.evaluateAll(elements => elements.every(element => {
+    const host = element.parentElement;
+    return host !== null && host.clientWidth > 0 && Math.abs(element.getBoundingClientRect().width - host.clientWidth) <= 1;
+  }));
+  await expect.poll(plotsFit).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(plotsFit).toBe(true);
+  await expect(plots).toHaveCount(4);
   await page.waitForLoadState("networkidle");
   expect(requests).toHaveLength(before);
 });
