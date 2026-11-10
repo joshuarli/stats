@@ -496,6 +496,53 @@ test("search filters the fleet and the status chips narrow it", async ({ page })
   await expect(page.getByRole("complementary")).toHaveCount(0);
 });
 
+test("returning from a host keeps the fleet search, status and sort", async ({ page }) => {
+  await mock(page);
+  await page.goto("/");
+  const search = page.getByRole("searchbox", { name: "Search hosts" });
+  await search.fill("alpha");
+  const online = page.getByRole("group", { name: "Filter by status" }).getByRole("button", { name: /^online/u });
+  await online.click();
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  await table.getByRole("button", { name: "Host", exact: true }).click();
+  await table.getByRole("button", { name: "Host", exact: true }).click();
+  await expect(table.getByRole("columnheader", { name: "Host" })).toHaveAttribute("aria-sort", "descending");
+  await table.getByRole("link", { name: "alpha" }).click();
+  await expect(page).toHaveURL(/#\/host\//u);
+  await page.goBack();
+  await expect(search).toHaveValue("alpha");
+  await expect(online).toHaveAttribute("aria-pressed", "true");
+  await expect(table.getByRole("columnheader", { name: "Host" })).toHaveAttribute("aria-sort", "descending");
+  await expect(table.getByRole("link", { name: "alpha" })).toBeFocused();
+  await table.getByRole("link", { name: "alpha" }).click();
+  const hosts = page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Hosts" });
+  await hosts.click();
+  await expect(search).toHaveValue("alpha");
+  await expect(hosts).toBeFocused();
+});
+
+test("returning from a host keeps the fleet page", async ({ page }) => {
+  await mock(page);
+  const hosts = Array.from({ length: 12 }, (_, index) => ({
+    hostId: `h_${index.toString(16).padStart(32, "0")}`,
+    name: `host-${index.toString().padStart(2, "0")}`,
+    createdAtMs: now - 100_000,
+    revoked: false,
+    lastReceivedAtMs: now - 5_000,
+    online: true
+  }));
+  await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Next page" }).click();
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  await expect(table.getByRole("link", { name: "host-10" })).toBeVisible();
+  await table.getByRole("link", { name: "host-10" }).click();
+  await expect(page).toHaveURL(/#\/host\//u);
+  await page.goBack();
+  await expect(page.getByText("Page 2 of 2")).toBeVisible();
+  await expect(table.getByRole("link", { name: "host-10" })).toBeFocused();
+});
+
 test("dragging a chart zooms the time window, and escape returns to live", async ({ page }) => {
   const requests = await mock(page);
   await page.goto("/");
@@ -615,6 +662,20 @@ test("the projects page lists projects and each row opens its page", async ({ pa
   await table.getByRole("link", { name: "stuff" }).click();
   await expect(page).toHaveURL(/#\/project\/stuff$/u);
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
+});
+
+test("returning from a project keeps the projects sort and focus", async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/projects");
+  const table = page.getByRole("table", { name: "Projects" });
+  await table.getByRole("button", { name: "Project", exact: true }).click();
+  await table.getByRole("button", { name: "Project", exact: true }).click();
+  await expect(table.getByRole("columnheader", { name: "Project" })).toHaveAttribute("aria-sort", "descending");
+  await table.getByRole("link", { name: "stuff" }).click();
+  await expect(page).toHaveURL(/#\/project\/stuff$/u);
+  await page.goBack();
+  await expect(table.getByRole("columnheader", { name: "Project" })).toHaveAttribute("aria-sort", "descending");
+  await expect(table.getByRole("link", { name: "stuff" })).toBeFocused();
 });
 
 test("the projects table compares each project's settled window with the one before and expands to its trends", async ({ page }) => {

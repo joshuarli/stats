@@ -15,6 +15,7 @@ import type { TimeWindow } from "../chart-data";
 import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
 import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
 import { windowUsage, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
+import { restoreListFocus, type ProjectSortKey } from "../list-state";
 import "./project/projects.css";
 
 const Trends = lazy(() => import("./project/Trends").then(module => ({ default: module.Trends })));
@@ -27,8 +28,6 @@ interface ProjectMetrics {
   readonly deployAtMs: number | null;
 }
 
-type ProjectSort = "none" | "name" | "requests" | "errors" | "cpu" | "cost" | "deploy" | "collector";
-
 export function ProjectsPage(): JSX.Element {
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
@@ -40,11 +39,19 @@ export function ProjectsPage(): JSX.Element {
 }
 
 function Projects(): JSX.Element {
-  const { range, now, tick, manualTick } = useTelemetry();
+  const { range, now, tick, manualTick, lists } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
   createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
-  const { sort, sortBy } = createSort<ProjectSort>({ key: "none", direction: 1 });
+  const { sort, sortBy } = createSort<ProjectSortKey>(lists.projects.sort);
+  let returnProject = lists.projects.returnProject;
+  lists.projects.returnProject = null;
+  onCleanup(() => { lists.projects.sort = sort(); });
+  const onProjectMount = (id: string, link: HTMLAnchorElement) => {
+    if (returnProject !== id) return;
+    returnProject = null;
+    restoreListFocus(link);
+  };
   const [metrics, setMetrics] = createSignal<ReadonlyMap<string, ProjectMetrics>>(new Map());
   const reportMetrics = (id: string, value: ProjectMetrics) => setMetrics(current => {
     const existing = current.get(id);
@@ -109,7 +116,7 @@ function Projects(): JSX.Element {
                 <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
-            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} reportMetrics={reportMetrics} />}</For>
+            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
           </table>
         </div>
       </Widget>
@@ -150,7 +157,7 @@ function Change(props: { readonly amount: Amount | null; readonly worseUp: boole
   return <Show when={text()}>{value => <span class={`projects-change${tone()}`}>{value()}</span>}</Show>;
 }
 
-function ProjectRow(props: { readonly project: Project; readonly reportMetrics: (id: string, value: ProjectMetrics) => void }): JSX.Element {
+function ProjectRow(props: { readonly project: Project; readonly reportMetrics: (id: string, value: ProjectMetrics) => void; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const refreshKey = () => `${projectTick()}:${manualTick()}`;
@@ -282,6 +289,8 @@ function ProjectRow(props: { readonly project: Project; readonly reportMetrics: 
             name={props.project.name}
             href={`#/project/${props.project.id}`}
             id={props.project.worker}
+            onNavigate={() => props.onNavigate(props.project.id)}
+            onLinkMount={link => props.onMount(props.project.id, link)}
           />
         </td>
         <td class="numeric">

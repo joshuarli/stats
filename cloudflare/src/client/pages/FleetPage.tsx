@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, onCleanup, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
@@ -15,12 +15,10 @@ import { EntityCell, ErrorState, Notice, Widget } from "../components/ui";
 import { osFamily } from "../os";
 import { createUpdateEffect } from "../effect";
 import { compareSortValues, createSort, SortHeader, type Sort } from "../components/sort";
+import { hostStatusFilters as statusLabels, restoreListFocus, type HostSortKey as SortKey, type HostStatusFilter as StatusLabel } from "../list-state";
 
 const PAGE_SIZE = 10;
-const statusLabels = ["online", "stale", "no samples", "revoked"] as const;
-type StatusLabel = (typeof statusLabels)[number];
 const statusRank: Record<HostStatus["label"], number> = { online: 0, stale: 1, "no samples": 2, unknown: 3, revoked: 4 };
-type SortKey = "name" | "status" | "cpu" | "memory" | "load" | "diskSpace" | "diskIO" | "network";
 const METRIC_KEYS: ReadonlySet<SortKey> = new Set<SortKey>(["cpu", "memory", "load", "diskSpace", "diskIO", "network"]);
 
 function isStatusLabel(label: string): label is StatusLabel {
@@ -72,11 +70,24 @@ function compareHosts(sort: Sort<SortKey>, metricRows: ReadonlyMap<string, Fleet
 }
 
 export function FleetPage(): JSX.Element {
-  const { query, hosts, now, refreshHosts, tick, manualTick } = useTelemetry();
-  const [search, setSearch] = createSignal("");
-  const [selected, setSelected] = createSignal<ReadonlySet<StatusLabel>>(new Set<StatusLabel>());
-  const { sort, sortBy } = createSort<SortKey>({ key: "status", direction: 1 });
-  const [page, setPage] = createSignal(1);
+  const { query, hosts, now, refreshHosts, tick, manualTick, lists } = useTelemetry();
+  const [search, setSearch] = createSignal(lists.fleet.search);
+  const [selected, setSelected] = createSignal(lists.fleet.selected);
+  const { sort, sortBy } = createSort(lists.fleet.sort);
+  const [page, setPage] = createSignal(lists.fleet.page);
+  let returnHost = lists.fleet.returnHost;
+  lists.fleet.returnHost = null;
+  onCleanup(() => {
+    lists.fleet.search = search();
+    lists.fleet.selected = selected();
+    lists.fleet.sort = sort();
+    lists.fleet.page = currentPage();
+  });
+  const onHostMount = (id: string, link: HTMLAnchorElement) => {
+    if (returnHost !== id) return;
+    returnHost = null;
+    restoreListFocus(link);
+  };
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const [rowsEpoch, setRowsEpoch] = createSignal(0);
   const rowCache: FleetRowCache = {
@@ -186,6 +197,8 @@ export function FleetPage(): JSX.Element {
             setPage={setPage}
             now={now()}
             pending={isPending(rows)}
+            onHostNavigate={id => { lists.fleet.returnHost = id; }}
+            onHostMount={onHostMount}
           />
         </Loading>
       </Errored>
@@ -236,6 +249,8 @@ function FleetDashboard(props: {
   readonly setPage: (value: number) => void;
   readonly now: number;
   readonly pending: boolean;
+  readonly onHostNavigate: (id: string) => void;
+  readonly onHostMount: (id: string, link: HTMLAnchorElement) => void;
 }): JSX.Element {
   const from = () => props.total === 0 ? 0 : (props.page - 1) * PAGE_SIZE + 1;
   const to = () => Math.min(props.total, props.page * PAGE_SIZE);
@@ -280,7 +295,7 @@ function FleetDashboard(props: {
               </thead>
               <tbody>
                 <For each={props.rows}>
-                  {(row) => <FleetTableRow row={row} now={props.now} />}
+                  {(row) => <FleetTableRow row={row} now={props.now} onNavigate={props.onHostNavigate} onMount={props.onHostMount} />}
                 </For>
               </tbody>
             </table>
@@ -292,7 +307,7 @@ function FleetDashboard(props: {
   );
 }
 
-function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }): JSX.Element {
+function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
   const table = () => props.row.summary;
   const timeWindow = createMemo(() => ({ fromMs: props.row.fromMs, toMs: props.row.toMs }));
   const status = createMemo(() => hostStatus(props.row.host));
@@ -370,6 +385,8 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number }):
           href={`#/host/${props.row.host.hostId}`}
           id={props.row.host.hostId}
           note={osNote()}
+          onNavigate={() => props.onNavigate(props.row.host.hostId)}
+          onLinkMount={link => props.onMount(props.row.host.hostId, link)}
         />
         <Show when={cpuModel()}>
           {(model) => <span class="cell-note wrap-note">{model()}</span>}

@@ -8,6 +8,7 @@ import { createUpdateEffect } from "./effect";
 import type { TimeWindow } from "./chart-data";
 import { createViewState, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
 import { readParam, writeParam } from "./urlState";
+import { createListState } from "./list-state";
 
 const DEFAULT_RANGE: Range = "1h";
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
@@ -35,6 +36,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 export function Shell(props: ParentProps): JSX.Element {
+  const lists = createListState();
   const [range, setRange] = createSignal<Range>(ranges.find(candidate => candidate === readParam("range")) ?? DEFAULT_RANGE);
   const [now, setNow] = createSignal(Date.now());
   const hosts = createMemo(loadHosts);
@@ -95,7 +97,7 @@ export function Shell(props: ParentProps): JSX.Element {
   };
 
   return (
-    <TelemetryContext value={{ range, query, chooseRange, showWindow, now, hosts, refreshHosts, ...views }}>
+    <TelemetryContext value={{ lists, range, query, chooseRange, showWindow, now, hosts, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
           <nav class="primary-nav" aria-label="Primary">

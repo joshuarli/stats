@@ -2,6 +2,7 @@ import { createContext, createSignal, useContext, type Accessor } from "solid-js
 import type { HistoryQuery, Host } from "./api";
 import { panWindow, type TimeWindow } from "./chart-data";
 import { HOUR_MS, MINUTE_MS, MINUTE_RETENTION_MS, RAW_RETENTION_MS, RAW_STEP_MS, RANGES, RANGE_MS, type RangeKey } from "../limits";
+import type { ListState } from "./list-state";
 
 export const ranges = RANGES;
 export type Range = RangeKey;
@@ -37,6 +38,7 @@ type ViewMode =
   | { readonly kind: "zoomed"; readonly window: TimeWindow };
 
 export interface TelemetryState extends ViewState {
+  readonly lists: ListState;
   readonly range: Accessor<Range>;
   readonly query: Accessor<HistoryQuery>;
   readonly chooseRange: (range: Range) => void;

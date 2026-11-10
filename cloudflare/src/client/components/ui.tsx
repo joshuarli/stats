@@ -20,13 +20,15 @@ export function EntityCell(props: {
   readonly id: string;
   readonly note?: string | undefined;
   readonly onHover?: ((hovered: boolean) => void) | undefined;
+  readonly onNavigate?: (() => void) | undefined;
+  readonly onLinkMount?: ((link: HTMLAnchorElement) => void) | undefined;
 }): JSX.Element {
   const hover = (hovered: boolean) => () => props.onHover?.(hovered);
   return (
     <div class="entity-cell">
       {props.marker}
       <div>
-        <a class="entity-name" href={props.href} onMouseEnter={hover(true)} onFocus={hover(true)} onMouseLeave={hover(false)} onBlur={hover(false)}>{props.name}</a>
+        <a ref={element => props.onLinkMount?.(element)} class="entity-name" href={props.href} onClick={event => { if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) props.onNavigate?.(); }} onMouseEnter={hover(true)} onFocus={hover(true)} onMouseLeave={hover(false)} onBlur={hover(false)}>{props.name}</a>
         <span class={props.note === undefined ? "entity-id" : "entity-id entity-note"} title={props.id}>{props.note ?? props.id}</span>
       </div>
     </div>
