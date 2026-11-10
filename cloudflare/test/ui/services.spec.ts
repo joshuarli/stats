@@ -290,3 +290,31 @@ test("refreshing the services list aborts the older deployment request", async (
     release();
   }
 });
+
+test("refreshing a service aborts the older issue request", async ({ page }) => {
+  let release = () => {};
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  let requests = 0;
+  let cancelled = false;
+  page.on("requestfailed", request => {
+    if (request.url().includes("/api/observe/web/issues?")) cancelled = true;
+  });
+  await page.route("**/api/observe/web/issues?*", async route => {
+    requests += 1;
+    if (requests === 1) {
+      await wait;
+      if (route.request().failure() !== null) return;
+    }
+    await route.fulfill({ json: { items: [], next: null } });
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  try {
+    await expect.poll(() => requests).toBe(1);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => cancelled).toBe(true);
+    await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
+    await expect(page.getByText("0 open issues").first()).toBeVisible();
+  } finally {
+    release();
+  }
+});

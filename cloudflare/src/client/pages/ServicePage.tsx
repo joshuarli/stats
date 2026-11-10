@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, For, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getServiceIssues, type Service } from "../api";
@@ -64,9 +64,8 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
   const probe = createMemo(() => comparison()?.sources.find(source => source.source === "probe") ?? null);
   const [issues, setIssues] = createSignal<readonly IssueSummary[] | null>(null);
   const [issuesUnavailable, setIssuesUnavailable] = createSignal(false);
-  const loadIssues = () => {
+  createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     setIssuesUnavailable(false);
     void getServiceIssues(props.service.name, controller.signal).then(page => {
       if (!controller.signal.aborted) setIssues(page.items);
@@ -75,9 +74,8 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
       setIssues([]);
       setIssuesUnavailable(true);
     });
-  };
-  loadIssues();
-  createUpdateEffect(() => `${serviceTick()}:${manualTick()}`, loadIssues);
+    return () => controller.abort();
+  });
   const after = createMemo(() => totals(work().map(summary => summary.after), comparison()?.after ?? null));
   const release = () => latest() === undefined ? null : deployments.title(latest()!);
   const probeText = () => {
