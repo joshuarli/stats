@@ -222,6 +222,22 @@ test("the canary is where the parser bug first appeared", async ({ page }) => {
   await expect(impact.getByRole("button", { name: /TypeError/u })).toBeVisible();
 });
 
+test("deployment evidence fits a 200% zoom equivalent viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 360 });
+  await setup(page);
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  const impact = page.getByRole("region", { name: "Errors after this deployment" });
+  const routes = impact.getByRole("region", { name: "CPU by route" });
+  const row = routes.getByRole("row").filter({ hasText: "/hosts/:host/history" }).filter({ hasText: "object" });
+  await expect(row.locator(".impact-cpu-worse")).toBeVisible();
+  const layout = await row.locator("td").evaluateAll(elements => elements.map(element => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+  }));
+  expect(layout[0]!.bottom <= layout[1]!.top || layout[0]!.right <= layout[1]!.left).toBe(true);
+  expect(layout.every(rect => rect.left >= 0 && rect.right <= 640)).toBe(true);
+});
+
 test("choosing a deployment in the rail zooms every chart to its rollout and widens the range to reach it", async ({ page }) => {
   await setup(page);
   await page.goto("/#/project/stats?range=24h&section=deploys");
