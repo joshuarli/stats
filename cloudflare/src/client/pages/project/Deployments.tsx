@@ -20,7 +20,11 @@ async function read<T>(what: "Deployment history" | "Deployment comparison", pat
   let response: Response;
   try { response = await fetch(path, { signal, credentials: "same-origin", cache: "no-store" }); }
   catch (cause) { throw new ApiFailure(0, `${what} request failed`, cause); }
-  if (!response.ok) throw new ApiFailure(response.status, `${what} unavailable (${response.status})`);
+  if (!response.ok) {
+    const failure = (cause?: unknown) => new ApiFailure(response.status, `${what} unavailable (${response.status})`, cause);
+    try { await response.body?.cancel(); } catch (cause) { throw failure(cause); }
+    throw failure();
+  }
   try { return decode(await response.json()); }
   catch (cause) { throw new ApiFailure(0, `Invalid ${what.toLowerCase()} response`, cause); }
 }

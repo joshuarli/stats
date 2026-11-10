@@ -794,6 +794,15 @@ test("a project without deployment tracking says so", async ({ page }) => {
   await expect(page.locator("#deployments")).toContainText("Deployment tracking is disabled");
 });
 
+test("a failed deployment response releases its unread body", async ({ page }) => {
+  await mock(page);
+  await page.route("**/api/v1/projects/stuff/deployments", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "deployment collector unavailable" } } }));
+  const closed = page.waitForEvent("requestfailed", { predicate: request => request.url().endsWith("/api/v1/projects/stuff/deployments"), timeout: 5_000 });
+  await page.goto("/#/project/stuff?section=deploys");
+  await expect(page.locator("#deployments")).toContainText("Deployment history unavailable (503)");
+  expect((await closed).failure()).not.toBeNull();
+});
+
 test("the deployment table stays in place while the next comparison loads", async ({ page }) => {
   await mock(page);
   let release!: () => void;
