@@ -60,7 +60,7 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     const controller = new AbortController();
     const methods = objects === null || !kinds.durableObjects ? Promise.resolve(undefined) : Promise.all([
       objects.read(observeObjectsPath(current), controller.signal, decodeObjectMethods),
-      baselineMethodsRetained(previous, objects.now(), objects.retentionMs) ? objects.read(observeObjectsPath(previous), controller.signal, decodeObjectMethods) : Promise.resolve(null)
+      baselineMethodsRetained(previous, objects.now(), objects.retentionMs) ? objects.read(observeObjectsPath(previous), controller.signal, decodeObjectMethods).catch(() => null) : Promise.resolve(null)
     ]).then(([now, before]): ObjectMethods => objectMethodsOf(now, before), () => undefined);
     void Promise.all([
       getProjectHistories(project().id, current, kinds, controller.signal),

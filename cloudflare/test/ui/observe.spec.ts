@@ -201,6 +201,27 @@ test("mobile object details identify the selected method and comparison", { tag:
   expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
 });
 
+test("object methods remain visible when their comparison request fails @mobile", async ({ page }) => {
+  let failedComparison = false;
+  await setup(page, { failWhen: (_method, path) => {
+    if (!path.startsWith("/objects?")) return false;
+    const to = Number(new URL(path, "https://observe").searchParams.get("to"));
+    if (to > now - 2 * 60 * 60 * 1000) return false;
+    failedComparison = true;
+    return true;
+  } });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const objects = page.locator('[id="ledger-objects"]');
+  if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();
+  const method = page.locator('[id^="ledger-object:"]:not([id="ledger-object:sqlite"]):not([id="ledger-object:storage"])').first();
+  await expect(method).toBeVisible();
+  expect(failedComparison).toBe(true);
+  await expect(method.locator(".ledger-change")).toHaveText("—");
+  if (await method.getAttribute("aria-expanded") !== "true") await method.click();
+  await expect(page.locator(".ledger-detail-context")).toContainText("Comparison unavailable for this method");
+  await expect(page.locator(".ledger-detail")).toContainText("calls in window");
+});
+
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {
   const observe = await setup(page);
   const missing = "GET /no-exact-match";

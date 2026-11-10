@@ -181,6 +181,7 @@ function Detail(props: { readonly line: CostLine; readonly usage: Usage; readonl
       <span>{props.windowLabel}, projected to 30 days at list price</span>
       <span>Current: {WINDOW_TIME.format(props.windows.current.fromMs)} – {WINDOW_TIME.format(props.windows.current.toMs)}</span>
       <span>Comparison: {WINDOW_TIME.format(props.windows.previous.fromMs)} – {WINDOW_TIME.format(props.windows.previous.toMs)}</span>
+      <Show when={line().kind === "object-method" && monthlyOf(line())?.before === null}><span>Comparison unavailable for this method</span></Show>
     </div>
     <div class="ledger-facts">{facts()}</div>
     <Show when={line().kind === "route" && props.onFindRoute !== undefined}><button type="button" class="link ledger-detail-action" onClick={() => props.onFindRoute?.(line().label)}>Find matching requests</button></Show>
