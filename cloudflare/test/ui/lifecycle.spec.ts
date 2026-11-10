@@ -919,3 +919,49 @@ test("fleet metric sorting reports an off-page history failure @mobile", async (
   await expect(table.locator("tbody tr").first()).toContainText("node-12");
   await expect(page.getByText("Could not sort all matching hosts", { exact: false })).toHaveCount(0);
 });
+
+test("changing the project range aborts the previous ledger windows", async ({ page }) => {
+  await installBaseRoutes(page);
+  let gate = createGate();
+  const waiting: string[] = [];
+  const aborted: string[] = [];
+  page.on("requestfailed", request => {
+    if (request.url().includes("/projects/alpha/history")) aborted.push(request.url());
+  });
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
+  await page.route("**/api/v1/projects/alpha/deployments", route => route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } }));
+  await page.route("**/api/v1/projects/alpha/history*", async route => {
+    const url = new URL(route.request().url());
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (from !== null && to !== null && Number(to) - Number(from) === 3_600_000) {
+      waiting.push(route.request().url());
+      await gate.wait;
+      if (route.request().failure() !== null) return;
+    }
+    const bundle = projectBundle("alpha", 1_000);
+    if (url.searchParams.get("range") === "6h") {
+      bundle.histories.worker.fromMs -= 7_200_000;
+      bundle.histories.worker.toMs -= 7_200_000;
+    }
+    await fulfillHistory(route, bundle);
+  });
+  await page.goto("/#/project/alpha?range=1h");
+  try {
+    await expect.poll(() => waiting.length).toBeGreaterThanOrEqual(2);
+    await page.getByRole("button", { name: "6h", exact: true }).click();
+    await expect.poll(() => aborted.filter(url => waiting.includes(url)).length).toBeGreaterThanOrEqual(2);
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toHaveCount(0);
+    await expect(page.locator(".skeleton-ledger")).toBeVisible();
+    gate.release();
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+    gate = createGate();
+    await page.getByRole("button", { name: "1h", exact: true }).click();
+    await expect.poll(() => waiting.length).toBeGreaterThanOrEqual(4);
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toHaveCount(0);
+    await expect(page.locator(".skeleton-ledger")).toBeVisible();
+  } finally {
+    gate.release();
+  }
+  await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+});
