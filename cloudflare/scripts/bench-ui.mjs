@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { createNetworkTracker, summarizeNetwork } from "./bench-network.mjs";
+import { attachPreviewFallbacks } from "./bench-preview-fallbacks.mjs";
 
 const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--fleet-sort-only] [--json] [--out PATH]";
 
@@ -129,84 +129,6 @@ function spread(values) {
     median: sorted[Math.floor(sorted.length / 2)],
     max: sorted.at(-1)
   };
-}
-
-async function attachPreviewFallbacks(page) {
-  const etags = new Map();
-  await page.route(/\/api\/v1\//u, async route => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const key = url.pathname + url.search;
-    if (url.pathname === "/api/v1/services") {
-      const upstream = await route.fetch();
-      if (upstream.status() === 404) {
-        await route.fulfill({
-          status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
-          body: JSON.stringify({ services: fallbackServices })
-        });
-        return;
-      }
-      await route.fulfill({ response: upstream });
-      return;
-    }
-    const serviceDeploys = /^\/api\/v1\/services\/([^/]+)\/deployments$/u.exec(url.pathname);
-    if (serviceDeploys !== null) {
-      const upstream = await route.fetch();
-      if (upstream.status() === 404) {
-        const svcName = decodeURIComponent(serviceDeploys[1]);
-        await route.fulfill({
-          status: 200,
-          headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
-          body: JSON.stringify({
-            projectId: svcName,
-            worker: svcName,
-            enabled: true,
-            sync: null,
-            versions: [],
-            deployments: [],
-            markers: []
-          })
-        });
-        return;
-      }
-      await route.fulfill({ response: upstream });
-      return;
-    }
-    if (/^\/api\/v1\/(?:hosts|projects)\/[^/]+\/history$/u.test(url.pathname)) {
-      const ifNoneMatch = request.headers()["if-none-match"];
-      const upstream = await route.fetch();
-      if (upstream.status() === 304) {
-        await route.fulfill({ response: upstream });
-        return;
-      }
-      if (upstream.status() === 200) {
-        const body = await upstream.body();
-        const existingEtag = upstream.headers()["etag"];
-        const etag = existingEtag ?? `W/"${createHash("sha256").update(body).digest("hex").slice(0, 16)}"`;
-        etags.set(key, etag);
-        if (ifNoneMatch !== undefined && ifNoneMatch === etag) {
-          await route.fulfill({
-            status: 304,
-            headers: { ETag: etag, "Cache-Control": "no-store", Vary: "Accept-Encoding" }
-          });
-          return;
-        }
-        await route.fulfill({
-          status: 200,
-          headers: {
-            "Content-Type": upstream.headers()["content-type"] ?? "application/vnd.stats.history.v1",
-            ETag: etag,
-            "Cache-Control": "no-store",
-            Vary: "Accept-Encoding"
-          },
-          body
-        });
-        return;
-      }
-    }
-    await route.continue();
-  });
 }
 
 async function waitForSelector(page, selector) {
@@ -342,7 +264,7 @@ const browser = await chromium.launch();
 async function runRetentionTrace(steps) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page);
+  await attachPreviewFallbacks(page, fallbackServices);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -559,7 +481,7 @@ async function measureConditionalHistoryAndCharts() {
   if (primaryHost === undefined || statsProject === undefined) return { conditionalHistory: null, charts: null };
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page);
+  await attachPreviewFallbacks(page, fallbackServices);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -702,7 +624,7 @@ for (const target of routeTargets) {
   for (let run = 0; run < runs; run += 1) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
-    await attachPreviewFallbacks(page);
+    await attachPreviewFallbacks(page, fallbackServices);
     await page.addInitScript(initScript);
     const tracker = createNetworkTracker(page, activeBase);
     const cdp = await context.newCDPSession(page);
