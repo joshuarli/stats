@@ -32,6 +32,7 @@ interface LedgerLoad {
   readonly current: ProjectHistories;
   readonly baseline: Baseline;
   readonly objectMethods: ObjectMethods | undefined;
+  readonly objectMethodsError: string | null;
   readonly loadedAtMs: number;
 }
 
@@ -58,10 +59,10 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     const previous = previousWindowOf(current);
     const kinds = historyKinds(project());
     const controller = new AbortController();
-    const methods = objects === null || !kinds.durableObjects ? Promise.resolve(undefined) : Promise.all([
+    const methods = objects === null || !kinds.durableObjects ? Promise.resolve({ value: undefined, error: null }) : Promise.all([
       objects.read(observeObjectsPath(current), controller.signal, decodeObjectMethods),
       baselineMethodsRetained(previous, objects.now(), objects.retentionMs) ? objects.read(observeObjectsPath(previous), controller.signal, decodeObjectMethods).catch(() => null) : Promise.resolve(null)
-    ]).then(([now, before]): ObjectMethods => objectMethodsOf(now, before), () => undefined);
+    ]).then(([now, before]) => ({ value: objectMethodsOf(now, before), error: null }), (cause: unknown) => ({ value: undefined, error: errorMessage(cause) }));
     void Promise.all([
       getProjectHistories(project().id, current, kinds, controller.signal),
       getProjectHistories(project().id, previous, kinds, controller.signal)
@@ -69,7 +70,7 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
       methods
     ]).then(([histories, baseline, objectMethods]) => {
       if (controller.signal.aborted) return;
-      setLoad({ scope: requested, window: current, previous, current: histories, baseline, objectMethods, loadedAtMs: Date.now() });
+      setLoad({ scope: requested, window: current, previous, current: histories, baseline, objectMethods: objectMethods.value, objectMethodsError: objectMethods.error, loadedAtMs: Date.now() });
       setError(null);
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(errorMessage(cause));
@@ -94,7 +95,8 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
     const loaded = load();
     return loaded?.baseline.kind === "failed" ? loaded.baseline.message : null;
   };
-  return { ledger, histories, error, baselineError };
+  const objectMethodsError = () => load()?.objectMethodsError ?? null;
+  return { ledger, histories, error, baselineError, objectMethodsError };
 }
 
 export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {

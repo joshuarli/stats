@@ -222,6 +222,24 @@ test("object methods remain visible when their comparison request fails @mobile"
   await expect(page.locator(".ledger-detail")).toContainText("calls in window");
 });
 
+test("a failed object-method request is reported until a successful retry @mobile", async ({ page }) => {
+  let fail = true;
+  await setup(page, { failWhen: (_method, path) => {
+    if (!fail || !path.startsWith("/objects?")) return false;
+    return Number(new URL(path, "https://observe").searchParams.get("to")) > now - 2 * 60 * 60 * 1000;
+  } });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const alert = page.getByRole("alert").filter({ hasText: "Object method breakdown is unavailable" });
+  await expect(alert).toContainText("Aggregate Durable Object costs are shown when collected");
+  await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+  fail = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(alert).toHaveCount(0);
+  const objects = page.locator('[id="ledger-objects"]');
+  if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();
+  await expect(page.locator('[id^="ledger-object:"]:not([id="ledger-object:sqlite"]):not([id="ledger-object:storage"])').first()).toBeVisible();
+});
+
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {
   const observe = await setup(page);
   const missing = "GET /no-exact-match";

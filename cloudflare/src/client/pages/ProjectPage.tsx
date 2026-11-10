@@ -160,7 +160,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => active() === "requests", () => active() === "errors") : null;
   const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
   const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
-  const { ledger, error: ledgerLoadError, baselineError } = createProjectLedger(
+  const { ledger, error: ledgerLoadError, baselineError, objectMethodsError } = createProjectLedger(
     () => props.project, ledgerWindow, () => { const zoomed = view(); return zoomed === null ? "settled-hour" : `${zoomed.fromMs}:${zoomed.toMs}`; }, () => `${projectTick()}:${manualTick()}`,
     observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now },
     monthSpend.spend
@@ -270,6 +270,9 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                 >
                   <Show when={baselineError()}>{message => (
                     <Notice tone="warn">{`The previous window could not be read, so changes are not shown: ${message()}`}</Notice>
+                  )}</Show>
+                  <Show when={objectMethodsError()}>{message => (
+                    <div role="alert"><Notice tone="warn">{`Object method breakdown is unavailable: ${message()}. Aggregate Durable Object costs are shown when collected.`}</Notice></div>
                   )}</Show>
                   <Show when={monthSpend.error()}>{message => (
                     <div role="alert"><Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice></div>
