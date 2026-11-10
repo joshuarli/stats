@@ -748,6 +748,24 @@ test("project search and comparison basis fit narrow screens", { tag: "@mobile-o
   await expect(page.getByText("Scroll horizontally for more columns.")).toHaveCount(0);
 });
 
+test("project overflow guidance follows filtered content", async ({ page }) => {
+  await mock(page);
+  const configured = projects("fresh", false, PROJECT_BUCKETS, [], [])[0]!;
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [configured, { ...configured, id: "billing", name: "Billing-service-with-a-long-project-name-for-reconciliation", worker: "billing" }] }));
+  await page.route("**/api/v1/projects/billing/**", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "billing data unavailable" } } }));
+  await page.setViewportSize({ width: 850, height: 900 });
+  await page.goto("/#/projects");
+  const region = page.getByRole("region", { name: "Projects table" });
+  const hint = page.getByText("Scroll horizontally for more columns.");
+  await expect(hint).toBeVisible();
+  await expect.poll(() => region.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await page.getByRole("searchbox", { name: "Search projects" }).fill("stuff");
+  await expect.poll(() => region.evaluate(element => element.scrollWidth - element.clientWidth)).toBe(0);
+  await expect(hint).toHaveCount(0);
+  await page.getByRole("searchbox", { name: "Search projects" }).fill("");
+  await expect(hint).toBeVisible();
+});
+
 test("the projects table compares each project's settled window with the one before and expands to its trends", async ({ page }) => {
   await mock(page, { baselineScale: 0.5, probes: true });
   await page.goto("/#/projects");
