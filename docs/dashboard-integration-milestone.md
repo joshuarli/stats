@@ -1,6 +1,6 @@
 # Dashboard integration report
 
-The issue and cost investigations work with an installed dashboard package. The milestone is **not accepted**: the package adds unrelated initial JavaScript to Fleet, Projects, Services, and Service, and version 0.6.0 has not been published. The time-based performance gate is deferred because the host is busy.
+The issue and cost investigations work with an installed dashboard package. The milestone is **not accepted**: the package adds unrelated initial JavaScript to Fleet, Projects, Services, and Service, and the time-based performance gate is deferred because the host is busy. Version 0.6.0 remains unpublished under the campaign's release boundary, so its public registry install is unverified.
 
 ## Revisions and package
 
