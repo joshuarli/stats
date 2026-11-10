@@ -293,7 +293,7 @@ function FleetDashboard(props: {
             <input type="search" placeholder="Filter hosts" value={props.search} onInput={event => props.setSearch(event.currentTarget.value)} />
           </label>
         </div>
-        <Show when={props.sortPending}><p class="panel-label" role="status">Loading all matching hosts for sorting…</p></Show>
+        <Show when={props.sortPending}><p class="panel-label fleet-sort-status" role="status">Loading all matching hosts for sorting…</p></Show>
         <Show when={props.sortError}>{message => <div role="alert"><Notice tone="warn">Could not sort all matching hosts: {message()}</Notice></div>}</Show>
         <Show
           when={props.rows.length > 0}

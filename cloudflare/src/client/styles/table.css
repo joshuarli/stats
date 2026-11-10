@@ -38,6 +38,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .metric-value-small { min-width: 40px; display: inline-block; }
 .cpu-cell { display: flex; align-items: center; gap: var(--space-sm); min-height: var(--control-sm); }
 
+.fleet-sort-status { margin: 0; padding: var(--space-sm) var(--inset); }
 .fleet-table-scroll { --line-height: 20px; }
 .fleet-table-scroll .data-table td { height: auto; padding-top: var(--space-md); padding-bottom: var(--space-md); vertical-align: top; line-height: var(--line-height); }
 .fleet-table-scroll .entity-cell { align-items: flex-start; }
