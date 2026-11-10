@@ -348,6 +348,14 @@ The bundle comparison flags initial JavaScript growth over 5% in raw or gzip byt
 growth to a user benefit; isolation checks remain separate gates. `docs/frontend-efficiency.md`
 records the earlier campaign's method and results, including its historical thresholds.
 
+For the large-fleet sort alone, run `PREVIEW_SCALE=large node
+cloudflare/scripts/bench-ui.mjs --fleet-sort-only --out .work/tmp/fleet-sort.json`.
+It serves history responses directly, applies the configured network emulation,
+records the first sorted page separately from later pagination, and checks that
+all hosts appear in global order. Run baseline and candidate alternately at
+least five times, with `perf-gate-ready` before and `perf-gate-ready -1` after
+each run; discard runs that overlap load.
+
 ## Screenshot goldens
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
