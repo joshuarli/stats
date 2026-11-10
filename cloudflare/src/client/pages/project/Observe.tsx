@@ -205,6 +205,7 @@ export function createObservability(
     if (remember) writeParam("trace", id);
   }
   function selectIssue(id: string | null, remember = true): void {
+    if (remember && id !== issueId() && !resolving()) setActionState({ kind: "idle" });
     setIssueId(id);
     if (remember) writeParam("issue", id);
   }

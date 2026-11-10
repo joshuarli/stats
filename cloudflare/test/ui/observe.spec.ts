@@ -269,6 +269,8 @@ test("issue actions report their outcome and preserve focus", async ({ page }) =
   await expect(issues.getByRole("status")).toContainText("Issue resolved");
   await expect(issues.locator(".issue-list").getByRole("option", { name: /RangeError/u })).toHaveCount(0);
   await expect(issues.locator("[data-action-feedback]")).toBeFocused();
+  await issues.getByRole("option", { name: /deployments\.poll/u }).click();
+  await expect(issues.locator("[data-action-feedback]")).toBeHidden();
   await issues.getByRole("button", { name: "Resolved", exact: true }).click();
   await issues.getByRole("button", { name: "Reopen", exact: true }).click();
   await expect(issues.getByRole("status")).toContainText("Issue reopened");
