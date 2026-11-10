@@ -805,7 +805,7 @@ test("closed project page defers comparison and occurrences until their sections
   await expect.poll(() => occurrenceCalls).toBe(1);
 });
 
-test("fleet metric sorting loads every matching host before ordering across pages", async ({ page }) => {
+test("fleet metric sorting loads every matching host before ordering across pages @mobile", async ({ page }) => {
   await page.clock.install({ time: NOW });
   const hosts = Array.from({ length: 12 }, (_, index) => ({
     hostId: `h_${index.toString(16).padStart(2, "0").repeat(16)}`,
@@ -816,6 +816,11 @@ test("fleet metric sorting loads every matching host before ordering across page
     online: true
   }));
   const seen = new Set<string>();
+  const offPage = createGate();
+  const cancelled = new Set<string>();
+  page.on("requestfailed", request => {
+    if (request.url().includes("/history")) cancelled.add(new URL(request.url()).pathname);
+  });
   await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts } }));
   await page.route("**/api/v1/services", route => route.fulfill({ json: { services: [] } }));
   await page.route("**/api/v1/hosts/*/system", route => route.fulfill({ json: { reportedAtMs: NOW, system: { agent: "0.4.0", hostname: "node", os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } } } }));
@@ -824,16 +829,93 @@ test("fleet metric sorting loads every matching host before ordering across page
     if (id === undefined) throw new Error("missing host ID");
     seen.add(id);
     const index = hosts.findIndex(host => host.hostId === id);
-    await fulfillHistory(route, fleetBundle(id, "1h", 90 - index * 5));
+    if (index >= 10) await offPage.wait;
+    try {
+      await fulfillHistory(route, fleetBundle(id, "1h", 90 - index * 5));
+    } catch (error) {
+      if (route.request().failure() === null) throw error;
+    }
   });
   await page.goto("/#/");
   const table = page.getByRole("table", { name: "Fleet hosts" });
   await expect(table.locator("tbody tr")).toHaveCount(10);
   expect(seen.size).toBe(10);
   await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
-  await expect.poll(() => seen.size).toBe(12);
+  try {
+    await expect.poll(() => seen.size).toBe(12);
+    await expect(page.getByRole("status").filter({ hasText: "Loading all matching hosts for sorting" })).toBeVisible();
+    await expect(table).toHaveAttribute("aria-busy", "true");
+    await table.getByRole("columnheader", { name: "Host" }).getByRole("button").click();
+    await expect(page.getByRole("status").filter({ hasText: "Loading all matching hosts for sorting" })).toHaveCount(0);
+    await expect.poll(() => cancelled.size).toBeGreaterThan(0);
+    await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+    await expect(page.getByRole("status").filter({ hasText: "Loading all matching hosts for sorting" })).toBeVisible();
+  } finally {
+    offPage.release();
+  }
+  await expect(page.getByRole("status").filter({ hasText: "Loading all matching hosts for sorting" })).toHaveCount(0);
+  await expect(table).toHaveAttribute("aria-busy", "false");
   await expect(table.locator("tbody tr").first()).toContainText("node-12");
   await page.getByRole("button", { name: "Next page" }).click();
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await expect(table.locator("tbody tr").last()).toContainText("node-01");
+});
+
+
+test("fleet metric sorting reports an off-page history failure @mobile", async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  const hosts = Array.from({ length: 12 }, (_, index) => ({
+    hostId: `h_${index.toString(16).padStart(2, "0").repeat(16)}`,
+    name: `node-${String(index + 1).padStart(2, "0")}`,
+    createdAtMs: NOW - 86_400_000,
+    revoked: false,
+    lastReceivedAtMs: NOW - 5_000,
+    online: true
+  }));
+  let failOffPage = true;
+  const failRequest = createGate();
+  const otherRequest = createGate();
+  const requested = new Set<string>();
+  const cancelled = new Set<string>();
+  page.on("requestfailed", request => {
+    if (request.url().includes("/history")) cancelled.add(new URL(request.url()).pathname);
+  });
+  await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts } }));
+  await page.route("**/api/v1/services", route => route.fulfill({ json: { services: [] } }));
+  await page.route("**/api/v1/hosts/*/system", route => route.fulfill({ json: { reportedAtMs: NOW, system: { agent: "0.4.0", hostname: "node", os: "Debian 13", kernel: "6.12.0", arch: "x86_64", cpu: { model: "EPYC", threads: 16 } } } }));
+  await page.route("**/api/v1/hosts/*/history*", async route => {
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1];
+    if (id === undefined) throw new Error("missing host ID");
+    const index = hosts.findIndex(host => host.hostId === id);
+    if (index >= 10 && failOffPage) {
+      requested.add(id);
+      if (index === 10) {
+        await failRequest.wait;
+        return route.fulfill({ status: 503, body: "unavailable" });
+      }
+      await otherRequest.wait;
+      if (route.request().failure() !== null) return;
+    }
+    return fulfillHistory(route, fleetBundle(id, "1h", 90 - index * 5));
+  });
+  await page.goto("/#/");
+  const table = page.getByRole("table", { name: "Fleet hosts" });
+  await expect(table.locator("tbody tr")).toHaveCount(10);
+  await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  try {
+    await expect.poll(() => requested.size).toBe(2);
+    failRequest.release();
+    await expect(page.getByRole("alert").filter({ hasText: "Could not sort all matching hosts" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading all matching hosts for sorting" })).toHaveCount(0);
+    await expect.poll(() => [...cancelled].some(path => path.includes(hosts[11]!.hostId))).toBe(true);
+  } finally {
+    failRequest.release();
+    otherRequest.release();
+  }
+  failOffPage = false;
+  await table.getByRole("columnheader", { name: "Host" }).getByRole("button").click();
+  await expect(page.getByText("Could not sort all matching hosts", { exact: false })).toHaveCount(0);
+  await table.getByRole("columnheader", { name: "CPU" }).getByRole("button").click();
+  await expect(table.locator("tbody tr").first()).toContainText("node-12");
+  await expect(page.getByText("Could not sort all matching hosts", { exact: false })).toHaveCount(0);
 });

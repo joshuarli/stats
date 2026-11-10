@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, latest, Loading, onCleanup, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createRoot, createSignal, Errored, For, isPending, latest, Loading, onCleanup, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LIMITS, loadLimits } from "../health";
 import { age, bytes, count, errorMessage, isFiniteNumber, percent, rate } from "../format";
@@ -108,16 +108,35 @@ export function FleetPage(): JSX.Element {
 
   const rowsRetention = createRefreshRetention();
   const [metricRows, setMetricRows] = createSignal<readonly FleetRow[]>([]);
+  const [sortPending, setSortPending] = createSignal(false);
+  const [sortError, setSortError] = createSignal<string | null>(null);
   createEffect(
     () => ({ key: sort().key, hosts: matching(), query: query(), epoch: rowsEpoch() }),
     ({ key, hosts, query: queryKey }) => {
       if (!METRIC_KEYS.has(key)) {
         setMetricRows([]);
+        setSortPending(false);
+        setSortError(null);
         return;
       }
-      void loadFleetRows(hosts, queryKey, { previous: metricRows(), retention: rowsRetention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) }, rowCache)
-        .then(rows => setMetricRows(rows))
-        .catch(() => {});
+      return createRoot(dispose => {
+        let active = true;
+        setSortPending(true);
+        setSortError(null);
+        void loadFleetRows(hosts, queryKey, { previous: metricRows(), retention: rowsRetention, onError: error => {
+          if (!active) return;
+          setSortError(error === null ? null : errorMessage(error));
+          if (error !== null) dispose();
+        } }, rowCache)
+          .then(rows => { if (active) setMetricRows(rows); })
+          .catch(error => {
+            if (!active) return;
+            setSortError(errorMessage(error));
+            dispose();
+          })
+          .finally(() => { if (active) setSortPending(false); });
+        return () => { active = false; dispose(); };
+      });
     }
   );
 
@@ -198,6 +217,8 @@ export function FleetPage(): JSX.Element {
             setPage={setPage}
             now={now()}
             pending={isPending(rows)}
+            sortPending={sortPending()}
+            sortError={sortError()}
             onHostNavigate={id => { lists.fleet.returnHost = id; }}
             onHostMount={onHostMount}
           />
@@ -250,6 +271,8 @@ function FleetDashboard(props: {
   readonly setPage: (value: number) => void;
   readonly now: number;
   readonly pending: boolean;
+  readonly sortPending: boolean;
+  readonly sortError: string | null;
   readonly onHostNavigate: (id: string) => void;
   readonly onHostMount: (id: string, link: HTMLAnchorElement) => void;
 }): JSX.Element {
@@ -270,6 +293,8 @@ function FleetDashboard(props: {
             <input type="search" placeholder="Filter hosts" value={props.search} onInput={event => props.setSearch(event.currentTarget.value)} />
           </label>
         </div>
+        <Show when={props.sortPending}><p class="panel-label" role="status">Loading all matching hosts for sorting…</p></Show>
+        <Show when={props.sortError}>{message => <div role="alert"><Notice tone="warn">Could not sort all matching hosts: {message()}</Notice></div>}</Show>
         <Show
           when={props.rows.length > 0}
           fallback={
@@ -282,7 +307,7 @@ function FleetDashboard(props: {
           }
         >
           <div class="table-scroll fleet-table-scroll" role="region" aria-label="Fleet hosts table">
-            <table class="data-table" aria-label="Fleet hosts">
+            <table class="data-table" aria-label="Fleet hosts" aria-busy={props.sortPending ? "true" : "false"}>
               <thead>
                 <tr>
                   <SortHeader label="Host" sortKey="name" sort={props.sort} onSort={props.sortBy} />
