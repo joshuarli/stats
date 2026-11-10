@@ -89,19 +89,20 @@ async function fetchJson(path) {
 }
 
 async function fetchOptionalJson(path, fallback) {
-  try {
-    const response = await fetch(activeBase + path);
-    if (!response.ok) return fallback;
-    return await response.json();
-  } catch {
-    return fallback;
+  const response = await fetch(activeBase + path);
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return { value: fallback, missing: true };
   }
+  if (!response.ok) throw new Error(`${activeBase}${path} returned ${response.status}`);
+  return { value: await response.json(), missing: false };
 }
 
 const hosts = (await fetchJson("/api/v1/hosts")).hosts ?? [];
 if (args.includes("--fleet-sort-only") && hosts.length <= 10) throw new Error("fleet sort benchmark needs more than ten hosts");
 const projects = await fetchJson("/api/v1/projects");
-const rawServices = await fetchOptionalJson("/api/v1/services", { services: [] });
+const serviceProbe = await fetchOptionalJson("/api/v1/services", { services: [] });
+const rawServices = serviceProbe.value;
 const services = Array.isArray(rawServices) ? rawServices : (rawServices.services ?? []);
 
 const primaryHost = hosts[0];
@@ -114,6 +115,8 @@ const fallbackServices = services.length > 0 ? services : (primaryHost === undef
   createdAtMs: primaryHost.createdAtMs
 }]);
 const primaryServiceName = fallbackServices[0]?.name ?? "web";
+const deploymentProbe = await fetchOptionalJson(`/api/v1/services/${encodeURIComponent(primaryServiceName)}/deployments`, {});
+const missingPreviewEndpoints = { services: serviceProbe.missing, deployments: deploymentProbe.missing };
 
 function median(values) {
   if (values.length === 0) return 0;
@@ -264,7 +267,7 @@ const browser = await chromium.launch();
 async function runRetentionTrace(steps) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page, fallbackServices);
+  await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -481,7 +484,7 @@ async function measureConditionalHistoryAndCharts() {
   if (primaryHost === undefined || statsProject === undefined) return { conditionalHistory: null, charts: null };
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page, fallbackServices);
+  await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -624,7 +627,7 @@ for (const target of routeTargets) {
   for (let run = 0; run < runs; run += 1) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
-    await attachPreviewFallbacks(page, fallbackServices);
+    await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
     await page.addInitScript(initScript);
     const tracker = createNetworkTracker(page, activeBase);
     const cdp = await context.newCDPSession(page);

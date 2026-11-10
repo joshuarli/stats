@@ -3,14 +3,14 @@ import test from "node:test";
 
 const modulePath = new URL("../../scripts/bench-preview-fallbacks.mjs", import.meta.url).href;
 const { attachPreviewFallbacks } = await import(modulePath) as {
-  attachPreviewFallbacks: (page: unknown, services: unknown[]) => Promise<void>;
+  attachPreviewFallbacks: (page: unknown, services: unknown[], missing: { services: boolean; deployments: boolean }) => Promise<void>;
 };
 
 await test("preview fallbacks leave history responses to the origin and supply missing services", async () => {
   let matcher: RegExp | undefined;
   let handler: ((route: unknown) => Promise<void>) | undefined;
   const page = { route: async (pattern: RegExp, callback: (route: unknown) => Promise<void>) => { matcher = pattern; handler = callback; } };
-  await attachPreviewFallbacks(page, [{ name: "web" }]);
+  await attachPreviewFallbacks(page, [{ name: "web" }], { services: true, deployments: true });
   assert.ok(matcher);
   assert.ok(handler);
   assert.equal(matcher.test("http://localhost/api/v1/hosts/one/history?range=1h"), false);
@@ -41,4 +41,17 @@ await test("preview fallbacks leave history responses to the origin and supply m
     fulfill: async (value: (typeof fulfilled)[number]) => { fulfilled.push(value); }
   });
   assert.equal(fulfilled[2]?.response, available);
+});
+
+await test("available service endpoints are not intercepted", async () => {
+  const patterns: RegExp[] = [];
+  const page = { route: async (pattern: RegExp) => { patterns.push(pattern); } };
+  await attachPreviewFallbacks(page, [], { services: false, deployments: false });
+  assert.equal(patterns.length, 0);
+  await attachPreviewFallbacks(page, [], { services: true, deployments: false });
+  assert.equal(patterns[0]?.test("http://localhost/api/v1/services"), true);
+  assert.equal(patterns[0]?.test("http://localhost/api/v1/services/web/deployments"), false);
+  await attachPreviewFallbacks(page, [], { services: false, deployments: true });
+  assert.equal(patterns[1]?.test("http://localhost/api/v1/services"), false);
+  assert.equal(patterns[1]?.test("http://localhost/api/v1/services/web/deployments"), true);
 });

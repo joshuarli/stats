@@ -1,5 +1,11 @@
-export async function attachPreviewFallbacks(page, fallbackServices) {
-  await page.route(/\/api\/v1\/services(?:\/[^/]+\/deployments)?(?:\?.*)?$/u, async route => {
+export async function attachPreviewFallbacks(page, fallbackServices, missing) {
+  if (!missing.services && !missing.deployments) return;
+  const pattern = missing.services && missing.deployments
+    ? /\/api\/v1\/services(?:\/[^/]+\/deployments)?(?:\?.*)?$/u
+    : missing.services
+      ? /\/api\/v1\/services(?:\?.*)?$/u
+      : /\/api\/v1\/services\/[^/]+\/deployments(?:\?.*)?$/u;
+  await page.route(pattern, async route => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/services") {
