@@ -46,9 +46,10 @@ function isServiceHistory(value: DeploymentHistory | null): value is ServiceDepl
 }
 
 function ServiceView(props: { readonly service: Service }): JSX.Element {
+  const serviceName = props.service.name;
   const { range, now, tick, manualTick } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const deployments = createServiceDeployments(() => props.service.name, range, () => `${serviceTick()}:${manualTick()}`);
+  const deployments = createServiceDeployments(() => serviceName, range, () => `${serviceTick()}:${manualTick()}`);
   const settled = () => deployments.history() !== null || deployments.historyError() !== null;
   const latest = () => deployments.history()?.deployments[0];
   const marker = createMemo(() => {
@@ -64,11 +65,11 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
   const probe = createMemo(() => comparison()?.sources.find(source => source.source === "probe") ?? null);
   const [issues, setIssues] = createSignal<readonly IssueSummary[] | null>(null);
   const [issuesUnavailable, setIssuesUnavailable] = createSignal(false);
-  createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
+  createEffect(() => `${serviceName}:${serviceTick()}:${manualTick()}`, () => {
     const controller = new AbortController();
     setIssues(null);
     setIssuesUnavailable(false);
-    void getServiceIssues(props.service.name, controller.signal).then(page => {
+    void getServiceIssues(serviceName, controller.signal).then(page => {
       if (!controller.signal.aborted) setIssues(page.items);
     }).catch(() => {
       if (controller.signal.aborted) return;
