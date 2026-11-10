@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../src/ingest/http.ts";
+import { BUILT_ASSETS } from "../../src/node/assets.ts";
 
 const NODE_ORIGIN = "http://127.0.0.1:4175";
 const NODE_LOGIN = "playwright@example.com";
@@ -50,5 +51,18 @@ test("the Node target refuses the dashboard without an allowed Tailscale login",
     expect(response.status()).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "unauthorized" } });
     await context.close();
+  }
+});
+
+test("the Node target serves the built lazy Errors assets intact", async ({ request }) => {
+  const directory = join(BUILT_ASSETS, "assets");
+  const files = readdirSync(directory).filter(file => /^ObserveSection-.*\.(?:js|css)$/u.test(file));
+  expect(files.some(file => file.endsWith(".js"))).toBe(true);
+  expect(files.some(file => file.endsWith(".css"))).toBe(true);
+  for (const file of files) {
+    const response = await request.get(`/assets/${file}`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain(file.endsWith(".css") ? "text/css" : "javascript");
+    expect(await response.body()).toEqual(readFileSync(join(directory, file)));
   }
 });

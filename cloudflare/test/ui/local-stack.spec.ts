@@ -75,3 +75,16 @@ test("the stats observe cards render traces from the attached collector", async 
   await expect(explorer.getByRole("button", { name: /\/api\/v1\/projects/u }).first()).toBeVisible();
   await expect(page.locator("#section-errors")).toBeVisible();
 });
+
+test("the Worker serves the lazy Errors view and its feedback stylesheet", async ({ page }) => {
+  const assets: { readonly path: string; readonly status: number; readonly type: string }[] = [];
+  page.on("response", response => {
+    const path = new URL(response.url()).pathname;
+    if (path.includes("/assets/ObserveSection-")) assets.push({ path, status: response.status(), type: response.headers()["content-type"] ?? "" });
+  });
+  await open(page, "/#/project/stats?section=errors");
+  await expect(page.locator("#issues")).toBeVisible();
+  await expect.poll(() => assets.length).toBeGreaterThanOrEqual(2);
+  expect(assets.some(asset => asset.path.endsWith(".js") && asset.status === 200 && asset.type.includes("javascript"))).toBe(true);
+  expect(assets.some(asset => asset.path.endsWith(".css") && asset.status === 200 && asset.type.includes("text/css"))).toBe(true);
+});
