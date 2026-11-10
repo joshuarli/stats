@@ -48,7 +48,7 @@ const unitArgs = ["--experimental-strip-types", "--test",
   "test/ingest/decoder.test.ts", "test/ingest/encoder.test.ts",
   "test/deployments/core.test.ts", "test/deployments/github.test.ts", "test/deployments/marker.test.ts", "test/deployments/routes.test.ts",
   "test/cost/pricing.test.ts",
-  "test/scripts/capture.test.ts",
+  "test/scripts/capture.test.ts", "test/scripts/dashboard-smoke.test.ts", "test/scripts/receipts.test.ts", "test/scripts/signals.test.ts",
   "test/observe/budget.test.ts", "test/observe/cloudflare-tail.test.ts", "test/observe/count-buffer.test.ts", "test/observe/determinism.test.ts", "test/observe/nanoshop.test.ts", "test/observe/policies.test.ts", "test/observe/pricing.test.ts", "test/observe/store.test.ts", "test/observe/tail.test.ts",
   "test/node/assets.test.ts", "test/node/http-parity.test.ts", "test/node/observe-ingest.test.ts", "test/node/server.test.ts"
 ];

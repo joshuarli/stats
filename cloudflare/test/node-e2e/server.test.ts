@@ -44,7 +44,7 @@ async function start(dataDir: string): Promise<Started> {
 }
 
 async function smoke(origin: string): Promise<{ code: number | null; output: string }> {
-  const child = spawn("sh", [SMOKE], { env: { ...process.env, STATS_URL: origin, TMPDIR: SCRATCH }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn("sh", [SMOKE], { env: { ...process.env, STATS_URL: origin, TMPDIR: SCRATCH, STATSCTL_AUTH_COMMAND: `printf '%s\n' '${LOGIN}'`, STATSCTL_AUTH_HEADER: "Tailscale-User-Login" }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", chunk => { output += String(chunk); });
   child.stderr.on("data", chunk => { output += String(chunk); });

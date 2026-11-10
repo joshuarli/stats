@@ -150,7 +150,7 @@ ingest-bench: work-ready node-ready
 bench-local: work-ready node-ready
 	@cd cloudflare && pnpm -s build >&2 && pnpm -s run build:observe >&2 && TMPDIR='$(CURDIR)/.work/tmp' node bench/local.ts
 
-smoke-deployed:
+smoke-deployed: access-ready
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
 smoke-local: work-ready node-ready worker-bundle observe-bundle

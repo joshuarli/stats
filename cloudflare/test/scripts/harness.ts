@@ -46,10 +46,13 @@ export async function withWorkspace<T>(use: (workspace: Workspace) => Promise<T>
     const tmp = join(tree, ".work", "tmp");
     for (const directory of [join(tree, "deploy"), bin, state, tmp, join(tree, "agent", "dist"), join(tree, "agent", "contrib", "openrc"), join(tree, "agent", "contrib", "systemd")]) mkdirSync(directory, { recursive: true });
     copyFileSync(join(repo, "deploy", "hosts.json"), join(tree, "deploy", "hosts.json"));
+    mkdirSync(join(tree, "fixtures", "v2", "frames"), { recursive: true });
+    copyFileSync(join(repo, "fixtures", "v2", "frames", "minimal.stb2"), join(tree, "fixtures", "v2", "frames", "minimal.stb2"));
     writeFileSync(join(tree, "agent", "Cargo.toml"), 'version = "9.9.9"\n');
     writeFileSync(join(tree, "agent", "dist", "stats-9.9.9-x86_64-unknown-linux-musl"), ARTIFACT);
     writeFileSync(join(tree, "agent", "contrib", "openrc", "stats"), UNIT);
     symlinkSync(findOnPath("jaq"), join(bin, "jaq"));
+    symlinkSync(findOnPath("rg"), join(bin, "rg"));
     const log = join(state, "log");
     const blocked = join(state, "blocked");
     writeFileSync(log, "");
