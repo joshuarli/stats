@@ -23,16 +23,16 @@ JavaScript and CSS are bytes. Each graph lists every transitive initial chunk st
 
 ## Default preview requests
 
-The route run used `bench-ui.mjs --runs 1`. Raw bytes are actual preview JS and CSS transfers. Request counts include the document and assets; API counts are the subset. Warm counts follow a navigation away and back.
+The route run used `bench-ui.mjs --runs 1`. Raw bytes are actual preview JS and CSS transfers. Request counts include the document and assets; API counts are the subset. Warm counts follow a navigation away and back. The request counts below were remeasured on the baseline with the later error-body cancellation fix applied. The original run omitted 404 responses whose bodies were left unread. The asset sizes remain from the original baseline build.
 
 | Route | JS raw | CSS raw | Cold requests | Cold API | Warm requests | Warm API |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | fleet | 218696 | 49949 | 15 | 9 | 8 | 8 |
 | host | 332028 | 51593 | 14 | 3 | 2 | 2 |
-| projects | 270946 | 55973 | 22 | 10 | 9 | 9 |
+| projects | 270946 | 55973 | 23 | 11 | 10 | 10 |
 | project overview | 381143 | 78753 | 28 | 11 | 10 | 10 |
 | services | 238925 | 57619 | 15 | 3 | 2 | 2 |
-| service | 245065 | 58777 | 16 | 3 | 2 | 2 |
+| service | 245065 | 58777 | 17 | 4 | 3 | 3 |
 | project Errors | 412984 | 78753 | 31 | 12 | 11 | 11 |
 | project Requests | 410534 | 78753 | 33 | 14 | 13 | 13 |
 
@@ -40,7 +40,7 @@ The fleet requests the host list, four host histories and four system records. T
 
 ## Large preview and global sorting
 
-The large fixture contains 24 hosts, 12 projects and one service. Its single-run cold request counts were 27 for Fleet, 14 for Host, 46 for Projects, 28 for project Overview, 15 for Services, 16 for Service, 31 for Errors and 33 for Requests. Their API subsets were 21, 3, 34, 11, 3, 3, 12 and 14 respectively. The route asset graphs are the same as the default fixture.
+The large fixture contains 24 hosts, 12 projects and one service. Its single-run cold request counts were 27 for Fleet, 14 for Host, 50 for Projects, 28 for project Overview, 15 for Services, 17 for Service, 31 for Errors and 33 for Requests. Their API subsets were 21, 3, 38, 11, 3, 4, 12 and 14 respectively. A request-only run remeasured these counts with error-body cancellation applied to the baseline. The route asset graphs are the same as the default fixture.
 
 Sorting Fleet by CPU loaded histories for all 24 hosts and visited all three pages. The displayed CPU values were globally ascending, including the 14 hosts beyond the initially visible page. The complete load and sort issued 24 history requests and 25 JSON requests, including the host list and system records.
 
@@ -61,12 +61,8 @@ The first milestone follows an issue to an occurrence and trace. These captured-
 
 The mobile trace places the selected invocation inside the horizontally scrolling timeline table. Its facts and stack extend beyond the visible panel. The desktop issue view retains a useful side-by-side list and details.
 
-## Candidate integration in progress
+## Candidate comparison
 
-The candidate is the tarball `laputa-systems-ui-dashboard-0.6.0.tgz` packed from library revision `3f7321624b852badc27acd0904e7bab39abf7602`. Two packs of that revision were byte-identical. Stats was tested with that tarball installed through pnpm, including the package's feedback stylesheet. The prepared registry lock entry was generated from the packed bytes and the registry's content-addressed URL convention using a local metadata fixture. Version 0.6.0 has not been published: the URL and a clean registry install remain unverified. The registry dry run did not finish.
-
-The issue journey now keeps an explicitly selected section across reloads, retains the selected issue when returning from a trace, and presents mobile invocation details within the visible timeline. Resolve and reopen show pending, acknowledged success, or failure, and move focus to the feedback before a selected row disappears. Existing retained data and server responses remain authoritative.
-
-The first candidate build measured Fleet at 234,821 raw and 88,367 gzip JavaScript bytes, up from 218,696 and 83,862. Its 5.37% gzip increase exceeds the 5% review threshold. The shared root package and hydration-capable Solid runtime account for the growth; the optional feedback family and its 2,024 raw, 579 gzip stylesheet stay deferred to Errors. The added shared bytes support the updated core components and their server-rendering and hydration contract, but have no demonstrated Fleet-specific benefit. A non-hydratable experimental build reduced Fleet by only 709 gzip bytes and was rejected because it breaks that contract. Further reduction or explicit acceptance remains open.
-
-The Errors graph measured 424,963 raw and 157,000 gzip JavaScript bytes and 82,701 raw and 17,563 gzip CSS bytes, compared with 412,984, 154,044, 78,753 and 16,661 respectively at baseline. These sizes are from production asset graphs, not preview transfer measurements. The candidate's request counts, lifecycle retention, deployment targets and full milestone checks are not yet verified.
+The [integration report](dashboard-integration-milestone.md) identifies the packed candidate,
+compares its route graphs and requests with this baseline, and records the remaining performance
+and release gaps.
