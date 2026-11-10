@@ -318,3 +318,29 @@ test("refreshing a service aborts the older issue request", async ({ page }) => 
     release();
   }
 });
+
+test("service work identifies the previous window while a comparison updates", async ({ page }) => {
+  let release = () => {};
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  let waiting = false;
+  await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
+    if (new URL(route.request().url()).searchParams.get("window") === "24h") {
+      waiting = true;
+      await wait;
+      if (route.request().failure() !== null) return;
+    }
+    await route.continue();
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  await expect(page.getByRole("table", { name: "Application operations" })).toBeVisible();
+  try {
+    await page.getByRole("button", { name: "24h", exact: true }).click();
+    await expect.poll(() => waiting).toBe(true);
+    await expect(page.locator(".service-facts")).toContainText("previous comparison window");
+    await expect(page.locator("#service-work").getByRole("status")).toHaveText("Updating comparison; application work uses the previous window.");
+  } finally {
+    release();
+  }
+  await expect(page.locator("#service-work").getByRole("status")).toHaveCount(0);
+  await expect(page.locator(".service-facts")).not.toContainText("previous comparison window");
+});

@@ -94,7 +94,7 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
         <span>{release() === null ? "Release: —" : `Release: ${release()}`}</span>
         <span title={marker()?.markerId ?? ""}>{latest() === undefined ? "Last deploy: —" : `Last deploy: ${age(latest()!.atMs, now())}`}</span>
         <span>{probeText()}</span>
-        <span>{describeWork(after())}</span>
+        <span>{describeWork(after())}{deployments.stale() && comparison() !== null ? " · previous comparison window" : ""}</span>
         <span>{issuesUnavailable() ? "Issues: unavailable" : issues() === null ? "Issues: loading" : `${issues()!.length} open ${issues()!.length === 1 ? "issue" : "issues"}`}</span>
       </p>
       <div class="project-page">
@@ -103,7 +103,7 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
             <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
             <div class="project-main">
               <DeploymentsWidget deployments={deployments} />
-              <ServiceWork comparison={comparison()} application={application()?.detail ?? null} work={work()} issues={issues()} issuesUnavailable={issuesUnavailable()} />
+              <ServiceWork comparison={comparison()} stale={deployments.stale()} application={application()?.detail ?? null} work={work()} issues={issues()} issuesUnavailable={issuesUnavailable()} />
             </div>
           </div>
         </Show>
@@ -151,7 +151,7 @@ function describeWork(value: Totals | null): string {
   return `${number(value.throughputPerMinute)} events/min after, ${failure}, ${latency}`;
 }
 
-function ServiceWork(props: { readonly comparison: ServiceComparison | null; readonly application: string | null; readonly work: readonly WorkSummary[]; readonly issues: readonly IssueSummary[] | null; readonly issuesUnavailable: boolean }): JSX.Element {
+function ServiceWork(props: { readonly comparison: ServiceComparison | null; readonly stale: boolean; readonly application: string | null; readonly work: readonly WorkSummary[]; readonly issues: readonly IssueSummary[] | null; readonly issuesUnavailable: boolean }): JSX.Element {
   const { sort, sortBy } = createSort<"none" | "operation" | "events" | "failure" | "latency">({ key: "none", direction: 1 });
   const rows = () => {
     const key = sort().key;
@@ -178,6 +178,7 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
       <Show when={props.comparison !== null} fallback={<p class="panel-label">Collecting usage since the deploy…</p>}>
         <Show when={props.work.length > 0} fallback={<p class="panel-label">{props.application ?? "Collecting usage since the deploy…"}</p>}>
           <div class="service-work">
+            <Show when={props.stale}><p class="service-work-note" role="status">Updating comparison; application work uses the previous window.</p></Show>
             <Show when={props.comparison!.reasons.length > 0}>
               <p class="service-work-note">The comparison has limitations; see the deployment comparison above for details.</p>
             </Show>
