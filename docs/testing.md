@@ -13,6 +13,8 @@ Run the narrowest target while iterating and `make check` before release.
 | `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
+| `make profile-local` | `cloudflare/scripts/profile.mjs` against a `cf`-built Worker output directory: hosts it beside the local stack, drives a workload, and prints per-operation CPU, wall, SQLite rows, R2 operations, and projected cost (see [profiling.md](profiling.md)) |
+| `make profile-test` | `test/profile/`: hosts the checked-in fixture producer, drives exact counts, and reads the profile back; its files end in `.node.ts` so the Workers-runtime vitest run does not collect them |
 | `make ingest-bench` | Encoder, decoder, and end-to-end ingest timings (see `docs/binary-ingest.md`) |
 | `pnpm --dir cloudflare test:scripts` | `deploy/*.sh` and `capture-project.sh` under stubbed `ssh`, `curl`, and `cf` with no network: SIGHUP, SIGINT, and SIGTERM run one cleanup and then re-raise the signal, so the script dies by it and a calling shell or `make` loop stops too; and a deploy reports success only on a receipt that arrives after the restart |
 | `make cloudflare-test` | Worker typecheck, Workers-runtime tests, the observe core under `node:sqlite`, the two-Worker tail test, and the Node server's auth and Worker-parity tests |
@@ -182,6 +184,27 @@ Cloudflare login and no network. It needs `pnpm build` and
   delivered one Durable Object RPC's tail event about 20 s late when it
   overlapped the alarm, and the collector flushes sampled counts about 20 s
   after its last event.
+
+- **Profile producers.** `run` and `dev` also take `--producer-worker DIR`
+  with an optional `--service NAME`. `DIR` is any output directory the `cf`
+  toolchain writes (`worker.config.json`, `bundle/`, optional `assets/`).
+  The stack refuses a name that is an existing observed service, a binding
+  type other than text, SQLite Durable Object, assets, and R2, and a cron
+  trigger. It hosts the Worker in the same Miniflare on its own loopback port,
+  tails it into a collector copy that labels events with `--service` and admits
+  that name through `OBSERVE_LOCAL_SERVICES`, and leaves production
+  `OBSERVED_SERVICES` alone. `cloudflare/test/fixtures/profile/` is a checked-in
+  example: a tiny Worker with a SQLite Durable Object, an R2 bucket, and one
+  operation message per invocation. Its `built/` output is committed, so
+  `make profile-local PRODUCER=cloudflare/test/fixtures/profile/built` needs no
+  build for the fixture. `make profile-test` drives 4 inserts of 5 rows, 2
+  scans of 3 rows, one R2 read/write, and 2 roots, then requires the profile to
+  report exactly 4 and 2 object invocations, 20 rows written, 6 rows read, and
+  the R2 Class A/B counts. Rebuild the fixture with
+  `node_modules/.bin/vite build --config test/fixtures/profile/vite.config.ts`
+  from `cloudflare/` and copy `worker.config.json` and `bundle/index.js` into
+  `built/`. The fixture's own `.oxlintrc.json` ignores `built/**`, so the
+  generated bundle is not linted.
 
 The stack loads the `stats` bundle behind an entry module that adds a
 `runAlarm()` RPC to each Durable Object, because Miniflare has no alarm

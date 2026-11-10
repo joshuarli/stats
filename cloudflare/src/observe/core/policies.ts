@@ -3,7 +3,7 @@ import type { ObservedService } from "../services.ts";
 import { NANOSHOP_OPERATIONS, NANOSHOP_ROUTES_PER_CLASS, NANOSHOP_SAMPLING, nanoshopLabelOperation, nanoshopWorkerRoute } from "./nanoshop-policy.ts";
 import { MAX_OUTCOME_ROUTES_PER_CLASS } from "./limits.ts";
 import type { CountingPolicy } from "./store.ts";
-import type { Stage } from "./model.ts";
+import { OPERATION, type Stage } from "./model.ts";
 import { KEEP_ALL } from "./sampling.ts";
 import { INGEST_PATH, RETIRED_INGEST_PATHS } from "../../ingest/http.ts";
 
@@ -13,6 +13,7 @@ export interface ServicePolicy extends CountingPolicy {
   readonly operations: ReadonlySet<string>;
   readonly labelOperation: (stage: Stage, label: string) => string | null;
   readonly operationMessages: "stats" | "service";
+  readonly captureOperations?: boolean;
 }
 
 const SERVICE_MARKER_PATH = /^\/ingest\/services\/[^/]+\/deployments$/u;
@@ -46,6 +47,29 @@ function memoriesWorkerRoute(path: string): string {
   if (path === "/") return path;
   return path.split("/").map((segment, index) => index === 0 || MEMORIES_SEGMENTS.has(segment) ? segment : ":id").join("/");
 }
+
+const DIGITS = /^\d+$/u;
+
+function profileRoute(path: string): string {
+  return path.split("/").map(segment => DIGITS.test(segment) || UUID.test(segment) ? ":id" : segment).join("/");
+}
+
+export const PROFILE_OPERATIONS: ReadonlySet<string> = new (class extends Set<string> {
+  override has(operation: string): boolean {
+    return OPERATION.test(operation);
+  }
+})();
+
+export const PROFILE_POLICY: ServicePolicy = {
+  workerRoute: profileRoute,
+  objectRoute: path => path === "" ? null : profileRoute(path),
+  operations: PROFILE_OPERATIONS,
+  labelOperation: () => null,
+  operationMessages: "service",
+  sampling: KEEP_ALL,
+  captureOperations: true,
+  routesPerClass: MAX_OUTCOME_ROUTES_PER_CLASS
+};
 
 export const MEMORIES_OPERATIONS = [
   "request.auth", "request.route", "sync.replace", "snapshots.commit", "generations.commit",

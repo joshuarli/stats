@@ -1,7 +1,7 @@
 import { NOTHING_UNSENT, OTHER_ROUTE, type OutcomeEvent } from "../core/model.ts";
 import { handleApi } from "../http/api.ts";
-import { groupByService, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
-import { POLICIES } from "../core/policies.ts";
+import { groupByService, isObservedService, localServices, OBSERVED_SERVICES, type ObservedService } from "../services.ts";
+import { POLICIES, PROFILE_POLICY, type ServicePolicy } from "../core/policies.ts";
 import { outcomeOf, prepareTailItems } from "./tail.ts";
 import { COUNT_FLUSH_INTERVAL_MS, CountBuffer, deliverSampled } from "../core/count-buffer.ts";
 import { AlwaysKeptCap } from "../core/always-kept-cap.ts";
@@ -13,9 +13,9 @@ export { ObservationStore };
 const UNKNOWN_SERVICE_HOME: ObservedService = "stats";
 const SERVICE_PATH = /^\/([a-z][a-z0-9-]{0,31})(\/.*)$/u;
 
-const buffers = new Map<ObservedService, CountBuffer>();
+const buffers = new Map<string, CountBuffer>();
 
-function bufferOf(service: ObservedService): CountBuffer {
+function bufferOf(service: string): CountBuffer {
   let buffer = buffers.get(service);
   if (buffer === undefined) {
     buffer = new CountBuffer(COUNT_FLUSH_INTERVAL_MS);
@@ -24,9 +24,9 @@ function bufferOf(service: ObservedService): CountBuffer {
   return buffer;
 }
 
-const caps = new Map<ObservedService, AlwaysKeptCap>();
+const caps = new Map<string, AlwaysKeptCap>();
 
-function capOf(service: ObservedService): AlwaysKeptCap {
+function capOf(service: string): AlwaysKeptCap {
   let cap = caps.get(service);
   if (cap === undefined) {
     cap = new AlwaysKeptCap();
@@ -39,9 +39,15 @@ function store(env: ObserveEnv, service: string): DurableObjectStub<ObservationS
   return env.STORE.getByName(service);
 }
 
+function policyFor(service: string): ServicePolicy {
+  return (POLICIES as Readonly<Record<string, ServicePolicy>>)[service] ?? PROFILE_POLICY;
+}
+
 export default {
   async tail(events: TraceItem[], env: ObserveEnv, ctx: ExecutionContext): Promise<void> {
-    const grouped = groupByService(events);
+    const local = localServices(env.OBSERVE_LOCAL_SERVICES);
+    const admit = (name: string): boolean => local.includes(name) || isObservedService(name);
+    const grouped = groupByService(events, admit);
     const byService = grouped.byService;
     const unknown: OutcomeEvent[] = grouped.unknown.map(item => outcomeOf(item, "unknown-service", OTHER_ROUTE));
     if (unknown.length > 0) console.error(JSON.stringify({ event: "observe_unknown_service", count: unknown.length }));
@@ -49,10 +55,11 @@ export default {
     const services = new Map(byService);
     if (unknown.length > 0 && !services.has(UNKNOWN_SERVICE_HOME)) services.set(UNKNOWN_SERVICE_HOME, []);
     await awaitEvery([...services].map(async ([service, items]) => {
-      const prepared = await prepareTailItems(items, POLICIES[service], nowMs, capOf(service));
+      const policy = policyFor(service);
+      const prepared = await prepareTailItems(items, policy, nowMs, capOf(service));
       const batch = service === UNKNOWN_SERVICE_HOME ? { ...prepared, outcomes: [...prepared.outcomes, ...unknown] } : prepared;
-      if (POLICIES[service].sampling.kind === "all") {
-        await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts, batch.ambiguousMarks > 0 ? { id: crypto.randomUUID(), unsent: NOTHING_UNSENT, ambiguousMarks: batch.ambiguousMarks } : null);
+      if (policy.sampling.kind === "all") {
+        await store(env, service).ingest(batch.preparations, batch.outcomes, batch.counts, batch.ambiguousMarks > 0 ? { id: crypto.randomUUID(), unsent: NOTHING_UNSENT, ambiguousMarks: batch.ambiguousMarks } : null, policy.captureOperations === true);
         return;
       }
       await deliverSampled({
@@ -65,7 +72,7 @@ export default {
   },
 
   async scheduled(_controller: ScheduledController, env: ObserveEnv): Promise<void> {
-    await Promise.all(OBSERVED_SERVICES.map(service => store(env, service).ensureCleanup()));
+    await Promise.all([...OBSERVED_SERVICES, ...localServices(env.OBSERVE_LOCAL_SERVICES)].map(service => store(env, service).ensureCleanup()));
   },
 
   async fetch(request: Request, env: ObserveEnv): Promise<Response> {

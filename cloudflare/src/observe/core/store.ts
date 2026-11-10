@@ -5,6 +5,7 @@ import { representativeFrame } from "./grouping.ts";
 import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
+import { cleanupProfile, PROFILE_STATEMENTS, recordProfile } from "./profile.ts";
 import { encodeEvent } from "../ingest/codec.ts";
 import { MAX_BATCHES_PER_WINDOW, PROVENANCE, RATE_LIMIT_WINDOW_MS, type ApplicationFailure, type ExternalEvent, type ExternalEventRecord, type ExternalFilter, type ExternalIngest, type ReceivedEvent } from "../ingest/model.ts";
 import type { SqlStatements, SqlValue } from "../../core/sql.ts";
@@ -420,6 +421,7 @@ const STATEMENTS = [
     PRIMARY KEY (bucket_at, version, stage, outcome, route)
   ) WITHOUT ROWID`,
   ...COUNT_STATEMENTS,
+  ...PROFILE_STATEMENTS,
   `CREATE TABLE IF NOT EXISTS observe_external_events (
     service TEXT NOT NULL,
     event_id TEXT NOT NULL,
@@ -554,10 +556,11 @@ function claimFlush(db: SqlStatements, nowMs: number, flush: Flush): boolean {
   return true;
 }
 
-export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED, flush: Flush | null = null): IngestResult {
+export function ingest(db: SqlStatements, preparations: readonly Preparation[], nowMs: number, outcomes: readonly OutcomeEvent[] = [], counting: Counting = NOT_COUNTED, flush: Flush | null = null, captureOperations = false): IngestResult {
   const result: IngestResult = { accepted: 0, duplicate: 0, conflict: 0, expired: 0, future: 0, rejected: 0, issueCapacity: 0 };
   const events: HealthEvent[] = [];
   const counts: unknown[] = [...counting.counts];
+  const captured: PreparedInvocation[] = [];
   let untraced = 0;
   const operations = new Map<string, OperationBucket>();
   const cutoff = nowMs - RETENTION_MS;
@@ -583,6 +586,7 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
         continue;
       }
       insertInvocation(db, invocation, observedAt);
+      if (captureOperations) captured.push(invocation);
       if (counting.sampling.kind === "sampled") {
         counts.push(keptCount(invocation, nowMs));
         if (invocation.trace === null) untraced++;
@@ -593,6 +597,7 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
       }
       result.accepted++;
     }
+    if (captured.length > 0) recordProfile(db, captured, nowMs);
     recordOperations(db, operations);
     recordOutcomes(db, nowMs, outcomes);
     const recorded = recordCounts(db, nowMs, counts, { untraced, flush: counting.counts.length > 0 ? 1 : 0 }, counting.routesPerClass);
@@ -937,6 +942,7 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
       db.run("DELETE FROM observe_outcomes WHERE (bucket_at, version, stage, outcome, route) IN (SELECT bucket_at, version, stage, outcome, route FROM observe_outcomes ORDER BY bucket_at LIMIT ?)", outcomeExcess);
     }
     cleanupCounts(db, cutoff);
+    cleanupProfile(db, cutoff);
     db.run("DELETE FROM observe_applied_flushes WHERE applied_at <= ?", cutoff);
     const rolloutCutoff = nowMs - ROLLOUT_RETENTION_MS;
     const baseline = "SELECT id FROM observe_rollouts WHERE at_ms <= ? ORDER BY at_ms DESC, id DESC LIMIT 1";

@@ -1,4 +1,4 @@
-import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type RowAccount } from "../producer/channel.ts";
+import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type R2Account, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "../core/policies.ts";
 import { isFailedInvocation, NO_SUMMARY_TOTALS, OTHER_ROUTE, prepareInvocation, rejection, summaryTotals, VERSION, type CountDelta, type ServiceOperationReading, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
@@ -73,7 +73,7 @@ function observe(item: TailItem, stage: Stage, entry: Entry, eventAtMs: number, 
       eventAtMs,
       trace: channel.trace,
       ...(channel.operation === null ? {} : { operation: channel.operation }),
-      ...(policy.sampling.kind === "sampled" && channel.serviceOperation !== null ? { serviceOperation: channel.serviceOperation } : {}),
+      ...(channel.serviceOperation !== null && (policy.sampling.kind === "sampled" || policy.captureOperations === true) ? { serviceOperation: channel.serviceOperation } : {}),
       errors: [...uncaught, ...channel.errors]
     }
   };
@@ -269,13 +269,21 @@ function markedSpans(events: TailItem["diagnosticsChannelEvents"]): ReadonlySet<
 function readServiceOperation(message: unknown, operations: ReadonlySet<string>): ServiceOperationReading | null {
   const operation = field(message, "operation");
   const rowsField = field(message, "rows");
+  const r2Field = field(message, "r2");
   const lagField = field(message, "workLagMs");
   if (typeof operation !== "string" || !operations.has(operation) || typeof field(message, "synthetic") !== "boolean") return null;
   const rows = rowsField === null ? null : readRows(rowsField);
   if (rowsField !== null && rows === null) return null;
+  const r2 = r2Field === undefined || r2Field === null ? null : readR2(r2Field);
+  if (r2Field !== undefined && r2Field !== null && r2 === null) return null;
   const [workLagMs] = counts(message, ["workLagMs"]);
   if (lagField !== undefined && workLagMs === undefined) return null;
-  return { name: operation, rows, workLagMs: workLagMs ?? null };
+  return { name: operation, rows, ...(r2 === null ? {} : { r2 }), workLagMs: workLagMs ?? null };
+}
+
+function readR2(value: unknown): R2Account | null {
+  const [classA, classB] = counts(value, ["classA", "classB"]);
+  return classA === undefined || classB === undefined || hasExtra(value, ["classA", "classB"]) ? null : { classA, classB };
 }
 
 function readOperation(message: unknown): OperationSummary | null {

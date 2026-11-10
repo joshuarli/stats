@@ -45,6 +45,11 @@ export interface RowAccount {
   readonly statements: number;
 }
 
+export interface R2Account {
+  readonly classA: number;
+  readonly classB: number;
+}
+
 export interface IngestWork {
   readonly received: number;
   readonly persisted: number;
@@ -86,6 +91,7 @@ export interface ServiceOperationSummary<O extends string> {
   readonly operation: O;
   readonly synthetic: boolean;
   readonly rows: RowAccount | null;
+  readonly r2?: R2Account;
   readonly workLagMs?: number;
 }
 

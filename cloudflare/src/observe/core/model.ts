@@ -1,6 +1,6 @@
 import { MAX_ARTIFACT_BYTES, MAX_ERRORS_PER_INVOCATION, MAX_LABEL_BYTES, MAX_MESSAGE_BYTES, MAX_NAME_BYTES, MAX_STACK_BYTES } from "./limits.ts";
 import { parseStack, type StackFrame } from "./stack.ts";
-import type { OperationSummary, RowAccount } from "../producer/channel.ts";
+import type { OperationSummary, R2Account, RowAccount } from "../producer/channel.ts";
 import { fingerprint, sha256Hex } from "./grouping.ts";
 
 export type Stage = "worker" | "object";
@@ -87,6 +87,7 @@ export type OccurrenceSource = typeof OCCURRENCE_SOURCES[number];
 export interface ServiceOperationReading {
   readonly name: string;
   readonly rows: RowAccount | null;
+  readonly r2?: R2Account;
   readonly workLagMs: number | null;
 }
 

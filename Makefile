@@ -8,7 +8,7 @@ STUFF ?= stuff
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: work-ready node-ready auth-ready access-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate check preview
+.PHONY: work-ready node-ready auth-ready access-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -161,6 +161,13 @@ dev-local: work-ready node-ready worker-bundle observe-bundle
 
 reset-local:
 	rm -rf '$(CURDIR)/.work/local/state'
+
+profile-local: work-ready node-ready worker-bundle observe-bundle
+	@test -n '$(PRODUCER)' || { echo 'usage: make profile-local PRODUCER=<built output dir> [SERVICE=<name>] [WORKLOAD=<script>] [DAILY=<runs/day>] [PROFILE_ARGS=...]' >&2; exit 2; }
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types scripts/profile.mjs --producer-worker '$(abspath $(PRODUCER))' $(if $(SERVICE),--service '$(SERVICE)',) $(if $(WORKLOAD),--workload '$(abspath $(WORKLOAD))',) $(if $(DAILY),--daily '$(DAILY)',) $(PROFILE_ARGS)
+
+profile-test: work-ready node-ready worker-bundle observe-bundle
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test test/profile/*.node.ts
 
 integration-local: work-ready node-ready worker-bundle observe-bundle
 	@set -eu; \

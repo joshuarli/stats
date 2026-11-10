@@ -147,6 +147,16 @@ production:
   - For a rollout older than the 7-day observation window the answer is "older
     than retained data", never a guess, and every answer states how much earlier
     data it compared against.
+- **Operation profile.** A service message may also carry an optional R2
+  account, `r2: { classA, classB }`; messages without it are unchanged. When a
+  policy captures operation accounts (`captureOperations`, used by the local
+  profile policy), the store writes one `observe_profile` row per stored
+  invocation with its operation, stage, CPU and wall ms, outcome, SQLite rows
+  read/written and statements, and R2 Class A/B counts. Rows share the
+  invocation retention and are bounded to 20,000. `GET /api/observe/<service>/profile?from=<ms>&to=<ms>`
+  aggregates them per `(operation, stage)` with exact nearest-rank CPU and wall
+  percentiles. Other policies write no profile rows, so their stored shape and
+  write cost are unchanged.
 - **Source maps.** Caught-error stacks point into the bundle, so frames resolve
   when they are read. A map is stored per version and bundle file and is
   immutable: the same content again is a no-op, different content is a conflict.
@@ -171,6 +181,13 @@ The store sums the backend's billed `rowsWritten` for every ingest and cleanup,
 so `observe health` reports rows written per invocation from production. Every
 health counter keeps a reason and one example, and a conflict names its key
 source (`span` or `fallback`) and the stored columns that differ.
+
+Names outside this list are admitted only by the local stack. Its producer
+wrapper sets `OBSERVE_LOCAL_SERVICES` for the collector copy that tails that
+producer, and the collector admits those names with the `PROFILE_POLICY` (keep
+every invocation, capture its operation account). The deployed
+`stats-observe` sets no such variable, so production still drops any other
+script name as `unknown-service`. See [Local profiling](profiling.md).
 
 ## Command line
 
@@ -252,7 +269,9 @@ The constants are in `src/observe/core/limits.ts`.
 ## Non-goals
 
 Sentry or OTLP compatibility, per-statement SQL spans, browser instrumentation,
-log search, profiling, alert delivery, tenancy inside one store, public
+log search, CPU sampling profilers, alert delivery, tenancy inside one store, public
 ingestion, and a non-Cloudflare server. The agent and `stuff` are not
 instrumented. Request-rate and CPU charts stay on the project page. Rollouts have
 no CI write path, because the stats proxy refuses rollout writes on purpose.
+Local per-operation resource profiling is a local-stack tool only
+([Local profiling](profiling.md)); it is not a production feature.

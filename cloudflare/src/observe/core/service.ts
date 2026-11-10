@@ -9,6 +9,7 @@ import {
   KEEP_ALL_COUNTING, type ArtifactResult, type CleanupResult, type CountingPolicy, type Exploration, type Health, type IngestResult, type ObjectMethods, type IssueState, type IssueSummary, type Occurrence, type Page, type RolloutImpact,
   type RolloutResult, type RouteStats, type StatsWindow, type TraceDetail, type TraceFilter, type TracePage, type WindowQuery, type ExternalOperationsWindow
 } from "./store.ts";
+import { profileWindow, type ProfileWindow } from "./profile.ts";
 import { receiveEvents } from "../ingest/failures.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements } from "../../core/sql.ts";
@@ -30,6 +31,7 @@ export interface ObserveService {
   explore(filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }): Promise<Exploration>;
   objects(filter: { readonly fromMs?: number; readonly toMs?: number }): Promise<ObjectMethods>;
   window(query: WindowQuery): Promise<StatsWindow>;
+  profile(filter: { readonly fromMs?: number; readonly toMs?: number }): Promise<ProfileWindow>;
   artifact(artifact: Artifact): Promise<ArtifactOutcome>;
   ingestExternal(service: string, events: readonly ExternalEvent[]): Promise<ExternalIngest>;
   external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]>;
@@ -39,7 +41,7 @@ export interface ObserveService {
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
 
 export interface MaintainedService extends ObserveService {
-  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[], flush: unknown): IngestResult;
+  ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[], flush: unknown, captureOperations?: boolean): IngestResult;
   cleanup(): { readonly cleaned: CleanupResult; readonly nextAtMs: number | null };
 }
 
@@ -119,6 +121,10 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
       const window = statsWindow(db, query, sampling());
       return summarized(window, window.fromMs, window.toMs, null);
     },
+    profile: async filter => {
+      const { fromMs, toMs } = eventWindow(clock.now(), filter.fromMs, filter.toMs);
+      return profileWindow(db, fromMs, toMs);
+    },
     artifact: async artifact => {
       const problem = artifactProblem(artifact);
       if (problem !== null) return { problem };
@@ -127,7 +133,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
     ingestExternal: async (service, events) => ingestExternal(db, service, await receiveEvents(service, events), clock.now()),
     external: async (service, filter) => readExternalEvents(db, service, clock.now(), filter),
     externalOperations: async (service, filter) => summarizeExternalOperations(db, service, clock.now(), filter),
-    ingest: (preparations, outcomes, counts, flush) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush)),
+    ingest: (preparations, outcomes, counts, flush, captureOperations = false) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush), captureOperations),
     cleanup: () => {
       const now = clock.now();
       const cleaned = cleanup(db, now);

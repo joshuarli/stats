@@ -248,6 +248,12 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
     if (path === "/explore") return json(await store.explore(exploreFilter(params(url, ["from", "to", "route"]))));
     if (path === "/objects") return json(await store.objects(exploreFilter(params(url, ["from", "to"]))));
     if (path === "/window") return json(await store.window(windowQuery(params(url, ["from", "to", "operation", "class"]))));
+    if (path === "/profile") {
+      const values = params(url, ["from", "to"]);
+      const fromMs = milliseconds(values, "from");
+      const toMs = milliseconds(values, "to");
+      return json(await store.profile({ ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) }));
+    }
     if (path === "/external/operations") {
       const values = params(url, ["from", "to"]);
       const fromMs = milliseconds(values, "from");

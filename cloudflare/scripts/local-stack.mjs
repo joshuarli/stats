@@ -6,12 +6,13 @@ import { BUCKET_MS } from "../src/projects/queries.ts";
 import { collectAt, seed } from "../local/seed.ts";
 import { describeUnexpected } from "../local/outbound.ts";
 import { cliEnv, startStack } from "../local/stack.ts";
-import { CLOUDFLARE_ROOT } from "../local/topology.ts";
+import { CLOUDFLARE_ROOT, readBuiltWorker } from "../local/topology.ts";
 
 const USAGE = `usage:
-  node scripts/local-stack.mjs run [--producer DIR]... -- <command> [args...]       run a command against an ephemeral, seeded stack
-  node scripts/local-stack.mjs dev [--state DIR] [--port N] [--producer DIR]...    serve a persistent stack until SIGINT or SIGTERM
-  --producer DIR hosts a producer export's Worker beside stats, tailed by stats-observe and served on its own origin`;
+  node scripts/local-stack.mjs run [--producer DIR]... [--producer-worker DIR [--service NAME]]... -- <command> [args...]       run a command against an ephemeral, seeded stack
+  node scripts/local-stack.mjs dev [--state DIR] [--port N] [--producer DIR]... [--producer-worker DIR [--service NAME]]...    serve a persistent stack until SIGINT or SIGTERM
+  --producer DIR hosts a producer export's Worker beside stats, tailed by stats-observe and served on its own origin
+  --producer-worker DIR hosts any cf-built Worker output directory on its own loopback port, tailed by stats-observe; --service defaults to the built Worker's name`;
 const DEFAULT_STATE = join(CLOUDFLARE_ROOT, "../.work/local/state");
 const DEFAULT_PORT = 8789;
 
@@ -25,12 +26,22 @@ function shellQuote(value) {
 }
 
 function producerLines(stack) {
-  return stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its outbound requests reach only ${producer.providers.map(origin => origin.origin).join(", ")}, which you start; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`);
+  return [
+    ...stack.producers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}, version ${producer.versionId}; its outbound requests reach only ${producer.providers.map(origin => origin.origin).join(", ")}, which you start; its cron ${producer.crons.join(", ") || "(none)"} is not fired here)`),
+    ...stack.workerProducers.map(producer => `producer ${producer.service}: ${producer.origin}  (listening on 127.0.0.1:${producer.port}; its cron is not fired here)`)
+  ];
 }
 
-async function run(producers, command) {
+function workerProducers(values) {
+  const dirs = values.get("--producer-worker");
+  const services = values.get("--service");
+  if (services.length !== 0 && services.length !== dirs.length) usage("--service needs one value per --producer-worker, or none");
+  return dirs.map((dir, index) => ({ dir, service: services[index] ?? readBuiltWorker(dir).name }));
+}
+
+async function run(producers, workerProducers, command) {
   if (command.length === 0) usage("run needs a command after --");
-  const stack = await startStack({ nowMs: null, producers });
+  const stack = await startStack({ nowMs: null, producers, workerProducers });
   for (const line of producerLines(stack)) console.error(line);
   let code = 1;
   try {
@@ -69,11 +80,11 @@ function single(values, name, fallback) {
 }
 
 async function dev(args) {
-  const values = options(args, ["--state", "--port", "--producer"]);
+  const values = options(args, ["--state", "--port", "--producer", "--producer-worker", "--service"]);
   const state = single(values, "--state", DEFAULT_STATE);
   const port = Number(single(values, "--port", String(DEFAULT_PORT)));
   if (!Number.isInteger(port) || port <= 0 || port > 65535) usage("--port must be a TCP port");
-  const stack = await startStack({ nowMs: null, persist: state, port, localExplorer: true, producers: values.get("--producer") });
+  const stack = await startStack({ nowMs: null, persist: state, port, localExplorer: true, producers: values.get("--producer"), workerProducers: workerProducers(values) });
   const hosts = await (await stack.fetch("/api/v1/hosts")).json();
   let reported = 0;
   const reportUnexpected = () => {
@@ -110,7 +121,8 @@ const [mode, ...rest] = process.argv.slice(2);
 if (mode === "run") {
   const separator = rest.indexOf("--");
   if (separator === -1) usage("run takes -- before the command");
-  process.exit(await run(options(rest.slice(0, separator), ["--producer"]).get("--producer"), rest.slice(separator + 1)));
+  const values = options(rest.slice(0, separator), ["--producer", "--producer-worker", "--service"]);
+  process.exit(await run(values.get("--producer"), workerProducers(values), rest.slice(separator + 1)));
 } else if (mode === "dev") {
   await dev(rest);
 } else {
