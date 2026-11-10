@@ -68,6 +68,8 @@
   .wf-stat dd { flex-wrap: wrap; gap: 0 var(--space-sm); }
   .wf-stat strong { font-size: 20px; }
   .wf-panels { grid-template-columns: minmax(0, 1fr); }
+  .tl .wf tr.wf-detail td { padding-inline: var(--space-md); }
+  .tl .wf-detail td > [aria-label="Current selection"] { position: sticky; left: var(--space-md); width: calc(100cqw - 2 * var(--space-md)); max-width: 100%; }
 }
 
 @media (max-width: 375px) {

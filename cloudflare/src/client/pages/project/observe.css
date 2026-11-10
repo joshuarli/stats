@@ -59,7 +59,8 @@
 .frames-list li + li { border-top: 1px solid var(--line); }
 .frames-list li.in-app { color: var(--text); background: var(--surface); }
 .frames-list li.in-app .frame-fn { font-weight: 600; }
-.frame-loc { color: var(--muted); overflow-wrap: anywhere; }
+.frame-fn, .frame-loc { min-width: 0; overflow-wrap: anywhere; }
+.frame-loc { color: var(--muted); }
 
 .issue-item { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: var(--space-sm) var(--inset); text-align: left; border-bottom: 1px solid var(--line); box-shadow: inset 2px 0 transparent; }
 .issue-item:hover { background: var(--hover); }

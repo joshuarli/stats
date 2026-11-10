@@ -411,6 +411,33 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await expect(dialog.locator(".ui-modal-body")).toHaveScreenshot("stats-trace-modal.webp");
 });
 
+test("mobile trace keeps invocation facts and stack readable while the timeline scrolls", { tag: "@mobile-only" }, async ({ page }) => {
+  await setup(page);
+  await page.goto("/#/project/stats?range=24h&section=errors");
+  const opener = page.locator("#issues").getByRole("button", { name: "Open trace" }).first();
+  await opener.focus();
+  await opener.click();
+  const dialog = page.getByRole("dialog", { name: "Trace" });
+  const timeline = dialog.getByRole("group", { name: "Trace timeline" });
+  const selection = timeline.getByRole("region", { name: "Current selection" });
+  await expect(selection.getByRole("region", { name: "Invocation" })).toContainText("CPU time");
+  await expect(selection.getByRole("region", { name: "Errors" })).toContainText("src/installation.ts:419:3");
+  const fits = async () => {
+    const bounds = await Promise.all([timeline.boundingBox(), selection.boundingBox()]);
+    expect(bounds[0]).not.toBeNull();
+    expect(bounds[1]).not.toBeNull();
+    expect(bounds[1]!.x).toBeGreaterThanOrEqual(bounds[0]!.x - 1);
+    expect(bounds[1]!.x + bounds[1]!.width).toBeLessThanOrEqual(bounds[0]!.x + bounds[0]!.width + 1);
+  };
+  await fits();
+  const scroll = timeline.locator(".table-scroll");
+  await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+  await fits();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
 test("frames show their original source, and frames from a version without a map say so", async ({ page }) => {
   await setup(page);
   const scenario = await (shared ??= buildScenario(now));
