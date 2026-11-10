@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ApiFailure, failureForResponse } from "../../api";
 import { age, count } from "../../format";
@@ -109,7 +109,7 @@ export function createServiceDeployments(serviceName: () => string, range: () =>
 
 type ComparisonState =
   | { readonly kind: "ok"; readonly value: AnyComparison }
-  | { readonly kind: "error"; readonly message: string };
+  | { readonly kind: "error"; readonly deploymentId: string; readonly window: ComparisonWindow; readonly message: string };
 
 function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean) {
   const routes = ROUTES[kind];
@@ -120,18 +120,17 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   const [historyError, setHistoryError] = createSignal<string | null>(null);
   const comparison = (): AnyComparison | null => {
     const state = comparisonState();
-    return state?.kind === "ok" ? state.value : null;
+    return state?.kind === "ok" && state.value.deploymentId === selected() && state.value.window === window() ? state.value : null;
   };
   const comparisonError = (): string | null => {
     const state = comparisonState();
-    return state?.kind === "error" ? state.message : null;
+    return state?.kind === "error" && state.deploymentId === selected() && state.window === window() ? state.message : null;
   };
   let linkPending = true;
   const { now, showWindow } = useTelemetry();
 
   createEffect(() => ({ project: projectId(), tick: refreshKey() }), ({ project }) => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void routes.history(project, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setHistory(value);
@@ -143,20 +142,21 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
         if (linked !== null && value.deployments.some(deployment => deployment.id === linked)) focusOn(value.deployments, linked);
       }
     }).catch((error: unknown) => { if (!controller.signal.aborted) setHistoryError(error instanceof Error ? error.message : "Deployment history unavailable"); });
+    return () => controller.abort();
   });
 
   createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey(), active: active() }), query => {
     if (!query.active) return;
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     if (query.id === "") { setComparisonState(null); return; }
     setComparisonState(current => current?.kind === "error" ? null : current);
     void read("Deployment comparison", `/api/v1/${routes.collection}/${encodeURIComponent(query.project)}/deployments/${query.id}/comparison?window=${query.window}`, controller.signal, value => routes.comparison(value, query.id, query.window)).then(value => {
       if (!controller.signal.aborted) setComparisonState({ kind: "ok", value });
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setComparisonState({ kind: "error", message: error instanceof Error ? error.message : "Deployment comparison unavailable" });
+      setComparisonState({ kind: "error", deploymentId: query.id, window: query.window, message: error instanceof Error ? error.message : "Deployment comparison unavailable" });
     });
+    return () => controller.abort();
   });
 
   const versions = createMemo(() => new Map((history()?.versions ?? []).map(version => [version.id, version])));
@@ -191,8 +191,8 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   })));
   const current = createMemo(() => history()?.deployments.find(deployment => deployment.id === selected()));
   const stale = () => {
-    const value = comparison();
-    return value !== null && (value.deploymentId !== selected() || value.window !== window());
+    const state = comparisonState();
+    return state?.kind === "ok" && (state.value.deploymentId !== selected() || state.value.window !== window());
   };
   const problem = (): string | null => {
     const value = history();

@@ -254,3 +254,42 @@ test("an auth 401 while a second trace loads clears the first trace timeline and
   await expect(explorer.locator(".trace-detail .tl")).toHaveCount(0);
   await expect(explorer.locator(".trace-detail [role='alert']")).toContainText("unavailable (401)");
 });
+
+test("changing deployment cancels its comparison and never shows it for another release", async ({ page }) => {
+  const { scenario } = await installBase(page);
+  const gate = createGate();
+  let waiting = false;
+  const aborted: string[] = [];
+  page.on("requestfailed", request => {
+    if (request.url().includes("/comparison")) aborted.push(new URL(request.url()).pathname);
+  });
+  await page.route("**/api/v1/projects/stats/deployments/*/comparison?*", async route => {
+    const url = new URL(route.request().url());
+    const id = /\/deployments\/([^/]+)\/comparison/u.exec(url.pathname)?.[1];
+    if (id === undefined) throw new Error("missing deployment ID");
+    if (id === SCENARIO_ROLLOUTS.v13) {
+      waiting = true;
+      await gate.promise;
+      if (route.request().failure() !== null) return;
+    }
+    const window = url.searchParams.get("window") === "6h" ? "6h" : url.searchParams.get("window") === "24h" ? "24h" : "1h";
+    const body = scenarioComparison(scenario, id, window);
+    if (body === null) throw new Error("missing comparison fixture");
+    await route.fulfill({ json: body });
+  });
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  const deployment = page.locator("#deployments");
+  await expect(deployment.locator(".deployment-periods")).toBeVisible();
+  const oldWindows = await deployment.locator(".deployment-periods").textContent();
+  try {
+    await page.getByRole("option", { name: /^v1\.3\.0\b/u }).click();
+    await expect.poll(() => waiting).toBe(true);
+    await expect(deployment.locator(".deployment-periods")).toHaveCount(0);
+    await expect(deployment.locator(".deployment-panel .ui-skeleton").first()).toBeVisible();
+    await page.getByRole("option", { name: /^v1\.4\.0\b/u }).click();
+    await expect.poll(() => aborted.some(path => path.includes(SCENARIO_ROLLOUTS.v13))).toBe(true);
+    await expect(deployment.locator(".deployment-periods")).toHaveText(oldWindows!);
+  } finally {
+    gate.release();
+  }
+});
