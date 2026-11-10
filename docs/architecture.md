@@ -1065,10 +1065,13 @@ drawn only once the data reaches half of it. Periods outside a chart's limits
 get a tinted vertical band, and hovering one shows its peak, range, and
 duration. On project pages the newest buckets, which the collector has not yet
 settled (`PROJECT_SETTLE_MS` in `src/limits.ts`), are shaded as still arriving.
-The project page keeps its deployments, errors, request explorer, and charts
-in sections that start closed; the open sections live in the URL's `open`
-parameter, and a deep link such as `deployment=` or `route=` opens its
-section. The deployment comparison, issue occurrences, and request explorer load only while their sections are open. Long lists
+The project page displays one section at a time. An explicit URL `section`
+selects it even when the URL retains a `deployment`, `issue`, or `route`.
+Without `section`, those legacy detail links select their associated section;
+the older `open` parameter is also supported. Selecting the current section
+leaves it open, and hash navigation and browser history update the active
+section. Deployment comparisons, issue occurrences, and the request explorer
+load only while their sections are active. Long lists
 show their first rows and a "Show more" control, so the page scrolls as one
 page. Widgets collapse, and the choice persists in `localStorage`. `make preview` serves the
 built client from the captured API fixtures with a frozen clock.

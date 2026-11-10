@@ -59,6 +59,50 @@ async function setup(page: Page, options: { readonly failing?: boolean; readonly
 const durations = async (page: Page): Promise<number[]> =>
   (await page.locator("#route-explorer .trace-row .trace-span-text").allTextContents()).map(text => text.endsWith(" s") ? Number.parseFloat(text) * 1000 : Number.parseFloat(text));
 
+test("explicit project sections win over retained detail links and remain selected", async ({ page }) => {
+  await setup(page);
+  const scenario = await (shared ??= buildScenario(now));
+  const issue = (await scenarioStore(scenario, now).issues({})).items[0]!;
+  const path = `/#/project/stats?range=24h&section=requests&issue=${issue.fingerprint}&deployment=${SCENARIO_ROLLOUTS.v14}`;
+  await page.goto(path);
+  const sections = page.getByRole("navigation", { name: "Project sections" });
+  const requests = sections.getByRole("button", { name: /^Requests/u });
+  await expect(requests).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(requests).toHaveAttribute("aria-current", "page");
+  await requests.click();
+  await expect(requests).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/section=requests/u);
+  await sections.getByRole("button", { name: /^Overview/u }).click();
+  await expect(page).toHaveURL(/section=overview/u);
+  await expect(page).toHaveURL(/issue=/u);
+  await expect(page).toHaveURL(/deployment=/u);
+  await page.reload();
+  await expect(sections.getByRole("button", { name: /^Overview/u })).toHaveAttribute("aria-current", "page");
+});
+
+test("project section state follows hash navigation and browser history", async ({ page }) => {
+  await setup(page);
+  await page.goto("/#/project/stats?section=errors");
+  const sections = page.getByRole("navigation", { name: "Project sections" });
+  await expect(sections.getByRole("button", { name: /^Errors/u })).toHaveAttribute("aria-current", "page");
+  await page.evaluate(() => { window.location.hash = "#/project/stats?section=requests"; });
+  await expect(sections.getByRole("button", { name: /^Requests/u })).toHaveAttribute("aria-current", "page");
+  await page.goBack();
+  await expect(sections.getByRole("button", { name: /^Errors/u })).toHaveAttribute("aria-current", "page");
+});
+
+test("legacy issue, route and deployment links still choose their sections", async ({ page }) => {
+  await setup(page);
+  const scenario = await (shared ??= buildScenario(now));
+  const issue = (await scenarioStore(scenario, now).issues({})).items[0]!;
+  for (const [query, section] of [[`issue=${issue.fingerprint}`, "Errors"], [`route=${encodeURIComponent(HISTORY_ROUTE)}`, "Requests"], [`deployment=${SCENARIO_ROLLOUTS.v14}`, "Deployments"]] as const) {
+    await page.goto(`/#/project/stats?${query}`);
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Project sections" }).getByRole("button", { name: new RegExp(`^${section}`, "u") })).toHaveAttribute("aria-current", "page");
+  }
+});
+
 test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps it in the URL", { tag: "@mobile" }, async ({ page }) => {
   await setup(page);
   await page.goto("/#/project/stats?range=24h&section=requests");
@@ -75,7 +119,7 @@ test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps
 
 test("the p95 view lists the slowest calls first and says where their time went", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   const explorer = page.locator("#route-explorer");
   await explorer.getByRole("button", { name: "≥ p95" }).click();
   await expect(page).toHaveURL(/band=slow/u);
@@ -89,7 +133,7 @@ test("the p95 view lists the slowest calls first and says where their time went"
 
 test("a heatmap cell narrows the calls to its time slice and duration band", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   const explorer = page.locator("#route-explorer");
   const cell = explorer.locator(".heatmap-cell").last();
   const label = await cell.getAttribute("aria-label") ?? "";
@@ -106,7 +150,7 @@ test("a heatmap cell narrows the calls to its time slice and duration band", asy
 
 test("the v1.4.0 deployment shows its new issue group, its regression, and a higher failure rate", { tag: "@mobile" }, async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
   const impact = page.locator("#deployments").getByRole("region", { name: "Errors after this deployment" });
   await expect(impact).toContainText("1 new issue group · 1 regression");
   await expect(impact.locator(".impact-rate")).toContainText("→");
@@ -127,7 +171,7 @@ test("the v1.4.0 deployment shows its new issue group, its regression, and a hig
 
 test("the canary is where the parser bug first appeared", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.canary}`);
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.canary}`);
   const impact = page.locator("#deployments").getByRole("region", { name: "Errors after this deployment" });
   await expect(impact).toContainText("1 new issue group · no regressions");
   await expect(impact.getByRole("button", { name: /TypeError/u })).toBeVisible();
@@ -148,14 +192,14 @@ test("choosing a deployment in the rail zooms every chart to its rollout and wid
 
 test("a deployment link opens already zoomed to that rollout", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&deployment=${SCENARIO_ROLLOUTS.v13}`);
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v13}`);
   await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
   await expect(page).toHaveURL(/range=7d/u);
 });
 
 test("a deploy marker opens that deployment in a modal, and its issues open on top with a way back", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
   await page.locator("#route-explorer .heatmap-marker").click();
   const deployment = page.getByRole("dialog");
   await expect(deployment).toContainText("1 new issue group · 1 regression");
@@ -237,7 +281,7 @@ test("a failed route exploration is reported in the requests section", async ({ 
 
 test("the timeline zooms with W, fits the selection with F, and steps with arrow keys", async ({ page }) => {
   await setup(page);
-  await page.goto(`/#/project/stats?range=24h&section=errors&route=${encodeURIComponent("scheduled */5 * * * *")}`);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent("scheduled */5 * * * *")}`);
   const timeline = page.locator("#route-explorer .tl");
   const span = async () => {
     const text = await timeline.locator(".tl-span").textContent() ?? "";
@@ -406,7 +450,7 @@ test("a deep-linked trace stops refreshing once the Requests section is closed",
   await expect.poll(traceReads).toBe(1);
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect.poll(traceReads).toBe(2);
-  await page.locator("#section-requests .project-nav-item, #section-requests button").first().click();
+  await page.locator("#section-overview .project-nav-item").click();
   await expect(page.locator("#section-requests")).not.toHaveClass(/\bopen\b/u);
   await page.getByRole("button", { name: "Refresh" }).click();
   await page.getByRole("button", { name: "Refresh" }).click();

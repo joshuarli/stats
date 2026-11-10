@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, For, lazy, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getProjectHistories, type Project } from "../api";
@@ -74,12 +74,12 @@ export function ProjectPage(): JSX.Element {
 }
 
 function initialSection(observed: boolean): SectionId {
-  const linked = LINKED_SECTIONS.find(([param]) => readParam(param) !== null)?.[1];
-  if (linked !== undefined && (observed || (linked !== "errors" && linked !== "requests"))) return linked;
   const section = readParam("section");
   if (section !== null && isSectionId(section)) {
     if (observed || (section !== "errors" && section !== "requests")) return section;
   }
+  const linked = LINKED_SECTIONS.find(([param]) => readParam(param) !== null)?.[1];
+  if (linked !== undefined && (observed || (linked !== "errors" && linked !== "requests"))) return linked;
   const opened = (readParam("open") ?? "").split(",").find((entry): entry is SectionId => (SECTION_IDS as readonly string[]).includes(entry));
   if (opened !== undefined && opened !== "overview" && (observed || (opened !== "errors" && opened !== "requests"))) return opened;
   return "overview";
@@ -91,6 +91,11 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const service = isObservedService(props.project.worker) ? props.project.worker : null;
   const [active, setActive] = createSignal<SectionId>(initialSection(service !== null));
+  createEffect(() => true, () => {
+    const syncSection = () => { setActive(initialSection(service !== null)); };
+    window.addEventListener("hashchange", syncSection);
+    return () => window.removeEventListener("hashchange", syncSection);
+  });
   const id = () => props.project.id;
   const hasBuckets = () => props.project.buckets.length > 0;
   const hasNamespaces = () => props.project.durableObjectNamespaces.length > 0;
@@ -161,14 +166,9 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   );
 
   const showSection = (section: SectionId) => {
-    if (active() === section && section !== "overview") {
-      setActive("overview");
-      writeParam("section", null);
-      writeParam("open", null);
-      return;
-    }
+    if (active() === section) return;
     setActive(section);
-    writeParam("section", section === "overview" ? null : section);
+    writeParam("section", section);
     writeParam("open", null);
   };
 
