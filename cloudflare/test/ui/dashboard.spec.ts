@@ -720,6 +720,34 @@ test("filtering projects suspends hidden trends without refetching project data"
   expect(requests).toHaveLength(before);
 });
 
+test("project search and comparison basis fit narrow screens", { tag: "@mobile-only" }, async ({ page }) => {
+  await mock(page);
+  await page.goto("/#/projects");
+  const search = page.getByRole("searchbox", { name: "Search projects" });
+  await expect(search).toBeVisible();
+  for (const width of [320, 390, 600]) {
+    await page.setViewportSize({ width, height: 844 });
+    const geometry = await page.locator("#projects").evaluate(panel => {
+      const title = panel.querySelector("h2")!.getBoundingClientRect();
+      const basis = panel.querySelector(".projects-basis")!.getBoundingClientRect();
+      const bounds = panel.getBoundingClientRect();
+      return { titleBottom: title.bottom, basisTop: basis.top, basisRight: basis.right, panelRight: bounds.right, documentWidth: document.documentElement.scrollWidth };
+    });
+    expect(geometry.titleBottom).toBeLessThanOrEqual(geometry.basisTop);
+    expect(geometry.basisRight).toBeLessThanOrEqual(geometry.panelRight);
+    expect(geometry.documentWidth).toBeLessThanOrEqual(width);
+    await expect(search).toBeVisible();
+  }
+  await expect(page.getByText("Scroll horizontally for more columns.")).toBeVisible();
+  const region = page.getByRole("region", { name: "Projects table" });
+  await region.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => region.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 899, height: 844 });
+  await expect.poll(() => region.evaluate(element => element.scrollWidth - element.clientWidth)).toBe(0);
+  await expect(page.getByText("Scroll horizontally for more columns.")).toHaveCount(0);
+});
+
 test("the projects table compares each project's settled window with the one before and expands to its trends", async ({ page }) => {
   await mock(page, { baselineScale: 0.5, probes: true });
   await page.goto("/#/projects");

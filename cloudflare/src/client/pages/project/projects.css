@@ -1,7 +1,13 @@
 .projects-basis { color: var(--muted); font-size: var(--fs-meta); }
 .projects-scroll-hint { margin: 0; padding: var(--space-xs) var(--inset) var(--space-sm); color: var(--muted); font-size: var(--fs-meta); }
+.projects-table thead th:last-child { position: relative; }
 .projects-table .numeric .cell-stack { align-items: flex-end; }
 .projects-table .numeric .cell-pending { margin-left: auto; }
+@media (max-width: 600px) {
+  #projects > .ui-panel-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
+  #projects > .ui-panel-head .ui-panel-meta { min-width: 0; white-space: normal; }
+  #projects .projects-basis { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+}
 @media (min-width: 900px) {
   .projects-table { table-layout: fixed; }
   .projects-table th:nth-child(1) { width: 16.5%; }
