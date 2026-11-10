@@ -965,3 +965,68 @@ test("changing the project range aborts the previous ledger windows", async ({ p
   }
   await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
 });
+
+test("filtering out an expanded project aborts its fallback trend request", async ({ page }) => {
+  await installBaseRoutes(page);
+  const gate = createGate();
+  let requests = 0;
+  let cancelled = false;
+  page.on("requestfailed", request => {
+    if (request.url().includes("/projects/broken/history?range=")) cancelled = true;
+  });
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "broken", name: "broken", worker: "broken", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
+  await page.route("**/api/v1/projects/broken/deployments", route => route.fulfill({ json: { projectId: "broken", worker: "broken", enabled: true, sync: null, deployments: [], versions: [] } }));
+  await page.route("**/api/v1/projects/broken/history*", async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("from")) return route.fulfill({ status: 500, body: "unavailable" });
+    requests += 1;
+    await gate.wait;
+    if (route.request().failure() !== null) return;
+    return fulfillHistory(route, projectBundle("broken", 500));
+  });
+  await page.goto("/#/projects");
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("unavailable");
+  try {
+    await page.getByRole("button", { name: "Show broken trends" }).click();
+    await expect.poll(() => requests).toBe(1);
+    await page.getByRole("searchbox", { name: "Search projects" }).fill("other");
+    await expect.poll(() => cancelled).toBe(true);
+    expect(requests).toBe(1);
+    gate.release();
+    await page.getByRole("searchbox", { name: "Search projects" }).fill("");
+    await expect.poll(() => requests).toBe(2);
+    await expect(page.locator(".projects-trends")).toBeVisible();
+  } finally {
+    gate.release();
+  }
+});
+
+test("refreshing the project list aborts its older deployment request", async ({ page }) => {
+  await installBaseRoutes(page);
+  const gate = createGate();
+  let requests = 0;
+  let cancelled = false;
+  page.on("requestfailed", request => {
+    if (request.url().endsWith("/projects/alpha/deployments")) cancelled = true;
+  });
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
+  await page.route("**/api/v1/projects/alpha/history*", route => fulfillHistory(route, projectBundle("alpha", 500)));
+  await page.route("**/api/v1/projects/alpha/deployments", async route => {
+    requests += 1;
+    if (requests === 1) {
+      await gate.wait;
+      if (route.request().failure() !== null) return;
+    }
+    await route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } });
+  });
+  await page.goto("/#/projects");
+  try {
+    await expect.poll(() => requests).toBe(1);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => cancelled).toBe(true);
+    await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
+    await expect(page.getByRole("table", { name: "Projects" })).toContainText("none recorded");
+  } finally {
+    gate.release();
+  }
+});

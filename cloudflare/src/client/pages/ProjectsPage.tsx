@@ -206,7 +206,6 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
 
   createEffect(() => `${props.project.id}:${refreshKey()}`, () => {
     const controller = new AbortController();
-    onCleanup(() => controller.abort());
     void loadDeploymentHistory(props.project.id, controller.signal).then(value => {
       if (controller.signal.aborted) return;
       setDeployments(value);
@@ -217,6 +216,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
       setDeploymentsError(errorMessage(error));
       setDeploymentsSettled(true);
     });
+    return () => controller.abort();
   });
 
   const window = createMemo((): TimeWindow => {
@@ -244,7 +244,6 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
         return;
       }
       const controller = new AbortController();
-      onCleanup(() => controller.abort());
       void getProjectHistories(query.id, { range: query.range }, historyKinds(props.project), controller.signal).then(value => {
         if (controller.signal.aborted) return;
         setFallbackHistories(value);
@@ -252,6 +251,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
       }).catch((error: unknown) => {
         if (!controller.signal.aborted) setHistoryError(errorMessage(error));
       });
+      return () => controller.abort();
     }
   );
 
