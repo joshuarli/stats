@@ -503,17 +503,18 @@ async function runRetentionTrace(steps) {
       const totalPages = Math.max(1, Math.ceil(hosts.length / 10));
       if (totalPages > 1) {
         const targetPage = ((Math.floor(step / 5) - 1) % totalPages) + 1;
-        const nextBtn = page.getByRole("button", { name: "Next page" });
-        if (targetPage >= 2 && await nextBtn.isEnabled()) {
-          await nextBtn.click();
+        const pageText = await page.getByText(/^Page \d+ of \d+$/u).textContent();
+        const current = /^Page (\d+) of (\d+)$/u.exec(pageText?.trim() ?? "");
+        if (current === null || Number(current[2]) !== totalPages) throw new Error(`Unexpected fleet pagination: ${pageText}`);
+        let currentPage = Number(current[1]);
+        while (currentPage !== targetPage) {
+          const direction = currentPage < targetPage ? 1 : -1;
+          await page.getByRole("button", { name: direction === 1 ? "Next page" : "Previous page" }).click();
+          currentPage += direction;
+          await page.getByText(`Page ${currentPage} of ${totalPages}`, { exact: true }).waitFor();
           await tracker.waitForQuiet(60, 5_000);
-          fleetPagesVisited.add(2);
-          if (targetPage >= 3 && await nextBtn.isEnabled()) {
-            await nextBtn.click();
-            await tracker.waitForQuiet(60, 5_000);
-            fleetPagesVisited.add(3);
-          }
         }
+        fleetPagesVisited.add(currentPage);
       }
     }
     await tracker.waitForQuiet(60, 5_000);
