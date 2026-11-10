@@ -1119,11 +1119,11 @@ test("a new settled window does not reuse an older monthly bill @mobile", async 
   } finally {
     gate.release();
   }
-  await expect(page.getByText("This month's spend could not be read", { exact: false })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "This month's spend could not be read" })).toBeVisible();
   await expect(page.locator(".ledger-month")).toHaveCount(0);
   fail = false;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByText("This month's spend could not be read", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "This month's spend could not be read" })).toHaveCount(0);
   await expect(page.locator(".ledger-month")).toBeVisible();
 });
 

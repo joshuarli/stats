@@ -272,7 +272,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                     <Notice tone="warn">{`The previous window could not be read, so changes are not shown: ${message()}`}</Notice>
                   )}</Show>
                   <Show when={monthSpend.error()}>{message => (
-                    <Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice>
+                    <div role="alert"><Notice tone="warn">{`This month's spend could not be read: ${message()}`}</Notice></div>
                   )}</Show>
                   <Show when={ledger()} fallback={ledgerLoadError() === null ? <Skeleton rows={4} class="skeleton-ledger" /> : <ErrorState error={new Error(ledgerLoadError() ?? "")} compact />}>
                     {current => <CostLedger report={current().report} histories={current().histories} previousHistories={current().previous} windowLabel={windowLabel()} spendPending={monthSpend.spend() === null && monthSpend.error() === null} onFindRoute={observe === null ? undefined : label => { observe.filterRoute(label); showSection("requests"); queueMicrotask(() => requestsButton?.focus()); }} />}
