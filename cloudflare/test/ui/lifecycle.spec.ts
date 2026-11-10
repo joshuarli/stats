@@ -1083,3 +1083,83 @@ test("fleet metric sorting fetches system details only for visible hosts", async
   await page.getByRole("button", { name: "Previous page" }).click();
   await expect(table.locator("tbody tr").first()).toContainText("node-23");
 });
+
+test("a new settled window does not reuse an older monthly bill", async ({ page }) => {
+  await installBaseRoutes(page);
+  const gate = createGate();
+  let waiting = false;
+  let fail = true;
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
+  await page.route("**/api/v1/projects/alpha/deployments", route => route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } }));
+  await page.route("**/api/v1/projects/alpha/history*", async route => {
+    const url = new URL(route.request().url());
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (from !== null && to !== null && Number(from) === Date.UTC(2026, 10, 1) && Number(to) < NOW - 3_600_000) {
+      waiting = true;
+      await gate.wait;
+      if (route.request().failure() !== null) return;
+      if (fail) return route.fulfill({ status: 503, body: "unavailable" });
+    }
+    const bundle = projectBundle("alpha", 1_000);
+    if (url.searchParams.get("range") === "6h") {
+      bundle.histories.worker.fromMs -= 7_200_000;
+      bundle.histories.worker.toMs -= 7_200_000;
+    }
+    await fulfillHistory(route, bundle);
+  });
+  await page.goto("/#/project/alpha?range=1h");
+  await expect(page.locator(".ledger-month")).toBeVisible();
+  try {
+    await page.getByRole("button", { name: "6h", exact: true }).click();
+    await expect.poll(() => waiting).toBe(true);
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+    await expect(page.locator(".ledger-month")).toHaveCount(0);
+    await expect(page.locator(".ledger-month-pending")).toBeVisible();
+  } finally {
+    gate.release();
+  }
+  await expect(page.getByText("This month's spend could not be read", { exact: false })).toBeVisible();
+  await expect(page.locator(".ledger-month")).toHaveCount(0);
+  fail = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("This month's spend could not be read", { exact: false })).toHaveCount(0);
+  await expect(page.locator(".ledger-month")).toBeVisible();
+});
+
+test("a project change does not reuse another project's monthly bill", async ({ page }) => {
+  await installBaseRoutes(page);
+  const gate = createGate();
+  let waiting = false;
+  const collector = { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false };
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: ["alpha", "bravo"].map(id => ({ id, name: id, worker: id, workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector })) }));
+  await page.route("**/api/v1/projects/*/deployments", route => {
+    const id = /\/projects\/([^/]+)\/deployments/u.exec(route.request().url())?.[1];
+    if (id === undefined) throw new Error("missing project ID");
+    return route.fulfill({ json: { projectId: id, worker: id, enabled: true, sync: null, deployments: [], versions: [] } });
+  });
+  await page.route("**/api/v1/projects/*/history*", async route => {
+    const url = new URL(route.request().url());
+    const id = /\/projects\/([^/]+)\/history/u.exec(url.pathname)?.[1];
+    if (id === undefined) throw new Error("missing project ID");
+    if (id === "bravo" && Number(url.searchParams.get("from")) === Date.UTC(2026, 10, 1)) {
+      waiting = true;
+      await gate.wait;
+      if (route.request().failure() !== null) return;
+    }
+    await fulfillHistory(route, projectBundle(id, id === "alpha" ? 1_000 : 5_000));
+  });
+  await page.goto("/#/project/alpha?range=1h");
+  await expect(page.locator(".ledger-month")).toBeVisible();
+  try {
+    await page.evaluate(() => { window.location.hash = "#/project/bravo?range=1h"; });
+    await expect(page.getByRole("heading", { name: "bravo", level: 1 })).toBeVisible();
+    await expect.poll(() => waiting).toBe(true);
+    await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+    await expect(page.locator(".ledger-month")).toHaveCount(0);
+    await expect(page.locator(".ledger-month-pending")).toBeVisible();
+  } finally {
+    gate.release();
+  }
+  await expect(page.locator(".ledger-month")).toBeVisible();
+});

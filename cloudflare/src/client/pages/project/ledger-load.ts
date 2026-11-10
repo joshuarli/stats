@@ -98,18 +98,26 @@ export function createProjectLedger(project: Accessor<Project>, window: Accessor
 }
 
 export function createMonthSpend(project: Accessor<Project>, settledMs: Accessor<number>, refreshKey: Accessor<string>) {
-  const [spend, setSpend] = createSignal<PlanMonthInput | null>(null);
-  const [error, setError] = createSignal<string | null>(null);
-  createEffect(() => `${project().id}:${settledMs()}:${refreshKey()}`, () => {
-    const month = utcMonthOf(settledMs());
-    const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, settledMs()) };
+  const [stored, setSpend] = createSignal<{ readonly projectId: string; readonly value: PlanMonthInput } | null>(null);
+  const [failure, setError] = createSignal<{ readonly projectId: string; readonly settledMs: number; readonly message: string } | null>(null);
+  const spend = () => {
+    const result = stored();
+    return result !== null && result.projectId === project().id && result.value.settledMs === settledMs() ? result.value : null;
+  };
+  const error = () => {
+    const result = failure();
+    return result !== null && result.projectId === project().id && result.settledMs === settledMs() ? result.message : null;
+  };
+  createEffect(() => ({ projectId: project().id, settledMs: settledMs(), refresh: refreshKey() }), query => {
+    const month = utcMonthOf(query.settledMs);
+    const window = { fromMs: month.fromMs, toMs: Math.max(month.fromMs, query.settledMs) };
     const controller = new AbortController();
-    getProjectHistories(project().id, window, historyKinds(project()), controller.signal).then(histories => {
+    getProjectHistories(query.projectId, window, historyKinds(project()), controller.signal).then(histories => {
       if (controller.signal.aborted) return;
-      setSpend({ histories: ledgerHistories(histories), settledMs: window.toMs });
+      setSpend({ projectId: query.projectId, value: { histories: ledgerHistories(histories), settledMs: window.toMs } });
       setError(null);
     }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(errorMessage(cause));
+      if (!controller.signal.aborted) setError({ projectId: query.projectId, settledMs: query.settledMs, message: errorMessage(cause) });
     });
     return () => controller.abort();
   });
