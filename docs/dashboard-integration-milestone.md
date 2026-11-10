@@ -25,7 +25,7 @@ Stats uses the existing `ActionStatus` component for issue mutations. A Stats br
 
 ## Asset graphs
 
-Each graph includes its complete initial import closure. Values are bytes. Gzip is calculated per asset by `bench-bundle.mjs`. The candidate graph is from `5de60a5`; the raw preview transfer run is from `2c08f22`. The service wording adds 293 raw JavaScript bytes to Service. Fleet-sort feedback and cancellation add 682 raw JavaScript and 65 raw CSS bytes to each initial route graph because the Fleet entry is shared.
+Each graph includes its complete initial import closure. Values are bytes. Gzip is calculated per asset by `bench-bundle.mjs`. The candidate graph and raw preview transfer run are from `5de60a5`. The service wording adds 293 raw JavaScript bytes to Service. Fleet-sort feedback and cancellation add 682 raw JavaScript and 65 raw CSS bytes to each initial route graph because the Fleet entry is shared.
 
 | Route | JS raw before → after | JS gzip before → after | CSS raw before → after | CSS gzip before → after |
 | --- | ---: | ---: | ---: | ---: |
@@ -42,7 +42,7 @@ Fleet grew 8.13% raw and 6.08% gzip. Projects grew 7.77% raw and 5.96% gzip. Ser
 
 ## Requests and lifecycle
 
-The default fixture contains four hosts, three projects, and one service. Each observation below is one run and is not a timing claim. Cold request counts include the document and assets. API counts are a subset. The baseline request run includes the later response-body cleanup, so both sides count 404 responses that the original run missed.
+The default fixture contains four hosts, three projects, and one service. The candidate observations were refreshed at `5de60a5`. Each observation below is one run and is not a timing claim. Cold request counts include the document and assets. API counts are a subset. The baseline request run includes the later response-body cleanup, so both sides count 404 responses that the original run missed.
 
 | Route | Cold requests before → after | Cold API before → after | Warm requests before → after |
 | --- | ---: | ---: | ---: |
@@ -55,7 +55,7 @@ The default fixture contains four hosts, three projects, and one service. Each o
 | Services | 15 → 15 | 3 → 3 | 2 → 2 |
 | Service | 17 → 17 | 4 → 4 | 3 → 3 |
 
-Errors adds one request for the feedback stylesheet. The route gates still exclude uPlot and observability code from Fleet and exclude uPlot from the initial Projects graph. Deep-linked sections load their views; inactive sections do not fetch their gated data.
+Errors adds one request for the feedback stylesheet. The candidate run had only the expected fixture 404s for the `usr-memories` deployment history and `web` issue collection. The route gates still exclude uPlot and observability code from Fleet and exclude uPlot from the initial Projects graph. Deep-linked sections load their views; inactive sections do not fetch their gated data.
 
 ## Route readiness
 
@@ -78,7 +78,7 @@ The cold median increase exceeds the larger observed range on all eight routes; 
 
 On the current candidate, ten Fleet-to-Host chart cycles in the default fixture left zero additional DOM nodes and listeners and zero uPlot roots after leaving the host. Forced-GC heap rose 665.5 KiB and backing storage did not change. The repaired-baseline observation was +676.7 KiB heap and −0.3 KiB backing. Both are single observations, not a retained-memory trend. Host and project history revalidations returned 304 with no response body for 1h, 24h, and 7d ranges.
 
-The large fixture contains 24 hosts and 12 projects. Request-only runs found identical cold API counts on every route. Errors adds one CSS request, as in the default fixture. Projects made 50 total requests, including 38 API requests; Fleet made 27, including 21 API requests. Sorting Fleet by CPU loaded all 24 distinct histories and produced ascending values across all three pages. The baseline did the same.
+The large fixture contains 24 hosts and 12 projects. Request-only runs, refreshed at `5de60a5`, found identical cold API counts on every route. The candidate reported the expected unavailable `usr-memories` deployment histories and `web` issue collection. Errors adds one CSS request, as in the default fixture. Projects made 50 total requests, including 38 API requests; Fleet made 27, including 21 API requests. Sorting Fleet by CPU loaded all 24 distinct histories and produced ascending values across all three pages. The baseline did the same.
 
 The `5de60a5` candidate's 100-navigation retention run exercised all three Fleet pages. After forced collection, it grew from 5,583.4 to 29,431.9 KiB of JavaScript heap and from 1,225.8 to 16,595.1 KiB of backing storage. Its checkpoints after step 25 contained 4,808–6,068 DOM nodes and 218–242 listeners. The final Fleet view retained no uPlot roots. The baseline grew from 5,534.1 to 29,117.2 KiB of heap and from 1,208.5 to 16,621.2 KiB of backing storage, with 4,566–5,823 nodes and 217–241 listeners after step 25. These are single observations, not a leak-rate or timing comparison. The benchmark now navigates to the intended page even when the fleet retains its previous page and preserves the selected range between routes.
 
