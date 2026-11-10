@@ -71,16 +71,17 @@ interface ProjectWindow {
   readonly scale: number;
 }
 
-function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow, missingD1Written = false, partialWorkerCpu = false, partialR2Storage = false, missingD1Storage = false) {
-  const fromMs = window === undefined ? now - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
-  const toMs = window?.toMs ?? now;
+function projectHistory(kind: string, range: string, spike: boolean, probeDown: boolean, buckets: readonly string[], objectStorageBytes: number | null, window?: ProjectWindow, missingD1Written = false, partialWorkerCpu = false, partialR2Storage = false, missingD1Storage = false, historyEndMs?: number) {
+  const edgeMs = historyEndMs ?? now;
+  const fromMs = window === undefined ? edgeMs - PROJECT_POINTS * PROJECT_STEP : Math.floor(window.fromMs / PROJECT_STEP) * PROJECT_STEP;
+  const toMs = window?.toMs ?? edgeMs;
   const points = Math.max(1, Math.ceil((toMs - fromMs) / PROJECT_STEP));
   const base = window === undefined ? { projectId: "stuff", range, fromMs, toMs, stepMs: PROJECT_STEP } : { projectId: "stuff", fromMs, toMs, stepMs: PROJECT_STEP };
   const scale = window?.scale ?? (range === "24h" ? 2 : 1);
   if (kind === "collector") {
-    return { ...base, kind, runs: Array.from({ length: points }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })) };
+    return { ...base, kind, runs: Array.from({ length: points }, (_, index) => ({ atMs: fromMs + index * PROJECT_STEP, ok: true, detail: "ok", rowsRead: 4_000_000, durationMs: 900 })).filter(run => run.atMs < edgeMs) };
   }
-  const column = (value: (index: number) => number | null) => Array.from({ length: points }, (_, index) => value(index));
+  const column = (value: (index: number) => number | null) => Array.from({ length: points }, (_, index) => fromMs + index * PROJECT_STEP < edgeMs ? value(index) : null);
   const hot = (index: number) => spike && window === undefined && index >= points - 4;
   if (kind === "worker") {
     return {
@@ -204,7 +205,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number; historyEndMs?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -223,7 +224,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
         fromMs: Number(from), toMs: Number(to),
         scale: (Number(to) - Number(from) > 6 * 3_600_000 && Number(to) - Number(from) <= 24 * 3_600_000 ? 2 : 1) * (Number(to) < now - 90 * 60_000 ? options.baselineScale ?? 1 : 1)
       };
-      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window, options.missingD1Written === true, options.partialWorkerCpu === true, options.partialR2Storage === true, options.missingD1Storage === true);
+      const body = (entry: string) => projectHistory(entry, range, options.spike === true, options.probeDown === true, buckets, options.objectStorageBytes ?? null, window, options.missingD1Written === true, options.partialWorkerCpu === true, options.partialR2Storage === true, options.missingD1Storage === true, options.historyEndMs);
       if (kinds !== null) return fulfillHistory(route, { projectId: "stuff", histories: Object.fromEntries(kinds.split(",").map(entry => [entry, body(entry)])) });
       return fulfillHistory(route, body(kind));
     }
@@ -1205,6 +1206,18 @@ test("a partially covered Worker series marks its row and both monthly amounts p
   await page.goto("/#/projects");
   const row = page.getByRole("table", { name: "Projects" }).locator("tr.projects-row").filter({ hasText: "stuff" });
   await expect(row).toContainText("partial · missing cost data");
+});
+
+test("a projects row prices the history's settled edge, not the browser clock", async ({ page }) => {
+  const historyEndMs = Math.floor((now - 3 * 3_600_000) / PROJECT_STEP) * PROJECT_STEP;
+  await mock(page, { historyEndMs });
+  await page.goto("/#/projects");
+  const row = page.getByRole("table", { name: "Projects" }).locator("tr.projects-row").filter({ hasText: "stuff" });
+  const cost = row.getByRole("cell").nth(4);
+  await expect(cost.locator(".cell-strong")).toBeVisible();
+  await expect(cost).not.toContainText("partial · missing cost data");
+  await expect(cost.locator(".cell-strong")).toContainText("$3.12/mo");
+  await expect(cost).toContainText("incl.");
 });
 
 test("missing D1 storage is named and adds no zero-dollar storage part", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, onSettled, refresh, Show, untrack, type ParentProps } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, onSettled, refresh, Show, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
@@ -13,7 +13,7 @@ import { createUpdateEffect } from "../effect";
 import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
 import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
-import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
+import { createProjectLedger, getSettleProbe, historyKinds, settledWindow } from "./project/ledger-load";
 import { windowUsage, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
 import { restoreListFocus, type ProjectSortKey } from "../list-state";
 import { routeWithRange } from "../urlState";
@@ -219,13 +219,27 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
     return () => controller.abort();
   });
 
-  const window = createMemo((): TimeWindow => {
-    refreshKey();
-    return settledRangeWindow(rangeMs[range()], untrack(now));
+  const [settleProbe, setSettleProbe] = createSignal<MetricHistory | null>(null);
+  const [probeError, setProbeError] = createSignal<string | null>(null);
+  createEffect(() => `${props.project.id}:${range()}:${refreshKey()}`, () => {
+    const controller = new AbortController();
+    setSettleProbe(null);
+    setProbeError(null);
+    void getSettleProbe(props.project.id, range(), controller.signal).then(value => {
+      if (controller.signal.aborted) return;
+      setSettleProbe(value);
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setProbeError(errorMessage(error));
+    });
+    return () => controller.abort();
+  });
+  const window = createMemo((): TimeWindow | null => {
+    const worker = settleProbe();
+    return worker === null ? null : settledWindow(worker, rangeMs[range()], null);
   });
   const { ledger, histories: ledgerHistories, error: ledgerError } = createProjectLedger(() => props.project, window, range, refreshKey, null, () => null);
   const loaded = ledger;
-  const failure = () => ledgerError();
+  const failure = () => probeError() ?? ledgerError();
   const trendHistories = () => ledgerHistories() ?? fallbackHistories();
 
   createEffect(
