@@ -119,6 +119,31 @@ test("routes rank by CPU, and choosing one focuses the latency heatmap and keeps
   await expect(explorer.locator(".heatmap-marker")).toContainText("v1.4.0");
 });
 
+test("sorting routes preserves the selected route and exposes only the active sort", async ({ page }) => {
+  await setup(page);
+  await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);
+  const table = page.locator("#route-explorer .route-table");
+  const selected = table.getByRole("button", { name: /hosts\/:host\/history/u });
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  const routeHeader = table.getByRole("columnheader", { name: "Route", exact: true });
+  const requestsHeader = table.getByRole("columnheader", { name: "Requests", exact: true });
+  await expect(routeHeader).not.toHaveAttribute("aria-sort");
+  const sortRoute = routeHeader.getByRole("button");
+  await sortRoute.focus();
+  await sortRoute.press("Space");
+  await expect(routeHeader).toHaveAttribute("aria-sort", "ascending");
+  await expect(sortRoute).toBeFocused();
+  await expect(requestsHeader).not.toHaveAttribute("aria-sort");
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  const labels = await table.locator("tbody tr:not(:first-child) .route-pick").allTextContents();
+  expect(labels.length).toBeGreaterThan(1);
+  expect(labels).toEqual([...labels].sort((left, right) => left.localeCompare(right)));
+  await sortRoute.press("Enter");
+  await expect(routeHeader).toHaveAttribute("aria-sort", "descending");
+  await expect(selected).toHaveAttribute("aria-pressed", "true");
+  expect(await table.locator("tbody tr:not(:first-child) .route-pick").allTextContents()).toEqual([...labels].reverse());
+});
+
 test("a ledger route opens its exact matching requests without prefetching", async ({ page }) => {
   const observe = await setup(page, { ledgerRoutes: [HISTORY_ROUTE] });
   await page.goto("/#/project/stats?range=24h&section=overview");

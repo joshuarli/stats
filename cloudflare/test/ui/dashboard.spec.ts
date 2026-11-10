@@ -507,6 +507,7 @@ test("returning from a host keeps the fleet search, status and sort", async ({ p
   await table.getByRole("button", { name: "Host", exact: true }).click();
   await table.getByRole("button", { name: "Host", exact: true }).click();
   await expect(table.getByRole("columnheader", { name: "Host" })).toHaveAttribute("aria-sort", "descending");
+  await expect(table.getByRole("columnheader", { name: "CPU" })).not.toHaveAttribute("aria-sort");
   await table.getByRole("link", { name: "alpha" }).click();
   await expect(page).toHaveURL(/#\/host\//u);
   await page.goBack();

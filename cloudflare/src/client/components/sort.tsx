@@ -32,7 +32,7 @@ export function SortHeader<K extends string>(props: {
   const active = () => props.sort.key === props.sortKey;
   const direction = () => props.sort.direction;
   return (
-    <th scope="col" class={props.class} aria-sort={active() ? (direction() === 1 ? "ascending" : "descending") : "none"}>
+    <th scope="col" class={props.class} aria-sort={active() ? (direction() === 1 ? "ascending" : "descending") : undefined}>
       <button class="sort-button" type="button" onClick={() => props.onSort(props.sortKey)}>
         {props.label}
         <Show when={active()}>
