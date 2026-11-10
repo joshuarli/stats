@@ -135,7 +135,7 @@ test("the canary is where the parser bug first appeared", async ({ page }) => {
 
 test("choosing a deployment in the rail zooms every chart to its rollout and widens the range to reach it", async ({ page }) => {
   await setup(page);
-  await page.goto("/#/project/stats?range=24h&section=errors");
+  await page.goto("/#/project/stats?range=24h&section=deploys");
   await expect(page.getByRole("button", { name: "Reset" })).toHaveCount(0);
   await page.getByRole("option", { name: /v1\.3\.0 10%/u }).click();
   await expect(page).toHaveURL(/range=7d/u);
@@ -353,10 +353,12 @@ test("the observability cards and trace modal match their goldens", { tag: "@mob
   await expect(explorer).toHaveScreenshot("stats-route-explorer.webp");
 
   await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v14}`);
+  await page.reload();
   await expect(page.locator("#deployments .impact-summary")).toBeVisible();
   await expect(page.locator("#deployments")).toHaveScreenshot("stats-deployments.webp");
 
   await page.goto(`/#/project/stats?range=24h&section=errors`);
+  await page.reload();
   await expect(page.locator("#issues .issue-facts")).toBeVisible();
   await expect(page.locator("#issues")).toHaveScreenshot("stats-issues.webp");
   await page.locator("#issues").getByRole("button", { name: "Open trace" }).first().click();

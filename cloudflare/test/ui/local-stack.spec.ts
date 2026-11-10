@@ -69,7 +69,7 @@ test("a failing collection shows the failed collector, and a later good run clea
 test("the stats observe cards render traces from the attached collector", async ({ page }) => {
   expect((await stack.fetch("/api/v1/projects")).status).toBe(200);
   await expect.poll(async () => (await stack.observe("stats", "/traces?limit=100") as { items: { label: string }[] }).items.some(item => item.label === "GET /api/v1/projects")).toBe(true);
-  await open(page, "/#/project/stats?range=1h&open=errors,requests");
+  await open(page, "/#/project/stats?range=1h&section=requests");
   const explorer = page.locator("#route-explorer");
   await expect(explorer.locator(".route-table tbody tr").first()).toBeVisible();
   await expect(explorer.getByRole("button", { name: /\/api\/v1\/projects/u }).first()).toBeVisible();

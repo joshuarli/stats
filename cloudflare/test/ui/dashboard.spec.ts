@@ -593,9 +593,11 @@ test("mobile pages confine dense data to local scroll areas", { tag: "@mobile-on
       expect(await legend.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
     }
 
-    await page.goto("/#/project/stuff?open=signals");
+    await page.goto("/#/project/stuff");
     await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
     await expect(page.getByRole("region", { name: "Cost ledger" })).toBeVisible();
+    await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
+    await page.locator(".project-nav-item[data-section='signals']").click();
     await expect(page.getByRole("img", { name: /Worker invocations;/u })).toBeVisible();
     await expect.poll(pageOverflow).toBeLessThanOrEqual(1);
   }

@@ -187,25 +187,23 @@ for (const capture of hostCaptures()) {
 for (const range of ["1h", "6h"]) {
   test(`stuff project page, ${range}`, { tag: "@mobile" }, async ({ page }) => {
     await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs));
-    await page.goto("/#/project/stuff?open=signals");
+    await page.goto("/#/project/stuff");
     await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
     if (range !== "1h") await page.getByRole("button", { name: range, exact: true }).click();
     await expect(page.getByRole("button", { name: range, exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
     const ledger = page.getByRole("region", { name: "Cost ledger" });
     await expect(ledger.locator('[id="ledger-worker"]')).toBeVisible();
     await expect(ledger.locator('[id="ledger-r2"]')).toBeVisible();
     await expect(ledger.locator(".ledger-detail")).toBeVisible();
     await page.waitForLoadState("networkidle");
     await page.mouse.move(0, 0);
-    const regions = [
-      ...(range === "1h" ? [["ledger", ledger] as const] : []),
-      ["charts", page.getByRole("region", { name: "Charts" })] as const
-    ];
-    for (const [file, region] of regions) {
-      await expect(region).toHaveScreenshot(`stuff-${range}-${file}.webp`);
-    }
+    if (range === "1h") await expect(ledger).toHaveScreenshot(`stuff-${range}-ledger.webp`);
+    await page.locator(".project-nav-item[data-section='signals']").click();
+    await expect(page.getByRole("heading", { name: "Collector" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Endpoints" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.mouse.move(0, 0);
+    await expect(page.getByRole("region", { name: "Charts" })).toHaveScreenshot(`stuff-${range}-charts.webp`);
   });
 }
 
@@ -317,11 +315,9 @@ test("the projects page keeps its layout while its data arrives", { tag: "@mobil
 test("the stuff project page keeps its layout while its data arrives", { tag: "@mobile" }, async ({ page }, testInfo) => {
   await trackLayoutShift(page);
   await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_LATENCY);
-  await page.goto("/#/project/stuff?open=deploys,signals");
+  await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".ledger-month")).toBeVisible();
-  await expect(page.locator("#deployments")).toBeVisible();
-  await expect(page.locator(".charts > .widget").first()).toBeVisible();
   await expectStableLayout(page, testInfo, "stuff project");
 });
 
@@ -329,10 +325,8 @@ test("the stuff project page keeps its layout at tablet width", async ({ page },
   await page.setViewportSize({ width: 768, height: 1024 });
   await trackLayoutShift(page);
   await replayProject(page, "stuff", Number(captureMeta("stuff").capturedAtMs), LAYOUT_LATENCY);
-  await page.goto("/#/project/stuff?open=deploys,signals");
+  await page.goto("/#/project/stuff");
   await expect(page.getByRole("heading", { name: "stuff", level: 1 })).toBeVisible();
   await expect(page.locator(".ledger-month")).toBeVisible();
-  await expect(page.locator("#deployments")).toBeVisible();
-  await expect(page.locator(".charts > .widget").first()).toBeVisible();
   await expectStableLayout(page, testInfo, "stuff project tablet");
 });
