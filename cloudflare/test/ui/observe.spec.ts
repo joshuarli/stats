@@ -161,6 +161,43 @@ test("a ledger route opens its exact matching requests without prefetching", asy
   await expect(page.locator("#route-explorer .route-table").getByRole("button", { name: /hosts\/:host\/history/u })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("desktop ledger details expose the complete identity and comparison basis", async ({ page }) => {
+  const label = `GET /api/investigate/${"long-segment-".repeat(6)}details`;
+  await setup(page, { ledgerRoutes: [label] });
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const worker = page.locator('[id="ledger-worker"]');
+  if (await worker.getAttribute("aria-expanded") !== "true") await worker.click();
+  await page.locator(`[id="ledger-route:${label}"]`).click();
+  const context = page.locator(".ledger-detail-context");
+  await expect(context).toBeVisible();
+  await expect(context.locator("strong")).toHaveText(label);
+  await expect(context).toContainText("CPU/call");
+  await expect(context).toContainText("projected to 30 days at list price");
+  await expect(context).toContainText("Current:");
+  await expect(context).toContainText("Comparison:");
+  const bounds = await context.evaluate(element => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
+});
+
+test("mobile object details identify the selected method and comparison", { tag: "@mobile-only" }, async ({ page }) => {
+  await setup(page);
+  await page.goto("/#/project/stats?range=24h&section=overview");
+  const objects = page.locator('[id="ledger-objects"]');
+  if (await objects.getAttribute("aria-expanded") !== "true") await objects.click();
+  const method = page.locator('[id^="ledger-object:"]').first();
+  const label = await method.locator(".ledger-label > span").first().textContent();
+  expect(label).toBeTruthy();
+  if (await method.getAttribute("aria-expanded") !== "true") await method.click();
+  const detail = page.locator(".ledger-detail");
+  const context = detail.locator(".ledger-detail-context");
+  await expect(context).toBeVisible();
+  await expect(context.locator("strong")).toHaveText(label!);
+  await expect(context).toContainText("Comparison:");
+  await expect(detail).toContainText("calls in window");
+  const bounds = await context.evaluate(element => ({ width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth }));
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.width + 1);
+});
+
 test("an unmatched route never displays unrelated requests as its evidence", async ({ page }) => {
   const observe = await setup(page);
   const missing = "GET /no-exact-match";
