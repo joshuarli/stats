@@ -175,7 +175,7 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
         <Show when={props.work.length > 0} fallback={<p class="panel-label">{props.application ?? "Collecting usage since the deploy…"}</p>}>
           <div class="service-work">
             <Show when={props.comparison!.reasons.length > 0}>
-              <p class="service-work-note">Collecting usage since the deploy — before/after comparison ready at the end of the window.</p>
+              <p class="service-work-note">The comparison has limitations; see the deployment comparison above for details.</p>
             </Show>
             <WorkTimeline before={props.work[0]!.before} after={props.work[0]!.after} marker={props.comparison!.after.fromMs} />
             <div class="table-scroll" role="region" aria-label="Application operations">

@@ -191,6 +191,21 @@ test("service comparison explains its source coverage without hover", async ({ p
   await expect(details).toContainText("1 host");
 });
 
+test("application work does not promise that an overlapping comparison will settle", async ({ page }) => {
+  await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
+    const response = await route.fetch();
+    const comparison = await response.json() as ServiceComparison;
+    await route.fulfill({ response, json: { ...comparison, reasons: ["Another deployment overlaps the comparison windows."], reasonCodes: ["overlap"] } });
+  });
+  await page.goto(`${ORIGIN}/#/service/web`);
+  const work = page.locator("#service-work");
+  await expect(work.getByText("The comparison has limitations; see the deployment comparison above for details.")).toBeVisible();
+  await expect(work).not.toContainText("ready at the end of the window");
+  const comparison = page.locator("#deployments");
+  await comparison.getByText("Why", { exact: true }).click();
+  await expect(comparison).toContainText("Another deployment overlaps the comparison windows.");
+});
+
 test("long work details do not squeeze operation names", async ({ page }) => {
   await page.route("**/api/v1/services/web/deployments/*/comparison?*", async route => {
     const response = await route.fetch();
