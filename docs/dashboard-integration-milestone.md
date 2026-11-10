@@ -13,7 +13,7 @@ The issue and cost investigations work with an installed dashboard package. The 
 
 Stats installed the packed archive with pnpm and imported `@laputa-systems/ui-dashboard/feedback` and its documented stylesheet. The final archive differs from the earlier tested package only in the campaign document. The `dist` tree and manifest compare byte for byte, and the final archive was installed for the integrated checks.
 
-The Stats lockfile points at the archive's content-addressed registry URL and integrity. A local metadata fixture generated that prospective entry from the archive and the registry's URL convention. Version 0.6.0 is not published, so a clean install from the public registry and verification of the published metadata remain open. The registry dry run did not finish. Neither repository was pushed, and nothing was published or deployed.
+The Stats lockfile points at the archive's content-addressed registry URL and integrity. A local metadata fixture generated that prospective entry from the archive and the registry's URL convention. `stuff publish npm --tarball <archive> --dry-run --json` completed successfully for 0.6.0. It planned 422 objects totaling 15,050,441 bytes and skipped 459 existing objects; those are planned operations, not uploads. Its result has `dry_run: true`, even though the planned status is named `published`. The public registry still lists 0.4.0 and 0.5.0. Version 0.6.0 is not published, so a clean install from the public registry and verification of the published metadata remain open. Neither repository was pushed, and nothing was published or deployed.
 
 ## Investigation journeys
 
