@@ -27,7 +27,11 @@ function isServicesPath(path: string): boolean {
 }
 
 function isTyping(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName));
+  return target instanceof HTMLElement && (
+    target.isContentEditable ||
+    ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) ||
+    target.closest('[role="menu"], [role="listbox"], [role="combobox"][aria-expanded="true"], [aria-haspopup="menu"][aria-expanded="true"]') !== null
+  );
 }
 
 export function Shell(props: ParentProps): JSX.Element {
@@ -45,7 +49,7 @@ export function Shell(props: ParentProps): JSX.Element {
       if (!document.hidden && views.live() && views.view() === null) views.autoRefresh();
     }, LIVE_INTERVAL_MS);
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || document.querySelector("dialog[open]") !== null) return;
+      if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || document.querySelector("dialog[open]") !== null) return;
       if (event.key === "z") views.zoomOut();
       else if (event.key === "l") views.toggleLive();
       else if (event.key === "[") views.pan(-1);
