@@ -13,6 +13,8 @@ export const D1_STATEMENT_PREFIX_LENGTH = 160;
 
 const ROW_LIMIT = 2000;
 
+export const STORAGE_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
+
 const BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 export const NAMESPACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 export const D1_DATABASE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -198,4 +200,33 @@ function isoStart(startMs: number): string {
     throw new RangeError("start must be a non-negative integer of epoch milliseconds");
   }
   return new Date(startMs).toISOString();
+}
+
+export function r2StorageLatestQuery(buckets: readonly string[], startMs: number): BoundQuery {
+  const names = bucketParams(buckets);
+  return {
+    query: [
+      "SELECT bucketName, toStartOfDay(usageReportTimestamp) AS bucket,",
+      "MAX(payloadSizeBytes) AS storage_bytes, MAX(objectCount) AS objects",
+      "FROM states.r2CombinedStorage",
+      `WHERE bucketName IN (${names.placeholders}) AND usageReportTimestamp >= $start`,
+      "GROUP BY bucketName, toStartOfDay(usageReportTimestamp)",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...names.params, start: isoStart(startMs) },
+  };
+}
+
+export function d1StorageLatestQuery(databases: readonly string[], startMs: number): BoundQuery {
+  const ids = d1Params(databases);
+  return {
+    query: [
+      "SELECT databaseId, toStartOfDay(timestamp) AS bucket, MAX(databaseSizeBytes) AS size_bytes",
+      "FROM states.d1Storage",
+      `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
+      "GROUP BY databaseId, toStartOfDay(timestamp)",
+      `LIMIT ${ROW_LIMIT}`,
+    ].join(" "),
+    params: { ...ids.params, start: isoStart(startMs) },
+  };
 }

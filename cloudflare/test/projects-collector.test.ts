@@ -193,6 +193,48 @@ describe("collector", () => {
     });
   });
 
+  it("holds an unchanged D1 and R2 storage size from the latest earlier sample when the window has none", async () => {
+    const database = "9870c4da-3758-4f0c-ab6d-2372eb34009b";
+    const seen: string[] = [];
+    const analytics: AnalyticsQuery = {
+      async query(request) {
+        seen.push(request.query);
+        const daily = request.query.includes("toStartOfDay");
+        if (request.query.includes("d1Storage")) {
+          return { data: daily ? [{ databaseId: database, bucket: "2026-10-29 00:00:00", size_bytes: 100 }, { databaseId: database, bucket: "2026-10-30 00:00:00", size_bytes: 116_154_370 }] : [], statistics: { rows_read: 2 } };
+        }
+        if (request.query.includes("r2CombinedStorage")) {
+          return { data: daily ? [{ bucketName: "quiet-bucket", bucket: "2026-10-31 00:00:00", storage_bytes: 4_096, objects: 3 }] : [], statistics: { rows_read: 1 } };
+        }
+        return { data: [], statistics: { rows_read: 1 } };
+      },
+    };
+    const store = stub();
+    const config = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: ["quiet-bucket"], durableObjectNamespaces: [], d1Databases: [database], probes: [] };
+    await runCollector({ analytics, store, projectsJson: JSON.stringify([config]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
+    expect(seen.filter((query) => query.includes("toStartOfDay"))).toHaveLength(2);
+    await inside(store, (_sql, storage) => {
+      const d1 = readMetricHistory(new CloudflareSql(storage), config, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === `d1.${database}.storageBytes`);
+      expect((d1?.values ?? []).filter((value) => value !== null)).toEqual([116_154_370]);
+      const r2 = readMetricHistory(new CloudflareSql(storage), config, { range: "1h" }, "r2", NOW).series.find((series) => series.metric === "r2.quiet-bucket.storageBytes");
+      expect((r2?.values ?? []).filter((value) => value !== null)).toEqual([4_096]);
+    });
+  });
+
+  it("does not look back for storage when the window already has a sample", async () => {
+    const seen: string[] = [];
+    const analytics: AnalyticsQuery = {
+      async query(request) {
+        seen.push(request.query);
+        if (request.query.includes("d1Storage")) return { data: [{ databaseId: "9870c4da-3758-4f0c-ab6d-2372eb34009b", bucket: "2026-11-01 16:05:00", size_bytes: 1 }], statistics: { rows_read: 1 } };
+        return { data: [], statistics: { rows_read: 1 } };
+      },
+    };
+    const config = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] };
+    await runCollector({ analytics, store: stub(), projectsJson: JSON.stringify([config]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
+    expect(seen.some((query) => query.includes("toStartOfDay"))).toBe(false);
+  });
+
   it("records a failed run, writes no metrics, logs failing query, and rethrows", async () => {
     const store = stub();
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);

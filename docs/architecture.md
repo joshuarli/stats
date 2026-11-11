@@ -923,7 +923,7 @@ CPU time per invocation, not latency; the SQL source has no quantiles. R2
 
 D1, summed over the project's databases from `events.d1Queries`: `d1.queries`,
 `d1.rowsRead`, `d1.rowsWritten`, plus `d1.<databaseId>.storageBytes` per database from
-`states.d1Storage`, the largest size reported in each bucket. `d1q.<statement>.queries|rowsRead|rowsWritten`
+`states.d1Storage`, the largest size reported in each bucket. The storage datasets report a size only when it changes, so when the collection window holds no sample for a database or bucket, the collector reads daily maxima over the previous 7 days and records the newest one in the run's bucket. `d1q.<statement>.queries|rowsRead|rowsWritten`
 cover the 10 statements with the highest billed cost in the collected window,
 where a row written counts as 1000 rows read (the price ratio). The statement
 is the first 160 characters of the query text with whitespace collapsed, cut to

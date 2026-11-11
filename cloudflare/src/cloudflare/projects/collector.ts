@@ -11,7 +11,7 @@ import {
   parseWorkerRows,
 } from "./parse.ts";
 import { windowStartMs, type MetricPoint } from "../../projects/metrics.ts";
-import { d1Query, d1StatementQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageQuery, routeQuery, workerQuery, type BoundQuery } from "../../projects/queries.ts";
+import { BUCKET_MS, d1Query, d1StatementQuery, d1StorageLatestQuery, d1StorageQuery, durableObjectQuery, r2OperationsQuery, r2StorageLatestQuery, r2StorageQuery, routeQuery, STORAGE_LOOKBACK_MS, workerQuery, type BoundQuery } from "../../projects/queries.ts";
 import type { CollectorRun, ProjectPoints } from "../../projects/store.ts";
 import { reportError } from "../../observe/producer/report.ts";
 
@@ -138,16 +138,37 @@ async function collectProject(
     hasDatabases ? run("d1Storage", d1StorageQuery(project.d1Databases, startMs)) : [],
     runProbes({ fetch: probeFetch, probes: project.probes, now }),
   ]);
+  const r2Storage = parseR2StorageRows(storage);
+  const d1StoragePoints = parseD1StorageRows(d1Storage);
+  const bucketMs = Math.floor(now / BUCKET_MS) * BUCKET_MS;
+  const quietBuckets = project.buckets.filter((name) => !r2Storage.some((point) => point.metric === `r2.${name}.storageBytes`));
+  const quietDatabases = project.d1Databases.filter((id) => !d1StoragePoints.some((point) => point.metric === `d1.${id}.storageBytes`));
+  const lookbackMs = Math.max(0, startMs - STORAGE_LOOKBACK_MS);
+  const [heldR2, heldD1] = await Promise.all([
+    quietBuckets.length > 0 ? run("r2StorageLatest", r2StorageLatestQuery(quietBuckets, lookbackMs)) : [],
+    quietDatabases.length > 0 ? run("d1StorageLatest", d1StorageLatestQuery(quietDatabases, lookbackMs)) : [],
+  ]);
   const points: MetricPoint[] = [
     ...parseWorkerRows(worker),
     ...parseRouteRows(routes),
     ...parseDurableObjectRows(durableObjects),
     ...parseR2OperationRows(operations),
-    ...parseR2StorageRows(storage),
+    ...r2Storage,
+    ...latestAt(parseR2StorageRows(heldR2), bucketMs),
     ...parseD1Rows(d1),
     ...parseD1StatementRows(d1Statements),
-    ...parseD1StorageRows(d1Storage),
+    ...d1StoragePoints,
+    ...latestAt(parseD1StorageRows(heldD1), bucketMs),
     ...probes,
   ];
   return { project: project.id, points };
+}
+
+function latestAt(points: readonly MetricPoint[], bucketMs: number): MetricPoint[] {
+  const latest = new Map<string, MetricPoint>();
+  for (const point of points) {
+    const held = latest.get(point.metric);
+    if (held === undefined || point.bucketMs > held.bucketMs) latest.set(point.metric, point);
+  }
+  return [...latest.values()].map((point) => ({ metric: point.metric, bucketMs, value: point.value }));
 }
