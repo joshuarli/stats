@@ -1,13 +1,14 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { HEALTH_LABEL } from "../../health";
+import type { TimeWindow } from "../../chart-data";
 import { LimitGauge } from "../../components/LimitGauge";
 import { Sparkline } from "../../components/Sparkline";
+import { HEALTH_LABEL } from "../../health";
 import { HealthMark, jumpTo, MetricValue } from "../../components/ui";
 import { useTelemetry } from "../../state";
 import type { MonitorCell } from "./monitors";
 
-export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly label?: string; readonly class?: string }): JSX.Element {
+export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly window: TimeWindow; readonly label?: string; readonly class?: string }): JSX.Element {
   const { range, chooseRange } = useTelemetry();
   const present = () => props.cells.filter(cell => cell.value !== undefined);
   const absent = () => props.cells.filter(cell => cell.value === undefined);
@@ -33,7 +34,7 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
               <span class="tile-value"><MetricValue text={cell.format(cell.value)} /></span>
               {limits() === undefined ? null : <LimitGauge value={cell.value} limits={limits()!} health={health()} format={cell.format} />}
               <span class="tile-detail">{cell.detail}</span>
-              <span class="tile-spark"><Sparkline series={[{ values: cell.spark }]} label={`${cell.label} trend`} zeroBased health={health()} limits={limits()} /></span>
+              <span class="tile-spark"><Sparkline series={[{ values: cell.spark }]} times={cell.times} window={props.window} label={`${cell.label} trend`} zeroBased health={health()} limits={limits()} /></span>
             </button>
           );
         }}

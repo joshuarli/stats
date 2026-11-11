@@ -1,12 +1,11 @@
 import { sumTracks, windowIndexes, windowTracks, worstTrack, type TimeWindow } from "../../chart-data";
-import type { Cells, Track } from "../../columns";
-import { count, percent, rate } from "../../format";
+import type { Cells, Times, Track } from "../../columns";
+import { count, percent, perSecond, rate } from "../../format";
 import type { DeviceHistory, SummaryHistory } from "../../history";
 import { LIMITS, loadLimits, type Health, type Limits } from "../../health";
 import { monitorState } from "../../monitoring";
 import { cpuUsed, lastValue, memoryUsed, netFaults, usedShare } from "../../metrics";
 import { psiField, type PsiWindow } from "../../psi";
-import { perSecond } from "./shared";
 
 export interface HostData {
   readonly summary: SummaryHistory;
@@ -21,6 +20,7 @@ export interface MonitorCell {
   readonly anchor: string;
   readonly state: Health | undefined;
   readonly spark: Cells;
+  readonly times: Times;
   readonly format: (value: number | undefined) => string;
   readonly value: number | undefined;
   readonly detail: string;
@@ -87,8 +87,8 @@ export function buildCells(data: HostData, view: TimeWindow | null, psiWindow: P
     { id: "network", label: "Net faults", anchor: "network", limits: LIMITS.netFaultsPerSec, series: [faults], stepMs: data.nets.stepMs, format: perSecond }
   ];
   return specs.map(spec => {
-    const spark = spec.series.length === 1 ? spec.series[0]!.values : worstTrack(spec.series, spec.stepMs).values;
+    const aligned = worstTrack(spec.series, spec.stepMs);
     const state = monitorState({ limits: spec.limits, series: spec.series, stepMs: spec.stepMs });
-    return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark, format: spec.format, value: lastValue(spark), detail: rangeText(spark, spec.format), limits: spec.limits };
+    return { id: spec.id, label: spec.label, anchor: spec.anchor, state, spark: aligned.values, times: aligned.times, format: spec.format, value: lastValue(aligned.values), detail: rangeText(aligned.values, spec.format), limits: spec.limits };
   });
 }

@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { sumTracks, windowIndexes } from "../../chart-data";
-import { rate } from "../../format";
+import { perSecond, rate } from "../../format";
 import type { NetSeries } from "../../history";
 import { healthOf, LIMITS } from "../../health";
 import { netDrops, netErrors, netFaults } from "../../metrics";
@@ -11,7 +11,7 @@ import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState } from "@laputa-systems/ui-dashboard";
 import { HealthMark, Widget } from "../../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
-import { PanelLabel, perSecond, activeSeries, PanelChart } from "./shared";
+import { PanelLabel, activeSeries, PanelChart } from "./shared";
 
 const TABLE_LIMIT = 8;
 

@@ -136,7 +136,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               </Widget>
             }
           >
-            <StatusStrip cells={cells()} class="dense" />
+            <StatusStrip cells={cells()} window={view() ?? { fromMs: summary().fromMs, toMs: summary().toMs }} class="dense" />
             <SectionBar cells={cells()} more={moreSections()} />
             <Show when={table().cells("partial").some(value => value === 1)}>
               <Notice tone="warn">Some buckets are partial; gaps are not interpolated.</Notice>

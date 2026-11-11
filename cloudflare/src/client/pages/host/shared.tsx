@@ -1,7 +1,6 @@
 import { useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Cells } from "../../columns";
-import { count, isFiniteNumber } from "../../format";
 import type { DeviceSeries, SummaryTable } from "../../history";
 import { rebootTimes } from "../../monitoring";
 import { TimeChart, type ChartEvent, type TimeChartProps, type VizColor } from "../../components/TimeChart";
@@ -15,10 +14,6 @@ type DeviceKind = Exclude<HostKind, "summary">;
 
 export function seriesColor(index: number): VizColor {
   return SERIES_COLORS[index % SERIES_COLORS.length] ?? "neutral";
-}
-
-export function perSecond(value: number | undefined): string {
-  return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
 }
 
 export function rebootEvents(table: SummaryTable): ChartEvent[] {

@@ -31,6 +31,10 @@ export function rate(value: number | undefined): string {
   return isFiniteNumber(value) ? `${bytes(value)}/s` : unavailableText;
 }
 
+export function perSecond(value: number | undefined): string {
+  return isFiniteNumber(value) ? `${count(value)}/s` : count(value);
+}
+
 export function watts(value: number | undefined): string {
   return isFiniteNumber(value) ? `${number.format(value)} W` : unavailableText;
 }

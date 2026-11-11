@@ -1,7 +1,7 @@
 import { createMemo, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { sumTracks, windowIndexes } from "../../chart-data";
-import { count, milliseconds, percent, rate } from "../../format";
+import { count, milliseconds, percent, perSecond, rate } from "../../format";
 import type { DiskSeries, SummaryTable } from "../../history";
 import { healthOf, LIMITS } from "../../health";
 import { useTelemetry } from "../../state";
@@ -12,7 +12,7 @@ import { EmptyState, Meter } from "@laputa-systems/ui-dashboard";
 import { HealthMark, Widget } from "../../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { PressureChart } from "./Psi";
-import { colorsFor, PanelLabel, perSecond, activeSeries, topSeries, PanelChart } from "./shared";
+import { colorsFor, PanelLabel, activeSeries, topSeries, PanelChart } from "./shared";
 
 export function DiskWidget(props: {
   readonly series: readonly DiskSeries[];
