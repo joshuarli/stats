@@ -238,9 +238,11 @@ past `--within`; choose `--within` to bound that repetition. Scheduling it (a
 host timer or an agent routine) and the alert destination are not set up and
 need a production Access credential.
 
-Every command reads except `check ingest`, which writes one flagged sample and
-takes the `synthetic-check` host's credential from
-`.work/credentials/synthetic-check.json`. It encodes one known sample with a
+`check ingest` writes one real sample using the credential supplied with
+`--credential-file`. Use the dedicated `synthetic-check` host credential from
+`.work/credentials/synthetic-check.json`; the command does not enforce that
+host role. Other writes are listed under [Mutations](#the-statsctl-contract).
+It encodes one known sample with a
 fresh sequence and time, POSTs it, expects the acknowledgment to accept 1, reads
 the host history and finds the sample, replays the identical bytes and expects
 duplicate 1 and accepted 0, and confirms the stored count did not change. Its
@@ -259,11 +261,11 @@ filling.
 
 ### The statsctl contract
 
-`statsctl` is a TypeScript CLI that shares the dashboard's cost engine and reads
-only routes the dashboard already uses: `/api/v1/projects`, the project
-history, deployments, and comparison routes, and `/api/observe/stats/*`. There
-is no server endpoint for cost. It uses `node:util` `parseArgs`, global `fetch`,
-`node:fs`, and `node:crypto`, with no CLI framework, schema library, or SDK. Its
+`statsctl` is a TypeScript CLI that shares the dashboard's cost engine. It
+reads project, host, service and observation APIs and also exposes explicit
+provisioning and credential mutations. There is no server endpoint for cost.
+It uses `node:util` `parseArgs`, global `fetch`, `node:fs`, and `node:crypto`,
+with no CLI framework, schema library, or SDK. Its
 name differs from `stats`, which is the Rust agent.
 
 - **JSON envelope.** `--json` prints exactly one `statsctl/1` document on stdout.
@@ -302,7 +304,13 @@ name differs from `stats`, which is the Rust agent.
 - **Readiness.** `health --policy FILE` and `verify --readiness` list each
   signal a policy needs as `available` or `unavailable:<code>` with a sentence.
   A missing signal the policy does not use never blocks it.
-- **Mutations.** Only `check ingest` and `deploy mark` write.
+- **Mutations.** `check ingest` writes a sample using the supplied host credential;
+  use only a dedicated `synthetic-check` host, as the CLI does not enforce that role.
+  `deploy mark` writes a service marker. `service create`, `service token rotate`
+  and `service token revoke` manage services and credentials. Read commands,
+  including `service check`, do not persist mutations. Command definitions own
+  the access classification and supported targets; use `statsctl help` for the
+  current options and credential-file requirements.
 
 ### Cost reports
 
@@ -506,11 +514,14 @@ Live runs took 0.5 to 2.1 s of wall time.
 ## Run on Node
 
 The Node server serves the same API, ingest route, and dashboard as the
-Worker, without project collection, deployment tracking, or observe (see
-`docs/architecture.md`). It needs the Node version in `.node-version` and the
-built dashboard, and runs from the repository:
+Worker for supported routes. It includes service markers and application
+events/issues, but no Cloudflare project collector, tail consumer or deployment
+poll. Observation isolation and retention have open defects (STA-103, STA-108;
+see [Node architecture](architecture.md#node-server)). It needs the pinned Node,
+installed dependencies and the built dashboard, and runs from the repository:
 
 ```sh
+pnpm install --frozen-lockfile
 make worker-bundle
 mkdir -p "$HOME/.local/share/stats-node"
 cd cloudflare && \
@@ -553,6 +564,11 @@ otherwise. The Worker applies the same rule behind Access.
 
 ### In a container on threadripper
 
+The current image omits `@jridgewell/trace-mapping` and exits on import
+(STA-102). The deploy script removes the old container before checking the new
+one, so this path is blocked until the image and replacement check are fixed.
+Use the source-run setup above when an instance is needed in the meantime.
+
 ```sh
 STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
 ```
@@ -561,8 +577,8 @@ STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
 because the image is tagged with the commit. It builds the dashboard here,
 copies `cloudflare/src`, the built assets, and `deploy/node/Dockerfile` to
 `~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
-there from `node:26.13.0-alpine`, which is the only image on the host it
-uses. It then replaces the `stats-node` container, which runs as `node`
+there from the digest-pinned Node Alpine image in the Dockerfile. It then
+replaces the `stats-node` container, which runs as `node`
 with `--network none` and listens on `unix:/run/stats/stats.sock`. The
 container keeps the database in `~/.local/share/stats-node`, mounts the
 `0700` directory `~/.local/share/stats-node-run` at `/run/stats`, and is
@@ -570,7 +586,8 @@ started with `--restart unless-stopped`. The deploy waits for `/health` over
 the socket with `docker exec` and prints the tag, with the full output in
 `.work/tmp/node-deploy.log`.
 
-The container has no network at all: Docker's bridge network would present
+The container has no network at all, which also prevents outbound service-health
+probes from reaching network URLs. Docker's bridge network would present
 every request as coming from its gateway, and host networking would put a
 listener on the host. The Node auth adapter trusts only a loopback peer or the
 socket, so the socket in a `0700` directory is the one entrance, reachable by
@@ -608,9 +625,11 @@ local instance.
 
 `statsctl` picks its target from the origin. A host ending in `.ts.net`, or a
 bare name with no dot, is a Node origin: statsctl sends no credential, because
-`tailscale serve` adds the identity. `check ingest`, `deploy mark`, `services`, and
-`service deployments` work there, and so does `verify --service`; every other command reads Cloudflare
-telemetry and exits 2 with `unsupported_on_target` before any request. Store the `synthetic-check` host
+`tailscale serve` adds the identity. Service administration, inspection, checks,
+markers and deployments work there, as do `observe application`, `check ingest`
+and `verify --service`. Project/Cloudflare-only commands exit 2 with
+`unsupported_on_target` before a request. Command help lists the supported
+targets. Store the `synthetic-check` host
 credential (`{hostId, name, token}`, mode 0600) and run:
 
 ```sh

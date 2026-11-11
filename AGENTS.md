@@ -1,77 +1,58 @@
 # Stats
 
-A host agent (`agent/`), static musl on Linux and a native binary on macOS, a Cloudflare Worker with one
-SQLite-backed Durable Object and a Solid dashboard (`cloudflare/`), the same core served by a Node server (`cloudflare/src/node/`), the shared
-ingest conformance corpus (`fixtures/v2/`), an optional bpftrace block-latency collector
-(`bpf/`), and deploy scripts (`deploy/`).
+A Linux/macOS host agent (`agent/`), a shared telemetry core and Solid dashboard
+(`cloudflare/`), Cloudflare and Node adapters, application producers
+(`packages/`), an optional bpftrace collector (`bpf/`), and deploy scripts
+(`deploy/`). Use the topic docs below for contracts and operational details.
 
 ## Commands
 
 ```sh
-make fixtures          # corpus manifest, size budgets, and byte/row accounting
-make fixtures-write    # regenerate sources, golden frames, and acks after a deliberate change
-make agent-test        # agent unit and fixture-parity tests
-make agent-build       # static x86_64 and aarch64 binaries + ELF checks
-make cloudflare-test   # typecheck + Workers runtime tests
-make dashboard-test    # vite build + Playwright
-make preview           # build and serve the dashboard from captured fixtures
+make fixtures          # cross-language corpus, size budgets, byte/row accounting
+make fixtures-write    # regenerate only after a deliberate protocol change
+make agent-test        # Rust unit tests and fixture parity
+make agent-build       # static Linux binaries and ELF checks
+make cloudflare-test   # typecheck, Workers runtime and Node suites
+make dashboard-test    # production build and Playwright
+make preview           # captured fixtures, frozen clock
 make lint              # type-aware Oxlint
-make agent-e2e         # the real agent binary against the built Worker in workerd
-make node-e2e          # the smoke and the real agent binary against the Node server
-make smoke-local       # deploy/deployed-smoke.sh against the built Workers in workerd
-make integration-local # the offline local stack (collection, statsctl, dashboard) under a no-network sandbox
-make integration-producer # a checkout through the recorded Nanoshop producer export, read back by statsctl; needs NANOSHOP_DIR
-make dev-local         # a persistent local stack on http://127.0.0.1:8789, collecting every 5 minutes
-make reset-local       # delete the dev-local state in .work/local/state
-make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
-make bench-local       # row, statement, and byte counts for ingest and collection on the local stack
-make test              # fixtures, agent, worker, dashboard, e2e, smoke, profile, and the macOS offline stack
-make check             # release gate: fixtures, agent, worker, dashboard, e2e, smoke, the macOS offline stack, lint, and make release
-make stats-deploy      # deploy only the stats Worker, leaving stats-observe untouched
-
-pnpm --dir cloudflare -s statsctl help workflow    # copy-pastable recipes for the commands below
-pnpm --dir cloudflare -s statsctl health --project stats --json    # are the telemetry sources fresh and complete
-pnpm --dir cloudflare -s statsctl cost --project stats --window 1h --json    # price a window, find the bottleneck
-pnpm --dir cloudflare -s statsctl observe operations --project nanoshop-storied --window 1h --json    # exact per-operation counts, failures, CPU and wall for any observed service
-pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a deployment use fewer resources for the same work
-pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json    # did a service's resource levels change after a marker (not "fewer for the same work")
+make check             # release gate; offline network sandbox is macOS-only
+make stats-deploy      # deploy stats; observation receiver must already be compatible
+pnpm --dir cloudflare -s statsctl help workflow
+pnpm --dir cloudflare -s statsctl health --project stats --json
+pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json
 ```
 
-`statsctl` reads the production origin through Access; `statsctl help workflow` and
-`statsctl help verify` are the source of truth for its recipes and policy fields.
-Node and pnpm versions are enforced by `make node-ready`. Scratch and `TMPDIR`
-go under `.work/tmp`.
+See [testing](docs/testing.md) for e2e, local-stack and producer checks, and
+[operations](docs/operations.md) for deployment and CLI recipes. `make node-ready`
+enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 
 ## Invariants
 
-- Host ingest is binary protocol v2 (STB2 requests, STA2 acknowledgments) in `docs/protocol.md`, with no JSON ingest, fallback, or negotiation. `fixtures/v2/` is the cross-language oracle: Rust-encoded golden frames must decode to their sources in the Worker, Worker-encoded acknowledgments must decode in the agent, and every malformed frame must be rejected whole with its code.
-- Every u64 is exact end to end: varints on the wire, `u64` in Rust, `bigint` in TypeScript until a checked bound; fixed-point values never pass through floats. Counter deltas reference only the previous sample in the same frame.
-- Stored samples stay the canonical JSON the v1 protocol stored; duplicates compare that text, never wire bytes.
-- Missing data is absent or `unavailable`, never zero; counter regressions are gaps, never negative rates.
-- Rates come from `monoMs` deltas within one boot, never from wall-clock deltas.
-- Tokens never appear in argv, logs, telemetry responses, or built assets; the provisioning response returns a new token once, and the server stores only a SHA-256 verifier.
-- Every non-ingest, non-health path that serves assets or data passes the target's auth adapter: Access JWT verification on Cloudflare, Tailscale identity from loopback on Node. A request that fails it is rejected before any data is read.
-- Analytics reads use only the fixed queries in `cloudflare/src/projects/queries.ts`; no request data reaches SQL.
-- Dashboard screenshots are WebP; no PNGs are tracked, and `make dashboard-test` rejects them.
-- `statsctl` read commands never mutate. `check ingest` and `deploy mark` are the only mutations: `check ingest` writes one flagged sample only to the `synthetic-check` host, and `deploy mark` writes one deployment marker for the named service.
-- The baseline agent never loads BPF and needs no root, service manager, or runtime. On Linux it links no dynamic libraries; on macOS it links only system libraries and frameworks.
+- Host ingest is STB2 with STA2 acknowledgments, no JSON fallback or negotiation. `fixtures/v2/` is the cross-language oracle; malformed frames are rejected whole. See [protocol](docs/protocol.md).
+- u64 values stay exact: varints, Rust `u64`, TypeScript `bigint` until a checked bound. Fixed-point values do not pass through floats. Counter deltas use only the previous sample in the same frame; rates use `monoMs` within one boot.
+- Stored samples retain canonical JSON; duplicate identity compares that text, not wire bytes. Missing data stays absent/unavailable, and counter regressions are gaps, never negative rates.
+- Tokens never enter argv, logs, telemetry responses or built assets. Provisioning returns a new token once; storage keeps only its SHA-256 verifier.
+- Every non-ingest, non-health asset/data route passes the target's auth adapter before data access: Access JWT verification on Cloudflare, Tailscale identity over trusted local transport on Node. See [architecture](docs/architecture.md).
+- Analytics reads use only `cloudflare/src/projects/queries.ts`; request data never reaches SQL. `statsctl` read commands do not mutate; command definitions declare mutation access and supported targets.
+- Dashboard goldens are WebP. `make dashboard-test` rejects tracked PNGs.
+- The baseline agent never loads BPF and needs no root, service manager or language runtime. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
 
 ## Docs
 
 | Topic | Doc |
 | --- | --- |
-| Install, configure, and run the agent | `README.md` |
-| Wire protocol, validation, rate semantics | `docs/protocol.md` |
-| Binary ingest rationale, measurements, limits | `docs/binary-ingest.md` |
-| History frame codec, measurements, negative storage result | `docs/binary-history.md` |
-| Components, routes, auth, storage, rollups | `docs/architecture.md` |
-| Release build, deployment, `statsctl` contract, cost reports, verified environments | `docs/operations.md` |
-| Toolchain pins and dependency decisions | `docs/dependencies.md` |
-| Deployment tracking, comparison, and its verification record | `docs/deployments.md` |
-| Test commands, screenshot goldens, and image comparison | `docs/testing.md` |
-| Benchmark method and results | `bench/README.md` |
-| Tracing and profiling approach, and why no APM SDK | `docs/TRACING.md` |
-| Optional block-latency probe | `bpf/README.md` |
-| Error tracking and tracing product: design, data model, limits, invariants | `docs/observe.md` |
-| What observation costs per invocation, with sources | `docs/observe-billing.md` |
-| Open work | `TODO.md`; active campaign: [frontend efficiency](docs/CAMPAIGN-FRONTEND.md) |
+| Agent installation, configuration and dashboard use | [README](README.md) |
+| Host wire format, validation and rate semantics | [Protocol](docs/protocol.md) |
+| Binary ingest and history rationale, measurements and limits | [Ingest](docs/binary-ingest.md), [history](docs/binary-history.md) |
+| Components, routes, auth, storage, rollups and frontend constraints | [Architecture](docs/architecture.md) |
+| Builds, deployments, CLI contract and cost reports | [Operations](docs/operations.md) |
+| Toolchain pins and dependency decisions | [Dependencies](docs/dependencies.md) |
+| Service/application integration and producers | [Contract](docs/integration.md), [TypeScript](packages/producer/README.md), [Rust](packages/stats-producer/README.md) |
+| Deployment tracking and comparison | [Deployments](docs/deployments.md) |
+| Tests and screenshot verification | [Testing](docs/testing.md) |
+| Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
+| Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |
+| Optional block latency | [bpf](bpf/README.md) |
+| Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |
+| Open work and planned Linux power collection | [TODO](TODO.md), [power plan](docs/CAMPAIGN-LINUX-POWER.md) |

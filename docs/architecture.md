@@ -493,8 +493,8 @@ it plugs into the handler:
 
 - **Storage.** One `InstallationCore` on a `node:sqlite` file,
   `$STATS_DATA_DIR/stats.sqlite`. One process owns the file, which gives the
-  single-writer guarantee the Durable Object gives. Retention runs on the
-  timer scheduler.
+  single-writer guarantee the Durable Object gives. The timer scheduler runs
+  core retention. Observation-store cleanup is currently omitted (STA-108).
 - **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
   accepted only when the TCP peer is loopback (or the connection is on the
   Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
@@ -516,8 +516,18 @@ it plugs into the handler:
 Features that read Cloudflare are off. The project registry is empty, so
 `/api/v1/projects` is `[]`, project history and deployment routes answer
 `404 not_found` as the Worker does for an unregistered project, and the
-dashboard shows no projects. `/api/observe/*` answers
-`503 {"error":{"code":"unavailable"}}` after auth. No cron runs.
+dashboard shows no projects. Service registration, deploy markers and application
+event ingest/read are supported, including application-derived issues and
+operation summaries. Node schedules service-health probes every five minutes;
+it has no Cloudflare tail consumer, Analytics SQL collector or deployment poll.
+
+The current Node observation adapter shares one store across services, so issue
+reads and mutations are not yet isolated (STA-103), and its cleanup is not
+scheduled (STA-108). Read-time expiry does not reclaim those rows. See
+[TODO](../TODO.md) and the [isolation design](rfc/STA-103-node-observe-isolation.md)
+before treating Node observation as equivalent to the per-service Cloudflare
+stores. The source-run server also needs installed runtime dependencies; the
+container's missing dependency is STA-102.
 
 ## Services and deploy markers
 
@@ -1047,7 +1057,32 @@ browser never sees a host token or an operator secret. Each route is its own laz
 renders: the projects overview fetches it when a row first expands its trends,
 and the project page fetches its errors, requests, trace, and modal views when a
 section or modal first opens. Health and issue counts for the header pills stay
-eager.
+eager. The project page's initial cost ledger already renders charts, so uPlot
+is required there. During the completed frontend work, the owner set its payload
+budget to 95% of the recorded baseline. Later accepted integration growth is
+recorded in the [integration milestone](dashboard-integration-milestone.md).
+Preserve the useful default ledger selection rather than reviving the obsolete
+uPlot-exclusion gate. [Frontend measurements](frontend-efficiency.md) explain the
+original budget and rejected deferral experiments.
+
+Async loading keeps the existing `loadQuery` and `createUpdateEffect` helpers
+with Solid's `createMemo` ownership and abort cleanup. A failed refresh retains
+data only for the same query key; a change of subject, range, zoom or fleet page
+must not show the previous query's data under the new label. Observation results
+remain keyed to their subject. History caches are bounded to 32 entries and
+8 MiB each, counting retained backing bytes and unaligned decode copies. A `304`
+touches recency; a mismatched `304` ETag gets one unconditional retry. Only the
+newest-started request may install a result, and finished requests leave no
+per-path ordering state. These are in-memory, origin-scoped caches, not a
+persistent global decoded-table cache.
+
+Each fleet history loader uses a rolling four-worker pool, starting a replacement
+as each request settles. Metadata is reused per mount and refreshed for new
+visible hosts or manually; metric sorting can load histories for all matching
+hosts. Charts use `setData` for values and `setScale` for view changes, rebuilding
+only when construction fields change. Disposal releases plots, observers and
+synchronization ownership. Preserve deep links and both deployment targets when
+deferring initially absent views.
 
 An observed project's selected cost-ledger route can open Requests with the
 same full route label. Ledger figures use the settled cost window; Requests

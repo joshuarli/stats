@@ -46,6 +46,8 @@ disabled: it opens no connection and `record` is a no-op.
   When it is full the oldest event is dropped and counted in `stats().dropped`.
 - A batch holds at most 64 events by default and never exceeds 128 events or
   64 KiB.
+- The automatic flush interval currently restarts on each sub-batch arrival
+  (STA-110 in [TODO](../../TODO.md)); steady traffic can wait until the batch fills.
 - Requests time out after 5 s. Retryable failures (network, timeout, 408, 425,
   429, 5xx, or a malformed success body) are retried 5 times with exponential
   backoff and jitter; 429 honours `Retry-After`.

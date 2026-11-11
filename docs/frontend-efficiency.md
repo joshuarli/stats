@@ -1,6 +1,10 @@
 # Frontend efficiency and lifecycle
 
-This reference records the measurement method, baseline tables, and verification results for the dashboard client (`cloudflare/src/client/`).
+This is the measurement record for the completed frontend work through
+`c4ede4a`, with a baseline at `576c99d`. Its timings and validation outcomes are
+historical, not fresh results for every later commit. Current durable constraints
+live in [architecture](architecture.md#dashboard), and remaining work lives in
+[TODO](../TODO.md).
 
 ## Commands
 
@@ -191,12 +195,6 @@ From step 25 onward, DOM nodes and event listeners remain flat (`4,328–5,585` 
 8. Auth `401` and malformed history frames during refresh: retains the last good telemetry on screen and surfaces an explicit `<Notice tone="warn">` banner.
 9. Route disposal during an active chart load: aborts the in-flight history request and leaves `0` `.uplot` roots.
 
-Confirmed lifecycle defects fixed in F1:
-
-- **Unbounded lazy-route suspension (`Shell.tsx`):** `<main class="content">` rendered `{props.children}` without a `<Loading>` boundary, causing `lazy()` route imports (`HostPage`, `ProjectsPage`, `ProjectPage`, `ServicesPage`, `ServicePage`) to open a root held transaction that blocked `<PageHeader>` and route skeletons until inner telemetry fetches settled. Wrapping `{props.children}` in `<Loading fallback={null}>` lets each route's own `<Loading>` boundaries render headers and skeletons immediately.
-- **Unkeyed `<HostView>` (`HostPage.tsx`):** `<Show when={host()}>` was not keyed by `hostId`, so navigating from Host A to Host B reused Host A's component instance and held Host A's telemetry under Host B's `<PageHeader>` during the transition. Keying `<Show when={host()?.hostId} keyed>` (matching `ProjectPage.tsx` and `ServicePage.tsx`) disposes Host A immediately.
-- **Refresh error tearing down settled data (`queries.ts`, `FleetPage.tsx`, `HostPage.tsx`, `ProjectPage.tsx`):** A failed `refresh()` rejected the memo's promise even when `previous` telemetry was already settled, triggering `<Errored>` to tear down the active charts/table in addition to showing the `refreshError` `<Notice tone="warn">`. Passing `previous` and `onRefreshError` into `loadQuery` preserves the settled telemetry on refresh failure while surfacing the warning notice.
-
 ## Conditional cache and decode (F2)
 
 ### Conditional cache (`cloudflare/src/client/api.ts`, `cloudflare/test/client-cache.test.ts`)
@@ -227,7 +225,7 @@ The four history caches (`summaryCache`, `hostCache`, `fleetCache`, `projectCach
 
 Changes in `cloudflare/src/client/queries.ts`, `FleetPage.tsx`, `ProjectsPage.tsx`, `ProjectPage.tsx`, `Deployments.tsx`, `Observe.tsx`, and `ledger-load.ts`:
 
-- **Fleet `/system` cadence and per-mount reuse (`O2`, `S4`):** `FleetPage` keeps a per-mount `FleetRowCache` (`systems` and `histories` maps). `/api/v1/hosts/:id/system` is requested on initial mount, when a host newly enters the visible 10-host page, and on manual refresh (`Refresh` button), and omitted on the automatic 15-second live tick (`1 /hosts + 10 histories + 0 /system = 11` requests on a 10-host fleet tick, down from `21`). Filtering and sorting reuse the already-loaded `FleetRowCache` entries and issue `0` host requests. `FleetPage` continues to request `summary,disks,nets,filesystems` because each fleet row renders disk and network throughput sparklines and root filesystem use alongside CPU, memory, and load.
+- **Fleet `/system` cadence and per-mount reuse (`O2`, `S4`):** `FleetPage` keeps a per-mount `FleetRowCache` (`systems` and `histories` maps). `/api/v1/hosts/:id/system` is requested on initial mount, when a host newly enters the visible 10-host page, and on manual refresh (`Refresh` button), and omitted on the automatic 15-second live tick (`1 /hosts + 10 histories + 0 /system = 11` requests on a 10-host fleet tick, down from `21`). In that measurement, filtering and sorting reused the already-loaded `FleetRowCache` entries and issued `0` host requests. Current metric sorting can load histories for all matching hosts; the zero-request statement is not a general sorting invariant. `FleetPage` continues to request `summary,disks,nets,filesystems` because each fleet row renders disk and network throughput sparklines and root filesystem use alongside CPU, memory, and load.
 - **Bounded concurrency scheduler (`S4`):** `mapLimit` runs a bounded 4-worker pool instead of 4-item `Promise.all` batches, starting the next visible host as soon as any in-flight host finishes while preserving output order and shared `AbortSignal` cancellation.
 - **Projects overview settled-window ledger and trends reuse (`S5`):** `ProjectsPage` computes each row's settled window directly (`settledRangeWindow(rangeMs[range()], now)`) and passes `Accessor<TimeWindow | null>` to `createProjectLedger`, eliminating both the 6 bogus `from=0&to=0` ledger requests and the eager per-row `range=` history requests on collapsed rows. Expanded `<Trends>` reads the ledger's `histories` when the ledger loaded, and fetches the `range=` history on expand only if the ledger failed.
 - **Closed project section deferral (`S5`):** `createProjectDeployments` gates `/comparison` on `() => sections().has("deploys")`, and `createObservability` gates `/occurrences` on `() => sections().has("errors")`, while keeping `/health` and open `/issues` eager for the header and section summary pills.
@@ -300,7 +298,7 @@ Boundary rejected:
 
 - **Project Signals.** Lazy-loading the closed Signals section saved 1,598 bytes (1.1% of the project initial gzip), below the 5% floor, so it was reverted.
 
-Why the closed project page has a 95% budget: the cost ledger is part of the initial view. It selects the first cost line by default and renders that line's per-bucket `PanelChart`s, plus the month chart when the plan bill is isolated. uPlot is therefore needed on first paint. A lazy boundary around those charts would request the same chunk at once, one round trip later. The owner set the budget to 95% (campaign decision O3). Dropping the default ledger selection was rejected: the month chart would still load uPlot when the plan bill is isolated. The uPlot-exclusion gate in `bench-bundle.mjs` now covers only the fleet and collapsed projects routes.
+Why the closed project page has a 95% budget: the cost ledger is part of the initial view. It selects the first cost line by default and renders that line's per-bucket `PanelChart`s, plus the month chart when the plan bill is isolated. uPlot is therefore needed on first paint. A lazy boundary around those charts would request the same chunk at once, one round trip later. The owner set the budget to 95%. Dropping the default ledger selection was rejected: the month chart would still load uPlot when the plan bill is isolated. The uPlot-exclusion gate in `bench-bundle.mjs` now covers only the fleet and collapsed projects routes.
 
 Chunk graph: the fleet initial graph has no observe, project, or uPlot module, and no feature module is duplicated across chunks. Rollup now splits the common core into `state` and `api` instead of one `effect` chunk because the new lazy chunks share part of it. Every route has one more initial script request (fleet 14 → 15 in `bench-ui`), and the fleet bytes stay within 0.6% of the F6 start.
 
@@ -322,33 +320,9 @@ Tests: `test/ui/dashboard.spec.ts` checks that the projects overview loads chart
 
 ### Architectural assessment
 
-The client keeps Solid 2, `@solidjs/router`, uPlot, the binary history format, and ETag revalidation. Loading stays on `loadQuery` inside `createMemo` with `createUpdateEffect` refreshes (S1). A failed load keeps the previous value only when it refreshes the same key (`RefreshRetention`). A change of subject, range, zoom, or fleet page that fails reaches the page's error boundary instead. The conditional history cache is one `ConditionalCache` type: 32 entries, 8 MiB of retained bytes, recency touched on `304`, newest-started request installs, and no per-path state outlives a request. Observability results are keyed unions (`KeyedResult<T>`). Charts update in place and rebuild only on construction fields. Route chunks follow what renders (F6).
+The client keeps Solid 2, `@solidjs/router`, uPlot, the binary history format, and ETag revalidation. Loading stays on `loadQuery` inside `createMemo` with `createUpdateEffect` refreshes. A failed load keeps the previous value only when it refreshes the same key (`RefreshRetention`). A change of subject, range, zoom, or fleet page that fails reaches the page's error boundary instead. The conditional history cache is one `ConditionalCache` type: 32 entries, 8 MiB of retained bytes, recency touched on `304`, newest-started request installs, and no per-path state outlives a request. Observability results are keyed unions (`KeyedResult<T>`). Charts update in place and rebuild only on construction fields. Route chunks follow what renders.
 
-### Results by deliverable
-
-| Deliverable | Where |
-| --- | --- |
-| Bundle before/after | F6 table above. On the final tree: projects 77.0%, project (closed) 93.3% (budget 95%, set by the owner), fully open project 103.8%, fleet/host/services/service at most 101.7%. |
-| Requests and bytes by route | F3 tables and the F6 browser table. |
-| Decode and cache | F2 section. |
-| Chart lifecycle | F4 section. |
-| Heap and retention | F0b retention trace and F4 cycles. |
-| State ownership | F5 inventory. |
-
-### Code and dependency changes
-
-No runtime or dev dependency was added or removed. There is no server, wire, auth, agent, or ingest change, and no screenshot golden changed. Client-internal contracts that changed:
-
-- `loadQuery` and `loadFleetRows` take a `RefreshOnError<T>` (`key`, `previous`, `retention`, `onError`) instead of positional `previous` and `onRefreshError` arguments.
-- `createProjectLedger` takes `Accessor<TimeWindow>` (no null window).
-- `ConditionalCache` gains `finish` and `pending`.
-- `duration` and `defaultSlice` moved from `TraceTimeline.tsx` to `Observe.tsx`.
-
-### Accepted commits
-
-The campaign runs from `320b3b4` (F0a) through `c4ede4a` (F8). `git log --oneline 576c99d..c4ede4a` lists them; `8316fb8` (Nanoshop policy) is not campaign work. `c59ba2d` fixed the local Niceforge scenario test: Vitest 5 stopped printing passing test names, so the test now pins `--reporter=verbose`. That was a pre-existing red outside the frontend.
-
-### Tests and outcomes on the final tree
+### Recorded validation at `c4ede4a`
 
 | Command | Result |
 | --- | --- |
@@ -356,22 +330,6 @@ The campaign runs from `320b3b4` (F0a) through `c4ede4a` (F8). `git log --onelin
 | `make cloudflare-test` | pass (326 Workers-runtime tests and all Node suites) |
 | `make dashboard-test` | pass (158 Playwright tests, including the Node target) |
 | `make node-e2e`, `make smoke-local`, `make integration-local` | pass |
-
-### F8 review findings
-
-| Finding | Severity | Outcome |
-| --- | --- | --- |
-| Projects rows refetched both ledger windows on every 10 s clock tick, even when paused or hidden: 122 requests in ten paused minutes for one row. `latest()` tracks its read. | P2 (measured as worse) | Fixed in `6bdd5e5`, with a test in `lifecycle.spec.ts` |
-| A failed load after a range, zoom, or fleet page change kept the previous subject's data under the new label | P2 | Fixed in `f3dd67e`, with a test in `lifecycle.spec.ts` |
-| The cache's per-path sequence map was never pruned | P3 | Fixed in `00b623b`, with a test in `client-cache.test.ts` |
-| Unreachable null ledger window, and exports with no outside consumer | P3 | Fixed in `c4ede4a` |
-| A projects row whose later ledger load fails keeps the earlier ledger's trends and still runs the fallback fetch | P3 | Open |
-| A host-list refresh error on Fleet can be cleared by the rows refresh succeeding in the same `Promise.all` | P3 | Open |
-| The trace-detail effect is not gated on the Requests section, so a deep-linked trace refetches while Requests is closed | P3 | Open |
-| `PROJECT_BUCKET_WIDTHS_MS` duplicates the server's bucket widths and point limit | P3 | Open |
-| Inside the issue modal, `IssueDetail` shows the section's occurrence error, not the modal issue's (predates the campaign) | P3 | Open |
-
-No P1 or P2 remains open.
 
 ### Rejected experiments
 

@@ -21,12 +21,16 @@ Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Develo
 
 Download the installer from a [release](https://github.com/joshuarli/stats/releases)
 and run it as root on Linux (OpenRC or systemd) or as your user on macOS
-(launchd). It installs the right binary, verifies its SHA-256, and sets up the
-service. Provision the host to get a `hostId` and token, place them in the
+(launchd). It selects the binary and sets up the service. Checksum verification
+currently fails open if the manifest or verifier is unavailable
+([STA-112](TODO.md#sta-112--p2--the-installer-proceeds-when-checksum-verification-is-unavailable));
+verify the release asset against `SHA256SUMS` before using the manual path below.
+Provision the host to get a `hostId` and token, place them in the
 config and token files the installer prints, then start the service.
 
-To install manually, build the binary with `make agent-build` (see
-`docs/operations.md`), provision the host, then:
+To install manually, use the verified release binary for your platform,
+provision the host, then run the following on Linux. Source builds are covered
+in [operations](docs/operations.md).
 
 ```sh
 useradd --system --no-create-home --shell /usr/sbin/nologin stats
@@ -65,8 +69,11 @@ the `stats` user, using passwordless `doas` or `sudo`. Either way it creates
 the host when the name is new, rotates the token when the server knows the host
 but the target has no config, installs the binary, config, token, and service
 unit, and waits for the first upload. Set `SSH=local`, or omit `SSH`, to set up
-the machine running the command. Rerunning it updates only what changed and
-keeps the existing host and token.
+the machine running the command. Rerunning keeps the existing host and token,
+but currently replaces optional agent settings with a minimal config
+([STA-104](TODO.md#sta-104--p1--rerunning-add-host-silently-removes-optional-agent-configuration)).
+Preserve a customized `agent.json` before rerunning, restore its optional
+settings afterward, and restart the agent.
 
 To install the macOS agent by hand, build it natively with
 `cargo build --release --manifest-path agent/Cargo.toml`, provision the host,
@@ -151,6 +158,7 @@ over its devices, and sends them as the `services` group
 
 | `unit` | cgroup under `/sys/fs/cgroup` |
 | --- | --- |
+| `openrc.<name>` | `openrc.<name>` |
 | `name.service` | `system.slice/name.service` |
 | `name@instance.service` | `system.slice/system-name.slice/name@instance.service` (`-` in `name` becomes `\x2d`) |
 | `docker-<id>.scope` (Docker with the systemd cgroup driver) | `system.slice/docker-<id>.scope` |
@@ -197,7 +205,7 @@ an upload.
   that fits the 65,536-byte body cap; the rest go back to the front of the
   queue and start the next frame. A sample that cannot be encoded on its own
   is dropped and counted, never retried.
-- 410, 415, or a success response that is not a valid STB2 acknowledgment
+- 410, 415, or a success response that is not a valid STA2 acknowledgment
   covering every sample in the batch is a protocol error: the server does not
   speak ingest v2, so the batch is dropped and the error is logged. An agent
   of this version and a server older than ingest v2 cannot exchange data.
@@ -217,86 +225,36 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 ## Dashboard
 
-Open the Worker's hostname and sign in through Access. The top bar links Hosts
-and Projects; the hosts page is `/`. It lists hosts with status chips (online,
-stale, no samples, revoked) above the table. A host row shows its status dot,
-OS and kernel, CPU model, cores and threads under CPU, disk used of total, and
-health-coloured sparklines for CPU, memory, load, and disk space, with disk
-read/write and network in/out drawn as mirrored pairs, so the state of the
-fleet reads without opening a host.
+Open the Worker's hostname and sign in through Access, or use the Node
+installation's tailnet origin. Hosts are at `/`, projects at `#/projects`, and
+services at `#/services`. Host pages show resource status, charts and device
+tables; service pages combine deployment markers, host resources and
+application telemetry. The Node target has no Cloudflare project collector.
 
-The Projects page (`#/projects`) lists each configured Cloudflare project with
-its requests, 5xx share, CPU, and projected list-price cost for the settled
-range, each against the range before it, plus its last deploy and collector
-state; a row expands to its request, CPU per request, 5xx, and endpoint or
-storage trends. A project page (`#/project/<id>`) opens with a cost
-ledger: the monthly list-price cost projected from the last settled hour, its
-change from the hour before, what this month is billed beyond the
-$5 plan's allowances so far, with a dashed projection to month end, and a tree you can expand from component (Worker, Durable Objects,
-D1, R2 storage) to route, method, statement, or bucket, with calls, CPU or wall
-time per call, and their change. Health pills for the 5xx share, open errors,
-endpoints, and the last deploy sit beside the name. Deployments, errors, the
-request explorer, and the Worker, R2, D1, endpoint, Durable Object, and
-collector charts are in sections below that start closed. Worker CPU is CPU
-time per invocation, not latency,
-R2 user errors such as 404s are shown but not scored, and a share or average
-is not scored from a five-minute bucket with fewer than 100 events. Projects are configured
-in `cloudflare/cloudflare.config.ts`; see
-[`docs/architecture.md`](docs/architecture.md#cloudflare-projects).
+A Cloudflare project page starts with a cost ledger for the settled window,
+its change from the previous window, and the available plan-bill projection.
+Select a section for deployments, errors, requests or resource charts. Header
+health and issue counts stay visible while detailed sections load on demand.
+Project configuration lives in `cloudflare/cloudflare.config.ts`; see
+[architecture](docs/architecture.md#cloudflare-projects) for collection and
+coverage limits.
 
-The host page opens with a status strip and an info button beside the host
-name. Hovering or focusing the button opens a card with the CPU model and
-topology, memory, OS, kernel, hostname, agent version, and uptime, which the
-agent reports with its first upload after an update and then hourly. Below that:
+Host controls:
 
-- A status strip with one cell per resource (CPU, memory, load, pressure, swap
-  paging, disk busy, filesystem, network faults): the current value, its state,
-  and a trend. All eight fit in one row on a desktop, and a cell jumps to its
-  chart.
-- Charts sit in two-column rows, and the two cards in each row start at the
-  same top edge; no graph spans the page.
-- CPU (with steal, GPU busy where reported, and a CPU pressure panel) and
-  load.
-- Power: system and GPU watts, shown only for hosts that report them.
-- Memory: RAM and swap in use on an axis scaled to the host's total memory,
-  swap paging, and memory pressure (some and full) on one shared time axis.
-- Disk and network: throughput and operations or packets with reads and
-  receive above the line and writes and transmit below it, busy time (and I/O
-  pressure) or drops and errors, and a device or interface table. Linux disks
-  also chart mean read and write latency and average queue depth per interval,
-  derived from `/proc/diskstats` without privileges.
-- Filesystems: usage over time and one table with capacity and state.
-- Block latency and completions, shown only when the collector is configured.
+- Choose 1 h, 6 h, 24 h, 7 d or 90 d, or drag a chart to zoom all charts to the
+  same window. The minimum zoom is two samples of the selected storage tier.
+- `z` zooms out, `[` and `]` pan, `Escape` resets zoom, `l` toggles live refresh,
+  and `/` focuses host search. Live refresh pauses while zoomed or hidden.
+- Hover a status band to inspect its interval and peak. Pressure panels share
+  the kernel's 10 s, 1 min or 5 min average selector. Host facts appear beside
+  the name; device tables show devices still reporting.
 
-Dotted vertical lines mark reboots, read from a fall in uptime. Mounts of the
-same block device (bind mounts, btrfs subvolumes) are listed once. Pressure
-panels appear only when the kernel reports PSI; one control selects the
-kernel's 10 s, 1 min, or 5 min average for every pressure panel and the status
-cell, and each panel shows the coverage-weighted mean and peak for the visible
-range. Otherwise one notice says so.
+A host is online when a sample arrived in the last 45 seconds. Missing values
+render as `—` or `unavailable`; optional power, pressure and block-latency
+panels depend on the host's capabilities. Linux disk means come from
+`/proc/diskstats`; latency distributions require the optional collector.
 
-Pick 1 h, 6 h, 24 h, 7 d, or 90 d, or drag across any chart to zoom every
-chart to that window. The smallest zoom is two samples of the tier the window
-reads: 30 s raw, 2 min for one-minute rollups, and 2 h for hourly rollups.
-Keys: `z` zooms out, `[` and `]` pan,
-`Escape` resets the zoom, `l` toggles live refresh (every 15 s, paused while
-zoomed or when the tab is hidden), `/` focuses the host search.
-
-A host is online when the server received a sample in the last 45 seconds.
-Missing values render as `—` or `unavailable`, never as zero.
-
-Charts mark where a metric is elevated or critical: a tinted zone and dashed
-limit line, a line that changes color where it crosses a limit, a marker where
-it went bad and where it recovered, and a red or orange band across each period
-outside its limits. Hovering a band shows the period and its peak; the same
-state is carried by the strip by color and an icon, with the word kept for
-screen readers only. Series colors mean the same thing on every chart
-(in/read blue, out/write aqua, CPU blue, memory aqua, I/O violet), and
-the status colors are reserved for state. The limits are in
-`cloudflare/src/client/health.ts`. A metric is recovered after five minutes
-back inside its limits. The device tables list only devices still reporting.
-
-`make preview` builds the dashboard and serves it on
-`http://127.0.0.1:4174/` from the captured fixtures in
-`cloudflare/test/ui/captures/`, with the clock frozen at the capture time, so
-the UI can be inspected without deploying or signing in through Access.
+`make preview` serves captured fixtures at `http://127.0.0.1:4174/` with a
+frozen clock, for inspection without deployment or Access login. See
+[testing](docs/testing.md) for screenshot verification and
+[architecture](docs/architecture.md#dashboard) for refresh and chart behavior.
