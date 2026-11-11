@@ -25,7 +25,8 @@ make dev-local         # a persistent local stack on http://127.0.0.1:8789, coll
 make reset-local       # delete the dev-local state in .work/local/state
 make ingest-bench      # encoder, decoder, and end-to-end ingest measurements
 make bench-local       # row, statement, and byte counts for ingest and collection on the local stack
-make check             # all of the above plus make release
+make test              # fixtures, agent, worker, dashboard, e2e, smoke, profile, and the macOS offline stack
+make check             # release gate: fixtures, agent, worker, dashboard, e2e, smoke, the macOS offline stack, lint, and make release
 make stats-deploy      # deploy only the stats Worker, leaving stats-observe untouched
 
 pnpm --dir cloudflare -s statsctl help workflow    # copy-pastable recipes for the commands below

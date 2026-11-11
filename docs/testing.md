@@ -1,15 +1,16 @@
 # Testing
 
-Run the narrowest target while iterating and `make check` before release.
+Run the narrowest target while iterating, `make test` for every local suite, and `make check` before release.
 
 | Command | Covers |
 | --- | --- |
+| `make test` | Fixtures, agent, Worker, dashboard, both end-to-end flows, local smoke, profile, and on macOS the offline stack. It does not run `make integration-producer` |
 | `make fixtures` | Ingest corpus manifest, size budgets, cross-file constants, and byte/row accounting |
 | `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
 | `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
-| `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make check` does not run it |
+| `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make test` and `make check` do not run it |
 | `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
@@ -214,7 +215,7 @@ live-measured points: probe latencies and the store's own size.
 Limits: fixtures cannot show that Cloudflare still accepts the fixed queries or
 returns the recorded columns; run `node cloudflare/scripts/check-analytics-sql.mjs`
 after changing `src/projects/queries.ts`. `scripts/offline-run.sh` exits 2 off
-macOS until a Linux sandbox is verified, so `make check` runs
+macOS until a Linux sandbox is verified, so `make test` and `make check` run
 `make integration-local` only on macOS; elsewhere `make cloudflare-test` still
 runs `test:local` with the app-level outbound check. Nothing here measures billable CPU.
 
