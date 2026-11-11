@@ -1,23 +1,24 @@
 import { createEffect, createMemo, createSignal, type Accessor } from "solid-js";
-import { ConditionalCache, getHistory, getProjectHistories, type Project } from "../../api";
+import { getProjectHistories, type Project } from "../../api";
 import type { TimeWindow } from "../../chart-data";
 import { errorMessage } from "../../format";
-import { decodeWorkerHistory, type MetricHistory, type ProjectHistories } from "../../history";
+import type { ProjectHistories } from "../../history";
 import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
 import { previousWindowOf } from "../../../cost/ledger.ts";
 import { utcMonthOf, type PlanMonthInput } from "../../../cost/report.ts";
-import type { RangeKey } from "../../../limits.ts";
+import { HOUR_MS, MINUTE_MS, PROJECT_SETTLE_MS } from "../../../limits.ts";
 import { assembleProjectLedger, baselineMethodsRetained, historyKinds, ledgerHistories, objectMethodsOf, observeObjectsPath, settledWindow, type ProjectLedger } from "../../project-ledger.ts";
 import type { ObjectMethods } from "../../../cost/ledger.ts";
 
 export { historyKinds, ledgerHistories, settledWindow, type ProjectLedger };
 
-const settleProbeCache = new ConditionalCache<MetricHistory>();
+const PROJECT_BUCKET_WIDTHS_MS = [5 * MINUTE_MS, 15 * MINUTE_MS, HOUR_MS, 3 * HOUR_MS] as const;
 
-export function getSettleProbe(projectId: string, range: RangeKey, signal: AbortSignal): Promise<MetricHistory> {
-  const path = `/api/v1/projects/${encodeURIComponent(projectId)}/history?range=${encodeURIComponent(range)}&kinds=worker`;
-  return getHistory(path, decodeWorkerHistory, settleProbeCache, signal);
+export function settledRangeWindow(rangeSpanMs: number, nowMs: number): TimeWindow {
+  const stepMs = PROJECT_BUCKET_WIDTHS_MS.find(width => rangeSpanMs / width <= 900) ?? 3 * HOUR_MS;
+  const toMs = Math.floor((nowMs - PROJECT_SETTLE_MS) / stepMs) * stepMs;
+  return { fromMs: toMs - rangeSpanMs, toMs };
 }
 
 export type Baseline =
@@ -41,21 +42,19 @@ export interface ObjectMethodSource {
   readonly now: Accessor<number>;
 }
 
-export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow | null>, scope: Accessor<string>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
+export function createProjectLedger(project: Accessor<Project>, window: Accessor<TimeWindow>, scope: Accessor<string>, refreshKey: Accessor<string>, objects: ObjectMethodSource | null, planMonth: Accessor<PlanMonthInput | null>) {
   const [stored, setLoad] = createSignal<LedgerLoad | null>(null);
   const requestedScope = () => `${project().id}|${scope()}`;
   const load = (): LedgerLoad | null => {
-    const bounds = window();
     const loaded = stored();
-    return loaded !== null && bounds !== null && loaded.scope === requestedScope() && loaded.window.fromMs === bounds.fromMs && loaded.window.toMs === bounds.toMs ? loaded : null;
+    return loaded !== null && loaded.scope === requestedScope() && loaded.window.fromMs === window().fromMs && loaded.window.toMs === window().toMs ? loaded : null;
   };
   const [error, setError] = createSignal<string | null>(null);
   createEffect(() => {
     const bounds = window();
-    return `${project().id}:${bounds === null ? "pending" : `${bounds.fromMs}:${bounds.toMs}`}:${refreshKey()}`;
+    return `${project().id}:${bounds.fromMs}:${bounds.toMs}:${refreshKey()}`;
   }, () => {
     const current = window();
-    if (current === null) return;
     const requested = requestedScope();
     const previous = previousWindowOf(current);
     const kinds = historyKinds(project());
