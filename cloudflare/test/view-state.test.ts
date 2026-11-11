@@ -1,7 +1,7 @@
 import { createRoot, createSignal } from "solid-js";
 import { describe, expect, it } from "vitest";
 import { HOUR_MS, MINUTE_MS, RAW_STEP_MS } from "../src/limits";
-import { createViewState, minimumZoomMs, type Range } from "../src/client/state";
+import { createViewState, firstWiderRange, minimumZoomMs, type Range } from "../src/client/state";
 
 const now = 1_800_000_000_000;
 
@@ -11,6 +11,16 @@ function state() {
 }
 
 describe("view state", () => {
+  it("offers the nearest wider range that has a sample", async () => {
+    const signal = new AbortController().signal;
+    const found = await firstWiderRange("1h", async range => range === "24h", signal);
+    expect(found).toBe("24h");
+    expect(await firstWiderRange("6h", async () => false, signal)).toBeNull();
+    const aborted = new AbortController();
+    aborted.abort();
+    expect(await firstWiderRange("1h", async () => true, aborted.signal)).toBeNull();
+  });
+
   it("derives the zoom floor from the tier the window reads", () => {
     expect(minimumZoomMs(now - 60_000, now)).toBe(2 * RAW_STEP_MS);
     expect(minimumZoomMs(now - 3 * 24 * HOUR_MS, now)).toBe(2 * MINUTE_MS);

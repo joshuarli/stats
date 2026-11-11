@@ -53,6 +53,15 @@ export function smallestRangeCovering(fromMs: number, now: number): Range {
   return ranges.find(candidate => rangeMs[candidate] >= now - fromMs) ?? ranges[ranges.length - 1]!;
 }
 
+export async function firstWiderRange(current: Range, hasSamples: (range: Range, signal: AbortSignal) => Promise<boolean>, signal: AbortSignal): Promise<Range | null> {
+  for (const candidate of ranges) {
+    if (rangeMs[candidate] <= rangeMs[current]) continue;
+    if (signal.aborted) return null;
+    if (await hasSamples(candidate, signal)) return candidate;
+  }
+  return null;
+}
+
 export function minimumZoomMs(fromMs: number, now: number): number {
   const ageMs = now - fromMs;
   if (ageMs < RAW_RETENTION_MS) return 2 * RAW_STEP_MS;

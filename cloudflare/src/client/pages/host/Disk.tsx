@@ -9,7 +9,7 @@ import type { PsiWindow } from "../../psi";
 import { Sparkline } from "../../components/Sparkline";
 import type { ChartEvent } from "../../components/TimeChart";
 import { EmptyState, Meter } from "@laputa-systems/ui-dashboard";
-import { HealthMark, Widget } from "../../components/ui";
+import { HealthMark, Notice, Widget } from "../../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
 import { PressureChart } from "./Psi";
 import { colorsFor, PanelLabel, activeSeries, topSeries, PanelChart } from "./shared";
@@ -67,6 +67,9 @@ export function DiskWidget(props: {
     <Widget id="disk" title="Disk" expandable>
       {props.series.length === 0 ? <EmptyState title="No disk series in this range." icon="disk" /> : (
         <>
+          <Show when={!reportsBusy()}>
+            <Notice>This host does not report disk busy time, so the busy panel is hidden.</Notice>
+          </Show>
           <PanelChart
             label="Disk throughput"
             timeAxis={false}

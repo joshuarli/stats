@@ -1,8 +1,8 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createContext, createMemo, createSignal, For, onSettled, Show, useContext, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { alignTracks, windowIndexes, windowStats, type WindowStats } from "../chart-data";
+import { alignTracks, chartDomain, windowIndexes, windowStats, type TimeWindow, type WindowStats } from "../chart-data";
 import type { Track } from "../columns";
 import { createUpdateEffect } from "../effect";
 import { axisTime, clock, percent } from "../format";
@@ -55,6 +55,12 @@ export interface TimeChartProps {
   readonly provisionalFromMs?: number | undefined;
 }
 
+const ChartFrameContext = createContext<(() => TimeWindow) | null>(null);
+
+export function ChartFrame(props: ParentProps<{ readonly frame: TimeWindow }>): JSX.Element {
+  return <ChartFrameContext value={() => props.frame}>{props.children}</ChartFrameContext>;
+}
+
 const SYNC_KEY = "stats";
 const MIN_ZOOM_PX = 8;
 const TIME_LABEL_OVERHANG = 16;
@@ -81,6 +87,7 @@ function withAlpha(color: string, alpha: number): string | undefined {
 
 export function TimeChart(props: TimeChartProps): JSX.Element {
   const telemetry = useTelemetry();
+  const chartFrame = useContext(ChartFrameContext);
   const series = createMemo(() => (typeof props.series === "function" ? props.series() : props.series));
   const format = (value: number | null | undefined): string => (value === null || value === undefined ? "—" : (props.format ?? percent)(value));
   const aligned = createMemo(() => alignTracks(series().map(entry => entry.track), props.stepMs));
@@ -176,12 +183,12 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     return [aligned().times.map(time => time / 1000), ...columns];
   });
 
+  const domain = () => chartDomain(aligned().times, telemetry.view(), chartFrame?.() ?? null);
   const applyView = () => {
-    const times = aligned().times;
-    if (plot === undefined || times.length < 2) return;
-    const view = telemetry.view();
-    plot.setScale("x", view === null ? { min: times[0]! / 1000, max: times.at(-1)! / 1000 } : { min: view.fromMs / 1000, max: view.toMs / 1000 });
-    setSpan(windowIndexes(times, view));
+    const window = domain();
+    if (plot === undefined || window === null) return;
+    plot.setScale("x", { min: window.fromMs / 1000, max: window.toMs / 1000 });
+    setSpan(windowIndexes(aligned().times, telemetry.view()));
   };
 
   const build = () => {
@@ -600,7 +607,10 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
     }
   );
 
-  createUpdateEffect(() => telemetry.view(), applyView);
+  createUpdateEffect(() => {
+    const window = domain();
+    return window === null ? "" : `${window.fromMs}:${window.toMs}`;
+  }, applyView);
 
   createUpdateEffect(() => props.highlight, label => {
     if (plot === undefined) return;

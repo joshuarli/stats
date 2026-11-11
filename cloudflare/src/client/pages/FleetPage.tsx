@@ -340,11 +340,12 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
   const timeWindow = createMemo(() => ({ fromMs: props.row.fromMs, toMs: props.row.toMs }));
   const status = createMemo(() => hostStatus(props.row.host));
   const info = createMemo(() => props.row.system?.system);
-  const cpuTrend = createMemo(() => cpuUsed(table()));
-  const memoryTrend = createMemo(() => memoryUsed(table()));
-  const loadTrend = createMemo(() => [table().cells("load.one"), table().cells("load.five"), table().cells("load.fifteen")]);
-  const cpu = createMemo(() => lastCell(cpuTrend()));
-  const memory = createMemo(() => lastCell(memoryTrend()));
+  const stepMs = () => props.row.stepMs;
+  const cpuTrend = createMemo(() => alignTracks([{ times: table().times, values: cpuUsed(table()) }], stepMs()));
+  const memoryTrend = createMemo(() => alignTracks([{ times: table().times, values: memoryUsed(table()) }], stepMs()));
+  const loadTrend = createMemo(() => alignTracks([table().track("load.one"), table().track("load.five"), table().track("load.fifteen")], stepMs()));
+  const cpu = createMemo(() => lastCell(cpuUsed(table())));
+  const memory = createMemo(() => lastCell(memoryUsed(table())));
   const free = createMemo(() => lastCell(table().cells("mem.available")));
   const total = createMemo(() => lastCell(table().cells("mem.total")));
   const cpuCount = createMemo(() => lastCell(table().cells("cpuCount")));
@@ -355,11 +356,11 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
   const diskTrend = createMemo(() => alignTracks([
     sumTracks(props.row.disks.map(entry => entry.table.track("readBytesPerSec"))),
     sumTracks(props.row.disks.map(entry => entry.table.track("writeBytesPerSec")))
-  ]));
+  ], stepMs()));
   const netTrend = createMemo(() => alignTracks([
     sumTracks(props.row.nets.map(entry => entry.table.track("rxBytesPerSec"))),
     sumTracks(props.row.nets.map(entry => entry.table.track("txBytesPerSec")))
-  ]));
+  ], stepMs()));
   const diskSpaceTrend = createMemo(() => worstTrack(props.row.filesystems.map(entry => ({ times: entry.table.times, values: usedShare(entry.table) })), props.row.filesystemStepMs));
   const diskSpace = createMemo(() => lastValue(diskSpaceTrend().values));
   const diskSpaceUsage = createMemo(() => {
@@ -428,7 +429,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(cpu())}</span>
             <Meter value={cpu()} warn={LIMITS.cpuPercent.elevated} bad={LIMITS.cpuPercent.critical} />
-            <Sparkline series={[{ values: cpuTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} CPU trend`} class="spark-inline" limits={LIMITS.cpuPercent} />
+            <Sparkline series={[{ values: cpuTrend().columns[0] ?? [] }]} times={cpuTrend().times} window={timeWindow()} label={`${props.row.host.name} CPU trend`} class="spark-inline" limits={LIMITS.cpuPercent} />
           </div>
           <Show when={cpuNote()}>
             {(note) => <span class="cell-note">{note()}</span>}
@@ -440,7 +441,7 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
           <div class="cpu-cell">
             <span class="metric-value-small">{percent(memory())}</span>
             <Meter value={memory()} warn={LIMITS.memoryUsedPercent.elevated} bad={LIMITS.memoryUsedPercent.critical} />
-            <Sparkline series={[{ values: memoryTrend() }]} times={table().times} window={timeWindow()} label={`${props.row.host.name} memory trend`} class="spark-inline" limits={LIMITS.memoryUsedPercent} />
+            <Sparkline series={[{ values: memoryTrend().columns[0] ?? [] }]} times={memoryTrend().times} window={timeWindow()} label={`${props.row.host.name} memory trend`} class="spark-inline" limits={LIMITS.memoryUsedPercent} />
           </div>
           <span class="cell-note">{free() === undefined || total() === undefined ? "unavailable" : `${bytes(free())} free of ${bytes(total())}`}</span>
         </div>
@@ -450,11 +451,11 @@ function FleetTableRow(props: { readonly row: FleetRow; readonly now: number; re
           <span><span class="cell-strong">{count(lastCell(table().cells("load.one")))}</span><span class="cell-note"> / {count(lastCell(table().cells("load.five")))} / {count(lastCell(table().cells("load.fifteen")))}</span></span>
           <Sparkline
             series={[
-              { values: loadTrend()[0]!, class: "viz-ramp-5" },
-              { values: loadTrend()[1]!, class: "viz-ramp-3" },
-              { values: loadTrend()[2]!, class: "viz-ramp-1" }
+              { values: loadTrend().columns[0] ?? [], class: "viz-ramp-5" },
+              { values: loadTrend().columns[1] ?? [], class: "viz-ramp-3" },
+              { values: loadTrend().columns[2] ?? [], class: "viz-ramp-1" }
             ]}
-            times={table().times}
+            times={loadTrend().times}
             window={timeWindow()}
             label={`${props.row.host.name} load trend`}
             class="spark-inline"

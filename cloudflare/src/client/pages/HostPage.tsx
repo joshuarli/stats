@@ -1,19 +1,20 @@
-import { createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import type { HostHistories } from "../history";
-import { getHostHistories, getSystem, type Host } from "../api";
+import { getHostHistories, getSummary, getSystem, type Host } from "../api";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
 import { createUpdateEffect } from "../effect";
 import { createRefreshRetention, loadQuery } from "../queries";
 import { windowParams } from "../history-path";
 import { statusFor } from "../status";
-import { useTelemetry } from "../state";
+import { firstWiderRange, useTelemetry, type Range } from "../state";
 import { routeWithRange } from "../urlState";
 import { OsLogo } from "../components/OsLogo";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
 import { SectionBar, type SectionLink } from "../components/SectionBar";
+import { ChartFrame } from "../components/TimeChart";
 import { ErrorState, Notice, Widget } from "../components/ui";
 import { BlockCompletionsWidget, BlockWidget } from "./host/Block";
 import { CpuWidget, LoadWidget, PressureNotice, reportsPressure } from "./host/Compute";
@@ -58,8 +59,9 @@ export function HostPage(): JSX.Element {
 
 function HostView(props: { readonly host: Host }): JSX.Element {
   const hostId = () => props.host.hostId;
-  const { query, view, refreshHosts, tick } = useTelemetry();
+  const { query, view, range, chooseRange, refreshHosts, tick } = useTelemetry();
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
+  const [sampleRange, setSampleRange] = createSignal<Range | null>(null);
   const [psiWindow, setPsiWindow] = createSignal<PsiWindow>("300");
 
   const system = createMemo(() => loadQuery(signal => getSystem(hostId(), signal)));
@@ -90,6 +92,21 @@ function HostView(props: { readonly host: Host }): JSX.Element {
     }
   };
   createUpdateEffect(() => tick(), () => { void doRefresh(); });
+  createEffect(
+    () => ({ id: hostId(), current: range(), rows: table().rows }),
+    probe => {
+      if (probe.rows > 0) {
+        setSampleRange(null);
+        return;
+      }
+      const controller = new AbortController();
+      void firstWiderRange(probe.current, async (candidate, signal) => (await getSummary(probe.id, { range: candidate }, signal)).table.rows > 0, controller.signal).then(
+        found => { if (!controller.signal.aborted) setSampleRange(found); },
+        () => { if (!controller.signal.aborted) setSampleRange(null); }
+      );
+      return () => controller.abort();
+    }
+  );
 
   const moreSections = (): SectionLink[] => [
     ...(reportsPower(table()) ? [{ label: "Power", anchor: "power" }] : []),
@@ -132,10 +149,11 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             when={table().rows > 0}
             fallback={
               <Widget title="Samples">
-                <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" />
+                <EmptyState title="No samples were accepted in this range." detail="Gaps are not interpolated and missing values never become zero." icon="activity" action={sampleRange() === null ? undefined : <button class="btn" type="button" onClick={() => chooseRange(sampleRange()!)}>Show {sampleRange()}</button>} />
               </Widget>
             }
           >
+            <ChartFrame frame={{ fromMs: summary().fromMs, toMs: summary().toMs }}>
             <StatusStrip cells={cells()} window={view() ?? { fromMs: summary().fromMs, toMs: summary().toMs }} class="dense" />
             <SectionBar cells={cells()} more={moreSections()} />
             <Show when={table().cells("partial").some(value => value === 1)}>
@@ -160,6 +178,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
                 <BlockCompletionsWidget series={block().series} stepMs={block().stepMs} events={events()} />
               </Show>
             </section>
+            </ChartFrame>
           </Show>
         </Loading>
       </Errored>

@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { fulfillHistory } from "./history-route";
 
+function omit(value: object, key: string): object {
+  return Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+}
+
 const hostId = "h_0123456789abcdef0123456789abcdef";
 const now = Date.now();
 
@@ -204,7 +208,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; emptyRanges?: readonly string[]; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; sparse?: boolean; unreported?: boolean; baselineScale?: number } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -237,9 +241,13 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       if (options.system === false) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "no system details for host" } } });
       return route.fulfill({ json: { hostId, reportedAtMs: now - 60_000, system: { agent: "0.1.0", hostname: "alpha-box", os: "Alpine Linux edge", kernel: "7.2.9-2-stable", arch: "x86_64", cpu: { model: "AMD Ryzen 9 9950X 16-Core Processor", threads: 32, cores: 16, sockets: 1, maxMhz: 5756 } } } });
     }
-    const empty = options.empty === true;
+    const empty = options.empty === true || options.emptyRanges?.includes(range) === true;
     const historyBody = (kind: string): unknown => {
-      if (kind === "disks") return disks(range, empty, options.diskLatency === true);
+      if (kind === "disks") {
+        const body = disks(range, empty, options.diskLatency === true);
+        if (options.unreported !== true || !("series" in body)) return body;
+        return { ...body, series: body.series.map(entry => ({ ...entry, points: entry.points.map(point => omit(point, "busyPct")) })) };
+      }
       if (kind === "nets") return options.manyNets === true ? manyNets(range) : nets(range, empty);
       if (kind === "filesystems") return filesystems(range, empty);
       if (kind === "block") return block(range, empty);
@@ -252,6 +260,11 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; sy
       if (options.staleGap === true && !empty) {
         return { ...body, fromMs: now - 3_600_000, toMs: now, points: body.points.map((point, index) => ({ ...point, atMs: now - 3_600_000 + (index + 1) * 15_000 })) };
       }
+      if (options.sparse === true && !empty) {
+        const at = [now - 50 * 60_000, now - 50 * 60_000 + 15_000, now - 10 * 60_000];
+        return { ...body, fromMs: now - 3_600_000, toMs: now, points: at.map((atMs, index) => ({ ...body.points[index]!, atMs })) };
+      }
+      if (options.unreported === true) return { ...body, points: body.points.map(point => omit(point, "psi")) };
       return body;
     };
     if (kinds !== null) {
@@ -429,12 +442,13 @@ test("a bad period is marked on the strip and explained on chart hover", async (
   const box = await plot.boundingBox();
   if (box === null) throw new Error("chart plot has no box");
   await page.mouse.move(box.x + box.width * 0.85, box.y + box.height / 2);
-  const episode = page.locator(".chart-tip-episode");
+  const chart = page.locator(".chart", { has: page.getByRole("img", { name: /^CPU;/ }) });
+  const episode = chart.locator(".chart-tip-episode");
   await expect(episode).toBeVisible();
   await expect(episode).toContainText("Critical");
   await expect(episode).toContainText("ongoing");
   await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
-  await expect(page.locator(".chart-tip-episode")).toHaveCount(0);
+  await expect(chart.locator(".chart-tip-episode")).toHaveCount(0);
 });
 
 test("an offline host leaves its mini graphs short of the right edge", async ({ page }) => {
@@ -448,6 +462,37 @@ test("an offline host leaves its mini graphs short of the right edge", async ({ 
   expect(Math.max(...xs)).toBeLessThan(40);
   const gaps = await spark.locator(".spark-gap").evaluateAll(nodes => nodes.map(node => Number(node.getAttribute("width"))));
   expect(Math.max(...gaps)).toBeGreaterThan(100);
+});
+
+test("a sparse fleet spark breaks across the hole instead of bridging it", async ({ page }) => {
+  await mock(page, { sparse: true });
+  await page.goto("/");
+  const spark = page.getByRole("img", { name: "alpha CPU trend" });
+  const path = await spark.locator(".spark-line").getAttribute("d");
+  expect(path?.split(" M").length).toBe(2);
+  const xs = [...(path ?? "").matchAll(/[ML]([\d.]+),/gu)].map(match => Number(match[1]));
+  expect(Math.max(...xs)).toBeLessThan(150);
+});
+
+test("metrics the host never sends are not offered a wider range", async ({ page }) => {
+  await mock(page, { unreported: true });
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  const absent = page.locator(".strip-absent");
+  await expect(absent.getByText("Not reported")).toBeVisible();
+  await expect(absent.getByRole("button", { name: "Pressure" })).toBeVisible();
+  await expect(absent.getByRole("button", { name: "Disk busy" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show 24h" })).toHaveCount(0);
+  await expect(page.getByText("does not report disk busy time")).toBeVisible();
+});
+
+test("an empty range offers the nearest wider range that has a sample", async ({ page }) => {
+  await mock(page, { emptyRanges: ["1h"] });
+  await page.goto("/");
+  await page.getByRole("table", { name: "Fleet hosts" }).getByRole("link", { name: "alpha" }).click();
+  await expect(page.getByText("No samples were accepted in this range.")).toBeVisible();
+  await page.getByRole("button", { name: "Show 6h" }).click();
+  await expect(page.getByRole("img", { name: /CPU;/ })).toBeVisible();
 });
 
 test("missing and stale data never become zero", async ({ page }) => {

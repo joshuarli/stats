@@ -259,6 +259,15 @@ export function windowTracks(tracks: readonly Track[], window: TimeWindow | null
   });
 }
 
+export function chartDomain(times: Times, zoom: TimeWindow | null, frame: TimeWindow | null): TimeWindow | null {
+  if (zoom !== null) return zoom;
+  if (frame !== null) return frame;
+  const first = times[0];
+  const last = times.at(-1);
+  if (first === undefined || last === undefined || !(last > first)) return null;
+  return { fromMs: first, toMs: last };
+}
+
 export function windowIndexes(times: Times, window: TimeWindow | null): readonly [number, number] {
   if (times.length === 0) return [0, -1];
   if (window === null) return [0, times.length - 1];

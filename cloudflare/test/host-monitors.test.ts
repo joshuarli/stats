@@ -32,5 +32,11 @@ describe("host status sparklines", () => {
     expect(geometry?.paths[0]?.split(" M")).toHaveLength(2);
     expect(geometry?.dot?.x).toBe(80);
     expect(geometry?.gaps).toEqual([{ x0: 80, x1: 160 }]);
+    const cells = buildCells(data, null, "300");
+    expect(cells.find(cell => cell.id === "pressure")).toMatchObject({ reported: false, value: undefined });
+    expect(cells.find(cell => cell.id === "disk")).toMatchObject({ reported: false, value: undefined });
+    const zoomed = buildCells(data, { fromMs: 4 * 60 * 60_000, toMs: 5 * 60 * 60_000 }, "300").find(cell => cell.id === "cpu");
+    expect(zoomed?.reported).toBe(true);
+    expect(zoomed?.value).toBeUndefined();
   });
 });

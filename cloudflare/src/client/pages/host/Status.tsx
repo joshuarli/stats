@@ -11,8 +11,9 @@ import type { MonitorCell } from "./monitors";
 export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; readonly window: TimeWindow; readonly label?: string; readonly class?: string }): JSX.Element {
   const { range, chooseRange } = useTelemetry();
   const present = () => props.cells.filter(cell => cell.value !== undefined);
-  const absent = () => props.cells.filter(cell => cell.value === undefined);
-  const columns = () => present().length + (absent().length > 0 ? 1 : 0);
+  const unreported = () => props.cells.filter(cell => cell.value === undefined && !cell.reported);
+  const missing = () => props.cells.filter(cell => cell.value === undefined && cell.reported);
+  const columns = () => present().length + (unreported().length > 0 ? 1 : 0) + (missing().length > 0 ? 1 : 0);
   return (
     <section class={props.class === undefined ? "status-strip" : `status-strip ${props.class}`} style={`--cells:${columns()}`} aria-label={props.label ?? "Host summary"}>
       <For each={present()}>
@@ -39,11 +40,19 @@ export function StatusStrip(props: { readonly cells: readonly MonitorCell[]; rea
           );
         }}
       </For>
-      <Show when={absent().length > 0}>
+      <Show when={unreported().length > 0}>
+        <div class="strip-cell strip-absent">
+          <span class="tile-label">Not reported</span>
+          <span class="strip-absent-links">
+            <For each={unreported()}>{(cell) => <button class="link" type="button" onClick={() => jumpTo(cell.anchor)}>{cell.label}</button>}</For>
+          </span>
+        </div>
+      </Show>
+      <Show when={missing().length > 0}>
         <div class="strip-cell strip-absent">
           <span class="tile-label">No data in this range</span>
           <span class="strip-absent-links">
-            <For each={absent()}>{(cell) => <button class="link" type="button" onClick={() => jumpTo(cell.anchor)}>{cell.label}</button>}</For>
+            <For each={missing()}>{(cell) => <button class="link" type="button" onClick={() => jumpTo(cell.anchor)}>{cell.label}</button>}</For>
           </span>
           <Show when={range() === "1h" || range() === "6h"}>
             <button class="btn btn-small strip-absent-action" type="button" onClick={() => chooseRange("24h")}>Show 24h</button>

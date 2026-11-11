@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTracks, duration, panWindow, sparkGeometry, sparkToneStops, sumTracks, windowIndexes, windowMean, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
+import { alignTracks, chartDomain, duration, panWindow, sparkGeometry, sparkToneStops, sumTracks, windowIndexes, windowMean, windowStats, windowTracks, worstTrack } from "../src/client/chart-data";
 
 describe("chart data", () => {
   it("keeps a missing value as a gap instead of interpolating or zeroing it", () => {
@@ -62,6 +62,14 @@ describe("chart data", () => {
     const aligned = alignTracks([{ times: [15_000, 15_001, 30_000], values: [1, 2, 3] }], 15_000);
     expect(aligned.times).toEqual([15_000, 30_000]);
     expect(aligned.columns).toEqual([[2, 3]]);
+  });
+
+  it("uses the selected window for a live chart and the samples only when no window is known", () => {
+    const times = [1_000, 4_000];
+    expect(chartDomain(times, null, { fromMs: 0, toMs: 10_000 })).toEqual({ fromMs: 0, toMs: 10_000 });
+    expect(chartDomain(times, { fromMs: 2_000, toMs: 3_000 }, { fromMs: 0, toMs: 10_000 })).toEqual({ fromMs: 2_000, toMs: 3_000 });
+    expect(chartDomain(times, null, null)).toEqual({ fromMs: 1_000, toMs: 4_000 });
+    expect(chartDomain([5_000], null, null)).toBeNull();
   });
 
   it("keeps a stale sparkline inside its sample window instead of stretching it to the edge", () => {
