@@ -4,37 +4,36 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { chromium } from "@playwright/test";
+import { chromium, type Browser, type Page } from "@playwright/test";
 import { doctor } from "../scripts/dev-doctor.ts";
 import { processOwner } from "../scripts/processes.ts";
 import { accessToken } from "../test/access-token.ts";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, phase: { type: "string", default: "candidate" }, runs: { type: "string", default: "5" }, out: { type: "string" } } });
+const { values } = parseArgs({ options: { root: { type: "string" }, phase: { type: "string", default: "candidate" }, legacy: { type: "boolean" }, runs: { type: "string", default: "5" }, out: { type: "string" } } });
 const originalRepo = resolve(import.meta.dirname, "../..");
+const owner = processOwner("bench-dev");
 let ownedCheckout: string | undefined;
 if (values.root === undefined) {
   if (execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: originalRepo, encoding: "utf8" }).trim() !== "") throw new Error("commit tracked changes before benchmarking a reproducible snapshot");
   mkdirSync(join(originalRepo, ".work/tmp"), { recursive: true });
   ownedCheckout = mkdtempSync(join(originalRepo, ".work/tmp/bench-dev-checkout-"));
   try {
-    execFileSync("git", ["clone", "--shared", originalRepo, ownedCheckout]);
+    await owner.run("checkout", "git", ["clone", "--shared", originalRepo, ownedCheckout], { stream: false });
     appendFileSync(join(ownedCheckout, ".git/info/exclude"), "\n.work/\n");
-    execFileSync("pnpm", ["install", "--offline", "--frozen-lockfile"], { cwd: ownedCheckout, stdio: "pipe" });
-  } catch (error) { rmSync(ownedCheckout, { recursive: true, force: true }); throw error; }
+    await owner.run("bootstrap", "pnpm", ["install", "--offline", "--frozen-lockfile"], { cwd: ownedCheckout, stream: false });
+  } catch (error) { await owner.close(); rmSync(ownedCheckout, { recursive: true, force: true }); throw error; }
 }
 const root = resolve(values.root ?? join(ownedCheckout!, "cloudflare"));
 if (ownedCheckout === undefined && !root.includes("/.work/wt/")) throw new Error("benchmark --root must be an isolated .work/wt checkout; the benchmark removes its generated outputs");
 process.env["STATS_DOMAIN"] ??= "stats.17166969.xyz";
 const runs = Number(values.runs);
 assert.ok(Number.isInteger(runs) && runs > 0);
-const baseline = values.phase === "baseline";
+const baseline = values.phase === "baseline" || values.legacy === true;
 const scratch = resolve(root, "../.work/tmp");
 mkdirSync(scratch, { recursive: true });
 const state = mkdtempSync(join(scratch, "bench-dev-state-"));
-const owner = processOwner("bench-dev");
-const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ extraHTTPHeaders: { "cf-access-jwt-assertion": await accessToken() } });
-page.on("pageerror", error => console.error(`browser: ${error.message}`));
+let browser: Browser | undefined;
+let page: Page;
 const results: { scenario: string; elapsedMs: number; compilations: number; tests?: number }[] = [];
 const memory: { readonly processes: number; readonly rssKiB: number }[] = [];
 const inputs = [join(root, "src/client/styles/index.css"), join(root, "src/core/http.ts")];
@@ -112,6 +111,9 @@ async function trial(scenario: string, work: () => Promise<{ compilations: numbe
 }
 
 try {
+  browser = await chromium.launch({ headless: true });
+  page = await browser.newPage({ extraHTTPHeaders: { "cf-access-jwt-assertion": await accessToken() } });
+  page.on("pageerror", error => console.error(`browser: ${error.message}`));
   for (let run = 0; run < runs; run += 1) {
     await stop();
     rmSync(state, { recursive: true, force: true });
@@ -169,7 +171,7 @@ try {
 } finally {
   await stop();
   for (const [index, input] of inputs.entries()) writeFileSync(input, originals[index]!);
-  await browser.close();
+  await browser?.close();
   await owner.close();
   rmSync(state, { recursive: true, force: true });
   if (ownedCheckout !== undefined) rmSync(ownedCheckout, { recursive: true, force: true });

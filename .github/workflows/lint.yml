@@ -31,5 +31,7 @@ jobs:
           runtime: node@26.13.1
           install: false
       - run: pnpm install --frozen-lockfile
+      - name: test inventory
+        run: node cloudflare/scripts/run-tests.mjs --list --json
       - name: lint
         run: make lint
