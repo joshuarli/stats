@@ -274,18 +274,18 @@ dependencies = [
 
 [[package]]
 name = "h12tiny-client-normalize"
-version = "0.7.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "726288f88917e16eb154bdbda5034bdabbe73aee8b7526513a3b21d599b1c0d2"
+checksum = "e4742323990543454dba088ced5a5c58bf7c6e060667162714f84fce2433df93"
 dependencies = [
  "http",
 ]
 
 [[package]]
 name = "h12tiny-client-sync"
-version = "0.7.0"
+version = "0.9.0"
 source = "sparse+https://crates.17166969.xyz/current/registry/"
-checksum = "4ef7862202992a23100a6347155bda3cab6a237cd161a4d3998ccdaebbb65207"
+checksum = "c0dafe552c8b6039fca1603a7e7122e0494451374ae3f653cca429e2cb89c56a"
 dependencies = [
  "h12tiny-client-normalize",
  "h12tiny-tls-system",
@@ -297,12 +297,13 @@ dependencies = [
 
 [[package]]
 name = "h12tiny-tls-system"
-version = "0.7.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9415c66396cb636154e2132bbcde156cabce260bbd7ca06a76c6ec25c095c59"
+checksum = "41149a08e2633e5e8f24e35d0e6b85deb863dc637e1360ca62dca2ed185016f2"
 dependencies = [
  "base64",
  "openssl-probe",
+ "rustc-hash",
  "rustls",
  "rustls-native-certs",
  "rustls-platform-verifier",
