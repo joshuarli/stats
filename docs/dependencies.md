@@ -79,7 +79,10 @@ No new dependency is introduced.
 versions, configured dates and the supported date reported by the Vite plugin's
 workerd helper. It rejects a split graph or unsupported configured date.
 The v2 beta channel is selected explicitly. The stable v1 tag is a separate line.
-The package-manager release-age and build-script policies remain unchanged.
+The package-manager release-age floor and build-script policy remain in force.
+pnpm records exact-version release-age exceptions for the four approved beta
+packages and their coupled `runtime-types` 0.1.27 and Wrangler 4.161.0 releases.
+No global release-age exclusion is added.
 
 Miniflare separates ordinary `tailConsumers` from streaming consumers in this
 release. Producer exports use ordinary `{ worker }` entries. Real tail delivery
