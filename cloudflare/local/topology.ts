@@ -302,7 +302,7 @@ function producerCollectorName(producer: { readonly service: string }): string {
 
 function producerWorker(producer: ProducerExport, observe: BuiltWorker, outbound: Outbound, extraTail: string | undefined): WorkerOptions {
   if (producer.tailConsumers.length !== 1 || producer.tailConsumers[0] !== observe.name) throw new TypeError(`${producer.service} tails into ${producer.tailConsumers.join(", ") || "nothing"}, but the stack hosts only ${observe.name}`);
-  const tails = [producerCollectorName(producer), ...(extraTail === undefined ? [] : [extraTail])].map(worker => ({ worker, streaming: false }));
+  const tails = [producerCollectorName(producer), ...(extraTail === undefined ? [] : [extraTail])].map(worker => ({ worker }));
   return {
     config: { ...producer.config, tailConsumers: tails } as WorkerOptions["config"],
     dev: { unsafeDirectSockets: [{ host: "127.0.0.1", port: producer.port }], outboundService: { type: "fetcher", handler: loopbackPassthrough(producer.providers, outbound) } }

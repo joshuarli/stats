@@ -34,10 +34,11 @@ Connection setup is bounded separately by the same duration.
 The Node adapter uses `node:http`, `node:sqlite`, `node:zlib` and timers, with
 `--experimental-strip-types` under the pinned Node. Its observation service
 also imports `@jridgewell/trace-mapping` at runtime. Source runs need the
-workspace dependencies installed. The Vite SSR build currently leaves this
-package external, while the image copies only the emitted bundle and assets:
-the staged artifact fails with `ERR_MODULE_NOT_FOUND` (STA-116 in
-[TODO](../TODO.md)). The image version and digest live in
+workspace dependencies installed. The Vite SSR build bundles runtime packages,
+including this resolver, while leaving Node built-ins external. The packaging
+regression test stages only the bundle and assets and denies workspace reads.
+The digest-pinned image also passed a dependency-free startup check for STA-116.
+The image version and digest live in
 `deploy/node/Dockerfile`. A new dependency needs a written reason, including
 build-time and image-size effects.
 
@@ -66,10 +67,25 @@ by the next install and breaks frozen installs elsewhere. Leave it.
 
 `cloudflare/test/observe-e2e/` runs the built `stats` and `stats-observe`
 bundles together in workerd with a tail consumer attached, which the vitest
-pool cannot do. The direct pin and the test plugin's transitive pin differ;
-`cloudflare/package.json` and `pnpm-lock.yaml` record the exact versions and
-consumers. None ships with the application. Check the local-stack and plugin
-consumers together when changing these pins.
+pool cannot do. On November 12, the compatible group is `cf` 1.0.0-beta.31,
+Vite plugin 2.0.0-beta.v.16, Vitest plugin 1.8.1, and Miniflare
+5.20261110.2-beta. Every consumer resolves that Miniflare and workerd
+1.20261110.1. No override forces the independent workerd release ahead of the
+SDK group. Workers types, Vite, Vitest, Node, pnpm, compatibility dates and
+flags stay pinned. The packages retain their existing MIT or MIT/Apache licenses.
+No new dependency is introduced.
+
+`node cloudflare/scripts/dev-doctor.ts --check` reports actual paths, runtime
+versions, configured dates and the supported date reported by the Vite plugin's
+workerd helper. It rejects a split graph or unsupported configured date.
+The v2 beta channel is selected explicitly. The stable v1 tag is a separate line.
+The package-manager release-age and build-script policies remain unchanged.
+
+Miniflare separates ordinary `tailConsumers` from streaming consumers in this
+release. Producer exports use ordinary `{ worker }` entries. Real tail delivery
+and persistent producer state are checked by the launcher tests. Vite's removed
+Worker `.vite/manifest.json` is not the Build Output `worker.config.json`
+manifest used by the topology. The latter remains required and validated.
 
 ## Source-map resolver in `stats-observe`
 
