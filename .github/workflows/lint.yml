@@ -1,0 +1,35 @@
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions: {}
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.run_id }}"
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-26.04-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.18.0
+          runtime: node@26.13.1
+          install: false
+      - run: pnpm install --frozen-lockfile
+      - name: lint
+        run: make lint
