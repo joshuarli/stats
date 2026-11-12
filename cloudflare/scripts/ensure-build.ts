@@ -4,6 +4,7 @@ import { dirname, extname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { processOwner } from "./processes.ts";
 import { acquireOwnership } from "./ownership.ts";
+import { SERVED_DOCS } from "./served-docs.mjs";
 
 export const ROOT = resolve(import.meta.dirname, "..");
 const REPO = dirname(ROOT);
@@ -28,7 +29,7 @@ function files(directory: string): string[] {
 
 export function buildInputs(target: BuildTarget): Map<string, Buffer> {
   const pending: string[] = TARGETS[target].entries.map(path => join(ROOT, path));
-  if (target === "stats") pending.push(join(ROOT, "index.html"), ...files(join(ROOT, "public")), ...["protocol.md", "architecture.md"].map(file => join(REPO, "docs", file)));
+  if (target === "stats") pending.push(join(ROOT, "index.html"), ...files(join(ROOT, "public")), ...SERVED_DOCS.map(file => join(REPO, "docs", file)));
   const inputs = new Map<string, Buffer>();
   while (pending.length > 0) {
     const path = pending.pop()!;

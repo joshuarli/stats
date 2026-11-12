@@ -186,6 +186,7 @@ integration-local: work-ready node-ready worker-bundle observe-bundle
 	cd cloudflare; \
 	PATH="$$shim:$$PATH" TMPDIR='$(CURDIR)/.work/tmp' ../scripts/offline-run.sh node --experimental-strip-types --test test/local/*.test.ts; \
 	PATH="$$shim:$$PATH" TMPDIR='$(CURDIR)/.work/tmp' ../scripts/offline-run.sh node_modules/.bin/playwright test test/ui/local-stack.spec.ts --project desktop; \
+	PATH="$$shim:$$PATH" TMPDIR='$(CURDIR)/.work/tmp' ../scripts/offline-run.sh node scripts/run-tests.mjs --file test/scripts/development.test.ts; \
 	if [ -e "$$shim/calls" ]; then echo "cf was called:" >&2; cat "$$shim/calls" >&2; exit 1; fi; \
 	echo "offline layers: app (the stack fails on any undeclared outbound request), os (sandbox-exec denies non-loopback network for tests and browser), credentials (CLOUDFLARE_* and CF_* removed, cf never called)"
 

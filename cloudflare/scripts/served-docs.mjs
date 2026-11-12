@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const SERVED_DOCS = ["protocol.md", "architecture.md"];
+export const SERVED_DOCS = ["protocol.md", "architecture.md"];
 
 export function servedDocs() {
   return {
