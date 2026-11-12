@@ -132,6 +132,9 @@ export function createProducer(config?: ProducerConfig | null): Producer {
   const target = new URL(`/ingest/observe/v1/${encodeURIComponent(service)}/batches`, base).toString();
   const encoder = new TextEncoder();
 
+  const producerId = defaultEventId();
+  const startedAtMs = now();
+  let accepted = 0;
   const queue: OperationEvent[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
@@ -184,7 +187,8 @@ export function createProducer(config?: ProducerConfig | null): Producer {
     const batch: OperationEvent[] = [];
     while (queue.length > 0 && batch.length < batchSize) {
       const next = [...batch, queue[0]!];
-      if (encoder.encode(encodeBatch(next)).byteLength > MAX_BATCH_BYTES) break;
+      const sized = next.map(event => ({ ...event, delivery: { ...event.delivery!, accepted: Number.MAX_SAFE_INTEGER, dropped: Number.MAX_SAFE_INTEGER, queued: MAX_QUEUE_LIMIT, atMs: Number.MAX_SAFE_INTEGER } }));
+      if (encoder.encode(encodeBatch(sized)).byteLength > MAX_BATCH_BYTES) break;
       batch.push(queue.shift()!);
     }
     if (batch.length === 0 && queue.length > 0) {
@@ -192,7 +196,8 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       dropped += 1;
       lastError = "event_too_large";
     }
-    return batch;
+    const atMs = now();
+    return batch.map(event => ({ ...event, delivery: { ...event.delivery!, accepted, dropped, queued: queue.length, atMs } }));
   }
 
   async function readAck(response: Response): Promise<{ readonly accepted: number; readonly duplicate: number } | null> {
@@ -350,7 +355,8 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       dropped += 1;
       lastError = "queue_overflow";
     }
-    queue.push(event);
+    accepted += 1;
+    queue.push({ ...event, delivery: { id: producerId, sequence: accepted, accepted, dropped, queued: 0, startedAtMs, atMs: now() } });
     if (queue.length >= batchSize) void drain().catch(() => { lastError = "internal"; });
     else schedule();
   }

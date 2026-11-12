@@ -82,7 +82,7 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
   const probeText = () => {
     const source = probe();
     if (source === null) return "Health: not probed";
-    if (source.status === "available") return "Health: up";
+    if (source.status === "available") return "Health probe data: available";
     if (source.detail.includes("runs no health probes")) return "Health: not probed on this target";
     if (source.detail.includes("no health URL")) return "Health: not set";
     return "Health: collecting";

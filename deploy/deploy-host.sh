@@ -40,16 +40,6 @@ case "$elevate" in
   *) echo "deploy: $name has unsupported elevation '$elevate'" >&2; exit 2 ;;
 esac
 
-version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$repo/agent/Cargo.toml" | head -n 1)
-if [ -z "$version" ]; then
-  echo "deploy: cannot read the agent version" >&2
-  exit 1
-fi
-artifact="$repo/agent/dist/stats-$version-$rust_target"
-if [ ! -f "$artifact" ]; then
-  echo "deploy: missing $artifact; run make agent-build" >&2
-  exit 1
-fi
 
 case "$init" in
   systemd)
@@ -155,26 +145,6 @@ hash_file() {
   fi
 }
 
-local_hash=$(hash_file "$artifact")
-remote_hash=$(remote 'if [ -f /usr/local/bin/stats ]; then sha256sum /usr/local/bin/stats | cut -d" " -f1; fi')
-binary_changed=0
-if [ "$remote_hash" != "$local_hash" ]; then
-  binary_changed=1
-fi
-
-if ! remote "if [ -f '$unit_path' ]; then cat '$unit_path'; fi" > "$work/unit"; then
-  echo "$label: cannot read $unit_path" >&2
-  exit 1
-fi
-unit_changed=0
-if ! cmp -s "$work/unit" "$unit_source"; then
-  unit_changed=1
-fi
-
-if ! remote "$elevate test -f /etc/stats/agent.json"; then
-  echo "$label: /etc/stats/agent.json is missing; provision the agent first" >&2
-  exit 1
-fi
 
 is_active() {
   case "$init" in
@@ -209,6 +179,38 @@ if [ "$mode" = "--rollback" ]; then
   wait_for_upload || exit 1
   echo "$label: rolled back"
   exit 0
+fi
+
+version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$repo/agent/Cargo.toml" | head -n 1)
+if [ -z "$version" ]; then
+  echo "deploy: cannot read the agent version" >&2
+  exit 1
+fi
+artifact="$repo/agent/dist/stats-$version-$rust_target"
+if [ ! -f "$artifact" ]; then
+  echo "deploy: missing $artifact; run make agent-build" >&2
+  exit 1
+fi
+
+local_hash=$(hash_file "$artifact")
+remote_hash=$(remote 'if [ -f /usr/local/bin/stats ]; then sha256sum /usr/local/bin/stats | cut -d" " -f1; fi')
+binary_changed=0
+if [ "$remote_hash" != "$local_hash" ]; then
+  binary_changed=1
+fi
+
+if ! remote "if [ -f '$unit_path' ]; then cat '$unit_path'; fi" > "$work/unit"; then
+  echo "$label: cannot read $unit_path" >&2
+  exit 1
+fi
+unit_changed=0
+if ! cmp -s "$work/unit" "$unit_source"; then
+  unit_changed=1
+fi
+
+if ! remote "$elevate test -f /etc/stats/agent.json"; then
+  echo "$label: /etc/stats/agent.json is missing; provision the agent first" >&2
+  exit 1
 fi
 
 if [ "$binary_changed" -eq 0 ] && [ "$unit_changed" -eq 0 ] && [ "$active" -eq 1 ]; then

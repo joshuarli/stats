@@ -334,3 +334,31 @@ await test("an event id stored again after its event expired adds an occurrence 
   assert.deepEqual(await ingestExternal(db, manifest.service, [coded("reused-id", later, "db.timeout")], later), { ok: true, accepted: 1, duplicate: 0 });
   assert.equal(rowCount(db, "observe_occurrences"), 2);
 });
+
+await test("external-only stores keep their next retention alarm after an early cleanup", async () => {
+  const db = database();
+  const now = manifest.nowMs;
+  const service = createObserveService(db, { now: () => now, databaseBytes: () => 0 });
+  await service.ingestExternal(manifest.service, [events[0]!]);
+  const maintained = service.cleanup();
+  assert.ok(maintained.nextAtMs !== null);
+  assert.equal(maintained.nextAtMs, Math.min(now, events[0]!.atMs) + RETENTION_MS);
+  db.db.close();
+});
+
+await test("producer delivery evidence round-trips, survives storage, and never changes event identity", async () => {
+  const text = readFileSync(join(FIXTURES, "golden-delivery.json"), "utf8").trim();
+  const decoded = decodeBatch(text, options);
+  assert.ok(decoded.ok);
+  assert.equal(encodeBatch(decoded.batch), text);
+  const db = database();
+  try {
+    const service = createObserveService(db, { now: () => manifest.nowMs, databaseBytes: () => 0 });
+    assert.deepEqual(await service.ingestExternal(manifest.service, decoded.batch.events), { ok: true, accepted: 2, duplicate: 0 });
+    assert.deepEqual((await service.external(manifest.service, {})).map(record => record.event.delivery?.sequence), [1, 2]);
+    assert.deepEqual(await service.ingestExternal(manifest.service, events), { ok: true, accepted: 0, duplicate: 2 });
+    const invalid = JSON.parse(text) as { events: { delivery: { sequence: number } }[] };
+    invalid.events[0]!.delivery.sequence = 3;
+    assert.equal(decodeBatch(JSON.stringify(invalid), options).ok, false);
+  } finally { db.db.close(); }
+});

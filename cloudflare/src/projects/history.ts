@@ -219,7 +219,11 @@ function buildMetricHistory(
     for (let index = 0; index < window.count; index += 1) {
       const atMs = window.fromMs + index * window.stepMs;
       const row = found?.get(atMs);
-      if (row !== undefined) {
+      if (window.stepMs > BUCKET_MS && !("range" in query) && (atMs < query.fromMs || atMs + window.stepMs > query.toMs)) {
+        values.push(null);
+        continue;
+      }
+      if (row !== undefined && (row.cells === window.stepMs / BUCKET_MS || (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)))) {
         values.push(row[aggregation]);
       } else if (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)) {
         values.push(0);
@@ -232,7 +236,7 @@ function buildMetricHistory(
   return { projectId: project.id, ...rangeOf(query), kind, fromMs: window.fromMs, toMs: window.toMs, stepMs: window.stepMs, series };
 }
 
-type Folded = { sum: number; max: number; min: number };
+type Folded = { sum: number; max: number; min: number; cells: number };
 type Grouped = ReadonlyMap<string, ReadonlyMap<number, Folded>>;
 
 const METRIC_KINDS: readonly MetricKind[] = PROJECT_KINDS.filter((kind): kind is MetricKind => kind !== "collector");
@@ -290,8 +294,8 @@ function readGrouped(
   const prefixes = kinds.map((kind) => KIND_PREFIX[kind]);
   const conditions = prefixes.map(() => "(metric >= ? AND metric < ?)").join(" OR ");
   const [table, column] = stepMs < HOUR_MS ? ["project_samples", "bucket_ms"] : ["project_hours", "hour_ms"];
-  const rows = sql.rows<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number }>(
-    `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value
+  const rows = sql.rows<{ metric: string; at: number; sum_value: number; max_value: number; min_value: number; cells: number }>(
+    `SELECT metric, (${column} / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS at, SUM(value) AS sum_value, MAX(value) AS max_value, MIN(value) AS min_value, ${stepMs < HOUR_MS ? "COUNT(*)" : "0"} AS cells
      FROM ${table} WHERE project = ? AND (${conditions}) AND ${column} >= ? AND ${column} <= ?
      GROUP BY metric, at`,
     stepMs,
@@ -311,7 +315,7 @@ function readGrouped(
       grouped.set(kind, byMetric);
     }
     const byTime = byMetric.get(row.metric) ?? new Map<number, Folded>();
-    byTime.set(row.at, { sum: row.sum_value, max: row.max_value, min: row.min_value });
+    byTime.set(row.at, { sum: row.sum_value, max: row.max_value, min: row.min_value, cells: row.cells });
     byMetric.set(row.metric, byTime);
   }
   return grouped;

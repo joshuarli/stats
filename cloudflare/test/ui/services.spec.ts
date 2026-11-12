@@ -107,7 +107,7 @@ test.beforeAll(async () => {
   const batchToken = await createService({ name: "batch", hostIds: [batchHost.hostId] });
   await mark("batch", batchToken, "2.0.0", [batchHost.hostId], FIRST_AT);
   await mark("batch", batchToken, "2.1.0", [batchHost.hostId], SECOND_AT);
-  await installation.observe.ingestExternal("web", [...activity(before, 40, "before"), ...activity(after, 55, "after")]);
+  await installation.observe.forService("web").ingestExternal("web", [...activity(before, 40, "before"), ...activity(after, 55, "after")]);
   nowMs = NOW;
 
   server = createStatsServer({ installation: request => installation.core.fetch(request), observe: observeHandler(installation), assets: await openAssets(BUILT_ASSETS), allowedLogins: new Set([LOGIN]), transport: "tcp" });
@@ -201,7 +201,7 @@ test("service comparison explains its source coverage without hover", async ({ p
   await coverage.click();
   const details = coverage.locator("..");
   await expect(details).toContainText("successful events across 1 operation");
-  await expect(details).toContainText("drops and gaps not recorded");
+  await expect(details).toContainText("delivery completeness unproven");
   await expect(details).toContainText("1 host");
 });
 
@@ -459,4 +459,15 @@ test("service work identifies the previous window while a comparison updates", a
   }
   await expect(page.locator("#service-work").getByRole("status")).toHaveCount(0);
   await expect(page.locator(".service-facts")).not.toContainText("previous comparison window");
+});
+
+test("failed historical probes show data availability without claiming current health", async ({ page }) => {
+  await page.route(/\/comparison\?/u, async route => {
+    const response = await route.fetch();
+    const body = await response.json() as ServiceComparison;
+    await route.fulfill({ response, json: { ...body, metrics: body.metrics.map(metric => metric.metric === "probe.health.failure" ? { ...metric, before: 100, after: 100 } : metric) } });
+  });
+  await page.goto(`${origin}/#/service/web`);
+  await expect(page.locator(".service-facts")).toContainText("Health probe data: available");
+  await expect(page.locator(".service-facts")).not.toContainText("Health: up");
 });

@@ -258,8 +258,10 @@ fn an_error_code_is_sent_after_the_other_fields() {
     producer.record(event);
     producer.flush().unwrap();
     let (_, body) = split(&receiver.request.recv_timeout(Duration::from_secs(2)).unwrap());
+    assert!(body.contains(r#""sequence":1,"accepted":1,"dropped":0,"queued":0"#));
+    let (_, event_body) = body.split_once(r#","schemaVersion":"#).unwrap();
     assert_eq!(
-        body,
+        format!(r#"{{"events":[{{"schemaVersion":{event_body}"#),
         r#"{"events":[{"schemaVersion":1,"eventId":"e1","atMs":1,"operation":"note.save","outcome":"error","durationMs":1,"work":{},"release":"9df651c1a2b3","service":"tansu","trace":{"traceId":"0123456789abcdef0123456789abcdef","spanId":"0123456789abcdef"},"error":{"code":"db.timeout"}}]}"#
     );
     producer.shutdown().unwrap();
@@ -289,5 +291,27 @@ fn an_invalid_error_code_or_one_on_an_ok_event_is_dropped() {
     producer.record(failing(Some(&"a".repeat(64)), "error"));
     producer.flush().unwrap();
     assert_eq!(producer.stats().sent, 1);
+    producer.shutdown().unwrap();
+}
+
+#[test]
+fn steady_sub_batch_arrivals_do_not_restart_the_flush_deadline() {
+    let receiver = receiver(vec![response("202 Accepted", r#"{"accepted":5,"duplicate":0}"#)]);
+    let mut settings = config(&receiver.endpoint);
+    settings.flush_interval = Duration::from_millis(250);
+    let producer = Producer::new(settings).unwrap();
+    producer.record(event("note.save", 1));
+    let mut arrivals = 1;
+    loop {
+        match receiver.request.recv_timeout(Duration::from_millis(50)) {
+            Ok(_) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                arrivals += 1;
+                assert!(arrivals <= 10, "sub-batch traffic postponed the flush");
+                producer.record(event("note.save", 1));
+            }
+            Err(error) => panic!("receiver failed: {error}"),
+        }
+    }
     producer.shutdown().unwrap();
 }

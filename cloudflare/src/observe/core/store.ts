@@ -609,6 +609,12 @@ export function ingest(db: SqlStatements, preparations: readonly Preparation[], 
   return result;
 }
 
+function eventIdentity(event: ExternalEvent): string {
+  const identity = { ...event };
+  delete identity.delivery;
+  return encodeEvent(identity);
+}
+
 export function ingestExternal(db: SqlStatements, service: string, received: readonly ReceivedEvent[], nowMs: number): ExternalIngest {
   const windowStart = nowMs - (nowMs % RATE_LIMIT_WINDOW_MS);
   return db.transaction((): ExternalIngest => {
@@ -625,7 +631,7 @@ export function ingestExternal(db: SqlStatements, service: string, received: rea
     const prior = new Map(stored.map(row => [row.event_id, row.payload]));
     for (const { event } of received) {
       const previous = prior.get(event.eventId);
-      if (previous !== undefined && previous !== encodeEvent(event)) return { ok: false, code: "event_conflict" };
+      if (previous !== undefined && eventIdentity(JSON.parse(previous) as ExternalEvent) !== eventIdentity(event)) return { ok: false, code: "event_conflict" };
     }
     const writtenBefore = db.rowsWritten();
     let accepted = 0;
@@ -979,7 +985,7 @@ function evict(db: SqlStatements): { readonly invocations: number; readonly occu
 
 export function nextCleanupAt(db: SqlStatements, nowMs: number, cleaned: CleanupResult): number | null {
   if (cleaned.more) return nowMs;
-  const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences)")[0]?.at ?? null;
+  const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences UNION ALL SELECT MIN(MIN(received_at, event_at)) FROM observe_external_events)")[0]?.at ?? null;
   const flushed = db.rows<{ at: number | null }>("SELECT MIN(applied_at) AS at FROM observe_applied_flushes")[0]?.at ?? null;
   const expiries = [oldest === null ? null : oldest + RETENTION_MS, oldestCountExpiryMs(db), flushed === null ? null : flushed + RETENTION_MS].filter(at => at !== null);
   const expiry = expiries.length === 0 ? null : Math.min(...expiries);

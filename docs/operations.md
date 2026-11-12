@@ -542,6 +542,19 @@ A missing or invalid value stops startup with exit code 2 and a
 stops accepting connections, finishes requests in flight, closes the
 database, and exits 0.
 
+Back up the whole `STATS_DATA_DIR` while the server is stopped. Include
+`stats.sqlite` and the `stats.sqlite.observe` directory. The latter contains
+one database per observation service. Preserve the original observation tables
+in `stats.sqlite` when inspecting ambiguous legacy data. Migration copies only
+rows whose service ownership is known, preserves issue resolution, and records
+completion in each destination transaction. Restart resumes an interrupted copy.
+
+The Node image bundles its runtime dependencies. Deployment starts an isolated
+candidate and checks health before stopping the current container. It retains
+the previous container until the replacement passes health, and restores it if
+the replacement fails. Preflight uses an empty database and cannot prove a
+production data migration. Take the stopped backup before an upgrade.
+
 Every path other than `/health` and ingest needs an allowed
 `Tailscale-User-Login` header, which `tailscale serve` adds for tailnet users,
 and a loopback TCP peer. A connection on a Unix socket has no TCP peer and is

@@ -493,8 +493,14 @@ it plugs into the handler:
 
 - **Storage.** One `InstallationCore` on a `node:sqlite` file,
   `$STATS_DATA_DIR/stats.sqlite`. One process owns the file, which gives the
-  single-writer guarantee the Durable Object gives. The timer scheduler runs
-  core retention. Observation-store cleanup is currently omitted (STA-108).
+  single-writer guarantee the Durable Object gives. Each observation service
+  owns `stats.sqlite.observe/<service>.sqlite`, its capacity limits and caches.
+  The registry opens at most 256 stores. A separate scheduler cleans them on
+  startup and follows expiry and backlog, with an hourly maintenance ceiling.
+  Shutdown stops timers before closing databases. Legacy application rows and
+  issues with provable ownership are copied once in a transaction per service.
+  Resolved issue state survives. The installation file retains all original
+  observation tables as a recoverable quarantine for ambiguous legacy state.
 - **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
   accepted only when the TCP peer is loopback (or the connection is on the
   Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
@@ -650,12 +656,14 @@ project `DeploymentComparison` (invocation counts are `null` and
   with `{ buckets, bucketsWithEvents, emptyBucketsWhileUp, completeness,
   unrecorded }` per window. `emptyBucketsWhileUp` counts five-minute buckets
   with no application event in which the health probe was up or the service's
-  cgroup reported. `completeness` is `gaps-observed` when that count is not
-  zero and otherwise `unproven`; it is never `complete`, because `unrecorded`
-  (`producer-drops`, `rejected-batches`, `sequence-gaps`) names evidence Stats
-  does not keep: the producer's `dropped` and `queued` counters stay in the
-  producer process, a rejected or rate-limited batch is not stored, and event
-  ids are opaque, not a sequence.
+  cgroup reported. `completeness` is `complete` only when every reported
+  producer has checkpoints bracketing the window, unchanged dropped counts,
+  empty queues at both boundaries, and contiguous sequences reconciling the
+  accepted-count difference. Reads include one five-minute bucket of padding
+  on each side and retain the existing event cap. Missing checkpoints, legacy
+  events and unaccounted sequences keep completeness `unproven`, or
+  `gaps-observed` when an up bucket has no events. Completeness covers reported
+  producer sessions. It cannot discover a producer that never reported.
 
 Resource metrics are levels, each the mean of five-minute buckets in the
 window, and a bucket counts only when every compared host reported at least

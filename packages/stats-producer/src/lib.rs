@@ -12,7 +12,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub use wire::{MAX_BATCH_BYTES, MAX_EVENTS};
-use wire::{decode_ack, encode_batch, WireBatch, WireError, WireEvent, WireTrace, MAX_ACK_BYTES};
+use wire::{decode_ack, encode_batch, WireBatch, WireDelivery, WireError, WireEvent, WireTrace, MAX_ACK_BYTES};
 
 const MAX_DURATION_MS: u64 = 86_400_000;
 const MAX_WORK_VALUE: u64 = 1_000_000_000_000;
@@ -152,6 +152,7 @@ struct Config {
 
 struct State {
     queue: VecDeque<WireEvent>,
+    flush_deadline: Option<Instant>,
     sending: bool,
     shutdown: bool,
     flush_requested: bool,
@@ -162,6 +163,9 @@ struct Inner {
     state: Mutex<State>,
     wake: Condvar,
     token: Mutex<String>,
+    accepted: AtomicU64,
+    producer_id: String,
+    started_at_ms: u64,
     dropped: AtomicU64,
     sent: AtomicU64,
     duplicates: AtomicU64,
@@ -176,9 +180,12 @@ impl Inner {
     fn new(config: Config, token: String) -> Self {
         Self {
             config,
-            state: Mutex::new(State { queue: VecDeque::new(), sending: false, shutdown: false, flush_requested: false }),
+            state: Mutex::new(State { queue: VecDeque::new(), flush_deadline: None, sending: false, shutdown: false, flush_requested: false }),
             wake: Condvar::new(),
             token: Mutex::new(token),
+            accepted: AtomicU64::new(0),
+            producer_id: default_event_id(),
+            started_at_ms: now_ms(),
             dropped: AtomicU64::new(0),
             sent: AtomicU64::new(0),
             duplicates: AtomicU64::new(0),
@@ -292,7 +299,7 @@ impl Producer {
 
     pub fn record(&self, event: OperationEvent) {
         let Some(inner) = &self.inner else { return };
-        let Some(wire) = normalize(event, &inner.config) else {
+        let Some(mut wire) = normalize(event, &inner.config) else {
             inner.dropped.fetch_add(1, Ordering::Relaxed);
             inner.error("invalid_event");
             return;
@@ -309,6 +316,11 @@ impl Producer {
             inner.dropped.fetch_add(1, Ordering::Relaxed);
             inner.error("queue_overflow");
         }
+        if state.queue.is_empty() {
+            state.flush_deadline = Some(Instant::now() + inner.config.flush_interval);
+        }
+        let sequence = inner.accepted.fetch_add(1, Ordering::Relaxed) + 1;
+        wire.delivery = Some(WireDelivery { id: inner.producer_id.clone(), sequence, accepted: sequence, dropped: 0, queued: 0, started_at_ms: inner.started_at_ms, at_ms: now_ms() });
         state.queue.push_back(wire);
         inner.wake.notify_all();
     }
@@ -412,7 +424,8 @@ fn run(inner: Arc<Inner>) {
                     state = inner.wake.wait(state).unwrap_or_else(|poisoned| poisoned.into_inner());
                     continue;
                 }
-                let (next, timeout) = inner.wake.wait_timeout(state, config.flush_interval).unwrap_or_else(|poisoned| poisoned.into_inner());
+                let remaining = state.flush_deadline.unwrap().saturating_duration_since(Instant::now());
+                let (next, timeout) = inner.wake.wait_timeout(state, remaining).unwrap_or_else(|poisoned| poisoned.into_inner());
                 state = next;
                 if timeout.timed_out() && !state.flush_requested && state.queue.len() < config.batch_size && !state.shutdown {
                     state.sending = true;
@@ -437,7 +450,16 @@ fn take_batch(state: &mut State, inner: &Inner) -> WireBatch {
     while events.len() < inner.config.batch_size {
         let Some(front) = state.queue.front().cloned() else { break };
         events.push(front);
-        let encoded = encode_batch(&WireBatch { events: events.clone() }).map(|body| body.len()).unwrap_or(usize::MAX);
+        let mut sized = events.clone();
+        for event in &mut sized {
+            if let Some(delivery) = &mut event.delivery {
+                delivery.accepted = u64::MAX;
+                delivery.dropped = u64::MAX;
+                delivery.queued = inner.config.queue_limit as u64;
+                delivery.at_ms = u64::MAX;
+            }
+        }
+        let encoded = encode_batch(&WireBatch { events: sized }).map(|body| body.len()).unwrap_or(usize::MAX);
         if encoded > MAX_BATCH_BYTES {
             events.pop();
             if events.is_empty() {
@@ -449,6 +471,17 @@ fn take_batch(state: &mut State, inner: &Inner) -> WireBatch {
             break;
         }
         state.queue.pop_front();
+    }
+    if state.queue.is_empty() {
+        state.flush_deadline = None;
+    }
+    for event in &mut events {
+        if let Some(delivery) = &mut event.delivery {
+            delivery.accepted = inner.accepted.load(Ordering::Relaxed);
+            delivery.dropped = inner.dropped.load(Ordering::Relaxed);
+            delivery.queued = state.queue.len() as u64;
+            delivery.at_ms = now_ms();
+        }
     }
     WireBatch { events }
 }
@@ -576,6 +609,7 @@ fn normalize(event: OperationEvent, config: &Config) -> Option<WireEvent> {
         return None;
     }
     Some(WireEvent {
+        delivery: None,
         schema_version: 1,
         event_id,
         at_ms,

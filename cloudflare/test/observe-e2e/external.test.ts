@@ -56,6 +56,13 @@ await test("the same external batch reads back normalized on workerd", async () 
       source: "application", version: failed.release, traceId: failed.trace?.traceId ?? null, message: null, frames: []
     })));
 
+    const delivered = batch.events.map((event, index) => ({ ...event, eventId: `delivery-${index}`, delivery: { id: "producer-e2e", sequence: index + 1, accepted: batch.events.length, dropped: 0, queued: 0, startedAtMs: now - 300_000, atMs: now } }));
+    const deliveryResponse = await post(ingestToken, JSON.stringify({ events: delivered }));
+    assert.equal(deliveryResponse.status, 202, await deliveryResponse.clone().text());
+    const withDelivery = await harness.stats(`/api/observe/${OBSERVE_SERVICE}/external?from=${now - 300_000}&to=${now}`, { headers: await accessHeaders() });
+    const deliveredBody = await withDelivery.json() as { events: { event: { delivery?: { id: string } } }[] };
+    assert.equal(deliveredBody.events.filter(record => record.event.delivery?.id === "producer-e2e").length, delivered.length);
+
     assert.equal((await post(deployToken, batch.text)).status, 401);
     assert.equal((await post(null, batch.text)).status, 401);
     assert.equal((await post(ingestToken, JSON.stringify({ events: [] }))).status, 400);

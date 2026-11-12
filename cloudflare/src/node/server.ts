@@ -22,7 +22,7 @@ export function observeHandler(installation: Pick<NodeInstallation, "observe" | 
     const url = new URL(target);
     const match = /^\/([a-z][a-z0-9-]{0,31})(\/.*)$/u.exec(url.pathname);
     if (match === null) return Promise.resolve(Response.json({ error: { code: "not_found", message: "unknown observe route" } }, { status: 404, headers: { "Cache-Control": "no-store" } }));
-    return handleApi(new Request(`https://observe${match[2]}${url.search}`, init), match[2]!, installation.observe, match[1]!, installation.now());
+    return handleApi(new Request(`https://observe${match[2]}${url.search}`, init), match[2]!, installation.observe.forService(match[1]!), match[1]!, installation.now());
   };
 }
 

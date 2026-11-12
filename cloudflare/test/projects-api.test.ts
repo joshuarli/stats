@@ -201,7 +201,7 @@ describe("project history", () => {
     expect(hour.fromMs).toBeLessThanOrEqual(NOW - HOUR_MS);
   });
 
-  it("serves 30 days from hourly rows in one hour buckets", async () => {
+  it("withholds legacy hourly values without coverage evidence", async () => {
     const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / HOUR_MS) * HOUR_MS;
     await record(metricRun(NOW - BUCKET, [
       { metric: "worker.invocations", bucketMs: hour, value: 10 },
@@ -211,8 +211,8 @@ describe("project history", () => {
     const body = await history("30d", "worker");
     expect(body.stepMs).toBe(HOUR_MS);
     expect(body.series[0]?.values.length).toBeLessThanOrEqual(900);
-    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBe(30);
-    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour + 3 * HOUR_MS)]).toBe(40);
+    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBeNull();
+    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour + 3 * HOUR_MS)]).toBeNull();
   });
 
   it("serves an explicit window in fine buckets, with no range in its frame", async () => {
@@ -234,7 +234,7 @@ describe("project history", () => {
     expect(seriesOf(body, "worker.invocations").filter((value) => value === 99)).toEqual([]);
   });
 
-  it("serves a window older than the fine samples from hourly rows", async () => {
+  it("withholds unproven hourly values in explicit old windows", async () => {
     const hour = Math.floor((NOW - 10 * 24 * HOUR_MS) / HOUR_MS) * HOUR_MS;
     await record(metricRun(NOW - BUCKET, [
       { metric: "worker.invocations", bucketMs: hour, value: 10 },
@@ -244,7 +244,7 @@ describe("project history", () => {
     expect(response.status).toBe(200);
     const body = await readFrame(response) as { stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] };
     expect(body.stepMs).toBe(HOUR_MS);
-    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBe(30);
+    expect(seriesOf(body, "worker.invocations")[indexOf(body, hour)]).toBeNull();
   });
 
   it("returns only the collector runs inside an explicit window", async () => {
@@ -358,5 +358,20 @@ describe("project history", () => {
     const response = await get("/projects/stuff/history?range=1h&kind=collector");
     const body = await readFrame(response) as { runs: { atMs: number; ok: boolean; detail: string }[] };
     expect(body.runs).toEqual([{ atMs: NOW - 60_000, ok: false, detail: "collector_failed", rowsRead: 0, durationMs: 1 }]);
+  });
+});
+
+describe("coarse history coverage", () => {
+  it("keeps one measured five-minute cell at fine resolution and withholds its incomplete coarse cells", async () => {
+    const start = Math.floor((NOW - 2 * 24 * HOUR_MS) / (15 * 60_000)) * 15 * 60_000;
+    await record(metricRun(NOW - BUCKET, [{ metric: "worker.invocations", bucketMs: start, value: 10 }]));
+    const fineResponse = await get(`/projects/stuff/history?from=${start}&to=${start + 15 * 60_000}&kind=worker`);
+    const fine = await readFrame(fineResponse) as Awaited<ReturnType<typeof history>>;
+    expect(seriesOf(fine, "worker.invocations").slice(0, 3)).toEqual([10, null, null]);
+    for (const range of ["7d", "30d"]) {
+      const coarse = await history(range, "worker");
+      const at = Math.floor(start / coarse.stepMs) * coarse.stepMs;
+      expect(seriesOf(coarse, "worker.invocations")[indexOf(coarse, at)]).toBeNull();
+    }
   });
 });

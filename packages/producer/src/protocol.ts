@@ -27,7 +27,18 @@ export interface EventError {
   readonly code: string;
 }
 
+export interface ProducerDelivery {
+  readonly id: string;
+  readonly sequence: number;
+  readonly accepted: number;
+  readonly dropped: number;
+  readonly queued: number;
+  readonly startedAtMs: number;
+  readonly atMs: number;
+}
+
 export interface OperationEvent {
+  readonly delivery?: ProducerDelivery;
   readonly schemaVersion: typeof SCHEMA_VERSION;
   readonly eventId: string;
   readonly atMs: number;
@@ -57,6 +68,7 @@ export function workOf(value: Readonly<Record<string, number>>): Readonly<Record
 
 function plainEvent(event: OperationEvent): Record<string, unknown> {
   return {
+    ...(event.delivery === undefined ? {} : { delivery: { id: event.delivery.id, sequence: event.delivery.sequence, accepted: event.delivery.accepted, dropped: event.delivery.dropped, queued: event.delivery.queued, startedAtMs: event.delivery.startedAtMs, atMs: event.delivery.atMs } }),
     schemaVersion: event.schemaVersion,
     eventId: event.eventId,
     atMs: event.atMs,

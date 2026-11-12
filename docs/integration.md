@@ -97,6 +97,7 @@ The body is exactly `{ "events": [...] }` with 1 to 128 events. Each event has
 exactly these fields; an unknown field rejects the whole batch:
 
 | Field | Rule |
+| `delivery` | Optional producer evidence: exactly `id`, `sequence`, `accepted`, `dropped`, `queued`, `startedAtMs`, `atMs`. Counters and times are non-negative safe integers. The sequence starts at 1 and does not exceed accepted. The producer ID identifies one process lifetime. |
 | --- | --- |
 | `schemaVersion` | The integer `1`. |
 | `eventId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`, unique within the batch and the service. |
@@ -215,13 +216,23 @@ Telemetry must never fail or block the application operation that produced it.
 - When Stats is unreachable or slow, events are dropped after the bounded
   retries. There is no disk spool in this version, and the application
   continues. Inspect `dropped`, `sent`, `duplicates`, `batches`, `retries`, and
-  `lastError` from the producer's `stats()`. These counters do not reach Stats:
-  the protocol has no field for them, so a service comparison cannot tell a
-  dropped event from one that never happened. It reports per-work CPU and I/O as
-  per observed work, withholds them for a five-minute bucket with no events
-  while the service was up, and withholds every application metric when the
-  event read is truncated or fails (`docs/architecture.md`, Service comparison).
-  Check `dropped` before trusting a comparison.
+  `lastError` from the producer's `stats()`. Each sent event now carries a
+  `delivery` snapshot. `accepted` counts valid records enqueued in this process
+  lifetime. `sequence` identifies that event within accepted records. `dropped`
+  includes invalid records, queue evictions and exhausted sends. `queued` counts
+  events still waiting after this batch was removed. `atMs` is the batch snapshot
+  time and `startedAtMs` is process start. Retries reuse the same snapshot.
+  Delivery metadata does not change event identity. Replayed event IDs can leave
+  evidence unproven because the original stored snapshot wins.
+  Stats reconciles contiguous sequences and accepted-count changes between
+  checkpoints bracketing a comparison window. Both boundary queues must be
+  empty and dropped must not increase. Missing evidence remains unproven.
+  Completeness covers reported producers, not a producer that never reported.
+  Truncated or failed reads still suppress every application metric.
+- Deploy the compatible observation decoder before upgrading producers. Earlier
+  decoders reject the additive `delivery` field. Existing events without that
+  field remain readable with unproven coverage. The shared
+  `fixtures/observe-ingest/golden-delivery.json` fixes the wire representation.
 - `flush()` and `shutdown()` drain within their bounds and do not throw for a
   dropped batch. Call `shutdown()` before process exit.
 

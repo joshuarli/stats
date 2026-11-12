@@ -100,7 +100,7 @@ export interface WindowCoverage {
   readonly buckets: number;
   readonly bucketsWithEvents: number;
   readonly emptyBucketsWhileUp: number;
-  readonly completeness: "unproven" | "gaps-observed";
+  readonly completeness: "unproven" | "gaps-observed" | "complete";
   readonly unrecorded: readonly UnrecordedCoverageEvidence[];
 }
 
@@ -298,6 +298,34 @@ function serviceUp(buckets: Buckets, atMs: number): boolean {
   return (bucket?.get(`probe.${SERVICE_PROBE_NAME}.up`) ?? 0) > 0 || bucket?.has("service.cpu") === true;
 }
 
+function reconciledDelivery(events: readonly ExternalEventRecord[], bounds: WindowBounds): boolean {
+  if (events.length === 0 || events.some(record => record.event.delivery === undefined)) return false;
+  const producers = new Map<string, ExternalEventRecord[]>();
+  for (const record of events) {
+    const delivery = record.event.delivery!;
+    const group = producers.get(delivery.id) ?? [];
+    group.push(record);
+    producers.set(delivery.id, group);
+  }
+  for (const records of producers.values()) {
+    records.sort((left, right) => left.event.delivery!.sequence - right.event.delivery!.sequence);
+    const deliveries = records.map(record => record.event.delivery!);
+    const first = deliveries[0]!;
+    if (deliveries.some((delivery, index) => {
+      const previous = deliveries[index - 1];
+      return delivery.startedAtMs !== first.startedAtMs || (previous !== undefined && (delivery.accepted < previous.accepted || delivery.dropped < previous.dropped || delivery.atMs < previous.atMs));
+    })) return false;
+    const start = deliveries.filter(delivery => delivery.atMs < bounds.fromMs && delivery.queued === 0).at(-1)
+      ?? (first.sequence === 1 && first.startedAtMs <= bounds.fromMs ? { ...first, accepted: 0, dropped: 0, atMs: first.startedAtMs } : null);
+    const end = deliveries.filter(delivery => delivery.atMs >= bounds.toMs && delivery.queued === 0).at(-1);
+    if (start === null || end === undefined || end.startedAtMs !== start.startedAtMs || end.dropped !== start.dropped) return false;
+    const covered = deliveries.filter(delivery => delivery.sequence > start.accepted && delivery.sequence <= end.accepted);
+    if (covered.length !== end.accepted - start.accepted || covered.some((delivery, index) => delivery.sequence !== start.accepted + index + 1)) return false;
+    if (records.some(record => record.event.atMs < record.event.delivery!.startedAtMs || record.event.atMs > record.event.delivery!.atMs)) return false;
+  }
+  return true;
+}
+
 function windowCoverage(events: readonly ExternalEventRecord[], bounds: WindowBounds, buckets: Buckets): WindowCoverage {
   const withEvents = new Set<number>();
   for (const record of events) {
@@ -308,7 +336,8 @@ function windowCoverage(events: readonly ExternalEventRecord[], bounds: WindowBo
     total += 1;
     if (!withEvents.has(at) && serviceUp(buckets, at)) empty += 1;
   }
-  return { buckets: total, bucketsWithEvents: withEvents.size, emptyBucketsWhileUp: empty, completeness: empty > 0 ? "gaps-observed" : "unproven", unrecorded: UNRECORDED_COVERAGE_EVIDENCE };
+  const complete = reconciledDelivery(events, bounds);
+  return { buckets: total, bucketsWithEvents: withEvents.size, emptyBucketsWhileUp: empty, completeness: complete ? "complete" : empty > 0 ? "gaps-observed" : "unproven", unrecorded: complete ? [] : UNRECORDED_COVERAGE_EVIDENCE };
 }
 
 function comparisonReason(before: WorkMeasurement | undefined, after: WorkMeasurement | undefined): string | undefined {
@@ -376,13 +405,14 @@ function sourceStatuses(input: ServiceComparisonInput, raw: readonly SideValues[
   const successes = work.reduce((total, summary) => total + summary.before.successes + summary.after.successes, 0);
   const applicationMeasured = metrics.some(metric => metric.metric.startsWith("application.") && metric.before !== null && metric.after !== null);
   const gaps = coverage !== null && (coverage.before.completeness === "gaps-observed" || coverage.after.completeness === "gaps-observed");
+  const deliveryComplete = coverage?.before.completeness === "complete" && coverage.after.completeness === "complete";
   const application = suppression !== null
     ? { source: "application" as const, status: "unavailable" as const, detail: suppression.detail }
     : work.length === 0
       ? { source: "application" as const, status: "unavailable" as const, detail: "No application events were reported in either window." }
       : !applicationMeasured
         ? { source: "application" as const, status: "unavailable" as const, detail: "Per-work ratios are unavailable because the comparison windows are not comparable." }
-        : { source: "application" as const, status: "available" as const, detail: `${successes} successful events across ${work.length} ${work.length === 1 ? "operation" : "operations"}; per observed work, ${gaps ? "gaps seen" : "drops and gaps not recorded"}` };
+        : { source: "application" as const, status: "available" as const, detail: `${successes} successful events across ${work.length} ${work.length === 1 ? "operation" : "operations"}; per observed work, ${deliveryComplete ? "delivery reconciled for reported producers" : gaps ? "gaps seen" : "delivery completeness unproven"}` };
   return [
     measured("hosts").length > 0
       ? { source: "hosts", status: "available", detail: hosts }
@@ -452,7 +482,7 @@ export function compareServiceDeployment(input: ServiceComparisonInput): Service
     cgroupUsed
       ? "Host metrics include every process on the host; cgroup metrics cover only the processes in the service's unit. Heuristic signals, not significance tests or proof of causation."
       : "Host rollups include every process on the host, not only this service. Heuristic signals, not significance tests or proof of causation.",
-    "Application latency is measured by the application; a successful event has outcome \"ok\". Application work counts are the application's own measurements, and a missing key makes that ratio unavailable. Service CPU and I/O per work unit are per observed work: producer drops, rejected batches and sequence gaps are not recorded, and a five-minute bucket with no events while the service was up withholds them.",
+    "Application latency is measured by the application; a successful event has outcome \"ok\". Application work counts are the application's own measurements, and a missing key makes that ratio unavailable. Service CPU and I/O per work unit are per observed work: completeness requires all reported producer sessions to reconcile their accepted, dropped, queued and sequence evidence through the window. Legacy or incomplete evidence remains unproven; this cannot discover a producer that never reported. A five-minute bucket with no events while the service was up withholds ratios unless delivery reconciles.",
     "Probe times are not user-request latency."
   ];
   return {

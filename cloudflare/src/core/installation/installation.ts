@@ -352,7 +352,7 @@ export class InstallationCore {
       kinds = [kind];
     }
     const workloadClass = projectHistoryClass(projectHistorySource(query, kinds, now), kinds);
-    const etag = historyEtag(`project:${project.id}`, version, windowKey, kinds.join("+"));
+    const etag = historyEtag(`project:coverage-v2:${project.id}`, version, windowKey, kinds.join("+"));
     if (etagMatches(request, etag)) {
       run.describe(() => ({ operation: "project.history", synthetic: false, workloadClass, work: { points: 0, cells: 0, outputBytes: 0, cache: "hit-304" } }));
       return notModified(etag);
@@ -778,7 +778,7 @@ export class InstallationCore {
     let applicationProblem: string | null = this.ports.readApplicationEvents === undefined ? "this target has no application telemetry reader" : null;
     if (this.ports.readApplicationEvents !== undefined) {
       try {
-        const read = await this.ports.readApplicationEvents(name, bounds.before.fromMs, bounds.after.toMs);
+        const read = await this.ports.readApplicationEvents(name, Math.max(0, bounds.before.fromMs - DEPLOYMENT_BUCKET_MS), Math.min(now, bounds.after.toMs + DEPLOYMENT_BUCKET_MS));
         applicationEvents = read.events;
         applicationTruncated = read.truncated;
       } catch {

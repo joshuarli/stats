@@ -49,12 +49,14 @@ const unitArgs = ["--experimental-strip-types", "--test",
   "test/deployments/core.test.ts", "test/deployments/github.test.ts", "test/deployments/marker.test.ts", "test/deployments/routes.test.ts",
   "test/cost/pricing.test.ts",
   "test/scripts/capture.test.ts", "test/scripts/dashboard-smoke.test.ts", "test/scripts/receipts.test.ts", "test/scripts/signals.test.ts",
+  "test/scripts/installer.test.ts", "test/scripts/node-replacement.test.ts", "test/scripts/provision.test.ts",
   "test/observe/budget.test.ts", "test/observe/cloudflare-tail.test.ts", "test/observe/count-buffer.test.ts", "test/observe/determinism.test.ts", "test/observe/nanoshop.test.ts", "test/observe/policies.test.ts", "test/observe/pricing.test.ts", "test/observe/store.test.ts", "test/observe/tail.test.ts",
+  "test/node/observations.test.ts", "test/node/storage-fallback.test.ts", "test/observe/ingest.test.ts", "test/producer/producer.test.ts",
   "test/node/assets.test.ts", "test/node/http-parity.test.ts", "test/node/observe-ingest.test.ts", "test/node/server.test.ts"
 ];
 
 const cliArgs = ["--experimental-strip-types", "--test",
-  "test/cli/check.test.ts", "test/cli/compare.test.ts", "test/cli/config.test.ts", "test/cli/contract.test.ts", "test/cli/cost.test.ts", "test/cli/curl.test.ts", "test/cli/deploy.test.ts", "test/cli/export.test.ts", "test/cli/health.test.ts", "test/cli/help.test.ts", "test/cli/history.test.ts", "test/cli/hosts.test.ts", "test/cli/observe.test.ts", "test/cli/observe-verify.test.ts", "test/cli/routes.test.ts", "test/cli/service-admin.test.ts", "test/cli/service-credentials.test.ts", "test/cli/service-mark.test.ts", "test/cli/snapshot.test.ts", "test/cli/target.test.ts", "test/cli/verify.test.ts"
+  "test/cli/check.test.ts", "test/cli/compare.test.ts", "test/cli/config.test.ts", "test/cli/contract.test.ts", "test/cli/cost.test.ts", "test/cli/curl.test.ts", "test/cli/deploy.test.ts", "test/cli/export.test.ts", "test/cli/health.test.ts", "test/cli/help.test.ts", "test/cli/history.test.ts", "test/cli/hosts.test.ts", "test/cli/observe.test.ts", "test/cli/observe-verify.test.ts", "test/cli/routes.test.ts", "test/cli/service-admin.test.ts", "test/cli/service-credentials.test.ts", "test/cli/service-mark.test.ts", "test/cli/snapshot.test.ts", "test/cli/target.test.ts", "test/cli/verify.test.ts", "test/cli/verify-service.test.ts"
 ];
 
 const observeE2eArgs = ["--experimental-strip-types", "--test",

@@ -2,10 +2,10 @@ import { MAX_FUTURE_SKEW_MS, RETENTION_MS } from "../core/limits.ts";
 import {
   ERROR_CODE, EVENT_ID, HOST, INGEST_SCHEMA_VERSION, INSTANCE, MAX_DURATION_MS, MAX_EVENTS, MAX_WORK_MEASUREMENTS, MAX_WORK_VALUE,
   OPERATION, OUTCOME, RELEASE, SERVICE_SLUG, SPAN_ID, SUCCESS_OUTCOME, TRACE_ID, WORK_KEY,
-  type ExternalBatch, type ExternalDecode, type ExternalDecodeCode, type ExternalError, type ExternalEvent, type ExternalTrace
+  type ProducerDelivery, type ExternalBatch, type ExternalDecode, type ExternalDecodeCode, type ExternalError, type ExternalEvent, type ExternalTrace
 } from "./model.ts";
 
-const EVENT_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace", "error"] as const;
+const EVENT_KEYS = ["delivery", "schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace", "error"] as const;
 const REQUIRED_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service"] as const;
 const TRACE_KEYS = ["traceId", "spanId"] as const;
 const ERROR_KEYS = ["code"] as const;
@@ -45,6 +45,17 @@ function errorOf(value: unknown): ExternalError | null {
   return typeof code === "string" && ERROR_CODE.test(code) ? { code } : null;
 }
 
+function deliveryOf(value: unknown): ProducerDelivery | null {
+  if (!isRecord(value) || Object.keys(value).sort().join(",") !== "accepted,atMs,dropped,id,queued,sequence,startedAtMs") return null;
+  if (typeof value["id"] !== "string" || !EVENT_ID.test(value["id"])) return null;
+  for (const key of ["sequence", "accepted", "dropped", "queued", "startedAtMs", "atMs"]) {
+    const count = value[key];
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) return null;
+  }
+  const delivery = value as unknown as ProducerDelivery;
+  return delivery.sequence > 0 && delivery.sequence <= delivery.accepted && delivery.queued <= delivery.accepted && delivery.startedAtMs > 0 && delivery.atMs >= delivery.startedAtMs ? delivery : null;
+}
+
 function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): ExternalDecode | ExternalEvent {
   if (!isRecord(value)) return fail("invalid_event", "each event must be an object");
   const unknown = Object.keys(value).find(key => !(EVENT_KEYS as readonly string[]).includes(key));
@@ -81,8 +92,11 @@ function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): Ext
   const error = raised === undefined ? undefined : errorOf(raised);
   if (error === null) return fail("invalid_error", "error must be exactly { code } with 1-64 lowercase letters, digits, or _.- starting with a letter");
   if (error !== undefined && outcome === SUCCESS_OUTCOME) return fail("invalid_error", `error is allowed only when outcome is not ${SUCCESS_OUTCOME}`);
+  const delivery = value["delivery"] === undefined ? undefined : deliveryOf(value["delivery"]);
+  if (delivery === null || (delivery !== undefined && delivery.atMs > options.nowMs + MAX_FUTURE_SKEW_MS)) return fail("invalid_event", "invalid producer delivery evidence");
   seen.add(eventId);
   return {
+    ...(delivery === undefined ? {} : { delivery }),
     schemaVersion: INGEST_SCHEMA_VERSION,
     eventId,
     atMs,
@@ -128,6 +142,7 @@ export function decodeBatch(text: string, options: DecodeOptions): ExternalDecod
 
 function plainEvent(event: ExternalEvent): Record<string, unknown> {
   return {
+    ...(event.delivery === undefined ? {} : { delivery: { id: event.delivery.id, sequence: event.delivery.sequence, accepted: event.delivery.accepted, dropped: event.delivery.dropped, queued: event.delivery.queued, startedAtMs: event.delivery.startedAtMs, atMs: event.delivery.atMs } }),
     schemaVersion: event.schemaVersion,
     eventId: event.eventId,
     atMs: event.atMs,

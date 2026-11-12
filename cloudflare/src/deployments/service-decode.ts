@@ -136,7 +136,7 @@ function workSummary(value: unknown): WorkSummary {
 function windowCoverage(value: unknown): WindowCoverage {
   const item = record(value);
   const completeness = item["completeness"];
-  if (completeness !== "unproven" && completeness !== "gaps-observed") throw new Error("invalid application completeness");
+  if (completeness !== "unproven" && completeness !== "gaps-observed" && completeness !== "complete") throw new Error("invalid application completeness");
   const unrecorded = list(item["unrecorded"], UNRECORDED_COVERAGE_EVIDENCE.length, raw => {
     const known = UNRECORDED_COVERAGE_EVIDENCE.find(entry => entry === raw);
     if (known === undefined) throw new Error("invalid unrecorded coverage evidence");

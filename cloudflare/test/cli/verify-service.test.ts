@@ -335,3 +335,31 @@ await test("a clean window compares per-work CPU as before but labels it per obs
   assert.equal(verdict.document.payload?.verdict, "improved");
   assert.ok(verdict.document.payload?.reasons.some(reason => reason.code === "observed-work" && /producer-drops/u.test(reason.message)));
 });
+
+await test("application completeness requires a reconciled producer lifetime through the window", () => {
+  const bounds = comparisonBounds(CANDIDATE.atMs, "1h");
+  const events = [
+    applicationEvent("delivery-1", bounds.before.fromMs, "save", 1, {}),
+    applicationEvent("delivery-2", bounds.after.toMs, "save", 1, {})
+  ].map((record, index) => ({ ...record, event: { ...record.event, delivery: { id: "producer-1", sequence: index + 1, accepted: 2, dropped: 0, queued: 0, startedAtMs: bounds.before.fromMs, atMs: bounds.after.toMs } } }));
+  const compare = (records: readonly ExternalEventRecord[]) => comparisonFor(CANDIDATE, AT + 3 * HOUR, 100, 100, "probed", records);
+  const complete = compare(events);
+  assert.equal(complete.applicationCoverage?.before.completeness, "complete");
+  assert.equal(complete.applicationCoverage?.after.completeness, "complete");
+  assert.deepEqual(complete.applicationCoverage?.after.unrecorded, []);
+  assert.equal(decodeServiceComparison(complete, CANDIDATE.id, "1h").applicationCoverage?.after.completeness, "complete");
+  assert.notEqual(compare(events.slice(1)).applicationCoverage?.after.completeness, "complete");
+  for (const patch of [{ dropped: 1 }, { queued: 1 }, { accepted: 3 }, { atMs: bounds.after.toMs - 1 }, { startedAtMs: bounds.before.fromMs + 1 }]) {
+    const changed = events.map(record => ({ ...record, event: { ...record.event, delivery: { ...record.event.delivery, ...patch } } }));
+    assert.notEqual(compare(changed).applicationCoverage?.after.completeness, "complete", JSON.stringify(patch));
+  }
+});
+
+await test("verify preserves reconciled coverage without reporting missing producer evidence", async () => {
+  const body = withApplicationRead({}, completeEvents());
+  assert.ok(body.applicationCoverage !== null);
+  const complete = { ...body, applicationCoverage: { before: { ...body.applicationCoverage.before, completeness: "complete", unrecorded: [] }, after: { ...body.applicationCoverage.after, completeness: "complete", unrecorded: [] } } };
+  const verdict = await verify(complete, [], policyFile("reconciled.json", WORK_POLICY));
+  assert.notEqual(verdict.document.payload?.verdict, "insufficient-data");
+  assert.equal(verdict.document.payload?.reasons.some(reason => reason.code === "observed-work"), false);
+});

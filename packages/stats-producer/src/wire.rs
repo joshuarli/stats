@@ -19,7 +19,22 @@ pub struct WireError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WireDelivery {
+    pub id: String,
+    pub sequence: u64,
+    pub accepted: u64,
+    pub dropped: u64,
+    pub queued: u64,
+    #[deser(rename = "startedAtMs")]
+    pub started_at_ms: u64,
+    #[deser(rename = "atMs")]
+    pub at_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireEvent {
+    #[deser(default, skip_serializing_if = Option::is_none)]
+    pub delivery: Option<WireDelivery>,
     #[deser(rename = "schemaVersion")]
     pub schema_version: u8,
     #[deser(rename = "eventId")]
@@ -93,8 +108,17 @@ mod tests {
     }
 
     #[test]
+    fn delivery_evidence_matches_the_shared_fixture() {
+        let golden = include_str!("../../../fixtures/observe-ingest/golden-delivery.json");
+        let batch = decode_batch(golden).unwrap();
+        assert_eq!(batch.events[1].delivery.as_ref().unwrap().sequence, 2);
+        assert_eq!(encode_batch(&batch).unwrap(), golden.trim().as_bytes());
+    }
+
+    #[test]
     fn optional_fields_are_omitted_and_work_is_sorted() {
         let mut event = WireEvent {
+            delivery: None,
             schema_version: 1,
             event_id: "event-1".to_owned(),
             at_ms: 1,

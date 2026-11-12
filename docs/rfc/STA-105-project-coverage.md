@@ -1,6 +1,6 @@
 # STA-105: Preserve project coverage through aggregation
 
-Status: draft
+Status: conservative alternative implemented
 
 ## Summary
 
@@ -105,6 +105,14 @@ Verify both report consumers and incompatible frame/schema handling.
 
 ## Decision
 
-Pending. Recommend explicit coverage with preserved observed subtotals. A
-conservative unavailable result is an acceptable staged fix if it covers both
-live aggregation and legacy hourly data without asserting completeness.
+Use the conservative alternative. A coarse value is available only when every
+constituent fine cell exists for that meter, or retained successful collector
+runs establish every constituent counter interval, including known idle zeros.
+Legacy hourly values have no constituent evidence. They remain unavailable
+unless retained collector evidence establishes the complete counter interval.
+Partial values remain stored, but do not enter frames or cost projections as
+full intervals. A new project history ETag namespace invalidates old cached
+representations. The frame format and both consumers remain unchanged.
+
+Explicit partial subtotals and durable coverage masks remain a possible future
+protocol change. They are not required to prevent false verified coverage.

@@ -159,3 +159,25 @@ await test("the ingest path ignores the peer's Tailscale identity and authentica
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+await test("Node HTTP issue reads and mutations cannot cross service boundaries", async () => {
+  const now = Date.now();
+  const served = await serve(now);
+  try {
+    const credentials = await provision(served.origin);
+    const beta = await fetch(`${served.origin}/api/v1/admin/services`, { method: "POST", headers: { ...login(), "content-type": "application/json" }, body: JSON.stringify({ name: "beta", hostIds: [credentials.hostId] }) });
+    assert.equal(beta.status, 201);
+    const batch = rebasedBatch(now);
+    const failure = { ...batch.events[0]!, outcome: "error", error: { code: "db.timeout" } };
+    assert.equal((await post(served.origin, credentials.ingestToken, JSON.stringify({ events: [failure] }))).status, 202);
+    const read = await fetch(`${served.origin}/api/observe/${OBSERVE_SERVICE}/issues`, { headers: login() });
+    const issues = await read.json() as { items: { fingerprint: string; state: string }[] };
+    const fingerprint = issues.items[0]!.fingerprint;
+    const betaIssues = await fetch(`${served.origin}/api/observe/beta/issues`, { headers: login() });
+    assert.deepEqual((await betaIssues.json() as { items: unknown[] }).items, []);
+    assert.equal((await fetch(`${served.origin}/api/observe/beta/issues/${fingerprint}`, { headers: login() })).status, 404);
+    assert.equal((await fetch(`${served.origin}/api/observe/beta/issues/${fingerprint}/state`, { method: "POST", headers: { ...login(), origin: served.origin, "content-type": "application/json" }, body: JSON.stringify({ state: "resolved" }) })).status, 404);
+    const alpha = await fetch(`${served.origin}/api/observe/${OBSERVE_SERVICE}/issues/${fingerprint}`, { headers: login() });
+    assert.equal((await alpha.json() as { state: string }).state, "open");
+  } finally { await served.close(); }
+});

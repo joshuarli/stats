@@ -56,9 +56,21 @@ sha256_check() {
   elif command -v shasum >/dev/null 2>&1; then
     actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
   else
-    return 0
+    echo "sha256sum or shasum required" >&2
+    return 1
   fi
   [ "$actual" = "$expected" ]
+}
+
+download_verified() {
+  download "$BASE_URL/$BINARY" stats
+  download "$BASE_URL/SHA256SUMS" SHA256SUMS
+  EXPECTED=$(awk -v asset="$BINARY" '$2 == asset { count++; digest=$1 } END { if (count != 1 || length(digest) != 64 || digest ~ /[^0-9a-fA-F]/) exit 1; print tolower(digest) }' SHA256SUMS) || {
+    echo "SHA256 manifest must contain exactly one valid asset digest" >&2
+    exit 1
+  }
+  sha256_check stats "$EXPECTED" || { echo "SHA256 verification failed" >&2; exit 1; }
+  echo "SHA256 verified"
 }
 
 echo "Installing stats $VERSION"
@@ -74,22 +86,11 @@ case "$OS" in
     
     BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
     TMPDIR_INSTALL=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR_INSTALL"' 0
     cd "$TMPDIR_INSTALL"
     
-    download "$BASE_URL/$BINARY" stats
-    download "$BASE_URL/SHA256SUMS" SHA256SUMS 2>/dev/null || true
-    
-    if [ -f SHA256SUMS ]; then
-      EXPECTED=$(grep " $BINARY$" SHA256SUMS | awk '{print $1}')
-      if [ -n "$EXPECTED" ]; then
-        if ! sha256_check stats "$EXPECTED"; then
-          echo "SHA256 verification failed" >&2
-          exit 1
-        fi
-        echo "SHA256 verified"
-      fi
-    fi
-    
+    download_verified
+
     chmod +x stats
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
     
@@ -179,22 +180,11 @@ EOF
     
     BASE_URL="https://github.com/$REPO/releases/download/$VERSION"
     TMPDIR_INSTALL=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR_INSTALL"' 0
     cd "$TMPDIR_INSTALL"
     
-    download "$BASE_URL/$BINARY" stats
-    download "$BASE_URL/SHA256SUMS" SHA256SUMS 2>/dev/null || true
-    
-    if [ -f SHA256SUMS ]; then
-      EXPECTED=$(grep " $BINARY$" SHA256SUMS | awk '{print $1}')
-      if [ -n "$EXPECTED" ]; then
-        if ! sha256_check stats "$EXPECTED"; then
-          echo "SHA256 verification failed" >&2
-          exit 1
-        fi
-        echo "SHA256 verified"
-      fi
-    fi
-    
+    download_verified
+
     chmod +x stats
     mkdir -p "$HOME/.local/bin" "$HOME/.config/stats"
     install -m 0755 stats "$HOME/.local/bin/stats"

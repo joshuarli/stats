@@ -154,14 +154,25 @@ async function collectProject(
     ...parseDurableObjectRows(durableObjects),
     ...parseR2OperationRows(operations),
     ...r2Storage,
-    ...latestAt(parseR2StorageRows(heldR2), bucketMs),
+    ...latestAt(parseR2StorageRows(latestStorageRows(heldR2, "bucketName")), bucketMs),
     ...parseD1Rows(d1),
     ...parseD1StatementRows(d1Statements),
     ...d1StoragePoints,
-    ...latestAt(parseD1StorageRows(heldD1), bucketMs),
+    ...latestAt(parseD1StorageRows(latestStorageRows(heldD1, "databaseId")), bucketMs),
     ...probes,
   ];
   return { project: project.id, points };
+}
+
+function latestStorageRows(rows: readonly unknown[], resource: string): unknown[] {
+  const latest = new Map<unknown, Record<string, unknown>>();
+  for (const row of rows) {
+    if (typeof row !== "object" || row === null || Array.isArray(row)) throw new TypeError("invalid storage observation");
+    const record = row as Record<string, unknown>;
+    const prior = latest.get(record[resource]);
+    if (prior === undefined || String(record["bucket"]) > String(prior["bucket"])) latest.set(record[resource], record);
+  }
+  return [...latest.values()];
 }
 
 function latestAt(points: readonly MetricPoint[], bucketMs: number): MetricPoint[] {

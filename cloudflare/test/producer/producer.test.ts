@@ -81,7 +81,10 @@ await test("the producer encodes the golden frame exactly and accepts a duplicat
   const server = await serve((request, _index, response) => {
     assert.equal(request.url, `/ingest/observe/v1/${SERVICE}/batches`);
     assert.equal(request.headers.authorization, "Bearer ingest-token");
-    assert.equal(request.body, golden);
+    const sent = decodeBatch(request.body, { service: SERVICE, nowMs: Date.now() });
+    assert.ok(sent.ok);
+    assert.deepEqual(sent.batch.events.map(event => event.delivery?.sequence), [1, 2]);
+    assert.equal(encodeBatch({ events: sent.batch.events.map(({ delivery: _delivery, ...event }) => event) }), golden);
     json(response, { accepted: 0, duplicate: 2 });
   });
   try {
@@ -133,7 +136,9 @@ await test("the producer encodes the failing golden frame with its error codes e
     }
     await producer.flush();
     assert.equal(server.received.length, 1);
-    assert.equal(server.received[0]!.body, golden);
+    const sent = decodeBatch(server.received[0]!.body, { service: SERVICE, nowMs: Date.now() });
+    assert.ok(sent.ok);
+    assert.equal(encodeBatch({ events: sent.batch.events.map(({ delivery: _delivery, ...event }) => event) }), golden);
     assert.equal(encodeBatch(decoded.batch), golden);
   } finally {
     await server.close();
@@ -298,4 +303,23 @@ await test("an invalid event is dropped without a request", async () => {
   } finally {
     await server.close();
   }
+});
+
+await test("large events split into bounded batches including delivery snapshots", async () => {
+  const server = await serve((request, _index, response) => {
+    assert.ok(new TextEncoder().encode(request.body).byteLength <= 64 * 1024);
+    const decoded = decodeBatch(request.body, { service: SERVICE, nowMs: Date.now() });
+    assert.ok(decoded.ok);
+    assert.ok(decoded.batch.events.every(event => event.delivery !== undefined));
+    json(response, { accepted: decoded.batch.events.length, duplicate: 0 });
+  });
+  const producer = createProducer(configure(server.endpoint, { batchSize: 128 }));
+  try {
+    const work = Object.fromEntries(Array.from({ length: 16 }, (_, index) => [`key${index}${"a".repeat(25)}`, 1_000_000_000_000]));
+    for (let index = 0; index < 128; index++) producer.record({ operation: "save", outcome: "ok", durationMs: 1, work });
+    await producer.flush();
+    assert.equal(producer.stats().sent, 128);
+    assert.equal(producer.stats().dropped, 0);
+    assert.ok(server.received.length > 1);
+  } finally { await producer.shutdown(); await server.close(); }
 });

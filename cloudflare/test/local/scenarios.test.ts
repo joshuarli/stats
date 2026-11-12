@@ -186,9 +186,9 @@ await test("scenario G: one golden batch reads back normalized on workerd and No
   const directory = mkdtempSync(join(SCRATCH, "s13-node-"));
   const installation = openNodeInstallation({ path: join(directory, "stats.sqlite"), projects: "[]", clock: { now: () => NOW } });
   try {
-    const ingested = await installation.observe.ingestExternal(SERVICE, decoded.batch.events);
+    const ingested = await installation.observe.forService(SERVICE).ingestExternal(SERVICE, decoded.batch.events);
     assert.equal(ingested.ok, true);
-    const nodeRecords = await installation.observe.external(SERVICE, { fromMs: NOW - 300_000, toMs: NOW });
+    const nodeRecords = await installation.observe.forService(SERVICE).external(SERVICE, { fromMs: NOW - 300_000, toMs: NOW });
     assert.deepEqual(nodeRecords.map(record => record.event), cloudflareEvents);
     assert.deepEqual(cloudflareEvents, payload.events);
   } finally {

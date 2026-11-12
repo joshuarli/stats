@@ -58,7 +58,8 @@ export function decideService(policy: ServicePolicy, comparison: ServiceComparis
     const { before, after } = comparison.applicationCoverage;
     reasons.push({ code: "application-gap", message: `${metricName(policy)}: ${before.emptyBucketsWhileUp} of ${before.buckets} before and ${after.emptyBucketsWhileUp} of ${after.buckets} after five-minute buckets had no application events while the service was up` });
   }
-  if (row?.basis === "observed-work" && target.verdict !== "insufficient-data") reasons.push({ code: "observed-work", message: `${metricName(policy)} divides by observed work; ${comparison.applicationCoverage?.after.unrecorded.join(", ") ?? "producer drops"} are not recorded, so completion is unproven` });
+  const deliveryComplete = comparison.applicationCoverage?.before.completeness === "complete" && comparison.applicationCoverage.after.completeness === "complete";
+  if (row?.basis === "observed-work" && target.verdict !== "insufficient-data" && !deliveryComplete) reasons.push({ code: "observed-work", message: `${metricName(policy)} divides by observed work; ${comparison.applicationCoverage?.after.unrecorded.join(", ") ?? "producer drops"} are not recorded, so completion is unproven` });
   if (row?.reason !== undefined) reasons.push({ code: "target-unavailable", message: `${metricName(policy)}: ${row.reason}` });
   if (target.verdict === "insufficient-data") {
     const status = comparison.sources.find(item => item.source === sourceOf(policy));

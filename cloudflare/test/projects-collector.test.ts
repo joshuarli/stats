@@ -199,7 +199,7 @@ describe("collector", () => {
     const analytics: AnalyticsQuery = {
       async query(request) {
         seen.push(request.query);
-        const daily = request.query.includes("toStartOfDay");
+        const daily = request.query.includes("ORDER BY");
         if (request.query.includes("d1Storage")) {
           return { data: daily ? [{ databaseId: database, bucket: "2026-10-29 00:00:00", size_bytes: 100 }, { databaseId: database, bucket: "2026-10-30 00:00:00", size_bytes: 116_154_370 }] : [], statistics: { rows_read: 2 } };
         }
@@ -212,7 +212,7 @@ describe("collector", () => {
     const store = stub();
     const config = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: ["quiet-bucket"], durableObjectNamespaces: [], d1Databases: [database], probes: [] };
     await runCollector({ analytics, store, projectsJson: JSON.stringify([config]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
-    expect(seen.filter((query) => query.includes("toStartOfDay"))).toHaveLength(2);
+    expect(seen.filter((query) => query.includes("ORDER BY") && /states\.(r2CombinedStorage|d1Storage)/u.test(query))).toHaveLength(2);
     await inside(store, (_sql, storage) => {
       const d1 = readMetricHistory(new CloudflareSql(storage), config, { range: "1h" }, "d1", NOW).series.find((series) => series.metric === `d1.${database}.storageBytes`);
       expect((d1?.values ?? []).filter((value) => value !== null)).toEqual([116_154_370]);
@@ -232,7 +232,7 @@ describe("collector", () => {
     };
     const config = { id: "memories", name: "memories", worker: "memories", workerBilling: "requests-and-cpu" as const, buckets: [], durableObjectNamespaces: [], d1Databases: ["9870c4da-3758-4f0c-ab6d-2372eb34009b"], probes: [] };
     await runCollector({ analytics, store: stub(), projectsJson: JSON.stringify([config]), storeWorker: "stats", now: NOW, probeFetch: noProbes });
-    expect(seen.some((query) => query.includes("toStartOfDay"))).toBe(false);
+    expect(seen.some((query) => query.includes("ORDER BY") && /states\.(r2CombinedStorage|d1Storage)/u.test(query))).toBe(false);
   });
 
   it("records a failed run, writes no metrics, logs failing query, and rethrows", async () => {

@@ -30,7 +30,18 @@ export interface ExternalError {
   readonly code: string;
 }
 
+export interface ProducerDelivery {
+  readonly id: string;
+  readonly sequence: number;
+  readonly accepted: number;
+  readonly dropped: number;
+  readonly queued: number;
+  readonly startedAtMs: number;
+  readonly atMs: number;
+}
+
 export interface ExternalEvent {
+  readonly delivery?: ProducerDelivery;
   readonly schemaVersion: typeof INGEST_SCHEMA_VERSION;
   readonly eventId: string;
   readonly atMs: number;

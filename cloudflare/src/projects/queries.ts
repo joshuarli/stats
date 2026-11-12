@@ -206,11 +206,11 @@ export function r2StorageLatestQuery(buckets: readonly string[], startMs: number
   const names = bucketParams(buckets);
   return {
     query: [
-      "SELECT bucketName, toStartOfDay(usageReportTimestamp) AS bucket,",
-      "MAX(payloadSizeBytes) AS storage_bytes, MAX(objectCount) AS objects",
+      "SELECT bucketName, usageReportTimestamp AS bucket,",
+      "payloadSizeBytes AS storage_bytes, objectCount AS objects",
       "FROM states.r2CombinedStorage",
       `WHERE bucketName IN (${names.placeholders}) AND usageReportTimestamp >= $start`,
-      "GROUP BY bucketName, toStartOfDay(usageReportTimestamp)",
+      "ORDER BY usageReportTimestamp DESC",
       `LIMIT ${ROW_LIMIT}`,
     ].join(" "),
     params: { ...names.params, start: isoStart(startMs) },
@@ -221,10 +221,10 @@ export function d1StorageLatestQuery(databases: readonly string[], startMs: numb
   const ids = d1Params(databases);
   return {
     query: [
-      "SELECT databaseId, toStartOfDay(timestamp) AS bucket, MAX(databaseSizeBytes) AS size_bytes",
+      "SELECT databaseId, timestamp AS bucket, databaseSizeBytes AS size_bytes",
       "FROM states.d1Storage",
       `WHERE databaseId IN (${ids.placeholders}) AND timestamp >= $start`,
-      "GROUP BY databaseId, toStartOfDay(timestamp)",
+      "ORDER BY timestamp DESC",
       `LIMIT ${ROW_LIMIT}`,
     ].join(" "),
     params: { ...ids.params, start: isoStart(startMs) },

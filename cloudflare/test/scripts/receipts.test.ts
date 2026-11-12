@@ -1,3 +1,5 @@
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -71,4 +73,16 @@ await test("an unchanged host that keeps uploading reports unchanged", async () 
   assert.equal(outcome.code, 0);
   assert.match(outcome.stdout, /threadripper: unchanged/u);
   assert.ok(outcome.log.filter(line => line.startsWith("curl")).length >= 3);
+});
+
+await test("rollback restores and verifies the remote binary without a local artifact", async () => {
+  await withWorkspace(async workspace => {
+    stubs(workspace);
+    rmSync(join(workspace.tmp, "../../agent/dist"), { recursive: true, force: true });
+    const outcome = await workspace.run("deploy-host.sh", ["threadripper", "--rollback"], { STUB_NEW_AGENT_UPLOADS: "yes" });
+    assert.equal(outcome.code, 0, outcome.stderr);
+    assert.match(outcome.stdout, /rolled back/u);
+    assert.ok(outcome.log.some(line => line.includes("stats.prev /usr/local/bin/stats.new")));
+    assert.ok(outcome.log.filter(line => line.startsWith("curl")).length >= 3);
+  });
 });

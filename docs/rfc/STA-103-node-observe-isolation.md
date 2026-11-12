@@ -1,6 +1,6 @@
 # STA-103: Isolate Node observations by service
 
-Status: draft
+Status: implemented with conservative legacy quarantine
 
 ## Summary
 
@@ -86,6 +86,17 @@ Keep the Cloudflare per-object behavior and auth rejection paths unchanged.
 
 ## Decision
 
-Pending. Recommend a service-bound registry with one SQLite observation store
-per service. The implementation must resolve the migration and lifecycle
-questions, not only make the issue-list reproduction pass.
+Use one SQLite file per service under `stats.sqlite.observe`, with a hard limit
+of 256 open stores. The installation lock protects the registry. Each file also
+holds an exclusive writer lock. The registry owns startup cleanup, expiry timers
+and shutdown. API routing binds the store before executing observation operations.
+
+Migration copies external events and rate windows by service. Application issue
+fingerprints include service identity, so retained coded events establish which
+issues and occurrences can move. The copy preserves issue state and timestamps.
+A destination transaction records completion together with imported rows.
+The source tables remain intact in `stats.sqlite`, including artifacts, rollouts,
+counts, health and other legacy rows without proven ownership. These rows are
+unavailable through service APIs and remain recoverable for inspection.
+
+Back up and restore the entire data directory while the server is stopped.

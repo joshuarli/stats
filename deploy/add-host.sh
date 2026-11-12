@@ -256,8 +256,13 @@ else
   esac
 fi
 
-jaq -n --arg endpoint "$base" --arg hostId "$host_id" --arg tokenFile "$remote_token" \
-  '{endpoint:$endpoint,hostId:$hostId,tokenFile:$tokenFile}' > "$work/agent.json"
+if [ -n "$remote_host_id" ]; then
+  jaq --arg endpoint "$base" --arg hostId "$host_id" --arg tokenFile "$remote_token" \
+    '. + {endpoint:$endpoint,hostId:$hostId,tokenFile:$tokenFile}' "$work/remote-agent.json" > "$work/agent.json"
+else
+  jaq -n --arg endpoint "$base" --arg hostId "$host_id" --arg tokenFile "$remote_token" \
+    '{endpoint:$endpoint,hostId:$hostId,tokenFile:$tokenFile}' > "$work/agent.json"
+fi
 
 case "$platform" in
   launchd) sed "s|HOME_DIR|$home|g" "$plist_source" > "$work/unit" ;;
