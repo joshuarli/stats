@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
@@ -89,7 +90,7 @@ async function start(): Promise<void> {
   const response = await page.request.get(`${origin}/api/v1/hosts`);
   assert.equal(response.status(), 200);
   const hosts = await response.json() as { hosts: unknown[] };
-  assert.ok(hosts.hosts.length > 0);
+  assert.equal(hosts.hosts.length, 1);
 }
 
 async function stop(): Promise<void> {
@@ -119,15 +120,13 @@ try {
     rmSync(state, { recursive: true, force: true });
     if (!baseline) rmSync(resolve(root, "../.work/tmp/builds"), { recursive: true, force: true });
     for (const path of [".cloudflare/output", "observe-worker/.cloudflare/output"]) rmSync(join(root, path), { recursive: true, force: true });
-    await trial("cold-ready", async () => { const compilations = baseline ? await build() : 0; await start(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
+    await trial("cold-ready", async () => { const compilations = baseline ? await build() : 0; await start(); await page.goto(origin); await page.getByRole("table", { name: "Fleet hosts" }).waitFor(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
     await stop();
-    await trial("warm-ready", async () => { const compilations = baseline ? await build() : 0; await start(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
+    await trial("warm-ready", async () => { const compilations = baseline ? await build() : 0; await start(); await page.goto(origin); await page.getByRole("table", { name: "Fleet hosts" }).waitFor(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
     const processes = execFileSync("ps", ["-axo", "pid=,ppid=,rss="], { encoding: "utf8" }).trim().split("\n").map(line => line.trim().split(/\s+/u).map(Number));
     const selected = new Set([running!.child.pid!]);
     for (let previous = -1; previous !== selected.size;) { previous = selected.size; for (const [pid, parent] of processes) if (selected.has(parent!)) selected.add(pid!); }
     memory.push({ processes: selected.size, rssKiB: processes.filter(([pid]) => selected.has(pid!)).reduce((total, row) => total + row[2]!, 0) });
-    await page.goto(origin);
-    await page.getByRole("table", { name: "Fleet hosts" }).waitFor();
     const marker = `r${run}`;
     await trial("frontend-edit", async () => {
       const previous = compiled(readFileSync(running!.logPath, "utf8"));
@@ -164,7 +163,7 @@ try {
     const times = selected.map(result => result.elapsedMs).sort((a, b) => a - b);
     return { scenario, runs: times.length, medianMs: times[Math.floor(times.length / 2)], minMs: times[0], maxMs: times.at(-1), compilations: selected.map(result => result.compilations), tests: selected.map(result => result.tests) };
   });
-  const report = { phase: values.phase, ...doctor(root), buildEnvironment: { STATS_DOMAIN: process.env["STATS_DOMAIN"] }, fixtureGeneration: "committed fixtures; generation excluded; cold readiness includes seeding a new state directory", memory, memoryScope: "warm development process and descendants; browser and measurement driver excluded", frontendMode: baseline ? "manual build and restart" : "HMR", failures: 0, scenarios, results };
+  const report = { phase: values.phase, ...doctor(root), harnessSha256: createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex"), driverRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: originalRepo, encoding: "utf8" }).trim(), readinessScope: "server readiness, authenticated seeded API, and visible Fleet hosts table", buildEnvironment: { STATS_DOMAIN: process.env["STATS_DOMAIN"] }, fixtureGeneration: "committed fixtures; generation excluded; cold readiness includes seeding a new state directory", memory, memoryScope: "warm development process and descendants; browser and measurement driver excluded", frontendMode: baseline ? "manual build and restart" : "HMR", failures: 0, scenarios, results };
   const output = JSON.stringify(report, null, 2);
   if (values.out !== undefined) writeFileSync(values.out, `${output}\n`);
   console.log(output);
