@@ -431,14 +431,10 @@ test("live, paused, and zoomed states respect the 15-second poll boundary and do
 
   await page.goto("/#/");
   await expect(page.getByRole("table", { name: "Fleet hosts" })).toBeVisible();
-  expect(perHostCalls.get(HOST_A)).toBe(1);
-  expect(perHostCalls.get(HOST_B)).toBe(1);
-  expect(perHostCalls.get(HOST_C)).toBe(1);
+  await expect.poll(() => [HOST_A, HOST_B, HOST_C].map(id => perHostCalls.get(id))).toEqual([1, 1, 1]);
 
   await page.clock.runFor(15_000);
-  await expect.poll(() => perHostCalls.get(HOST_A)).toBe(2);
-  expect(perHostCalls.get(HOST_B)).toBe(2);
-  expect(perHostCalls.get(HOST_C)).toBe(2);
+  await expect.poll(() => [HOST_A, HOST_B, HOST_C].map(id => perHostCalls.get(id))).toEqual([2, 2, 2]);
 
   let historyCalls = 0;
   await page.route("**/api/v1/hosts/*/history*", async route => {
