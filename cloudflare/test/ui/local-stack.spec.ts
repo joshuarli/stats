@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { accessToken } from "../access-token.ts";
 import { dollarsPrecise } from "../../src/client/format.ts";
 import { BUCKET_MS } from "../../src/projects/queries.ts";
@@ -8,8 +8,8 @@ import { scenario, type Mode } from "../../local/scenario.ts";
 import { addHost, ingestFixture } from "../../local/seed.ts";
 import { ACCESS_HEADER, cliEnv, productionProjects, startStack, type Stack } from "../../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
+import { ensureBuilds } from "../../scripts/ensure-build.ts";
 
-const PORT = 4177;
 const ANCHORED: Partial<Record<"logs.workersLogs", Mode>> = { "logs.workersLogs": { kind: "late", omitNewestSlots: 12 } };
 
 test.describe.configure({ mode: "serial" });
@@ -39,7 +39,8 @@ async function cliTotal(project: string): Promise<number> {
 }
 
 test.beforeAll(async () => {
-  stack = await startStack({ nowMs: null, port: PORT });
+  const artifacts = await ensureBuilds(["stats", "observe"]);
+  stack = await startStack({ nowMs: null, statsOutput: join(artifacts.find(artifact => artifact.target === "stats")!.output, "v0/workers/default"), observeOutput: join(artifacts.find(artifact => artifact.target === "observe")!.output, "v0/workers/default") });
   const host = await addHost(stack);
   expect(await ingestFixture(stack, host, Date.now() - 60_000)).toBe(200);
   expect(await collect(TICK - 2 * BUCKET_MS, ANCHORED)).toBe("ok");

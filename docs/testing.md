@@ -11,7 +11,7 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
 | `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
 | `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make test` and `make check` do not run it |
-| `make dev-local` | A persistent local stack on `http://127.0.0.1:8789` with state in `.work/local/state`, collecting every five minutes; `make reset-local` deletes that state |
+| `make dev` | An offline UI with frontend HMR, automatic backend rebuild/reload, owned loopback ports and persistent state. `make dev-local` is an alias; see [development](development.md) |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
 | `make bench-local` | Row, statement, and byte counts for ingest and collection on the local stack (see `bench/README.md`) |
 | `make profile-local` | `cloudflare/scripts/profile.mjs` against a `cf`-built Worker output directory: hosts it beside the local stack, drives a workload, and prints per-operation CPU, wall, SQLite rows, R2 operations, and projected cost (see [profiling.md](profiling.md)) |
@@ -29,9 +29,10 @@ Linux before changing them.
 
 ## Local stack
 
-`pnpm run test:local` runs the whole Cloudflare topology in Miniflare with no
-Cloudflare login and no network. It needs `pnpm build` and
-`pnpm run build:observe` first.
+`pnpm run test:local` obtains fresh matching outputs and runs the Cloudflare
+topology in Miniflare without a Cloudflare login. The app-level outbound guard
+rejects undeclared requests. `make integration-local` adds the macOS OS sandbox.
+See [development](development.md) for file/name selectors and the JSON inventory.
 
 - **Topology.** `cloudflare/local/topology.ts` builds the Miniflare workers
   from the built `worker.config.json` of both Workers, the config
@@ -52,15 +53,12 @@ Cloudflare login and no network. It needs `pnpm build` and
   sample horizon. Each compares stored history, `GET /api/v1/projects`, and a
   real `statsctl` process to totals computed from the model, never read back
   from the Worker.
-- **Cross-repository scenarios.** `test/local/scenarios.test.ts` runs A to G
-  from the standardized-deployments campaign. It exercises service creation,
-  ingest, read-back, rotation, marker idempotency, invalid credentials, the
-  shared `fixtures/observe-ingest` batch on workerd and Node, and the real
-  Tansu and Niceforge telemetry tests. It does not require a live deployment:
-  the app checks use their disposable test targets, and the Stats checks use
-  the local stack. Run one scenario directly with
-  `cd cloudflare && node --experimental-strip-types --test test/local/scenarios.test.ts`;
-  `make integration-local` adds the offline sandbox and the browser layer.
+- **Service scenarios.** `test/local/scenarios.test.ts` exercises service
+  creation, ingest, read-back, rotation, marker idempotency, invalid credentials,
+  and the shared `fixtures/observe-ingest` batch on workerd and Node.
+  The real Tansu and Niceforge checks live in `test/external/services.test.ts`.
+  Select `--suite services-external` with prepared `TANSU_DIR` and
+  `NICEFORGE_DIR` checkouts. Those external checks are explicit opt-ins.
 - **Upgrade.** `test/local/upgrade.test.ts` opens state written by the build of
   `a5918ea~1` with the current build. It reads that build from
   `BASELINE_WORKTREE` (default `.work/wt/baseline`) and skips with the build
@@ -245,10 +243,11 @@ Constraints a change to the stack must keep:
   the observe harness wraps the collector per producer. With the clock pinned in
   the past the retention alarm fires repeatedly, so wait for the invocations a
   test caused, never for quiet.
-- **One build at a time.** `make worker-bundle`, `smoke-local`, `agent-e2e`, and
-  `pnpm build` all rewrite `cloudflare/.cloudflare/output/`. Never run two at
-  once or background one; a build killed midway leaves a bundle that answers 500
-  to everything.
+- **Build ownership.** Make, package scripts, selected tests and local commands
+  use `scripts/ensure-build.ts`. It serializes writers per output, builds in a
+  snapshot and publishes complete generations. Independent outputs may build
+  concurrently. Consumers receive matching generation paths. Use the shared
+  entrypoints instead of invoking raw Vite against the conventional output paths.
 - **Parallel browser specs.** `playwright.config.ts` is `fullyParallel`, so a
   spec that binds a fixed port or shares one stack sets
   `test.describe.configure({ mode: "serial" })` and owns its port.
@@ -295,7 +294,7 @@ failure and replacement rollback in the Node deploy script.
 
 `pnpm run test:node` runs the `Installation` core under Node on `node:sqlite`:
 the corpus ingest and history paths, retention, the scheduler, and the SQL
-adapter. Its parity test needs `pnpm build`. It sends every `fixtures/v2` frame
+adapter. Its parity route prepares both Worker artifacts. It sends every `fixtures/v2` frame
 to the built Worker in Miniflare and to the core on `node:sqlite`, and requires
 identical acknowledgment bytes, history frame bytes, ETags, and host rows. Row
 counts are not compared: `node:sqlite` reports table rows changed, not the rows
@@ -306,8 +305,8 @@ Cloudflare bills.
 `pnpm run test:observe` runs the portable core, symbolication, the tail
 reducer, and the `pnpm observe` CLI (against the scenario over local HTTP)
 under Node. `test/observe-e2e/sourcemap.test.ts` maps a throw site in the
-built stats bundle back to the source line that throws. `pnpm run test:observe-e2e` needs `pnpm build` and
-`pnpm run build:observe` first; it loads both bundles into Miniflare with
+built stats bundle back to the source line that throws. `pnpm run test:observe-e2e`
+prepares fresh matching bundles and loads them into Miniflare with
 `stats-observe` as the tail consumer of `stats` and of a small `usr-memories`
 stand-in that publishes marks and one caught error, drives real ingest,
 dashboard, admin, and scheduled traffic, and checks linked traces, grouped

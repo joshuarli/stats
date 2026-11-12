@@ -1,7 +1,10 @@
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { inventory, ROOT, selectTests } from "./test-suites.ts";
 import { processOwner } from "./processes.ts";
+import { ensureBuilds, type BuildTarget } from "./ensure-build.ts";
+import { stageNode } from "./stage-node.ts";
 
 export async function runTests(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: {
@@ -20,13 +23,18 @@ export async function runTests(args = process.argv.slice(2)) {
   }
   console.log(`tests: selected ${selected.length}/${all.length} files; ${all.filter(test => test.optIn && !selected.includes(test)).length} explicit opt-in files excluded`);
   const owner = processOwner("tests");
+  const env = { ...process.env };
+  env["CLOUDFLARE_DEV_REGISTRY_PATH"] = join(owner.directory, "registry");
   try {
     const prerequisites = new Set(selected.flatMap(test => test.prerequisites));
     if (prerequisites.has("NANOSHOP_DIR") && process.env.NANOSHOP_DIR === undefined) throw new Error("producer-external needs NANOSHOP_DIR; see docs/testing.md");
     for (const variable of ["TANSU_DIR", "NICEFORGE_DIR"]) if (prerequisites.has(variable) && process.env[variable] === undefined) throw new Error(`services-external needs ${variable}; see docs/testing.md`);
     if (prerequisites.has("agent-debug")) await owner.run("agent-debug", "cargo", ["build", "--manifest-path", "../agent/Cargo.toml"], { cwd: ROOT, env: process.env });
-    if (prerequisites.has("stats") || prerequisites.has("observe")) {
-      await owner.run("build", process.execPath, ["scripts/build-all.mjs"], { cwd: ROOT, env: process.env });
+    const targets = ["stats", "observe", "node"].filter(target => prerequisites.has(target)) as BuildTarget[];
+    if (targets.length > 0) {
+      const artifacts = await ensureBuilds(targets, { signal: owner.signal });
+      for (const artifact of artifacts) if (artifact.target !== "node") env[artifact.target === "stats" ? "STATS_STATS_OUTPUT" : "STATS_OBSERVE_OUTPUT"] = join(artifact.output, "v0/workers/default");
+      if (targets.includes("node")) env["STATS_NODE_ENTRYPOINT"] = stageNode(artifacts, owner.directory);
     }
     if (values.gate) {
       await owner.run("typecheck", "pnpm", ["run", "typecheck"], { cwd: ROOT, env: process.env });
@@ -36,12 +44,19 @@ export async function runTests(args = process.argv.slice(2)) {
       const files = selected.filter(test => test.runner === runner).map(test => test.file);
       if (files.length === 0) continue;
       const name = values.name;
+      const countsPath = join(owner.directory, "node-counts.jsonl");
       const command = runner === "node" ? process.execPath : join(ROOT, `node_modules/.bin/${runner}`);
-      const argv = runner === "node" ? ["--experimental-strip-types", "--test", `--test-concurrency=${jobs}`, ...(name === undefined ? [] : [`--test-name-pattern=${name}`]), ...files]
+      const argv = runner === "node" ? ["--experimental-strip-types", "--test", `--test-concurrency=${jobs}`, "--test-reporter=spec", "--test-reporter-destination=stderr", `--test-reporter=${join(ROOT, "scripts/test-counts.ts")}`, `--test-reporter-destination=${countsPath}`, ...(name === undefined ? [] : [`--test-name-pattern=${name}`]), ...files]
         : runner === "vitest" ? ["run", "--maxWorkers", String(jobs), ...(name === undefined ? [] : ["-t", name]), ...files]
         : ["test", "--workers", String(jobs), ...(name === undefined ? [] : ["--grep", name]), ...files];
       console.log(`tests: ${runner} executing ${files.length} selected files`);
-      await owner.run(runner, command, argv, { cwd: ROOT, env: process.env });
+      await owner.run(runner, command, argv, { cwd: ROOT, env });
+      if (runner === "node") {
+        const counts = readFileSync(countsPath, "utf8").trim().split("\n").filter(Boolean).map(line => (JSON.parse(line) as { counts: { tests: number; skipped: number } }).counts);
+        const tests = counts.reduce((total, count) => total + count.tests, 0);
+        console.log(`tests: node completed ${tests} test cases (${counts.reduce((total, count) => total + count.skipped, 0)} skipped); summaries ${countsPath}`);
+        if (name !== undefined && tests === 0) throw new Error(`unmatched test name filter: ${name}`);
+      }
     }
   } finally { await owner.close(); }
 }

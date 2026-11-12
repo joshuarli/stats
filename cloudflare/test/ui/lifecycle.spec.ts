@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Route } from "./fixtures";
 import { HISTORY_CONTENT_TYPE } from "../../src/binary/history";
 import { fulfillHistory } from "./history-route";
 import { answer, buildScenario, scenarioComparison } from "./observe-scenario";

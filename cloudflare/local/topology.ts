@@ -7,8 +7,8 @@ import { loopbackPassthrough } from "./outbound.ts";
 import { workerProducerOptions } from "./worker-producer.ts";
 
 export const CLOUDFLARE_ROOT = resolve(import.meta.dirname, "..");
-export const STATS_OUTPUT = join(CLOUDFLARE_ROOT, ".cloudflare/output/v0/workers/default");
-export const OBSERVE_OUTPUT = join(CLOUDFLARE_ROOT, "observe-worker/.cloudflare/output/v0/workers/default");
+export const STATS_OUTPUT = process.env["STATS_STATS_OUTPUT"] ?? join(CLOUDFLARE_ROOT, ".cloudflare/output/v0/workers/default");
+export const OBSERVE_OUTPUT = process.env["STATS_OBSERVE_OUTPUT"] ?? join(CLOUDFLARE_ROOT, "observe-worker/.cloudflare/output/v0/workers/default");
 const WRANGLER_TEST = join(CLOUDFLARE_ROOT, "wrangler.test.jsonc");
 
 export type Binding =
@@ -332,6 +332,7 @@ export interface Listen {
 export function openWorkers(stats: BuiltWorker, observe: BuiltWorker, options: StackOptions, listen: Listen | null = null): Miniflare {
   return new Miniflare({
     ...miniflareOptions(stats, observe, options),
+    enableDevRegistry: false,
     ...(listen === null ? {} : { host: "127.0.0.1", port: listen.port, ...(listen.localExplorer ? { unsafeLocalExplorer: true } : {}) })
   });
 }

@@ -38,7 +38,7 @@ export function doctor(root = ROOT) {
     node: process.version, pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
     os: `${platform()} ${release()} ${arch()}`, cpu: cpus()[0]?.model, cores: cpus().length,
     runtimes: runtimeVersions(root),
-    supportedCompatibility: getLocalWorkerdCompatibilityDate({ projectPath: root }),
+    supportedCompatibility: root === ROOT ? getLocalWorkerdCompatibilityDate({ projectPath: root }) : JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", 'import { getLocalWorkerdCompatibilityDate } from "@cloudflare/vite-plugin"; console.log(JSON.stringify(getLocalWorkerdCompatibilityDate()));'], { cwd: root, encoding: "utf8" })) as { readonly date: string; readonly source: string },
     compatibility: ["cloudflare.config.ts", "observe-worker/cloudflare.config.ts"].map(file => ({ file, date: /compatibilityDate: "([^"]+)"/u.exec(readFileSync(join(root, file), "utf8"))?.[1] }))
   };
 }

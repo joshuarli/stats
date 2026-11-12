@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { fulfillHistory } from "./history-route";
 import { answer, buildScenario, scenarioComparison, scenarioStore, SCENARIO_ROLLOUTS, type Scenario } from "./observe-scenario";
 

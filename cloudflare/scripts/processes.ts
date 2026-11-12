@@ -13,7 +13,7 @@ interface OwnedProcess {
   kill(signal: NodeJS.Signals): void;
 }
 
-export function processOwner(label: string) {
+export function processOwner(label: string, { signals: handleSignals = true }: { readonly signals?: boolean } = {}) {
   mkdirSync(SCRATCH, { recursive: true });
   const directory = mkdtempSync(join(SCRATCH, `${label}-`));
   const active = new Set<OwnedProcess>();
@@ -31,15 +31,15 @@ export function processOwner(label: string) {
   }
   const signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
   const signalHandlers = new Map(signals.map(signal => [signal, () => { process.exitCode = 128 + constants.signals[signal]; void stop(signal); }]));
-  for (const [signal, handler] of signalHandlers) process.on(signal, handler);
-  function start(name: string, command: string, args: readonly string[], options: SpawnOptionsWithoutStdio & { readonly stream?: boolean } = {}): OwnedProcess {
+  if (handleSignals) for (const [signal, handler] of signalHandlers) process.on(signal, handler);
+  function start(name: string, command: string, args: readonly string[], options: SpawnOptionsWithoutStdio & { readonly stream?: boolean; readonly ipc?: boolean } = {}): OwnedProcess {
     if (controller.signal.aborted) throw new Error(`${label} was cancelled`);
     const logPath = join(directory, `${name.replaceAll(/[^a-zA-Z0-9_-]/gu, "-")}.log`);
     const log = createWriteStream(logPath);
-    const { stream = true, ...spawnOptions } = options;
+    const { stream = true, ipc = false, ...spawnOptions } = options;
     const env = { ...(spawnOptions.env ?? process.env) };
     delete env["NODE_TEST_CONTEXT"];
-    const child = spawn(command, args, { ...spawnOptions, env, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { ...spawnOptions, env, detached: process.platform !== "win32", stdio: ipc ? ["ignore", "pipe", "pipe", "ipc"] : ["ignore", "pipe", "pipe"] });
     let tail = "";
     const started = performance.now();
     const kill = (signal: NodeJS.Signals): void => {

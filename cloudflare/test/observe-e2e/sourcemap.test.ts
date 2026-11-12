@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createSymbolicator } from "../../src/observe/core/symbolicate.ts";
 import { ROOT } from "./harness.ts";
+import { STATS_OUTPUT } from "../../local/topology.ts";
 
-const BUNDLE = join(ROOT, ".cloudflare/output/v0/workers/default/bundle/index.js");
+const BUNDLE = join(STATS_OUTPUT, "bundle/index.js");
 
 await test("a throw site in the built stats bundle maps back to the source line that throws", () => {
   const bundle = readFileSync(BUNDLE, "utf8");

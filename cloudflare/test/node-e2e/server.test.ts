@@ -20,7 +20,7 @@ interface Started {
 }
 
 function launch(env: Record<string, string>): { child: ChildProcess; output: () => string; exited: () => Promise<number | null> } {
-  const child = spawn(process.execPath, ["--experimental-strip-types", "src/node/main.ts"], { cwd: ROOT, env: { PATH: process.env.PATH ?? "", ...env }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--experimental-strip-types", process.env["STATS_NODE_ENTRYPOINT"] ?? "src/node/main.ts"], { cwd: ROOT, env: { PATH: process.env.PATH ?? "", ...env }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout!.on("data", chunk => { output += String(chunk); });
   child.stderr!.on("data", chunk => { output += String(chunk); });

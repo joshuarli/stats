@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -9,8 +9,22 @@ import { doctor } from "../scripts/dev-doctor.ts";
 import { processOwner } from "../scripts/processes.ts";
 import { accessToken } from "../test/access-token.ts";
 
-const { values } = parseArgs({ options: { root: { type: "string", default: resolve(import.meta.dirname, "..") }, phase: { type: "string", default: "candidate" }, runs: { type: "string", default: "5" }, out: { type: "string" } } });
-const root = resolve(values.root);
+const { values } = parseArgs({ options: { root: { type: "string" }, phase: { type: "string", default: "candidate" }, runs: { type: "string", default: "5" }, out: { type: "string" } } });
+const originalRepo = resolve(import.meta.dirname, "../..");
+let ownedCheckout: string | undefined;
+if (values.root === undefined) {
+  if (execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: originalRepo, encoding: "utf8" }).trim() !== "") throw new Error("commit tracked changes before benchmarking a reproducible snapshot");
+  mkdirSync(join(originalRepo, ".work/tmp"), { recursive: true });
+  ownedCheckout = mkdtempSync(join(originalRepo, ".work/tmp/bench-dev-checkout-"));
+  try {
+    execFileSync("git", ["clone", "--shared", originalRepo, ownedCheckout]);
+    appendFileSync(join(ownedCheckout, ".git/info/exclude"), "\n.work/\n");
+    execFileSync("pnpm", ["install", "--offline", "--frozen-lockfile"], { cwd: ownedCheckout, stdio: "pipe" });
+  } catch (error) { rmSync(ownedCheckout, { recursive: true, force: true }); throw error; }
+}
+const root = resolve(values.root ?? join(ownedCheckout!, "cloudflare"));
+if (ownedCheckout === undefined && !root.includes("/.work/wt/")) throw new Error("benchmark --root must be an isolated .work/wt checkout; the benchmark removes its generated outputs");
+process.env["STATS_DOMAIN"] ??= "stats.17166969.xyz";
 const runs = Number(values.runs);
 assert.ok(Number.isInteger(runs) && runs > 0);
 const baseline = values.phase === "baseline";
@@ -22,6 +36,7 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ extraHTTPHeaders: { "cf-access-jwt-assertion": await accessToken() } });
 page.on("pageerror", error => console.error(`browser: ${error.message}`));
 const results: { scenario: string; elapsedMs: number; compilations: number; tests?: number }[] = [];
+const memory: { readonly processes: number; readonly rssKiB: number }[] = [];
 const inputs = [join(root, "src/client/styles/index.css"), join(root, "src/core/http.ts")];
 const originals = inputs.map(file => readFileSync(file, "utf8"));
 let running: ReturnType<typeof owner.start> | undefined;
@@ -93,33 +108,42 @@ async function trial(scenario: string, work: () => Promise<{ compilations: numbe
   const elapsedMs = performance.now() - started;
   execFileSync("perf-gate-ready", ["-1"], { stdio: "pipe" });
   results.push({ scenario, elapsedMs, ...result });
+  console.error(`bench: ${values.phase} ${scenario} complete (${result.compilations} compilations)`);
 }
 
 try {
   for (let run = 0; run < runs; run += 1) {
     await stop();
+    rmSync(state, { recursive: true, force: true });
+    if (!baseline) rmSync(resolve(root, "../.work/tmp/builds"), { recursive: true, force: true });
     for (const path of [".cloudflare/output", "observe-worker/.cloudflare/output"]) rmSync(join(root, path), { recursive: true, force: true });
     await trial("cold-ready", async () => { const compilations = baseline ? await build() : 0; await start(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
     await stop();
     await trial("warm-ready", async () => { const compilations = baseline ? await build() : 0; await start(); return { compilations: compilations + (baseline ? 0 : compiled(readFileSync(running!.logPath, "utf8"))) }; });
+    const processes = execFileSync("ps", ["-axo", "pid=,ppid=,rss="], { encoding: "utf8" }).trim().split("\n").map(line => line.trim().split(/\s+/u).map(Number));
+    const selected = new Set([running!.child.pid!]);
+    for (let previous = -1; previous !== selected.size;) { previous = selected.size; for (const [pid, parent] of processes) if (selected.has(parent!)) selected.add(pid!); }
+    memory.push({ processes: selected.size, rssKiB: processes.filter(([pid]) => selected.has(pid!)).reduce((total, row) => total + row[2]!, 0) });
     await page.goto(origin);
     await page.getByRole("table", { name: "Fleet hosts" }).waitFor();
     const marker = `r${run}`;
     await trial("frontend-edit", async () => {
+      const previous = compiled(readFileSync(running!.logPath, "utf8"));
       writeFileSync(inputs[0]!, `${originals[0]}\n:root { --dev-loop-probe: ${marker}; }\n`);
       let compilations = 0;
       if (baseline) { await stop(); compilations = await build(); await start(); await page.goto(origin); }
       await until(async () => (await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--dev-loop-probe").trim())) === marker, "frontend edit in browser");
-      return { compilations };
+      return { compilations: baseline ? compilations : compiled(readFileSync(running!.logPath, "utf8")) - previous };
     });
     await trial("worker-edit", async () => {
+      const previous = compiled(readFileSync(running!.logPath, "utf8"));
       const source = originals[1]!;
       assert.ok(source.includes('{ ok: true, service: "stats" }'));
       writeFileSync(inputs[1]!, source.replace('{ ok: true, service: "stats" }', `{ ok: true, service: "stats", devLoopProbe: "${marker}" }`));
       let compilations = 0;
       if (baseline) { await stop(); compilations = await build(); await start(); }
       await until(async () => { try { const response = await fetch(`${origin}/health`); return response.ok && (await response.json() as { devLoopProbe?: string }).devLoopProbe === marker; } catch { return false; } }, "Worker edit in successful request");
-      return { compilations };
+      return { compilations: baseline ? compilations : compiled(readFileSync(running!.logPath, "utf8")) - previous };
     });
     await stop();
     for (const [index, input] of inputs.entries()) writeFileSync(input, originals[index]!);
@@ -138,7 +162,7 @@ try {
     const times = selected.map(result => result.elapsedMs).sort((a, b) => a - b);
     return { scenario, runs: times.length, medianMs: times[Math.floor(times.length / 2)], minMs: times[0], maxMs: times.at(-1), compilations: selected.map(result => result.compilations), tests: selected.map(result => result.tests) };
   });
-  const report = { phase: values.phase, ...doctor(root), fixtureGeneration: "committed fixtures; generation excluded", frontendMode: baseline ? "manual build and restart" : "HMR", failures: 0, scenarios, results };
+  const report = { phase: values.phase, ...doctor(root), buildEnvironment: { STATS_DOMAIN: process.env["STATS_DOMAIN"] }, fixtureGeneration: "committed fixtures; generation excluded; cold readiness includes seeding a new state directory", memory, memoryScope: "warm development process and descendants; browser and measurement driver excluded", frontendMode: baseline ? "manual build and restart" : "HMR", failures: 0, scenarios, results };
   const output = JSON.stringify(report, null, 2);
   if (values.out !== undefined) writeFileSync(values.out, `${output}\n`);
   console.log(output);
@@ -148,4 +172,5 @@ try {
   await browser.close();
   await owner.close();
   rmSync(state, { recursive: true, force: true });
+  if (ownedCheckout !== undefined) rmSync(ownedCheckout, { recursive: true, force: true });
 }

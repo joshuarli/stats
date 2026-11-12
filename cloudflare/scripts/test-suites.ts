@@ -16,6 +16,8 @@ const SPECIAL: Readonly<Record<string, readonly [string, readonly string[], bool
   "test/cli/check.test.ts": ["parity", ["stats", "observe"]],
   "test/observe/budget.test.ts": ["observe-runtime", ["observe"]],
   "test/scripts/node-bundle.test.ts": ["node-package", ["node-bundle-in-test"]],
+  "test/scripts/build-preparation.test.ts": ["build-orchestration", ["isolated-builds-in-test"]],
+  "test/scripts/development.test.ts": ["dev-orchestration", ["isolated-builds-in-test", "chromium"]],
   "test/external/services.test.ts": ["services-external", ["TANSU_DIR", "NICEFORGE_DIR"], true],
   "test/producer/checkout.test.ts": ["producer-external", ["stats", "observe", "NANOSHOP_DIR"], true]
 };
@@ -37,7 +39,7 @@ export function inventory(root = ROOT): TestFile[] {
       else if (!file.slice(5).includes("/")) { owner = "worker"; runner = "vitest"; prerequisites = ["worker-source"]; }
       else if (NODE_DIRECTORIES.includes(directory)) owner = directory;
       else if (["local", "observe-e2e", "profile"].includes(directory)) { owner = directory; prerequisites = ["stats", "observe"]; }
-      else if (["agent-e2e", "node-e2e"].includes(directory)) { owner = directory; prerequisites = ["stats", "observe", "agent-debug"]; optIn = true; }
+      else if (["agent-e2e", "node-e2e"].includes(directory)) { owner = directory; prerequisites = ["stats", directory === "node-e2e" ? "node" : "observe", "agent-debug"]; optIn = true; }
       else throw new Error(`unowned test: ${file}; declare its execution route in scripts/test-suites.mjs`);
       return { file, owner, runner, prerequisites, optIn };
     }).sort((a, b) => a.file.localeCompare(b.file));

@@ -16,6 +16,7 @@ Deploying the Worker and provisioning hosts: [`docs/operations.md`](docs/operati
 Service telemetry, deployment markers, and the application contract:
 [`docs/integration.md`](docs/integration.md).
 Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Developer guide: [`AGENTS.md`](AGENTS.md).
+Local development: [`make dev` and focused tests](docs/development.md).
 
 ## Install the agent
 

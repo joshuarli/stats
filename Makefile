@@ -8,6 +8,16 @@ STUFF ?= stuff
 export STATS_DOMAIN
 export STATS_URL
 
+.PHONY: dev dev-doctor bench-dev
+dev: work-ready node-ready
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/dev.ts $(DEV_ARGS)
+
+dev-doctor: node-ready
+	node cloudflare/scripts/dev-doctor.ts --check
+
+bench-dev: work-ready node-ready
+	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/bench/dev-loop.ts $(BENCH_ARGS)
+
 .PHONY: work-ready node-ready auth-ready access-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
 work-ready:
 	@set -eu; \
@@ -156,11 +166,10 @@ smoke-deployed: access-ready
 smoke-local: work-ready node-ready worker-bundle observe-bundle
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-stack.mjs run -- ../deploy/deployed-smoke.sh
 
-dev-local: work-ready node-ready worker-bundle observe-bundle
-	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/local-stack.mjs dev
+dev-local: dev
 
-reset-local:
-	rm -rf '$(CURDIR)/.work/local/state'
+reset-local: work-ready node-ready
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/dev.ts --reset
 
 profile-local: work-ready node-ready worker-bundle observe-bundle
 	@test -n '$(PRODUCER)' || { echo 'usage: make profile-local PRODUCER=<built output dir> [SERVICE=<name>] [WORKLOAD=<script>] [DAILY=<runs/day>] [PRODUCER_VARS="NAME=VALUE ..."] [PROFILE_ARGS=...]' >&2; exit 2; }
@@ -183,16 +192,14 @@ integration-local: work-ready node-ready worker-bundle observe-bundle
 integration-producer: work-ready node-ready worker-bundle observe-bundle
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' ../scripts/offline-run.sh node --experimental-strip-types --test test/producer/*.test.ts
 
-agent-e2e: work-ready node-ready worker-bundle
-	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo build
+agent-e2e: work-ready node-ready
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' pnpm run test:agent-e2e
 
 node-deploy: work-ready node-ready
 	deploy/node/deploy.sh $(or $(HOST),josh@threadripper) > .work/tmp/node-deploy.log 2>&1 || { tail -20 .work/tmp/node-deploy.log; exit 1; }
 	tail -1 .work/tmp/node-deploy.log
 
-node-e2e: work-ready node-ready worker-bundle
-	cd agent && TMPDIR='$(CURDIR)/.work/tmp' cargo build
+node-e2e: work-ready node-ready
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' pnpm run test:node-e2e
 
 release: agent-build

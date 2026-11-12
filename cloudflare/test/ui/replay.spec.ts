@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { expect, test, type Page, type Route, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type Route, type TestInfo } from "./fixtures";
 import { fulfillHistory } from "./history-route";
 
 const captureDirectory = new URL("./captures", import.meta.url).pathname;

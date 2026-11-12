@@ -8,6 +8,7 @@ import { describeUnexpected } from "../local/outbound.ts";
 import { cliEnv, startStack } from "../local/stack.ts";
 import { CLOUDFLARE_ROOT, readBuiltWorker } from "../local/topology.ts";
 import { parseProducerVars } from "../local/worker-producer.ts";
+import { ensureBuilds } from "./ensure-build.ts";
 
 const USAGE = `usage:
   node scripts/local-stack.mjs run [--producer DIR]... [--producer-worker DIR [--service NAME] [--producer-var NAME=VALUE]...]... -- <command> [args...]       run a command against an ephemeral, seeded stack
@@ -57,7 +58,8 @@ function workerProducers(values) {
 
 async function run(producers, workerProducers, command) {
   if (command.length === 0) usage("run needs a command after --");
-  const stack = await startStack({ nowMs: null, producers, workerProducers });
+  const artifacts = await ensureBuilds(["stats", "observe"]);
+  const stack = await startStack({ nowMs: null, producers, workerProducers, statsOutput: join(artifacts.find(artifact => artifact.target === "stats").output, "v0/workers/default"), observeOutput: join(artifacts.find(artifact => artifact.target === "observe").output, "v0/workers/default") });
   for (const line of producerLines(stack)) console.error(line);
   let code = 1;
   try {

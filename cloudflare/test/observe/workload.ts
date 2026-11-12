@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
@@ -8,10 +7,11 @@ import { OBSERVE_CHANNEL } from "../../src/observe/producer/channel.ts";
 import { NANOSHOP_ROUTES } from "../../src/observe/core/nanoshop-policy.ts";
 import { fnv1a32, MILLION } from "../../src/observe/core/sampling.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
+import { OBSERVE_OUTPUT } from "../../local/topology.ts";
+import { ensureBuild } from "../../scripts/ensure-build.ts";
 import type { Health } from "../../src/observe/core/store.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
-const OBSERVE_BUNDLE = join(ROOT, "observe-worker/.cloudflare/output/v0/workers/default/bundle/index.js");
 const SERVICE = "nanoshop-storied";
 const VERSION = "3172128e-5c58-48a4-8c16-7767d5521979";
 const OBJECT_ID = "71437be8483ec4c778560417396a6e8e81f1673f27ec5d341ec7a2645e467eb9";
@@ -158,14 +158,15 @@ export interface Rig {
 }
 
 export async function startRig(): Promise<Rig> {
-  if (!existsSync(OBSERVE_BUNDLE)) execFileSync("pnpm", ["run", "build:observe"], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  const artifact = process.env["STATS_OBSERVE_OUTPUT"] === undefined ? await ensureBuild("observe") : null;
+  const observeBundle = join(artifact === null ? OBSERVE_OUTPUT : join(artifact.output, "v0/workers/default"), "bundle/index.js");
   const persist = mkdtempSync(join(tmpdir(), "budget-"));
   const mf = new Miniflare({
     ...convertV4MiniflareOptions({ workers: [{
       name: "stats-observe",
       modules: [
         { type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: MEASURED_COLLECTOR },
-        { type: "ESModule" as const, path: join(ROOT, "observe-worker/index.js"), contents: readFileSync(OBSERVE_BUNDLE, "utf8") }
+        { type: "ESModule" as const, path: join(ROOT, "observe-worker/index.js"), contents: readFileSync(observeBundle, "utf8") }
       ],
       compatibilityDate: "2026-10-30", compatibilityFlags: ["nodejs_compat"],
       durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } }

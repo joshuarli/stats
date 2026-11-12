@@ -1,11 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../src/ingest/http.ts";
 import { BUILT_ASSETS } from "../../src/node/assets.ts";
 
-const NODE_ORIGIN = "http://127.0.0.1:4175";
 const NODE_LOGIN = "playwright@example.com";
 
 const SOURCE = JSON.parse(readFileSync(join(import.meta.dirname, "../../../fixtures/v2/sources/linux-normal.json"), "utf8")) as SourceBatch;
@@ -16,14 +15,14 @@ function freshBatch(hostId: string): Uint8Array<ArrayBuffer> {
   return encodeFrame({ ...SOURCE, hostId, samples: SOURCE.samples.map(sample => ({ ...sample, atMs: String(Number(sample["atMs"]) + shift) })) });
 }
 
-test.use({ baseURL: NODE_ORIGIN, extraHTTPHeaders: { "Tailscale-User-Login": NODE_LOGIN } });
+test.use({ extraHTTPHeaders: { "Tailscale-User-Login": NODE_LOGIN } });
 
-test("the Node target renders a host the real server stored, with projects absent rather than zero", async ({ page, request }) => {
+test("the Node target renders a host the real server stored, with projects absent rather than zero", async ({ page, request, baseURL }) => {
   const name = `node-${Date.now().toString(36)}`;
   const created = await request.post("/api/v1/admin/hosts", { data: { name } });
   expect(created.status()).toBe(201);
   const host = await created.json() as { hostId: string; token: string };
-  const ingested = await fetch(`${NODE_ORIGIN}${INGEST_PATH}`, { method: "POST", headers: { Authorization: `Bearer ${host.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: freshBatch(host.hostId) });
+  const ingested = await fetch(`${baseURL}${INGEST_PATH}`, { method: "POST", headers: { Authorization: `Bearer ${host.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: freshBatch(host.hostId) });
   expect(ingested.status).toBe(200);
 
   await page.goto("/");
@@ -44,10 +43,10 @@ test("the Node target renders a host the real server stored, with projects absen
   await expect(page.getByText("Project not found")).toBeVisible();
 });
 
-test("the Node target refuses the dashboard without an allowed Tailscale login", async ({ browser }) => {
+test("the Node target refuses the dashboard without an allowed Tailscale login", async ({ browser, baseURL }) => {
   for (const headers of [{}, { "Tailscale-User-Login": "intruder@example.com" }]) {
     const context = await browser.newContext({ extraHTTPHeaders: headers });
-    const response = await context.request.get(`${NODE_ORIGIN}/`);
+    const response = await context.request.get(`${baseURL}/`);
     expect(response.status()).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "unauthorized" } });
     await context.close();

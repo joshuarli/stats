@@ -12,9 +12,9 @@
     "test:ui": "playwright test",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
     "typecheck": "tsrs -p tsconfig.json --noEmit --fast && tsrs -p binary.tsconfig.json --noEmit --fast && tsrs -p deployments.tsconfig.json --noEmit --fast && tsrs -p observe.tsconfig.json --noEmit --fast",
-    "lint": "oxlint --type-aware src test bench observe-worker vite.config.ts playwright.config.ts",
-    "build": "vite build",
-    "build:observe": "vite build --config observe-worker/vite.config.ts",
+    "lint": "oxlint --type-aware src test bench scripts/*.ts observe-worker vite.config.ts playwright.config.ts",
+    "build": "node scripts/ensure-build.ts --target stats",
+    "build:observe": "node scripts/ensure-build.ts --target observe",
     "build:all": "node scripts/build-all.mjs",
     "test:all": "node scripts/worker-test.mjs",
     "statsctl": "node --experimental-strip-types src/cli/statsctl.ts",
@@ -34,7 +34,8 @@
     "test:node": "node scripts/run-tests.mjs --file test/node",
     "test:local": "node scripts/run-tests.mjs --suite local",
     "bench:workerd": "vitest run --config vitest.bench.config.mjs --disableConsoleIntercept",
-    "typecheck:observe": "tsrs -p observe.tsconfig.json --noEmit --fast"
+    "typecheck:observe": "tsrs -p observe.tsconfig.json --noEmit --fast",
+    "test:compat": "node scripts/run-tests.mjs --file test/ingest/conformance.test.ts --file test/node/parity.test.ts --file test/local/topology.test.ts --file test/local/outbound.test.ts --file test/observe-e2e/tail.test.ts --file test/profile/profile.node.ts --file test/access.test.ts --file test/ingest.test.ts"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.16",

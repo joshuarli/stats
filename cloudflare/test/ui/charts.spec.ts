@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { fulfillHistory } from "./history-route";
 
 const HOST_A = "h_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

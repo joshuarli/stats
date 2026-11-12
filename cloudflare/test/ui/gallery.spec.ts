@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test.describe("component gallery", () => {
   test("renders all extracted design system primitives on desktop", async ({ page }) => {

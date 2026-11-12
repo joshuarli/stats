@@ -31,4 +31,7 @@ await test("focused ingest execution selects one file without compiling Workers"
   assert.match(result.stdout, /selected 1\//u);
   assert.match(result.stderr, /tests \d+/u);
   assert.doesNotMatch(result.stderr, /vite v|workerd|building .*environment/u);
+  const unmatched = spawnSync(process.execPath, ["scripts/run-tests.mjs", "--file", "test/ingest/conformance.test.ts", "--name", "no-test-has-this-name"], { cwd: ROOT, env: process.env, encoding: "utf8", timeout: 15_000 });
+  assert.equal(unmatched.status, 1, unmatched.stdout + unmatched.stderr);
+  assert.match(unmatched.stderr, /unmatched test name filter/u);
 });

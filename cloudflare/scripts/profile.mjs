@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { startStack } from "../local/stack.ts";
 import { readBuiltWorker } from "../local/topology.ts";
 import { parseProducerVars } from "../local/worker-producer.ts";
+import { ensureBuilds } from "./ensure-build.ts";
 import { DURABLE_OBJECT_MEMORY_GB, LIST_PRICE_PER_MILLION, PRICING_REVISION } from "../src/cost/pricing.ts";
 import { MONTH_MS } from "../src/cost/ledger.ts";
 
@@ -140,7 +141,8 @@ async function main(args) {
   const workload = explicit === undefined ? resolveWorkload(dir) : resolve(explicit);
   const json = values.get("--json").length > 0;
 
-  const stack = await startStack({ nowMs: null, workerProducers: [{ dir, service, vars }] });
+  const artifacts = await ensureBuilds(["stats", "observe"]);
+  const stack = await startStack({ nowMs: null, workerProducers: [{ dir, service, vars }], statsOutput: join(artifacts.find(artifact => artifact.target === "stats").output, "v0/workers/default"), observeOutput: join(artifacts.find(artifact => artifact.target === "observe").output, "v0/workers/default") });
   const producer = stack.workerProducers[0];
   const names = Object.keys(producer.vars);
   if (names.length > 0) console.error(`producer vars: ${names.join(", ")}`);
