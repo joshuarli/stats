@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { expect, test } from "./fixtures";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../src/ingest/http.ts";
-import { BUILT_ASSETS } from "../../src/node/assets.ts";
 
 const NODE_LOGIN = "playwright@example.com";
 
@@ -53,8 +52,8 @@ test("the Node target refuses the dashboard without an allowed Tailscale login",
   }
 });
 
-test("the Node target serves the built lazy Errors assets intact", async ({ request }) => {
-  const directory = join(BUILT_ASSETS, "assets");
+test("the Node target serves the built lazy Errors assets intact", async ({ request, assetsDirectory }) => {
+  const directory = join(assetsDirectory, "assets");
   const files = readdirSync(directory).filter(file => /^ObserveSection-.*\.(?:js|css)$/u.test(file));
   expect(files.some(file => file.endsWith(".js"))).toBe(true);
   expect(files.some(file => file.endsWith(".css"))).toBe(true);

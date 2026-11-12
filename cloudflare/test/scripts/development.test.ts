@@ -6,14 +6,15 @@ import { chromium } from "@playwright/test";
 import { processOwner } from "../../scripts/processes.ts";
 import { devWorkspace } from "../support/dev-workspace.ts";
 
-interface Status { readonly event: string; readonly origin: string; readonly backendOrigin: string; readonly runId: string; readonly artifacts: readonly { readonly target: string; readonly identity: string }[] }
+interface Status { readonly event: string; readonly origin: string; readonly backendOrigin: string; readonly backendPid: number; readonly runId: string; readonly artifacts: readonly { readonly target: string; readonly identity: string }[] }
 
 await test("development hot updates, reloads, keeps the last good build and state, and isolates shutdown", { timeout: 90_000 }, async () => {
   const workspace = devWorkspace();
+  const otherWorkspace = devWorkspace();
   const owner = processOwner("dev-test");
   const browser = await chromium.launch();
-  function launch(state: string) {
-    const child = owner.start(`dev-${state}`, process.execPath, ["scripts/dev.ts", "--state", join(workspace.repo, ".work/local", state), "--port", "0"], { cwd: workspace.root, env: process.env, stream: false });
+  function launch(state: string, checkout = workspace) {
+    const child = owner.start(`dev-${state}`, process.execPath, ["scripts/dev.ts", "--state", join(checkout.repo, ".work/local", state), "--port", "0"], { cwd: checkout.root, env: process.env, stream: false });
     const statuses: Status[] = [];
     const listeners = new Set<() => void>();
     let buffer = "";
@@ -52,7 +53,7 @@ await test("development hot updates, reloads, keeps the last good build and stat
   try {
     first = launch("first");
     const initial = await first.wait("dev-ready");
-    second = launch("second");
+    second = launch("second", otherWorkspace);
     const other = await second.wait("dev-ready");
     assert.notEqual(initial.origin, other.origin);
     assert.notEqual(initial.backendOrigin, other.backendOrigin);
@@ -82,6 +83,7 @@ await test("development hot updates, reloads, keeps the last good build and stat
     let cursor = first.statuses.length;
     writeFileSync(source, good);
     const changed = await first.wait("dev-ready", cursor);
+    assert.equal(changed.backendPid, initial.backendPid);
     assert.equal((await (await fetch(`${initial.origin}/health`)).json() as { devProbe: string }).devProbe, "changed");
     assert.deepEqual(await hosts(initial.origin), before);
     cursor = first.statuses.length;
@@ -102,6 +104,16 @@ await test("development hot updates, reloads, keeps the last good build and stat
     assert.equal(observed.status, 200);
     assert.equal(observed.headers.get("X-Dev-Probe"), "observe");
     assert.deepEqual(await hosts(initial.origin), before);
+    const config = join(workspace.root, "cloudflare.config.ts");
+    const originalConfig = readFileSync(config, "utf8");
+    cursor = first.statuses.length;
+    writeFileSync(config, originalConfig.replace("env: {", 'env: { DEV_UNSUPPORTED: bindings.r2({ name: "dev-unsupported" }),'));
+    await first.wait("dev-activation-error", cursor);
+    assert.equal((await fetch(`${initial.origin}/health`)).status, 503);
+    cursor = first.statuses.length;
+    writeFileSync(config, originalConfig);
+    await first.wait("dev-ready", cursor);
+    assert.deepEqual(await hosts(initial.origin), before);
     await first.stop();
     assert.equal((await fetch(`${other.origin}/health`)).status, 200);
     first = launch("first");
@@ -114,5 +126,6 @@ await test("development hot updates, reloads, keeps the last good build and stat
     await browser.close();
     await owner.close();
     workspace.remove();
+    otherWorkspace.remove();
   }
 });

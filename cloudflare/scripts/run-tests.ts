@@ -3,8 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { inventory, ROOT, selectTests } from "./test-suites.ts";
 import { processOwner } from "./processes.ts";
-import { ensureBuilds, type BuildTarget } from "./ensure-build.ts";
-import { stageNode } from "./stage-node.ts";
+import type { BuildTarget } from "./ensure-build.ts";
 
 export async function runTests(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: {
@@ -32,9 +31,10 @@ export async function runTests(args = process.argv.slice(2)) {
     if (prerequisites.has("agent-debug")) await owner.run("agent-debug", "cargo", ["build", "--manifest-path", "../agent/Cargo.toml"], { cwd: ROOT, env: process.env });
     const targets = ["stats", "observe", "node"].filter(target => prerequisites.has(target)) as BuildTarget[];
     if (targets.length > 0) {
+      const { ensureBuilds } = await import("./ensure-build.ts");
       const artifacts = await ensureBuilds(targets, { signal: owner.signal });
       for (const artifact of artifacts) if (artifact.target !== "node") env[artifact.target === "stats" ? "STATS_STATS_OUTPUT" : "STATS_OBSERVE_OUTPUT"] = join(artifact.output, "v0/workers/default");
-      if (targets.includes("node")) env["STATS_NODE_ENTRYPOINT"] = stageNode(artifacts, owner.directory);
+      if (targets.includes("node")) env["STATS_NODE_ENTRYPOINT"] = (await import("./stage-node.ts")).stageNode(artifacts, owner.directory);
     }
     if (values.gate) {
       await owner.run("typecheck", "pnpm", ["run", "typecheck"], { cwd: ROOT, env: process.env });

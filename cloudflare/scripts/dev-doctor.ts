@@ -4,7 +4,6 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { arch, cpus, platform, release } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { getLocalWorkerdCompatibilityDate } from "@cloudflare/vite-plugin";
 
 const ROOT = resolve(import.meta.dirname, "..");
 function packageAt(file: string): { readonly path: string; readonly version: string } {
@@ -38,7 +37,7 @@ export function doctor(root = ROOT) {
     node: process.version, pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
     os: `${platform()} ${release()} ${arch()}`, cpu: cpus()[0]?.model, cores: cpus().length,
     runtimes: runtimeVersions(root),
-    supportedCompatibility: root === ROOT ? getLocalWorkerdCompatibilityDate({ projectPath: root }) : JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", 'import { getLocalWorkerdCompatibilityDate } from "@cloudflare/vite-plugin"; console.log(JSON.stringify(getLocalWorkerdCompatibilityDate()));'], { cwd: root, encoding: "utf8" })) as { readonly date: string; readonly source: string },
+    supportedCompatibility: JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", 'import { getLocalWorkerdCompatibilityDate } from "@cloudflare/vite-plugin"; console.log(JSON.stringify(getLocalWorkerdCompatibilityDate()));'], { cwd: root, encoding: "utf8" })) as { readonly date: string; readonly source: string },
     compatibility: ["cloudflare.config.ts", "observe-worker/cloudflare.config.ts"].map(file => ({ file, date: /compatibilityDate: "([^"]+)"/u.exec(readFileSync(join(root, file), "utf8"))?.[1] }))
   };
 }

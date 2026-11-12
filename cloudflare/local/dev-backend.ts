@@ -16,22 +16,33 @@ export interface BackendReady {
   readonly producers: readonly { readonly service: string; readonly origin: string }[];
 }
 
+export type BackendMessage = BackendReady | { readonly event: "backend-error" };
 let stack: Stack | undefined;
 let timer: ReturnType<typeof setTimeout> | undefined;
-let task = Promise.resolve();
+let serial = Promise.resolve();
+let collection = Promise.resolve();
 let stopping: Promise<void> | undefined;
+
+async function dispose(): Promise<void> {
+  clearTimeout(timer);
+  await collection;
+  const previous = stack;
+  stack = undefined;
+  await previous?.dispose();
+}
 
 async function shutdown(): Promise<void> {
   stopping ??= (async () => {
     clearTimeout(timer);
-    await task.catch(() => {});
-    await stack?.dispose();
+    await serial;
+    await dispose();
     if (process.connected) process.disconnect?.();
   })();
   await stopping;
 }
 
-async function start(options: BackendStart): Promise<void> {
+async function activate(options: BackendStart): Promise<void> {
+  await dispose();
   stack = await startStack({ nowMs: null, persist: options.state, statsOutput: options.statsOutput, observeOutput: options.observeOutput, localExplorer: true, producers: options.producers, workerProducers: options.workerProducers });
   if (options.initialize) {
     const response = await stack.fetch("/api/v1/hosts");
@@ -43,7 +54,7 @@ async function start(options: BackendStart): Promise<void> {
   if ((await stack.anonymous("/health")).status !== 200) throw new Error("backend health failed");
   const schedule = (): void => {
     timer = setTimeout(() => {
-      task = collectAt(stack!, Date.now()).catch(error => { console.error(`dev collection: ${String(error)}`); }).then(() => { if (stopping === undefined) schedule(); });
+      collection = collectAt(stack!, Date.now()).catch(error => { console.error(`dev collection: ${String(error)}`); }).then(() => { if (stopping === undefined) schedule(); });
     }, 300_000 - Date.now() % 300_000);
   };
   if (stopping !== undefined) return;
@@ -52,10 +63,14 @@ async function start(options: BackendStart): Promise<void> {
 }
 
 if (import.meta.main) {
-  process.once("message", (message: BackendStart) => {
-    task = start(message);
-    void task.catch(async error => { console.error(error); process.exitCode = 1; await shutdown(); });
-    process.on("message", message => { if (message === "shutdown") void shutdown(); });
+  process.on("message", (message: BackendStart | "shutdown") => {
+    if (message === "shutdown") { void shutdown(); return; }
+    if (stopping !== undefined) return;
+    serial = serial.then(() => activate(message)).catch(async error => {
+      console.error(error);
+      await dispose();
+      process.send?.({ event: "backend-error" } satisfies BackendMessage);
+    });
   });
   process.once("disconnect", () => { void shutdown(); });
 }
