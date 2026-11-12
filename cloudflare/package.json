@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.8",
-    "@cloudflare/vitest-plugin": "1.7.0",
+    "@cloudflare/vitest-plugin": "1.8.0",
     "@cloudflare/workers-types": "5.20261110.1",
     "@jridgewell/sourcemap-codec": "1.6.0",
     "@playwright/test": "1.65.0",
