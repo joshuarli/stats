@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
+import { readdirSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { openHistory } from "../../src/binary/history.ts";
 import { decodeProjectHistories, metricTrack, type ProjectHistories } from "../../src/client/history.ts";
@@ -276,7 +278,7 @@ await test("S5: a restart on the same persistence directory keeps collector stat
   });
 });
 
-await test("S6: retention past the sample horizon drops five-minute rows and keeps hourly rows and newer data", async () => {
+await test("S6: retention preserves hourly rows without inventing coverage and keeps newer data", async () => {
   await withStack({ nowMs: T }, async (initial, replace) => {
     let stack = initial;
     const host = await addHost(stack);
@@ -296,15 +298,28 @@ await test("S6: retention past the sample horizon drops five-minute rows and kee
     assert.equal(await ingest(stack, host, later - 60_000, 1_000_000n), 200);
     const old = await history(stack, "stuff", windowStartMs(T), T);
     assert.equal(old.histories.worker.stepMs, HOUR_MS, "the expired window reads from hourly rollups");
-    const hourly = series(old, "worker", "worker.invocations");
-    const hours = [...new Set(slots(first, "logs.workersLogs").map(slotMs => Math.floor(slotMs / HOUR_MS) * HOUR_MS))];
-    for (const hourMs of hours) {
-      assert.equal(hourly.get(hourMs), sum(slots(first, "logs.workersLogs").filter(slotMs => slotMs >= hourMs && slotMs < hourMs + HOUR_MS).map(slotMs => workerModel(first, "stuff", slotMs))), `hour ${hourMs}`);
-    }
+    assert.equal(series(old, "worker", "worker.invocations").size, 0, "hourly rows without coverage evidence are unavailable over HTTP");
     const fresh = series(await history(stack, "stuff", windowStartMs(later), later), "worker", "worker.invocations");
     for (const slotMs of slots(second, "logs.workersLogs")) assert.equal(fresh.get(slotMs), workerModel(second, "stuff", slotMs));
     const latest = await stack.fetch(`/api/v1/hosts/${host.hostId}/latest`);
     assert.equal(latest.status, 200);
     assert.equal(Number((await latest.json() as { sample: { atMs: number } }).sample.atMs), later - 60_000);
+    await stack.stop();
+    const databases = readdirSync(stack.persist, { recursive: true, encoding: "utf8" }).filter(path => path.endsWith(".sqlite"));
+    const installation = databases.filter(path => {
+      const db = new DatabaseSync(join(stack.persist, path), { readOnly: true });
+      try { return db.prepare("SELECT name FROM sqlite_master WHERE name = 'project_hours'").get() !== undefined; }
+      finally { db.close(); }
+    });
+    assert.equal(installation.length, 1, "one persisted database owns project history");
+    const storage = new DatabaseSync(join(stack.persist, installation[0]!), { readOnly: true });
+    try {
+      const retained = storage.prepare("SELECT hour_ms, value FROM project_hours WHERE project = ? AND metric = ? AND hour_ms < ? ORDER BY hour_ms").all("stuff", "worker.invocations", T);
+      const hours = [...new Set(slots(first, "logs.workersLogs").map(slotMs => Math.floor(slotMs / HOUR_MS) * HOUR_MS))];
+      assert.deepEqual(retained.map(row => ({ ...row })), hours.map(hourMs => ({
+        hour_ms: hourMs,
+        value: sum(slots(first, "logs.workersLogs").filter(slotMs => slotMs >= hourMs && slotMs < hourMs + HOUR_MS).map(slotMs => workerModel(first, "stuff", slotMs)))
+      })), "the original hourly subtotals survive retention unchanged");
+    } finally { storage.close(); }
   });
 });
