@@ -108,8 +108,10 @@ await test("an invocation without trace context gets a stable key from its ident
 
 await test("every operation any service policy allows passes invocation validation", async () => {
   for (const [service, policy] of Object.entries(POLICIES)) {
-    assert.ok(policy.operations.size > 0, service);
-    for (const operation of policy.operations) {
+    const operations = policy.captureOperations === true ? ["request.route", "scan.items", "a".repeat(64)] : [...policy.operations];
+    assert.ok(operations.length > 0, service);
+    for (const operation of operations) {
+      assert.ok(policy.operations.has(operation), `${service} allows ${operation}`);
       const result = await prepareInvocation(worker(1, { errors: [{ source: "caught", operation, name: "AppError", message: "boom", stack: null }], outcome: "exception" }), SAFE);
       assert.ok(result.ok, `${service} ${operation}`);
     }

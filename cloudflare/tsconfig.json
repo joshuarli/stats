@@ -25,6 +25,7 @@
     "src/**/*.tsx",
     "test/**/*.ts",
     "bench/**/*.ts",
+    "scripts/**/*.ts",
     "worker-configuration.d.ts",
     "cloudflare.config.ts",
     "observe-worker/cloudflare.config.ts",

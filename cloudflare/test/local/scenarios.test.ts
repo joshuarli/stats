@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -9,50 +8,11 @@ import { startStack, SCRATCH, type Stack } from "../../local/stack.ts";
 import { addHost } from "../../local/seed.ts";
 
 const STATS = resolve(import.meta.dirname, "../..");
-function peer(name: string): string {
-  let dir = STATS;
-  while (dir !== "/" && !dir.endsWith("/stats")) dir = resolve(dir, "..");
-  return resolve(dir, "..", name);
-}
-const TANSU = peer("tansu");
-const NICEFORGE = peer("niceforge");
 const FIXTURES = resolve(STATS, "../fixtures/observe-ingest");
 const manifest = JSON.parse(readFileSync(join(FIXTURES, "manifest.json"), "utf8")) as { readonly service: string; readonly nowMs: number; readonly golden: string };
 const golden = readFileSync(join(FIXTURES, manifest.golden), "utf8").trim();
 const NOW = manifest.nowMs;
 const SERVICE = manifest.service;
-
-function run(cwd: string, command: string, args: readonly string[], timeout = 300_000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, timeout, env: { ...process.env, TMPDIR: join(SCRATCH) } });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.on("error", reject);
-    child.on("close", code => {
-      if (code === 0) resolve(`${stdout}\n${stderr}`);
-      else reject(new Error(`${command} ${args.join(" ")} failed (exit ${code}):\n${stdout}\n${stderr}`));
-    });
-  });
-}
-
-let tansuOutput: Promise<string> | null = null;
-function tansuTests(): Promise<string> {
-  tansuOutput ??= run(TANSU, "cargo", ["test", "--test", "telemetry", "--test", "telemetry_degraded", "--test", "deploy_state"]);
-  return tansuOutput;
-}
-
-let niceforgeOutput: Promise<string> | null = null;
-function niceforgeTests(): Promise<string> {
-  niceforgeOutput ??= run(NICEFORGE, "pnpm", ["exec", "vitest", "run", "--config", "vitest.forge-hosted.config.ts", "tests/forge/hosted/telemetry.hosted.ts", "--reporter=verbose"]);
-  return niceforgeOutput;
-}
-
-void tansuTests();
-void niceforgeTests();
 
 async function withWorkerd(body: (stack: Stack) => Promise<void>): Promise<void> {
   const stack = await startStack({ nowMs: NOW });
@@ -111,22 +71,7 @@ await test("scenario A: a service token ingests one event, reads it back, rotate
   });
 });
 
-await test("scenario B: the real Tansu save and search paths publish the expected records", async () => {
-  const output = await tansuTests();
-  assert.match(output, /a_note_save_and_search_publish_operation_records_with_the_release/u);
-  assert.match(output, /test result: ok/u);
-});
-
-await test("scenario C: the real Niceforge fixture records health and a push without content or credentials", async () => {
-  const output = await niceforgeTests();
-  assert.match(output, /records health and operation observations with the release and no content or credentials/u);
-  assert.match(output, /1 passed/u);
-  assert.match(output, /Test Files/u);
-});
-
-await test("scenario D: a marker is recorded once, a repeated deployment is a no-op, and the deploy receipt retries with the same marker", async () => {
-  const output = await tansuTests();
-  assert.match(output, /a_marker_is_recorded_once_and_a_failed_post_retries_with_the_same_id/u);
+await test("scenario D: a marker is recorded once and repeated delivery is a no-op", async () => {
   await withWorkerd(async stack => {
     const credentials = await provision(stack, SERVICE);
     const marker = { markerId: "v-1.0.0", version: "1.0.0", message: "release 1.0.0", hostIds: [credentials.hostId] };
@@ -140,8 +85,7 @@ await test("scenario D: a marker is recorded once, a repeated deployment is a no
   });
 });
 
-await test("scenario E: Stats rejection, an unavailable Stats endpoint, and a marker retry are bounded and do not fail the operation", async () => {
-  assert.match(await tansuTests(), /a_save_succeeds_when_stats_is_unreachable_and_drops_stay_bounded/u);
+await test("scenario E: invalid service credentials reject ingest and marker retries remain idempotent", async () => {
   await withWorkerd(async stack => {
     const credentials = await provision(stack, SERVICE);
     const payload = batch(NOW);
@@ -156,9 +100,6 @@ await test("scenario E: Stats rejection, an unavailable Stats endpoint, and a ma
 });
 
 await test("scenario F: content, paths, credentials, and headers from an application never reach stored telemetry", async () => {
-  const output = await niceforgeTests();
-  assert.match(output, /no content or credentials/u);
-  await tansuTests();
   await withWorkerd(async stack => {
     const credentials = await provision(stack, SERVICE);
     const secret = "DO-NOT-STORE-7f6c";

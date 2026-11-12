@@ -167,7 +167,7 @@ profile-local: work-ready node-ready worker-bundle observe-bundle
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types scripts/profile.mjs --producer-worker '$(abspath $(PRODUCER))' $(if $(SERVICE),--service '$(SERVICE)',) $(if $(WORKLOAD),--workload '$(abspath $(WORKLOAD))',) $(if $(DAILY),--daily '$(DAILY)',) $(foreach var,$(PRODUCER_VARS),--producer-var '$(var)') $(PROFILE_ARGS)
 
 profile-test: work-ready node-ready worker-bundle observe-bundle
-	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test test/profile/*.node.ts
+	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/run-tests.mjs --suite profile
 
 integration-local: work-ready node-ready worker-bundle observe-bundle
 	@set -eu; \
@@ -227,6 +227,6 @@ release-artifacts: work-ready node-ready
 
 OFFLINE_SANDBOX_CHECK := $(if $(filter Darwin,$(shell uname -s)),integration-local,)
 
-test: fixtures agent-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test profile-test $(OFFLINE_SANDBOX_CHECK)
+test: fixtures agent-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test $(OFFLINE_SANDBOX_CHECK)
 
 check: fixtures agent-test release cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)

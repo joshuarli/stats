@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { inventory } from "./scripts/test-suites.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureDir = join(here, "..", "fixtures", "v2");
@@ -14,5 +15,5 @@ const fixtures = Object.fromEntries(readdirSync(fixtureDir, { recursive: true, w
 
 export default defineConfig({
   plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
-  test: { include: ["test/**/*.test.ts"], exclude: ["test/binary/**", "test/ingest/**", "test/deployments/**", "test/cost/**", "test/cli/**", "test/scripts/**", "test/observe/**", "test/observe-e2e/**", "test/agent-e2e/**", "test/node/**", "test/node-e2e/**", "test/local/**", "test/producer/**"], testTimeout: 30_000 }
+  test: { include: inventory().filter(test => test.runner === "vitest").map(test => test.file), testTimeout: 30_000 }
 });
