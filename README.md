@@ -21,10 +21,9 @@ Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Develo
 
 Download the installer from a [release](https://github.com/joshuarli/stats/releases)
 and run it as root on Linux (OpenRC or systemd) or as your user on macOS
-(launchd). It selects the binary and sets up the service. Checksum verification
-currently fails open if the manifest or verifier is unavailable
-([STA-112](TODO.md#sta-112--p2--the-installer-proceeds-when-checksum-verification-is-unavailable));
-verify the release asset against `SHA256SUMS` before using the manual path below.
+(launchd). It selects the binary, verifies it against `SHA256SUMS`, and sets up
+the service. A missing manifest, missing verifier, malformed checksum or mismatch
+stops installation. Verify the release asset before using the manual path below.
 Provision the host to get a `hostId` and token, place them in the
 config and token files the installer prints, then start the service.
 
@@ -69,11 +68,8 @@ the `stats` user, using passwordless `doas` or `sudo`. Either way it creates
 the host when the name is new, rotates the token when the server knows the host
 but the target has no config, installs the binary, config, token, and service
 unit, and waits for the first upload. Set `SSH=local`, or omit `SSH`, to set up
-the machine running the command. Rerunning keeps the existing host and token,
-but currently replaces optional agent settings with a minimal config
-([STA-104](TODO.md#sta-104--p1--rerunning-add-host-silently-removes-optional-agent-configuration)).
-Preserve a customized `agent.json` before rerunning, restore its optional
-settings afterward, and restart the agent.
+the machine running the command. Rerunning keeps the existing host, token and
+optional agent settings while updating the endpoint, host ID and token-file path.
 
 To install the macOS agent by hand, build it natively with
 `cargo build --release --manifest-path agent/Cargo.toml`, provision the host,

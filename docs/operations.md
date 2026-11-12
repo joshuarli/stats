@@ -516,9 +516,10 @@ Live runs took 0.5 to 2.1 s of wall time.
 The Node server serves the same API, ingest route, and dashboard as the
 Worker for supported routes. It includes service markers and application
 events/issues, but no Cloudflare project collector, tail consumer or deployment
-poll. Observation isolation and retention have open defects (STA-103, STA-108;
-see [Node architecture](architecture.md#node-server)). It needs the pinned Node,
-installed dependencies and the built dashboard, and runs from the repository:
+poll. Observation stores and their cleanup schedules belong to individual
+services; see [Node architecture](architecture.md#node-server). It needs the
+pinned Node, installed dependencies and the built dashboard, and runs from the
+repository:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -549,9 +550,9 @@ in `stats.sqlite` when inspecting ambiguous legacy data. Migration copies only
 rows whose service ownership is known, preserves issue resolution, and records
 completion in each destination transaction. Restart resumes an interrupted copy.
 
-The Node image bundles its runtime dependencies. Deployment starts an isolated
-candidate and checks health before stopping the current container. It retains
-the previous container until the replacement passes health, and restores it if
+Deployment starts an isolated candidate and checks health before stopping the
+current container. It retains the previous container until the replacement
+passes health, and restores it if
 the replacement fails. Preflight uses an empty database and cannot prove a
 production data migration. Take the stopped backup before an upgrade.
 
@@ -577,18 +578,19 @@ otherwise. The Worker applies the same rule behind Access.
 
 ### In a container on threadripper
 
-The current image omits `@jridgewell/trace-mapping` and exits on import
-(STA-102). The deploy script removes the old container before checking the new
-one, so this path is blocked until the image and replacement check are fixed.
-Use the source-run setup above when an instance is needed in the meantime.
+The Vite SSR bundle currently leaves `@jridgewell/trace-mapping` external, and
+the image ships no dependency tree. The staged bundle exits on import
+(STA-116 in [TODO](../TODO.md)); deployment preflight rejects this candidate
+before stopping the running container. Use the source-run setup above until
+the bundle includes its runtime dependency closure.
 
 ```sh
 STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
 ```
 
 `deploy/node/deploy.sh` refuses a tree with uncommitted tracked changes,
-because the image is tagged with the commit. It builds the dashboard here,
-copies `cloudflare/src`, the built assets, and `deploy/node/Dockerfile` to
+because the image is tagged with the commit. It builds the dashboard and Node
+bundle here, copies `main.mjs`, the built assets, and `deploy/node/Dockerfile` to
 `~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
 there from the digest-pinned Node Alpine image in the Dockerfile. It then
 replaces the `stats-node` container, which runs as `node`

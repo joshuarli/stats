@@ -1,9 +1,10 @@
 # stats-producer
 
-Bounded, non-blocking application telemetry for Stats. The crate reuses the
+Bounded application telemetry for Stats. The crate reuses the
 agent's `h12tiny-client-sync` TLS stack and a dedicated std thread; it does not
-add Tokio or a second HTTP stack. `record` only enqueues, `flush` waits for the
-queue to drain, and `shutdown` flushes and joins the worker.
+add Tokio or a second HTTP stack. `record` validates, then enqueues under a mutex
+without network I/O; `flush` waits for the queue to drain, and `shutdown` flushes
+and joins the worker.
 
 ```rust
 use stats_producer::{OperationEvent, Producer, ProducerConfig};
@@ -46,8 +47,9 @@ disabled: it opens no connection and `record` is a no-op.
   When it is full the oldest event is dropped and counted in `stats().dropped`.
 - A batch holds at most 64 events by default and never exceeds 128 events or
   64 KiB.
-- The automatic flush interval currently restarts on each sub-batch arrival
-  (STA-110 in [TODO](../../TODO.md)); steady traffic can wait until the batch fills.
+- The automatic flush deadline starts when an empty queue receives an event.
+  Later arrivals do not postpone it; a full batch or explicit flush wakes the
+  sender sooner.
 - Requests time out after 5 s. Retryable failures (network, timeout, 408, 425,
   429, 5xx, or a malformed success body) are retried 5 times with exponential
   backoff and jitter; 429 honours `Retry-After`.

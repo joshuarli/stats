@@ -1,7 +1,43 @@
 Prefix: STA
-Next: 116
+Next: 122
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-116 · P1 · The Vite Node bundle leaves a runtime dependency outside the image
+
+- **Area:** Release
+- **Where:** `cloudflare/vite.node.config.ts:8–19`, `cloudflare/scripts/bundle-node.mjs`, `deploy/node/Dockerfile:3–4`, `deploy/node/deploy.sh:17–24`
+- **Problem:** After the Vite SSR migration, the real Vite 8.3.8 build leaves `import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping"` in `main.mjs`. The image copies that file and assets, with no dependency tree. Copying the emitted artifact outside workspace dependency resolution and launching it exits with ERR_MODULE_NOT_FOUND before startup. The reproduction used Node 24.22.1; the pinned Node/container was not run. This is a new packaging regression after the earlier fix, and the existing isolated candidate health check protects the running container.
+- **Recommendation:** Include the runtime package closure in the Vite SSR output while leaving Node built-ins external, or deliberately ship the required dependency tree. Build with the release toolchain and start the staged artifact in the actual image layout without workspace dependencies, then verify health and retain candidate-before-replacement deployment ordering.
+- **Fix with:** do
+- **Effort:** S
+
+### STA-91 · P3 · Block-latency histograms need bpftrace and root on every host
+
+- **Area:** Architecture
+- **Where:** `bpf/`, `agent/src/` (`blockLatencyFile`), `README.md` (agent config), `AGENTS.md` (invariants)
+- **Problem:** The only latency distribution the dashboard can show comes from the optional `bpf/` bpftrace collector, which needs bpftrace, root and a separate unit that writes `blockLatencyFile`. Actual fleet adoption was not rechecked. The unprivileged per-disk means from `/proc/diskstats` cannot show the tails or a bimodal distribution, so this remains an optional capability decision rather than evidence of slow baseline collection.
+- **Recommendation:** Add an opt-in block-latency histogram inside the agent: a pure-Rust eBPF loader (for example `aya`) with an embedded, prebuilt probe, so a host needs no bpftrace and no second service. Loading needs `CAP_BPF` and `CAP_PERFMON` (or `CAP_SYS_ADMIN` on older kernels) and a kernel with BTF, and the agent runs as the unprivileged user `stats`, so grant them with ambient capabilities in the unit, or run a separate helper, and fall back to an absent `block` group when the load fails. It complements the diskstats means and does not replace them. It would supersede the optional `blockLatencyFile` and the `bpf/` collector, which then get deleted. The static musl build, the dependency weight, and the "baseline agent never loads BPF" invariant need an owner decision first: the loader must stay opt-in and out of the baseline path.
+- **Fix with:** architect
+- **Effort:** L
+
+### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
+
+- **Area:** Data
+- **Where:** `cloudflare/src/cli/commands/services.ts` (`statsctl deploy mark`), `POST /ingest/services/:name/deployments`, `docs/integration.md` (rollback markers, `atMs`)
+- **Problem:** The integration contract says a rollback marker timestamp is the rollback time, but `statsctl deploy mark` sends no activation time, `MARKER_KEYS` rejects one, and the server stamps receive time. A delayed retry therefore shifts deployment-comparison windows. The cited Niceforge and tansu retry implementations were not rechecked in this review.
+- **Recommendation:** Accept an optional activation time (`--at-ms`) as part of marker identity for the 409 rule and have producers send their recorded activation time. Validate it against the existing 30-day marker retention and a documented future-skew allowance; the prior seven-day suggestion matched event retention, not marker retention. Verify an original marker and a delayed idempotent retry keep the same timestamp.
+- **Fix with:** do
+- **Effort:** S
+
+### STA-101 · P3 · Cloudflare target records no service health probes
+
+- **Area:** Operability
+- **Where:** `cloudflare/src/deployments/service-compare.ts` (`This target runs no health probes`), `cloudflare/src/cloudflare/installation.ts` (`probesServices: false`), `cloudflare/src/node/installation.ts` (`probesServices: true`)
+- **Problem:** The Cloudflare installation sets `probesServices: false`, so it never schedules service-health probes and no probe series is available for those services. The UI already says Health: not probed on this target. Node supports scheduled probes, subject to its deployment network policy.
+- **Recommendation:** If Cloudflare service probes are wanted, add a bounded scheduled source or define how manual service checks become retained probe evidence. Otherwise keep the explicit unavailable state and document the target limitation; changing wording alone is already partly complete.
+- **Fix with:** architect
+- **Effort:** M
 
 ### STA-113 · P3 · A retained project ledger makes the successful fallback history request redundant
 
@@ -30,57 +66,66 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** single-source-of-truth
 - **Effort:** S
 
-### STA-101 · P3 · Cloudflare target records no service health probes
+### STA-117 · P3 · Producer batch sizing serializes every growing prefix
 
-- **Area:** Operability
-- **Where:** `cloudflare/src/deployments/service-compare.ts` (`This target runs no health probes`), `cloudflare/src/cloudflare/installation.ts` (`probesServices: false`), `cloudflare/src/node/installation.ts` (`probesServices: true`)
-- **Problem:** The Cloudflare installation never probes service health URLs, so service pages show `Health probe: unavailable` permanently. Operators get the health URL in `service create` but the dashboard can never show a probe series for services hosted elsewhere.
-- **Recommendation:** Probe health URLs on a schedule in the Cloudflare Worker (or record manual `service check` probes as the source) so the comparison has probe rows; otherwise document the limitation and hide the probe tile when `probesServices` is false.
-- **Fix with:** architect
+- **Area:** Performance
+- **Where:** `packages/producer/src/index.ts:186–200,246`, `packages/stats-producer/src/lib.rs:410–435,448–490`
+- **Problem:** Both producers clone and encode each growing prefix to enforce the 64 KiB body limit, then encode the chosen batch again. The real TypeScript public flush path with 64 valid events performs 65 batch serializations visiting 2,144 event representations, sends 64 and drops none. The Rust source performs the same repeated work while holding the queue mutex used by record(); Rust contention and production CPU were not measured. Work grows quadratically with events per batch despite the 128-event cap.
+- **Recommendation:** Compute a conservative encoded UTF-8 size per normalized event once, including worst-case delivery fields and batch framing, then select the fitting FIFO prefix and encode it once for sending. Preserve byte/event caps, oversized-event drops, retry identity and queue semantics. Compare work at 64 and 128 events and near the byte cap, including multibyte strings; keep sizing outside the shared lock where ownership allows.
+- **Fix with:** make-it-fast
 - **Effort:** M
 
-### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
+### STA-118 · P3 · Overview pages fetch full deployment histories to display the latest deployment
 
-- **Area:** Data
-- **Where:** `cloudflare/src/cli/commands/services.ts` (`statsctl deploy mark`), `POST /ingest/services/:name/deployments`, `docs/integration.md` (rollback markers, `atMs`)
-- **Problem:** The integration contract says a rollback marker's `atMs` is the rollback time, but `statsctl deploy mark` has no way to pass one, so the server stamps the receive time. A producer that records a pending marker durably and retries it later (Niceforge `2d4ba07`, tansu's `deploy-sync`) moves the deployment to whenever Stats accepted it, which shifts the comparison windows.
-- **Recommendation:** Accept an optional activation time on the marker (`--at-ms`, bounded by the 7-day retention and no more than 5 minutes in the future, as for events) that is part of the marker's identity for the 409 rule, and have producers send the time they recorded at activation.
-- **Fix with:** do
+- **Area:** Performance
+- **Where:** `cloudflare/src/client/pages/ServicesPage.tsx:91–114`, `cloudflare/src/client/pages/ProjectsPage.tsx:207–220,292–304`, `cloudflare/src/client/pages/project/Deployments.tsx:20–54`, `cloudflare/src/core/installation/installation.ts:835–843`, `cloudflare/src/core/installation/services.ts:308–316`
+- **Problem:** Each overview row loads and decodes a complete retained history but uses its first deployment for the latest marker/title. Projects return up to 1,000 deployments plus 2,000 versions; services return up to 1,000 markers. The real project API/decoder probe grows from 1,113 bytes for 3 deployments/6 versions to 344,983 at the caps while selecting the same latest marker. Visible live overviews repeat this fan-out every five minutes. These synthetic payload counts do not establish production latency.
+- **Recommendation:** Expose a bounded latest summary, preferably in the existing list responses, and fetch only metadata referenced by that deployment. Preserve empty/unavailable states, ordering and version-label behavior; retain full histories for detail/comparison routes. Resolve the response contract in the linked RFC and prove bounded SQL rows, decoded payloads and overview bytes at retention caps.
+- **Fix with:** make-it-fast
+- **Effort:** M
+- **Design:** docs/rfc/STA-118-deployment-summaries.md
+
+### STA-119 · P3 · Rollout impact copies growing timing distributions for every distinct value
+
+- **Area:** Performance
+- **Where:** `cloudflare/src/observe/core/store.ts:1112–1135` (`routeComparisons`), `cloudflare/src/observe/core/store.ts:1188` (`rolloutImpact`)
+- **Problem:** The CPU and wall grouped queries rebuild each per-version timing array with `[...previous, pair]` for every distinct value. For n groups this copies n(n-1)/2 previous pairs per distribution. The real rolloutImpact path over synthetic grouped rows grows from 11,577 array-iterator steps at 100 timing values to 1,015,707 at 1,000, including helper iterations. The top-20 route limit applies after construction; retained invocations allow much larger inputs. This proves repeated copying, not a production latency estimate.
+- **Recommendation:** Append to arrays privately owned by each version/distribution rather than rebuilding them. Preserve SQL value order, weighted exact percentiles, stage/route grouping and the final top-20 ordering. Compare identical impact results and linear construction work across increasing distinct timing counts.
+- **Fix with:** make-it-fast
 - **Effort:** S
 
-### STA-91 · P3 · Block-latency histograms need bpftrace and root on every host
+### STA-120 · P3 · External-event cleanup scans retained history to find expiry and backlog
 
-- **Area:** Architecture
-- **Where:** `bpf/`, `agent/src/` (`blockLatencyFile`), `README.md` (agent config), `AGENTS.md` (invariants)
-- **Problem:** The only latency distribution the dashboard can show comes from the optional `bpf/` bpftrace collector, which needs bpftrace installed, root, and a separate unit that writes `blockLatencyFile`. Almost no host runs it. The unprivileged per-disk means from `/proc/diskstats` hide tails: a few multi-second stalls inside a 15 second interval move a mean far less than they hurt, and a mean cannot show a bimodal device.
-- **Recommendation:** Add an opt-in block-latency histogram inside the agent: a pure-Rust eBPF loader (for example `aya`) with an embedded, prebuilt probe, so a host needs no bpftrace and no second service. Loading needs `CAP_BPF` and `CAP_PERFMON` (or `CAP_SYS_ADMIN` on older kernels) and a kernel with BTF, and the agent runs as the unprivileged user `stats`, so grant them with ambient capabilities in the unit, or run a separate helper, and fall back to an absent `block` group when the load fails. It complements the diskstats means and does not replace them. It would supersede the optional `blockLatencyFile` and the `bpf/` collector, which then get deleted. The static musl build, the dependency weight, and the "baseline agent never loads BPF" invariant need an owner decision first: the loader must stay opt-in and out of the baseline path.
-- **Fix with:** architect
-- **Effort:** L
+- **Area:** Performance
+- **Where:** `cloudflare/src/observe/core/store.ts:434,959–962,986–990`, `cloudflare/src/observe/core/service.ts:137–140`, `cloudflare/src/observe/cloudflare/store-object.ts:38–40`
+- **Problem:** Cleanup counts all expired external events before a bounded deletion, then nextCleanupAt computes `MIN(MIN(received_at, event_at))` across the table. The primary key starts with service/event ID and the time index with service, so these global expiry queries scan retained rows. Real SQLite store cleanup over 10,000 unexpired events deletes none but still produces full-scan plans for both queries; exact-SQL VM work scales linearly at 100,000. External events have seven-day retention without a row cap. This cost is on maintenance alarms, not every ingest, and production latency/billed rows were not measured.
+- **Recommendation:** Determine remaining work with a bounded existence/overflow query rather than a full count, and make expiry discovery indexable using time-leading indexes with separate received/event branches or a validated expiry key. Preserve expiry by either timestamp, deduplication, deletion bounds, health counters and next-alarm/backlog behavior. Measure added ingest writes and storage before choosing indexes.
+- **Fix with:** make-it-fast
+- **Effort:** M
 
-### STA-100 · P3 · The h12tiny 0.8 upgrade still needs its transitive registry dependencies
+### STA-121 · P3 · Cost reports repeatedly rebuild coverage across all route series
 
-- **Area:** Dependencies
-- **Where:** `agent/Cargo.toml`, `agent/Cargo.lock`, `agent/.cargo/config.toml`, `docs/dependencies.md` (Agent crates)
-- **Problem:** The direct `h12tiny-client-sync` dependency now uses the native `mycrates` registry at 0.7.0. Its normalize and TLS dependencies still resolve through the crates.io mirror. The earlier 0.8 attempt was blocked by those transitive packages; switching the direct dependency's registry alone does not resolve that blocker. The 0.8 mirror availability has not been rechecked in this review.
-- **Recommendation:** Recheck the exact 0.8 dependency closure in both registries, import any missing transitive packages, then update and verify the callers and static builds. Delete the ticket if the upgrade is no longer needed.
-- **Fix with:** upgrade
-- **Effort:** S
+- **Area:** Performance
+- **Where:** `cloudflare/src/cost/ledger.ts:170–193,294–318`, `cloudflare/src/cost/report.ts:521`, `cloudflare/src/client/project-ledger.ts:68–74`, `cloudflare/src/cli/cost-load.ts:99`, `cloudflare/test/ui/captures/stuff/`
+- **Problem:** Per-route usage normalization repeatedly calls coveredMs for the whole route history; coveredMs enumerates every name and materializes column cells on each call. On the retained stuff 30-day capture with 406 route series and 720 rows, the real buildLedger makes 166,866 route cells() calls. The full buildCostReport makes 169,708 such calls and 4,264 names() calls enumerating 1,731,184 names. The probe preserves the captured monthly total and 68,424 billed Worker requests. planBill alone makes only two Worker and three R2 cell lookups, so the demonstrated repetition is in coverage/report construction, not its bucket arithmetic. Counts are not elapsed timings.
+- **Recommendation:** Compute whole-history and per-series coverage once per report invocation and window, and reuse it through usage normalization and report diagnostics. Keep current and previous histories/windows distinct and preserve unknown, partial and known-idle semantics. Require captured parity and partial-coverage tests plus operation-count scaling with routes/rows before reporting a speedup.
+- **Fix with:** make-it-fast
+- **Effort:** M
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
 - **Where:** `cloudflare/test/ui/replay.spec.ts-snapshots/`
-- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not.
+- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not. Deferred by the owner on 2026-11-05.
 - **Recommendation:** The replay suite has since grown; inventory its current images rather than treating the original 16 as exhaustive. Open the remaining unreviewed goldens and the deployed `#/project/stats` and `#/host/...` pages, and file or fix anything that reads wrong.
-- **Deferred (owner, 2026-11-05).**
 - **Fix with:** none
 - **Effort:** S
 
-### STA-49 · P4 · Nanoshop does not check its routes and operations against Stats' lists
+### STA-49 · P4 · Nanoshop route and operation parity needs external verification
 
 - **Area:** Operability
 - **Where:** `cloudflare/src/observe/core/nanoshop-policy.ts` (`NANOSHOP_ROUTES`, `NANOSHOP_RPC_METHODS`, `NANOSHOP_OPERATIONS`); Nanoshop's `src/routes/routes.ts` and `src/cloudflare/observe/operations.ts`
-- **Problem:** Stats generates its matcher and operation set from exported data, but the data is copied by hand from Nanoshop. Nothing fails when Nanoshop adds a route or an error operation: the new route is excluded and the new operation is rejected, losing data silently.
+- **Problem:** Stats owns static Nanoshop route and operation lists in `nanoshop-policy.ts`. The earlier review found no cross-repository parity check, so route changes could silently fall out of collection. This checkout cannot establish whether Nanoshop has since added that check; reverify the external repository before implementing or closing this item.
 - **Recommendation:** In Nanoshop's Stats integration tests, compare its `ROUTES` patterns and `ErrorOperation` set with the exported Stats lists.
 - **Fix with:** single-source-of-truth
 - **Effort:** S
@@ -143,17 +188,17 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 - **Area:** Operability
 - **Where:** `cloudflare/src/cli/commands/verify.ts`, `docs/operations.md` (Verifying a candidate)
-- **Problem:** The loop that deploys `stats`, runs `statsctl verify`, and keeps or rolls back on the verdict is run by hand. Its precondition was met: two production verdicts (`improved` and a `regressed` with a named confound) matched their offline predictions, and the `new-issue-group` guardrail now reports a regrouped issue as `confounded`. It stays unscheduled because no cost candidate is left worth a deploy: `stats` runs about $0.29 a month at list price and $0 on the invoice.
-- **Recommendation:** Decide whether to schedule it only when a candidate worth a deploy exists. If so, run it as a job that deploys with `make stats-deploy`, verifies with a committed policy, and rolls back on exit 7 to the previously validated version, with a spend ceiling that stops it.
+- **Problem:** The loop that deploys `stats`, runs `statsctl verify`, and keeps or rolls back on the verdict is run by hand. Earlier production verdicts matched offline predictions, and the new-issue-group guardrail can report regrouping as confounded. Scheduling remains an owner decision. The earlier account prices are historical; this review identifies new local efficiency candidates but does not establish their production savings or authorize an unattended deployment loop.
+- **Recommendation:** First measure a candidate on a representative workload. Decide whether automation is worthwhile after that evidence. If scheduled, use a committed verification policy, restore the previously validated version on exit 7, and stop at an explicit spend ceiling.
 - **Fix with:** orchestrate
 - **Effort:** M
 
 ### STA-86 · P4 · Deployment polling parses up to 2,000 version payloads to read their ids
 
 - **Area:** Performance
-- **Where:** `cloudflare/src/core/installation/installation.ts:377` (`knownDeploymentVersions`), `cloudflare/src/cloudflare/deployments/collector.ts:91`
-- **Problem:** Each poll loads every stored version payload only to read its id. At the retention cap that is about 2,000 JSON parses per poll, worth about $0.006 a month at list price, the largest remaining `stats` lead after the ingest path. `deployments.poll` is now observed, but it has no normalized work denominator for a per-work verdict; the historical saving estimate has not been remeasured.
-- **Recommendation:** Store the version id in its own column, or select only ids with `json_extract`, and add a `deployments.poll` work field if the saving needs a verdict. Skip it unless poll cost grows; the saving is small.
+- **Where:** `cloudflare/src/core/installation/installation.ts:377` (`knownDeploymentVersions`), `cloudflare/src/deployments/store.ts:38–48`, `cloudflare/src/cloudflare/deployments/collector.ts:91`
+- **Problem:** Each poll calls `readVersions` only to map the version IDs. A local probe of the real method at the 2,000-version retention cap performs 2,000 JSON parses; the table already has an `id` column. This is avoidable bounded work. Its production CPU cost and monetary saving have not been measured in this review.
+- **Recommendation:** Select only the existing `id` column with the current project/worker scope, retention and ordering. Preserve the collector result and confirm the cap-sized probe no longer parses payloads. Profile a representative poll before claiming a production saving; no schema migration is needed.
 - **Fix with:** make-it-fast
 - **Effort:** S
 

@@ -6,10 +6,10 @@ Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-versio
 
 The agent uses `deser` 0.10.2 and `deser-json` for its JSON config, the
 block-latency snapshot, and `--once` output (`deser-value` is now a test-only
-dev-dependency), and `h12tiny-client-sync` 0.7.0 with its `tls` feature for
+dev-dependency), and `h12tiny-client-sync` 0.9.0 with its `tls` feature for
 HTTPS, replacing
 `serde`, `serde_json`, `ureq`, `rustls` with `ring`, and `rustls-native-certs`.
-TLS now runs on Graviola through `h12tiny-tls-system`. The h12tiny crates come
+TLS runs on Graviola through `h12tiny-tls-system`. The direct client comes
 from the `mycrates` registry configured in `agent/.cargo/config.toml`.
 `rustc-hash` 2 provides the hash collections of `agent/src/parse.rs`, because
 the fleet bans `BTreeMap` and `BTreeSet`. The two parsers whose order is
@@ -20,11 +20,10 @@ written by hand against `docs/protocol.md` and adds no dependency on either
 side: no serialization framework, schema compiler, WASM, or compression
 library.
 
-`h12tiny-client-sync` 0.7.0 depends on `h12tiny-client-normalize` and
-`h12tiny-tls-system` as crates.io packages, so those two resolve through the
-crates.io mirror. The mirror carries them because the agent lockfile was
-imported into it as project `stats-agent`; a new h12tiny release needs the
-same import before the agent can move to it.
+The normalize and TLS packages resolve through the crates.io mirror; all three
+are locked at 0.9.0 in `agent/Cargo.lock`. Check the exact transitive closure in
+both registries when upgrading; changing the direct dependency's registry does
+not change those transitive sources.
 
 The client bounds the request write and response-header read with the request
 timeout; the agent bounds the body read to the remainder of the same deadline.
@@ -35,23 +34,25 @@ Connection setup is bounded separately by the same duration.
 The Node adapter uses `node:http`, `node:sqlite`, `node:zlib` and timers, with
 `--experimental-strip-types` under the pinned Node. Its observation service
 also imports `@jridgewell/trace-mapping` at runtime. Source runs need the
-workspace dependencies installed; the container currently omits that dependency
-and fails to start (STA-102). The image version and digest live in
+workspace dependencies installed. The Vite SSR build currently leaves this
+package external, while the image copies only the emitted bundle and assets:
+the staged artifact fails with `ERR_MODULE_NOT_FOUND` (STA-116 in
+[TODO](../TODO.md)). The image version and digest live in
 `deploy/node/Dockerfile`. A new dependency needs a written reason, including
 build-time and image-size effects.
 
-## esbuild
+## Build tools
 
 The Worker/dashboard build uses Vite and `cf deploy --prebuilt` uploads its
-Build Output. esbuild is a direct dev dependency used by
-`scripts/build-statsctl.sh`; it is also pulled in by
-`@cloudflare/vitest-plugin` 1.6.0 and its Wrangler 4.158.0 dependency. Stats does
-not invoke the Wrangler CLI or ship esbuild as a runtime dependency.
+Build Output. The CLI and Node server also use Vite SSR builds, configured by
+`cloudflare/vite.statsctl.config.ts` and `cloudflare/vite.node.config.ts`.
+esbuild is no longer a direct dependency; the test plugin and its Wrangler
+dependency still bring it in. Stats does not invoke the Wrangler CLI or ship
+esbuild as a runtime dependency.
 
 Keep the test plugin. Removing its esbuild closure would also require replacing
 its Wrangler configuration/Miniflare integration, with ongoing ownership of
-upstream runtime changes. Removing esbuild from the plugin alone would not
-remove the CLI bundler's direct use.
+upstream runtime changes.
 
 ## Platform binaries in lockfiles
 
@@ -65,10 +66,10 @@ by the next install and breaks frozen installs elsewhere. Leave it.
 
 `cloudflare/test/observe-e2e/` runs the built `stats` and `stats-observe`
 bundles together in workerd with a tail consumer attached, which the vitest
-pool cannot do. The direct pin is `5.20261023.3-beta`; the current vitest plugin
-uses `5.20261104.0-beta`, so the lockfile contains both versions. Neither ships
-with the application. Check the local-stack and plugin consumers together when
-changing these pins rather than assuming they already share a version.
+pool cannot do. The direct pin and the test plugin's transitive pin differ;
+`cloudflare/package.json` and `pnpm-lock.yaml` record the exact versions and
+consumers. None ships with the application. Check the local-stack and plugin
+consumers together when changing these pins.
 
 ## Source-map resolver in `stats-observe`
 

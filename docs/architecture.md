@@ -495,12 +495,16 @@ it plugs into the handler:
   `$STATS_DATA_DIR/stats.sqlite`. One process owns the file, which gives the
   single-writer guarantee the Durable Object gives. Each observation service
   owns `stats.sqlite.observe/<service>.sqlite`, its capacity limits and caches.
-  The registry opens at most 256 stores. A separate scheduler cleans them on
-  startup and follows expiry and backlog, with an hourly maintenance ceiling.
-  Shutdown stops timers before closing databases. Legacy application rows and
-  issues with provable ownership are copied once in a transaction per service.
-  Resolved issue state survives. The installation file retains all original
-  observation tables as a recoverable quarantine for ambiguous legacy state.
+  The registry opens at most 256 stores, each with an exclusive writer lock.
+  A separate scheduler cleans them on startup and follows expiry and backlog,
+  with an hourly maintenance ceiling.
+  Shutdown stops timers before closing databases. Legacy external events and
+  rate windows are copied by service; retained coded events establish ownership
+  of issue fingerprints and occurrences. Each destination transaction records
+  migration completion with its rows, preserving issue state and timestamps.
+  The installation file retains all original observation tables, including
+  artifacts and rollouts with ambiguous ownership, as a recoverable quarantine
+  unavailable through service APIs.
 - **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
   accepted only when the TCP peer is loopback (or the connection is on the
   Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
@@ -527,13 +531,9 @@ event ingest/read are supported, including application-derived issues and
 operation summaries. Node schedules service-health probes every five minutes;
 it has no Cloudflare tail consumer, Analytics SQL collector or deployment poll.
 
-The current Node observation adapter shares one store across services, so issue
-reads and mutations are not yet isolated (STA-103), and its cleanup is not
-scheduled (STA-108). Read-time expiry does not reclaim those rows. See
-[TODO](../TODO.md) and the [isolation design](rfc/STA-103-node-observe-isolation.md)
-before treating Node observation as equivalent to the per-service Cloudflare
-stores. The source-run server also needs installed runtime dependencies; the
-container's missing dependency is STA-102.
+Source runs need installed runtime dependencies. See
+[Node operations](operations.md#run-on-node) for backup, deployment preflight
+and the current container packaging limitation.
 
 ## Services and deploy markers
 
@@ -1000,6 +1000,16 @@ run, finished after the bucket settled, covered it. Otherwise the point is
 `null`. Gauges (storage, maximum CPU, probes) are never zero-filled, and the
 unsettled newest bucket is never filled. Only the last 500 runs are kept, so
 buckets older than about two days are not filled.
+
+Coarse history must not turn incomplete measurements into full coverage. A
+value is available only when every constituent five-minute cell exists for that
+meter, or retained successful collector runs establish every constituent
+counter interval, including known idle zeros. Hourly storage has no constituent
+cell counts, so hourly values require collector evidence of the full counter
+interval. Partial numeric aggregates stay stored but are omitted from
+frames and cost projections. The `project:coverage-v2` ETag namespace prevents
+reuse of older representations; the frame format is unchanged. Explicit partial
+subtotals would need a separate coverage representation.
 
 **History response.** The bucket width is the smallest of 5 minutes, 15
 minutes, 1 hour, and 3 hours that gives at most 900 points, and the first

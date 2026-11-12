@@ -49,7 +49,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Builds, deployments, CLI contract and cost reports | [Operations](docs/operations.md) |
 | Toolchain pins and dependency decisions | [Dependencies](docs/dependencies.md) |
 | Service/application integration and producers | [Contract](docs/integration.md), [TypeScript](packages/producer/README.md), [Rust](packages/stats-producer/README.md) |
-| Deployment tracking and comparison | [Deployments](docs/deployments.md) |
+| Deployment tracking and comparison | [Deployments](docs/deployments.md), [overview summary proposal](docs/rfc/STA-118-deployment-summaries.md) |
 | Tests and screenshot verification | [Testing](docs/testing.md) |
 | Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
 | Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |

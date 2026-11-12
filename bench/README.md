@@ -1,4 +1,6 @@
-# Agent benchmark method
+# Performance measurement
+
+## Agent benchmark method
 
 Run on a named Linux host only:
 
@@ -171,3 +173,49 @@ local workerd does not checkpoint, so it is not the size Cloudflare bills.
 Nothing here measures CPU time. `cloudflare/test/local/bench.test.ts` checks
 that two runs agree and that one planted SQL statement per ingest raises
 `statements` by one per batch.
+
+## Review work counts, 2026-11-12
+
+These local probes exercised source revision `4f111c4` under Linux and Node
+24.22.1, not the release pin of 26.13.1. They count repeated work and response
+bytes; they do not measure production latency, throughput, billed rows or
+savings. Findings and acceptance conditions are in [TODO](../TODO.md).
+
+| Path | Input and observation | Ticket |
+| --- | --- | --- |
+| Producer batch selection | 64 valid events, public TypeScript `flush()` and an acknowledging fake transport: 65 batch serializations visit 2,144 event representations, including the final 64-event send; no drops | STA-117 |
+| Project overview deployment history | Real SQLite-backed API and production decoder: 3 deployments/6 versions return 1,113 bytes; 1,000/2,000 return 344,983 bytes, with the same latest ID, time and title | STA-118 |
+| Rollout timing distributions | Real `rolloutImpact` with synthetic grouped SQL rows: 100 distinct timing values cause 11,577 array-iterator steps; 1,000 cause 1,015,707, including helper iterations | STA-119 |
+| External-event retention | 10,000 retained, unexpired events through real `cleanup`/`nextCleanupAt`: no deletions, correct next alarm, but the expiry count and nested minimum both scan retained rows | STA-120 |
+| Cost ledger | Retained `stuff` 30-day capture, 406 route series and 720 rows: `buildLedger` makes 1,625 route `names()` calls and 166,866 route `cells()` calls | STA-121 |
+| Full cost report | Same capture through `buildCostReport`, including plan-month histories: 4,264 route `names()` calls enumerate 1,731,184 names; 169,708 route `cells()` calls | STA-121 |
+| Known deployment versions | Real `knownDeploymentVersions` with 2,000 stored versions parses 2,000 payloads to return IDs already present in a SQL column | STA-86 |
+
+Reproduce the cost counters by loading `worker-30d.json`, `routes-30d.json` and
+`r2-30d.json` from `cloudflare/test/ui/captures/stuff/` into `Table.from` using
+the `tableView` helper in `cloudflare/test/support/history.ts`. Use the captured
+Worker bounds as the current window, no previous histories, and those same
+histories as the settled plan-month input. Count `Table.names()` calls and the
+length of each returned list, and `Table.cells()` calls, separately by history
+kind. Assert the captured 68,424 Worker requests and monthly projection
+0.20705114667; these are fixture expectations, not a current account bill.
+`planBill` alone makes only two Worker and three R2 cell lookups in this case.
+Keep the cost parity and partial-coverage assertions when testing a cache.
+
+For the deployment payload probe, use `openHarness` from
+`cloudflare/test/node/support.ts`, seed the actual deployment/version tables
+with fixed valid UUIDs and decreasing timestamps, and call
+`GET /projects/demo/deployments` through `InstallationCore.fetch`. Each
+deployment has one 100% version and null message; each version has a `tag-N`
+label and null message. Decode with `decodeDeploymentHistory` and assert the
+newest marker before counting UTF-8 response bytes.
+
+For retention, seed valid external events within the seven-day window, call
+the real store methods, and inspect `EXPLAIN QUERY PLAN` for their exact SQL.
+The `(service, event_at)` index does not bound the global expiry count or
+`MIN(MIN(received_at, event_at))`. Replaying those statements on the same schema
+with Python SQLite at 10,000 and 100,000 rows produced approximately
+50,000/500,000 VM steps for the count and 70,000/700,000 for the minimum
+(progress callback every 100 steps). Those are SQLite instruction counts,
+not Cloudflare row billing. Include index write/storage overhead when choosing
+an alternative.
