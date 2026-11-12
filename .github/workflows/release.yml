@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-agent-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Rust toolchain
@@ -94,7 +94,7 @@ jobs:
             agent/dist/SHA256SUMS.macos
 
   build-statsctl:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Node
@@ -119,7 +119,7 @@ jobs:
 
   publish:
     needs: [build-agent-linux, build-agent-macos, build-statsctl]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download artifacts
