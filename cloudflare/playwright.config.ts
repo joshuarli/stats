@@ -6,7 +6,7 @@ export default defineConfig({
   outputDir: "../.work/tmp/playwright",
   timeout: 30_000,
   fullyParallel: true,
-  workers: Math.max(1, Math.min(availableParallelism(), 16)),
+  workers: Math.max(1, Math.min(availableParallelism(), 8)),
   use: { baseURL: "http://127.0.0.1:4173", trace: "off" },
   webServer: [
     { command: "node scripts/serve.mjs", url: "http://127.0.0.1:4173", reuseExistingServer: true, timeout: 10_000 },
