@@ -3,15 +3,6 @@ Next: 122
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
-### STA-116 · P1 · The Vite Node bundle leaves a runtime dependency outside the image
-
-- **Area:** Release
-- **Where:** `cloudflare/vite.node.config.ts:8–19`, `cloudflare/scripts/bundle-node.mjs`, `deploy/node/Dockerfile:3–4`, `deploy/node/deploy.sh:17–24`
-- **Problem:** After the Vite SSR migration, the real Vite 8.3.8 build leaves `import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping"` in `main.mjs`. The image copies that file and assets, with no dependency tree. Copying the emitted artifact outside workspace dependency resolution and launching it exits with ERR_MODULE_NOT_FOUND before startup. The reproduction used Node 24.22.1; the pinned Node/container was not run. This is a new packaging regression after the earlier fix, and the existing isolated candidate health check protects the running container.
-- **Recommendation:** Include the runtime package closure in the Vite SSR output while leaving Node built-ins external, or deliberately ship the required dependency tree. Build with the release toolchain and start the staged artifact in the actual image layout without workspace dependencies, then verify health and retain candidate-before-replacement deployment ordering.
-- **Fix with:** do
-- **Effort:** S
-
 ### STA-91 · P3 · Block-latency histograms need bpftrace and root on every host
 
 - **Area:** Architecture

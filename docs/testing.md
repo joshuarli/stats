@@ -286,6 +286,13 @@ everything; review the binary diff against `annotated.json`.
 
 ## Node target tests
 
+`pnpm --dir cloudflare run test:scripts` builds the Node bundle and stages only
+`main.mjs` and a minimal dashboard index in the deployment image's layout. The
+child can read only the staged files and its data directory, so workspace
+dependencies cannot hide missing runtime packages. It checks health, authenticated
+asset and data access, and graceful shutdown. The suite also exercises candidate
+failure and replacement rollback in the Node deploy script.
+
 `pnpm run test:node` runs the `Installation` core under Node on `node:sqlite`:
 the corpus ingest and history paths, retention, the scheduler, and the SQL
 adapter. Its parity test needs `pnpm build`. It sends every `fixtures/v2` frame

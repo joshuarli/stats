@@ -592,8 +592,10 @@ STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
 because the image is tagged with the commit. It builds the dashboard and Node
 bundle here, copies `main.mjs`, the built assets, and `deploy/node/Dockerfile` to
 `~/stats-node-build/<commit>` on the host, and builds `stats-node:<commit>`
-there from the digest-pinned Node Alpine image in the Dockerfile. It then
-replaces the `stats-node` container, which runs as `node`
+there from the digest-pinned Node Alpine image in the Dockerfile. The Node Vite
+config bundles runtime packages into `main.mjs`, leaving Node built-ins external.
+An isolated candidate must pass `/health` before the running container is stopped.
+The script then replaces the `stats-node` container, which runs as `node`
 with `--network none` and listens on `unix:/run/stats/stats.sock`. The
 container keeps the database in `~/.local/share/stats-node`, mounts the
 `0700` directory `~/.local/share/stats-node-run` at `/run/stats`, and is
