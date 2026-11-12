@@ -236,9 +236,6 @@ importers:
       cf:
         specifier: 1.0.0-beta.26
         version: 1.0.0-beta.26(@types/node@26.6.6)
-      esbuild:
-        specifier: 0.28.2
-        version: 0.28.2
       miniflare:
         specifier: 5.20261023.3-beta
         version: 5.20261023.3-beta(@types/node@26.6.6)

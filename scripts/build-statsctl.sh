@@ -4,32 +4,26 @@ set -eu
 repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "$repo/cloudflare"
 
-# Get version from agent or use a default
+mkdir -p "$repo/dist"
+
+# Bundle with Vite using SSR build
+if [ -x node_modules/.bin/vite ]; then
+  vite=node_modules/.bin/vite
+elif [ -x ../node_modules/.bin/vite ]; then
+  vite=../node_modules/.bin/vite
+else
+  echo "vite not found; run pnpm install" >&2
+  exit 1
+fi
+
+"$vite" build --config vite.statsctl.config.ts
+
+# Get version from agent or use a default for making executable/checksums
 version=$(grep '^version' "$repo/agent/Cargo.toml" | head -1 | sed -n 's/version = "\(.*\)"/\1/p')
 if [ -z "$version" ]; then
   version="0.1.0"
 fi
-
-mkdir -p "$repo/dist"
 out="$repo/dist/statsctl-$version.mjs"
-
-# Bundle with esbuild using Node APIs at runtime
-if [ -x node_modules/.bin/esbuild ]; then
-  esbuild=node_modules/.bin/esbuild
-elif [ -x ../node_modules/.bin/esbuild ]; then
-  esbuild=../node_modules/.bin/esbuild
-else
-  echo "esbuild not found; add it to cloudflare devDependencies and run pnpm install" >&2
-  exit 1
-fi
-"$esbuild" src/cli/statsctl.ts \
-  --bundle \
-  --platform=node \
-  --format=esm \
-  --target=node20 \
-  --outfile="$out" \
-  --banner:js="#!/usr/bin/env node
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);"
 
 # Make executable
 chmod +x "$out"
