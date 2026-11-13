@@ -124,8 +124,7 @@ export class InstallationCore {
   }
 
   operationRun(): OperationRun {
-    const now = (): number => this.ports.clock.now();
-    return new OperationRun(this.ports.sql.open(), this.ports.operations, now);
+    return new OperationRun(this.ports.sql.open(), this.ports.operations);
   }
 
   private unpublished(): SqlDatabase {

@@ -36,7 +36,6 @@ export function inventory(root = ROOT): TestFile[] {
       const special = SPECIAL[file];
       if (special !== undefined) [owner, prerequisites, optIn = false] = special;
       else if (directory === "ui") { owner = "browser"; runner = "playwright"; prerequisites = ["stats", ...(entry.name === "local-stack.spec.ts" ? ["observe"] : [])]; optIn = true; }
-      else if (directory === "rivet-eval") { owner = "rivet-eval"; optIn = true; }
       else if (!file.slice(5).includes("/")) { owner = "worker"; runner = "vitest"; prerequisites = ["worker-source"]; }
       else if (NODE_DIRECTORIES.includes(directory)) owner = directory;
       else if (["local", "observe-e2e", "profile"].includes(directory)) { owner = directory; prerequisites = ["stats", "observe"]; }

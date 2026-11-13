@@ -111,6 +111,30 @@ runtime; the `stats` Worker and dashboard do not include it.
 `@jridgewell/sourcemap-codec` is a direct dev dependency at the same
 version so tests can build small maps.
 
+## Rivet 3 / OpenOrange for the local default and single-host self-host (declined 2026-11-13)
+
+Evaluated as a `make dev` replacement and as a single-host self-host path.
+The Cloudflare path remains the default everywhere; the self-host path as
+specified is rejected. The portable behavior matched the baseline (1444/1444
+parity assertions) and a 100-cycle / 30-minute soak passed with zero
+rejected samples, but:
+
+- The required backup/restore behavior fails: OpenOrange exposes no
+  supported consistent export, so a fresh-namespace restore cannot be
+  produced. The only demonstrated restore was a same-namespace
+  stop-the-world copy of the state directory.
+- The performance hurdle was never honestly evaluable: no candidate
+  dev-loop bench arm exists, so adoption could not be justified on speed.
+- The pinned line is a pre-release (`3.1.2-rc.1`), proven on macOS ARM64
+  only, and `@rivet-dev/services` was `UNLICENSED` (unused, optional).
+
+Revisit if upstream ships a supported consistent export: prove a
+fresh-namespace restore on Linux, re-run the resilience soak, and add a
+candidate dev-loop bench phase before re-evaluating adoption. The full
+evidence and verdict record live in git history at `9f1b43c`
+(`docs/rivet-openorange-evaluation.md`); the evaluation closure was
+removed rather than parked in-tree.
+
 ## Alchemy for deployment (declined 2026-11-07)
 
 Stats stays on `cf` and `cloudflare.config.ts` rather than adopting Alchemy as
