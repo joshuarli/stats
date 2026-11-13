@@ -89,7 +89,8 @@ export function FleetPage(): JSX.Element {
     returnHost = null;
     restoreListFocus(link);
   };
-  const [refreshError, setRefreshError] = createSignal<string | null>(null);
+  const [hostsError, setHostsError] = createSignal<string | null>(null);
+  const [rowsError, setRowsError] = createSignal<string | null>(null);
   const [rowsEpoch, setRowsEpoch] = createSignal(0);
   const rowCache: FleetRowCache = {
     systems: new Map(),
@@ -154,22 +155,21 @@ export function FleetPage(): JSX.Element {
     loadFleetRows(
       pageHosts(),
       query(),
-      { previous, retention: rowsRetention, onError: error => setRefreshError(error === null ? null : errorMessage(error)) },
+      { previous, retention: rowsRetention, onError: error => setRowsError(error === null ? null : errorMessage(error)) },
       rowCache
     )
   );
 
   let lastManualTick = manualTick();
   const doRefresh = async (includeSystem: boolean) => {
-    setRefreshError(null);
+    setHostsError(null);
+    setRowsError(null);
     rowCache.histories.clear();
     if (includeSystem) rowCache.systems.clear();
     setRowsEpoch(value => value + 1);
-    try {
-      await Promise.all([refreshHosts(), refresh(rows)]);
-    } catch (error) {
-      setRefreshError(errorMessage(error));
-    }
+    const [listed, refreshed] = await Promise.allSettled([refreshHosts(), refresh(rows)]);
+    if (listed.status === "rejected") setHostsError(errorMessage(listed.reason));
+    if (refreshed.status === "rejected") setRowsError(errorMessage(refreshed.reason));
   };
   createUpdateEffect(() => tick(), () => {
     const manual = manualTick();
@@ -184,6 +184,8 @@ export function FleetPage(): JSX.Element {
     return { all: all.length, online: byLabel("online"), stale: byLabel("stale"), noSamples: byLabel("no samples"), revoked: byLabel("revoked") };
   });
 
+  const refreshErrors = () => [...new Set([hostsError(), rowsError()].filter((message): message is string => message !== null))];
+
   const toggle = (label: StatusLabel) => {
     setSelected(current => {
       const next = new Set(current);
@@ -196,8 +198,8 @@ export function FleetPage(): JSX.Element {
 
   return (
     <>
-      <Show when={refreshError()}>
-        {(message) => <Notice tone="warn">{message()}</Notice>}
+      <Show when={refreshErrors().length > 0}>
+        <Notice tone="warn">{refreshErrors().join(" ")}</Notice>
       </Show>
       <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
         <Loading fallback={<FleetSkeleton />}>

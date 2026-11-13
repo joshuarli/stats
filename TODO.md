@@ -6,14 +6,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
-### STA-114 · P3 · A successful fleet-row refresh can clear the host-list failure warning
-
-- **Area:** Concurrency
-- **Where:** `cloudflare/src/client/pages/FleetPage.tsx:157–172`, `cloudflare/src/client/queries.ts:26–31`
-- **Problem:** Manual refresh starts host-list and row loads together, but both write one `refreshError`. The host-list rejection sets the warning; a later successful row load calls `onError(null)` and can clear it. This inherited frontend finding remains reachable in source; final browser error-boundary behavior was not reproduced in this review.
-- **Recommendation:** Keep the two error states distinct or derive the warning after both outcomes settle. Verify both completion orders while retaining the last good same-key data.
-- **Fix with:** lifecycle-concurrency
-- **Effort:** S
 
 
 ### STA-117 · P3 · Producer batch sizing serializes every growing prefix

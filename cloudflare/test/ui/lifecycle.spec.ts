@@ -586,6 +586,35 @@ test("disposal during an active chart load aborts the load and leaves no uplot r
   expect(uplotCount).toBe(0);
 });
 
+test("fleet refresh reports a row failure, clears it on recovery, and dedupes a shared host failure", async ({ page }) => {
+  await installBaseRoutes(page);
+  let failHistory = false;
+  let failHosts = false;
+  await page.route("**/api/v1/hosts", route => {
+    if (failHosts) return route.fulfill({ status: 503, body: "unavailable" });
+    return route.fulfill({ json: { hosts: THREE_HOSTS } });
+  });
+  await page.route("**/api/v1/hosts/*/history*", route => {
+    const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1] ?? HOST_A;
+    if (failHistory) return route.fulfill({ status: 503, body: "unavailable" });
+    return fulfillHistory(route, fleetBundle(id, "1h", 25));
+  });
+  await page.goto("/#/");
+  await expect(page.getByRole("table", { name: "Fleet hosts" })).toContainText("alpha-node");
+
+  failHistory = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.locator(".notice-warn")).toBeVisible();
+
+  failHistory = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.locator(".notice-warn")).toHaveCount(0);
+
+  failHosts = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.locator(".notice-warn")).toHaveCount(1);
+});
+
 test("fleet requests /system only on mount and manual refresh, and filtering or sorting issues no host requests", async ({ page }) => {
   await installBaseRoutes(page);
   let systemCalls = 0;
