@@ -82,7 +82,7 @@ describe("services", () => {
     const listed = await admin("/services");
     expect(listed.status).toBe(200);
     const listText = await listed.text();
-    expect((JSON.parse(listText) as { services: { name: string }[] }).services.filter(service => service.name === "api")).toEqual([{ name: "api", hostIds: [...hostIds].sort(), healthUrl: "https://api.example.com/health", unit: "api@1.service", createdAtMs: NOW }]);
+    expect((JSON.parse(listText) as { services: Record<string, unknown>[] }).services.filter(service => service["name"] === "api")).toEqual([{ name: "api", hostIds: [...hostIds].sort(), healthUrl: "https://api.example.com/health", unit: "api@1.service", createdAtMs: NOW, latestDeployment: { status: "none" } }]);
     const one = await admin("/services/api");
     expect(one.status).toBe(200);
     const oneText = await one.text();
