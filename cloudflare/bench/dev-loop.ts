@@ -38,7 +38,9 @@ let page: Page;
 const results: { scenario: string; elapsedMs: number; compilations: number; tests?: number }[] = [];
 const memory: { readonly processes: number; readonly rssKiB: number }[] = [];
 const inputs = [join(root, "src/client/styles/index.css"), join(root, "src/core/http.ts")];
+const observeInputs = [join(root, "src/observe/http/api.ts")];
 const originals = inputs.map(file => readFileSync(file, "utf8"));
+const observeOriginals = observeInputs.map(file => readFileSync(file, "utf8"));
 let running: ReturnType<typeof owner.start> | undefined;
 let origin = "";
 
@@ -146,8 +148,20 @@ try {
       await until(async () => { try { const response = await fetch(`${origin}/health`); return response.ok && (await response.json() as { devLoopProbe?: string }).devLoopProbe === marker; } catch { return false; } }, "Worker edit in successful request");
       return { compilations: baseline ? compilations : compiled(readFileSync(running!.logPath, "utf8")) - previous };
     });
+    await trial("observation-edit", async () => {
+      const previous = compiled(readFileSync(running!.logPath, "utf8"));
+      const source = observeOriginals[0]!;
+      const needle = "return json(await store.health());";
+      assert.ok(source.includes(needle));
+      writeFileSync(observeInputs[0]!, source.replace(needle, `return json({ ...(await store.health()), devLoopProbe: "${marker}" });`));
+      let compilations = 0;
+      if (baseline) { await stop(); compilations = await build(); await start(); }
+      await until(async () => { try { const response = await page.request.get(`${origin}/api/observe/stats/health`); return response.ok() && (await response.json() as { devLoopProbe?: string }).devLoopProbe === marker; } catch { return false; } }, "observe edit in verified request");
+      return { compilations: baseline ? compilations : compiled(readFileSync(running!.logPath, "utf8")) - previous };
+    });
     await stop();
     for (const [index, input] of inputs.entries()) writeFileSync(input, originals[index]!);
+    for (const [index, input] of observeInputs.entries()) writeFileSync(input, observeOriginals[index]!);
     for (const file of ["test/ingest/conformance.test.ts", "test/node/parity.test.ts"]) {
       await trial(file, async () => {
         const result = await owner.run("focused-test", process.execPath, ["scripts/run-tests.mjs", "--file", file], { cwd: root, env: process.env, stream: false });
@@ -170,6 +184,7 @@ try {
 } finally {
   await stop();
   for (const [index, input] of inputs.entries()) writeFileSync(input, originals[index]!);
+  for (const [index, input] of observeInputs.entries()) writeFileSync(input, observeOriginals[index]!);
   await browser?.close();
   await owner.close();
   rmSync(state, { recursive: true, force: true });
