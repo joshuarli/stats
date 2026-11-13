@@ -1119,9 +1119,14 @@ function routeComparisons(db: SqlStatements, cutoff: number, versions: readonly 
     const byRoute = new Map<string, Map<string, [number, number][]>>();
     for (const row of rows) {
       const route = `${row.stage}\u0000${row.label}`;
-      const perVersion = byRoute.get(route) ?? new Map<string, [number, number][]>();
-      byRoute.set(route, perVersion);
-      perVersion.set(row.version, [...perVersion.get(row.version) ?? [], [row.value, row.n]]);
+      let perVersion = byRoute.get(route);
+      if (perVersion === undefined) {
+        perVersion = new Map<string, [number, number][]>();
+        byRoute.set(route, perVersion);
+      }
+      const values = perVersion.get(row.version);
+      if (values === undefined) perVersion.set(row.version, [[row.value, row.n]]);
+      else values.push([row.value, row.n]);
     }
     return byRoute;
   };
