@@ -82,8 +82,9 @@ never proves health.
 The Node server also probes each configured `healthUrl` on the five-minute
 collection boundary. Results are stored under the `service:NAME` owner as
 `probe.health.up` (1 or 0) and `probe.health.ms`; `probe.health.failure` in a
-comparison is the complement of the mean `up` share. A target that does not
-record probes leaves the series `unavailable`, never `0`. Health requests carry
+comparison is the complement of the mean `up` share. The Cloudflare target
+runs no service probes, so there the series stays `unavailable`, never `0`,
+and `statsctl service check` is the only health signal. Health requests carry
 no Access, Tailscale, deploy, or ingest credential.
 
 ## 5. Telemetry protocol version

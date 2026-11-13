@@ -12,14 +12,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** do
 - **Effort:** S
 
-### STA-101 · P3 · Cloudflare target records no service health probes
-
-- **Area:** Operability
-- **Where:** `cloudflare/src/deployments/service-compare.ts` (`This target runs no health probes`), `cloudflare/src/cloudflare/installation.ts` (`probesServices: false`), `cloudflare/src/node/installation.ts` (`probesServices: true`)
-- **Problem:** The Cloudflare installation sets `probesServices: false`, so it never schedules service-health probes and no probe series is available for those services. The UI already says Health: not probed on this target. Node supports scheduled probes, subject to its deployment network policy.
-- **Recommendation:** If Cloudflare service probes are wanted, add a bounded scheduled source or define how manual service checks become retained probe evidence. Otherwise keep the explicit unavailable state and document the target limitation; changing wording alone is already partly complete.
-- **Fix with:** architect
-- **Effort:** M
 
 ### STA-113 · P3 · A retained project ledger makes the successful fallback history request redundant
 
