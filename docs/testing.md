@@ -56,7 +56,13 @@ See [development](development.md) for file/name selectors and the JSON inventory
 - **Service scenarios.** `test/local/scenarios.test.ts` exercises service
   creation, ingest, read-back, rotation, marker idempotency, invalid credentials,
   and the shared `fixtures/observe-ingest` batch on workerd and Node.
-  The real Tansu and Niceforge checks live in `test/external/services.test.ts`.
+  `fixtures/observe-ingest/manifest.json` freezes `nowMs`; decode frame checks
+  against that anchor stay valid forever, but anything validated against the
+  real clock must rebase the batch onto `Date.now()` (see
+  `test/support/observe-ingest.ts` and `test/observe-e2e/external.test.ts`),
+  because the external-event retention window is seven days and the frozen
+  fixture crosses it. The real Tansu and Niceforge checks live in
+  `test/external/services.test.ts`.
   Select `--suite services-external` with prepared `TANSU_DIR` and
   `NICEFORGE_DIR` checkouts. Those external checks are explicit opt-ins.
 - **Upgrade.** `test/local/upgrade.test.ts` opens state written by the build of
