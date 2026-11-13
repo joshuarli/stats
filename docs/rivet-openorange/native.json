@@ -2,13 +2,13 @@
   "schema": "rivet-eval/1",
   "command": "native",
   "result": "pass",
-  "revision": "a9090c20669c631ce3ccfd6532ef6b80e4760efa",
-  "dirty": true,
+  "revision": "f87baf558e685d240714061d06a1054d66862468",
+  "dirty": false,
   "run": {
-    "id": "2026-11-13T02-00-29-829Z-3d70c272",
-    "started": "2026-11-13T02:00:29.864Z",
-    "finished": "2026-11-13T02:00:40.015Z",
-    "durationMs": 10186
+    "id": "2026-11-13T02-01-13-733Z-9cb28ecc",
+    "started": "2026-11-13T02:01:13.767Z",
+    "finished": "2026-11-13T02:01:23.866Z",
+    "durationMs": 10133
   },
   "counts": {
     "checks": 12,
@@ -62,7 +62,7 @@
       "ok": true,
       "detail": {
         "scheduled": {
-          "id": "f681ffe9-82ff-4201-bed0-b5ba6649eec7"
+          "id": "257bdf76-8e21-438f-bc49-e25e785ace9b"
         },
         "fired": [
           "probe"
@@ -140,11 +140,11 @@
     }
   },
   "timings": {
-    "ingestLinux": 15,
+    "ingestLinux": 16,
     "ingestU64": 6
   },
   "limits": {
-    "stateDir": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T02-00-29-829Z-3d70c272/native",
+    "stateDir": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T02-01-13-733Z-9cb28ecc/native",
     "unproven": [
       "sleep/wake not exposed on the action API surface probed; hibernation not timed",
       "commitTicket/whenDurable are not exposed on RawAccess; durability demonstrated behaviorally via engine restart, not via an acknowledgment API",
