@@ -129,14 +129,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** none
 - **Effort:** S
 
-### STA-88 · P4 · The stuff project has no cost baseline since its bench loop stopped
-
-- **Area:** Operability
-- **Where:** `cloudflare/cloudflare.config.ts:10` (`stuff` project), `#/project/stuff`
-- **Problem:** The loop that made up about 86% of `stuff` requests stopped, so earlier cost and route readings describe it, not the service. Whether the response cache absorbs repeat reads is unchecked: compare `crates` blob requests with `stuff-mycrates` operations.
-- **Recommendation:** Take one hour on the project page, rank routes by CPU and R2 operations per request, and file in the `stuff` repository whatever is worth changing. Delete this ticket after that.
-- **Fix with:** none
-- **Effort:** S
 
 ### STA-89 · P4 · usr-memories snapshot writes and database growth were left unchanged by decision
 
