@@ -20,14 +20,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Design:** docs/rfc/STA-118-deployment-summaries.md
 
 
-### STA-120 · P3 · External-event cleanup scans retained history to find expiry and backlog
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/observe/core/store.ts:434,959–962,986–990`, `cloudflare/src/observe/core/service.ts:137–140`, `cloudflare/src/observe/cloudflare/store-object.ts:38–40`
-- **Problem:** Cleanup counts all expired external events before a bounded deletion, then nextCleanupAt computes `MIN(MIN(received_at, event_at))` across the table. The primary key starts with service/event ID and the time index with service, so these global expiry queries scan retained rows. Real SQLite store cleanup over 10,000 unexpired events deletes none but still produces full-scan plans for both queries; exact-SQL VM work scales linearly at 100,000. External events have seven-day retention without a row cap. This cost is on maintenance alarms, not every ingest, and production latency/billed rows were not measured.
-- **Recommendation:** Determine remaining work with a bounded existence/overflow query rather than a full count, and make expiry discovery indexable using time-leading indexes with separate received/event branches or a validated expiry key. Preserve expiry by either timestamp, deduplication, deletion bounds, health counters and next-alarm/backlog behavior. Measure added ingest writes and storage before choosing indexes.
-- **Fix with:** make-it-fast
-- **Effort:** M
 
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
