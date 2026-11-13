@@ -60,14 +60,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
-### STA-78 · P4 · The stuff site probe reported down once in its first runs
-
-- **Area:** Data
-- **Where:** `cloudflare/cloudflare.config.ts:19` (the `site` probe), `docs/operations.md` (Verified environments)
-- **Problem:** On 2026-11-01 the `site` probe of `stuff` was down in one of the first five collector runs and returned 200 on every later check. Probes measure from Cloudflare's edge and a failed fetch records down, so a cold-start or edge blip reads as an outage. Whether it recurs is unknown.
-- **Recommendation:** Read `kind=probes` history for `stuff` over 7 days. If `site` shows isolated single-bucket downs, decide between keeping the signal as is and requiring two consecutive failures before it scores; if it shows none, delete this ticket.
-- **Fix with:** none
-- **Effort:** S
 
 ### STA-79 · P4 · The 45 minute settle time rests on one day of ingestion-lag samples
 
