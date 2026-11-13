@@ -35,7 +35,7 @@ async function observe(response: Response): Promise<Observed> {
   };
 }
 
-const eq = (left: Observed, right: Observed): boolean => left.status === right.status && left.contentType === right.contentType && left.etag === right.etag && left.body === right.body;
+export const eq = (left: Observed, right: Observed): boolean => left.status === right.status && left.contentType === right.contentType && left.etag === right.etag && left.body === right.body;
 
 const INGEST_TYPE = INGEST_MEDIA_TYPE;
 const candidateIngest = async (origin: string, token: string, frame: Uint8Array): Promise<Observed> => observe(await fetch(`${origin}/ingest/v2/batches`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": INGEST_TYPE }, body: frame.slice() }));

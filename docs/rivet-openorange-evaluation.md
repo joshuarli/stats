@@ -236,6 +236,7 @@ checks (startup/restart timings, process list, RSS):
 | History (5 ranges x 5 kinds + bundles) per host | byte-identical status/contentType/etag/body to the control for all 40 hosts |
 | Latest / system / host list | identical to control |
 | Malformed frames (65 cases from `fixtures/v2/malformed.json`) | identical 400 bodies to control; whole-frame rejection holds |
+| Negative controls (write-loss, missing-metric, unmatched selector) | corrupted ack/history bytes throw in both arms (R1); `eq` flags a truncated history (lost acknowledged write) and a one-byte metric difference as unequal, plus etag/content-type/status changes; `run-tests.mjs --file test/does-not-exist.test.ts` exits 1 with `unmatched test selector`; opt-in test `cloudflare/test/rivet-eval/parity-controls.test.ts` |
 | ETag / If-None-Match round trip; cache invalidation after mutation | 304 round trip; stale etag rejected with 200 after mutation |
 | Restart durability | history bytes byte-identical after SIGTERM + restart; host list persists |
 | Auth | JWT missing/invalid -> 401 on API and /assets; valid JWT -> 200 |
