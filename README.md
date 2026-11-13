@@ -121,7 +121,6 @@ never accepted in argv or written to logs.
   "uploadIntervalMs": 30000,
   "maxQueueSamples": 16,
   "requestTimeoutMs": 10000,
-  "blockLatencyFile": "/run/stats/block-latency.json",
   "services": [{ "name": "stats-node", "unit": "stats-node.service" }]
 }
 ```
@@ -140,24 +139,19 @@ tunnels) and skips `tmpfs` and `overlay` mounts, which container hosts have
 dozens of. Set either to `true` to report them again; each list is still
 capped at 16.
 
-`blockLatencyFile` is optional. When set, each sample attaches the `block`
-group from that file if it is a regular file, not group- or world-writable,
-and modified within the last 30 seconds; otherwise `block` is absent. See
-[`bpf/README.md`](bpf/README.md) for the collector that writes it.
-
-Linux builds can alternatively embed an in-agent eBPF probe instead of the
-file collector, opting in with the `block-latency` Cargo feature. The probe is
-not part of the release build. Build it with `agent/scripts/build-probe.sh`
+A Linux build can attach a `block` latency histogram by opting in with the
+`block-latency` Cargo feature (embedded probe, no collector file). The probe
+is not part of the release build. Build it with `agent/scripts/build-probe.sh`
 (needs a clang with the BPF backend; point `LLVM_CLANG` or the first argument
 at it), then build the agent with
 `STATS_BLOCK_PROBE=/path/to/block_latency.bpf.o cargo build --features block-latency`.
 Loading needs tracefs mounted and `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`
 on older kernels); the agent keeps no other privileges. If the probe fails to
-load, or a read fails, the sample falls back to `blockLatencyFile`; otherwise
-`block` is absent. The probe assumes the standard
-`block_rq_issue`/`block_rq_complete` tracepoint layout (dev_t at offset 8,
-sector_t at offset 16) and does not parse the format files. macOS builds never
-contain or load BPF code.
+load, or a read fails, `block` is absent from the sample. The probe assumes the
+standard `block_rq_issue`/`block_rq_complete` tracepoint layout (dev_t at
+offset 8, sector_t at offset 16) and does not parse the format files. macOS
+builds never contain or load BPF code. Without the feature the `block` group
+is never attached.
 
 `services` is optional and lists at most 16 services, each a `name` (the
 service name on the server, 1-32 lowercase letters, digits, or hyphens,

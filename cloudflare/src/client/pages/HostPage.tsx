@@ -173,7 +173,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
               <FilesystemsWidget series={filesystems().series} stepMs={filesystems().stepMs} events={events()} />
               <NetworkWidget series={nets().series} stepMs={nets().stepMs} events={events()} />
               <DiskWidget series={disks().series} stepMs={disks().stepMs} summary={table()} summaryStepMs={summary().stepMs} events={events()} psiWindow={psiWindow()} />
-              <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: the optional eBPF probe is not configured on this host (see bpf/README.md).</Notice>}>
+              <Show when={reportsBlock()} fallback={<Notice>Block latency is not reported: this host's agent does not attach the optional eBPF probe (see the agent configuration docs).</Notice>}>
                 <BlockWidget series={block().series} stepMs={block().stepMs} events={events()} />
                 <BlockCompletionsWidget series={block().series} stepMs={block().stepMs} events={events()} />
               </Show>

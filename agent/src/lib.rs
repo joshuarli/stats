@@ -1,5 +1,4 @@
 pub mod backoff;
-pub mod block;
 #[cfg(all(target_os = "linux", feature = "block-latency"))]
 pub mod block_bpf;
 pub mod block_fold;

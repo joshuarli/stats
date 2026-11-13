@@ -12,7 +12,7 @@ for (const os of ["Darwin", "Linux"]) await test(`reprovisioning ${os} preserves
     writeFileSync(join(tree, "agent/target/release/stats"), "binary");
     writeFileSync(join(tree, "agent/dist/stats-9.9.9-aarch64-unknown-linux-musl"), "binary");
     copyFileSync(resolve(import.meta.dirname, "../../../agent/contrib/launchd/xyz.17166969.stats.plist"), join(tree, "agent/contrib/launchd/xyz.17166969.stats.plist"));
-    const existing = { endpoint: "https://old.example.com", hostId: "h1", tokenFile: "/old/token", services: [{ name: "web", unit: "web.service" }], blockLatencyFile: "/run/block.json", sampleIntervalMs: 1000, includeVirtualInterfaces: true };
+    const existing = { endpoint: "https://old.example.com", hostId: "h1", tokenFile: "/old/token", services: [{ name: "web", unit: "web.service" }], includeVirtualFilesystems: true, sampleIntervalMs: 1000, includeVirtualInterfaces: true };
     writeFileSync(join(workspace.state, "existing.json"), JSON.stringify(existing));
     writeFileSync(join(workspace.state, "ssh.mjs"), `
 import { readFileSync, writeFileSync } from "node:fs";

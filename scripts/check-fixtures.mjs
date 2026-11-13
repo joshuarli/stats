@@ -40,7 +40,7 @@ const errorCodes = new Set(quotedList(source("cloudflare/src/codes.ts"), /export
 const serverFilesystems = quotedList(source("cloudflare/src/protocol.ts"), /export const FS_TYPES = \[([^\]]+)\] as const;/u, "protocol FS_TYPES");
 const agentFilesystems = quotedList(source("agent/src/model.rs"), /pub const FILESYSTEM_TYPES: \[&str; [0-9]+\] = \[([^\]]+)\];/u, "agent FILESYSTEM_TYPES");
 const serverBounds = numberList(source("cloudflare/src/limits.ts"), /export const BLOCK_BOUNDS_US = \[([^\]]+)\] as const;/u, "BLOCK_BOUNDS_US");
-const collectorBounds = [...source("bpf/biolatency-collector.bt").matchAll(/\$latency_us <= ([0-9_]+)/gu)].map(entry => Number(entry[1].replaceAll("_", "")));
+const probeBounds = [...source("agent/bpf/block_latency.bpf.c").matchAll(/#define BOUND\d+ ([0-9]+)ULL/gu)].map(entry => Number(entry[1]));
 const blockBuckets = Number(/export const BLOCK_BUCKETS = ([0-9]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1]);
 const agentBuckets = Number(/pub const BLOCK_BUCKETS: usize = ([0-9]+);/u.exec(source("agent/src/model.rs"))?.[1]);
 const serverCap = Number(/export const MAX_BODY_BYTES = ([0-9_]+);/u.exec(source("cloudflare/src/limits.ts"))?.[1].replaceAll("_", ""));
@@ -50,7 +50,7 @@ for (const [label, server, agent] of [["request media type", /INGEST_MEDIA_TYPE 
 }
 
 if (JSON.stringify(serverFilesystems) !== JSON.stringify(agentFilesystems)) fail(`filesystem type list differs: server ${serverFilesystems.join(",")}; agent ${agentFilesystems.join(",")}`);
-if (JSON.stringify(serverBounds) !== JSON.stringify(collectorBounds)) fail(`block bucket bounds differ: server ${serverBounds.join(",")}; collector ${collectorBounds.join(",")}`);
+if (JSON.stringify(serverBounds) !== JSON.stringify(probeBounds)) fail(`block bucket bounds differ: server ${serverBounds.join(",")}; probe ${probeBounds.join(",")}`);
 if (blockBuckets !== serverBounds.length + 1 || blockBuckets !== agentBuckets) fail(`block bucket count differs: limits ${blockBuckets}; bounds ${serverBounds.length + 1}; agent ${agentBuckets}`);
 if (serverCap !== agentCap) fail(`body cap differs: server ${serverCap}; agent ${agentCap}`);
 

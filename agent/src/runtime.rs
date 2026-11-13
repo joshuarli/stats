@@ -1,5 +1,4 @@
 use crate::backoff::Backoff;
-use crate::block;
 use crate::cgroup;
 use crate::config::{load_token_file, AgentConfig, ConfigError};
 use crate::model::{Block, BootId, Sample, Unavailable};
@@ -280,7 +279,6 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
 }
 
 struct BlockSampling {
-    snapshots: block::SnapshotReader,
     #[cfg(all(target_os = "linux", feature = "block-latency"))]
     probe: Option<crate::block_bpf::Probe>,
 }
@@ -288,28 +286,25 @@ struct BlockSampling {
 impl BlockSampling {
     fn new() -> Self {
         Self {
-            snapshots: block::SnapshotReader::default(),
             #[cfg(all(target_os = "linux", feature = "block-latency"))]
             probe: crate::block_bpf::Probe::load(),
         }
     }
 
-    fn read(&mut self, config: &AgentConfig) -> Option<Block> {
+    fn read(&mut self) -> Option<Block> {
         #[cfg(all(target_os = "linux", feature = "block-latency"))]
         {
             if let Some(probe) = &mut self.probe {
-                if let Some(block) = probe.poll() {
-                    return Some(block);
-                }
+                return probe.poll();
             }
         }
-        config.block_latency_file.as_ref().and_then(|path| self.snapshots.read(path))
+        None
     }
 }
 
 fn collect_sample(config: &AgentConfig, sampling: &mut BlockSampling) -> Option<Sample> {
     let mut sample = sample_once(config.scope())?;
-    if let Some(block) = sampling.read(config) {
+    if let Some(block) = sampling.read() {
         sample.block = Some(block);
     }
     if !config.services.is_empty() {

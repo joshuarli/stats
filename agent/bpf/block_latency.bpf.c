@@ -1,6 +1,6 @@
-// Block request issue-to-complete latency histogram, in eBPF. Counts match
-// bpf/biolatency-collector.bt; the per-CPU stats slot layout below is the
-// protocol with the userspace loader in agent/src/block_bpf.rs.
+// Block request issue-to-complete latency histogram, in eBPF. The per-CPU
+// stats slot layout is the protocol with the userspace loader in
+// agent/src/block_bpf.rs.
 
 #define SEC(NAME) __attribute__((section(NAME), used))
 #define __uint(name, val) int (*name)[val]

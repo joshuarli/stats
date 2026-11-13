@@ -2,9 +2,9 @@
 
 A Linux/macOS host agent (`agent/`), a shared telemetry core and Solid dashboard
 (`cloudflare/`), Cloudflare and Node adapters, application producers
-(`packages/`), an optional bpftrace collector (`bpf/`) and an opt-in in-agent
-eBPF block-latency probe (`agent/bpf/`), and deploy scripts
-(`deploy/`). Use the topic docs below for contracts and operational details.
+(`packages/`), an opt-in in-agent eBPF block-latency probe (`agent/bpf/`),
+and deploy scripts (`deploy/`). Use the topic docs below for contracts and
+operational details.
 
 ## Commands
 
@@ -37,7 +37,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 - Every non-ingest, non-health asset/data route passes the target's auth adapter before data access: Access JWT verification on Cloudflare, Tailscale identity over trusted local transport on Node. See [architecture](docs/architecture.md).
 - Analytics reads use only `cloudflare/src/projects/queries.ts`; request data never reaches SQL. `statsctl` read commands do not mutate; command definitions declare mutation access and supported targets.
 - Dashboard goldens are WebP. `make dashboard-test` rejects tracked PNGs.
-- The baseline agent never loads BPF and needs no root, service manager or language runtime. The opt-in `block-latency` Cargo feature (Linux-only) embeds a prebuilt eBPF probe and needs mounted tracefs plus `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`); any load failure falls back to `blockLatencyFile`, and if that is absent the `block` group is omitted. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
+- The baseline agent never loads BPF and needs no root, service manager or language runtime. The opt-in `block-latency` Cargo feature (Linux-only) embeds a prebuilt eBPF probe and needs mounted tracefs plus `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`); any load failure omits the `block` group. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
 
 ## Docs
 
@@ -54,6 +54,6 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Tests and screenshot verification | [Testing](docs/testing.md) |
 | Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
 | Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |
-| Optional block latency | [bpf](bpf/README.md) |
+| Optional block latency | [README: agent config](README.md) |
 | Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |
 | Open work and planned Linux power collection | [TODO](TODO.md), [power plan](docs/CAMPAIGN-LINUX-POWER.md) |

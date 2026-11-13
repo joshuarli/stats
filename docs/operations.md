@@ -783,7 +783,7 @@ Recorded 2026-10-31:
   satisfy `need net`) on OrbStack. This does not cover kernel behavior,
   systemd boot, reboot persistence, or block telemetry.
 - **Performance and BPF:** see [`bench/README.md`](../bench/README.md) and
-  [`bpf/README.md`](../bpf/README.md).
+  [README](../README.md) (agent config, opt-in `block-latency` feature).
 
 Not yet verified:
 

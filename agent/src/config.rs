@@ -36,8 +36,6 @@ pub struct AgentConfig {
     pub max_queue_samples: usize,
     #[deser(rename = "requestTimeoutMs", default = default_timeout_ms())]
     pub request_timeout_ms: u64,
-    #[deser(rename = "blockLatencyFile", default)]
-    pub block_latency_file: Option<PathBuf>,
     #[deser(rename = "includeVirtualInterfaces", default)]
     pub include_virtual_interfaces: bool,
     #[deser(rename = "includeVirtualFilesystems", default)]
@@ -199,15 +197,6 @@ pub fn load(path: &Path) -> Result<AgentConfig, ConfigError> {
         config.token_file = parent.join(&config.token_file);
     }
     config.services = resolve_services(&config.service_units)?;
-    if let Some(block_latency_file) = &config.block_latency_file {
-        if block_latency_file.as_os_str().is_empty() {
-            return Err(ConfigError::new("blockLatencyFile must not be empty"));
-        }
-        if !block_latency_file.is_absolute() {
-            let parent = path.parent().unwrap_or_else(|| Path::new("."));
-            config.block_latency_file = Some(parent.join(block_latency_file));
-        }
-    }
     Ok(config)
 }
 
@@ -330,23 +319,6 @@ mod tests {
         let text = valid_config(&token).replace("https://telemetry.example.com", "http://127.0.0.1:8787");
         write(&path, &text, 0o600);
         assert_eq!(load(&path).unwrap().endpoint, "http://127.0.0.1:8787");
-    }
-
-    #[test]
-    fn resolves_the_optional_block_latency_file() {
-        let root = scratch("config");
-        let token = root.join("token");
-        write(&token, "nft_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq", 0o600);
-        let path = root.join("agent.json");
-        let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":10000,\"blockLatencyFile\":\"run/block.json\"");
-        write(&path, &text, 0o600);
-        let config = load(&path).unwrap();
-        assert_eq!(config.block_latency_file, Some(root.join("run/block.json")));
-
-        let path = root.join("agent-empty.json");
-        let text = valid_config(&token).replace("\"requestTimeoutMs\":10000", "\"requestTimeoutMs\":10000,\"blockLatencyFile\":\"\"");
-        write(&path, &text, 0o600);
-        assert!(load(&path).unwrap_err().to_string().contains("blockLatencyFile"));
     }
 
     #[test]
