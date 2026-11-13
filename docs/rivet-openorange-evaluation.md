@@ -359,8 +359,19 @@ R5a results (all pass):
 | packagedSelfHost | watcher-free `orange serve` against a driver-spawned local Engine (SQLite, self-host): restart produced byte-identical history (fingerprint match); 401 on missing JWT, 401 on bad JWT; unauthenticated probe of the Engine endpoint returned 404 |
 | snapshotRestore | stop-the-world filesystem copy of the full synthetic state dir restored and replayed with duplicates === 2; **same-namespace** restore; no supported online export ran; labeled as such |
 
-R5b (soak) is recorded in the behavior register (D4) and appended below once the
-30-minute / 100-cycle run completes.
+R5b (soak) — measured ([soak.json](rivet-openorange/soak.json) — revision
+`99d71bd`, worktree clean): 100 reload cycles paced across 30 minutes
+(per-cycle dev-server restart, fresh host each cycle because the frozen
+`TEST_NOW_MS` pins every request into one rate-limit window). 200 samples
+accepted, 0 rejected; peak process-tree RSS 923,920 KiB against the 4 GiB
+abort gate; after the final cycle the app restarted, history was served
+(200, 2776 bytes) and replaying the base frame returned `duplicates === 2`.
+One honest failure is retained in the raw evidence: the first full 30-minute
+run exited `fail` — with the frozen clock, requests 7+ on one host are
+`rate_limited` (6 per 60 s window), so the single-host soak could not pass as
+designed; the per-cycle host fix (`99d71bd`) addressed it and the re-run is
+the recorded evidence. Growth under soak is bounded by the raw-retention
+purge; none of it proves receiver backlog under load (Needs environment).
 
 Limits (kept explicit):
 
