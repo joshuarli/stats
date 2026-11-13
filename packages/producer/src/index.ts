@@ -1,5 +1,5 @@
 import {
-  encodeBatch, ERROR_CODE, EVENT_ID, HOST, INSTANCE, MAX_BATCH_BYTES, MAX_DURATION_MS, MAX_EVENTS, OPERATION, OUTCOME, RELEASE, SERVICE, SUCCESS_OUTCOME, TRACE_ID, SPAN_ID,
+  encodeBatch, encodeEvent, ERROR_CODE, EVENT_ID, HOST, INSTANCE, MAX_BATCH_BYTES, MAX_DURATION_MS, MAX_EVENTS, OPERATION, OUTCOME, RELEASE, SERVICE, SUCCESS_OUTCOME, TRACE_ID, SPAN_ID,
   workOf, type OperationEvent, type Trace
 } from "./protocol.ts";
 
@@ -135,7 +135,7 @@ export function createProducer(config?: ProducerConfig | null): Producer {
   const producerId = defaultEventId();
   const startedAtMs = now();
   let accepted = 0;
-  const queue: OperationEvent[] = [];
+  const queue: { event: OperationEvent; size: number }[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
   let closed = false;
@@ -185,11 +185,13 @@ export function createProducer(config?: ProducerConfig | null): Producer {
 
   function takeBatch(): OperationEvent[] {
     const batch: OperationEvent[] = [];
+    let size = 13; // {"events":[]} plus one comma for each event after the first.
     while (queue.length > 0 && batch.length < batchSize) {
-      const next = [...batch, queue[0]!];
-      const sized = next.map(event => ({ ...event, delivery: { ...event.delivery!, accepted: Number.MAX_SAFE_INTEGER, dropped: Number.MAX_SAFE_INTEGER, queued: MAX_QUEUE_LIMIT, atMs: Number.MAX_SAFE_INTEGER } }));
-      if (encoder.encode(encodeBatch(sized)).byteLength > MAX_BATCH_BYTES) break;
-      batch.push(queue.shift()!);
+      const next = queue[0]!;
+      const added = next.size + (batch.length === 0 ? 0 : 1);
+      if (size + added > MAX_BATCH_BYTES) break;
+      size += added;
+      batch.push(queue.shift()!.event);
     }
     if (batch.length === 0 && queue.length > 0) {
       queue.shift();
@@ -356,7 +358,9 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       lastError = "queue_overflow";
     }
     accepted += 1;
-    queue.push({ ...event, delivery: { id: producerId, sequence: accepted, accepted, dropped, queued: 0, startedAtMs, atMs: now() } });
+    const queuedEvent = { ...event, delivery: { id: producerId, sequence: accepted, accepted, dropped, queued: 0, startedAtMs, atMs: now() } };
+    const sized = { ...queuedEvent, delivery: { ...queuedEvent.delivery, accepted: Number.MAX_SAFE_INTEGER, dropped: Number.MAX_SAFE_INTEGER, queued: MAX_QUEUE_LIMIT, atMs: Number.MAX_SAFE_INTEGER } };
+    queue.push({ event: queuedEvent, size: encoder.encode(encodeEvent(sized)).byteLength });
     if (queue.length >= batchSize) void drain().catch(() => { lastError = "internal"; });
     else schedule();
   }
