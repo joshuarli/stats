@@ -10,9 +10,8 @@ import { EmptyState, Icon, Skeleton } from "@laputa-systems/ui-dashboard";
 import { EntityCell, ErrorState, StateCell, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
-import type { DeploymentHistory } from "../../deployments/model";
 import type { TimeWindow } from "../chart-data";
-import { deploymentTitle, loadDeploymentHistory } from "./project/Deployments";
+import { deploymentTitle } from "./project/Deployments";
 import { createProjectLedger, historyKinds, settledRangeWindow } from "./project/ledger-load";
 import { windowUsage, type Amount, type LedgerHistories } from "../../cost/ledger.ts";
 import { restoreListFocus, type ProjectSortKey } from "../list-state";
@@ -199,25 +198,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
   const [open, setOpen] = createSignal(false);
   const [fallbackHistories, setFallbackHistories] = createSignal<ProjectHistories | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
-  const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
-  const [deploymentsSettled, setDeploymentsSettled] = createSignal(false);
-  const [deploymentsError, setDeploymentsError] = createSignal<string | null>(null);
   const status = createMemo(() => collectorStatus(props.project.collector, now()));
-
-  createEffect(() => `${props.project.id}:${refreshKey()}`, () => {
-    const controller = new AbortController();
-    void loadDeploymentHistory(props.project.id, controller.signal).then(value => {
-      if (controller.signal.aborted) return;
-      setDeployments(value);
-      setDeploymentsError(null);
-      setDeploymentsSettled(true);
-    }).catch((error: unknown) => {
-      if (controller.signal.aborted) return;
-      setDeploymentsError(errorMessage(error));
-      setDeploymentsSettled(true);
-    });
-    return () => controller.abort();
-  });
 
   const window = createMemo((): TimeWindow => {
     refreshKey();
@@ -290,9 +271,8 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
     return line?.usage.kind === "stored" ? line.usage.bytes.now : null;
   };
   const latest = () => {
-    const history = deployments();
-    const deployment = history?.deployments[0];
-    return history === null || deployment === undefined ? null : { title: deploymentTitle(history, deployment), atMs: deployment.atMs };
+    const summary = props.project.latestDeployment;
+    return summary?.status === "available" ? { title: deploymentTitle(summary, summary.deployment), atMs: summary.deployment.atMs } : null;
   };
   createEffect(
     () => ({
@@ -357,8 +337,8 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
           )}</Show>
         </td>
         <td>
-          <Show when={latest()} fallback={deploymentsError() !== null ? <span class="cell-note" role="status" title={deploymentsError() ?? undefined}>deployments unavailable</span> : deploymentsSettled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
-            <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note" title={deploymentsError() ?? undefined}>{age(deployment().atMs, now())}{deploymentsError() === null ? "" : " · refresh failed"}</span></span>
+          <Show when={latest()} fallback={props.project.latestDeployment?.status === "none" ? <span class="cell-note">none recorded</span> : <span class="cell-note" role="status">deployments unavailable</span>}>{deployment => (
+            <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
           )}</Show>
         </td>
         <td><StateCell tone={status().tone} label={status().label} note={age(props.project.collector.lastSuccessAtMs, now())} /></td>

@@ -663,9 +663,9 @@ test("changing the project in the URL moves the observed service with it", async
   expect([...observe.services]).toEqual(["usr-memories"]);
 });
 
-test("a failed deployments fetch in a project row says so instead of none recorded", async ({ page }) => {
+test("a project row with an unavailable deployment summary says so instead of none recorded", async ({ page }) => {
   await setup(page);
-  await page.route("**/api/v1/projects/stats/deployments", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "deployments down" } } }));
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ ...STATS, latestDeployment: { status: "unavailable" } }, STUFF, MEMORIES] }));
   await page.goto("/#/projects");
   const row = page.locator("tbody", { hasText: "stats" }).first();
   await expect(row).toContainText("deployments unavailable");

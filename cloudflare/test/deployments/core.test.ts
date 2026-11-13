@@ -5,7 +5,7 @@ import { parseDeployment, parseVersion, DEPLOYMENT_RETENTION_MS, type Deployment
 import { comparisonBounds, compareDeployment, DEPLOYMENT_BUCKET_MS as B, type ComparisonWindow, type DeploymentComparison, type MetricRow } from "../../src/deployments/compare.ts";
 import { collectDeployments, type DeploymentFetch } from "../../src/cloudflare/deployments/collector.ts";
 import { decodeDeploymentHistory, decodeDeploymentComparison } from "../../src/deployments/decode.ts";
-import type { SqlDatabase } from "../../src/core/sql.ts";
+import type { SqlDatabase, SqlValue } from "../../src/core/sql.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { initializeDeployments, saveDeploymentPoll, readDeployments, readDeploymentSync, readVersions, purgeDeployments, rememberSettledWindow, hasSettledWindow } from "../../src/deployments/store.ts";
 
@@ -303,5 +303,44 @@ await test("coverage merges adjoining windows but preserves outage gaps", () => 
   const before = changes(state.db);
   rememberSettledWindow(state.sql, "stats", "stats", AT - H, AT);
   assert.equal(changes(state.db), before);
+  state.db.close();
+});
+
+await test("latest project summary matches retained history and reads only referenced rows at the caps", async () => {
+  const { readLatestDeployment } = await import("../../src/deployments/store.ts");
+  const { decodeLatestProjectDeployment } = await import("../../src/deployments/decode.ts");
+  const state = storage();
+  initializeDeployments(state.sql);
+  assert.deepEqual(readLatestDeployment(state.sql, "stats", "stats", NOW), { status: "none" });
+  const insertDeployment = state.db.prepare("INSERT INTO project_deployments VALUES (?, ?, ?, ?, ?)");
+  const insertVersion = state.db.prepare("INSERT INTO project_deployment_versions VALUES (?, ?, ?, ?, ?)");
+  const split = parseDeployment(raw(1, NOW, [{ version_id: id(1001), percentage: 25 }, { version_id: id(1002), percentage: 75 }]));
+  state.db.exec("BEGIN");
+  for (let index = 1; index <= 1000; index += 1) {
+    const deployment = index === 1 ? split : parseDeployment(raw(index, index === 2 ? NOW : NOW - index));
+    insertDeployment.run("stats", "stats", deployment.id, deployment.atMs, JSON.stringify(deployment));
+  }
+  for (let index = 1; index <= 2000; index += 1) {
+    const version = { id: id(index + 1000), tag: index === 1 ? "release" : null, message: null };
+    insertVersion.run("stats", "stats", version.id, NOW, JSON.stringify(version));
+  }
+  state.db.exec("COMMIT");
+  const counts: number[] = [];
+  const measured: SqlDatabase = {
+    rows<T>(query: string, ...params: SqlValue[]) { const rows = state.sql.rows<T>(query, ...params); counts.push(rows.length); return rows; },
+    each: (query, params, visit) => state.sql.each(query, params, visit),
+    run: (query, ...params) => state.sql.run(query, ...params),
+    transaction: fn => state.sql.transaction(fn),
+    rowsWritten: () => state.sql.rowsWritten(), total: () => state.sql.total(), databaseBytes: () => state.sql.databaseBytes(),
+  };
+  const summary = readLatestDeployment(measured, "stats", "stats", NOW);
+  assert.equal(summary.status, "available");
+  if (summary.status !== "available") throw new Error("missing summary");
+  assert.deepEqual(summary.deployment, readDeployments(state.sql, "stats", "stats", NOW)[0]);
+  assert.deepEqual(counts, [1, 1, 1]);
+  assert.deepEqual(decodeLatestProjectDeployment(summary, "stats"), summary);
+  assert.ok(new TextEncoder().encode(JSON.stringify(summary)).length < 1000);
+  assert.equal(summary.versions[1]!.tag, null);
+  assert.deepEqual(readLatestDeployment(state.sql, "stats", "stats", NOW + DEPLOYMENT_RETENTION_MS + 1), { status: "none" });
   state.db.close();
 });

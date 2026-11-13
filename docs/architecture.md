@@ -564,6 +564,14 @@ back. `POST /api/v1/admin/services/:name/rotate` returns `{ "name", "deployToken
 its markers. Each token authenticates only its own route.
 `GET /api/v1/services` answers `{ "services": [...] }`, and
 `GET /api/v1/services/:name` answers one service; neither carries a token.
+Both shapes carry an optional `latestDeployment` with the latest retained
+deployment summary. It is `{ status: "none" }` when no retained deployment
+exists, `{ status: "unavailable" }` when the summary could not be computed,
+or `{ status: "available", deployment, versions }` with the deployment the
+history reader would return first and only the version metadata it references.
+A summary failure never fails the list. `GET /api/v1/projects` carries the
+same optional field with project deployments, and the Node target's empty
+project list behaves the same way.
 
 `POST /ingest/services/:name/deployments` records a deploy marker. Its only
 credential is `Authorization: Bearer <deploy token>`. It skips Access and

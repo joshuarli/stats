@@ -1026,34 +1026,16 @@ test("filtering out an expanded project aborts its fallback trend request", asyn
   }
 });
 
-test("refreshing the project list aborts its older deployment request", async ({ page }) => {
+test("projects overview renders the latest summary from the list response and issues no deployment history request", async ({ page }) => {
   await installBaseRoutes(page);
-  const gate = createGate();
-  let requests = 0;
-  let cancelled = false;
-  page.on("requestfailed", request => {
-    if (request.url().endsWith("/projects/alpha/deployments")) cancelled = true;
-  });
-  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
+  let deploymentRequests = 0;
+  page.on("request", request => { if (request.url().includes("/deployments")) deploymentRequests += 1; });
+  const latestDeployment = { status: "available", deployment: { id: "00000000-0000-4000-8000-0000000000aa", atMs: NOW - 60_000, source: "api", message: null, deferred: false, versions: [{ id: "7f3a8e2b-9c1d-4e5f-6a7b-8c9d0e1f2a3b", percentage: 100 }] }, versions: [{ id: "7f3a8e2b-9c1d-4e5f-6a7b-8c9d0e1f2a3b", tag: "release", message: null }] };
+  await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false }, latestDeployment }] }));
   await page.route("**/api/v1/projects/alpha/history*", route => fulfillHistory(route, projectBundle("alpha", 500)));
-  await page.route("**/api/v1/projects/alpha/deployments", async route => {
-    requests += 1;
-    if (requests === 1) {
-      await gate.wait;
-      if (route.request().failure() !== null) return;
-    }
-    await route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } });
-  });
   await page.goto("/#/projects");
-  try {
-    await expect.poll(() => requests).toBe(1);
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect.poll(() => cancelled).toBe(true);
-    await expect.poll(() => requests).toBeGreaterThanOrEqual(2);
-    await expect(page.getByRole("table", { name: "Projects" })).toContainText("none recorded");
-  } finally {
-    gate.release();
-  }
+  await expect(page.getByRole("table", { name: "Projects" })).toContainText("release");
+  expect(deploymentRequests).toBe(0);
 });
 
 test("fleet metric sorting fetches system details only for visible hosts", async ({ page }) => {

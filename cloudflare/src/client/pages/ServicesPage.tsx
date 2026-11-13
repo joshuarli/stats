@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Service } from "../api";
-import { age, errorMessage } from "../format";
+import { age } from "../format";
 import { loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
@@ -9,8 +9,7 @@ import { EntityCell, ErrorState, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import { routeWithRange } from "../urlState";
-import type { DeploymentHistory } from "../../deployments/model";
-import { deploymentTitle, loadServiceDeploymentHistory } from "./project/Deployments";
+import { deploymentTitle } from "./project/Deployments";
 import "./project/services.css";
 import "./project/services-list.css";
 
@@ -89,29 +88,10 @@ function Services(): JSX.Element {
 }
 
 function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (name: string, deployAtMs: number | null) => void }): JSX.Element {
-  const { now, tick, manualTick, range } = useTelemetry();
-  const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const [deployments, setDeployments] = createSignal<DeploymentHistory | null>(null);
-  const [settled, setSettled] = createSignal(false);
-  const [failure, setFailure] = createSignal<string | null>(null);
-  createEffect(() => `${props.service.name}:${serviceTick()}:${manualTick()}`, () => {
-    const controller = new AbortController();
-    void loadServiceDeploymentHistory(props.service.name, controller.signal).then(value => {
-      if (controller.signal.aborted) return;
-      setDeployments(value);
-      setFailure(null);
-      setSettled(true);
-    }).catch((error: unknown) => {
-      if (controller.signal.aborted) return;
-      setFailure(errorMessage(error));
-      setSettled(true);
-    });
-    return () => controller.abort();
-  });
+  const { now, range } = useTelemetry();
   const latest = () => {
-    const history = deployments();
-    const deployment = history?.deployments[0];
-    return history === null || deployment === undefined ? null : { title: deploymentTitle(history, deployment, "service"), atMs: deployment.atMs };
+    const summary = props.service.latestDeployment;
+    return summary?.status === "available" ? { title: deploymentTitle(summary, summary.deployment, "service"), atMs: summary.deployment.atMs } : null;
   };
   createEffect(
     () => ({ name: props.service.name, deployAtMs: latest()?.atMs ?? null }),
@@ -125,8 +105,8 @@ function ServiceRow(props: { readonly service: Service; readonly reportDeploy: (
       <td class="numeric">{props.service.hostIds.length}</td>
       <td>{props.service.healthUrl === null ? <span class="cell-note">unavailable, no health URL</span> : <span class="mono services-url" title={props.service.healthUrl}>{props.service.healthUrl}</span>}</td>
       <td>
-        <Show when={latest()} fallback={failure() !== null ? <span class="cell-note" role="status" title={failure() ?? undefined}>deployments unavailable</span> : settled() ? <span class="cell-note">none recorded</span> : <span class="cell-pending" aria-hidden="true" />}>{deployment => (
-          <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note" title={failure() ?? undefined}>{age(deployment().atMs, now())}{failure() === null ? "" : " · refresh failed"}</span></span>
+        <Show when={latest()} fallback={props.service.latestDeployment?.status === "none" ? <span class="cell-note">none recorded</span> : <span class="cell-note" role="status">deployments unavailable</span>}>{deployment => (
+          <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
         )}</Show>
       </td>
     </tr>

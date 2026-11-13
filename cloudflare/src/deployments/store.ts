@@ -1,4 +1,4 @@
-import { DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentPoll, type DeploymentSync, type VersionMetadata } from "./model.ts";
+import { DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentPoll, type DeploymentSync, type VersionMetadata, type LatestDeployment } from "./model.ts";
 import type { SqlDatabase } from "../core/sql.ts";
 
 export const DEPLOYMENT_STATEMENTS: readonly string[] = [
@@ -40,6 +40,19 @@ export function readDeployments(sql: SqlDatabase, project: string, worker: strin
     "SELECT payload FROM project_deployments WHERE project = ? AND worker = ? AND at_ms >= ? ORDER BY at_ms DESC, id LIMIT 1000",
     project, worker, now - DEPLOYMENT_RETENTION_MS,
   ).map(row => JSON.parse(row.payload) as Deployment);
+}
+
+export function readLatestDeployment(sql: SqlDatabase, project: string, worker: string, now: number): LatestDeployment {
+  const row = sql.rows<{ payload: string }>(
+    "SELECT payload FROM project_deployments WHERE project = ? AND worker = ? AND at_ms >= ? ORDER BY at_ms DESC, id LIMIT 1",
+    project, worker, now - DEPLOYMENT_RETENTION_MS,
+  )[0];
+  if (row === undefined) return { status: "none" };
+  const deployment = JSON.parse(row.payload) as Deployment;
+  const versions = deployment.versions.flatMap(version => sql.rows<{ payload: string }>(
+    "SELECT payload FROM project_deployment_versions WHERE project = ? AND worker = ? AND id = ?", project, worker, version.id,
+  ).map(item => JSON.parse(item.payload) as VersionMetadata));
+  return { status: "available", deployment, versions };
 }
 
 export function readVersions(sql: SqlDatabase, project: string, worker: string): VersionMetadata[] {

@@ -1,4 +1,4 @@
-import { parseDeployment, parseVersion, record, type DeploymentHistory } from "./model.ts";
+import { parseDeployment, parseVersion, record, type DeploymentHistory, type LatestDeployment } from "./model.ts";
 import { COMPARISON_WINDOWS, METRIC_REASON_CODES, type BucketValue, type ComparisonWindow, type DeploymentComparison, type MetricComparison, type MetricReasonCode, type ReasonCode, type Verdict, type WindowBounds } from "./compare.ts";
 import type { ComparableOperation, ComparisonScope, ComparisonSide, ComparisonSpec } from "../compare/spec.ts";
 
@@ -52,6 +52,18 @@ export function decodeDeploymentHistory(value: unknown, projectId: string): Depl
       error: sync["error"] === null ? null : string(sync["error"], 128), truncated: boolean(sync["truncated"]),
     },
   };
+}
+
+export function decodeLatestProjectDeployment(value: unknown, projectId: string): LatestDeployment | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const item = record(value);
+    if (item["status"] === "none" || item["status"] === "unavailable") return { status: item["status"] };
+    if (item["status"] !== "available") throw new Error("invalid deployment summary");
+    const versions = array(item["versions"], 2, entry => entry);
+    const history = decodeDeploymentHistory({ projectId, worker: "", enabled: true, sync: null, deployments: [item["deployment"]], versions }, projectId);
+    return { status: "available", deployment: history.deployments[0]!, versions: history.versions };
+  } catch { return { status: "unavailable" }; }
 }
 
 const REASON_CODES: readonly ReasonCode[] = [
