@@ -49,7 +49,7 @@ const ROUTES: Readonly<Record<DeploymentKind, DeploymentRoutes>> = {
   service: { collection: "services", subject: "service", history: loadServiceDeploymentHistory, comparison: decodeServiceComparison, versionLabel: (id, tag) => tag ?? id }
 };
 
-export function deploymentTitle(history: DeploymentHistory, deployment: Deployment, kind: DeploymentKind = "project"): string {
+export function deploymentTitle(history: Pick<DeploymentHistory, "versions">, deployment: Deployment, kind: DeploymentKind = "project"): string {
   const tag = (id: string) => ROUTES[kind].versionLabel(id, history.versions.find(version => version.id === id)?.tag ?? null);
   return deployment.versions.map(version => deployment.versions.length === 1 ? tag(version.id) : `${tag(version.id)} ${version.percentage}%`).join(" / ");
 }

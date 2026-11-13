@@ -1,5 +1,5 @@
 import { constantTimeEqual, generateToken, tokenHash } from "../../auth.ts";
-import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory } from "../../deployments/model.ts";
+import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory, type LatestDeployment } from "../../deployments/model.ts";
 import { SERVICE_NAME } from "../../protocol.ts";
 import type { SqlDatabase } from "../sql.ts";
 
@@ -44,6 +44,7 @@ export interface Service {
   readonly healthUrl: string | null;
   readonly unit: string | null;
   readonly createdAtMs: number;
+  readonly latestDeployment?: LatestDeployment;
 }
 
 export interface ServiceMarker {
@@ -314,6 +315,14 @@ export async function recordMarker(sql: SqlDatabase, name: string, text: string 
     sql.run("INSERT INTO service_deployments (service, marker_id, id, at_ms, host_ids, payload) VALUES (?, ?, ?, ?, ?, ?)", name, request.markerId, id, now, JSON.stringify(request.hostIds), JSON.stringify(deployment));
     return { ok: true, value: { created: true, marker: { service: name, markerId: request.markerId, hostIds: request.hostIds, deployment } } };
   });
+}
+
+export function readLatestServiceDeployment(sql: SqlDatabase, service: string, now: number): LatestDeployment {
+  const row = sql.rows<{ payload: string }>(
+    "SELECT payload FROM service_deployments WHERE service = ? AND at_ms >= ? ORDER BY at_ms DESC, rowid DESC LIMIT 1",
+    service, now - DEPLOYMENT_RETENTION_MS,
+  )[0];
+  return row === undefined ? { status: "none" } : { status: "available", deployment: JSON.parse(row.payload) as Deployment, versions: [] };
 }
 
 export function readServiceDeployments(sql: SqlDatabase, service: Service, now: number): ServiceDeploymentHistory {

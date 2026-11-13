@@ -17,7 +17,7 @@ import { latestCollectorRunId, projectHistorySource, projectKind, type ProjectKi
 import { collectedPoints, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "../../projects/store.ts";
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "../../deployments/compare.ts";
 import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deployments/model.ts";
-import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
+import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readLatestDeployment, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
 import { readLimitedBytes, readLimitedText } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";
 import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, affectedBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
@@ -26,7 +26,7 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
+import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, readLatestServiceDeployment, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -324,7 +324,10 @@ export class InstallationCore {
     const projects = this.projectRegistry();
     if (projects instanceof Response) return projects;
     const collector = summarizeCollector(sql, this.now());
-    return json(projects.map(project => ({ ...project, collector })));
+    return json(projects.map(project => {
+      try { return { ...project, collector, latestDeployment: readLatestDeployment(sql, project.id, project.worker, this.now()) }; }
+      catch (error) { reportError("deployments.api", error); return { ...project, collector, latestDeployment: { status: "unavailable" } }; }
+    }));
   }
 
   private projectHistory(run: OperationRun, projectId: string, params: URLSearchParams, request: Request): Response {
@@ -734,7 +737,10 @@ export class InstallationCore {
       if (removed !== null && request.method === "DELETE") {
         return deleteService(sql, removed[1]!) ? new Response(null, { status: 204 }) : failure("not_found", "service not found", 404);
       }
-      if (path === "/services" && request.method === "GET") return json({ services: listServices(sql) });
+      if (path === "/services" && request.method === "GET") return json({ services: listServices(sql).map(service => {
+        try { return { ...service, latestDeployment: readLatestServiceDeployment(sql, service.name, this.now()) }; }
+        catch (error) { reportError("deployments.api", error); return { ...service, latestDeployment: { status: "unavailable" } }; }
+      }) });
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
       if (comparison !== null) return await this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
       const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);

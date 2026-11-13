@@ -2,7 +2,7 @@ import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymen
 import { decodeDeploymentComparison } from "./decode.ts";
 import type { ComparisonWindow } from "./compare.ts";
 import { SOURCE_NAMES, UNRECORDED_COVERAGE_EVIDENCE, type ApplicationCoverage, type ApplicationSuppression, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WindowCoverage, type WorkSummary } from "./service-compare.ts";
-import { UUID, annotation, record, type Deployment } from "./model.ts";
+import { UUID, annotation, record, type Deployment, type LatestDeployment } from "./model.ts";
 
 function string(value: unknown, limit: number): string {
   if (typeof value !== "string" || value.length > limit) throw new Error("invalid service string");
@@ -52,6 +52,16 @@ export function decodeServiceMarker(value: unknown, service: string): ServiceMar
   return { service, markerId, hostIds: hostIds(item["hostIds"]), deployment: decodeMarkerDeployment(item["deployment"]) };
 }
 
+function decodeLatestServiceDeployment(value: unknown): LatestDeployment | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const item = record(value);
+    if (item["status"] === "none" || item["status"] === "unavailable") return { status: item["status"] };
+    if (item["status"] !== "available" || !Array.isArray(item["versions"]) || item["versions"].length !== 0) throw new Error("invalid service deployment summary");
+    return { status: "available", deployment: decodeMarkerDeployment(item["deployment"]), versions: [] };
+  } catch { return { status: "unavailable" }; }
+}
+
 export function decodeService(value: unknown): Service {
   const item = record(value);
   return {
@@ -59,7 +69,8 @@ export function decodeService(value: unknown): Service {
     hostIds: hostIds(item["hostIds"]),
     healthUrl: nullableString(item["healthUrl"], 2048),
     unit: nullableString(item["unit"], 128),
-    createdAtMs: time(item["createdAtMs"])
+    createdAtMs: time(item["createdAtMs"]),
+    ...(item["latestDeployment"] === undefined ? {} : { latestDeployment: decodeLatestServiceDeployment(item["latestDeployment"])! })
   };
 }
 

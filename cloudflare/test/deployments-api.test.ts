@@ -70,3 +70,27 @@ describe("deployment API", () => {
     expect(history.deployments.map(deployment => deployment.id)).toEqual([ID]);
   });
 });
+
+it("overview lists select the same retained deployment as history", async () => {
+  const headers = { "Cf-Access-Jwt-Assertion": await accessToken() };
+  const list = async () => await (await SELF.fetch("https://example.com/api/v1/projects", { headers })).json() as { id: string; latestDeployment: { status: string; deployment?: unknown; versions?: unknown[] } }[];
+  const project = async () => (await list()).find(item => item.id === "stuff")!.latestDeployment;
+  expect(await project()).toEqual({ status: "none" });
+  const first = { id: ID, atMs: NOW - 1000, source: "api", message: "release", deferred: false, versions: [{ id: VERSION, percentage: 25 }, { id: "00000000-0000-4000-8000-000000000103", percentage: 75 }] };
+  const second = { ...first, id: "00000000-0000-4000-8000-000000000003" };
+  await runInDurableObject(stub(), async (_instance, state) => {
+    state.storage.sql.exec("INSERT INTO project_deployments VALUES (?, ?, ?, ?, ?)", "stuff", "stuff", first.id, first.atMs, JSON.stringify(first));
+    state.storage.sql.exec("INSERT INTO project_deployment_versions VALUES (?, ?, ?, ?, ?)", "stuff", "stuff", VERSION, NOW, JSON.stringify({ id: VERSION, tag: "release", message: null }));
+  });
+  expect((await project()).deployment).toEqual((await (await get()).json() as DeploymentHistory).deployments[0]);
+  await runInDurableObject(stub(), async (_instance, state) => {
+    state.storage.sql.exec("INSERT INTO project_deployments VALUES (?, ?, ?, ?, ?)", "stuff", "stuff", second.id, second.atMs, JSON.stringify(second));
+  });
+  const summary = await project();
+  expect(summary.deployment).toEqual((await (await get()).json() as DeploymentHistory).deployments[0]);
+  expect(summary.versions).toEqual([{ id: VERSION, tag: "release", message: null }]);
+  await runInDurableObject(stub(), async (_instance, state) => {
+    state.storage.sql.exec("UPDATE project_deployments SET at_ms = ?", NOW - 31 * 86_400_000);
+  });
+  expect(await project()).toEqual({ status: "none" });
+});

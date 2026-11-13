@@ -45,6 +45,10 @@ export interface DeploymentHistory {
   readonly versions: readonly VersionMetadata[];
 }
 
+export type LatestDeployment =
+  | { readonly status: "none" | "unavailable" }
+  | { readonly status: "available"; readonly deployment: Deployment; readonly versions: readonly VersionMetadata[] };
+
 export const DEPLOYMENT_RETENTION_MS = 30 * 86_400_000;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

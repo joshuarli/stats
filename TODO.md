@@ -9,15 +9,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
-### STA-118 · P3 · Overview pages fetch full deployment histories to display the latest deployment
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/client/pages/ServicesPage.tsx:91–114`, `cloudflare/src/client/pages/ProjectsPage.tsx:207–220,292–304`, `cloudflare/src/client/pages/project/Deployments.tsx:20–54`, `cloudflare/src/core/installation/installation.ts:835–843`, `cloudflare/src/core/installation/services.ts:308–316`
-- **Problem:** Each overview row loads and decodes a complete retained history but uses its first deployment for the latest marker/title. Projects return up to 1,000 deployments plus 2,000 versions; services return up to 1,000 markers. The real project API/decoder probe grows from 1,113 bytes for 3 deployments/6 versions to 344,983 at the caps while selecting the same latest marker. Visible live overviews repeat this fan-out every five minutes. These synthetic payload counts do not establish production latency.
-- **Recommendation:** Expose a bounded latest summary, preferably in the existing list responses, and fetch only metadata referenced by that deployment. Preserve empty/unavailable states, ordering and version-label behavior; retain full histories for detail/comparison routes. Resolve the response contract in the linked RFC and prove bounded SQL rows, decoded payloads and overview bytes at retention caps.
-- **Fix with:** make-it-fast
-- **Effort:** M
-- **Design:** docs/rfc/STA-118-deployment-summaries.md
 
 
 

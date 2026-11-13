@@ -18,6 +18,11 @@ operator reads. Its name is the path parameter in
   service plus `deployToken` and `ingestToken` exactly once.
 - `GET /api/v1/services` and `GET /api/v1/services/:name` return
   `{ name, hostIds, healthUrl, unit, createdAtMs }` and never a token.
+  Both may also carry `latestDeployment`, the newest retained deployment
+  summary with the same `{ status: "none" | "unavailable" | "available", ... }`
+  shape as project lists. It is optional for compatibility; absence means the
+  summary is not known, so render the row without a marker rather than "none
+  recorded".
 - The `service` field of an event must equal the path's service. A mismatch
   rejects the whole batch as `invalid_service`.
 - A service is not a Stats host and not a Cloudflare project. It may share a

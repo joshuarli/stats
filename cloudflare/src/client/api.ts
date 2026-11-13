@@ -1,3 +1,5 @@
+import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
+import type { LatestDeployment } from "../deployments/model.ts";
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history.ts";
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
 import { decodeServices } from "../deployments/service-decode.ts";
@@ -41,7 +43,7 @@ export interface HostSystem {
 export type { HistoryQuery };
 
 export type { CollectorState, ProbeTarget } from "./project-model.ts";
-export type Project = ProjectSummary;
+export type Project = ProjectSummary & { readonly latestDeployment?: LatestDeployment };
 
 type JsonObject = { readonly [key: string]: unknown };
 
@@ -349,7 +351,11 @@ export function getServiceIssues(service: string, signal: AbortSignal): Promise<
 }
 
 export function getProjects(signal: AbortSignal): Promise<readonly Project[]> {
-  return getJson("/api/v1/projects", value => array(value, decodeProject), signal);
+  return getJson("/api/v1/projects", value => array(value, entry => {
+    const project = decodeProject(entry);
+    const latestDeployment = decodeLatestProjectDeployment(record(entry)["latestDeployment"], project.id);
+    return latestDeployment === undefined ? project : { ...project, latestDeployment };
+  }), signal);
 }
 
 export function getProjectHistories(
