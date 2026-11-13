@@ -167,29 +167,63 @@ interface Sampler {
   readonly before: (metric: (history: LedgerHistories) => MetricHistory | undefined, name: string) => number | null;
 }
 
-export function coveredMs(history: MetricHistory, window: TimeWindow, only?: readonly string[]): number {
-  const columns = history.table.names().filter(name => only === undefined || only.includes(name)).map(name => history.table.cells(name));
-  let buckets = 0;
-  history.table.times.forEach((time, index) => {
-    if (time >= window.fromMs && time < window.toMs && columns.some(cells => cells[index] !== null)) buckets += 1;
-  });
-  return buckets * history.stepMs;
+export class CoverageIndex {
+  private readonly histories = new Map<MetricHistory, Map<string, { readonly series: Map<string, readonly (number | null)[]>; readonly counts: Map<string, number>; readonly all: number }>>();
+
+  coveredMs(history: MetricHistory, window: TimeWindow, only?: readonly string[]): number {
+    let windows = this.histories.get(history);
+    if (windows === undefined) { windows = new Map(); this.histories.set(history, windows); }
+    const key = `${window.fromMs}:${window.toMs}`;
+    let indexed = windows.get(key);
+    if (indexed === undefined) {
+      const series = new Map(history.table.names().map(name => [name, history.table.cells(name)]));
+      const counts = new Map<string, number>();
+      let all = 0;
+      for (let row = 0; row < history.table.times.length; row += 1) {
+        const time = history.table.times[row]!;
+        if (time < window.fromMs || time >= window.toMs) continue;
+        let present = false;
+        for (const [name, cells] of series) {
+          if (cells[row] !== null) { counts.set(name, (counts.get(name) ?? 0) + history.stepMs); present = true; }
+        }
+        if (present) all += history.stepMs;
+      }
+      indexed = { series, counts, all };
+      windows.set(key, indexed);
+    }
+    if (only === undefined) return indexed.all;
+    if (only.length === 1) return indexed.counts.get(only[0]!) ?? 0;
+    const columns = only.flatMap(name => { const cells = indexed.series.get(name); return cells === undefined ? [] : [cells]; });
+    let buckets = 0;
+    history.table.times.forEach((time, row) => {
+      if (time >= window.fromMs && time < window.toMs && columns.some(cells => cells[row] !== null)) buckets += 1;
+    });
+    return buckets * history.stepMs;
+  }
+
+  seriesPartial(history: MetricHistory | undefined, window: TimeWindow, name: string, group: readonly string[]): boolean {
+    if (history === undefined) return false;
+    const covered = this.coveredMs(history, window, [name]);
+    return covered > 0 && covered < this.seriesPeers(history, window, group);
+  }
+
+  private seriesPeers(history: MetricHistory, window: TimeWindow, group: readonly string[]): number {
+    return Math.max(0, ...group.map(name => this.coveredMs(history, window, [name])));
+  }
+
+  usageDenominator(history: MetricHistory, window: TimeWindow, group: readonly string[], name: string): number {
+    const covered = this.coveredMs(history, window, [name]);
+    if (covered === 0) return 0;
+    return covered < this.seriesPeers(history, window, group) ? covered : this.coveredMs(history, window);
+  }
 }
 
-function seriesPeers(history: MetricHistory, window: TimeWindow, group: readonly string[]): number {
-  return Math.max(0, ...group.map(name => coveredMs(history, window, [name])));
+export function coveredMs(history: MetricHistory, window: TimeWindow, only?: readonly string[]): number {
+  return new CoverageIndex().coveredMs(history, window, only);
 }
 
 export function seriesPartial(history: MetricHistory | undefined, window: TimeWindow, name: string, group: readonly string[]): boolean {
-  if (history === undefined) return false;
-  const covered = coveredMs(history, window, [name]);
-  return covered > 0 && covered < seriesPeers(history, window, group);
-}
-
-function usageDenominator(history: MetricHistory, window: TimeWindow, group: readonly string[], name: string): number {
-  const covered = coveredMs(history, window, [name]);
-  if (covered === 0) return 0;
-  return covered < seriesPeers(history, window, group) ? covered : coveredMs(history, window);
+  return new CoverageIndex().seriesPartial(history, window, name, group);
 }
 
 function windowSeries(line: CostLine): { readonly history: (histories: LedgerHistories) => MetricHistory | undefined; readonly names: readonly string[] } | null {
@@ -234,7 +268,7 @@ function fieldFactor(line: CostLine, histories: LedgerHistories | undefined, win
   if (source === null || name === null) return 1;
   const history = source.history(histories);
   if (history === undefined) return 1;
-  const covered = usageDenominator(history, window, source.names, name);
+  const covered = new CoverageIndex().usageDenominator(history, window, source.names, name);
   return covered > 0 ? MONTH_MS / covered : 1;
 }
 
@@ -253,13 +287,13 @@ export function windowUsage(line: CostLine, histories: LedgerHistories, previous
   }
 }
 
-function sampler(input: LedgerInput): Sampler {
+function sampler(input: LedgerInput, coverage: CoverageIndex): Sampler {
   const cache = { now: new Map<MetricHistory, number | null>(), before: new Map<MetricHistory, number | null>() };
   const factor = (history: MetricHistory, window: TimeWindow, requireStart: boolean): number | null => {
     const factors = requireStart ? cache.before : cache.now;
     const known = factors.get(history);
     if (known !== undefined) return known;
-    const covered = coveredMs(history, window);
+    const covered = coverage.coveredMs(history, window);
     const reaches = !requireStart || history.fromMs <= window.fromMs;
     const value = covered > 0 && reaches ? MONTH_MS / covered : null;
     factors.set(history, value);
@@ -268,7 +302,7 @@ function sampler(input: LedgerInput): Sampler {
   const nowFactor = (history: MetricHistory) => factor(history, input.window, false) ?? 0;
   const beforeFactor = (history: MetricHistory) => factor(history, input.previousWindow, true);
   return {
-    covers: history => coveredMs(history, input.window) > 0,
+    covers: history => coverage.coveredMs(history, input.window) > 0,
     now: (history, pick, name) => {
       const source = pick(history);
       return source === undefined ? 0 : inWindow(metricTrack(source, name), input.window) * nowFactor(source);
@@ -287,24 +321,24 @@ function routeNames(history: MetricHistory): string[] {
   return [...new Set(history.table.names().filter(name => name.startsWith(ROUTE_PREFIX)).map(name => name.slice(ROUTE_PREFIX.length, name.lastIndexOf("."))))];
 }
 
-function metricAmount(input: LedgerInput, pick: (history: LedgerHistories) => MetricHistory | undefined, name: string, group: readonly string[]): Amount | null {
+function metricAmount(input: LedgerInput, coverage: CoverageIndex, pick: (history: LedgerHistories) => MetricHistory | undefined, name: string, group: readonly string[]): Amount | null {
   const current = pick(input.current);
   if (current === undefined) return null;
-  const covered = usageDenominator(current, input.window, group, name);
+  const covered = coverage.usageDenominator(current, input.window, group, name);
   if (covered === 0) return null;
   const prior = input.previous === undefined ? undefined : pick(input.previous);
-  const priorCovered = prior === undefined || prior.fromMs > input.previousWindow.fromMs ? 0 : usageDenominator(prior, input.previousWindow, group, name);
+  const priorCovered = prior === undefined || prior.fromMs > input.previousWindow.fromMs ? 0 : coverage.usageDenominator(prior, input.previousWindow, group, name);
   return {
     now: inWindow(metricTrack(current, name), input.window) * MONTH_MS / covered,
     before: prior === undefined || priorCovered === 0 ? null : inWindow(metricTrack(prior, name), input.previousWindow) * MONTH_MS / priorCovered
   };
 }
 
-function workerLine(input: LedgerInput): CostLine {
+function workerLine(input: LedgerInput, coverage: CoverageIndex): CostLine {
   const requestPrice = workerRequestPrice(input.workerBilling);
   const worker = (history: LedgerHistories) => history.worker;
   const routes = (history: LedgerHistories) => history.routes;
-  const amount = (pick: (history: LedgerHistories) => MetricHistory, name: string, group: readonly string[]): Amount | null => metricAmount(input, pick, name, group);
+  const amount = (pick: (history: LedgerHistories) => MetricHistory, name: string, group: readonly string[]): Amount | null => metricAmount(input, coverage, pick, name, group);
   const cost = (calls: number | null, cpu: number | null) => perMillion(calls ?? 0, requestPrice) + perMillion(cpu ?? 0, LIST_PRICE_PER_MILLION.workerCpuMs);
   const currentCost = (calls: Amount | null, cpu: Amount | null) => cost(calls?.now ?? null, cpu?.now ?? null);
   const beforeCost = (calls: Amount | null, cpu: Amount | null) =>
@@ -389,14 +423,14 @@ function emptyLine(id: string, kind: LineKind, label: string): CostLine {
   return { id, kind, label, price: NO_DATA, parts: [], usage: { kind: "none" }, trend: null, children: [] };
 }
 
-function objectsLine(input: LedgerInput, sample: Sampler): CostLine | null {
+function objectsLine(input: LedgerInput, sample: Sampler, coverage: CoverageIndex): CostLine | null {
   const history = input.current.durableObjects;
   if (history === undefined) return null;
   if (!sample.covers(history)) return emptyLine("objects", "objects", "Durable Objects");
   const pick = (entry: LedgerHistories) => entry.durableObjects;
-  const calls = metricAmount(input, pick, "do.invocations", OBJECT_SERIES);
-  const wall = metricAmount(input, pick, "do.wallMsSum", OBJECT_SERIES);
-  const cpu = metricAmount(input, pick, "do.cpuMsSum", OBJECT_SERIES);
+  const calls = metricAmount(input, coverage, pick, "do.invocations", OBJECT_SERIES);
+  const wall = metricAmount(input, coverage, pick, "do.wallMsSum", OBJECT_SERIES);
+  const cpu = metricAmount(input, coverage, pick, "do.cpuMsSum", OBJECT_SERIES);
   const requests = calls === null ? null : { now: requestCost(calls.now), before: calls.before === null ? null : requestCost(calls.before) };
   const duration = wall === null ? null : { now: durationCost(wall.now), before: wall.before === null ? null : durationCost(wall.before) };
   const before = (requests !== null && requests.before === null) || (duration !== null && duration.before === null) ? null : (requests?.before ?? 0) + (duration?.before ?? 0);
@@ -453,23 +487,23 @@ function storedLine(id: string, kind: "bucket" | "d1-storage" | "object-storage"
   };
 }
 
-function d1Line(input: LedgerInput, sample: Sampler): CostLine | null {
+function d1Line(input: LedgerInput, sample: Sampler, coverage: CoverageIndex): CostLine | null {
   const history = input.current.d1;
   if (history === undefined) return null;
   if (!sample.covers(history)) return emptyLine("d1", "d1", "D1");
   const pick = (entry: LedgerHistories) => entry.d1;
   const statements = (entry: LedgerHistories) => entry.d1Statements;
-  const read = metricAmount(input, pick, "d1.rowsRead", D1_SERIES);
-  const written = metricAmount(input, pick, "d1.rowsWritten", D1_SERIES);
-  const queries = metricAmount(input, pick, "d1.queries", D1_SERIES);
+  const read = metricAmount(input, coverage, pick, "d1.rowsRead", D1_SERIES);
+  const written = metricAmount(input, coverage, pick, "d1.rowsWritten", D1_SERIES);
+  const queries = metricAmount(input, coverage, pick, "d1.queries", D1_SERIES);
   const beforeCost = (r: Amount | null, w: Amount | null) =>
     (r !== null && r.before === null) || (w !== null && w.before === null) ? null : rowsCost(r?.before ?? 0, w?.before ?? 0);
   const statementLines: CostLine[] = input.current.d1Statements === undefined ? [] : statementNames(input.current.d1Statements).map(statement => {
     const metric = (field: string) => `${STATEMENT_PREFIX}${statement}.${field}`;
     const group = statementSeries(statement);
-    const r = metricAmount(input, statements, metric("rowsRead"), group);
-    const w = metricAmount(input, statements, metric("rowsWritten"), group);
-    const q = metricAmount(input, statements, metric("queries"), group);
+    const r = metricAmount(input, coverage, statements, metric("rowsRead"), group);
+    const w = metricAmount(input, coverage, statements, metric("rowsWritten"), group);
+    const q = metricAmount(input, coverage, statements, metric("queries"), group);
     return {
       id: `statement:${statement}`, kind: "statement", label: statement,
       price: r === null && w === null ? NO_DATA : priced(rowsCost(r?.now ?? 0, w?.now ?? 0), beforeCost(r, w)),
@@ -657,10 +691,10 @@ export function projectedBill(bill: PlanBill, fromMs: number, toMs: number, mont
   return { times, values };
 }
 
-export function buildLedger(input: LedgerInput): Ledger {
-  const sample = sampler(input);
-  const worker = sample.covers(input.current.worker) ? workerLine(input) : emptyLine("worker", "worker", "Worker");
-  const lines = byCost([worker, objectsLine(input, sample), d1Line(input, sample), r2Line(input)].filter(line => line !== null));
+export function buildLedger(input: LedgerInput, coverage = new CoverageIndex()): Ledger {
+  const sample = sampler(input, coverage);
+  const worker = sample.covers(input.current.worker) ? workerLine(input, coverage) : emptyLine("worker", "worker", "Worker");
+  const lines = byCost([worker, objectsLine(input, sample, coverage), d1Line(input, sample, coverage), r2Line(input)].filter(line => line !== null));
   const entries = lines.map(line => ({ line, amount: monthlyOf(line) }));
   const now = entries.reduce((sum, entry) => sum + (entry.amount?.now ?? 0), 0);
   const compared = entries.filter(entry => entry.amount !== null && entry.amount.before !== null);
