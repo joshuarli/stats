@@ -1,6 +1,6 @@
 # Dependencies and toolchain
 
-Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm 12.18.0 (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
+Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm from `package.json` (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
 
 ## Agent crates
 
@@ -60,9 +60,11 @@ pnpm's default user shell resets `PATH` and runs Node 26.13.0 despite the caller
 selecting 26.13.1. The explicit shell preserves the caller's toolchain and local
 package binaries. A regression runs package scripts with a hostile host shell.
 Remove this setting only after pnpm preserves the selected runtime with that
-shell. `.node-version` names the 26.13 line rather than a single patch;
-`make node-ready` and the build/test entrypoints accept any 26.13.x release.
-The doctor reports the pin from `.node-version`.
+shell. `.node-version` pins the exact Node patch; `make node-ready` and the
+build/test entrypoints enforce it. The doctor reports the pin from `.node-version`.
+Stuff owns the shared pins in `fleet/policy/typescript-tools.toml` and
+`fleet/policy/frontend-toolchain.toml`. Oxlint loads type-aware linting from
+`tsrs-lint` in the same `tsrs` package; there is no direct `oxlint-tsgolint` dependency.
 
 ## Platform binaries in lockfiles
 

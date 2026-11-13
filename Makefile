@@ -29,8 +29,8 @@ work-ready:
 
 node-ready:
 	@set -eu; \
-	case "$$(node --version)" in "v$$(cat .node-version)".*) ;; *) echo 'use a Node release in the .node-version line' >&2; exit 1;; esac; \
-	test "$$(pnpm --version)" = 12.18.0 || { echo 'pnpm 12.18.0 is required' >&2; exit 1; }
+	test "$$(node --version)" = "v$$(cat .node-version)" || { echo 'use the Node version in .node-version' >&2; exit 1; }; \
+	test "$$(pnpm --version)" = "$$(jaq -r '.packageManager | split("@")[1]' package.json)" || { echo 'use the pnpm version in package.json' >&2; exit 1; }
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs

@@ -23,8 +23,7 @@
   },
   "devDependencies": {
     "oxlint": "1.93.0",
-    "oxlint-tsgolint": "7.0.2006",
-    "tsrs": "0.24.0-ts7.1.0-beta"
+    "tsrs": "0.25.0-ts7.1.0-beta"
   },
   "engines": {
     "node": ">=20"
