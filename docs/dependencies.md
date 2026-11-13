@@ -164,3 +164,20 @@ Alchemy would cost more than it saves here:
 
 Revisit if Alchemy ships an Analytics SQL binding and documented prebuilt
 Build Output deploys, or if Stats needs resources `cf` cannot declare.
+
+## Advisory and release audit (2026-11-13)
+
+`cargo audit --json` against the SQLite advisory database reports zero
+vulnerabilities and no unmaintained, unsound, or yanked crates in two lockfiles:
+the agent (`agent/Cargo.lock`, 136 packages) and the stuff workspace
+(`~/repos/stuff/Cargo.lock`). Direct dependencies of the agent were checked
+against crates.io on 2026-11-13 and are all at their newest releases:
+`libc` 0.2.191, `deser`/`deser-json`/`deser-value` 0.10.2, `rustc-hash` 2.1.3,
+`aya` 0.16.0. `h12tiny-client-sync` 0.9.0 comes from the private `mycrates`
+registry and was not checked against crates.io. No release sweep of every
+transitive or every stuff dependency was performed; the most-used shared
+direct dependencies in stuff (`deser-value`/`deser-json` 0.10, `tempfile`
+3.13, `rustc-hash` 2.1.3, `sha2` 0.11) are at their current majors. No
+upgrades were made; no advisory justifies churn, and the pinned Rust nightly
+is unchanged. The commands and results are reproducible with `cargo audit` in
+each workspace root.

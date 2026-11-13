@@ -155,11 +155,3 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** none
 - **Effort:** M
 
-### STA-90 · P4 · A current Rust dependency audit remains unrecorded
-
-- **Area:** Dependencies
-- **Where:** `agent/Cargo.toml`, `../stuff` crates, `docs/dependencies.md`
-- **Problem:** The backlog records no current release/advisory audit for these workspaces. This review did not recheck upstream releases or audit the separate stuff repository; no specific vulnerable dependency is established by this ticket.
-- **Recommendation:** Check current releases and advisories in each workspace, then make only justified upgrades compatible with the pinned nightly. Record material dependency decisions in `docs/dependencies.md`.
-- **Fix with:** none
-- **Effort:** S
