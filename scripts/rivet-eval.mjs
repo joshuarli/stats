@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { runReportCheck } from "./rivet-report-check.mjs";
 
 const REPO = resolve(import.meta.dirname, "..");
 const EVAL = join(REPO, "experiments/rivet");
@@ -13,7 +14,6 @@ const RUNS = join(REPO, ".work/rivet-eval");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
 const requiredNode = `v${readFileSync(join(REPO, ".node-version"), "utf8").trim()}`;
-const SUITES = { report: "R7" };
 
 async function native(report, values) {
   if (values.candidate !== undefined) return { result: "blocked", reason: "native takes no candidate selector" };
@@ -155,7 +155,7 @@ async function main() {
     else if (command === "parity") Object.assign(report, await subcommand(report, values, "parity"));
     else if (command === "resilience") Object.assign(report, await subcommand(report, values, "resilience"));
     else if (command === "native") Object.assign(report, await native(report, values));
-    else if (SUITES[command]) { report.result = "blocked"; report.reason = `${command} is planned for campaign slice ${SUITES[command]} and is not implemented yet`; }
+    else if (command === "report") Object.assign(report, values.check === true ? runReportCheck() : { result: "blocked", reason: "report requires --check (campaign R7)" });
     else { report.result = "blocked"; report.reason = `unknown command: ${command}`; process.exitCode = 2; }
   } catch (error) { report.result = "fail"; report.reason = String(error?.message ?? error); }
   emit(report, started);
