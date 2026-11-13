@@ -338,12 +338,44 @@ to application-event ingestion or be lost, `cloudflare:workers` shims,
 a rewrite of the deployment boundary, not an import; R5 in this evaluation only
 covers the packaged OpenOrange compatibility path, not a native rewrite.
 
+## R5 — restart, offline, growth and a packaged process
+
+Commands: `node scripts/rivet-eval.mjs resilience --quick --json` (R5a) and
+`node scripts/rivet-eval.mjs resilience --soak-minutes 30 --reloads 100 --json`
+(R5b). Raw compact evidence:
+[resilience.json](rivet-openorange/resilience.json) — revision `79e9fb4`
+(worktree clean).
+
+R5a results (all pass):
+
+| Check | Result |
+| --- | --- |
+| kill:app | SIGKILL 4 processes in the tree; acknowledged writes replayed as duplicates (`duplicates === 2`); history bytes 2776 |
+| kill:engine | SIGKILL the Engine process; acknowledged writes replayed as duplicates (`duplicates === 2`) |
+| kill:services | SIGKILL 3 Services processes; acknowledged writes replayed as duplicates (`duplicates === 2`) |
+| isolatedSessions | two concurrent sessions; host created (201) in A; B's host list stayed empty; no shared identifiers or ports |
+| offlineCanary | under `scripts/offline-run.sh` the packaged process served loopback (200) and non-loopback egress was denied (192.0.2.1); on macOS this is an OS-level claim only |
+| packagedSelfHost | watcher-free `orange serve` against a driver-spawned local Engine (SQLite, self-host): restart produced byte-identical history (fingerprint match); 401 on missing JWT, 401 on bad JWT; unauthenticated probe of the Engine endpoint returned 404 |
+| snapshotRestore | stop-the-world filesystem copy of the full synthetic state dir restored and replayed with duplicates === 2; **same-namespace** restore; no supported online export ran; labeled as such |
+
+R5b (soak) is recorded in the behavior register (D4) and appended below once the
+30-minute / 100-cycle run completes.
+
+Limits (kept explicit):
+
+- Alarm delivery across restart is not exercised (`storage.setAlarm`; shortest
+  real delay ≥ 10 minutes).
+- Fresh-namespace restore is unproven — no supported export API; the only
+  restore demonstrated is a same-namespace stop-the-world copy.
+- Receiver backlog under load is untested.
+- macOS only; Linux/musl and multi-host remain open (Needs environment).
+
 ## Required behavior inventory
 
 Frozen in [rivet-openorange-behavior-register.md](rivet-openorange-behavior-register.md)
 before any candidate result existed. Categories A (portable, 15 rows),
 B (platform sensor/billing, 5 rows), C (dev lifecycle, 5 rows), D (self-host,
-8 rows). Candidate results pending R1–R6.
+8 rows). R1–R5 recorded; D5 fails as written; R6 (benchmark) pending.
 
 ## Needs environment
 

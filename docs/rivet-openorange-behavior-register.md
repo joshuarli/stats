@@ -50,12 +50,12 @@ with the slice's evidence; `pending` means not yet executed.
 | C3 | C | Observation edit rebuilt and served | `bench/dev-loop.ts` observation-edit | required (Cloudflare default preserved) | pass |
 | C4 | C | State ownership, isolation, reset; no concurrent writers | `test/scripts/development.test.ts`, docs/development.md | required | pass |
 | C5 | C | Toolchain pins and doctor (`.node-version`, dev-doctor) | `make dev-doctor` | required | pass |
-| D1 | D | Packaged watcher-free candidate vs local Engine; same authenticated pilot and restart | `experiments/rivet/`, `node scripts/rivet-eval.mjs resilience --quick --json` (R5a) | required for self-host verdict | pending |
-| D2 | D | Acknowledged host writes survive kill of app/Engine/Services; retries do not duplicate or corrupt | R5a kill tests | required for self-host verdict | pending |
-| D3 | D | Offline execution: credentials stripped, non-loopback OS-denied (macOS `scripts/offline-run.sh`); runtime/update checks and telemetry exporters denied | R5a offline tests | required for self-host verdict | pending |
+| D1 | D | Packaged watcher-free candidate vs local Engine; same authenticated pilot and restart | `experiments/rivet/`, `node scripts/rivet-eval.mjs resilience --quick --json` (R5a) | required for self-host verdict | pass — byte-identical history across restart; 401 on missing/bad JWT; engine endpoint unauthenticated probe 404 |
+| D2 | D | Acknowledged host writes survive kill of app/Engine/Services; retries do not duplicate or corrupt | R5a kill tests | required for self-host verdict | pass — SIGKILL app (4), Engine (1), Services (3); acknowledged writes replayed as duplicates (=== 2); history bytes 2776 |
+| D3 | D | Offline execution: credentials stripped, non-loopback OS-denied (macOS `scripts/offline-run.sh`); runtime/update checks and telemetry exporters denied | R5a offline tests | required for self-host verdict | pass — loopback 200, 192.0.2.1 denied under macOS sandbox-exec; telemetry exporter absence not separately probed; on Linux the app-level guard alone is not a full offline claim |
 | D4 | D | 30-minute bounded soak, 100 reload cycles, retention bounded, no unexplained growth | `resilience --soak-minutes 30 --reloads 100` (R5b) | required for self-host verdict | pending |
-| D5 | D | Backup/restore into fresh namespace from supported consistent export of synthetic data | R5a/R5b | required for self-host verdict | pending |
-| D6 | D | No cross-run interference; no orphaned listeners; two isolated sessions | R5a | required for self-host verdict | pending |
+| D5 | D | Backup/restore into fresh namespace from supported consistent export of synthetic data | R5a | required for self-host verdict | fail — no supported export API; only a same-namespace stop-the-world filesystem copy was demonstrated; fresh-namespace consistent export not produced |
+| D6 | D | No cross-run interference; no orphaned listeners; two isolated sessions | R5a | required for self-host verdict | pass — host created (201) in session A; B's host list stayed empty; no shared ports/identifiers/orphans observed |
 | D7 | D | License/maintenance/transitive closure vetted; package/bytes/time costs recorded | bootstrap evidence; R7 report | required for verdict | partial (bootstrap recorded) |
 | D8 | D | Multi-host durability / object-store cost / live Cloudflare parity | out of scope (Needs environment) | not authorized | not applicable |
 

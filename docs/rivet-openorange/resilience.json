@@ -1,0 +1,75 @@
+{
+  "schema": "rivet-eval/1",
+  "command": "resilience",
+  "result": "pass",
+  "reason": null,
+  "revision": "79e9fb41a78815099b0f61fa0fb88ed5c91265bf",
+  "dirty": false,
+  "run": {
+    "id": "2026-11-13T03-29-27-509Z-73c4fe04",
+    "started": "2026-11-13T03:29:27.540Z",
+    "finished": "2026-11-13T03:33:20.391Z",
+    "durationMs": 232882
+  },
+  "checks": {
+    "kill:app": {
+      "ok": true,
+      "detail": {
+        "killed": 4,
+        "historyBytes": 2776
+      }
+    },
+    "kill:engine": {
+      "ok": true,
+      "detail": {
+        "killed": 1,
+        "historyBytes": 2776
+      }
+    },
+    "kill:services": {
+      "ok": true,
+      "detail": {
+        "killed": 3,
+        "historyBytes": 2776
+      }
+    },
+    "isolatedSessions": {
+      "ok": true,
+      "detail": {
+        "aCreated": 201,
+        "bNames": []
+      }
+    },
+    "offlineCanary": {
+      "ok": true,
+      "detail": "loopback 200\nexternal denied"
+    },
+    "packagedSelfHost": {
+      "ok": true,
+      "detail": {
+        "engineEndpoint": "http://127.0.0.1:65522",
+        "historyMatch": true,
+        "missingJwt": 401,
+        "badJwt": 401,
+        "engineProbe": 404
+      }
+    },
+    "snapshotRestore": {
+      "ok": true,
+      "detail": {
+        "verified": true,
+        "historyBytes": 2776,
+        "note": "stop-the-world filesystem copy of the full synthetic state dir; not a supported online export; same-namespace restore"
+      }
+    }
+  },
+  "limits": {
+    "stateDir": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T03-29-27-509Z-73c4fe04/resilience",
+    "unproven": [
+      "Alarm delivery across restart not exercised (DO storage.setAlarm; shortest real delay >=10 minutes)",
+      "Fresh-namespace restore not proven (no supported export API; same-namespace stop-the-world copy only)",
+      "Receiver backlog under soak not proven (collect/receiver untested at load)"
+    ]
+  },
+  "note": "full per-check output is regenerable with: node scripts/rivet-eval.mjs resilience --quick --json"
+}
