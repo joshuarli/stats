@@ -22,6 +22,10 @@ Status by slice:
   DO alarm timing, desktop/golden-image deltas). Tails deliver fetch
   invocations; per-operation attribution arrives via the explicit
   application-event adapter, not via diagnostics channels.
+- **R4 — native control: complete.** One native actor persists fixtures,
+  rolls back failed transactions, accumulates rollups, fires a scheduled
+  tick, forks with storage copy + isolation, and survives an engine restart,
+  matching the node/sqlite control on common inputs.
 - **R4 — native control:** not started. **R5a/R5b — resilience/soak:** not started.
 - **R6 — measurement:** not started. **R7 — verdict:** not started.
 
@@ -282,6 +286,57 @@ Candidate glue size: 555 nonblank source lines in `experiments/rivet/`
 (`generate.mjs` 95, `pilot.mts` 124, `harness.mts` 96, `parity.mts` 253,
 plus config/manifest files), under the 800-line candidate cap; dispatcher
 123 of 150.
+
+## R4 — native Rivet control
+
+Command: `node scripts/rivet-eval.mjs native --json` (also the opt-in test
+`test/rivet-eval/native.test.ts`). Raw compact evidence:
+[native.json](rivet-openorange/native.json) — revision `6bc9b57` (worktree
+clean), pinned rivetkit 3.1.2-rc.1, engine binary `dbcbaac1…` (`Rivet 3.1.1`),
+Services 0.2.5.
+
+One native actor (`probe`), native SQLite through the Engine, fixtures from
+`fixtures/v2`:
+
+| Check | Result |
+| --- | --- |
+| Fresh actor starts empty | pass (0 rows) |
+| Ingest linux-normal + u64-boundaries | pass — byte-identical row count and payload bytes to the `node:sqlite` control (5 rows, 4001 payload bytes) |
+| Duplicate ingest is ignored | pass (`INSERT OR IGNORE ... RETURNING seq` → `written: 0`) |
+| Failed transaction rolls back | pass — thrown transaction rejected client-side; row count unchanged |
+| Rollup upsert accumulates (`ON CONFLICT ... RETURNING`) | pass (2 → 5 in same bucket) |
+| Scheduled maintenance fires (`c.schedule.after` one shot) | pass (250 ms; fired logged) |
+| Actor fork ×2 (bounded probe) | pass — forks start with the parent's storage (5 rows each); post-fork mutations isolated (parent 7 rows; children stay 5; markers parent/a/b) |
+| Restart with same `RIVETKIT_STORAGE_PATH` | pass — 7 rows, payloadBytes 7218 byte-identical; marker and rollup intact |
+| workerd in process tree | none (engine + envoy + services only) |
+| Ingest timings | linux-normal 16 ms, u64-boundaries 6 ms (native); node control comparison same hot path |
+
+API-level findings (not defects, limits of what R4 can claim):
+
+- `RawAccess` exposes `execute`/`query`/`transaction` but **not**
+  `commitTicket`/`whenDurable`; durability is acknowledged only by the engine's
+  internal commit path. Evidence of durability is behavioral (engine restart
+  preserves the exact bytes) — no acknowledgment API was available to assert on.
+- `onMigrate` ran before actor start; forks copy the parent's SQLite, so all
+  schema must be idempotent (`CREATE TABLE IF NOT EXISTS`) or fork starts fail
+  by construction — the failure mode was demonstrated and repaired before this
+  report.
+- Sleep/wake hibernation is not exposed on the action API probed here; cron
+  scheduling (as opposed to one-shot `schedule.after`) was not exercised.
+- The fork demonstrated copy-then-isolate from the parent (rows + mutations);
+  it is **not** an atomic snapshot of the Stats + observation actors, alarms,
+  credentials or streams, and it was not used to imply one.
+- No application integration: the Stats core was not ported; the native actor
+  proves the platform's per-actor SQLite, transactions, scheduling, fork and
+  restart semantics only — nothing about Stats as a whole on Rivet.
+
+Cost of native adoption: adopting rivetkit natively means replacing the
+Cloudflare-specific surfaces (Durable Objects → actors + `db()`, alarms →
+`schedule`/`setWakeAt`, tails → nothing equivalent — interior events must move
+to application-event ingestion or be lost, `cloudflare:workers` shims,
+`nodejs_compat` semantics), plus the wrangler-style config toolchain. That is
+a rewrite of the deployment boundary, not an import; R5 in this evaluation only
+covers the packaged OpenOrange compatibility path, not a native rewrite.
 
 ## Required behavior inventory
 
