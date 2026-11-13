@@ -132,7 +132,8 @@ rejected samples, but:
 - The pinned line is a pre-release (`3.1.2-rc.1`), proven on macOS ARM64
   only, and `@rivet-dev/services` was `UNLICENSED` (unused, optional).
 
-Revisit if upstream ships a supported consistent export: prove a
+Revisit if upstream ships a supported consistent export
+(tracking: <https://github.com/rivet-dev/open-orange/issues/24>): prove a
 fresh-namespace restore on Linux, re-run the resilience soak, and add a
 candidate dev-loop bench phase before re-evaluating adoption. The full
 evidence and verdict record live in git history at `9f1b43c`
