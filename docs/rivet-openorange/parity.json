@@ -2,17 +2,21 @@
   "schema": "rivet-eval/1",
   "command": "parity",
   "result": "pass",
-  "revision": "1f749346dcf3bcfe29fb51eaf2becc134481c9b3",
-  "dirty": true,
+  "reason": null,
+  "revision": "5f3fc0bd40ba544d1db457dec8153bc3b57baf9b",
+  "dirty": false,
   "run": {
-    "id": "2026-11-13T01-15-39-918Z-910750c9",
-    "started": "2026-11-13T01:15:39.941Z",
-    "finished": "2026-11-13T01:16:26.334Z",
-    "durationMs": 46416
+    "id": "2026-11-13T01-17-39-534Z-93e54a31",
+    "started": "2026-11-13T01:17:39.558Z",
+    "finished": "2026-11-13T01:18:19.374Z",
+    "durationMs": 39840
   },
   "counts": {
-    "checks": 1449,
-    "passed": 1444
+    "suites": 29,
+    "recorded": 1449,
+    "assertions": 1444,
+    "passed": 1444,
+    "informational": 5
   },
   "suites": {
     "startup": 1,
@@ -46,16 +50,16 @@
     "rssKiB": 1
   },
   "startup": {
-    "readyMs": 3797,
+    "readyMs": 3688,
     "sandbox": true,
-    "origin": "http://127.0.0.1:59216"
+    "origin": "http://127.0.0.1:59692"
   },
   "restart": {
-    "readyMs": 17566,
+    "readyMs": 11417,
     "sandbox": true
   },
   "realTimeStartup": {
-    "readyMs": 3884,
+    "readyMs": 3748,
     "sandbox": true
   },
   "applicationEventsVisible": {
@@ -81,9 +85,9 @@
   },
   "cliCheckIngest": true,
   "processes": 8,
-  "rssKiB": 851968,
+  "rssKiB": 829776,
   "limits": {
-    "stateDir": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T01-15-39-918Z-910750c9/parity",
+    "stateDir": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T01-17-39-534Z-93e54a31/parity",
     "unproven": [
       "ANALYTICS_SQL unbound on the candidate (OpenOrange has no local Analytics SQL substitute); collector pipeline unproven",
       "DO storage.setAlarm delivery (installation cleanup alarm, >=10 real minutes) not exercised in this slice",
@@ -91,5 +95,5 @@
       "Linux target and musl ABIs untested (no verified Linux host in this environment)"
     ]
   },
-  "note": "full per-check output (1394 assertions) is regenerable with: node scripts/rivet-eval.mjs parity --candidate openorange --json; run-time raw under .work/rivet-eval/<run>/parity.json"
+  "note": "full per-check output is regenerable with: node scripts/rivet-eval.mjs parity --candidate openorange --json; run-time raw under .work/rivet-eval/<run>/parity.json"
 }
