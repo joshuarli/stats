@@ -8,14 +8,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
-### STA-117 · P3 · Producer batch sizing serializes every growing prefix
-
-- **Area:** Performance
-- **Where:** `packages/producer/src/index.ts:186–200,246`, `packages/stats-producer/src/lib.rs:410–435,448–490`
-- **Problem:** Both producers clone and encode each growing prefix to enforce the 64 KiB body limit, then encode the chosen batch again. The real TypeScript public flush path with 64 valid events performs 65 batch serializations visiting 2,144 event representations, sends 64 and drops none. The Rust source performs the same repeated work while holding the queue mutex used by record(); Rust contention and production CPU were not measured. Work grows quadratically with events per batch despite the 128-event cap.
-- **Recommendation:** Compute a conservative encoded UTF-8 size per normalized event once, including worst-case delivery fields and batch framing, then select the fitting FIFO prefix and encode it once for sending. Preserve byte/event caps, oversized-event drops, retry identity and queue semantics. Compare work at 64 and 128 events and near the byte cap, including multibyte strings; keep sizing outside the shared lock where ownership allows.
-- **Fix with:** make-it-fast
-- **Effort:** M
 
 ### STA-118 · P3 · Overview pages fetch full deployment histories to display the latest deployment
 
