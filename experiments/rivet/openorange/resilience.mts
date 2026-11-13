@@ -178,42 +178,42 @@ export async function runResilience(options: ResilienceOptions): Promise<Record<
     generate({ outDir: soakDir });
     const reloads = options.reloads ?? 100; const paceMs = (options.soakMinutes * 60_000) / reloads; const soakStart = performance.now();
     try {
-      const seed = await seedAcknowledged(soakDir);
-      const rssSamples: number[] = [];
-      let accepted = 0, rejected = 0, peakRssKiB = 0;
+      const access = { "cf-access-jwt-assertion": await accessToken() }, seed = await seedAcknowledged(soakDir);
+      let accepted = 0, rejected = 0, peakRssKiB = 0, lastReject = "";
       for (let reload = 1; reload <= reloads; reload += 1) {
         const offset = reload * 2;
         let cycle: Session | undefined;
         try {
           cycle = await startSession(soakDir, await freePort(), true);
-          const ingest = await fetch(`${cycle.origin}/ingest/v2/batches`, { method: "POST", headers: { Authorization: `Bearer ${seed.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: frameOf(seed.hostId, offset) });
-          const ack = decodeAck(new Uint8Array(await ingest.arrayBuffer()), seqsOf(offset));
-          if (ingest.status === 200 && ack.accepted === 2) accepted += 2; else rejected += 1;
+          const created = await fetch(`${cycle.origin}/api/v1/admin/hosts`, { method: "POST", headers: { ...access, "Content-Type": "application/json" }, body: JSON.stringify({ name: `soak-${reload}` }) });
+          const host = await created.json() as { hostId: string; token: string };
+          const ingest = await fetch(`${cycle.origin}/ingest/v2/batches`, { method: "POST", headers: { Authorization: `Bearer ${host.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: frameOf(host.hostId, offset) });
+          const body = new Uint8Array(await ingest.arrayBuffer());
+          const ack = ingest.status === 200 ? decodeAck(body, seqsOf(offset)) : null;
+          if (ack?.accepted === 2) accepted += 2; else { rejected += 1; lastReject = `cycle ${reload}: ${ingest.status} ${Buffer.from(body).toString("utf8").slice(0, 120)}`; }
           peakRssKiB = Math.max(peakRssKiB, processTree(cycle.child.pid!).processes.reduce((sum, row) => sum + row.rssKiB, 0));
-          rssSamples.push(peakRssKiB);
           if (peakRssKiB > 4 * 1024 * 1024) { check("soak", false, { accepted, rejected, peakRssKiB }); break; }
-        } catch {
-          rejected += 1;
+        } catch (error) {
+          rejected += 1; lastReject = `cycle ${reload}: ${String(error instanceof Error ? error.message : error).slice(0, 120)}`;
         } finally {
           await cycle?.stop().catch(() => {});
         }
         const remaining = soakStart + reload * paceMs - performance.now();
         if (remaining > 0) await new Promise<void>(resolveWait => setTimeout(resolveWait, remaining));
       }
-      let recoveredVerified = false; let historyBytes = 0;
-      let verify: Session | undefined;
+      let recoveredVerified = false, historyBytes = 0; let verify: Session | undefined;
       try {
         verify = await startSession(soakDir, await freePort(), true);
-        const access = { "cf-access-jwt-assertion": await accessToken() };
         const history = await fetch(`${verify.origin}/api/v1/hosts/${seed.hostId}/history?range=24h&kind=summary`, { headers: { ...access, "accept-encoding": "identity" } });
-        historyBytes = (await history.arrayBuffer()).byteLength;
+        historyBytes = history.status === 200 ? (await history.arrayBuffer()).byteLength : 0;
         const replay = await fetch(`${verify.origin}/ingest/v2/batches`, { method: "POST", headers: { Authorization: `Bearer ${seed.token}`, "Content-Type": INGEST_MEDIA_TYPE }, body: frameOf(seed.hostId) });
-        const ack = decodeAck(new Uint8Array(await replay.arrayBuffer()), seqsOf());
-        recoveredVerified = history.status === 200 && historyBytes > 0 && replay.status === 200 && ack.duplicates === 2;
+        const body = new Uint8Array(await replay.arrayBuffer());
+        const ack = replay.status === 200 ? decodeAck(body, seqsOf()) : null;
+        recoveredVerified = historyBytes > 0 && ack?.duplicates === 2;
       } finally {
         await verify?.stop().catch(() => {});
       }
-      check("soak", rejected === 0 && recoveredVerified, { reloads, acceptedSamples: accepted, rejectedRequests: rejected, peakRssKiB: Math.max(...rssSamples), restartVerified: recoveredVerified, historyBytes });
+      check("soak", rejected === 0 && recoveredVerified, { reloads, acceptedSamples: accepted, rejectedRequests: rejected, peakRssKiB, restartVerified: recoveredVerified, historyBytes, ...(lastReject === "" ? {} : { lastReject }) });
     } catch (error) {
       check("soak", false, String(error instanceof Error ? error.message : error).slice(0, 300));
     }
