@@ -61,6 +61,12 @@ export function readVersions(sql: SqlDatabase, project: string, worker: string):
   ).map(row => JSON.parse(row.payload) as VersionMetadata);
 }
 
+export function readVersionIds(sql: SqlDatabase, project: string, worker: string): string[] {
+  return sql.rows<{ id: string }>(
+    "SELECT id FROM project_deployment_versions WHERE project = ? AND worker = ? ORDER BY fetched_at_ms DESC LIMIT 2000", project, worker,
+  ).map(row => row.id);
+}
+
 export function saveDeploymentPoll(sql: SqlDatabase, poll: DeploymentPoll): void {
   sql.transaction(() => {
     const previous = readDeploymentSync(sql, poll.project, poll.worker);

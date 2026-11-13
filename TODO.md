@@ -94,14 +94,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** orchestrate
 - **Effort:** M
 
-### STA-86 · P4 · Deployment polling parses up to 2,000 version payloads to read their ids
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/core/installation/installation.ts:377` (`knownDeploymentVersions`), `cloudflare/src/deployments/store.ts:38–48`, `cloudflare/src/cloudflare/deployments/collector.ts:91`
-- **Problem:** Each poll calls `readVersions` only to map the version IDs. A local probe of the real method at the 2,000-version retention cap performs 2,000 JSON parses; the table already has an `id` column. This is avoidable bounded work. Its production CPU cost and monetary saving have not been measured in this review.
-- **Recommendation:** Select only the existing `id` column with the current project/worker scope, retention and ordering. Preserve the collector result and confirm the cap-sized probe no longer parses payloads. Profile a representative poll before claiming a production saving; no schema migration is needed.
-- **Fix with:** make-it-fast
-- **Effort:** S
 
 ### STA-87 · P4 · Whether the Analytics SQL binding bills for the rows the collector reads is unconfirmed
 

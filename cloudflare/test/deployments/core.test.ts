@@ -7,7 +7,7 @@ import { collectDeployments, type DeploymentFetch } from "../../src/cloudflare/d
 import { decodeDeploymentHistory, decodeDeploymentComparison } from "../../src/deployments/decode.ts";
 import type { SqlDatabase, SqlValue } from "../../src/core/sql.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
-import { initializeDeployments, saveDeploymentPoll, readDeployments, readDeploymentSync, readVersions, purgeDeployments, rememberSettledWindow, hasSettledWindow } from "../../src/deployments/store.ts";
+import { initializeDeployments, saveDeploymentPoll, readDeployments, readDeploymentSync, readVersions, readVersionIds, purgeDeployments, rememberSettledWindow, hasSettledWindow } from "../../src/deployments/store.ts";
 
 const H = 3_600_000, SETTLE = 45 * 60_000;
 const AT = Date.UTC(2026, 10, 2, 12);
@@ -342,5 +342,8 @@ await test("latest project summary matches retained history and reads only refer
   assert.ok(new TextEncoder().encode(JSON.stringify(summary)).length < 1000);
   assert.equal(summary.versions[1]!.tag, null);
   assert.deepEqual(readLatestDeployment(state.sql, "stats", "stats", NOW + DEPLOYMENT_RETENTION_MS + 1), { status: "none" });
+  const ids = readVersionIds(state.sql, "stats", "stats");
+  assert.deepEqual(ids, readVersions(state.sql, "stats", "stats").map(version => version.id));
+  assert.equal(ids.length, 2000);
   state.db.close();
 });

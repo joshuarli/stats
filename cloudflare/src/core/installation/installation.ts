@@ -17,7 +17,7 @@ import { latestCollectorRunId, projectHistorySource, projectKind, type ProjectKi
 import { collectedPoints, purgeExpired, recordRun, upsertPoints, type CollectorRun } from "../../projects/store.ts";
 import { COMPARISON_WINDOWS, compareDeployment, comparisonBounds, DEPLOYMENT_BUCKET_MS, isComparisonWindow, type MetricRow } from "../../deployments/compare.ts";
 import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deployments/model.ts";
-import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readLatestDeployment, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
+import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readLatestDeployment, readDeploymentSync, readVersions, readVersionIds, saveDeploymentPoll } from "../../deployments/store.ts";
 import { readLimitedBytes, readLimitedText } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";
 import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, affectedBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
@@ -381,7 +381,7 @@ export class InstallationCore {
     const operation = this.operationRun();
     try {
       if (!parseProjects(this.config.projects()).some(item => item.id === project && item.worker === worker)) throw new Error("unknown deployment project");
-      return readVersions(operation.sql, project, worker).map(version => version.id);
+      return readVersionIds(operation.sql, project, worker);
     } finally {
       operation.finish();
     }
