@@ -1,23 +1,31 @@
 #!/usr/bin/env node
 // report --check for CAMPAIGN-RIVET-OPENORANGE: validates that the evaluation
 // record is complete. It checks the record, not the candidate; it cannot turn a
-// failing candidate command into a pass, and it fails when a required artifact
-// or verdict is missing.
+// failing candidate command into a pass. It verifies required artifacts exist,
+// parse, match the expected command for their filename, and carry the schema
+// and a full revision. It does not adjudicate verdict support: whether the
+// verdict follows from the evidence remains with the reader.
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const REPO = resolve(import.meta.dirname, "..");
 const EVALUATION = join(REPO, "docs", "rivet-openorange-evaluation.md");
 const REGISTER = join(REPO, "docs", "rivet-openorange-behavior-register.md");
 const CAMPAIGN = join(REPO, "docs", "CAMPAIGN-RIVET-OPENORANGE.md");
 const EVIDENCE_DIR = join(REPO, "docs", "rivet-openorange");
-const REQUIRED_EVIDENCE = ["baseline.json", "bootstrap.json", "pilot.json", "parity.json", "native.json", "resilience.json", "soak.json"];
+const REQUIRED_EVIDENCE = ["baseline.json", "bootstrap.json", "pilot.json", "parity.json", "native.json", "resilience.json", "soak.json", "bench.json"];
+const EXPECTED_COMMAND = { "baseline.json": "baseline", "bootstrap.json": "bootstrap", "pilot.json": "pilot", "parity.json": "parity", "native.json": "native", "resilience.json": "resilience", "soak.json": "resilience", "bench.json": "bench" };
 const REQUIRED_SECTIONS = ["## Environment note", "## Baseline (A)", "## Candidate closure", "## R1", "## R2", "## R3", "## R4", "## R5", "## R6", "## R7", "## Required behavior inventory", "## Needs environment", "## Verdict"];
 
 export function checkEvidence(path) {
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return typeof parsed.result === "string" && typeof parsed.revision === "string" ? { ok: true, result: parsed.result, revision: parsed.revision } : { ok: false, detail: "missing result or revision" };
+    const expected = EXPECTED_COMMAND[basename(path)];
+    if (parsed?.schema !== "rivet-eval/1") return { ok: false, detail: "schema is not rivet-eval/1" };
+    if (expected === undefined || parsed?.command !== expected) return { ok: false, detail: `command is ${String(parsed?.command)}, expected ${expected ?? "a known artifact"}` };
+    if (typeof parsed?.result !== "string" || !["pass", "fail", "blocked", "not-applicable"].includes(parsed.result)) return { ok: false, detail: "result is missing or out of enum" };
+    if (typeof parsed?.revision !== "string" || !/^[0-9a-f]{40}$/.test(parsed.revision)) return { ok: false, detail: "revision is not 40 lowercase hex characters" };
+    return { ok: true, result: parsed.result, revision: parsed.revision };
   } catch (error) {
     return { ok: false, detail: String(error?.message ?? error).slice(0, 200) };
   }

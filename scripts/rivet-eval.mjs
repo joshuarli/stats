@@ -22,7 +22,7 @@ async function native(report, values) {
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
   const detail = parseTail(text);
-  const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
+  const result = done.status === 0 ? (detail?.result ?? "pass") : (detail?.result === "blocked" ? "blocked" : detail?.result === "not-applicable" ? "not-applicable" : "fail");
   const reason = detail?.reason ?? (done.status === 0 ? null : `native probe failed (exit ${done.status}); see stderr above`);
   const evidenceDir = join(RUNS, report.run.id);
   mkdirSync(evidenceDir, { recursive: true });
@@ -108,7 +108,7 @@ async function subcommand(report, values, script) {
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
   const detail = parseTail(text);
-  const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
+  const result = done.status === 0 ? (detail?.result ?? "pass") : (detail?.result === "blocked" ? "blocked" : detail?.result === "not-applicable" ? "not-applicable" : "fail");
   const reason = detail?.reason ?? (done.status === 0 ? null : `${script} failed (exit ${done.status}); see stderr above`);
   const evidenceDir = join(RUNS, report.run.id);
   mkdirSync(evidenceDir, { recursive: true });
