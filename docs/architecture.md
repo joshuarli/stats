@@ -584,28 +584,35 @@ any write:
 | Bad JSON, an unknown key, or a field outside its rule | `400 invalid_request` |
 | A host outside the service, or unknown or revoked | `400 invalid_request` |
 
-The body is `{ markerId, version, message?, hostIds }`:
+The body is `{ markerId, version, message?, hostIds, atMs? }`:
 
 - `markerId` is the client's idempotency key, `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`.
 - `version` is what was deployed, `^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$`, such as a commit or a semver.
 - `message` is at most 1000 characters; control characters become spaces, as Cloudflare deployment messages do.
 - `hostIds` is a non-empty subset of the service's hosts.
+- `atMs` is the activation time, epoch milliseconds. It must fall within the
+  30-day marker retention and no more than 5 minutes in the future. When
+  absent, the server stamps the receive time.
 
 A new marker answers `201` with
 `{ service, markerId, hostIds, deployment }`. `deployment` is a `Deployment`
 from `src/deployments/model.ts`:
 
 - `id` is a UUID derived from SHA-256 of the service name and `markerId`;
-- `atMs` is the server receive time;
+- `atMs` is the request's `atMs` when present, else the server receive time;
 - `source` is `"marker"`;
 - `versions` is `[{ id: version, percentage: 100 }]`;
 - `deferred` is `false`.
 
 A marker is unique on `(service, markerId)`. A repeat with the same
-`version`, `message`, and set of hosts answers `200` with the stored marker,
-its original `atMs` included. A repeat that differs in any of them answers
-`409 conflict` and changes nothing. A deploy script can therefore retry a
-marker safely.
+`version`, `message`, set of hosts, and `atMs` answers `200` with the stored
+marker, its original `atMs` included. A repeat that carries `atMs` must match
+the stored marker's `atMs`; a repeat without one matches regardless, so
+markers recorded before `atMs` existed keep their retry behavior. A repeat
+that differs in any compared field answers `409 conflict` and changes
+nothing. A deploy script that records the activation time can therefore
+retry a marker safely, and a delayed retry keeps the activation time, not
+its own receive time.
 
 `GET /api/v1/services/:name/deployments` answers the project deployments
 route's `DeploymentHistory` shape. `projectId` and `worker` are the service

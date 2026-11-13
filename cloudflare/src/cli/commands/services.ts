@@ -14,6 +14,7 @@ const MARKER_ID_PREFIX = "v-";
 const MAX_MARKER_REPLY_BYTES = 64 * 1024;
 const MAX_MESSAGE_CHARS = 1000;
 const SERVICE_TOKEN = /^nft_[A-Za-z0-9_-]{43}$/u;
+const AT_MS = /^[0-9]{1,15}$/u;
 const UNIT = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/u;
 const HEALTH_TIMEOUT_MS = 5_000;
 
@@ -238,7 +239,7 @@ async function postMarker(context: CommandContext, service: string, token: strin
   const challenged = (status >= 300 && status < 400) || ((status === 200 || status === 401 || status === 403) && isHtml(response, bytes));
   if (challenged) throw authError("access_challenge", `${path} answered ${status}, an Access challenge or login page, so the request never reached the Worker; the path needs a Bypass Access application on ${context.origin}`);
   if (status === 401 || status === 403) throw authError("marker_unauthorized", `${path} answered ${status}${errorCode(bytes)}; the deploy token was refused`);
-  if (status === 409) throw new CommandError(EXIT.usage, "marker_conflict", `${path} answered 409${errorCode(bytes)}; this marker id was recorded with a different version, message, or host set; use a new --marker-id`);
+  if (status === 409) throw new CommandError(EXIT.usage, "marker_conflict", `${path} answered 409${errorCode(bytes)}; this marker id was recorded with a different version, message, host set, or at-ms; use a new --marker-id`);
   if (status === 400 || status === 413 || status === 415) throw usageError(`${path} answered ${status}${errorCode(bytes)}`);
   if (status === 404) throw transportError("not_found", `${path} answered 404`);
   if (status !== 200 && status !== 201) throw transportError(`http_${status}`, `${path} answered ${status}${errorCode(bytes)}`);
@@ -254,9 +255,9 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   name: "deploy mark",
   summary: "record a deployment marker for a service",
   description: [
-    "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds} to /ingest/services/NAME/deployments and prints the stored marker.",
+    "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds, atMs} to /ingest/services/NAME/deployments and prints the stored marker.",
     "The service deploy token comes from the token file, the JSON returned once when the service was created, and is sent only to the configured origin in the Authorization header. No Access or other credential is sent, on either target.",
-    "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, or host set exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version, such as a rollback to it; with the default, that rollback records nothing and the newer marker stays latest.",
+    "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, host set, or at-ms exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version, such as a rollback to it; with the default, that rollback records nothing and the newer marker stays latest.",
     "Exit 3 when the token file or the token is refused, or when an Access challenge intercepts the request (access_challenge). Exit 4 on transport failure."
   ],
   access: "mutation",
@@ -267,6 +268,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
     message: { type: "string", placeholder: "TEXT", description: `free text shown on the timeline, at most ${MAX_MESSAGE_CHARS} characters` },
     host: { type: "string", placeholder: "ID[,ID...]", description: "host ids the deploy reached, comma-separated (default: every host of the service, from the token file)" },
     "marker-id": { type: "string", placeholder: "ID", description: "idempotency key (default: v-VERSION)" },
+    "at-ms": { type: "string", placeholder: "MS", description: "activation time, epoch milliseconds (default: the server receive time; part of the repeat-comparison for the 409 rule)" },
     "token-file": { type: "string", placeholder: "FILE", required: true, description: "service creation response JSON {name, hostIds, deployToken, ingestToken}, mode 0600; never passed in argv" }
   },
   examples: ["statsctl deploy mark --service stats-node --version 9df651c1a2b3 --message 'make node-deploy' --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790"],
@@ -282,12 +284,14 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
     if (message !== undefined && message.length > MAX_MESSAGE_CHARS) throw usageError(`--message must be at most ${MAX_MESSAGE_CHARS} characters`);
     const explicitMarker = context.option("marker-id");
     if (explicitMarker !== undefined && !MARKER_ID.test(explicitMarker)) throw usageError("--marker-id must be 1-128 letters, digits, or ._:- starting with a letter or digit");
+    const atMs = context.option("at-ms");
+    if (atMs !== undefined && !AT_MS.test(atMs)) throw usageError("--at-ms must be epoch milliseconds, digits only");
     const markerId = explicitMarker ?? defaultMarkerId(version);
     const explicitHosts = context.option("host");
     const credential = readServiceCredential(context.option("token-file") ?? "", service);
     const hostIds = explicitHosts === undefined ? credential.hostIds : hostList(explicitHosts);
     if (hostIds === null) throw usageError("the token file has no hostIds; pass --host");
-    const body = JSON.stringify({ markerId, version, ...(message === undefined ? {} : { message }), hostIds });
+    const body = JSON.stringify({ markerId, version, ...(message === undefined ? {} : { message }), hostIds, ...(atMs === undefined ? {} : { atMs: Number(atMs) }) });
     const { value } = await postMarker(context, service, credential.deployToken, body);
     return { payload: value, identities: { deploymentIds: [value.marker.deployment.id], versionIds: [version] } };
   },

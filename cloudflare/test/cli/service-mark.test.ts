@@ -203,10 +203,26 @@ await test("deploy mark records and repeats a marker on a real Node server, and 
     assert.equal(conflict.code, 2, conflict.stdout + conflict.stderr);
     assert.ok(!existsSync(join(dataDir, "cf-ran")));
 
+    const activation = String(Date.now() - 60_000);
+    const timed = [...marker, "--at-ms", activation, "--marker-id", "act-1"];
+    const recorded = await runCli(timed, env);
+    assert.equal(recorded.code, 0, recorded.stdout + recorded.stderr);
+    assert.equal((JSON.parse(recorded.stdout) as Document).payload?.created, true);
+    const retried = await runCli(timed, env);
+    assert.equal(retried.code, 0, retried.stdout + retried.stderr);
+    const retriedMarker = JSON.parse(retried.stdout) as { payload: { created: boolean; marker: { deployment: { atMs: number } } } };
+    assert.equal(retriedMarker.payload?.created, false);
+    assert.equal(retriedMarker.payload?.marker.deployment.atMs, Number(activation));
+    const shifted = await runCli([...marker, "--at-ms", String(Number(activation) + 1_000), "--marker-id", "act-1"], env);
+    assert.equal(shifted.code, 2, shifted.stdout + shifted.stderr);
+    const future = await runCli([...marker, "--at-ms", String(Date.now() + 10 * 60_000), "--marker-id", "act-2"], env);
+    assert.equal(future.code, 2, future.stdout + future.stderr);
+    assert.equal((JSON.parse(future.stdout) as Document).error?.code, "usage");
+
     const listed = await runCli(["service", "deployments", "--service", "web", "--origin", origin, "--json"], env);
     assert.equal(listed.code, 0, listed.stdout + listed.stderr);
     const history = JSON.parse(listed.stdout) as { payload: { deployments: { deployment: { versions: { id: string }[]; message: string }; markerId: string; hostIds: string[] }[] } };
-    assert.equal(history.payload.deployments.length, 1);
+    assert.equal(history.payload.deployments.length, 2);
     assert.equal(history.payload.deployments[0]?.deployment.versions[0]?.id, "9df651c1a2b3");
     assert.equal(history.payload.deployments[0]?.deployment.message, "first");
     assert.equal(history.payload.deployments[0]?.markerId, "v-9df651c1a2b3");

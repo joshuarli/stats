@@ -248,6 +248,10 @@ A rollback is a new activation of an older release, not a rewrite of history.
   and leaves the newer marker latest. Use `statsctl deploy mark --marker-id`.
 - The rollback marker's `version` is the restored release and its `atMs` is the
   rollback time. Application events after it carry that `release`.
+- Pass `--at-ms` with the recorded rollback time so a delayed retry keeps it.
+  The time must fall within the 30-day marker retention and no more than
+  5 minutes in the future; a repeat carrying `--at-ms` must match the stored
+  marker's `atMs`, or the server answers `409 conflict`.
 - A marker id recorded with a different version, message, or host set is
   `409 conflict`; a repeat with identical content answers `200` and creates
   nothing.
@@ -265,8 +269,10 @@ Join application events to a deployment on `service` and `release`, then on time
 - `event.release` equals the marker's `version`. The release rules in section 3
   make this exact-string join safe.
 - `event.atMs` falls in the comparison window around `deployment.atMs`. The
-  marker time is the server receive time; event time is application time; use a
-  window, not exact equality.
+  marker's `atMs` is the activation time the marker request carried
+  (`statsctl deploy mark --at-ms`), or the server receive time when the
+  request carried none; event time is application time. Use a window, not
+  exact equality.
 - `deployment.id` and `markerId` identify the attempt; `eventId` identifies a
   telemetry attempt. Neither substitutes for a timestamp.
 

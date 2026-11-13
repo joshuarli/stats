@@ -95,15 +95,18 @@ interface ServiceDefinition {
   readonly unit: string | null;
 }
 
+const MARKER_FUTURE_SKEW_MS = 5 * 60_000;
+
 interface MarkerRequest {
   readonly markerId: string;
   readonly version: string;
   readonly message: string | null;
   readonly hostIds: readonly string[];
+  readonly atMs: number | null;
 }
 
 const SERVICE_KEYS = new Set(["name", "hostIds", "healthUrl", "unit"]);
-const MARKER_KEYS = new Set(["markerId", "version", "message", "hostIds"]);
+const MARKER_KEYS = new Set(["markerId", "version", "message", "hostIds", "atMs"]);
 
 function invalid(message: string): { ok: false } & ServiceProblem {
   return { ok: false, status: 400, code: "invalid_request", message };
@@ -155,9 +158,9 @@ function parseDefinition(body: unknown): ServiceResult<ServiceDefinition> {
   return { ok: true, value: { name, hostIds, healthUrl: url, unit } };
 }
 
-function parseMarker(body: unknown): ServiceResult<MarkerRequest> {
+function parseMarker(body: unknown, now: number): ServiceResult<MarkerRequest> {
   const record = exactObject(body, MARKER_KEYS);
-  if (record === null) return invalid("body must be an object with markerId, version, hostIds, and an optional message");
+  if (record === null) return invalid("body must be an object with markerId, version, hostIds, an optional message, and an optional atMs");
   const markerId = record["markerId"];
   if (typeof markerId !== "string" || !MARKER_ID.test(markerId)) return invalid("markerId must be 1-128 letters, digits, or ._:- starting with a letter or digit");
   const version = record["version"];
@@ -166,7 +169,15 @@ function parseMarker(body: unknown): ServiceResult<MarkerRequest> {
   if (message !== undefined && message !== null && (typeof message !== "string" || message.length > MAX_MARKER_MESSAGE_LENGTH)) return invalid(`message must be at most ${MAX_MARKER_MESSAGE_LENGTH} characters`);
   const hostIds = hostIdList(record["hostIds"]);
   if (hostIds === null) return invalid(`hostIds must be 1-${MAX_SERVICE_HOSTS} distinct host ids`);
-  return { ok: true, value: { markerId, version, message: annotation(message, MAX_MARKER_MESSAGE_LENGTH), hostIds } };
+  const rawAtMs = record["atMs"];
+  let atMs: number | null = null;
+  if (rawAtMs !== undefined) {
+    if (typeof rawAtMs !== "number" || !Number.isSafeInteger(rawAtMs)) return invalid("atMs must be epoch milliseconds as a safe integer");
+    if (rawAtMs < now - DEPLOYMENT_RETENTION_MS) return invalid("atMs is older than the 30-day marker retention");
+    if (rawAtMs > now + MARKER_FUTURE_SKEW_MS) return invalid("atMs is more than 5 minutes in the future");
+    atMs = rawAtMs;
+  }
+  return { ok: true, value: { markerId, version, message: annotation(message, MAX_MARKER_MESSAGE_LENGTH), hostIds, atMs } };
 }
 
 function parseJson(text: string): unknown {
@@ -203,7 +214,7 @@ async function markerDeploymentId(service: string, markerId: string): Promise<st
 
 function sameMarker(stored: ServiceMarker, request: MarkerRequest): boolean {
   const version = stored.deployment.versions[0]?.id;
-  return version === request.version && stored.deployment.message === request.message && stored.hostIds.join(",") === request.hostIds.join(",");
+  return version === request.version && stored.deployment.message === request.message && stored.hostIds.join(",") === request.hostIds.join(",") && (request.atMs === null || stored.deployment.atMs === request.atMs);
 }
 
 function markerOf(service: string, row: MarkerRow): ServiceMarker {
@@ -282,7 +293,7 @@ export function deleteService(sql: SqlDatabase, name: string): boolean {
 
 export async function recordMarker(sql: SqlDatabase, name: string, text: string | null, now: number): Promise<ServiceResult<{ created: boolean; marker: ServiceMarker }>> {
   if (text === null) return { ok: false, status: 413, code: "too_large", message: "body exceeds the cap" };
-  const parsed = parseMarker(parseJson(text));
+  const parsed = parseMarker(parseJson(text), now);
   if (!parsed.ok) return parsed;
   const request = parsed.value;
   const id = await markerDeploymentId(name, request.markerId);
@@ -299,7 +310,7 @@ export async function recordMarker(sql: SqlDatabase, name: string, text: string 
       const stored = markerOf(name, existing);
       return sameMarker(stored, request) ? { ok: true, value: { created: false, marker: stored } } : { ok: false, status: 409, code: "conflict", message: "this markerId was recorded with different content" };
     }
-    const deployment: Deployment = { id, atMs: now, source: "marker", message: request.message, versions: [{ id: request.version, percentage: 100 }], deferred: false };
+    const deployment: Deployment = { id, atMs: request.atMs ?? now, source: "marker", message: request.message, versions: [{ id: request.version, percentage: 100 }], deferred: false };
     sql.run("INSERT INTO service_deployments (service, marker_id, id, at_ms, host_ids, payload) VALUES (?, ?, ?, ?, ?, ?)", name, request.markerId, id, now, JSON.stringify(request.hostIds), JSON.stringify(deployment));
     return { ok: true, value: { created: true, marker: { service: name, markerId: request.markerId, hostIds: request.hostIds, deployment } } };
   });

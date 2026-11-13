@@ -712,8 +712,11 @@ marker, and a later rollback to an already-marked commit still shows on the
 timeline. With the `v-<version>` default, that repeat would be a no-op.
 
 A new marker answers 201. Sending the same marker again answers 200 with the
-stored one, so a retry is safe; `deploy mark` exits 0 for both. The same
-`markerId` with a different version, message, or host set answers 409, which
+stored one, so a retry is safe; `deploy mark` exits 0 for both. Pass
+`--at-ms` with the recorded activation time to make a delayed retry keep it;
+without it the server stamps the receive time. The same
+`markerId` with a different version, message, host set, or `--at-ms` answers
+409, which
 `deploy mark` reports as `marker_conflict` with exit 2. A 401 or 403 exits 3,
 and so does an Access challenge (`access_challenge`).
 

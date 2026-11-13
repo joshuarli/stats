@@ -3,14 +3,6 @@ Next: 122
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
-### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
-
-- **Area:** Data
-- **Where:** `cloudflare/src/cli/commands/services.ts` (`statsctl deploy mark`), `POST /ingest/services/:name/deployments`, `docs/integration.md` (rollback markers, `atMs`)
-- **Problem:** The integration contract says a rollback marker timestamp is the rollback time, but `statsctl deploy mark` sends no activation time, `MARKER_KEYS` rejects one, and the server stamps receive time. A delayed retry therefore shifts deployment-comparison windows. The cited Niceforge and tansu retry implementations were not rechecked in this review.
-- **Recommendation:** Accept an optional activation time (`--at-ms`) as part of marker identity for the 409 rule and have producers send their recorded activation time. Validate it against the existing 30-day marker retention and a documented future-skew allowance; the prior seven-day suggestion matched event retention, not marker retention. Verify an original marker and a delayed idempotent retry keep the same timestamp.
-- **Fix with:** do
-- **Effort:** S
 
 
 ### STA-113 · P3 · A retained project ledger makes the successful fallback history request redundant
