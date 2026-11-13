@@ -4,7 +4,10 @@
 `biolatency-collector.bt` and `collector.sh` write 15-second snapshots for the
 agent's optional `blockLatencyFile`. The baseline agent never loads BPF and
 works without this directory; the Worker and dashboard accept the optional
-`block` group only when an agent attaches a fresh snapshot.
+`block` group only when an agent attaches a fresh snapshot. The in-agent
+probe (opt-in `block-latency` Cargo feature, see [`../README.md`](../README.md))
+supersedes this path once the release build enables it; until then this
+collector is how `blockLatencyFile` gets fed.
 
 Requirements:
 

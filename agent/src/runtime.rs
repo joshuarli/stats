@@ -2,7 +2,7 @@ use crate::backoff::Backoff;
 use crate::block;
 use crate::cgroup;
 use crate::config::{load_token_file, AgentConfig, ConfigError};
-use crate::model::{BootId, Sample, Unavailable};
+use crate::model::{Block, BootId, Sample, Unavailable};
 use crate::queue::Queue;
 use crate::sample_once;
 use crate::transport::{HttpTransport, SendOutcome, TransportError};
@@ -279,12 +279,38 @@ pub fn install_signal_handlers() -> Result<(), RuntimeError> {
     Ok(())
 }
 
-fn collect_sample(config: &AgentConfig, snapshots: &mut block::SnapshotReader) -> Option<Sample> {
-    let mut sample = sample_once(config.scope())?;
-    if let Some(path) = &config.block_latency_file {
-        if let Some(value) = snapshots.read(path) {
-            sample.block = Some(value);
+struct BlockSampling {
+    snapshots: block::SnapshotReader,
+    #[cfg(all(target_os = "linux", feature = "block-latency"))]
+    probe: Option<crate::block_bpf::Probe>,
+}
+
+impl BlockSampling {
+    fn new() -> Self {
+        Self {
+            snapshots: block::SnapshotReader::default(),
+            #[cfg(all(target_os = "linux", feature = "block-latency"))]
+            probe: crate::block_bpf::Probe::load(),
         }
+    }
+
+    fn read(&mut self, config: &AgentConfig) -> Option<Block> {
+        #[cfg(all(target_os = "linux", feature = "block-latency"))]
+        {
+            if let Some(probe) = &mut self.probe {
+                if let Some(block) = probe.poll() {
+                    return Some(block);
+                }
+            }
+        }
+        config.block_latency_file.as_ref().and_then(|path| self.snapshots.read(path))
+    }
+}
+
+fn collect_sample(config: &AgentConfig, sampling: &mut BlockSampling) -> Option<Sample> {
+    let mut sample = sample_once(config.scope())?;
+    if let Some(block) = sampling.read(config) {
+        sample.block = Some(block);
     }
     if !config.services.is_empty() {
         match cgroup::read_services(Path::new(cgroup::ROOT), &config.services) {
@@ -317,15 +343,15 @@ pub fn run(config: &AgentConfig, token: String) -> Result<RunReport, RuntimeErro
 
     let mut report = RunReport::default();
     let interval = Duration::from_millis(config.sample_interval_ms);
-    let mut snapshots = block::SnapshotReader::default();
-    if let Some(sample) = collect_sample(config, &mut snapshots) {
+    let mut sampling = BlockSampling::new();
+    if let Some(sample) = collect_sample(config, &mut sampling) {
         queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
         report.sampled += 1;
     } else {
         report.sample_failures += 1;
     }
     while sleep_interruptible(interval, stop) {
-        if let Some(sample) = collect_sample(config, &mut snapshots) {
+        if let Some(sample) = collect_sample(config, &mut sampling) {
             queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(sample);
             report.sampled += 1;
         } else {
