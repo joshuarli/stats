@@ -11,7 +11,7 @@ import { BIN, EXPERIMENTS, freePort, historyFingerprint, processTree, startSessi
 export interface ResilienceOptions { readonly runId: string; readonly soakMinutes?: number; readonly reloads?: number }
 
 const seqsOf = (offset = 0): readonly bigint[] => fixtureSource("sources/linux-normal.json").samples.map(sample => BigInt(String((sample as { seq: unknown }).seq)) + BigInt(offset));
-const frameOf = (hostId: string, offset = 0): Uint8Array => offset === 0 ? withHost(fixtureBytes("frames/linux-normal.stb2"), hostId) : withHost(encodeFrame({ ...fixtureSource("sources/linux-normal.json"), samples: fixtureSource("sources/linux-normal.json").samples.map(sample => ({ ...sample, seq: String(BigInt(String((sample as { seq: unknown }).seq)) + BigInt(offset)) })) }), hostId);
+const frameOf = (hostId: string, offset = 0): Uint8Array => offset === 0 ? withHost(fixtureBytes("frames/linux-normal.stb2"), hostId) : withHost(encodeFrame({ ...fixtureSource("sources/linux-normal.json"), samples: fixtureSource("sources/linux-normal.json").samples.map(sample => { const s = sample as Record<string, unknown>; const shift = BigInt(offset) * 1000n; return { ...s, seq: String(BigInt(String(s.seq)) + BigInt(offset)), monoMs: String(BigInt(String(s.monoMs)) + shift), atMs: String(BigInt(String(s.atMs)) + shift) }; }) }), hostId);
 
 export async function historyFingerprintAt(origin: string, access: Record<string, string>, hostId: string): Promise<string> {
   const history = await fetch(`${origin}/api/v1/hosts/${hostId}/history?range=24h&kind=summary`, { headers: { ...access, "accept-encoding": "identity" } });
