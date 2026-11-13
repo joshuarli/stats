@@ -12,7 +12,7 @@ function insert(db: ReturnType<typeof database>, id: string, received: number, e
   db.run("INSERT INTO observe_external_events VALUES (?, ?, ?, ?, ?, ?)", "service", id, received, event, "application", "{}");
 }
 
-test("external expiry uses either timestamp including the cutoff", () => {
+await test("external expiry uses either timestamp including the cutoff", () => {
   const db = database();
   insert(db, "received", cutoff, cutoff + 1);
   insert(db, "event", cutoff + 1, cutoff);
@@ -26,7 +26,7 @@ test("external expiry uses either timestamp including the cutoff", () => {
   assert.equal(report.writes.accepted, 0);
 });
 
-test("external cleanup is bounded and immediately schedules a backlog", () => {
+await test("external cleanup is bounded and immediately schedules a backlog", () => {
   const db = database();
   for (let i = 0; i < CLEANUP_BATCH + 1; i++) insert(db, String(i), cutoff, cutoff + 1);
   const first = cleanup(db, now);
@@ -40,7 +40,7 @@ test("external cleanup is bounded and immediately schedules a backlog", () => {
   assert.equal(health(db, now).writes.cleanupRows, CLEANUP_BATCH + 1);
 });
 
-test("next expiry considers both timestamps and respects the moving interval floor", () => {
+await test("next expiry considers both timestamps and respects the moving interval floor", () => {
   const db = database();
   insert(db, "event", cutoff + 10, cutoff + 2);
   insert(db, "received", cutoff + 1, cutoff + 20);
@@ -50,7 +50,7 @@ test("next expiry considers both timestamps and respects the moving interval flo
   assert.equal(nextCleanupAt(db, now + 10, cleaned), now + 10 + CLEANUP_INTERVAL_MS);
 });
 
-test("existing external-event tables acquire expiry indexes without rewriting rows", () => {
+await test("existing external-event tables acquire expiry indexes without rewriting rows", () => {
   const raw = new DatabaseSync(":memory:");
   raw.exec("CREATE TABLE observe_external_events (service TEXT NOT NULL, event_id TEXT NOT NULL, received_at INTEGER NOT NULL, event_at INTEGER NOT NULL, provenance TEXT NOT NULL CHECK (provenance = 'application'), payload TEXT NOT NULL, PRIMARY KEY (service, event_id)) WITHOUT ROWID");
   raw.exec("INSERT INTO observe_external_events VALUES ('service', 'old', 1, 2, 'application', '{}')");
