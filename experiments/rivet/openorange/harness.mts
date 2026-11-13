@@ -1,10 +1,12 @@
 import { spawn, execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { join, resolve, isAbsolute } from "node:path";
+import { mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { openHistory } from "../../../cloudflare/src/binary/history.ts";
 import { generate, ROOT } from "./generate.mjs";
 
 export const EXPERIMENTS = resolve(ROOT, "experiments/rivet");
+const effectiveEnv = (): NodeJS.ProcessEnv => { const tmp = process.env.TMPDIR; if (tmp === undefined || isAbsolute(tmp)) return process.env; const abs = resolve(ROOT, tmp); mkdirSync(abs, { recursive: true }); return { ...process.env, TMPDIR: abs }; };
 export const BIN = join(EXPERIMENTS, "node_modules", "open-orange", "dist", "bin.js");
 export const OFFLINE = join(ROOT, "scripts/offline-run.sh");
 
@@ -51,7 +53,7 @@ export async function startSession(stateDir: string, port: number, sandbox: bool
   const args = [BIN, "dev", "--json", "--ip", "127.0.0.1", "--port", String(port), "--config", join(stateDir, "stats.jsonc"), "--config", join(stateDir, "observe.jsonc")];
   const command = sandbox ? OFFLINE : process.execPath;
   const commandArgs = sandbox ? [process.execPath, ...args] : args;
-  const child = spawn(command, commandArgs, { cwd: stateDir, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(command, commandArgs, { cwd: stateDir, env: effectiveEnv(), stdio: ["ignore", "pipe", "pipe"] });
   const logs: string[] = [];
   let ready: { origin: string; elapsedMs: number } | undefined;
   let failed: Error | undefined;
@@ -68,7 +70,7 @@ export async function startSession(stateDir: string, port: number, sandbox: bool
     }
   });
   child.stderr!.on("data", (chunk: Buffer) => { for (const line of chunk.toString("utf8").split("\n")) if (line.trim() !== "") logs.push(`stderr: ${line}`); });
-  child.on("exit", code => { if (ready === undefined) failed ??= new Error(`orange dev exited (${code}) before ready`); });
+  child.on("exit", code => { if (ready === undefined) failed ??= new Error(`orange dev exited (${code}) before ready; captured output:\n${logs.slice(-8).join("\n")}`); });
   child.on("error", error => { failed ??= error instanceof Error ? error : new Error(String(error)); });
   const deadline = performance.now() + 120_000;
   while (ready === undefined && failed === undefined && performance.now() < deadline) await new Promise(resolveWait => setTimeout(resolveWait, 50));
