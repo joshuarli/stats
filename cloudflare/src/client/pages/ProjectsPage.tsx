@@ -96,7 +96,7 @@ function Projects(): JSX.Element {
       when={projects().length > 0}
       fallback={
         <Widget title="Projects">
-          <EmptyState title="No projects are configured." detail="Projects are declared in cloudflare/cloudflare.config.ts." />
+          <EmptyState title="No projects are configured." detail="On the Cloudflare target, declare projects in cloudflare/cloudflare.config.ts. The Node target runs no project collector, so this page stays empty there." />
         </Widget>
       }
     >
