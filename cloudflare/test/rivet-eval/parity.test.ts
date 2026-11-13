@@ -7,7 +7,7 @@ import { test } from "node:test";
 const REPO = resolve(import.meta.dirname, "../../..");
 const execFileAsync = promisify(execFile);
 
-test("the pinned OpenOrange candidate passes the required parity corpus offline", { timeout: 900_000 }, async () => {
+await test("the pinned OpenOrange candidate passes the required parity corpus offline", { timeout: 900_000 }, async () => {
   const runId = `rivet-eval-parity-${process.pid}-${Date.now()}`;
   let report: { result?: string; reason?: string | null };
   try {

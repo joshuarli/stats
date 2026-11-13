@@ -7,7 +7,7 @@ import { test } from "node:test";
 const REPO = resolve(import.meta.dirname, "../../..");
 const execFileAsync = promisify(execFile);
 
-test("the pinned OpenOrange candidate runs the real Stats path and keeps history across restart", { timeout: 600_000 }, async () => {
+await test("the pinned OpenOrange candidate runs the real Stats path and keeps history across restart", { timeout: 600_000 }, async () => {
   const runId = `rivet-eval-test-${process.pid}-${Date.now()}`;
   let report: { result?: string; reason?: string | null };
   try {

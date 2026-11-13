@@ -38,7 +38,7 @@ describe("Cloudflare SQL accounting", () => {
     expect(total.read).toBeGreaterThanOrEqual(reference.rowsRead);
   }));
 
-  it("counts logical rows deleted behind an index and an AFTER DELETE trigger, not billable rows", () => run("account-logical", (sql, account, storage) => {
+  it("counts logical rows deleted behind an index and an AFTER DELETE trigger, not billable rows", () => run("account-logical", (sql, account) => {
     sql.exec("CREATE TABLE samples_probe (id INTEGER PRIMARY KEY, received_at_ms INTEGER)");
     sql.exec("CREATE INDEX samples_probe_time ON samples_probe (received_at_ms)");
     sql.exec("CREATE TABLE audit_deleted (id INTEGER)");
@@ -51,7 +51,7 @@ describe("Cloudflare SQL accounting", () => {
     expect(affectedBy(account, "DELETE FROM samples_probe WHERE received_at_ms >= ?", 100)).toBe(0);
   }));
 
-  it("purgeExpired reports only the logical batch behind trigger-inclusive totals", () => run("account-purge", (sql, account, storage) => {
+  it("purgeExpired reports only the logical batch behind trigger-inclusive totals", () => run("account-purge", (sql, account) => {
     for (const statement of PROJECT_STATEMENTS) sql.exec(statement);
     sql.exec("CREATE TABLE audit_deleted2 (bucket_ms INTEGER)");
     sql.exec("CREATE TRIGGER project_samples_deleted AFTER DELETE ON project_samples BEGIN INSERT INTO audit_deleted2 VALUES (old.bucket_ms); END");
