@@ -131,7 +131,12 @@ production:
   `deployments.forward` operation and never affects the poll. The browser
   proxy accepts only the issue-state POST and the source-map PUT, so rollouts
   cannot be written from the dashboard. Rollouts are kept 30 days plus the
-  newest older one as a baseline.
+  newest older one as a baseline. Writes from outside a Cloudflare deployment
+  decide separately: when a non-Cloudflare producer needs to record its own
+  rollouts, extend the service deploy-marker token shape
+  (`POST /ingest/services/:name/deployments`) to observed services rather than
+  add a new route or a public receiver. Until that producer exists, the
+  deployment poll remains the only rollout write path.
 - **Rollout impact.**
   - An issue is *new in rollout R* when it has an occurrence on a version R
     introduced, after R, and no retained occurrence on any version active
