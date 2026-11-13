@@ -1,3 +1,5 @@
+import { PROJECT_BASE_BUCKET_MS } from "../project-buckets.ts";
+
 type SqlValue = string | number | boolean | null;
 
 export interface BoundQuery {
@@ -5,7 +7,7 @@ export interface BoundQuery {
   readonly params: Readonly<Record<string, SqlValue>>;
 }
 
-export const BUCKET_MS = 5 * 60_000;
+export const BUCKET_MS = PROJECT_BASE_BUCKET_MS;
 export const MAX_BUCKETS_PER_PROJECT = 8;
 export const MAX_NAMESPACES_PER_PROJECT = 8;
 export const MAX_D1_DATABASES_PER_PROJECT = 8;

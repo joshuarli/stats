@@ -23,14 +23,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** lifecycle-concurrency
 - **Effort:** S
 
-### STA-115 · P3 · Client and server independently choose project history bucket widths
-
-- **Area:** Architecture
-- **Where:** `cloudflare/src/client/pages/project/ledger-load.ts:16–20`, `cloudflare/src/projects/history.ts:11–16`, `cloudflare/src/projects/history.ts:71`
-- **Problem:** The client duplicates the server's 5m/15m/1h/3h widths and 900-point limit to align settled ledger windows. They match today. Changing only one side can align the requested window differently from the returned history and clip edge buckets. This is the remaining maintenance risk from the frontend review, not an observed mismatch.
-- **Recommendation:** Share one pure width-selection function and constants, without importing storage or server dependencies into the client. Use the existing range-boundary checks to keep alignment consistent.
-- **Fix with:** single-source-of-truth
-- **Effort:** S
 
 ### STA-117 · P3 · Producer batch sizing serializes every growing prefix
 

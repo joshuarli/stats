@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Installation } from "../src/cloudflare/installation";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGES } from "../src/limits";
-import { bucketWidthMs } from "../src/projects/history";
+import { projectBucketWidthMs } from "../src/project-buckets";
 import type { CollectorRun } from "../src/projects/store";
 import { accessToken } from "./access-token";
 import { readFrame } from "./support/history";
@@ -114,7 +114,7 @@ describe("project API", () => {
 
 describe("project history", () => {
   it("picks the smallest bucket width that gives at most 900 points", () => {
-    const widths = RANGES.map((range) => bucketWidthMs({ "1h": HOUR_MS, "6h": 6 * HOUR_MS, "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS, "30d": 30 * 24 * HOUR_MS }[range]));
+    const widths = RANGES.map((range) => projectBucketWidthMs({ "1h": HOUR_MS, "6h": 6 * HOUR_MS, "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS, "30d": 30 * 24 * HOUR_MS }[range]));
     expect(widths).toEqual([BUCKET, BUCKET, BUCKET, 15 * 60_000, HOUR_MS]);
   });
 

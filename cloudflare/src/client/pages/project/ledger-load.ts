@@ -7,16 +7,15 @@ import { decodeObjectMethods } from "../../../observe/client/decode";
 import type { ObserveRead } from "./Observe";
 import { previousWindowOf } from "../../../cost/ledger.ts";
 import { utcMonthOf, type PlanMonthInput } from "../../../cost/report.ts";
-import { HOUR_MS, MINUTE_MS, PROJECT_SETTLE_MS } from "../../../limits.ts";
+import { projectBucketWidthMs } from "../../../project-buckets.ts";
+import { PROJECT_SETTLE_MS } from "../../../limits.ts";
 import { assembleProjectLedger, baselineMethodsRetained, historyKinds, ledgerHistories, objectMethodsOf, observeObjectsPath, settledWindow, type ProjectLedger } from "../../project-ledger.ts";
 import type { ObjectMethods } from "../../../cost/ledger.ts";
 
 export { historyKinds, ledgerHistories, settledWindow, type ProjectLedger };
 
-const PROJECT_BUCKET_WIDTHS_MS = [5 * MINUTE_MS, 15 * MINUTE_MS, HOUR_MS, 3 * HOUR_MS] as const;
-
 export function settledRangeWindow(rangeSpanMs: number, nowMs: number): TimeWindow {
-  const stepMs = PROJECT_BUCKET_WIDTHS_MS.find(width => rangeSpanMs / width <= 900) ?? 3 * HOUR_MS;
+  const stepMs = projectBucketWidthMs(rangeSpanMs);
   const toMs = Math.floor((nowMs - PROJECT_SETTLE_MS) / stepMs) * stepMs;
   return { fromMs: toMs - rangeSpanMs, toMs };
 }

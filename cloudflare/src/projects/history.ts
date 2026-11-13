@@ -1,19 +1,17 @@
 import type { HistoryQuery } from "../aggregate.ts";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGE_MS, type RangeKey } from "../limits.ts";
+import { projectBucketWidthMs, PROJECT_BASE_BUCKET_MS } from "../project-buckets.ts";
 import type { ProjectConfig } from "./config.ts";
 import { aggregationOf, D1_ROWS_READ_PER_ROW_WRITTEN_PRICE, windowStartMs } from "./metrics.ts";
-import { BUCKET_MS } from "./queries.ts";
 import type { ProjectHistorySource } from "../operations.ts";
 import type { SqlDatabase } from "../core/sql.ts";
 import { PROJECT_HOUR_RETENTION_MS, PROJECT_SAMPLE_RETENTION_MS } from "./store.ts";
 
 const STALE_AFTER_MS = 15 * 60_000;
-const MAX_HISTORY_POINTS = 900;
 export const PROJECT_KINDS = ["worker", "routes", "durable-objects", "r2", "d1", "d1-statements", "probes", "collector"] as const;
 export type ProjectKind = (typeof PROJECT_KINDS)[number];
 type MetricKind = Exclude<ProjectKind, "collector">;
 
-const BUCKET_WIDTHS_MS = [BUCKET_MS, 15 * 60_000, HOUR_MS, 3 * HOUR_MS] as const;
 const WORKER_METRICS = [
   "worker.invocations",
   "worker.cpuMsSum",
@@ -65,14 +63,6 @@ export type ProjectHistory = MetricHistory | CollectorHistory;
 export interface ProjectHistoryBundle {
   readonly projectId: string;
   readonly histories: Readonly<Partial<Record<ProjectKind, ProjectHistory>>>;
-}
-
-export function bucketWidthMs(rangeMs: number): number {
-  const width = BUCKET_WIDTHS_MS.find((candidate) => rangeMs / candidate <= MAX_HISTORY_POINTS);
-  if (width === undefined) {
-    throw new RangeError("range is too long for the widest bucket");
-  }
-  return width;
 }
 
 export function projectKind(value: string | null): ProjectKind | null {
@@ -154,7 +144,7 @@ interface MetricWindow {
 
 function metricWindow(query: HistoryQuery, now: number): MetricWindow {
   const { fromMs: wantedMs, toMs } = boundsOf(query, now);
-  const widest = bucketWidthMs(toMs - wantedMs);
+  const widest = projectBucketWidthMs(toMs - wantedMs);
   const stepMs = !("range" in query) && widest < HOUR_MS && wantedMs < now - PROJECT_SAMPLE_RETENTION_MS ? HOUR_MS : widest;
   const retentionMs = stepMs < HOUR_MS ? PROJECT_SAMPLE_RETENTION_MS : PROJECT_HOUR_RETENTION_MS;
   const floored = Math.floor(wantedMs / stepMs) * stepMs;
@@ -219,11 +209,11 @@ function buildMetricHistory(
     for (let index = 0; index < window.count; index += 1) {
       const atMs = window.fromMs + index * window.stepMs;
       const row = found?.get(atMs);
-      if (window.stepMs > BUCKET_MS && !("range" in query) && (atMs < query.fromMs || atMs + window.stepMs > query.toMs)) {
+      if (window.stepMs > PROJECT_BASE_BUCKET_MS && !("range" in query) && (atMs < query.fromMs || atMs + window.stepMs > query.toMs)) {
         values.push(null);
         continue;
       }
-      if (row !== undefined && (row.cells === window.stepMs / BUCKET_MS || (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)))) {
+      if (row !== undefined && (row.cells === window.stepMs / PROJECT_BASE_BUCKET_MS || (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)))) {
         values.push(row[aggregation]);
       } else if (aggregation === "sum" && fillable(atMs, atMs + window.stepMs)) {
         values.push(0);
@@ -326,7 +316,7 @@ function fillableBuckets(sql: SqlDatabase, fromMs: number, now: number): (startM
     .rows<{ at_ms: number }>("SELECT at_ms FROM collector_runs WHERE ok = 1 AND at_ms >= ? ORDER BY at_ms", fromMs)
     .map((row) => row.at_ms);
   const bucketFillable = (bucketStartMs: number): boolean => {
-    const settledAtMs = bucketStartMs + BUCKET_MS + PROJECT_SETTLE_MS;
+    const settledAtMs = bucketStartMs + PROJECT_BASE_BUCKET_MS + PROJECT_SETTLE_MS;
     if (now < settledAtMs) {
       return false;
     }
@@ -334,7 +324,7 @@ function fillableBuckets(sql: SqlDatabase, fromMs: number, now: number): (startM
     return covering !== undefined && windowStartMs(covering) <= bucketStartMs;
   };
   return (startMs, endMs) => {
-    for (let bucketStartMs = startMs; bucketStartMs < endMs; bucketStartMs += BUCKET_MS) {
+    for (let bucketStartMs = startMs; bucketStartMs < endMs; bucketStartMs += PROJECT_BASE_BUCKET_MS) {
       if (!bucketFillable(bucketStartMs)) {
         return false;
       }
