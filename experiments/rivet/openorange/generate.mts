@@ -1,7 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
-import { readBuiltWorker } from "../../../cloudflare/local/topology.ts";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path"; import { execFileSync } from "node:child_process";
+import { readBuiltWorker, type BuiltWorker } from "../../../cloudflare/local/topology.ts";
 
 export const ROOT = resolve(import.meta.dirname, "../../..");
 export const BUILDS = {
@@ -23,8 +22,9 @@ const TEST_JWKS_JSON = JSON.stringify({
   ],
 });
 
-function baseConfig(built, { vars, assets, services, durableObjects, migrations }) {
-  const config = {
+interface AssetBinding { readonly directory: string; readonly binding: string; readonly run_worker_first: true } interface ServiceBinding { readonly binding: string; readonly service: string } interface DurableObjectBinding { readonly name: string; readonly className: string }
+function baseConfig(built: BuiltWorker, { vars, assets, services, durableObjects }: { readonly vars: Record<string, string>; readonly assets?: AssetBinding; readonly services?: readonly ServiceBinding[]; readonly durableObjects: readonly DurableObjectBinding[] }): string {
+  const config: Record<string, unknown> = {
     name: built.name,
     main: join(built.output, "bundle", built.mainModule),
     no_bundle: true,
@@ -45,11 +45,11 @@ function baseConfig(built, { vars, assets, services, durableObjects, migrations 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.observe, outDir, projects = "[]", testNowMs = TEST_NOW_MS } = {}) {
+export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.observe, outDir, projects = "[]", testNowMs = TEST_NOW_MS }: { readonly statsOutput?: string; readonly observeOutput?: string; readonly outDir: string; readonly projects?: string; readonly testNowMs?: string | null }): { readonly stats: BuiltWorker; readonly observe: BuiltWorker; readonly outDir: string; readonly dropped: readonly { readonly binding: string; readonly reason: string }[] } {
   const stats = readBuiltWorker(statsOutput);
   const observe = readBuiltWorker(observeOutput);
   if (stats.name !== "stats" || observe.name !== "stats-observe") throw new Error(`unexpected built names: ${stats.name}, ${observe.name}`);
-  for (const [output, worker] of [[statsOutput, stats], [observeOutput, observe]]) {
+  for (const [output, worker] of [[statsOutput, stats], [observeOutput, observe]] as const) {
     const bundle = join(output, "bundle", worker.mainModule);
     if (!existsSync(bundle)) throw new Error(`missing bundle ${bundle}; run the build first`);
   }
@@ -67,12 +67,12 @@ export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.ob
   };
   const assetBindings = [...stats.env.entries()].filter(([, value]) => value.type === "assets");
   if (assetBindings.length !== 1 || stats.assets === null) throw new Error("stats assets binding did not map");
-  const [assetBinding] = assetBindings[0];
+  const [assetBinding] = assetBindings[0]!;
   const observeBindings = [...observe.env.entries()];
   if (observeBindings.length !== 1) throw new Error("observe env keys did not map");
   const statsSlack = [...stats.env.entries()].map(([key, value]) => `${key}:${value.type}`).sort();
   const mapped = new Set(["ENVIRONMENT", "INSTALLATION", "ASSETS", "ANALYTICS_SQL", "PROJECTS", "WORKER_NAME", "OBSERVE"]);
-  const unexpected = statsSlack.filter(entry => !mapped.has(entry.split(":")[0]));
+  const unexpected = statsSlack.filter(entry => !mapped.has(entry.split(":")[0]!));
   if (unexpected.length > 0) throw new Error(`unmapped stats bindings: ${unexpected.join(", ")}`);
   const observeSlack = observeBindings.map(([key, value]) => `${key}:${value.type}`).sort();
   if (observeSlack.length !== 1 || observeSlack[0] !== "STORE:durable-object") throw new Error(`unmapped observe bindings: ${observeSlack.join(", ")}`);
@@ -93,8 +93,8 @@ export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.ob
 }
 
 if (import.meta.main) {
-  const out = process.argv[2];
-  if (out === undefined) { console.error("usage: node experiments/rivet/openorange/generate.mjs <out-dir>"); process.exit(2); }
+  const out: string | undefined = process.argv[2];
+  if (out === undefined) { console.error("usage: node experiments/rivet/openorange/generate.mts <out-dir>"); process.exit(2); }
   const result = generate({ outDir: resolve(out) });
   console.log(JSON.stringify({ outDir: result.outDir, dropped: result.dropped }));
 }

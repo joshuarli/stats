@@ -7,7 +7,7 @@ import { createClient, type Client } from "rivetkit/client";
 import { decodeFrame } from "../../../cloudflare/src/ingest/frame.ts";
 import { validateSample } from "../../../cloudflare/src/ingest/sample.ts";
 import { canonicalJson } from "../../../cloudflare/src/protocol.ts";
-import { ROOT } from "../openorange/generate.mjs";
+import { ROOT } from "../openorange/generate.mts";
 import { freePort, processTree } from "../openorange/harness.mts";
 
 export interface NativeProbeOptions { readonly runId: string }

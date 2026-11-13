@@ -3,7 +3,7 @@ import { join, resolve, isAbsolute } from "node:path";
 import { mkdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { openHistory } from "../../../cloudflare/src/binary/history.ts";
-import { generate, ROOT } from "./generate.mjs";
+import { generate, ROOT } from "./generate.mts";
 
 export const EXPERIMENTS = resolve(ROOT, "experiments/rivet");
 const effectiveEnv = (): NodeJS.ProcessEnv => { const tmp = process.env.TMPDIR; if (tmp === undefined || isAbsolute(tmp)) return process.env; const abs = resolve(ROOT, tmp); mkdirSync(abs, { recursive: true }); return { ...process.env, TMPDIR: abs }; };
