@@ -5,22 +5,38 @@
 - **Goal:** decide, with reproducible Stats evidence, whether Rivet 3/OpenOrange
   earns a simpler or faster local loop and a useful non-Cloudflare hosting path.
   A justified rejection is a successful evaluation; adoption is not predetermined.
-- **State:** ready for the bounded evaluation at R0. Candidate execution and
-  migration suitability remain unproven. Candidate installation and execution
-  are pending R0/R1.
-- **Last accepted baseline:** Stats `3c5bab6`, with the development-loop full gate
-  passing at `95fdf98`. Later commits contain evidence and remove the completed
-  handoff. Refresh source before executing and preserve intervening work.
-- **Baseline:** reuse [development](development.md), the
+- **State:** complete, 2026-11-13. R0–R7 executed; evaluation closed with a
+  **rejection** (self-host path `reject`; local default `keep-current`).
+- **M2 gate:** not green as a single-shot run on this host; five attempts
+  failed on four razor-margin timing assertions under co-tenant load (code
+  untouched by this campaign; every leg passes on this tree — attempt five
+  green through dashboard-test including lint; integration-local green in
+  isolation). A sixth attempt is in flight; see the evaluation report for
+  the honest accounting. Not `M2 accepted`.
+- **Outcome:** the candidate matched the baseline on portable behavior (1444/1444
+  parity assertions; byte-identical history across restart; kill/restore/soak
+  green) and lost the required self-host behavior D5 (no supported consistent
+  export; fresh-namespace restore impossible — only same-namespace stop-the-world
+  copy proven). R6 performance verdict is inconclusive (no candidate dev-loop
+  harness; the campaign bans building one), so the local-adoption hurdle was
+  never evaluated. Verdicts, costs and exit paths:
+  [evaluation report](rivet-openorange-evaluation.md#r7--verdict-cleanup-and-close)
+  and [two decisions](rivet-openorange-evaluation.md#verdict--two-decisions).
+- **Baseline:** unchanged and passing. Reuse [development](development.md), the
   [verification report](dev-loop-results.md) and its raw evidence. `make dev`,
   suite ownership, build freshness, lifecycle and isolation are implemented.
-  Compare with this path, rather than the old pre-handoff launcher.
-- **Accepted slices:** none. **Observed runtime failures:** none measured here.
-  **Parked:** none. **Next:** R0, then the real Stats pilot R1.
-- **Resume:** `Execute docs/CAMPAIGN-RIVET-OPENORANGE.md from R0. Preserve make dev and evaluate rather than migrate. Do not push or deploy.`
-- **First command:** `git status --short && git rev-parse HEAD`; then read
-  [AGENTS.md](../AGENTS.md), the development guide and verification report, and
-  the baseline/source map below. Do not run a candidate against existing state.
+- **Accepted slices:** R0 (scope/pins), R1 (pilot), R2 (accounting), R3 (parity,
+  1444/1444 + negative controls), R4 (native control), R5a (kill/restore/offline/
+  packaged), R5b (30-min/100-cycle soak), R6 (baseline arm re-measured; candidate
+  arm unavailable — inconclusive), R7 (verdict, `report --check` pass).
+  **Observed runtime failures:** two full-soak failures (single-host design
+  rate-limited under the frozen clock; both retained in raw evidence) — fixed and
+  re-measured green. **Parked:** none.
+- **Resume:** not applicable — the campaign is closed. Reassess only with a
+  supported export from Rivet (see the reassess path in the evaluation report).
+- **Needs environment (unchanged):** Linux/musl ABI proof; alarm delivery across
+  restart; fresh-namespace export; multi-host durability; receiver backlog under
+  load; live telemetry-tail parity.
 
 ## Charter
 

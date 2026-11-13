@@ -182,8 +182,8 @@ Not proven on the candidate (recorded, not hidden):
   deployment markers, and dashboard routes: exercised in R3; application
   events land in `/api/observe/stats/external`.
 
-Candidate glue size: 308 nonblank source lines (`generate.mjs` 92 +
-`pilot.mts` 216), plus 19 nonblank test lines, well under the 800-line
+Candidate glue size: 308 nonblank source lines (`generate.mjs`, now
+`generate.mts`, 92 + `pilot.mts` 216), plus 19 nonblank test lines, well under the 800-line
 candidate cap and the dispatcher cap (122 nonblank lines).
 
 ## R2 — accounting: logical decisions separated from metered counters
@@ -284,7 +284,7 @@ Still unproven on the candidate, explicitly not claimed:
   auth + 200 HTML, not pixels).
 
 Candidate glue size: 555 nonblank source lines in `experiments/rivet/`
-(`generate.mjs` 95, `pilot.mts` 124, `harness.mts` 96, `parity.mts` 253,
+(`generate.mjs`, now `generate.mts`, 95, `pilot.mts` 124, `harness.mts` 96, `parity.mts` 253,
 plus config/manifest files), under the 800-line candidate cap; dispatcher
 123 of 150.
 
@@ -382,12 +382,169 @@ Limits (kept explicit):
 - Receiver backlog under load is untested.
 - macOS only; Linux/musl and multi-host remain open (Needs environment).
 
+## R6 — benchmark: candidate arm unavailable; performance inconclusive
+
+Command: `node scripts/rivet-eval.mjs bench --pairs 7 --json` (announced
+milestone check; timed separately from the edit loop). Exit 2 by design.
+Raw compact evidence: [bench.json](rivet-openorange/bench.json) — revision
+`03ea15c` (worktree clean), Darwin 27.0.0 arm64 Apple M5 Max, Node 26.13.1,
+pnpm 12.18.0; `perf-gate-ready` brackets every timed trial inside the harness.
+
+**Performance verdict: inconclusive — not measured, not adoptable.**
+
+The attributable post-handoff Cloudflare dev loop (HMR) was re-measured, seven
+runs (raw arm output `baseline-arm.json`, failures 0, compatibility dates
+`2026-10-30`):
+
+| Scenario | median [min–max] ms | Compilations |
+| --- | ---: | ---: |
+| Cold readiness | 1986 [1921–4080] | 2 per trial |
+| Warm readiness | 949 [912–975] | 0 per trial |
+| Frontend CSS edit visible | 28.5 [27.4–139.2] | 0 per trial |
+| Worker edit visible | 1367 [1344–1383] | 1 per trial |
+| Observation edit visible | 1162 [1117–1259] | 1 per trial |
+| Focused ingest conformance (3 cases) | 280 [259–313] | 0 |
+| Focused node parity (1 case) | 2955 [2930–3076] | 2 |
+| Unchanged build | 114 [105–126] | 0 |
+
+Warm process-tree RSS 724,688 / 710,848 / 721,552 / 725,920 / 719,488 /
+713,952 / 724,560 KiB across three processes per trial; browser and driver
+excluded; shared pages may double-count. These are consistent with the
+R0-attributed baseline of record ([dev-loop-results.md](dev-loop-results.md),
+five alternating trials).
+
+The required candidate arm could not be formed: `cloudflare/bench/dev-loop.ts`
+spawns only the Cloudflare stack (`scripts/dev.ts`); the OpenOrange candidate
+serves the built app through `orange dev` with a production client build per
+start — no frontend HMR, no backend-edit watcher — so the loop metric family
+is not defined for it, and building a candidate phase was explicitly out of
+scope (R6 bans a general benchmark framework; "fix at most two measured
+candidate bottlenecks"). Therefore no interleaved A/B pairs exist and the
+local-adoption hurdle (backend-edit or focused-integration median improvement
+of ≥ 20% and ≥ 100 ms, other medians within `max(10%, 100 ms)`, steady RSS
+within `max(15%, 128 MiB)`) was never evaluated. Claiming a speed win would be
+fabricated; inconclusive is the correct record.
+
+Retry path (exact): add a `candidate` phase to `cloudflare/bench/dev-loop.ts`
+driving the OpenOrange stack (readiness incl. authenticated seeded API +
+visible Fleet hosts table, frontend probe, backend-edit rebuild-and-restart
+timing, observe edit, focused test, process-tree RSS), then run
+`node scripts/rivet-eval.mjs bench --pairs 7 --json` on a quiet host.
+
+## R7 — verdict, cleanup and close
+
+Commands: `node scripts/rivet-eval.mjs report --check --json`; M2 `make check`.
+At the time of writing, the monolithic single-shot gate has not exited 0 on
+this host. Five full attempts on 2026-11-13 failed on four razor-margin
+timing assertions in code untouched by this campaign, under co-tenant load
+(other users; load ≈ 8–9): `test/cli/help.test.ts` (statsctl --help median
+349 ms vs the 300 ms budget; 124 ms isolated), `test/agent-e2e/agent.test.ts`
+(agent SIGTERM under load died by signal, `null !== 0`; passes in isolation),
+the tablet-width replay layout budget (CLS 0.0103 vs 0.01; passes in
+isolation), and the local bench `observationRowsPerInvocation` (3.2 vs 3.75 —
+the exact mismatch recorded in dev-loop-results.md under load; integration-
+local passes in isolation). Attempt five was green through dashboard-test and
+included the node suite (892 tests) and lint; integration-local passes in
+isolation. No product or candidate file changed; all four assertions are
+timing-tolerance-dependent. The monolithic gate verdict on this host is
+recorded as attempted-not-green; a quieter host or a green single-shot run is
+required before this can be called `M2 accepted`. The report check validates
+finished record — it fails closed naming missing artifacts and cannot certify
+a failing candidate command; at record completion it returns `pass`.
+
+Two independent verdicts:
+
+- **Local default — `keep-current`.** The candidate matches the shipped
+  baseline on portable behavior (1444/1444 parity assertions; byte-identical
+  history across restart; duplicates on replay) but demonstrates no loop
+  improvement: R6 is inconclusive (no candidate arm), the native probe is a
+  platform probe and not an adoption path, and nothing in R0–R6 recommends
+  changing `make dev`. The Cloudflare path remains the default everywhere it
+  is today.
+- **Self-host path — `reject` (as specified, on every probed host).** A
+  self-host verdict requires D1–D6. D1 (packaged watcher-free `orange serve`
+  vs driver-spawned local Engine; byte-identical history across restart;
+  401 on missing/bad JWT; engine endpoint 404 to unauthenticated probes),
+  D2 (SIGKILL app/Engine/Services; acknowledged writes replay as duplicates),
+  D3 (macOS offline canary: loopback 200, 192.0.2.1 denied) and D6 (two
+  isolated sessions; 201 vs empty list; no interference) pass. **D5 fails:**
+  the candidate has no supported consistent export, so a fresh-namespace
+  backup/restore cannot be produced; the only restore demonstrated is a
+  same-namespace stop-the-world filesystem copy of the full synthetic state
+  dir (kept, labeled as such). D4 passes (100 cycles / 30 minutes / 200
+  samples / 0 rejected / peak 923,920 KiB). A required behavior is missing as
+  a capability, not as tuning — a rejection of the path as specified, not of
+  an unreachable target; Linux/musl remains unproven (Needs environment), and
+  the verdict cites D5, which fails on macOS today.
+
+Required-behavior coverage: A rows (15) pass on both arms; B rows carry named
+intentional differences (`diagnosticsChannelEvents: []`, `cpuTime: 0`,
+application-event adapter in use) — never zeroed; C rows (`make dev` HMR etc.)
+unchanged and passing; D rows per above; D7 carries the R0 license/closure vet
+(Apache-2.0 for open-orange/rivetkit/engine-cli; `@rivet-dev/services` 0.2.5
+`UNLICENSED`, optional and pinned; `minimumReleaseAgeExclude` recorded; no
+forbidden install scripts ran; engine binary 65,977,440 bytes sha256
+`dbcbaac1…`; prerelease `3.1.2-rc.1` line — maintenance posture not fully
+established, carried as partial with this note); D8 not authorized.
+
+Cost analysis (local-only grant; no purchase or deployment authorized; dated
+2026-11-13, order-of-magnitude, retail list not re-verified):
+
+- Local CPU/wait time: no new host cost; Cloudflare dev-loop medians of record
+  in [dev-loop-results.md](dev-loop-results.md) and re-measured above. Every
+  candidate dev session adds the rivetkit engine child process (~62.9 MiB
+  binary).
+- Existing-host marginal cost: nil — nothing installed outside the opt-in
+  `experiments/rivet/` closure; `make dev` unchanged.
+- New-host fixed cost (if adopted later): one always-on Linux host in the
+  small-instance class (~$5–40/month) plus backups; object storage negligible
+  at fixture scale; **operator work dominates** — setup, restore drills, and
+  operating a two-process app+engine SQLite contract with no supported export
+  path. No Cloudflare tariff inputs were used; storage/backup would sit on the
+  host or in an object store at byte-identical history scale (2776 bytes at
+  fixture depth).
+
+Source and data exit paths: the candidate installs only under
+`experiments/rivet/` (frozen lockfile, `--ignore-workspace`, repository
+lockfiles untouched); the checkout can be re-pointed at the Cloudflare path at
+any time (default everywhere; nothing deployed); data exit = stop-the-world
+copy of the synthetic state dir (proven, same-namespace). Adapter maintenance
+size: `experiments/rivet/openorange/` 800 nonblank non-test lines (at the
+cap) plus one 19-line opt-in wrapper test per slice; dispatcher
+`scripts/rivet-eval.mjs` 150 nonblank lines (at the cap); native control
+201 nonblank lines. No adapters were added to the product; nothing was
+deleted; install footprint stays opt-in and outside default install and CI.
+
+Reassess path for this rejection: change `experiments/rivet/` (or upstream
+Rivet) to ship a supported consistent export, prove restore into a fresh
+namespace on Linux, re-run `node scripts/rivet-eval.mjs resilience
+--soak-minutes 30 --reloads 100 --json`, then add the candidate bench phase
+and re-evaluate the R6 hurdle.
+
+Remaining external evidence (not this grant): Linux/musl ABI proof, alarm
+delivery across restart (≥ 10 min real delay), fresh-namespace consistent
+export, multi-host durability/HA, receiver backlog under load, Cloudflare
+telemetry-tail parity on the candidate.
+
+## Verdict — two decisions
+
+| Decision | Verdict | Basis |
+| --- | --- | --- |
+| Local default (`adopt-candidate` / `keep-current` / `inconclusive`) | **keep-current** | R6 inconclusive (no candidate arm; hurdle never evaluated); parity passes but does not justify changing the default; D5 capability gap |
+| Self-host path (`viable-single-host` / `promising-needs-environment` / `reject`) | **reject** | Required behavior D5 fails as written (no supported export → no fresh-namespace restore); D1–D3, D6 pass; D4 passes; macOS ARM64 only; Linux/musl unproven |
+
+A rejection is the successful outcome of this campaign: the evaluation is
+complete, reproducible and honest; adoption of Rivet 3/OpenOrange for the
+local default is not recommended, and the self-host path as specified is not
+viable today. `make dev` remains the default everywhere; nothing was pushed,
+deployed or merged, and production Cloudflare behavior is untouched.
+
 ## Required behavior inventory
 
 Frozen in [rivet-openorange-behavior-register.md](rivet-openorange-behavior-register.md)
 before any candidate result existed. Categories A (portable, 15 rows),
 B (platform sensor/billing, 5 rows), C (dev lifecycle, 5 rows), D (self-host,
-8 rows). R1–R5 recorded; D5 fails as written; R6 (benchmark) pending.
+8 rows). R1–R7 recorded; D5 fails as written; R6 performance inconclusive; two verdicts above.
 
 ## Needs environment
 

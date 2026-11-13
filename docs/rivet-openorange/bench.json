@@ -1,0 +1,279 @@
+{
+  "schema": "rivet-eval/1",
+  "command": "bench",
+  "result": "blocked",
+  "reason": "candidate arm unavailable: cloudflare/bench/dev-loop.ts spawns only the Cloudflare stack (scripts/dev.ts), and no apples-to-apples OpenOrange dev-loop harness exists; the campaign bans building a general benchmark framework (R6). Seven interleaved A/B pairs could not be formed; performance verdict inconclusive. Retry: add a candidate phase to dev-loop.ts driving orange dev (readiness, frontend probe, backend/observe edit, process-tree RSS) and rerun: node scripts/rivet-eval.mjs bench --pairs 7 --json",
+  "revision": "03ea15cd206a407bbea37e083850529c2e08bf42",
+  "dirty": false,
+  "run": {
+    "id": "2026-11-13T04-52-05-986Z-40d0e8d4",
+    "started": "2026-11-13T04:52:06.020Z",
+    "finished": "2026-11-13T04:53:25.777Z",
+    "durationMs": 79792
+  },
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64",
+    "node": "v26.13.1",
+    "requiredNode": "v26.13.1",
+    "pnpm": "12.18.0",
+    "sqlite": "3.54.1"
+  },
+  "candidate": {
+    "available": false
+  },
+  "baselineArm": {
+    "phase": "candidate",
+    "runs": 7,
+    "failures": 0,
+    "frontendMode": "HMR",
+    "harnessSha256": "ce483cd5276774ac5e32755c5faab0cdcd087b6c831cfe59b90f402240fc6ae0",
+    "driverRevision": "03ea15cd206a407bbea37e083850529c2e08bf42",
+    "lockfileSha256": "055ebf0db52be67b7b9b72045a467d36defb1d96ddabcdf00d9bf5961210397f",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "memory": [
+      {
+        "processes": 3,
+        "rssKiB": 724688
+      },
+      {
+        "processes": 3,
+        "rssKiB": 710848
+      },
+      {
+        "processes": 3,
+        "rssKiB": 721552
+      },
+      {
+        "processes": 3,
+        "rssKiB": 725920
+      },
+      {
+        "processes": 3,
+        "rssKiB": 719488
+      },
+      {
+        "processes": 3,
+        "rssKiB": 713952
+      },
+      {
+        "processes": 3,
+        "rssKiB": 724560
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 7,
+        "medianMs": 1985.9,
+        "minMs": 1921.2,
+        "maxMs": 4080.0,
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 7,
+        "medianMs": 949.1,
+        "minMs": 912.2,
+        "maxMs": 975.4,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 7,
+        "medianMs": 28.5,
+        "minMs": 27.4,
+        "maxMs": 139.2,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 7,
+        "medianMs": 1367.4,
+        "minMs": 1344.0,
+        "maxMs": 1383.4,
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "observation-edit",
+        "runs": 7,
+        "medianMs": 1162.5,
+        "minMs": 1117.2,
+        "maxMs": 1258.5,
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 7,
+        "medianMs": 279.7,
+        "minMs": 259.2,
+        "maxMs": 313.0,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 7,
+        "medianMs": 2955.3,
+        "minMs": 2929.9,
+        "maxMs": 3075.9,
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 7,
+        "medianMs": 113.9,
+        "minMs": 104.9,
+        "maxMs": 125.7,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ]
+  },
+  "note": "The attributable post-handoff Cloudflare dev loop (HMR) re-measured, seven runs, bench-exit 2 by design: the required OpenOrange candidate arm has no harness, so the interleaved A/B could not be formed and the performance verdict is inconclusive. Regenerate: node scripts/rivet-eval.mjs bench --pairs 7 --json"
+}

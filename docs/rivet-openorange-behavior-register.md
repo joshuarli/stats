@@ -56,7 +56,7 @@ with the slice's evidence; `pending` means not yet executed.
 | D4 | D | 30-minute bounded soak, 100 reload cycles, retention bounded, no unexplained growth | `resilience --soak-minutes 30 --reloads 100` (R5b) | required for self-host verdict | pass — 100 reload cycles across 30 minutes, 200 samples accepted, 0 rejected, peak process-tree RSS 923,920 KiB (gate 4 GiB); restart replay duplicates === 2 |
 | D5 | D | Backup/restore into fresh namespace from supported consistent export of synthetic data | R5a | required for self-host verdict | fail — no supported export API; only a same-namespace stop-the-world filesystem copy was demonstrated; fresh-namespace consistent export not produced |
 | D6 | D | No cross-run interference; no orphaned listeners; two isolated sessions | R5a | required for self-host verdict | pass — host created (201) in session A; B's host list stayed empty; no shared ports/identifiers/orphans observed |
-| D7 | D | License/maintenance/transitive closure vetted; package/bytes/time costs recorded | bootstrap evidence; R7 report | required for verdict | partial (bootstrap recorded) |
+| D7 | D | License/maintenance/transitive closure vetted; package/bytes/time costs recorded | bootstrap evidence; R7 report | required for verdict | partial — license vet recorded (Apache-2.0 for open-orange/rivetkit/engine-cli; `@rivet-dev/services` 0.2.5 UNLICENSED, optional and pinned; engine 65,977,440 bytes sha256 `dbcbaac1…`; closure script policy recorded); prerelease line maintenance posture not fully established; R7 cost section complete |
 | D8 | D | Multi-host durability / object-store cost / live Cloudflare parity | out of scope (Needs environment) | not authorized | not applicable |
 
 Notes and freezing rules:
