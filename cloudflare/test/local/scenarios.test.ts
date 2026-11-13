@@ -11,11 +11,10 @@ const STATS = resolve(import.meta.dirname, "../..");
 const FIXTURES = resolve(STATS, "../fixtures/observe-ingest");
 const manifest = JSON.parse(readFileSync(join(FIXTURES, "manifest.json"), "utf8")) as { readonly service: string; readonly nowMs: number; readonly golden: string };
 const golden = readFileSync(join(FIXTURES, manifest.golden), "utf8").trim();
-const NOW = manifest.nowMs;
 const SERVICE = manifest.service;
 
 async function withWorkerd(body: (stack: Stack) => Promise<void>): Promise<void> {
-  const stack = await startStack({ nowMs: NOW });
+  const stack = await startStack({ nowMs: null });
   try {
     await body(stack);
   } finally {
@@ -56,11 +55,12 @@ async function external(stack: Stack, now: number, service = SERVICE): Promise<r
 
 await test("scenario A: a service token ingests one event, reads it back, rotates, and rejects the old token", async () => {
   await withWorkerd(async stack => {
+    const now = Date.now();
     const credentials = await provision(stack, SERVICE);
-    const payload = batch(NOW);
+    const payload = batch(now);
     const first = await ingest(stack, credentials.ingestToken, payload.text);
     assert.equal(first.status, 202, await first.clone().text());
-    assert.deepEqual(await external(stack, NOW, SERVICE), payload.events);
+    assert.deepEqual(await external(stack, now, SERVICE), payload.events);
     assert.equal((await ingest(stack, credentials.deployToken, payload.text)).status, 401);
 
     const rotated = await stack.fetch(`/api/v1/admin/services/${SERVICE}/token/rotate`, { method: "POST" });
@@ -87,10 +87,11 @@ await test("scenario D: a marker is recorded once and repeated delivery is a no-
 
 await test("scenario E: invalid service credentials reject ingest and marker retries remain idempotent", async () => {
   await withWorkerd(async stack => {
+    const now = Date.now();
     const credentials = await provision(stack, SERVICE);
-    const payload = batch(NOW);
+    const payload = batch(now);
     assert.equal((await ingest(stack, "not-a-token", payload.text)).status, 401);
-    assert.deepEqual(await external(stack, NOW, SERVICE), []);
+    assert.deepEqual(await external(stack, now, SERVICE), []);
     assert.equal((await ingest(stack, credentials.ingestToken, payload.text)).status, 202);
     const marker = { markerId: "retry", version: "1.0.0", hostIds: [credentials.hostId] };
     const post = () => stack.anonymous(`/ingest/services/${SERVICE}/deployments`, { method: "POST", headers: { authorization: `Bearer ${credentials.deployToken}`, "content-type": "application/json" }, body: JSON.stringify(marker) });
@@ -101,35 +102,37 @@ await test("scenario E: invalid service credentials reject ingest and marker ret
 
 await test("scenario F: content, paths, credentials, and headers from an application never reach stored telemetry", async () => {
   await withWorkerd(async stack => {
+    const now = Date.now();
     const credentials = await provision(stack, SERVICE);
     const secret = "DO-NOT-STORE-7f6c";
-    const [first] = batch(NOW).events;
+    const [first] = batch(now).events;
     assert.ok(first !== undefined);
     const malformed = JSON.stringify({ events: [{ ...first, note: secret, path: `/private/${secret}` }] });
     assert.equal((await ingest(stack, credentials.ingestToken, malformed)).status, 400);
-    assert.deepEqual(await external(stack, NOW, SERVICE), []);
-    const encoded = await external(stack, NOW, SERVICE);
+    assert.deepEqual(await external(stack, now, SERVICE), []);
+    const encoded = await external(stack, now, SERVICE);
     assert.equal(JSON.stringify(encoded).includes(secret), false);
     assert.equal(JSON.stringify(encoded).includes(credentials.ingestToken), false);
   });
 });
 
 await test("scenario G: one golden batch reads back normalized on workerd and Node", async () => {
-  const payload = batch(NOW);
+  const now = Date.now();
+  const payload = batch(now);
   let cloudflareEvents: readonly Record<string, unknown>[] = [];
   await withWorkerd(async stack => {
     const credentials = await provision(stack, SERVICE);
     assert.equal((await ingest(stack, credentials.ingestToken, payload.text)).status, 202);
-    cloudflareEvents = await external(stack, NOW, SERVICE);
+    cloudflareEvents = await external(stack, now, SERVICE);
   });
-  const decoded = decodeBatch(payload.text, { service: SERVICE, nowMs: NOW + 1_000 });
+  const decoded = decodeBatch(payload.text, { service: SERVICE, nowMs: now + 1_000 });
   assert.equal(decoded.ok, true);
   const directory = mkdtempSync(join(SCRATCH, "s13-node-"));
-  const installation = openNodeInstallation({ path: join(directory, "stats.sqlite"), projects: "[]", clock: { now: () => NOW } });
+  const installation = openNodeInstallation({ path: join(directory, "stats.sqlite"), projects: "[]", clock: { now: () => now } });
   try {
     const ingested = await installation.observe.forService(SERVICE).ingestExternal(SERVICE, decoded.batch.events);
     assert.equal(ingested.ok, true);
-    const nodeRecords = await installation.observe.forService(SERVICE).external(SERVICE, { fromMs: NOW - 300_000, toMs: NOW });
+    const nodeRecords = await installation.observe.forService(SERVICE).external(SERVICE, { fromMs: now - 300_000, toMs: now });
     assert.deepEqual(nodeRecords.map(record => record.event), cloudflareEvents);
     assert.deepEqual(cloudflareEvents, payload.events);
   } finally {

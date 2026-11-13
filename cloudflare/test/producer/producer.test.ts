@@ -81,14 +81,14 @@ await test("the producer encodes the golden frame exactly and accepts a duplicat
   const server = await serve((request, _index, response) => {
     assert.equal(request.url, `/ingest/observe/v1/${SERVICE}/batches`);
     assert.equal(request.headers.authorization, "Bearer ingest-token");
-    const sent = decodeBatch(request.body, { service: SERVICE, nowMs: Date.now() });
+    const sent = decodeBatch(request.body, { service: SERVICE, nowMs: manifest.nowMs });
     assert.ok(sent.ok);
     assert.deepEqual(sent.batch.events.map(event => event.delivery?.sequence), [1, 2]);
     assert.equal(encodeBatch({ events: sent.batch.events.map(({ delivery: _delivery, ...event }) => event) }), golden);
     json(response, { accepted: 0, duplicate: 2 });
   });
   try {
-    const producer = createProducer(configure(server.endpoint, { batchSize: 2 }));
+    const producer = createProducer(configure(server.endpoint, { batchSize: 2, now: () => manifest.nowMs }));
     for (const event of decoded.batch.events) {
       producer.record({
         operation: event.operation,
@@ -119,7 +119,7 @@ await test("the producer encodes the failing golden frame with its error codes e
   assert.deepEqual(decoded.batch.events.map(event => event.error?.code), ["db.timeout", "upstream-unavailable", undefined]);
   const server = await serve((_request, _index, response) => json(response, { accepted: 3, duplicate: 0 }));
   try {
-    const producer = createProducer(configure(server.endpoint, { batchSize: 3 }));
+    const producer = createProducer(configure(server.endpoint, { batchSize: 3, now: () => manifest.nowMs }));
     for (const event of decoded.batch.events) {
       producer.record({
         operation: event.operation,
@@ -136,7 +136,7 @@ await test("the producer encodes the failing golden frame with its error codes e
     }
     await producer.flush();
     assert.equal(server.received.length, 1);
-    const sent = decodeBatch(server.received[0]!.body, { service: SERVICE, nowMs: Date.now() });
+    const sent = decodeBatch(server.received[0]!.body, { service: SERVICE, nowMs: manifest.nowMs });
     assert.ok(sent.ok);
     assert.equal(encodeBatch({ events: sent.batch.events.map(({ delivery: _delivery, ...event }) => event) }), golden);
     assert.equal(encodeBatch(decoded.batch), golden);
