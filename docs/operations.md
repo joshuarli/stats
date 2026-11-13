@@ -378,6 +378,13 @@ deltas, denominators, exclusions, cost basis, guardrails, and the keep, revert,
 or pending decision. A change that did not move its metric is reverted or
 re-diagnosed, not kept.
 
+- **Scheduling.** The deploy-verify-keep or roll-back loop stays run by hand.
+  Automation is only worth deciding after a candidate is measured on a
+  representative workload, and that evidence does not exist yet. If the loop is
+  ever scheduled, it uses a committed verification policy, restores the
+  previously validated version on exit 7, and stops at an explicit spend
+  ceiling.
+
 - **Cost.** `verify` separates application cost (`stats`), observation cost (the
   `stats-observe` project: tail CPU, its Durable Object requests, duration, rows,
   and storage), and experiment overhead, which is the requests `statsctl` itself

@@ -90,14 +90,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Effort:** M
 
 
-### STA-85 · P4 · The verify loop is not scheduled to run unattended
-
-- **Area:** Operability
-- **Where:** `cloudflare/src/cli/commands/verify.ts`, `docs/operations.md` (Verifying a candidate)
-- **Problem:** The loop that deploys `stats`, runs `statsctl verify`, and keeps or rolls back on the verdict is run by hand. Earlier production verdicts matched offline predictions, and the new-issue-group guardrail can report regrouping as confounded. Scheduling remains an owner decision. The earlier account prices are historical; this review identifies new local efficiency candidates but does not establish their production savings or authorize an unattended deployment loop.
-- **Recommendation:** First measure a candidate on a representative workload. Decide whether automation is worthwhile after that evidence. If scheduled, use a committed verification policy, restore the previously validated version on exit 7, and stop at an explicit spend ceiling.
-- **Fix with:** orchestrate
-- **Effort:** M
 
 
 ### STA-87 · P4 · Whether the Analytics SQL binding bills for the rows the collector reads is unconfirmed
