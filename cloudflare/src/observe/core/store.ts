@@ -432,6 +432,8 @@ const STATEMENTS = [
     PRIMARY KEY (service, event_id)
   ) WITHOUT ROWID`,
   "CREATE INDEX IF NOT EXISTS observe_external_events_time ON observe_external_events (service, event_at)",
+  "CREATE INDEX IF NOT EXISTS observe_external_events_event_at ON observe_external_events (event_at)",
+  "CREATE INDEX IF NOT EXISTS observe_external_events_received_at ON observe_external_events (received_at)",
   `CREATE TABLE IF NOT EXISTS observe_ingest_windows (
     service TEXT NOT NULL,
     window_start INTEGER NOT NULL,
@@ -956,9 +958,9 @@ export function cleanup(db: SqlStatements, nowMs: number): CleanupResult {
     db.run(`DELETE FROM observe_rollouts WHERE at_ms <= ? AND id NOT IN (${baseline})`, rolloutCutoff, rolloutCutoff);
     db.run("DELETE FROM observe_version_labels WHERE updated_at <= ? AND version NOT IN (SELECT version FROM observe_rollout_shares)", rolloutCutoff);
     db.run("DELETE FROM observe_artifacts WHERE rowid NOT IN (SELECT rowid FROM observe_artifacts ORDER BY uploaded_at DESC, version DESC, file DESC LIMIT ?)", MAX_ARTIFACTS);
-    const expiredExternal = count(db, "SELECT COUNT(*) AS n FROM observe_external_events WHERE received_at <= ? OR event_at <= ?", cutoff, cutoff);
+    const expiredExternal = count(db, "SELECT COUNT(*) AS n FROM (SELECT 1 FROM observe_external_events WHERE received_at <= ? OR event_at <= ? LIMIT ?)", cutoff, cutoff, CLEANUP_BATCH + 1);
     db.run(
-      "DELETE FROM observe_external_events WHERE (service, event_id) IN (SELECT service, event_id FROM observe_external_events WHERE received_at <= ? OR event_at <= ? ORDER BY event_at LIMIT ?)",
+      "DELETE FROM observe_external_events WHERE (service, event_id) IN (SELECT service, event_id FROM observe_external_events WHERE received_at <= ? OR event_at <= ? LIMIT ?)",
       cutoff, cutoff, CLEANUP_BATCH
     );
     db.run("DELETE FROM observe_ingest_windows WHERE window_start < ?", nowMs - 2 * RATE_LIMIT_WINDOW_MS);
@@ -985,7 +987,7 @@ function evict(db: SqlStatements): { readonly invocations: number; readonly occu
 
 export function nextCleanupAt(db: SqlStatements, nowMs: number, cleaned: CleanupResult): number | null {
   if (cleaned.more) return nowMs;
-  const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences UNION ALL SELECT MIN(MIN(received_at, event_at)) FROM observe_external_events)")[0]?.at ?? null;
+  const oldest = db.rows<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(observed_at) AS at FROM observe_invocations UNION ALL SELECT MIN(observed_at) FROM observe_occurrences UNION ALL SELECT MIN(event_at) FROM observe_external_events UNION ALL SELECT MIN(received_at) FROM observe_external_events)")[0]?.at ?? null;
   const flushed = db.rows<{ at: number | null }>("SELECT MIN(applied_at) AS at FROM observe_applied_flushes")[0]?.at ?? null;
   const expiries = [oldest === null ? null : oldest + RETENTION_MS, oldestCountExpiryMs(db), flushed === null ? null : flushed + RETENTION_MS].filter(at => at !== null);
   const expiry = expiries.length === 0 ? null : Math.min(...expiries);
