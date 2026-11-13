@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { processOwner } from "./processes.ts";
 import { acquireOwnership } from "./ownership.ts";
 import { SERVED_DOCS } from "./served-docs.mjs";
+import { requirePinnedNode } from "./toolchain.ts";
 
 export const ROOT = resolve(import.meta.dirname, "..");
 const REPO = dirname(ROOT);
@@ -47,7 +48,7 @@ export function buildInputs(target: BuildTarget): Map<string, Buffer> {
       pending.push(dependency);
     }
   }
-  for (const path of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".node-version", "cloudflare/package.json", "cloudflare/tsconfig.json", "cloudflare/scripts/ensure-build.ts", "cloudflare/scripts/ownership.ts", "cloudflare/scripts/processes.ts"]) inputs.set(join(REPO, path), readFileSync(join(REPO, path)));
+  for (const path of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".node-version", "cloudflare/package.json", "cloudflare/tsconfig.json", "cloudflare/scripts/ensure-build.ts", "cloudflare/scripts/ownership.ts", "cloudflare/scripts/processes.ts", "cloudflare/scripts/toolchain.ts"]) inputs.set(join(REPO, path), readFileSync(join(REPO, path)));
   return inputs;
 }
 
@@ -84,6 +85,7 @@ function publishTypes(generation: string, target: BuildTarget): void {
 }
 
 export async function ensureBuild(target: BuildTarget, { clean = false, mode = "production", signal = new AbortController().signal }: { readonly clean?: boolean; readonly mode?: string; readonly signal?: AbortSignal } = {}): Promise<BuiltArtifact> {
+  requirePinnedNode();
   const release = await acquireOwnership(join(CACHE, `${target}.sqlite`), signal);
   const owner = processOwner(`build-${target}`);
   const cancel = (): void => { void owner.stop(); };
@@ -151,7 +153,7 @@ export async function ensureBuilds(targets: readonly BuildTarget[], options: Par
 if (import.meta.main) {
   const { values } = parseArgs({ options: { target: { type: "string", multiple: true }, clean: { type: "boolean" }, mode: { type: "string", default: "production" } } });
   const targets = values.target ?? ["stats", "observe"];
-  for (const target of targets) if (!(target in TARGETS)) throw new Error(`unknown build target ${target}`);
+  for (const target of targets) if (!Object.hasOwn(TARGETS, target)) throw new Error(`unknown build target ${target}`);
   try { await ensureBuilds(targets as BuildTarget[], { clean: values.clean ?? false, mode: values.mode }); }
   catch (error) { console.error(error); process.exitCode ||= 1; }
 }

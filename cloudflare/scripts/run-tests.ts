@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { inventory, ROOT, selectTests } from "./test-suites.ts";
 import { processOwner } from "./processes.ts";
 import type { BuildTarget } from "./ensure-build.ts";
+import { requirePinnedNode } from "./toolchain.ts";
 
 export async function runTests(args = process.argv.slice(2)) {
+  requirePinnedNode();
   const { values } = parseArgs({ args, options: {
     file: { type: "string", multiple: true }, suite: { type: "string", multiple: true }, name: { type: "string" },
     list: { type: "boolean" }, json: { type: "boolean" }, gate: { type: "boolean" }, jobs: { type: "string", default: "2" }

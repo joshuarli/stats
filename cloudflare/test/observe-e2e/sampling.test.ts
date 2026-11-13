@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { collectorModules, ROOT, until, type Page, type TraceSummary } from "./harness.ts";
+import { collectorModules, until, type Page, type TraceSummary } from "./harness.ts";
 import { COUNT_FLUSH_INTERVAL_MS } from "../../src/observe/core/count-buffer.ts";
 import { ALWAYS_KEPT_PER_BUCKET } from "../../src/observe/core/always-kept-cap.ts";
 import { COUNT_BUCKET_MS } from "../../src/observe/core/limits.ts";
@@ -69,30 +69,38 @@ interface Shop {
 
 async function startShop(): Promise<Shop> {
   const persist = mkdtempSync(join(tmpdir(), "sampling-e2e-"));
+  const modules = collectorModules(SERVICE);
   const mf = new Miniflare({
     ...convertV4MiniflareOptions({ workers: [
       { name: SERVICE, modules: true, script: PRODUCER, ...COMPAT, tails: ["stats-observe"], durableObjects: { STORE: { className: "TenantStore", useSQLite: true } } },
       {
         name: "stats-observe",
-        modules: [{ type: "ESModule" as const, path: join(ROOT, "observe-worker/collector-entry.js"), contents: SKEWED_COLLECTOR }, collectorModules(SERVICE)[1]!],
+        modules: [{ ...modules[0]!, contents: SKEWED_COLLECTOR }, modules[1]!],
+        modulesRoot: dirname(modules[0]!.path),
         ...COMPAT, durableObjects: { STORE: { className: "ObservationStore", useSQLite: true } }
       }
     ] }),
     resourcePersistencePath: persist
   });
-  const shop = await mf.getWorker(SERVICE);
-  const collector = await mf.getWorker("stats-observe");
-  return {
-    mf,
-    send: async (path, method = "GET") => {
-      const response = await shop.fetch(`https://shop.example${path}`, { method });
-      await response.arrayBuffer();
-      return response.headers.get("x-trace-id");
-    },
-    observe: async <T>(path: string) => await (await collector.fetch(`https://observe/${SERVICE}${path}`)).json() as T,
-    collectorClockForward: async ms => { await (await collector.fetch(`https://observe/clock-forward?ms=${ms}`)).arrayBuffer(); },
-    dispose: async () => { await mf.dispose(); rmSync(persist, { recursive: true, force: true }); }
-  };
+  const dispose = async (): Promise<void> => { await mf.dispose(); rmSync(persist, { recursive: true, force: true }); };
+  try {
+    const shop = await mf.getWorker(SERVICE);
+    const collector = await mf.getWorker("stats-observe");
+    return {
+      mf,
+      send: async (path, method = "GET") => {
+        const response = await shop.fetch(`https://shop.example${path}`, { method });
+        await response.arrayBuffer();
+        return response.headers.get("x-trace-id");
+      },
+      observe: async <T>(path: string) => await (await collector.fetch(`https://observe/${SERVICE}${path}`)).json() as T,
+      collectorClockForward: async ms => { await (await collector.fetch(`https://observe/clock-forward?ms=${ms}`)).arrayBuffer(); },
+        dispose
+    };
+  } catch (error) {
+    try { await dispose(); } catch (cleanup) { throw new AggregateError([error, cleanup], "sampling startup and cleanup failed"); }
+    throw error;
+  }
 }
 
 async function sendAll(shop: Shop, requests: readonly (readonly [string, string])[]): Promise<(string | null)[]> {

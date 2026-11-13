@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { arch, cpus, platform, release } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { nodePin } from "./toolchain.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 function packageAt(file: string): { readonly path: string; readonly version: string } {
@@ -34,7 +35,7 @@ export function doctor(root = ROOT) {
     revision: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "",
     lockfileSha256: createHash("sha256").update(readFileSync(join(repo, "pnpm-lock.yaml"))).digest("hex"),
     fixturesSha256: createHash("sha256").update(readFileSync(join(repo, "fixtures/v2/manifest.json"))).digest("hex"),
-    node: process.version, pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
+    node: process.version, requiredNode: nodePin(root), pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
     os: `${platform()} ${release()} ${arch()}`, cpu: cpus()[0]?.model, cores: cpus().length,
     runtimes: runtimeVersions(root),
     supportedCompatibility: JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", 'import { getLocalWorkerdCompatibilityDate } from "@cloudflare/vite-plugin"; console.log(JSON.stringify(getLocalWorkerdCompatibilityDate()));'], { cwd: root, encoding: "utf8" })) as { readonly date: string; readonly source: string },
@@ -48,6 +49,6 @@ if (import.meta.main) {
   if (process.argv.includes("--check")) {
     const miniflare = new Set(report.runtimes.map(runtime => runtime.miniflare.version));
     const workerd = new Set(report.runtimes.map(runtime => runtime.workerd.version));
-    if (miniflare.size !== 1 || workerd.size !== 1 || report.supportedCompatibility.source !== "workerd" || report.compatibility.some(config => config.date === undefined || config.date > report.supportedCompatibility.date)) process.exitCode = 1;
+    if (report.node !== report.requiredNode || miniflare.size !== 1 || workerd.size !== 1 || report.supportedCompatibility.source !== "workerd" || report.compatibility.some(config => config.date === undefined || config.date > report.supportedCompatibility.date)) process.exitCode = 1;
   }
 }

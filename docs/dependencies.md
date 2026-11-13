@@ -55,6 +55,13 @@ Keep the test plugin. Removing its esbuild closure would also require replacing
 its Wrangler configuration/Miniflare integration, with ongoing ownership of
 upstream runtime changes.
 
+Package scripts select `/bin/sh` explicitly. In the observed host configuration,
+pnpm's default user shell resets `PATH` and runs Node 26.13.0 despite the caller
+selecting 26.13.1. The explicit shell preserves the caller's toolchain and local
+package binaries. A regression runs package scripts with a hostile host shell.
+Remove this setting only after pnpm preserves the selected runtime with that
+shell. The build/test entrypoints and doctor also check `.node-version`.
+
 ## Platform binaries in lockfiles
 
 Lockfiles keep every optional platform package. Neither

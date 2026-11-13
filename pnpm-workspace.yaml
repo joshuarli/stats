@@ -1,6 +1,7 @@
 packages:
   - cloudflare
   - packages/*
+scriptShell: /bin/sh
 allowBuilds:
   esbuild: true
   workerd: true
