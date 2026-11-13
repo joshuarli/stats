@@ -1,0 +1,1166 @@
+{
+  "discovered": 140,
+  "selected": 125,
+  "optIn": 15,
+  "tests": [
+    {
+      "file": "test/access.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/agent-e2e/agent.test.ts",
+      "owner": "agent-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe",
+        "agent-debug"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/aggregate.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/api.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/binary/codecs.test.ts",
+      "owner": "binary",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/chart-data.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/cli-worker.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/check.test.ts",
+      "owner": "parity",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/compare.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/contract.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/cost.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/deployments.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/docs.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/help.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/http.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/observe-rollouts.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/observe.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/service-admin.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/service-check.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/service-credentials.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/service-mark.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/snapshot.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/target.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/verify-cli.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/verify-policy.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/verify-service.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cli/verify.test.ts",
+      "owner": "cli",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/client-cache.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/client-metrics.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/cloudflare-sql.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/cost/boundary.test.ts",
+      "owner": "cost",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cost/parity.test.ts",
+      "owner": "cost",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/cost/report.test.ts",
+      "owner": "cost",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/deployments-api.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/deployments/core.test.ts",
+      "owner": "deployments",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/deployments/operation-compare.test.ts",
+      "owner": "deployments",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/event-layout.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/external/services.test.ts",
+      "owner": "services-external",
+      "runner": "node",
+      "prerequisites": [
+        "TANSU_DIR",
+        "NICEFORGE_DIR"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/health.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/history-frame.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/history.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/host-monitors.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/ingest-rows.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/ingest.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/ingest/acks.test.ts",
+      "owner": "ingest",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/ingest/conformance.test.ts",
+      "owner": "ingest",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/ingest/malformed.test.ts",
+      "owner": "ingest",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/local/analytics.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/bench.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/collection.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/launcher.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/outbound.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/producer.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/scenarios.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/stack.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/topology.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/local/upgrade.test.ts",
+      "owner": "local",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/migration.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/monitoring.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/node-e2e/server.test.ts",
+      "owner": "node-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "node",
+        "agent-debug"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/node/boundary.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/http-parity.test.ts",
+      "owner": "parity",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/node/installation.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/observations.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/observe-ingest.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/parity.test.ts",
+      "owner": "parity",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/node/ports.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/server.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/service-comparison.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/node/storage-fallback.test.ts",
+      "owner": "node",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/agent-memory.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/external.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/sampling.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/sourcemap.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/tail.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe-e2e/trace-determinism.test.ts",
+      "owner": "observe-e2e",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/always-kept-cap.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/budget.test.ts",
+      "owner": "observe-runtime",
+      "runner": "node",
+      "prerequisites": [
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/cli.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/cloudflare-rollouts.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/cloudflare-tail.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/count-buffer.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/counts.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/fan-out.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/grouping.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/ingest.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/operations.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/outcomes.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/producer-files.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/sampling-decision.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/sampling-parity.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/sampling.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/store.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/symbolicate.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/observe/window.test.ts",
+      "owner": "observe",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/operations.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/os-logo.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/producer/checkout.test.ts",
+      "owner": "producer-external",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe",
+        "NANOSHOP_DIR"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/producer/producer.test.ts",
+      "owner": "producer",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/profile/producer-vars.node.ts",
+      "owner": "profile",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/profile/producer.node.ts",
+      "owner": "profile",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/profile/profile.node.ts",
+      "owner": "profile",
+      "runner": "node",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/project-ledger.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-api.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-collector.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-config.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-probes.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-queries.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-routes.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-series.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/projects-store.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/rollout.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/bench-bundle.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/bench-network.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/bench-preview-fallbacks.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/build-preparation.test.ts",
+      "owner": "build-orchestration",
+      "runner": "node",
+      "prerequisites": [
+        "isolated-builds-in-test"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/capture.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/dashboard-smoke.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/development.test.ts",
+      "owner": "dev-orchestration",
+      "runner": "node",
+      "prerequisites": [
+        "isolated-builds-in-test",
+        "chromium"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/installer.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/node-bundle.test.ts",
+      "owner": "node-package",
+      "runner": "node",
+      "prerequisites": [
+        "node-bundle-in-test"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/node-replacement.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/provision.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/receipts.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/signals.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/scripts/test-selection.test.ts",
+      "owner": "scripts",
+      "runner": "node",
+      "prerequisites": [],
+      "optIn": false
+    },
+    {
+      "file": "test/services.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/ui/charts.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/dashboard.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/gallery.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/lifecycle.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/local-stack.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats",
+        "observe"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/node.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/observe-lifecycle.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/observe.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/replay.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/services.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/ui/shortcut-library.spec.ts",
+      "owner": "browser",
+      "runner": "playwright",
+      "prerequisites": [
+        "stats"
+      ],
+      "optIn": true
+    },
+    {
+      "file": "test/view-state.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    },
+    {
+      "file": "test/waterfall.test.ts",
+      "owner": "worker",
+      "runner": "vitest",
+      "prerequisites": [
+        "worker-source"
+      ],
+      "optIn": false
+    }
+  ]
+}

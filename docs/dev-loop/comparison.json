@@ -1,0 +1,354 @@
+[
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "runs": 5,
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "ms": {
+          "median": 1119.3545,
+          "min": 1033.633,
+          "max": 1341.898958
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "ms": {
+          "median": 1046.941292,
+          "min": 1030.0747499999998,
+          "max": 1072.125208
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "ms": {
+          "median": 234.76324999999997,
+          "min": 217.36745900000005,
+          "max": 248.15908300000046
+        },
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "ms": {
+          "median": 2255.5205000000005,
+          "min": 2147.4127500000004,
+          "max": 2512.095375000001
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "ms": {
+          "median": 540.8128340000003,
+          "min": 524.9227089999986,
+          "max": 581.4911670000001
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "ms": {
+          "median": 1061.003208,
+          "min": 1010.9702499999999,
+          "max": 1093.162
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "ms": {
+          "median": 1019.8899170000004,
+          "min": 992.7747919999997,
+          "max": 1113.3187079999998
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ],
+    "memory": {
+      "processes": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "rssKiB": {
+        "median": 397488,
+        "min": 397200,
+        "max": 399344
+      }
+    }
+  },
+  {
+    "phase": "candidate",
+    "revision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "runs": 5,
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "ms": {
+          "median": 1877.98525,
+          "min": 1803.15875,
+          "max": 2215.994083
+        },
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "ms": {
+          "median": 134.10962500000005,
+          "min": 106.91429100000005,
+          "max": 134.35533299999997
+        },
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "ms": {
+          "median": 270.85020799999984,
+          "min": 261.161333,
+          "max": 290.3069579999992
+        },
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "ms": {
+          "median": 2708.4516249999997,
+          "min": 2669.4605840000004,
+          "max": 2786.8130419999998
+        },
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "ms": {
+          "median": 113.578042000001,
+          "min": 110.1832089999989,
+          "max": 116.30362500000047
+        },
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "ms": {
+          "median": 902.5250839999999,
+          "min": 884.6027919999997,
+          "max": 982.909666
+        },
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "ms": {
+          "median": 1261.0317079999995,
+          "min": 1232.3121249999995,
+          "max": 1431.116375
+        },
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ],
+    "memory": {
+      "processes": [
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "rssKiB": {
+        "median": 719248,
+        "min": 709040,
+        "max": 727792
+      }
+    }
+  }
+]

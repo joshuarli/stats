@@ -9,7 +9,7 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 | `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
-| `make integration-local` | `test:local` and the local-stack browser spec under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
+| `make integration-local` | Local tests, the local-stack browser spec and the canonical development-loop regression under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
 | `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make test` and `make check` do not run it |
 | `make dev` | An offline UI with frontend HMR, automatic backend rebuild/reload, owned loopback ports and persistent state. `make dev-local` is an alias; see [development](development.md) |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |

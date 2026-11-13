@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-13T00:16:06.216Z",
+  "sourceAndMerge": [
+    {
+      "url": "https://github.com/cloudflare/workers-sdk/pull/16684",
+      "title": "[miniflare] Use workerd's KV for local KV namespaces",
+      "state": "open",
+      "draft": true,
+      "mergedAt": null,
+      "mergeCommit": null
+    },
+    {
+      "url": "https://github.com/cloudflare/workerd/pull/8176",
+      "title": "Roll cluster nodes onto new deployments and add `workerd deploy --wait`",
+      "state": "open",
+      "draft": true,
+      "mergedAt": null,
+      "mergeCommit": null
+    }
+  ],
+  "releaseContainment": "A merged PR is not proof of inclusion in a release; inspect the linked release before claiming adoption.",
+  "contracts": "passed: resolved graph, configured dates, config validation, generated types, STB2/STA2 conformance, Worker/Node parity, auth, outbound guard, real tails, producer and R2 profile",
+  "sdkCandidates": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.16",
+    "@cloudflare/vitest-plugin": "1.8.1",
+    "cf": "1.0.0-beta.31",
+    "miniflare": "5.20261110.2-beta",
+    "selectedWorkerd": "1.20261110.1"
+  },
+  "newestWorkerd": "1.20261112.1",
+  "logs": "/Users/josh/repos/stats/.work/tmp/cloudflare-candidate-epLHRJ"
+}

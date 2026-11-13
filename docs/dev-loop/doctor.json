@@ -1,0 +1,80 @@
+{
+  "revision": "95fdf9895502028b3f7042b9589c0d0590fe12ac",
+  "dirty": false,
+  "lockfileSha256": "055ebf0db52be67b7b9b72045a467d36defb1d96ddabcdf00d9bf5961210397f",
+  "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+  "node": "v26.13.1",
+  "requiredNode": "v26.13.1",
+  "pnpm": "12.18.0",
+  "os": "darwin 27.0.0 arm64",
+  "cpu": "Apple M5 Max",
+  "cores": 18,
+  "runtimes": [
+    {
+      "consumer": "miniflare",
+      "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+      "version": "5.20261110.2-beta",
+      "miniflare": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261110.2-beta"
+      },
+      "workerd": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+        "version": "1.20261110.1"
+      }
+    },
+    {
+      "consumer": "@cloudflare/vite-plugin",
+      "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.16_@types+node@26.6.6_vite@8.3.8_@types+node@26.6._200f68cc54b781b7723dc03b0e3b4b08/node_modules/@cloudflare/vite-plugin",
+      "version": "2.0.0-beta.v.16",
+      "miniflare": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261110.2-beta"
+      },
+      "workerd": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+        "version": "1.20261110.1"
+      }
+    },
+    {
+      "consumer": "@cloudflare/vitest-plugin",
+      "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.1_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_4527b19aed0ef46e9b1d232c7b0e3fb1/node_modules/@cloudflare/vitest-plugin",
+      "version": "1.8.1",
+      "miniflare": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261110.2-beta"
+      },
+      "workerd": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+        "version": "1.20261110.1"
+      }
+    },
+    {
+      "consumer": "cf",
+      "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/cf@1.0.0-beta.31_@types+node@26.6.6/node_modules/cf",
+      "version": "1.0.0-beta.31",
+      "miniflare": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261110.2-beta"
+      },
+      "workerd": {
+        "path": "/Users/josh/repos/stats/.work/tmp/cloudflare-checkout-XYB6ef/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+        "version": "1.20261110.1"
+      }
+    }
+  ],
+  "supportedCompatibility": {
+    "date": "2026-11-10",
+    "source": "workerd"
+  },
+  "compatibility": [
+    {
+      "file": "cloudflare.config.ts",
+      "date": "2026-10-30"
+    },
+    {
+      "file": "observe-worker/cloudflare.config.ts",
+      "date": "2026-10-30"
+    }
+  ]
+}

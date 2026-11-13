@@ -1,415 +1,1142 @@
-{
-  "phase": "baseline",
-  "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
-  "dirty": false,
-  "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
-  "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
-  "node": "v26.13.1",
-  "pnpm": "12.18.0",
-  "os": "darwin 27.0.0 arm64",
-  "cpu": "Apple M5 Max",
-  "cores": 18,
-  "runtimes": [
-    {
-      "consumer": "miniflare",
-      "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
-      "version": "5.20261023.3-beta",
-      "miniflare": {
+[
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "dirty": false,
+    "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
         "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
-        "version": "5.20261023.3-beta"
+        "version": "5.20261023.3-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
       },
-      "workerd": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
-        "version": "1.20261023.1"
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.8",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.0",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.1-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.29",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.0-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
       }
+    ],
+    "supportedCompatibility": {
+      "date": "2026-10-23",
+      "source": "workerd"
     },
-    {
-      "consumer": "@cloudflare/vite-plugin",
-      "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
-      "version": "2.0.0-beta.v.8",
-      "miniflare": {
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ec13e32949583a19421af62e310710f85e2b3979a97dd1ff2afbe315f14615d6",
+    "driverRevision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
+    },
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 2,
+        "rssKiB": 399344
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "manual build and restart",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 1,
+        "medianMs": 1341.898958,
+        "minMs": 1341.898958,
+        "maxMs": 1341.898958,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 1,
+        "medianMs": 1010.9702499999999,
+        "minMs": 1010.9702499999999,
+        "maxMs": 1010.9702499999999,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 1,
+        "medianMs": 1056.290708,
+        "minMs": 1056.290708,
+        "maxMs": 1056.290708,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 1,
+        "medianMs": 1019.8899170000004,
+        "minMs": 1019.8899170000004,
+        "maxMs": 1019.8899170000004,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 1,
+        "medianMs": 247.14037499999995,
+        "minMs": 247.14037499999995,
+        "maxMs": 247.14037499999995,
+        "compilations": [
+          0
+        ],
+        "tests": [
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 1,
+        "medianMs": 2323.5652500000006,
+        "minMs": 2323.5652500000006,
+        "maxMs": 2323.5652500000006,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 1,
+        "medianMs": 533.402583000001,
+        "minMs": 533.402583000001,
+        "maxMs": 533.402583000001,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1341.898958,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 1010.9702499999999,
+        "compilations": 2
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 1056.290708,
+        "compilations": 2
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1019.8899170000004,
+        "compilations": 2
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 247.14037499999995,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2323.5652500000006,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 533.402583000001,
+        "compilations": 2
+      }
+    ]
+  },
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "dirty": false,
+    "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
         "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
-        "version": "5.20261023.3-beta"
+        "version": "5.20261023.3-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
       },
-      "workerd": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
-        "version": "1.20261023.1"
-      }
-    },
-    {
-      "consumer": "@cloudflare/vitest-plugin",
-      "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
-      "version": "1.8.0",
-      "miniflare": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
-        "version": "5.20261110.1-beta"
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.8",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
       },
-      "workerd": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
-        "version": "1.20261110.1"
-      }
-    },
-    {
-      "consumer": "cf",
-      "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
-      "version": "1.0.0-beta.29",
-      "miniflare": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
-        "version": "5.20261110.0-beta"
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.0",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.1-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
       },
-      "workerd": {
-        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
-        "version": "1.20261110.1"
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.29",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.0-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
       }
-    }
-  ],
-  "compatibility": [
-    {
-      "file": "cloudflare.config.ts",
-      "date": "2026-10-30"
+    ],
+    "supportedCompatibility": {
+      "date": "2026-10-23",
+      "source": "workerd"
     },
-    {
-      "file": "observe-worker/cloudflare.config.ts",
-      "date": "2026-10-30"
-    }
-  ],
-  "fixtureGeneration": "committed fixtures; generation excluded",
-  "frontendMode": "manual build and restart",
-  "failures": 0,
-  "scenarios": [
-    {
-      "scenario": "cold-ready",
-      "runs": 5,
-      "medianMs": 1161.0867920000019,
-      "minMs": 1054.9779170000002,
-      "maxMs": 1297.50175,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ec13e32949583a19421af62e310710f85e2b3979a97dd1ff2afbe315f14615d6",
+    "driverRevision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
     },
-    {
-      "scenario": "warm-ready",
-      "runs": 5,
-      "medianMs": 1138.5964590000003,
-      "minMs": 1038.9274579999983,
-      "maxMs": 1245.3515000000007,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 2,
+        "rssKiB": 397408
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "manual build and restart",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 1,
+        "medianMs": 1158.2258339999998,
+        "minMs": 1158.2258339999998,
+        "maxMs": 1158.2258339999998,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 1,
+        "medianMs": 1093.162,
+        "minMs": 1093.162,
+        "maxMs": 1093.162,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 1,
+        "medianMs": 1072.125208,
+        "minMs": 1072.125208,
+        "maxMs": 1072.125208,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 1,
+        "medianMs": 1000.9351670000005,
+        "minMs": 1000.9351670000005,
+        "maxMs": 1000.9351670000005,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 1,
+        "medianMs": 248.15908300000046,
+        "minMs": 248.15908300000046,
+        "maxMs": 248.15908300000046,
+        "compilations": [
+          0
+        ],
+        "tests": [
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 1,
+        "medianMs": 2215.454334,
+        "minMs": 2215.454334,
+        "maxMs": 2215.454334,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 1,
+        "medianMs": 524.9227089999986,
+        "minMs": 524.9227089999986,
+        "maxMs": 524.9227089999986,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1158.2258339999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 1093.162,
+        "compilations": 2
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 1072.125208,
+        "compilations": 2
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1000.9351670000005,
+        "compilations": 2
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 248.15908300000046,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2215.454334,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 524.9227089999986,
+        "compilations": 2
+      }
+    ]
+  },
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "dirty": false,
+    "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261023.3-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.8",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.0",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.1-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.29",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.0-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      }
+    ],
+    "supportedCompatibility": {
+      "date": "2026-10-23",
+      "source": "workerd"
     },
-    {
-      "scenario": "frontend-edit",
-      "runs": 5,
-      "medianMs": 1184.5115409999999,
-      "minMs": 1108.9280839999992,
-      "maxMs": 1373.179250000001,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ec13e32949583a19421af62e310710f85e2b3979a97dd1ff2afbe315f14615d6",
+    "driverRevision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
     },
-    {
-      "scenario": "worker-edit",
-      "runs": 5,
-      "medianMs": 1100.8606670000008,
-      "minMs": 1077.9654999999984,
-      "maxMs": 1448.460874999997,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 2,
+        "rssKiB": 397200
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "manual build and restart",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 1,
+        "medianMs": 1033.633,
+        "minMs": 1033.633,
+        "maxMs": 1033.633,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 1,
+        "medianMs": 1012.330375,
+        "minMs": 1012.330375,
+        "maxMs": 1012.330375,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 1,
+        "medianMs": 1030.0747499999998,
+        "minMs": 1030.0747499999998,
+        "maxMs": 1030.0747499999998,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 1,
+        "medianMs": 992.7747919999997,
+        "minMs": 992.7747919999997,
+        "maxMs": 992.7747919999997,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 1,
+        "medianMs": 227.06241599999976,
+        "minMs": 227.06241599999976,
+        "maxMs": 227.06241599999976,
+        "compilations": [
+          0
+        ],
+        "tests": [
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 1,
+        "medianMs": 2255.5205000000005,
+        "minMs": 2255.5205000000005,
+        "maxMs": 2255.5205000000005,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 1,
+        "medianMs": 559.068624999999,
+        "minMs": 559.068624999999,
+        "maxMs": 559.068624999999,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1033.633,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 1012.330375,
+        "compilations": 2
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 1030.0747499999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 992.7747919999997,
+        "compilations": 2
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 227.06241599999976,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2255.5205000000005,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 559.068624999999,
+        "compilations": 2
+      }
+    ]
+  },
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "dirty": false,
+    "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261023.3-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.8",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.0",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.1-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.29",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.0-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      }
+    ],
+    "supportedCompatibility": {
+      "date": "2026-10-23",
+      "source": "workerd"
     },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "runs": 5,
-      "medianMs": 253.77112500000294,
-      "minMs": 244.43345899999986,
-      "maxMs": 282.3808749999953,
-      "compilations": [
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "tests": [
-        3,
-        3,
-        3,
-        3,
-        3
-      ]
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ec13e32949583a19421af62e310710f85e2b3979a97dd1ff2afbe315f14615d6",
+    "driverRevision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
     },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "runs": 5,
-      "medianMs": 3036.8832919999986,
-      "minMs": 2551.3627909999996,
-      "maxMs": 3657.855208000001,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        1,
-        1,
-        1,
-        1,
-        1
-      ]
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 2,
+        "rssKiB": 398496
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "manual build and restart",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 1,
+        "medianMs": 1119.3545,
+        "minMs": 1119.3545,
+        "maxMs": 1119.3545,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 1,
+        "medianMs": 1071.542333,
+        "minMs": 1071.542333,
+        "maxMs": 1071.542333,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 1,
+        "medianMs": 1046.941292,
+        "minMs": 1046.941292,
+        "maxMs": 1046.941292,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 1,
+        "medianMs": 1113.3187079999998,
+        "minMs": 1113.3187079999998,
+        "maxMs": 1113.3187079999998,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 1,
+        "medianMs": 234.76324999999997,
+        "minMs": 234.76324999999997,
+        "maxMs": 234.76324999999997,
+        "compilations": [
+          0
+        ],
+        "tests": [
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 1,
+        "medianMs": 2512.095375000001,
+        "minMs": 2512.095375000001,
+        "maxMs": 2512.095375000001,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 1,
+        "medianMs": 581.4911670000001,
+        "minMs": 581.4911670000001,
+        "maxMs": 581.4911670000001,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1119.3545,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 1071.542333,
+        "compilations": 2
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 1046.941292,
+        "compilations": 2
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1113.3187079999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 234.76324999999997,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2512.095375000001,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 581.4911670000001,
+        "compilations": 2
+      }
+    ]
+  },
+  {
+    "phase": "baseline",
+    "revision": "5d70ae3e874a068b7a817c2173677e0524a48c50",
+    "dirty": false,
+    "lockfileSha256": "66ae6baea10eb97b1acd9e367b146c56c735c20ff4c697c780ff1aee0e50ee3d",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261023.3-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.8_@types+node@26.6.6_vite@8.3.8_@types+node@26.6.6_d1bcaeb145a2cb2a7450a5454be0c182/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.8",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261023.3-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261023.3-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261023.1/node_modules/workerd",
+          "version": "1.20261023.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.0_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_367b4959ecda519a291a1b5377355f41/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.0",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.1-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.1-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/cf@1.0.0-beta.29_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.29",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/miniflare@5.20261110.0-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.0-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/wt/dev-loop-baseline/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      }
+    ],
+    "supportedCompatibility": {
+      "date": "2026-10-23",
+      "source": "workerd"
     },
-    {
-      "scenario": "unchanged-build",
-      "runs": 5,
-      "medianMs": 647.2937919999968,
-      "minMs": 627.0152500000004,
-      "maxMs": 717.1091250000027,
-      "compilations": [
-        2,
-        2,
-        2,
-        2,
-        2
-      ],
-      "tests": [
-        null,
-        null,
-        null,
-        null,
-        null
-      ]
-    }
-  ],
-  "results": [
-    {
-      "scenario": "cold-ready",
-      "elapsedMs": 1297.50175,
-      "compilations": 2
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ec13e32949583a19421af62e310710f85e2b3979a97dd1ff2afbe315f14615d6",
+    "driverRevision": "c63f2ce561f9fa1fef38d41ffe2c1b5c802f3296",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
     },
-    {
-      "scenario": "warm-ready",
-      "elapsedMs": 1110.654,
-      "compilations": 2
-    },
-    {
-      "scenario": "frontend-edit",
-      "elapsedMs": 1191.2270409999996,
-      "compilations": 2
-    },
-    {
-      "scenario": "worker-edit",
-      "elapsedMs": 1221.0668329999999,
-      "compilations": 2
-    },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "elapsedMs": 280.1650830000008,
-      "compilations": 0,
-      "tests": 3
-    },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "elapsedMs": 2607.7365409999993,
-      "compilations": 2,
-      "tests": 1
-    },
-    {
-      "scenario": "unchanged-build",
-      "elapsedMs": 627.0152500000004,
-      "compilations": 2
-    },
-    {
-      "scenario": "cold-ready",
-      "elapsedMs": 1170.059333000001,
-      "compilations": 2
-    },
-    {
-      "scenario": "warm-ready",
-      "elapsedMs": 1138.5964590000003,
-      "compilations": 2
-    },
-    {
-      "scenario": "frontend-edit",
-      "elapsedMs": 1184.5115409999999,
-      "compilations": 2
-    },
-    {
-      "scenario": "worker-edit",
-      "elapsedMs": 1086.1785830000008,
-      "compilations": 2
-    },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "elapsedMs": 244.43345899999986,
-      "compilations": 0,
-      "tests": 3
-    },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "elapsedMs": 3158.132542000001,
-      "compilations": 2,
-      "tests": 1
-    },
-    {
-      "scenario": "unchanged-build",
-      "elapsedMs": 717.1091250000027,
-      "compilations": 2
-    },
-    {
-      "scenario": "cold-ready",
-      "elapsedMs": 1161.0867920000019,
-      "compilations": 2
-    },
-    {
-      "scenario": "warm-ready",
-      "elapsedMs": 1209.9333750000005,
-      "compilations": 2
-    },
-    {
-      "scenario": "frontend-edit",
-      "elapsedMs": 1108.9280839999992,
-      "compilations": 2
-    },
-    {
-      "scenario": "worker-edit",
-      "elapsedMs": 1077.9654999999984,
-      "compilations": 2
-    },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "elapsedMs": 253.77112500000294,
-      "compilations": 0,
-      "tests": 3
-    },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "elapsedMs": 2551.3627909999996,
-      "compilations": 2,
-      "tests": 1
-    },
-    {
-      "scenario": "unchanged-build",
-      "elapsedMs": 637.0007499999992,
-      "compilations": 2
-    },
-    {
-      "scenario": "cold-ready",
-      "elapsedMs": 1054.9779170000002,
-      "compilations": 2
-    },
-    {
-      "scenario": "warm-ready",
-      "elapsedMs": 1245.3515000000007,
-      "compilations": 2
-    },
-    {
-      "scenario": "frontend-edit",
-      "elapsedMs": 1373.179250000001,
-      "compilations": 2
-    },
-    {
-      "scenario": "worker-edit",
-      "elapsedMs": 1448.460874999997,
-      "compilations": 2
-    },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "elapsedMs": 282.3808749999953,
-      "compilations": 0,
-      "tests": 3
-    },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "elapsedMs": 3657.855208000001,
-      "compilations": 2,
-      "tests": 1
-    },
-    {
-      "scenario": "unchanged-build",
-      "elapsedMs": 701.4415410000001,
-      "compilations": 2
-    },
-    {
-      "scenario": "cold-ready",
-      "elapsedMs": 1068.7250830000048,
-      "compilations": 2
-    },
-    {
-      "scenario": "warm-ready",
-      "elapsedMs": 1038.9274579999983,
-      "compilations": 2
-    },
-    {
-      "scenario": "frontend-edit",
-      "elapsedMs": 1123.5668330000044,
-      "compilations": 2
-    },
-    {
-      "scenario": "worker-edit",
-      "elapsedMs": 1100.8606670000008,
-      "compilations": 2
-    },
-    {
-      "scenario": "test/ingest/conformance.test.ts",
-      "elapsedMs": 249.86383300000307,
-      "compilations": 0,
-      "tests": 3
-    },
-    {
-      "scenario": "test/node/parity.test.ts",
-      "elapsedMs": 3036.8832919999986,
-      "compilations": 2,
-      "tests": 1
-    },
-    {
-      "scenario": "unchanged-build",
-      "elapsedMs": 647.2937919999968,
-      "compilations": 2
-    }
-  ]
-}
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 2,
+        "rssKiB": 397488
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "manual build and restart",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 1,
+        "medianMs": 1113.743125,
+        "minMs": 1113.743125,
+        "maxMs": 1113.743125,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 1,
+        "medianMs": 1061.003208,
+        "minMs": 1061.003208,
+        "maxMs": 1061.003208,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 1,
+        "medianMs": 1033.9078329999998,
+        "minMs": 1033.9078329999998,
+        "maxMs": 1033.9078329999998,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 1,
+        "medianMs": 1033.144042,
+        "minMs": 1033.144042,
+        "maxMs": 1033.144042,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 1,
+        "medianMs": 217.36745900000005,
+        "minMs": 217.36745900000005,
+        "maxMs": 217.36745900000005,
+        "compilations": [
+          0
+        ],
+        "tests": [
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 1,
+        "medianMs": 2147.4127500000004,
+        "minMs": 2147.4127500000004,
+        "maxMs": 2147.4127500000004,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 1,
+        "medianMs": 540.8128340000003,
+        "minMs": 540.8128340000003,
+        "maxMs": 540.8128340000003,
+        "compilations": [
+          2
+        ],
+        "tests": [
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1113.743125,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 1061.003208,
+        "compilations": 2
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 1033.9078329999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1033.144042,
+        "compilations": 2
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 217.36745900000005,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2147.4127500000004,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 540.8128340000003,
+        "compilations": 2
+      }
+    ]
+  }
+]
