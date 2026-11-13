@@ -13,7 +13,7 @@ const RUNS = join(REPO, ".work/rivet-eval");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
 const requiredNode = `v${readFileSync(join(REPO, ".node-version"), "utf8").trim()}`;
-const SUITES = { pilot: "R1", accounting: "R2", parity: "R3", native: "R4", resilience: "R5", bench: "R6", report: "R7" };
+const SUITES = { accounting: "R2", parity: "R3", native: "R4", resilience: "R5", bench: "R6", report: "R7" };
 
 function base(command, runId) {
   return { schema: "rivet-eval/1", command, result: "pass", reason: null, revision: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "", hashes: { lockfile: sha256(join(REPO, "pnpm-lock.yaml")), fixtures: sha256(join(REPO, "fixtures/v2/manifest.json")), evaluatorManifest: sha256(join(EVAL, "package.json")) }, run: { id: runId, started: new Date().toISOString() }, platform: { os: process.platform, arch: process.arch, node: process.version, requiredNode, pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(), sqlite: process.versions.sqlite }, evidence: {} };
@@ -83,6 +83,24 @@ function packageVersion(name) {
   return dir === null ? null : JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).version;
 }
 
+async function pilot(report, values) {
+  if (values.candidate !== "openorange") return { result: "blocked", reason: "only --candidate openorange is defined for pilot; the native control is slice R4 (node scripts/rivet-eval.mjs native)" };
+  if (!existsSync(join(EVAL, "node_modules/open-orange/dist/bin.js"))) return { result: "blocked", reason: "candidate bootstrap missing; run node scripts/rivet-eval.mjs bootstrap" };
+  const noSandbox = values["no-sandbox"] === true;
+  const done = spawnSync(process.execPath, [join(EVAL, "openorange/pilot.mts"), report.run.id, ...(noSandbox ? ["--no-sandbox"] : [])], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
+  process.stderr.write(done.stderr ?? "");
+  const text = (done.stdout ?? "").trim();
+  let detail = null;
+  try { detail = JSON.parse(text); } catch { /* captured in raw */ }
+  const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
+  const reason = detail?.reason ?? (detail?.unproven ? null : (done.status === 0 ? null : `pilot failed (exit ${done.status}); see stderr above`));
+  const evidenceDir = join(RUNS, report.run.id);
+  mkdirSync(evidenceDir, { recursive: true });
+  const path = join(evidenceDir, "pilot.json");
+  writeFileSync(path, `${text || JSON.stringify({ result, reason })}\n`);
+  return { result, reason, evidence: { path }, pilot: detail ?? { rawStdout: text } };
+}
+
 function baseline(report, args) {
   if (git("status", "--porcelain", "--untracked-files=no") !== "") return { result: "blocked", reason: "commit tracked changes before benchmarking a reproducible snapshot" };
   const dir = join(RUNS, report.run.id);
@@ -100,12 +118,13 @@ async function main() {
   const started = Date.now();
   const [command, ...rest] = process.argv.slice(2);
   if (command === undefined || command === "--help") { console.log("usage: node scripts/rivet-eval.mjs <bootstrap|baseline|pilot|accounting|parity|native|resilience|bench|report> [options]"); process.exitCode = command === "--help" ? 0 : 2; return; }
-  const { values } = parseArgs({ args: rest, options: { json: { type: "boolean" }, runs: { type: "string", default: "5" }, "soak-minutes": { type: "string" }, reloads: { type: "string" }, pairs: { type: "string" }, candidate: { type: "string" }, target: { type: "string" }, quick: { type: "boolean" }, check: { type: "boolean" } } });
+  const { values } = parseArgs({ args: rest, options: { json: { type: "boolean" }, runs: { type: "string", default: "5" }, "soak-minutes": { type: "string" }, reloads: { type: "string" }, pairs: { type: "string" }, candidate: { type: "string" }, target: { type: "string" }, quick: { type: "boolean" }, check: { type: "boolean" }, "no-sandbox": { type: "boolean" } } });
   const runId = `${new Date().toISOString().replace(/[:.]/gu, "-")}-${randomUUID().slice(0, 8)}`;
   const report = base(command, runId);
   try {
     if (command === "bootstrap") Object.assign(report, bootstrap(report, values));
     else if (command === "baseline") Object.assign(report, baseline(report, values));
+    else if (command === "pilot") Object.assign(report, await pilot(report, values));
     else if (SUITES[command]) { report.result = "blocked"; report.reason = `${command} is planned for campaign slice ${SUITES[command]} and is not implemented yet`; }
     else { report.result = "blocked"; report.reason = `unknown command: ${command}`; process.exitCode = 2; }
   } catch (error) { report.result = "fail"; report.reason = String(error?.message ?? error); }
