@@ -1,6 +1,6 @@
 # STA-118: Bound deployment summaries for overview pages
 
-Status: draft
+Status: accepted (2026-11-13, owner decision)
 
 ## Summary
 
@@ -72,4 +72,13 @@ read the complete history they need.
 
 ## Decision
 
-Pending. No API change is part of this review.
+Accepted 2026-11-13 on the owner's adoption of the two recommendations:
+
+- Extend the existing project/service list responses with optional latest-deployment
+  summary fields rather than adding separate summary routes. Overview pages already
+  load those lists; the per-row fan-out disappears.
+- A summary failure does not fail the list: the list succeeds and carries a per-row
+  unavailable result, so host/project inventory remains usable and the failure is
+  visible.
+
+Implementation proceeds under STA-118.
