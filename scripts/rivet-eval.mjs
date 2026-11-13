@@ -13,7 +13,27 @@ const RUNS = join(REPO, ".work/rivet-eval");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
 const requiredNode = `v${readFileSync(join(REPO, ".node-version"), "utf8").trim()}`;
-const SUITES = { accounting: "R2", native: "R4", resilience: "R5", bench: "R6", report: "R7" };
+const SUITES = { resilience: "R5", bench: "R6", report: "R7" };
+
+async function native(report, values) {
+  if (values.candidate !== undefined) return { result: "blocked", reason: "native takes no candidate selector" };
+  if (!existsSync(join(EVAL, "native/probe.mts"))) return { result: "blocked", reason: "native probe missing" };
+  const done = spawnSync(process.execPath, [join(EVAL, "native/probe.mts"), report.run.id], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
+  process.stderr.write(done.stderr ?? "");
+  const text = (done.stdout ?? "").trim();
+  let detail = null;
+  const jsonTail = text.lastIndexOf("\n{");
+  for (const candidate of [text, jsonTail === -1 ? text : text.slice(jsonTail + 1)]) {
+    try { detail = JSON.parse(candidate); break; } catch { /* try the next candidate */ }
+  }
+  const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
+  const reason = detail?.reason ?? (done.status === 0 ? null : `native probe failed (exit ${done.status}); see stderr above`);
+  const evidenceDir = join(RUNS, report.run.id);
+  mkdirSync(evidenceDir, { recursive: true });
+  const path = join(evidenceDir, "native.json");
+  writeFileSync(path, `${text || JSON.stringify({ result, reason })}\n`);
+  return { result, reason, evidence: { path }, native: detail ?? { rawStdout: text } };
+}
 
 function base(command, runId) {
   return { schema: "rivet-eval/1", command, result: "pass", reason: null, revision: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "", hashes: { lockfile: sha256(join(REPO, "pnpm-lock.yaml")), fixtures: sha256(join(REPO, "fixtures/v2/manifest.json")), evaluatorManifest: sha256(join(EVAL, "package.json")) }, run: { id: runId, started: new Date().toISOString() }, platform: { os: process.platform, arch: process.arch, node: process.version, requiredNode, pnpm: execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(), sqlite: process.versions.sqlite }, evidence: {} };
@@ -91,7 +111,10 @@ async function subcommand(report, values, script) {
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
   let detail = null;
-  try { detail = JSON.parse(text); } catch { /* captured in raw */ }
+  const jsonTail = text.lastIndexOf("\n{");
+  for (const candidate of [text, jsonTail === -1 ? text : text.slice(jsonTail + 1)]) {
+    try { detail = JSON.parse(candidate); break; } catch { /* try the next candidate */ }
+  }
   const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
   const reason = detail?.reason ?? (done.status === 0 ? null : `${script} failed (exit ${done.status}); see stderr above`);
   const evidenceDir = join(RUNS, report.run.id);
@@ -117,7 +140,7 @@ function baseline(report, args) {
 async function main() {
   const started = Date.now();
   const [command, ...rest] = process.argv.slice(2);
-  if (command === undefined || command === "--help") { console.log("usage: node scripts/rivet-eval.mjs <bootstrap|baseline|pilot|accounting|parity|native|resilience|bench|report> [options]"); process.exitCode = command === "--help" ? 0 : 2; return; }
+  if (command === undefined || command === "--help") { console.log("usage: node scripts/rivet-eval.mjs <bootstrap|baseline|pilot|parity|native|resilience|bench|report> [options]"); process.exitCode = command === "--help" ? 0 : 2; return; }
   const { values } = parseArgs({ args: rest, options: { json: { type: "boolean" }, runs: { type: "string", default: "5" }, "soak-minutes": { type: "string" }, reloads: { type: "string" }, pairs: { type: "string" }, candidate: { type: "string" }, target: { type: "string" }, quick: { type: "boolean" }, check: { type: "boolean" }, "no-sandbox": { type: "boolean" } } });
   const runId = `${new Date().toISOString().replace(/[:.]/gu, "-")}-${randomUUID().slice(0, 8)}`;
   const report = base(command, runId);
@@ -126,6 +149,7 @@ async function main() {
     else if (command === "baseline") Object.assign(report, baseline(report, values));
     else if (command === "pilot") Object.assign(report, await subcommand(report, values, "pilot"));
     else if (command === "parity") Object.assign(report, await subcommand(report, values, "parity"));
+    else if (command === "native") Object.assign(report, await native(report, values));
     else if (SUITES[command]) { report.result = "blocked"; report.reason = `${command} is planned for campaign slice ${SUITES[command]} and is not implemented yet`; }
     else { report.result = "blocked"; report.reason = `unknown command: ${command}`; process.exitCode = 2; }
   } catch (error) { report.result = "fail"; report.reason = String(error?.message ?? error); }
