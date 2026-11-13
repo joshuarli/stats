@@ -60,7 +60,9 @@ pnpm's default user shell resets `PATH` and runs Node 26.13.0 despite the caller
 selecting 26.13.1. The explicit shell preserves the caller's toolchain and local
 package binaries. A regression runs package scripts with a hostile host shell.
 Remove this setting only after pnpm preserves the selected runtime with that
-shell. The build/test entrypoints and doctor also check `.node-version`.
+shell. `.node-version` names the 26.13 line rather than a single patch;
+`make node-ready` and the build/test entrypoints accept any 26.13.x release.
+The doctor reports the pin from `.node-version`.
 
 ## Platform binaries in lockfiles
 
