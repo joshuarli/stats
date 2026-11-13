@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 125
+Next: 127
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -31,12 +31,21 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** lifecycle-concurrency
 - **Effort:** M
 
+### STA-125 · P3 · Host-page data tables crush and clip on mobile viewports
+
+- **Area:** Frontend
+- **Where:** cloudflare/src/client/pages/HostPage.tsx (Filesystems, Network INTERFACE, Disk DEVICE tables), the table/row layout in those cards, replay goldens lisa-*/m1-max-*/sentry-*/threadripper-*charts-mobile-darwin.webp
+- **Problem:** On mobile viewports the host-page data tables collapse to single-character columns and values clip at the card edge: the Filesystems MOUNT/CAPACITY table shows e.g. "5.9%" cut off, the Network INTERFACE table wraps every character ("e/n/0" stacked vertically) and the Disk DEVICE table does the same; m1-max (short interface names) is cramped but legible, desktop renders fine, and the stuff project pages handle mobile well. Reproduced across lisa, sentry, threadripper and m1-max goldens for 1h, 24h and 7d. Related: the FILESYSTEM "Elevated" chip in tiles and host rows sits flush against or beyond the card edge when the capacity value and chip exceed the tile width (see threadripper-24h-tiles-desktop-darwin.webp).
+- **Recommendation:** Give the host-page tables the mobile treatment the other dashboard tables get: horizontal scroll within the card (overflow-x auto) or container-query layout that drops/truncates secondary columns (TREND, IOPS READ/WRITE secondaries) below the mobile breakpoint instead of wrapping mid-token, and keep the value cells on one line. Verify with the mobile replay goldens (they can only be regenerated on a host whose rendering matches the committed goldens); bump the tiles/rows layout so the Elevated chip never overhangs its card.
+- **Fix with:** refactor-dashboard-ui
+- **Effort:** M
+
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
-- **Where:** `cloudflare/test/ui/replay.spec.ts-snapshots/`
-- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not. Deferred by the owner on 2026-11-05.
-- **Recommendation:** The replay suite has since grown; inventory its current images rather than treating the original 16 as exhaustive. Open the remaining unreviewed goldens and the deployed `#/project/stats` and `#/host/...` pages, and file or fix anything that reads wrong.
+- **Where:** deployed #/project/stats and #/host/... pages (production); the replay goldens were reviewed 2026-11-13 and are no longer part of this item
+- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not. Deferred by the owner on 2026-11-05. On 2026-11-13 every one of the 58 current replay goldens was opened and reviewed; the review found two defects, filed as STA-125 (host-page data tables crush and clip on mobile) and STA-126 (merged chart-event annotations label every merged cluster as deploys). Nothing else reads wrong. The deployed `#/project/stats` and `#/host/...` pages remain unreviewed: opening them needs production Access access this environment does not have.
+- **Recommendation:** Open the deployed `#/project/stats` and `#/host/...` pages with production Access access and file or fix anything that reads wrong. The goldens half of this ticket is done and its findings are filed as STA-125/STA-126; this ticket closes when the deployed pages are reviewed.
 - **Fix with:** none
 - **Effort:** S
 
@@ -134,5 +143,15 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Problem:** The shared CoverageIndex from STA-121 covers buildLedger and buildCostReport, but the UI's per-row windowUsage calls still construct a fresh CoverageIndex per line (worker, each route, R2, objects, and each D1 line), re-enumerating the whole route history per displayed route on every render. On the stuff capture that is a full 406-series by 720-row enumeration per route line per render.
 - **Recommendation:** Thread an optional CoverageIndex into windowUsage and have callers (CostLedger row, ProjectsPage row) reuse one per render window, or precompute per-line windowUsage inputs with a shared index from the report assembly. Keep current and previous histories distinct; preserve the ledger and unknown/partial/known-idle semantics unchanged; verify with the captured stuff test and an operation-count assertion.
 - **Fix with:** make-it-fast
+- **Effort:** S
+
+
+### STA-126 · P4 · Merged chart-event annotations label every merged cluster as deploys
+
+- **Area:** Frontend
+- **Where:** cloudflare/src/client/components/event-layout.ts (textsOf), TimeChart.tsx (drawEvents), host/shared.tsx (rebootEvents emits ChartEvent with no short), DeploymentEvents.ts
+- **Problem:** placeEvents labels a multi-member cluster with the hardcoded texts `N deploys` and the fallback `N`, regardless of what the events are. Host pages emit reboot annotations ("↻ reboot") with no short, so two reboots within mergePx render as "2 deploys" on mobile (sentry-7d-charts-mobile-darwin.webp, every chart) or a bare "2" at the plot edge on desktop (sentry-7d-charts-desktop-darwin.webp) — the annotation reads as a deploy when it is a host reboot. Deploy events on project pages are correctly labeled only because they are deploys.
+- **Recommendation:** Give ChartEvent an optional plural (or make textsOf take the caller's cluster noun), have rebootEvents set plural "reboots" and deployment events set "deploys", and keep the numeric fallback as `N reboots` when neither full label fits. Add a unit test for placeEvents with mixed and single-member clusters. Note any canvas text change invalidates the replay goldens; those can only be regenerated on a host whose rendering matches the committed goldens.
+- **Fix with:** none
 - **Effort:** S
 
