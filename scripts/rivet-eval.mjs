@@ -13,7 +13,7 @@ const RUNS = join(REPO, ".work/rivet-eval");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
 const requiredNode = `v${readFileSync(join(REPO, ".node-version"), "utf8").trim()}`;
-const SUITES = { bench: "R6", report: "R7" };
+const SUITES = { report: "R7" };
 
 async function native(report, values) {
   if (values.candidate !== undefined) return { result: "blocked", reason: "native takes no candidate selector" };
@@ -21,11 +21,7 @@ async function native(report, values) {
   const done = spawnSync(process.execPath, [join(EVAL, "native/probe.mts"), report.run.id], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
-  let detail = null;
-  const jsonTail = text.lastIndexOf("\n{");
-  for (const candidate of [text, jsonTail === -1 ? text : text.slice(jsonTail + 1)]) {
-    try { detail = JSON.parse(candidate); break; } catch { /* try the next candidate */ }
-  }
+  const detail = parseTail(text);
   const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
   const reason = detail?.reason ?? (done.status === 0 ? null : `native probe failed (exit ${done.status}); see stderr above`);
   const evidenceDir = join(RUNS, report.run.id);
@@ -111,11 +107,7 @@ async function subcommand(report, values, script) {
   const done = spawnSync(process.execPath, [join(EVAL, `openorange/${script}.mts`), report.run.id, ...(noSandbox ? ["--no-sandbox"] : []), ...soakArgs], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
-  let detail = null;
-  const jsonTail = text.lastIndexOf("\n{");
-  for (const candidate of [text, jsonTail === -1 ? text : text.slice(jsonTail + 1)]) {
-    try { detail = JSON.parse(candidate); break; } catch { /* try the next candidate */ }
-  }
+  const detail = parseTail(text);
   const result = detail?.result ?? (done.status === 0 ? "pass" : "fail");
   const reason = detail?.reason ?? (done.status === 0 ? null : `${script} failed (exit ${done.status}); see stderr above`);
   const evidenceDir = join(RUNS, report.run.id);
@@ -125,17 +117,27 @@ async function subcommand(report, values, script) {
   return { result, reason, evidence: { path }, [script]: detail ?? { rawStdout: text } };
 }
 
-function baseline(report, args) {
+function parseTail(text) {
+  const tail = text.lastIndexOf("\n{");
+  for (const candidate of [text, tail === -1 ? text : text.slice(tail + 1)]) {
+    try { return JSON.parse(candidate); } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+function measureArm(report, pairs, rawName) {
   if (git("status", "--porcelain", "--untracked-files=no") !== "") return { result: "blocked", reason: "commit tracked changes before benchmarking a reproducible snapshot" };
-  const dir = join(RUNS, report.run.id);
-  mkdirSync(dir, { recursive: true });
-  const raw = join(dir, "bench-candidate.json");
-  const done = spawnSync(process.execPath, [join(REPO, "cloudflare/bench/dev-loop.ts"), "--phase", "candidate", "--runs", String(args.runs), "--out", raw], { encoding: "utf8", env: process.env });
-  process.stderr.write(done.stdout ?? "");
-  process.stderr.write(done.stderr ?? "");
-  if (done.status !== 0) return { result: "fail", reason: `baseline measurement failed (exit ${done.status}); see stderr above` };
-  const bench = JSON.parse(readFileSync(raw, "utf8"));
-  return { result: "pass", reason: null, evidence: { path: join(dir, "baseline.json") }, baseline: bench };
+  const dir = join(RUNS, report.run.id); mkdirSync(dir, { recursive: true }); const raw = join(dir, rawName);
+  const done = spawnSync(process.execPath, [join(REPO, "cloudflare/bench/dev-loop.ts"), "--phase", "candidate", "--runs", String(pairs), "--out", raw], { encoding: "utf8", env: process.env });
+  process.stderr.write(done.stdout ?? ""); process.stderr.write(done.stderr ?? "");
+  if (done.status !== 0) return { result: "fail", reason: `dev-loop baseline arm failed (exit ${done.status}); see stderr above`, evidence: { path: raw } };
+  return { result: "pass", evidence: { path: raw }, bench: JSON.parse(readFileSync(raw, "utf8")) };
+}
+function baseline(report, args) { const arm = measureArm(report, args.runs, "bench-candidate.json"); return arm.result === "pass" ? { result: "pass", reason: null, evidence: arm.evidence, baseline: arm.bench } : arm; }
+function bench(report, values) {
+  const pairs = Number(values.pairs ?? "7"); if (!Number.isInteger(pairs) || pairs < 7) return { result: "blocked", reason: "bench requires --pairs at least 7" };
+  const arm = measureArm(report, pairs, "baseline-arm.json"); if (arm.result !== "pass") return arm;
+  return { result: "blocked", reason: "candidate arm unavailable: cloudflare/bench/dev-loop.ts spawns only the Cloudflare stack (scripts/dev.ts), and no apples-to-apples OpenOrange dev-loop harness exists; the campaign bans building a general benchmark framework (R6). Seven interleaved A/B pairs could not be formed; performance verdict inconclusive. Retry: add a candidate phase to dev-loop.ts driving orange dev (readiness, frontend probe, backend/observe edit, process-tree RSS) and rerun: node scripts/rivet-eval.mjs bench --pairs 7 --json", evidence: arm.evidence, baseline: arm.bench, candidate: { available: false } };
 }
 
 async function main() {
@@ -148,6 +150,7 @@ async function main() {
   try {
     if (command === "bootstrap") Object.assign(report, bootstrap(report, values));
     else if (command === "baseline") Object.assign(report, baseline(report, values));
+    else if (command === "bench") Object.assign(report, bench(report, values));
     else if (command === "pilot") Object.assign(report, await subcommand(report, values, "pilot"));
     else if (command === "parity") Object.assign(report, await subcommand(report, values, "parity"));
     else if (command === "resilience") Object.assign(report, await subcommand(report, values, "resilience"));
