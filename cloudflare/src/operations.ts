@@ -41,10 +41,14 @@ export function isSyntheticHost(name: string): boolean {
   return name === SYNTHETIC_HOST_NAME;
 }
 
-export function rowsWrittenBy(sql: SqlDatabase, query: string, ...params: SqlValue[]): number {
+export function meteredWritesBy(sql: SqlDatabase, query: string, ...params: SqlValue[]): number {
   const before = sql.rowsWritten();
   sql.run(query, ...params);
   return sql.rowsWritten() - before;
+}
+
+export function affectedBy(sql: SqlDatabase, query: string, ...params: SqlValue[]): number {
+  return sql.rows<{ one: number }>(`${query} RETURNING 1`, ...params).length;
 }
 
 export type HostHistoryResolution = "raw" | "1m" | "1h";

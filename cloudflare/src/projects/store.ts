@@ -1,7 +1,7 @@
 import { DAY_MS, HOUR_MS, HOUR_RETENTION_MS } from "../limits.ts";
 import { aggregationOf, type MetricPoint } from "./metrics.ts";
 import { BUCKET_MS } from "./queries.ts";
-import { rowsWrittenBy } from "../operations.ts";
+import { affectedBy, meteredWritesBy } from "../operations.ts";
 import type { SqlDatabase } from "../core/sql.ts";
 
 export const PROJECT_SAMPLE_RETENTION_MS = 7 * DAY_MS;
@@ -94,7 +94,7 @@ export function upsertPoints(sql: SqlDatabase, project: string, points: readonly
     if (stored.get(`${point.metric}\n${point.bucketMs}`) === point.value) {
       continue;
     }
-    rowsWritten += rowsWrittenBy(
+    rowsWritten += meteredWritesBy(
       sql,
       "INSERT INTO project_samples (project, metric, bucket_ms, value) VALUES (?, ?, ?, ?) ON CONFLICT (project, metric, bucket_ms) DO UPDATE SET value = excluded.value",
       project,
@@ -191,7 +191,7 @@ function rebuildHours(
       if (!changedHours.has(key)) continue;
       const current = existing.get(key);
       if (current === row.value) continue;
-      rowsWritten += rowsWrittenBy(
+      rowsWritten += meteredWritesBy(
         sql,
         "INSERT INTO project_hours (project, metric, hour_ms, value) VALUES (?, ?, ?, ?) ON CONFLICT (project, metric, hour_ms) DO UPDATE SET value = excluded.value",
         project,
@@ -205,9 +205,8 @@ function rebuildHours(
   return { rowsWritten, hours };
 }
 
-export function recordRun(sql: SqlDatabase, run: CollectorRun): number {
-  let written = rowsWrittenBy(
-    sql,
+export function recordRun(sql: SqlDatabase, run: CollectorRun): void {
+  sql.run(
     "INSERT INTO collector_runs (at_ms, ok, detail, rows_read, duration_ms) VALUES (?, ?, ?, ?, ?)",
     run.atMs,
     run.ok ? 1 : 0,
@@ -215,19 +214,18 @@ export function recordRun(sql: SqlDatabase, run: CollectorRun): number {
     run.rowsRead,
     run.durationMs,
   );
-  written += rowsWrittenBy(sql, "DELETE FROM collector_runs WHERE id <= (SELECT MAX(id) FROM collector_runs) - ?", COLLECTOR_RUNS_KEPT);
-  return written;
+  sql.run("DELETE FROM collector_runs WHERE id <= (SELECT MAX(id) FROM collector_runs) - ?", COLLECTOR_RUNS_KEPT);
 }
 
 export function purgeExpired(sql: SqlDatabase, nowMs: number): { samples: number; hours: number } {
-  const samples = rowsWrittenBy(
+  const samples = affectedBy(
     sql,
     `DELETE FROM project_samples WHERE (project, metric, bucket_ms) IN (
        SELECT project, metric, bucket_ms FROM project_samples WHERE bucket_ms < ? LIMIT ?)`,
     nowMs - PROJECT_SAMPLE_RETENTION_MS,
     PURGE_BATCH,
   );
-  const hours = rowsWrittenBy(
+  const hours = affectedBy(
     sql,
     `DELETE FROM project_hours WHERE (project, metric, hour_ms) IN (
        SELECT project, metric, hour_ms FROM project_hours WHERE hour_ms < ? LIMIT ?)`,

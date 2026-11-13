@@ -20,7 +20,7 @@ import { UUID, type DeploymentHistory, type DeploymentPoll } from "../../deploym
 import { hasSettledWindow, rememberSettledWindow, initializeDeployments, purgeDeployments, readDeployments, readDeploymentSync, readVersions, saveDeploymentPoll } from "../../deployments/store.ts";
 import { readLimitedBytes, readLimitedText } from "../../body.ts";
 import { reportError } from "../../observe/producer/report.ts";
-import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, rowsWrittenBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
+import { hostHistoryClass, hostHistoryExtent, isSyntheticHost, OperationRun, projectHistoryClass, projectHistoryExtent, affectedBy, type HostHistoryResolution, type OperationSink } from "../../operations.ts";
 import type { Clock, Scheduler } from "../ports.ts";
 import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
@@ -475,9 +475,9 @@ export class InstallationCore {
     try {
       const now = this.now();
       const finalized = sql.transaction(() => this.finalizeHours(sql, null));
-      const raw = rowsWrittenBy(sql, "DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS);
-      const minute = rowsWrittenBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS);
-      const hour = rowsWrittenBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS);
+      const raw = affectedBy(sql, "DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE received_at_ms < ? LIMIT 1000)", now - RAW_RETENTION_MS);
+      const minute = affectedBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1m' AND bucket_ms < ? LIMIT 1000)", now - MINUTE_RETENTION_MS);
+      const hour = affectedBy(sql, "DELETE FROM rollups WHERE rowid IN (SELECT rowid FROM rollups WHERE resolution = '1h' AND bucket_ms < ? LIMIT 1000)", now - HOUR_RETENTION_MS);
       const projectRows = purgeExpired(sql, now);
       const project = Math.max(projectRows.samples, projectRows.hours);
       expired = raw + minute + hour + projectRows.samples + projectRows.hours;
