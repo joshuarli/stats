@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { readBuiltWorker } from "../../../cloudflare/local/topology.ts";
 
 export const ROOT = resolve(import.meta.dirname, "../../..");
@@ -44,7 +45,7 @@ function baseConfig(built, { vars, assets, services, durableObjects, migrations 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.observe, outDir, projects = "[]" } = {}) {
+export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.observe, outDir, projects = "[]", testNowMs = TEST_NOW_MS } = {}) {
   const stats = readBuiltWorker(statsOutput);
   const observe = readBuiltWorker(observeOutput);
   if (stats.name !== "stats" || observe.name !== "stats-observe") throw new Error(`unexpected built names: ${stats.name}, ${observe.name}`);
@@ -53,14 +54,16 @@ export function generate({ statsOutput = BUILDS.stats, observeOutput = BUILDS.ob
     if (!existsSync(bundle)) throw new Error(`missing bundle ${bundle}; run the build first`);
   }
   mkdirSync(outDir, { recursive: true });
+  const revision = execFileSync("git", ["rev-parse", "--short=7", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
   const vars = {
     ENVIRONMENT: "test",
     PROJECTS: projects,
     WORKER_NAME: "stats",
-    TEST_NOW_MS,
+    ...(testNowMs === null ? {} : { TEST_NOW_MS: testNowMs }),
     ACCESS_TEAM_DOMAIN: "test.cloudflareaccess.com",
     ACCESS_AUD: "test-aud",
     ACCESS_JWKS_JSON: TEST_JWKS_JSON,
+    APPLICATION_EVENTS_RELEASE: `stats-eval-${revision}`,
   };
   const assetBindings = [...stats.env.entries()].filter(([, value]) => value.type === "assets");
   if (assetBindings.length !== 1 || stats.assets === null) throw new Error("stats assets binding did not map");

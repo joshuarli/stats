@@ -77,7 +77,7 @@ export interface RetentionWork {
   readonly backlog: number;
 }
 
-export type OperationSummary = { readonly synthetic: boolean; readonly rows: RowAccount } & (
+export type OperationSummary = { readonly synthetic: boolean; readonly rows: RowAccount; readonly durationMs?: number } & (
   | { readonly operation: "host.ingest"; readonly work: IngestWork }
   | { readonly operation: "host.history" | "project.history"; readonly workloadClass: string; readonly work: HistoryWork }
   | { readonly operation: "collector.record"; readonly work: CollectorWork }

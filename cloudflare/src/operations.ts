@@ -19,10 +19,14 @@ export class OperationRun {
   private readonly sink: OperationSink;
   private describer: (() => OperationDescription) | null = null;
   private finished = false;
+  private readonly now: (() => number) | undefined;
+  private readonly startedAt: number | undefined;
 
-  constructor(sql: SqlDatabase, sink: OperationSink) {
+  constructor(sql: SqlDatabase, sink: OperationSink, now?: () => number) {
     this.sql = sql;
     this.sink = sink;
+    this.now = now;
+    this.startedAt = now?.();
   }
 
   describe(describer: () => OperationDescription): void {
@@ -33,7 +37,10 @@ export class OperationRun {
     if (this.finished) throw new Error("operation already published");
     this.finished = true;
     if (this.describer === null) this.sink.invocation();
-    else this.sink.operation({ ...this.describer(), rows: this.sql.total() } as OperationSummary);
+    else {
+      const durationMs = this.now === undefined || this.startedAt === undefined ? undefined : Math.max(0, Math.round(this.now() - this.startedAt));
+      this.sink.operation({ ...this.describer(), rows: this.sql.total(), ...(durationMs === undefined ? {} : { durationMs }) } as OperationSummary);
+    }
   }
 }
 

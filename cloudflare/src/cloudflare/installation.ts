@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { cloudflareOperations } from "./operations.ts";
+import { applicationEventOperations } from "../observe/application/sink.ts";
 import { cloudflareClock, cloudflareScheduler } from "./ports.ts";
 import { cloudflareSqlScopes } from "./sql.ts";
 import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
@@ -18,9 +19,22 @@ export class Installation extends DurableObject<Env> {
     super(ctx, env);
     const clock = cloudflareClock(() => this.env);
     const observe = "OBSERVE" in this.env ? this.env.OBSERVE : undefined;
+    const evaluationRelease = this.env.APPLICATION_EVENTS_RELEASE;
+    const operations = evaluationRelease !== undefined && observe !== undefined
+      ? applicationEventOperations({
+          post: async body => {
+            const response = await observe.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+            return response.ok;
+          },
+          service: "stats",
+          release: evaluationRelease,
+          now: () => Date.now(),
+          waitUntil: promise => { this.ctx.waitUntil(promise); }
+        })
+      : cloudflareOperations;
     this.core = new InstallationCore(
       {
-        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations: cloudflareOperations, probesServices: false,
+        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations, probesServices: false,
         ...(observe === undefined ? {} : {
           readApplicationEvents: async (service: string, fromMs: number, toMs: number) => {
             const url = new URL(`https://observe/${encodeURIComponent(service)}/external`);
