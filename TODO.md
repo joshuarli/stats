@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 122
+Next: 125
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -12,6 +12,24 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
+
+### STA-122 · P3 · A refresh re-decodes the top-level lists and remounts every row
+
+- **Area:** Concurrency
+- **Where:** cloudflare/src/client/Shell.tsx (`createMemo(loadHosts)`), queries.ts (loadHosts/loadProjects/loadServices), api.ts (getJson has no conditional or ETag path for JSON lists), ProjectsPage/ServicesPage/FleetPage rows in <For> keyed by reference
+- **Problem:** The manual and automatic refresh re-fetches the top-level lists and decodes fresh objects on every tick, so <For> remounts every row: expanded panels (trend charts), local row state and rows' retention identity are lost on every five-minute tick. The replay harness proves the expand-state loss in the projects overview after a manual Refresh.
+- **Recommendation:** Give the /api/v1 projects/hosts/services lists static validators so an unchanged list resolves to the same decoded value (reuse the conditional machinery histories already use), or reconcile the decoded array by identity before handing it to <For>. Verify with the UI harness: manual and automatic refresh must not remount rows or collapse an expanded project row.
+- **Fix with:** architect
+- **Effort:** M
+
+### STA-123 · P3 · A failed quiet re-ask of a top-level list replaces the whole view
+
+- **Area:** Concurrency
+- **Where:** cloudflare/src/client/Shell.tsx (hosts memo), projects and services list memos with the same pattern, and the fleet rows memo tracking the hosts signal
+- **Problem:** A failed quiet re-ask of a top-level list (for example GET /api/v1/hosts or /api/v1/projects answering 503) rejects the list memo and every reader rethrows into the nearest Errored boundary, replacing the entire page with the error state and discarding last good data. Verified on 2026-11-13 with the UI harness: a manual Refresh with the host list failing flips the fleet view to the full-page error state, and effectively the projects table behaves the same. The rows memo re-tracks hosts and rethrows with it.
+- **Recommendation:** Create the list memos with the same loadQuery retention shape the fleet rows use (return the previous value plus an onError warning) so a quiet re-ask failure keeps the last good data and surfaces a non-fatal refresh warning instead of replacing the view. Verify both completion orders and retain the last good same-key data; keep the fleet page's independent host and row error states intact.
+- **Fix with:** lifecycle-concurrency
+- **Effort:** M
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
@@ -40,6 +58,7 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** architect
 - **Effort:** M
 
+
 ### STA-78 · P4 · The stuff site probe reported down once in its first runs
 
 - **Area:** Data
@@ -58,15 +77,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** root-cause
 - **Effort:** S
 
-### STA-80 · P4 · The projects page on the Node target points at a Cloudflare config file
-
-- **Area:** Docs
-- **Where:** `cloudflare/src/client/pages/ProjectsPage.tsx:98–106`
-- **Problem:** The Node server has no project collector, so its project registry is always empty and the page shows "Projects are declared in cloudflare/cloudflare.config.ts." That tells a Node user to edit a file that has no effect on their instance.
-- **Recommendation:** Show an empty-state detail that says the target has no project collector when the server reports an empty registry on the Node target, and keep the current text for Cloudflare.
-- **Fix with:** none
-- **Effort:** S
-
 ### STA-82 · P4 · Service cgroup I/O may count one I/O twice on stacked devices
 
 - **Area:** Data
@@ -76,6 +86,7 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** none
 - **Effort:** M
 
+
 ### STA-83 · P4 · The offline local stack has no Linux network sandbox
 
 - **Area:** Tests
@@ -84,6 +95,7 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** On a Linux host, run the same commands under `unshare -rn` with a loopback interface brought up, confirm Chromium launches under it, add that branch to `scripts/offline-run.sh`, and drop the Darwin-only condition from `OFFLINE_SANDBOX_CHECK` if it passes.
 - **Fix with:** none
 - **Effort:** M
+
 
 ### STA-85 · P4 · The verify loop is not scheduled to run unattended
 
@@ -113,4 +125,14 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** Revisit the snapshot write path if snapshots become more frequent or the object count grows by an order of magnitude. Check the D1 storage chart on the project page for growth against the cap.
 - **Fix with:** none
 - **Effort:** M
+
+
+### STA-124 · P4 · windowUsage rebuilds the coverage index per route row in the UI
+
+- **Area:** Performance
+- **Where:** cloudflare/src/cost/ledger.ts (windowUsage and fieldFactor), client/pages/project/CostLedger.tsx:306, client/pages/ProjectsPage.tsx:264
+- **Problem:** The shared CoverageIndex from STA-121 covers buildLedger and buildCostReport, but the UI's per-row windowUsage calls still construct a fresh CoverageIndex per line (worker, each route, R2, objects, and each D1 line), re-enumerating the whole route history per displayed route on every render. On the stuff capture that is a full 406-series by 720-row enumeration per route line per render.
+- **Recommendation:** Thread an optional CoverageIndex into windowUsage and have callers (CostLedger row, ProjectsPage row) reuse one per render window, or precompute per-line windowUsage inputs with a shared index from the report assembly. Keep current and previous histories distinct; preserve the ledger and unknown/partial/known-idle semantics unchanged; verify with the captured stuff test and an operation-count assertion.
+- **Fix with:** make-it-fast
+- **Effort:** S
 
