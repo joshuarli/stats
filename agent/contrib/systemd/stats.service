@@ -5,11 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=+-/bin/sh -c 'mount -o remount,gid=$(id -g stats),mode=750 -t tracefs tracefs /sys/kernel/tracing'
 ExecStart=/usr/local/bin/stats --config /etc/stats/agent.json
 Restart=always
 RestartSec=5s
 User=stats
 Group=stats
+AmbientCapabilities=CAP_BPF CAP_PERFMON
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

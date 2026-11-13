@@ -2,15 +2,22 @@
 
 name="stats"
 description="Static-musl host telemetry agent"
-command="/usr/local/bin/stats"
-command_args="--config /etc/stats/agent.json"
-command_user="stats:stats"
+command="/bin/setpriv"
+command_args="--bounding-set=-all,+bpf,+perfmon --inh-caps=+bpf,+perfmon --ambient-caps=+bpf,+perfmon --reuid=stats --regid=stats --clear-groups /usr/local/bin/stats --config /etc/stats/agent.json"
 command_background="yes"
 pidfile="/run/${RC_SVCNAME}.pid"
 output_log="/var/log/stats.log"
 error_log="/var/log/stats.log"
 
+# The block-latency probe reads tracepoint ids below tracefs; keep it readable
+# by the stats group only. Best effort: the agent omits the block group otherwise.
+start_pre() {
+	mount -o remount,gid="$(id -g stats)",mode=750 -t tracefs tracefs /sys/kernel/tracing ||
+		ewarn "stats: tracefs remount failed; block latency will be unavailable"
+	return 0
+}
+
 depend() {
-  need net
-  after firewall
+	need net
+	after firewall
 }

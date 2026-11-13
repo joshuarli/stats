@@ -16,6 +16,8 @@ unwind=$CARGO_HOME/unwind
 export LD_LIBRARY_PATH=$unwind
 export LIBRARY_PATH=$unwind
 
+/repo/agent/scripts/build-probe.sh "$TOOLCHAIN/bin/clang" >/dev/null
+
 export "CC_$suffix=$clang"
 export "AR_$suffix=$TOOLCHAIN/bin/llvm-ar"
 export "CFLAGS_$suffix=--target=$arch-linux-musl --sysroot=/"
@@ -27,8 +29,7 @@ export "CARGO_TARGET_${upper}_LINKER=$linker"
 export "CARGO_TARGET_${upper}_RUSTFLAGS=-Clink-self-contained=no -Clink-arg=--target=$arch-linux-musl -Clink-arg=--sysroot=/"
 
 cd /repo/agent
-cargo build --release --locked --target "$target"
-
+cargo build --release --locked --target "$target" --features block-latency
 destination="$dist/stats-$version-$target"
 cp "$CARGO_TARGET_DIR/$target/release/stats" "$destination"
 "$readobj" --elf-output-style=GNU --program-headers --dynamic-table "$destination" > "$destination.elf.txt"

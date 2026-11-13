@@ -140,13 +140,14 @@ dozens of. Set either to `true` to report them again; each list is still
 capped at 16.
 
 A Linux build can attach a `block` latency histogram by opting in with the
-`block-latency` Cargo feature (embedded probe, no collector file). The probe
-is not part of the release build. Build it with `agent/scripts/build-probe.sh`
+`block-latency` Cargo feature (embedded probe, no collector file). The release
+build enables it. Build it with `agent/scripts/build-probe.sh`
 (needs a clang with the BPF backend; point `LLVM_CLANG` or the first argument
 at it), then build the agent with
 `STATS_BLOCK_PROBE=/path/to/block_latency.bpf.o cargo build --features block-latency`.
 Loading needs tracefs mounted and `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`
-on older kernels); the agent keeps no other privileges. If the probe fails to
+on older kernels); the shipped systemd and OpenRC units grant exactly those two
+capabilities and remount tracefs for the `stats` group. If the probe fails to
 load, or a read fails, `block` is absent from the sample. The probe assumes the
 standard `block_rq_issue`/`block_rq_complete` tracepoint layout (dev_t at
 offset 8, sector_t at offset 16) and does not parse the format files. macOS

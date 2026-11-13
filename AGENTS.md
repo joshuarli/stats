@@ -37,7 +37,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 - Every non-ingest, non-health asset/data route passes the target's auth adapter before data access: Access JWT verification on Cloudflare, Tailscale identity over trusted local transport on Node. See [architecture](docs/architecture.md).
 - Analytics reads use only `cloudflare/src/projects/queries.ts`; request data never reaches SQL. `statsctl` read commands do not mutate; command definitions declare mutation access and supported targets.
 - Dashboard goldens are WebP. `make dashboard-test` rejects tracked PNGs.
-- The baseline agent never loads BPF and needs no root, service manager or language runtime. The opt-in `block-latency` Cargo feature (Linux-only) embeds a prebuilt eBPF probe and needs mounted tracefs plus `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`); any load failure omits the `block` group. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
+- The default feature set never loads BPF and needs no root, service manager or language runtime. The release build enables the opt-in `block-latency` feature (Linux-only): an embedded eBPF probe that needs mounted tracefs plus `CAP_BPF`/`CAP_PERFMON`, granted by the shipped units and nothing else. Any load failure omits the `block` group. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
 
 ## Docs
 
