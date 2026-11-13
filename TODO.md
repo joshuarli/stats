@@ -5,14 +5,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
-### STA-113 · P3 · A retained project ledger makes the successful fallback history request redundant
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/client/pages/ProjectsPage.tsx:229–254`, `cloudflare/src/client/pages/project/ledger-load.ts:48–76`
-- **Problem:** After a same-window ledger refresh fails, retained ledger histories still win `ledgerHistories() ?? fallbackHistories()`, but the error starts the fallback history request. Its successful response is ignored. Scope and exact-window guards already prevent reuse across another project or window; the remaining issue is redundant work and an unused fallback, carried forward from the frontend review.
-- **Recommendation:** Skip the fallback while usable ledger history is retained, or deliberately render its successful result. Preserve the existing subject/window guards and visible refresh warning.
-- **Fix with:** make-it-fast
-- **Effort:** S
 
 ### STA-114 · P3 · A successful fleet-row refresh can clear the host-list failure warning
 

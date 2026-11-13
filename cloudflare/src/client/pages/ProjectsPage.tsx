@@ -230,7 +230,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
 
   createEffect(
     () => ({
-      active: open() && props.visible && ledgerError() !== null,
+      active: open() && props.visible && ledgerError() !== null && ledgerHistories() === null,
       id: props.project.id,
       range: range(),
       tick: refreshKey()
