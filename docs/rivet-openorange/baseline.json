@@ -1,0 +1,525 @@
+{
+  "schema": "rivet-eval/1",
+  "command": "baseline",
+  "result": "pass",
+  "reason": null,
+  "revision": "a6979b62306e21c1e23bbd6bee6ad4b3ea61c1b4",
+  "dirty": false,
+  "hashes": {
+    "lockfile": "055ebf0db52be67b7b9b72045a467d36defb1d96ddabcdf00d9bf5961210397f",
+    "fixtures": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "evaluatorManifest": "a941087950ed787380142adfc60b4a1197f1174d0c64240333cf329782b43a18"
+  },
+  "run": {
+    "id": "2026-11-13T00-43-01-850Z-ce28b354",
+    "started": "2026-11-13T00:43:01.879Z",
+    "finished": "2026-11-13T00:43:55.970Z",
+    "durationMs": 54120
+  },
+  "platform": {
+    "os": "darwin",
+    "arch": "arm64",
+    "node": "v26.13.1",
+    "requiredNode": "v26.13.1",
+    "pnpm": "12.18.0",
+    "sqlite": "3.54.1"
+  },
+  "evidence": {
+    "path": "/Users/josh/repos/stats/.work/rivet-eval/2026-11-13T00-43-01-850Z-ce28b354/baseline.json"
+  },
+  "baseline": {
+    "phase": "candidate",
+    "revision": "a6979b62306e21c1e23bbd6bee6ad4b3ea61c1b4",
+    "dirty": false,
+    "lockfileSha256": "055ebf0db52be67b7b9b72045a467d36defb1d96ddabcdf00d9bf5961210397f",
+    "fixturesSha256": "bd3a106ebfee82d0443a0e736b090dd763915bff4781281a9509d92db84665d5",
+    "node": "v26.13.1",
+    "requiredNode": "v26.13.1",
+    "pnpm": "12.18.0",
+    "os": "darwin 27.0.0 arm64",
+    "cpu": "Apple M5 Max",
+    "cores": 18,
+    "runtimes": [
+      {
+        "consumer": "miniflare",
+        "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+        "version": "5.20261110.2-beta",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.2-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vite-plugin",
+        "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/@cloudflare+vite-plugin@2.0.0-beta.v.16_@types+node@26.6.6_vite@8.3.8_@types+node@26.6._200f68cc54b781b7723dc03b0e3b4b08/node_modules/@cloudflare/vite-plugin",
+        "version": "2.0.0-beta.v.16",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.2-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "@cloudflare/vitest-plugin",
+        "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/@cloudflare+vitest-plugin@1.8.1_@cloudflare+workers-types@5.20261110.1_@types+node@26.6_4527b19aed0ef46e9b1d232c7b0e3fb1/node_modules/@cloudflare/vitest-plugin",
+        "version": "1.8.1",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.2-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      },
+      {
+        "consumer": "cf",
+        "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/cf@1.0.0-beta.31_@types+node@26.6.6/node_modules/cf",
+        "version": "1.0.0-beta.31",
+        "miniflare": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/miniflare@5.20261110.2-beta_@types+node@26.6.6/node_modules/miniflare",
+          "version": "5.20261110.2-beta"
+        },
+        "workerd": {
+          "path": "/Users/josh/repos/stats/.work/tmp/bench-dev-checkout-Beyliw/node_modules/.pnpm/workerd@1.20261110.1/node_modules/workerd",
+          "version": "1.20261110.1"
+        }
+      }
+    ],
+    "supportedCompatibility": {
+      "date": "2026-11-10",
+      "source": "workerd"
+    },
+    "compatibility": [
+      {
+        "file": "cloudflare.config.ts",
+        "date": "2026-10-30"
+      },
+      {
+        "file": "observe-worker/cloudflare.config.ts",
+        "date": "2026-10-30"
+      }
+    ],
+    "harnessSha256": "ce483cd5276774ac5e32755c5faab0cdcd087b6c831cfe59b90f402240fc6ae0",
+    "driverRevision": "a6979b62306e21c1e23bbd6bee6ad4b3ea61c1b4",
+    "readinessScope": "server readiness, authenticated seeded API, and visible Fleet hosts table",
+    "buildEnvironment": {
+      "STATS_DOMAIN": "stats.17166969.xyz"
+    },
+    "fixtureGeneration": "committed fixtures; generation excluded; cold readiness includes seeding a new state directory",
+    "memory": [
+      {
+        "processes": 3,
+        "rssKiB": 722592
+      },
+      {
+        "processes": 3,
+        "rssKiB": 719216
+      },
+      {
+        "processes": 3,
+        "rssKiB": 716976
+      },
+      {
+        "processes": 3,
+        "rssKiB": 718224
+      },
+      {
+        "processes": 3,
+        "rssKiB": 726000
+      }
+    ],
+    "memoryScope": "warm development process and descendants; browser and measurement driver excluded",
+    "frontendMode": "HMR",
+    "failures": 0,
+    "scenarios": [
+      {
+        "scenario": "cold-ready",
+        "runs": 5,
+        "medianMs": 1937.0275419999998,
+        "minMs": 1794.299082999998,
+        "maxMs": 3596.9021249999996,
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "warm-ready",
+        "runs": 5,
+        "medianMs": 926.5019169999996,
+        "minMs": 918.6138750000027,
+        "maxMs": 986.4283749999995,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "frontend-edit",
+        "runs": 5,
+        "medianMs": 56.879957999997714,
+        "minMs": 28.60637499999939,
+        "maxMs": 134.7400420000049,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "worker-edit",
+        "runs": 5,
+        "medianMs": 1311.7909579999978,
+        "minMs": 1237.866750000001,
+        "maxMs": 1457.1399999999994,
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "observation-edit",
+        "runs": 5,
+        "medianMs": 1071.6782499999972,
+        "minMs": 1053.5299579999992,
+        "maxMs": 1234.325082999996,
+        "compilations": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "runs": 5,
+        "medianMs": 276.43179200000304,
+        "minMs": 255.01541700000234,
+        "maxMs": 281.25329199999396,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "runs": 5,
+        "medianMs": 2643.8570419999996,
+        "minMs": 2580.990915999999,
+        "maxMs": 3101.4535410000026,
+        "compilations": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "tests": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "scenario": "unchanged-build",
+        "runs": 5,
+        "medianMs": 120.46616699999868,
+        "minMs": 107.45766699999513,
+        "maxMs": 124.5434580000001,
+        "compilations": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "tests": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ],
+    "results": [
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 3596.9021249999996,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 926.5019169999996,
+        "compilations": 0
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 28.60637499999939,
+        "compilations": 0
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1334.257125,
+        "compilations": 1
+      },
+      {
+        "scenario": "observation-edit",
+        "elapsedMs": 1151.494125000001,
+        "compilations": 1
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 277.41749999999956,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2668.758040999999,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 120.95220900000095,
+        "compilations": 0
+      },
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1950.2709169999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 921.0564169999998,
+        "compilations": 0
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 29.220334000001458,
+        "compilations": 0
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1311.7909579999978,
+        "compilations": 1
+      },
+      {
+        "scenario": "observation-edit",
+        "elapsedMs": 1071.6782499999972,
+        "compilations": 1
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 276.43179200000304,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2643.8570419999996,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 118.8807080000006,
+        "compilations": 0
+      },
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1937.0275419999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 986.4283749999995,
+        "compilations": 0
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 58.01024999999936,
+        "compilations": 0
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1247.1637919999994,
+        "compilations": 1
+      },
+      {
+        "scenario": "observation-edit",
+        "elapsedMs": 1057.382708000001,
+        "compilations": 1
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 276.0881670000017,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2580.990915999999,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 120.46616699999868,
+        "compilations": 0
+      },
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1825.3663749999978,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 918.6138750000027,
+        "compilations": 0
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 134.7400420000049,
+        "compilations": 0
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1237.866750000001,
+        "compilations": 1
+      },
+      {
+        "scenario": "observation-edit",
+        "elapsedMs": 1053.5299579999992,
+        "compilations": 1
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 281.25329199999396,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 2594.7833329999994,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 124.5434580000001,
+        "compilations": 0
+      },
+      {
+        "scenario": "cold-ready",
+        "elapsedMs": 1794.299082999998,
+        "compilations": 2
+      },
+      {
+        "scenario": "warm-ready",
+        "elapsedMs": 927.4890420000011,
+        "compilations": 0
+      },
+      {
+        "scenario": "frontend-edit",
+        "elapsedMs": 56.879957999997714,
+        "compilations": 0
+      },
+      {
+        "scenario": "worker-edit",
+        "elapsedMs": 1457.1399999999994,
+        "compilations": 1
+      },
+      {
+        "scenario": "observation-edit",
+        "elapsedMs": 1234.325082999996,
+        "compilations": 1
+      },
+      {
+        "scenario": "test/ingest/conformance.test.ts",
+        "elapsedMs": 255.01541700000234,
+        "compilations": 0,
+        "tests": 3
+      },
+      {
+        "scenario": "test/node/parity.test.ts",
+        "elapsedMs": 3101.4535410000026,
+        "compilations": 2,
+        "tests": 1
+      },
+      {
+        "scenario": "unchanged-build",
+        "elapsedMs": 107.45766699999513,
+        "compilations": 0
+      }
+    ]
+  }
+}
