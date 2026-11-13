@@ -7,12 +7,13 @@
   A justified rejection is a successful evaluation; adoption is not predetermined.
 - **State:** complete, 2026-11-13. R0–R7 executed; evaluation closed with a
   **rejection** (self-host path `reject`; local default `keep-current`).
-- **M2 gate:** not green as a single-shot run on this host; five attempts
-  failed on four razor-margin timing assertions under co-tenant load (code
-  untouched by this campaign; every leg passes on this tree — attempt five
-  green through dashboard-test including lint; integration-local green in
-  isolation). A sixth attempt is in flight; see the evaluation report for
-  the honest accounting. Not `M2 accepted`.
+- **M2 gate:** not green as a single-shot run on this host; six attempts,
+  failing on four razor-margin timing assertions in code untouched by this
+  campaign under co-tenant load (other users; load ≈ 8–9). Attempt five was
+  green through dashboard-test including lint; attempts four and six failed
+  identically on the tablet-width replay layout budget (CLS 0.01034 vs 0.01);
+  integration-local passes in isolation. Not `M2 accepted` — a green
+  single-shot run on a quieter host is required.
 - **Outcome:** the candidate matched the baseline on portable behavior (1444/1444
   parity assertions; byte-identical history across restart; kill/restore/soak
   green) and lost the required self-host behavior D5 (no supported consistent

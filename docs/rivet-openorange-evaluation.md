@@ -434,22 +434,28 @@ timing, observe edit, focused test, process-tree RSS), then run
 ## R7 — verdict, cleanup and close
 
 Commands: `node scripts/rivet-eval.mjs report --check --json`; M2 `make check`.
-At the time of writing, the monolithic single-shot gate has not exited 0 on
-this host. Five full attempts on 2026-11-13 failed on four razor-margin
-timing assertions in code untouched by this campaign, under co-tenant load
-(other users; load ≈ 8–9): `test/cli/help.test.ts` (statsctl --help median
-349 ms vs the 300 ms budget; 124 ms isolated), `test/agent-e2e/agent.test.ts`
-(agent SIGTERM under load died by signal, `null !== 0`; passes in isolation),
-the tablet-width replay layout budget (CLS 0.0103 vs 0.01; passes in
-isolation), and the local bench `observationRowsPerInvocation` (3.2 vs 3.75 —
-the exact mismatch recorded in dev-loop-results.md under load; integration-
-local passes in isolation). Attempt five was green through dashboard-test and
-included the node suite (892 tests) and lint; integration-local passes in
-isolation. No product or candidate file changed; all four assertions are
-timing-tolerance-dependent. The monolithic gate verdict on this host is
-recorded as attempted-not-green; a quieter host or a green single-shot run is
-required before this can be called `M2 accepted`. The report check validates
-finished record — it fails closed naming missing artifacts and cannot certify
+Six full attempts on 2026-11-13 have not produced exit 0 on this host. Four
+razor-margin timing assertions failed in individual attempts, in code
+untouched by this campaign, under co-tenant load (other users; load ≈ 8–9):
+`test/cli/help.test.ts` (statsctl --help median 349 ms vs the 300 ms budget
+in attempt two; passes in isolation at 124 ms), `test/agent-e2e/agent.test.ts`
+(the agent died by signal at SIGTERM under load in attempt three; passes in
+isolation), the tablet-width replay layout budget (CLS 0.01034 vs 0.01 —
+**failed identically in attempts four and six with byte-identical shift
+records**: `div.ledger-table y 544→565 h 480→459`; passes in isolation), and
+the local bench `observationRowsPerInvocation` (3.2 vs 3.75 — the exact
+mismatch recorded in dev-loop-results.md under load; `integration-local`
+passes in isolation). Attempt five was green through dashboard-test and
+included lint and the 892-case node suite. No product or candidate file
+changed; all four assertions are timing-tolerance-dependent, and the two
+identical tablet failures are a deterministic 0.34% over-budget shift when
+the webfont loses the load race — fixing it means changing the dashboard's
+inline-font strategy (product work, out of scope here) or loosening a
+deliberate 0.01 layout budget (not done). Re-running the gate was stopped
+after the second identical failure; the record is attempted-not-green on
+this host. A green single-shot `make check` on a quieter host is required
+before `M2 accepted` can be claimed. The report check validates finished
+record — it fails closed naming missing artifacts and cannot certify
 a failing candidate command; at record completion it returns `pass`.
 
 Two independent verdicts:
