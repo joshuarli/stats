@@ -19,14 +19,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Effort:** M
 - **Design:** docs/rfc/STA-118-deployment-summaries.md
 
-### STA-119 · P3 · Rollout impact copies growing timing distributions for every distinct value
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/observe/core/store.ts:1112–1135` (`routeComparisons`), `cloudflare/src/observe/core/store.ts:1188` (`rolloutImpact`)
-- **Problem:** The CPU and wall grouped queries rebuild each per-version timing array with `[...previous, pair]` for every distinct value. For n groups this copies n(n-1)/2 previous pairs per distribution. The real rolloutImpact path over synthetic grouped rows grows from 11,577 array-iterator steps at 100 timing values to 1,015,707 at 1,000, including helper iterations. The top-20 route limit applies after construction; retained invocations allow much larger inputs. This proves repeated copying, not a production latency estimate.
-- **Recommendation:** Append to arrays privately owned by each version/distribution rather than rebuilding them. Preserve SQL value order, weighted exact percentiles, stage/route grouping and the final top-20 ordering. Compare identical impact results and linear construction work across increasing distinct timing counts.
-- **Fix with:** make-it-fast
-- **Effort:** S
 
 ### STA-120 · P3 · External-event cleanup scans retained history to find expiry and backlog
 
