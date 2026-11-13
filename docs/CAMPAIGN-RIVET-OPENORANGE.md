@@ -5,20 +5,21 @@
 - **Goal:** decide, with reproducible Stats evidence, whether Rivet 3/OpenOrange
   earns a simpler or faster local loop and a useful non-Cloudflare hosting path.
   A justified rejection is a successful evaluation; adoption is not predetermined.
-- **State:** planning only; ready to start the bounded evaluation at R0, **not**
-  validated for migration. No candidate has been installed, run, or benchmarked
-  while preparing this document. The two runtime foundations below are unproven.
-- **Planning source:** Stats `fe9d547fd7fe35cc23146792c6a8ffbba1454548`, inspected
-  November 12, 2026. Refresh source before executing; preserve intervening work.
-- **Baseline:** the owner says to assume [stats-dev-loop-handoff.md](../stats-dev-loop-handoff.md)
-  is completed. Its improved `make dev`, suite ownership, build freshness,
-  lifecycle, isolation, and measurements are prerequisites to reuse, not work
-  to repeat. The old pre-handoff launcher is not the comparison baseline.
+- **State:** ready for the bounded evaluation at R0. Candidate execution and
+  migration suitability remain unproven. Candidate installation and execution
+  are pending R0/R1.
+- **Last accepted baseline:** Stats `3c5bab6`, with the development-loop full gate
+  passing at `95fdf98`. Later commits contain evidence and remove the completed
+  handoff. Refresh source before executing and preserve intervening work.
+- **Baseline:** reuse [development](development.md), the
+  [verification report](dev-loop-results.md) and its raw evidence. `make dev`,
+  suite ownership, build freshness, lifecycle and isolation are implemented.
+  Compare with this path, rather than the old pre-handoff launcher.
 - **Accepted slices:** none. **Observed runtime failures:** none measured here.
   **Parked:** none. **Next:** R0, then the real Stats pilot R1.
-- **Resume:** `Execute docs/CAMPAIGN-RIVET-OPENORANGE.md from R0. Treat the dev-loop handoff as completed, preserve make dev, and evaluate rather than migrate.`
+- **Resume:** `Execute docs/CAMPAIGN-RIVET-OPENORANGE.md from R0. Preserve make dev and evaluate rather than migrate. Do not push or deploy.`
 - **First command:** `git status --short && git rev-parse HEAD`; then read
-  [AGENTS.md](../AGENTS.md), the completed handoff's implementation/report, and
+  [AGENTS.md](../AGENTS.md), the development guide and verification report, and
   the baseline/source map below. Do not run a candidate against existing state.
 
 ## Charter
@@ -41,15 +42,19 @@ Functional parity comes before optimization. Each slice ends with its focused
 acceptance command on the integrated tree; run the existing full gate at M1,
 M2, and close. Reuse unchanged evidence with matching inputs. Do not shrink the
 suite, turn failures into skips, or regenerate UI goldens to conceal differences.
-Invoke the parent steering checkpoint after each accepted slice and after two
-failed attempts. A reproduced candidate incompatibility may be committed as
-an isolated negative evaluation result, never described as passing parity.
+Invoke the `orchestrate` skill's parent steering checkpoint after each accepted
+slice and after two failed attempts. A reproduced candidate incompatibility may
+be committed as an isolated negative evaluation result, never described as passing parity.
 
 Each compatibility blocker gets a minimal reproducer and at most **two**
 root-cause-backed repair attempts. Then record its upstream version, cause,
 retry condition, and affected verdict; stop investing in that path. A second
 package combination is allowed only to test a specific identified upstream fix.
 No unbounded upstream chase, general platform rewrite, or recurring audit loop.
+An acknowledged write loss, repeated request timeout over 30 seconds, process
+tree RSS above 4 GiB on the small fixture, or unexplained growth beyond R6's
+settled-window bounds is egregious. Give its cause one owner. Apply the same
+two-attempt repair bound, then reject or park that path with evidence.
 
 ## Decisions
 
@@ -119,6 +124,19 @@ No unbounded upstream chase, general platform rewrite, or recurring audit loop.
   If the current public schema cannot express a capability honestly, omit only
   where its contract permits, or mark that feature blocked. Do not overload a
   numeric field or change a numbered integration-contract section in this campaign.
+- **D11 — Synthetic state only.** Candidate state starts empty under
+  `.work/rivet-eval/<run>/state`. Reset only an explicitly owned, stopped run.
+  Reject symlinks and paths outside that run. Never open the baseline's
+  `.work/local/state` from a candidate, copy a live SQLite file, or claim state
+  format compatibility. Restore uses supported consistent exports of synthetic
+  data. Keep the working baseline and every unrelated worktree.
+- **D12 — Closed evaluation outcomes.** Results distinguish passing behavior,
+  demonstrated incompatibility, missing environment and cancellation. A failed
+  required behavior rejects the affected recommendation after the repair bound.
+  An unavailable host limits the verdict without becoming passing evidence.
+  Cancellation unwinds owned resources and retains diagnostics for resumption.
+  Positive evidence never comes from a timeout, empty selection or both sides
+  returning the same error.
 
 ### Delegated choices and tie-breaks
 
@@ -130,6 +148,28 @@ policy; never force a stable SDK underneath it. Prefer a supported published
 bundle over a custom source build. Keep Stats' Node/pnpm pins unless a concrete
 incompatibility is proven; isolate an experimental toolchain rather than
 upgrading the application to rescue a candidate.
+
+Start with published `open-orange@1.0.1`, whose registry metadata selects
+`rivetkit@3.1.2-rc.1`, `@rivetkit/engine-cli@3.1.2-rc.1` and optional
+`@rivet-dev/services@^0.2.5`. The Services version is independent of the SDK
+version. Resolve that range once under existing release-age policy, lock the
+complete isolated closure, and record the actual executable versions/hashes.
+This metadata check proves publication, not installability or runtime behavior.
+The Engine CLI lists macOS x64/ARM64 and Linux x64/ARM64 musl packages.
+Services 0.2.5 lists macOS x64/ARM64 and Linux x64/ARM64 GNU packages.
+An Engine target therefore does not establish the Services ABI or complete
+candidate target support. Do not add a libc shim or binary-build workstream
+to rescue an unsupported target. Record the exact target limitation.
+Use a different bundle only for a demonstrated blocker and the one permitted
+fix-specific comparison. Honor existing build-script policy without adding a
+global exception. A required binary that cannot be bootstrapped under policy
+is a precise blocker, not permission to enable arbitrary install scripts.
+Bootstrap uses `pnpm --dir experiments/rivet --ignore-workspace install`, with
+an evaluator-local manifest, policy and lockfile. Carry over the effective
+release-age floor and build allowlist before resolving. Do not copy unrelated
+package exceptions or weaken the inherited floor. Verify the application
+manifests and lockfile hashes are unchanged. Subsequent runs use the isolated
+frozen lock and make no network requests. A toolchain mismatch is a clear error.
 
 Choose the smallest supported configuration translation and lifecycle adapter.
 When several methods pass, prefer less maintained code, fewer processes, and
@@ -143,16 +183,50 @@ The planning checkout contains a portable Node/Cloudflare core and a documented
 external application-event ingestion path. Its SQL interface exposes synchronous
 operations and numeric meters. This makes a bounded compatibility experiment
 plausible; it does not prove a native Rivet adapter or OpenOrange can execute it.
-The source map at the end identifies the files to reconcile after the handoff.
+The source map identifies the current implementation paths.
 
-**No local runtime timings, memory figures, candidate correctness results, or
-current full-gate status were measured during planning.** The planning container
-had Node 22.16.0 rather than the project's pinned toolchain, and could not resolve
-GitHub for a checkout/bootstrap. Repository contents were inspected through the
-GitHub connector. Do not infer a Stats failure from that environment limitation.
-R0 imports the completed handoff's evidence when attributable and captures the
-missing post-handoff baseline on a suitable executor. Do not redo its audit,
-update its dependency family again, or compare against its old broken test lists.
+The existing [full gate and measurements](dev-loop-results.md) supply the
+post-handoff reference. Five alternating clean trials measured 903 ms median
+warm readiness, 134 ms frontend edits, 1261 ms Worker edits and 114 ms unchanged
+builds. The measured Cloudflare revision is `c63f2ce`; later fixes and their
+attribution limits are recorded there. Do not treat those numbers as a fresh
+R0 run or infer a candidate result from them. Reuse unchanged correctness
+evidence, and rerun comparable A/B timings at R6. Do not repeat the old audit
+or upgrade the dependency family as an entry fee.
+
+The existing ingest conformance plus Worker/Node parity selection has executable
+evidence on Node 26.13.1 at `3c5bab6`. The selection passes four cases, including
+real persisted history. One invocation takes 3.00 seconds including one necessary
+stats build. The exact command is
+`node cloudflare/scripts/run-tests.mjs --file test/ingest/conformance.test.ts --file test/node/parity.test.ts`.
+This is a loop check, not a performance comparison.
+
+A real `nodeSqlScopes` probe with an `AFTER DELETE` trigger deletes one logical
+record while `rowsWrittenBy` returns two, because Node counts the trigger write.
+The same probe confirms rollback leaves no inserted row. It runs in 0.05 seconds.
+`SqlDatabase` is synchronous and mandatory numeric meters currently drive
+retention/cache decisions. R2 must separate those meanings before a candidate
+can claim equivalent behavior. This is a demonstrated semantic distinction,
+not evidence of production data loss or a new public-contract requirement.
+Reproduce the pre-repair distinction from the repository root:
+
+```sh
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { nodeSqlScopes } from './cloudflare/src/node/sql.ts';
+import { rowsWrittenBy } from './cloudflare/src/operations.ts';
+const db = new DatabaseSync(':memory:');
+try {
+  db.exec('CREATE TABLE records (id INTEGER); CREATE TABLE audit (id INTEGER); CREATE TRIGGER deleted AFTER DELETE ON records BEGIN INSERT INTO audit VALUES (old.id); END; INSERT INTO records VALUES (1)');
+  assert.equal(rowsWrittenBy(nodeSqlScopes(db).open(), 'DELETE FROM records'), 2);
+  assert.equal(db.prepare('SELECT changes() AS n').get().n, 1);
+} finally { db.close(); }
+JS
+```
+
+R2 replaces this diagnostic with behavioral regression coverage for logical
+counts and scheduling. Do not preserve the coupling to keep this diagnostic green.
 
 Record any baseline failures once with exact command, revision, environment and
 whether they intersect this evaluation. Current TODO state wins over historical
@@ -160,15 +234,17 @@ handoff issue numbers. If the executor has the wrong/pre-handoff checkout, park
 baseline comparison pending the completed revision; do not silently implement
 that separate campaign or report a candidate speedup against stale infrastructure.
 
-Two **unproven runtime foundations** must be exercised early:
+Two **candidate hypotheses**, rather than assumptions of a positive verdict,
+must be exercised early:
 
 1. Pinned OpenOrange can run the actual Stats ingestion/history path on durable
    local state without credentials, remote services, or executing workerd.
 2. Application-observation and mutation semantics can be preserved with a small,
    explicit adapter rather than a replacement Cloudflare platform.
 
-R1 proves the first with a real pilot; R2/R3 prove the second. Source inspection
-and a hello-world actor do not discharge these proofs.
+R1 proves or rejects the first with a real pilot; R2/R3 address the second.
+An unsupported candidate is a valid bounded evaluation outcome. Source inspection,
+the Node control and a hello-world actor do not discharge candidate parity.
 
 ## Sequence
 
@@ -180,9 +256,20 @@ its isolated toolchain in `experiments/rivet/`, tests under
 compact final report at `docs/rivet-openorange-evaluation.md`. Make the existing
 suite inventory list these tests as explicit experimental coverage. Do not add
 another hand-maintained test-file registry or an unconditional default-CI job.
+R0 owns the narrow `cloudflare/scripts/test-suites.ts` registration for this
+directory, with `optIn: true`. Candidate fixture startup checks its pinned local
+bootstrap manifest before spawning and fails with the bootstrap command if absent.
+Listing tests never starts or installs the candidate. Default selection must
+continue excluding experimental files, including when they intentionally retain
+a demonstrated incompatibility. The dispatcher uses the shared runner's file
+and name selection, real execution counts and process owner.
 R0 also adds `node scripts/rivet-eval.mjs bootstrap --json` as the only
 network-capable dependency-install command. Every measurement/test command fails
 on missing prerequisites rather than installing or resolving updates implicitly.
+Keep the initial dispatcher at most 150 nonblank source lines, forwarding to
+existing helpers and the first pilot. Do not build future subcommands, a schema
+framework or a result dashboard before R1. Record unsupported subcommands as
+explicit errors. Add later commands only when their owning slice needs them.
 
 | Item / size | Prerequisites | Owned files / outcome | Local acceptance command |
 | --- | --- | --- | --- |
@@ -191,12 +278,13 @@ on missing prerequisites rather than installing or resolving updates implicitly.
 | **R2 / S — separate behavior from meters** | R1 pilot or demonstrated relevant blocker | Shared SQL/mutation boundary, retention consumers and focused regressions; coordinator alone | `node scripts/rivet-eval.mjs accounting --json` |
 | **R3 / M — complete the required Stats slice** | R1, R2 | Candidate observation adapter and full required parity corpus, existing auth/analytics fixture composition | `node scripts/rivet-eval.mjs parity --candidate openorange --json` |
 | **R4 / S — native Rivet control** | R0; R1 establishes version/runtime identity or records its blocker | `experiments/rivet/native/`, native-only tests and result file | `node scripts/rivet-eval.mjs native --json` |
-| **R5 / M — offline lifecycle and self-host proof** | R3; run independent native checks even if B is rejected | Failure/restore/network/packaging tests and self-host manifest | `node scripts/rivet-eval.mjs resilience --json` |
-| **R6 / M — measure and optimize only proven paths** | R3, R5 for B performance conclusions | Existing bench-dev integration, candidate-only small fixes, raw measurements | `node scripts/rivet-eval.mjs bench --pairs 7 --json` |
+| **R5a / M — offline lifecycle and packaged self-host** | R3; independent native checks follow R4 even if B is rejected | Failure, restore, network and packaging tests and self-host manifest | `node scripts/rivet-eval.mjs resilience --quick --json` |
+| **R5b / S — bounded soak** | R5a for each surviving path | Soak fixture and retained resource/acknowledgment evidence | `node scripts/rivet-eval.mjs resilience --soak-minutes 30 --reloads 100 --json` |
+| **R6 / M — measure and optimize only proven paths** | R3, R5a, R5b for B performance conclusions | Existing bench-dev integration, candidate-only small fixes, raw measurements | `node scripts/rivet-eval.mjs bench --pairs 7 --json` |
 | **R7 / S — verdict, cleanup, close** | Every local item accepted, rejected with evidence, or explicitly parked | Report, minimal reproducible probes, dependency cleanup and this Status | `node scripts/rivet-eval.mjs report --check --json` and `make check` |
 
 Run **M1** (`make check`) after R2/R3 are integrated, **M2** after
-R5, and the full required candidate corpus at both milestones. If B is rejected
+R5b, and the full required candidate corpus at both milestones. If B is rejected
 early, skip its dependent implementation/bench work explicitly, still complete
 the bounded native control, report, and unaffected baseline gate. Rejection does
 not turn a failing candidate test into a passing test.
@@ -206,6 +294,11 @@ run in parallel** only if R4 owns exclusively `experiments/rivet/native/` and it
 native-only tests/result file. Freeze shared versions first; the coordinator
 alone changes the dispatcher, shared schemas, root configuration, and lockfiles.
 Never run competing performance jobs in parallel.
+Routine focused commands target five minutes or less. If a command exceeds that
+bound twice, isolate the smallest decisive case before adding more machinery.
+The 30-minute soak and seven-pair benchmark are announced milestone checks,
+not the edit loop. Time them separately and never substitute a quick smoke
+for their required evidence.
 
 ### R0 — evidence and scope, not another tooling campaign
 
@@ -276,6 +369,15 @@ optional metering: cache invalidation, retained data and cleanup scheduling must
 remain correct. Cache invalidation follows actual committed mutation, not an
 instrumentation estimate. Verify transaction rollback and stale-history reads.
 
+This slice may change internal SQL and operation ports with their callers and
+tests. It may not change persisted schemas, public producer types or wire data.
+Use a typed internal capability/result when availability changes. Keep malformed
+external values at the adapter boundary. Reuse existing clocks and schedulers,
+and keep Rivet imports out of `cloudflare/src/core/` and its dependency graph.
+If truthful candidate instrumentation cannot pass the existing public contract,
+mark that feature blocked and apply the verdict rules. Do not emit fabricated
+`OperationRun` rows through Cloudflare summaries to keep the path running.
+
 Keep Cloudflare's genuine meters for Cloudflare reports. Evaluation metrics carry
 backend, measurement meaning and availability. Test that unavailable read scans
 or CPU never become zero, that returned rows are not reported as scanned rows,
@@ -345,7 +447,7 @@ supported behavior; no copying live SQLite files. A per-actor fork is not an
 atomic snapshot of Stats plus observation actors, credentials, alarms and streams.
 Failure or absent support does not block the main evaluation.
 
-### R5 — restart, offline, growth and an actual packaged process
+### R5a/R5b — restart, offline, growth and an actual packaged process
 
 Reuse worktree/run identities and cancellation from the handoff. Run two isolated
 sessions; verify no shared ports, resource IDs, files, seed data or cleanup.
@@ -353,6 +455,14 @@ Test frontend-only HMR, main/observe edits, burst edits, syntax error then fix,
 startup/activation failures, and SIGINT/SIGTERM. Normal edits retain state and do
 not reseed. No two runtimes may write the same persistent state concurrently.
 Any rollback claim must account for schema changes, not just old bundle bytes.
+The command owner starts processes with argv arrays and an explicit local
+environment. It strips ambient production credentials, retains owned handles
+and unwinds partial startup. Use bounded queues and retry deadlines from the
+existing producer. A full queue reports rejection or counted drops. Await
+shutdown, escalate only owned children after five seconds, and preserve the
+primary error when cleanup also fails. Publish ready only after state and
+required services are usable. An activation failure is distinct from a build
+failure and cannot publish a partially ready generation.
 
 Kill separately the app, local Engine, and required Services process. Track the
 requests acknowledged before each kill. After recovery, no acknowledged host
@@ -366,6 +476,10 @@ the OS boundary where supported, plus the application's outbound guard. Include
 runtime/update checks and telemetry exporters, not only Worker `fetch`. A deliberate
 outbound canary must fail and be reported. State the enforcement layer per OS;
 credential removal and an app guard alone are not proof of full offline execution.
+R5a runs this with the existing macOS `scripts/offline-run.sh` wrapper when
+available. A locally self-hosted candidate's control and Services endpoints stay
+on loopback. Probe exposed actor/control ports directly for unauthorized access,
+as well as the authenticated front door. Any missing auth is a required failure.
 
 Use a **30-minute** bounded-data soak with **100** reload cycles, host ingestion
 within its rate limits, observation and cleanup. Record process-tree RSS/CPU,
@@ -402,6 +516,13 @@ size, warm/cold state, compilation count, test count, all child processes, exact
 commands and failures. Include Engine/Services startup and teardown. Keep initial
 dependency installation separate from cold installed-checkout readiness. Bootstrap
 bytes/time and cached footprint still belong in the maintenance/cost report.
+Run `perf-gate-ready` immediately before and `perf-gate-ready -1` immediately
+after each timed trial. Discard overlapping-load trials. If the host remains
+busy, mark the required performance verdict inconclusive and retain the exact
+retry command. Always record memory and artifact size. Vet the candidate's
+license, maintenance and transitive closure at bootstrap. Track build time,
+startup, package bytes and installed bytes separately. The existing application
+size/build budgets remain intact because the candidate closure is opt-in.
 
 | Metric | Timed boundary / work proof |
 | --- | --- |
@@ -432,8 +553,9 @@ CPU is unavailable. Same-process resource totals are not request-level attributi
 functional/operational gates pass; either backend-edit or focused-integration
 median improves by at least **20% and 100 ms**, beyond observed noise. No other
 hot-loop median may exceed baseline by more than `max(10%, 100 ms)`; total steady
-RSS may not exceed baseline by more than `max(15%, 128 MiB)`. Here percentages
-refer to that metric's baseline and tolerances are additive. Frontend-only edits
+RSS may not exceed baseline by more than `max(15%, 128 MiB)`. For a baseline
+latency B, the first limit is `B + max(0.10 × B, 100 ms)`. The RSS limit uses
+the same formula with 0.15 and 128 MiB. Frontend-only edits
 must trigger no backend build/restart; pure tests launch no backend runtime. Sustained workload
 p95 must stay within 10% at equal successful offered load. No unexplained growth
 under fixed live data may exceed `max(10% of settled RSS, 128 MiB)` or
@@ -463,8 +585,8 @@ stands in for measured self-host expense or a bill.
 
 Delete abandoned adapters, unused packages, temporary config and duplicate
 supervisors; retain the minimal reproducer/results needed to reassess a rejection.
-Do not delete the working baseline, existing Node target, handoff, or unrelated
-work. A retained experimental package stays opt-in and outside ordinary install
+Do not delete the working baseline, existing Node target, development guide,
+verification evidence or unrelated work. A retained experimental package stays opt-in and outside ordinary install
 and CI. Review with the current `ultrareview` process, fix in-scope P1/P2 findings,
 and close when all local deliverables have evidence or a bounded rejection.
 Needs-environment items remain explicit and do not become passing proof.
@@ -477,6 +599,12 @@ raw evidence paths, result (`pass`, `fail`, `blocked`, `not-applicable`), and re
 Evidence reuse requires matching inputs. Wrong-runtime health, stale artifacts,
 zero selected tests and unmatched selectors fail. Do not implement a general
 benchmark/evaluation framework to provide this small schema.
+On the dispatcher, use exit 0 for successful work, 1 for a demonstrated failed
+check, 2 for invalid arguments or unavailable prerequisites, and signal death
+for interrupted execution after cleanup. Preserve the underlying command status
+and structured cause in the result. `report --check` returning 0 means the
+evaluation record is complete, including a documented rejection. It cannot
+convert the rejected candidate's failing command to exit 0.
 
 A candidate correctness command returns nonzero on failure. `report --check`
 may validate a **completed rejection** only when the actual failed commands and
@@ -496,15 +624,17 @@ until the relevant item has run on the recorded target.
 
 List each unavailable proof with target, cause and exact command. Execute the
 available local work rather than waiting for these items, but qualify conclusions.
-The planned commands become runnable as their slices land.
+The planned commands become runnable as their slices land. The current macOS
+ARM64 host and OS sandbox are available. Candidate installation and execution
+are pending R0/R1, rather than missing-environment claims. A native Linux host
+has not been verified for this task. Do not use SSH or provision one to close
+that gap under this local-only execution grant.
 
 | Proof / target | Command / consequence if unavailable |
 | --- | --- |
-| Completed handoff checkout and pinned dependencies | `node scripts/rivet-eval.mjs baseline --json`; no comparative speed verdict without it |
-| Native macOS ARM64 everyday loop | `node scripts/rivet-eval.mjs pilot --candidate openorange --json` then `node scripts/rivet-eval.mjs bench --pairs 7 --json`; other-host numbers do not establish Mac behavior |
 | Linux target, including declared musl support | `node scripts/rivet-eval.mjs resilience --target linux --json`; report build/ABI failures separately from an absent machine |
-| OS-enforced network isolation | `node scripts/rivet-eval.mjs offline --json`; R5 supplies it; no full offline claim from app-level interception alone |
-| Packaged watcher-free self-host | `node scripts/rivet-eval.mjs package-smoke --json`; R5 supplies it; no single-host viability verdict from a dev server only |
+| OS-enforced network isolation on a future unsupported host | `node scripts/rivet-eval.mjs offline --json`; R5a supplies it; STA-83 remains the Linux OS-sandbox gap, and app interception alone gives no full offline claim |
+| Packaged watcher-free self-host on an unavailable target | `node scripts/rivet-eval.mjs package-smoke --json`; R5a supplies it; no single-host viability verdict from a dev server only |
 | Multi-host durability, actual object-store cost or live Cloudflare parity | Not authorized here. Record a future command/runbook only; these results are not implied by local process kills or filesystem persistence |
 
 ## Execution boundary and non-goals
@@ -525,7 +655,7 @@ Rivet SDK rewrite of Stats, new auth product, or recreation of every Cloudflare
 service. Queues, Workflows, KV, R2 and actor forking are evaluated only where a
 required Stats path needs them or the single optional native-fork probe permits.
 Do not convert other repositories. Do not create another upstream watch: the
-handoff already owns the Cloudflare compatibility workflow and notification watch.
+existing Cloudflare compatibility workflow and notification watch already cover it.
 
 Allowed correctness cleanup is bounded to actual migration prerequisites: mutation
 versus metering, truthful unavailable reporting without public contract changes,
@@ -535,12 +665,12 @@ failed repairs, park it with evidence; do not expand this campaign to finish it.
 
 ## Reference: reuse/change map and dated upstream evidence
 
-The paths below describe the inspected planning revision; resolve their current
-post-handoff equivalents at R0 rather than restoring old implementations.
+These paths were reconciled at `3c5bab6`. Resolve intervening changes at R0
+rather than restoring old implementations.
 
 | Reuse / narrow change | Source and purpose |
 | --- | --- |
-| Reuse | [Development-loop handoff](../stats-dev-loop-handoff.md): completed baseline, shared supervisor/build/suite/benchmark facilities |
+| Reuse | [Development guide](development.md), [verification](dev-loop-results.md), `cloudflare/scripts/dev.ts`, `cloudflare/local/dev-backend.ts`, `cloudflare/scripts/ensure-build.ts`, `cloudflare/scripts/processes.ts`, `cloudflare/scripts/ownership.ts`, `cloudflare/scripts/test-suites.ts`, `cloudflare/scripts/run-tests.ts`, `cloudflare/bench/dev-loop.ts`: completed baseline and shared facilities |
 | Reuse | [Architecture](architecture.md), `cloudflare/src/core/installation/`, `cloudflare/src/core/http.ts`, `cloudflare/src/core/ports.ts`: application logic and ports |
 | Narrow audit/repair | `cloudflare/src/core/sql.ts`, `cloudflare/src/operations.ts`, `cloudflare/src/core/installation/installation.ts`, `cloudflare/src/projects/store.ts`: counters versus logical mutation |
 | Preserve/control | `cloudflare/src/cloudflare/sql.ts`, `cloudflare/src/node/sql.ts`: platform-specific SQL adapters; Node is already a non-Cloudflare path |
@@ -565,8 +695,14 @@ keep this dated evidence distinct from measured acceptance.
   development. This is a different bet from directly targeting native Rivet APIs.
 - [OpenOrange manifest](https://github.com/rivet-dev/open-orange/blob/0f3c2eac56d7f67d16398d54c4560543621f5582/package.json):
   source manifest `open-orange` 1.0.1 pins `rivetkit` 3.1.2-rc.1 and `wrangler`
-  4.129.0. This is not verification of npm publication or the actual Engine binary.
-  Inspect the complete installed closure and native target support at R0.
+  4.129.0. Package metadata confirms those versions and the distinct Engine/Services
+  dependencies described above. It does not verify the installed closure or actual
+  binary behavior. Inspect both at R0.
+- [OpenOrange SQL storage](https://github.com/rivet-dev/open-orange/blob/0f3c2eac56d7f67d16398d54c4560543621f5582/packages/runtime-node/src/bindings/durable-objects/storage.ts):
+  the source exposes synchronous execution and transactions, but maps rows read
+  to returned rows and writes to SQLite change counts. This is a concrete
+  metering mismatch with Cloudflare, rather than a reason to assume the SQL
+  interface is async or to report platform billing counters.
 - [OpenOrange Tail Workers](https://github.com/rivet-dev/open-orange/blob/0f3c2eac56d7f67d16398d54c4560543621f5582/docs/modules/tail-workers.mdx):
   local tails require a Services process; delivery is at least once. The inspected
   implementation lacks DO/alarm/RPC traces, reports CPU as zero and emits no
