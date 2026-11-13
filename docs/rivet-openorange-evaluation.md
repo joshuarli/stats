@@ -7,9 +7,12 @@ Verdicts (filled by R7):
 
 Status by slice:
 
-- **R0 — freeze baseline: complete (this commit).** Attribution, candidate
+- **R0 — freeze baseline: complete.** Attribution, candidate
   closure pins and the required-behavior inventory are recorded below.
-- **R1 — OpenOrange pilot:** not started.
+- **R1 — OpenOrange pilot: complete, with named limits.** The real Stats
+  ingest/history path runs on the pinned candidate under the offline
+  sandbox; details below. Analytics SQL and tails/observation are unproven;
+  Linux untested.
 - **R2 — accounting:** not started. **R3 — parity corpus:** not started.
 - **R4 — native control:** not started. **R5a/R5b — resilience/soak:** not started.
 - **R6 — measurement:** not started. **R7 — verdict:** not started.
@@ -106,6 +109,68 @@ and after install.
 Engine CLI ships darwin-arm64/x64 and linux-x64/arm64 musl binaries; Services
 ships darwin x64/arm64 and linux x64/arm64 GNU binaries. Linux is unavailable
 on this host; ABI suitability on Linux is unproven (see Needs environment).
+
+## R1 — real OpenOrange pilot — measured 2026-11-13
+
+Command: `node scripts/rivet-eval.mjs pilot --candidate openorange --json`
+(forwards to `experiments/rivet/openorange/pilot.mts`). Raw:
+[pilot.json](rivet-openorange/pilot.json) — revision `a416f58~1`+mark fix,
+open-orange 1.0.1, rivetkit 3.1.2-rc.1, engine binary `dbcbaac1…`
+(self-reports `Rivet 3.1.1`), services 0.2.5 (`protocolVersion` 8,
+`rivetkitVersion` 3.0.0).
+
+Flow: build outputs → generate Wrangler-compatible descriptors from the
+authoritative `worker.config.json` of both Workers (rejecting unmapped
+fields) → `orange dev --json --config stats.jsonc --config observe.jsonc`
+under `scripts/offline-run.sh` (credentials stripped; non-loopback network
+denied; macOS only) → seeded assertions → SIGTERM → fresh process on the same
+state → identical history again.
+
+| Check | Result |
+| --- | --- |
+| Ready under offline sandbox | 3583 ms, origin 127.0.0.1 loopback |
+| `GET /health` | 200 |
+| Authenticated host create (`/api/v1/admin/hosts`) | 201 |
+| STB2 batch ingest | 200; ack accepted 2, duplicates 0 |
+| Replay | 200; duplicates 2, accepted 0 |
+| Conflicting retry (same seqs, changed payload) | 400; `conflict` ×2 |
+| History through `openHistory` decoder | 200; `application/vnd.stats.history.v1` |
+| Byte-identical history after SIGTERM + restart | yes (2776 bytes, both runs) |
+| Host list persists across restart | 1 host |
+| workerd in candidate process tree | none (dev node → esbuild service, runner.js ×2, rivet-engine, rivet-services) |
+| Negative control: corrupted ack / history bytes | decoder throws in both |
+| Warm process-tree RSS | 860 MB KiB sum (dev + engine + runners + services; shared pages may double-count) |
+
+Candidate incompatibilities found and repaired (one attempt each, portable):
+
+1. `tracing.getActiveSpan` is absent from the candidate `cloudflare:workers`
+   shim; every request threw `TypeError` → 500. Repaired in
+   `cloudflare/src/observe/cloudflare/mark.ts`: the active span is resolved
+   through a capability check; where the host exposes no span API, invocation
+   and operation marks are omitted (unavailable, not zero). Behavior on
+   Cloudflare is unchanged. Verified against the existing ingest/parity
+   selection (4/4 pass) and typecheck.
+
+Toolchain quirks recorded: `orange dev --json` emits JSON Lines
+(type=config/warning/ready/request/log/stopped); the candidate spawns the
+pinned Rivet Engine itself (`rivet-engine --config .open-orange/.../config.json`)
+and `rivet-services` for streams; first run DB creation takes seconds;
+SIGTERM stops the whole tree within seconds; no S3 or Rivet Cloud needed.
+
+Not proven on the candidate (recorded, not hidden):
+
+- `ANALYTICS_SQL` is unbound — OpenOrange has no local Analytics SQL
+  substitute and remote Analytics is not a local binding; collector pipeline
+  unproven. The pilot drops the binding explicitly and reports it.
+- Tail/observation delivery to the second Worker is untested (R3 scope).
+- Linux target and musl ABIs untested (no verified Linux host; not
+  authorized to provision one).
+- Application-event ingestion, outbound telemetry from the candidate,
+  deployment markers, and dashboard routes on the candidate: not yet run.
+
+Candidate glue size: 308 nonblank source lines (`generate.mjs` 92 +
+`pilot.mts` 216), plus 19 nonblank test lines, well under the 800-line
+candidate cap and the dispatcher cap (122 nonblank lines).
 
 ## Required behavior inventory
 
