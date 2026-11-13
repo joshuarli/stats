@@ -3,15 +3,6 @@ Next: 122
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
-### STA-91 · P3 · Block-latency histograms need bpftrace and root on every host
-
-- **Area:** Architecture
-- **Where:** `agent/bpf/`, `agent/src/block_bpf.rs`, `README.md` (agent config), `AGENTS.md` (invariants)
-- **Problem:** A block-layer latency distribution needed bpftrace, root and a separate unit feeding `blockLatencyFile`; both were deleted and the in-agent probe is not yet in release builds. The unprivileged per-disk means from `/proc/diskstats` cannot show the tails or a bimodal distribution.
-- **Recommendation:** Release `.deb`-style adoption path: the opt-in `block-latency` Cargo feature embeds a prebuilt probe (`agent/bpf/block_latency.bpf.c` + aya loader in `agent/src/block_bpf.rs`), verified end-to-end on aarch64 Linux (OrbStack, kernel 7.2.12): probe loads with mounted tracefs and counts synchronous 4 KiB writes, histogram bucket sums match the completion count. Loading needs tracefs mounted and `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`); any failure omits the `block` group. It complements the diskstats means and does not replace them. Remaining for adoption: an llvm-prebuilt-musl release with the BPF backend (in review, laputa-systems/llvm-prebuilt-musl#4), a `build-static.sh` pin and `--features block-latency`, and an owner decision on shipping it on by default.
-- **Fix with:** architect
-- **Effort:** L
-
 ### STA-98 · P3 · A retried deployment marker is stamped with its receive time, not the activation time
 
 - **Area:** Data
