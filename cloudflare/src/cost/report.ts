@@ -4,7 +4,7 @@ import type { MetricHistory } from "../client/history.ts";
 import type { ProjectConfig } from "../projects/config.ts";
 import { BYTES_PER_GB, DURABLE_OBJECT_MEMORY_GB, PRICING_REVISION } from "./pricing.ts";
 import {
-  buildLedger, coveredMs, D1_SERIES, isResidual, MONTH_MS, monthlyOf, monthlyUsage, OBJECT_SERIES, planBill, projectedBill, routeSeries, seriesPartial, statementSeries, storagePresent, WORKER_SERIES,
+  buildLedger, CoverageIndex, D1_SERIES, isResidual, MONTH_MS, monthlyOf, monthlyUsage, OBJECT_SERIES, planBill, projectedBill, routeSeries, statementSeries, storagePresent, WORKER_SERIES,
   type Amount, type CostLine, type CostPart, type LedgerHistories, type LineKind, type Meter, type MeterUsage, type ObjectMethods, type Price, type Usage
 } from "./ledger.ts";
 
@@ -175,6 +175,11 @@ export function utcMonthOf(atMs: number): TimeWindow {
 }
 
 const UNITS: ReportUnits = { currency: "USD", period: "30-day-month", periodMs: MONTH_MS, bytesPerGb: BYTES_PER_GB, durableObjectMemoryGb: DURABLE_OBJECT_MEMORY_GB, cpu: "ms", wall: "ms" };
+
+export function buildCostReport(input: CostReportInput): CostReport {
+  const coverageIndex = new CoverageIndex();
+  const coveredMs = coverageIndex.coveredMs.bind(coverageIndex);
+  const seriesPartial = coverageIndex.seriesPartial.bind(coverageIndex);
 
 function coverageOf(history: MetricHistory | undefined, window: TimeWindow, only?: readonly string[]): Coverage {
   const windowMs = Math.max(0, window.toMs - window.fromMs);
@@ -514,14 +519,13 @@ function planBillReport(input: CostReportInput, monthly: MeterUsage): PlanBillRe
   };
 }
 
-export function buildCostReport(input: CostReportInput): CostReport {
   if (input.pricingRevision !== PRICING_REVISION) {
     throw new PricingRevisionMismatch(`pricing revision ${input.pricingRevision} does not match ${PRICING_REVISION}`);
   }
   const ledger = buildLedger({
     current: input.current, previous: input.previous, window: input.windows.current, previousWindow: input.windows.previous,
     buckets: input.project.buckets, databases: input.project.d1Databases, objectMethods: input.objectMethods, workerBilling: input.project.workerBilling
-  });
+  }, coverageIndex);
   const lines = ledger.lines.map(line => reportLine(line, null, input));
   const residuals = lines.flatMap(line => line.children.filter(child => child.kind === "unrouted")).map((line): Residual => ({ lineId: line.id, label: line.label, monthly: monthlyOf(line) ?? { now: 0, before: null } }));
   const meters = metersOf(lines, input);

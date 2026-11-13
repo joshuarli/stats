@@ -45,14 +45,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** make-it-fast
 - **Effort:** M
 
-### STA-121 · P3 · Cost reports repeatedly rebuild coverage across all route series
-
-- **Area:** Performance
-- **Where:** `cloudflare/src/cost/ledger.ts:170–193,294–318`, `cloudflare/src/cost/report.ts:521`, `cloudflare/src/client/project-ledger.ts:68–74`, `cloudflare/src/cli/cost-load.ts:99`, `cloudflare/test/ui/captures/stuff/`
-- **Problem:** Per-route usage normalization repeatedly calls coveredMs for the whole route history; coveredMs enumerates every name and materializes column cells on each call. On the retained stuff 30-day capture with 406 route series and 720 rows, the real buildLedger makes 166,866 route cells() calls. The full buildCostReport makes 169,708 such calls and 4,264 names() calls enumerating 1,731,184 names. The probe preserves the captured monthly total and 68,424 billed Worker requests. planBill alone makes only two Worker and three R2 cell lookups, so the demonstrated repetition is in coverage/report construction, not its bucket arithmetic. Counts are not elapsed timings.
-- **Recommendation:** Compute whole-history and per-series coverage once per report invocation and window, and reuse it through usage normalization and report diagnostics. Keep current and previous histories/windows distinct and preserve unknown, partial and known-idle semantics. Require captured parity and partial-coverage tests plus operation-count scaling with routes/rows before reporting a speedup.
-- **Fix with:** make-it-fast
-- **Effort:** M
 
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
