@@ -13,7 +13,15 @@ Status by slice:
   ingest/history path runs on the pinned candidate under the offline
   sandbox; details below. Analytics SQL and tails/observation are unproven;
   Linux untested.
-- **R2 — accounting:** not started. **R3 — parity corpus:** not started.
+- **R2 — accounting:** complete. `rowsWrittenBy` and its siblings split into
+  logical `affectedBy` (DML RETURNING) for retention/cleanup/invalidation and
+  genuine billing `meteredWritesBy`; regression coverage on both SQL adapters.
+- **R3 — parity corpus: complete, with named platform differences.** The
+  candidate passes 1444/1444 frozen assertions against a node/sqlite control
+  over the full corpus; three honest gaps are recorded below (Analytics SQL,
+  DO alarm timing, desktop/golden-image deltas). Tails deliver fetch
+  invocations; per-operation attribution arrives via the explicit
+  application-event adapter, not via diagnostics channels.
 - **R4 — native control:** not started. **R5a/R5b — resilience/soak:** not started.
 - **R6 — measurement:** not started. **R7 — verdict:** not started.
 
@@ -165,12 +173,115 @@ Not proven on the candidate (recorded, not hidden):
 - Tail/observation delivery to the second Worker is untested (R3 scope).
 - Linux target and musl ABIs untested (no verified Linux host; not
   authorized to provision one).
-- Application-event ingestion, outbound telemetry from the candidate,
-  deployment markers, and dashboard routes on the candidate: not yet run.
+- DO `storage.setAlarm` delivery and diagnostics-channel error reports:
+  see R3 section below. Application-event ingestion, outbound telemetry,
+  deployment markers, and dashboard routes: exercised in R3; application
+  events land in `/api/observe/stats/external`.
 
 Candidate glue size: 308 nonblank source lines (`generate.mjs` 92 +
 `pilot.mts` 216), plus 19 nonblank test lines, well under the 800-line
 candidate cap and the dispatcher cap (122 nonblank lines).
+
+## R2 — accounting: logical decisions separated from metered counters
+
+`rowsWrittenBy` (cursor-delta on `SqlDatabase.rowsWritten()`) masqueraded a
+trigger-inclusive, index-inclusive runtime meter as "rows deleted" for
+retention batch fullness, backlog scheduling, cache invalidation and project
+cleanup. On both SQL adapters it reported 2 for one logical `DELETE` behind an
+`AFTER DELETE` trigger (reproduced before the change). It was renamed in
+substance:
+
+- `affectedBy` — bounded DML `... RETURNING 1` row count; drives every
+  application decision (`purgeExpired`, retention/cleanup, invalidation).
+- `meteredWritesBy` — the genuine Cloudflare billing signal, kept for
+  Cloudflare cost reporting. Never read for application decisions.
+- `recordRun` no longer returns an unused metered count.
+
+Regression coverage on both adapters (Cloudflare workerd D1-proxy style
+`CloudflareSql` and Node `DatabaseSync`): deletion counts 0/1/999/1000/1001
+behind triggers and indexes, an unmetered `SqlDatabase` proof for retention
+decisions, transaction rollback, stale-history ETag invalidation, and a no-op
+alarm. File: `cloudflare/test/node/accounting.test.ts` (9 pass) plus two
+cases in `cloudflare/test/cloudflare-sql.test.ts` (5 pass).
+
+Not changed: persisted schemas, public producer types, wire data. Cloudflare's
+genuine meters stay for Cloudflare reports.
+
+## R3 — parity corpus: complete, with named platform differences
+
+Command: `node scripts/rivet-eval.mjs parity --candidate openorange --json`;
+also runnable as the opt-in test `test/rivet-eval/parity.test.ts`. Raw
+compact evidence: [parity.json](rivet-openorange/parity.json) — revision
+`5f3fc0b` (worktree clean), offline sandbox (`scripts/offline-run.sh`).
+
+Design: the candidate was driven through the same corpus twice — once frozen
+(`TEST_NOW_MS=1793510415000`, matching `wrangler.test.jsonc`) comparing
+byte-for-byte against the Node `node:sqlite` control harness (the same
+oracle `test/node/parity.test.ts` uses for workerd), and once in real time
+for the CLI/producer/deployment workflows. Every fixture batch is ingested
+first-delivery and as a replay; every history range/kind and bundle is
+fetched; acknowledgments match the golden encoder frames
+(`frames/acks/all-duplicates.sta2`).
+
+Results — 1444 gated assertions pass, 0 fail; 5 informational record-only
+checks (startup/restart timings, process list, RSS):
+
+| Area | Evidence |
+| --- | --- |
+| Fixture corpus (40 batches, incl. u64-boundaries, partial-acceptance, semantic-rejects) | candidate ≡ control, ingest first-delivery + replay; ingest of `u64-boundaries` sample 3 is rejected on both by the documented 5-minute future `atMs` rule (`docs/protocol.md`), not by codec caps |
+| History (5 ranges x 5 kinds + bundles) per host | byte-identical status/contentType/etag/body to the control for all 40 hosts |
+| Latest / system / host list | identical to control |
+| Malformed frames (65 cases from `fixtures/v2/malformed.json`) | identical 400 bodies to control; whole-frame rejection holds |
+| ETag / If-None-Match round trip; cache invalidation after mutation | 304 round trip; stale etag rejected with 200 after mutation |
+| Restart durability | history bytes byte-identical after SIGTERM + restart; host list persists |
+| Auth | JWT missing/invalid -> 401 on API and /assets; valid JWT -> 200 |
+| Producer path (`/ingest/observe/v1/:service/batches`) | first 202 accepted 2, replay 200 duplicates 2; golden batch remapped to real now; service scope + provenance `application` |
+| Deployment markers | 201 first, 200 idempotent replay (same deployment id) |
+| Application events (explicit adapter) | 4 candidate operations visible at `/api/observe/stats/external` with `provenance: application`, `service: stats`, release `stats-eval-<rev>`, logical work fields; ingests ran on both ingest paths |
+| CLI `statsctl check ingest` | full workflow (encode/ingest/ack/latest/history/replay/stored-count) exits 0 against the candidate |
+| Observe pipeline | platform tail delivers fetch invocations (health shows 11 live invocations, ingestBatches counter nonzero) |
+| Dashboard | 200 with auth, 401 without |
+| workerd in candidate process tree | none; process tree is dev node + esbuild + runner(s) + rivet-engine + rivet-services (851 MB RSS sum) |
+
+Platform differences found and their honest status:
+
+1. **Per-operation attribution travels on application events, not tails.**
+   OpenOrange's tail shim delivers invocation records (7d) but hard-codes
+   `diagnosticsChannelEvents: []` and `cpuTime: 0`. Stats' interior operation
+   marks only publish on a diagnostics channel when `tracing.getActiveSpan`
+   exists; to keep attribution portable, the composition root publishes one
+   application event per operation through the existing producer contract
+   (`provenance: application`) when `APPLICATION_EVENTS_RELEASE` is set
+   (experiments/rivet config sets it; production Cloudflare deployments do
+   not). Durations are wall-clock application durations, never presented as
+   platform CPU; logical work counts only.
+2. **`tracing.getActiveSpan` did not exist on the candidate's
+   `cloudflare:workers` shim** — every request 500'd before R1's repair; the
+   span resolution is now capability-checked, which is a no-op on Cloudflare.
+3. **CATCH error reports published on the diagnostics channel do not reach
+   the observe service on the candidate** (the channel is dropped upstream).
+   Failures surface as invocation exceptions in the tail instead; correct
+   operation loss semantics are unproven. This is recorded as a platform
+   limitation, not papered over. Note: caught-error telemetry on the
+   candidate is degraded vs Cloudflare `cf` tails — see verdict section.
+
+Still unproven on the candidate, explicitly not claimed:
+
+- `ANALYTICS_SQL` (no local OpenOrange substitute; collector/projection path
+  unproven; Analytics Engine remains Cloudflare-only).
+- DO `storage.setAlarm` delivery (installation cleanup alarm; shortest real
+  delay is ~10 minutes — not exercised in the parity window; tracked for
+  R5b). The observe service's `CLEANUP_INTERVAL_MS` alarm is likewise not
+  exercised.
+- Linux target and musl ABIs (no verified Linux host; not authorized).
+- WebP dashboard goldens vs candidate rendering (the golden image workflow
+  stays the Cloudflare/Vitest reference; candidate dashboard was verified for
+  auth + 200 HTML, not pixels).
+
+Candidate glue size: 555 nonblank source lines in `experiments/rivet/`
+(`generate.mjs` 95, `pilot.mts` 124, `harness.mts` 96, `parity.mts` 253,
+plus config/manifest files), under the 800-line candidate cap; dispatcher
+123 of 150.
 
 ## Required behavior inventory
 
