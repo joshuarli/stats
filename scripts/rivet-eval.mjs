@@ -13,7 +13,7 @@ const RUNS = join(REPO, ".work/rivet-eval");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const git = (...args) => execFileSync("git", args, { cwd: REPO, encoding: "utf8" }).trim();
 const requiredNode = `v${readFileSync(join(REPO, ".node-version"), "utf8").trim()}`;
-const SUITES = { resilience: "R5", bench: "R6", report: "R7" };
+const SUITES = { bench: "R6", report: "R7" };
 
 async function native(report, values) {
   if (values.candidate !== undefined) return { result: "blocked", reason: "native takes no candidate selector" };
@@ -104,10 +104,11 @@ function packageVersion(name) {
 }
 
 async function subcommand(report, values, script) {
-  if (values.candidate !== "openorange") return { result: "blocked", reason: `only --candidate openorange is defined for ${script}; the native control is slice R4 (node scripts/rivet-eval.mjs native)` };
+  if (values.candidate !== "openorange" && !(script === "resilience" && values.candidate === undefined)) return { result: "blocked", reason: `only --candidate openorange is defined for ${script}; the native control is slice R4 (node scripts/rivet-eval.mjs native)` };
   if (!existsSync(join(EVAL, "node_modules/open-orange/dist/bin.js"))) return { result: "blocked", reason: "candidate bootstrap missing; run node scripts/rivet-eval.mjs bootstrap" };
   const noSandbox = values["no-sandbox"] === true;
-  const done = spawnSync(process.execPath, [join(EVAL, `openorange/${script}.mts`), report.run.id, ...(noSandbox ? ["--no-sandbox"] : [])], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
+  const soakArgs = script === "resilience" && values["soak-minutes"] !== undefined ? ["--soak-minutes", String(values["soak-minutes"]), "--reloads", String(values.reloads ?? "100")] : [];
+  const done = spawnSync(process.execPath, [join(EVAL, `openorange/${script}.mts`), report.run.id, ...(noSandbox ? ["--no-sandbox"] : []), ...soakArgs], { encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
   process.stderr.write(done.stderr ?? "");
   const text = (done.stdout ?? "").trim();
   let detail = null;
@@ -149,6 +150,7 @@ async function main() {
     else if (command === "baseline") Object.assign(report, baseline(report, values));
     else if (command === "pilot") Object.assign(report, await subcommand(report, values, "pilot"));
     else if (command === "parity") Object.assign(report, await subcommand(report, values, "parity"));
+    else if (command === "resilience") Object.assign(report, await subcommand(report, values, "resilience"));
     else if (command === "native") Object.assign(report, await native(report, values));
     else if (SUITES[command]) { report.result = "blocked"; report.reason = `${command} is planned for campaign slice ${SUITES[command]} and is not implemented yet`; }
     else { report.result = "blocked"; report.reason = `unknown command: ${command}`; process.exitCode = 2; }
