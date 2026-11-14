@@ -29,7 +29,8 @@ totals cover the whole window while operation and recent-event detail are capped
 
 Stats captures HTTP status and time to response headers under bounded route
 labels. It excludes health checks and application-event ingest, and records no
-request URLs, query strings, headers or bodies. Delivery runs in the request's
+request URLs, query strings, headers or bodies. Cancelled requests have no
+invented HTTP response status. Delivery runs in the request's
 `waitUntil` with a five-second timeout and logs a bounded failure code; it does
 not block the response or retry failed request events. Accepted events persist
 in the observation actor. Other applications appear when they report events

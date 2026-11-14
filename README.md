@@ -218,10 +218,11 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 Open `https://stats.17166969.xyz` from a tailnet device (no login), or use the Node
 installation's tailnet origin. Hosts are at `/`, projects at `#/projects`, and
 services at `#/services`. Host pages show resource status, charts and device
-tables; service pages combine deployment markers, host resources and
-application telemetry. Production has no Cloudflare collector or tail consumer.
-Imported project history remains readable, with unavailable provider capabilities
-identified in the UI. Service application events continue to arrive directly.
+tables. Native project pages show deployment markers, request events, issues and
+signal charts from application telemetry; service pages add host resource
+comparisons. Production has no Cloudflare collector or tail consumer.
+Cloudflare project histories and cost views remain available through the opt-in
+Cloudflare adapter. Application events continue to arrive directly on OpenOrange.
 
 Host controls:
 
