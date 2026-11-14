@@ -3,19 +3,19 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { offlineOutbound } from "../../local/outbound.ts";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, parseBuiltWorker, readBuiltWorker, readTestVars, workers, type BuiltWorker, type StackOptions } from "../../local/topology.ts";
 
 const STATS_CONFIG = readFileSync(join(STATS_OUTPUT, "worker.config.json"), "utf8");
 const STATS = readBuiltWorker(STATS_OUTPUT);
 const OBSERVE = readBuiltWorker(OBSERVE_OUTPUT);
-const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON, PROJECTS } = readTestVars();
+const { GATEWAY_SECRET, PROJECTS } = readTestVars();
 const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 
 function options(persist: string): StackOptions {
   return {
     text: { ENVIRONMENT: "test", PROJECTS: PROJECTS!, WORKER_NAME: "stats" },
-    secrets: { ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!, ACCESS_AUD: ACCESS_AUD!, ACCESS_JWKS_JSON: ACCESS_JWKS_JSON! },
+    secrets: { GATEWAY_SECRET: GATEWAY_SECRET! },
     analytics: { service: "analytics-provider", entrypoint: "Analytics" },
     collector: { kind: "attached" },
     outbound: offlineOutbound([]).handler,
@@ -87,7 +87,7 @@ await test("the stack serves the dashboard at / only with an Access assertion", 
   const persist = mkdtempSync(join(SCRATCH, "topology-"));
   const mf = openWorkers(STATS, OBSERVE, { ...options(persist), analytics: "unbound" });
   try {
-    const page = await mf.dispatchFetch("https://stats.example/", { headers: { "cf-access-jwt-assertion": await accessToken() } });
+    const page = await mf.dispatchFetch("https://stats.example/", { headers: { ...gatewayHeaders() } });
     assert.equal(page.status, 200);
     assert.match(page.headers.get("content-type") ?? "", /^text\/html/u);
     await page.arrayBuffer();

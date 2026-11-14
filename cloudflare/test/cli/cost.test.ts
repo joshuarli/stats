@@ -25,7 +25,7 @@ await test("the default window is the latest settled hour, not the newest incomp
     assert.ok(typeof (document["coverage"] as Record<string, string>)["stats"] === "string");
     assert.equal((document["units"] as Record<string, string>)["currency"], "USD");
     assert.equal(origin.seen[1]?.url, "/api/v1/projects/stats/history?range=1h&kinds=worker");
-    assert.ok(origin.seen.every(request => request.headers["cf-access-token"] !== undefined));
+    assert.ok(origin.seen.every(request => request.headers["cf-access-token"] === undefined));
   } finally {
     await origin.close();
   }

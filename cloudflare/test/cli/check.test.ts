@@ -1,10 +1,11 @@
+import { startGateway, type LocalGateway } from "../../local/gateway.ts";
+import { TEST_GATEWAY_SECRET } from "../gateway-headers.ts";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { Miniflare } from "miniflare";
 import { openStatsWorker, type StatsWorker } from "../../local/stack.ts";
-import { accessToken } from "../access-token.ts";
 import { runCli } from "./support.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
@@ -19,22 +20,25 @@ let worker: StatsWorker | undefined;
 let mf: Miniflare;
 let origin: string;
 let scratch: string;
-let jwt: string;
+let gateway: LocalGateway | undefined;
+let workerOrigin: string;
 let host: { hostId: string; token: string };
 
 async function start(): Promise<void> {
   worker = openStatsWorker({ testNowMs: String(Date.now()) });
   mf = worker.mf;
-  origin = (await mf.ready).origin;
-  jwt = await accessToken();
+  workerOrigin = (await mf.ready).origin.replace(/\/$/u, "");
+  gateway = await startGateway(workerOrigin, TEST_GATEWAY_SECRET);
+  origin = gateway.origin;
   mkdirSync(SCRATCH_ROOT, { recursive: true });
   scratch = mkdtempSync(join(SCRATCH_ROOT, "check-ingest-"));
-  const created = await mf.dispatchFetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "cf-access-jwt-assertion": jwt, "Content-Type": "application/json" }, body: JSON.stringify({ name: "check-ingest" }) });
+  const created = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "check-ingest" }) });
   assert.equal(created.status, 201);
   host = await created.json() as { hostId: string; token: string };
 }
 
 async function stop(): Promise<void> {
+  await gateway?.close();
   await worker?.dispose();
   if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
 }
@@ -46,8 +50,7 @@ function credentialFile(name: string, contents: object, mode: number): string {
   return path;
 }
 
-const accessEnv = () => ({ STATSCTL_AUTH_COMMAND: `printf '%s' ${jwt}`, STATSCTL_AUTH_HEADER: "cf-access-jwt-assertion" });
-const check = (file: string) => runCli(["check", "ingest", "--credential-file", file, "--origin", origin, "--json"], accessEnv());
+const check = (file: string) => runCli(["check", "ingest", "--credential-file", file, "--origin", origin, "--json"]);
 
 function assertNoToken(run: { stdout: string; stderr: string }, token: string): void {
   assert.ok(!run.stdout.includes(token), "token leaked to stdout");
@@ -64,7 +67,7 @@ await test("check ingest against the built Worker", async t => {
       const document = JSON.parse(run.stdout) as CheckDocument;
       assert.deepEqual(document.payload.steps.map(step => [step.name, step.ok]), ["encode", "ingest", "ack", "latest", "history", "replay", "stored-count"].map(name => [name, true]));
       assertNoToken(run, host.token);
-      const text = await runCli(["check", "ingest", "--credential-file", file, "--origin", origin], accessEnv());
+      const text = await runCli(["check", "ingest", "--credential-file", file, "--origin", origin]);
       assert.equal(text.code, 0, text.stdout + text.stderr);
       assert.match(text.stdout, /check ingest passed/u);
       assertNoToken(text, host.token);
@@ -86,8 +89,8 @@ await test("check ingest against the built Worker", async t => {
       assertNoToken(run, host.token);
     });
 
-    await t.test("an unreadable Access session still fails the readback with exit 3 after a clean ingest", async () => {
-      const run = await runCli(["check", "ingest", "--credential-file", credentialFile("noaccess.json", host, 0o600), "--origin", origin, "--json"], { STATSCTL_AUTH_COMMAND: "exit 1" });
+    await t.test("a request that bypasses the gateway still fails the readback with exit 3 after a clean ingest", async () => {
+      const run = await runCli(["check", "ingest", "--credential-file", credentialFile("nogateway.json", host, 0o600), "--origin", workerOrigin, "--json"]);
       assert.equal(run.code, 3, run.stdout + run.stderr);
       assertNoToken(run, host.token);
     });
@@ -102,7 +105,7 @@ await test("a relative credential path resolves from the directory statsctl was 
   try {
     writeFileSync(join(invoked, "shared.json"), JSON.stringify({ hostId: "h_0", token: "t" }));
     chmodSync(join(invoked, "shared.json"), 0o644);
-    const run = await runCli(["check", "ingest", "--credential-file", "shared.json", "--origin", "http://127.0.0.1:9", "--json"], { ...accessEnv(), INIT_CWD: invoked });
+    const run = await runCli(["check", "ingest", "--credential-file", "shared.json", "--origin", "http://127.0.0.1:9", "--json"], { INIT_CWD: invoked });
     assert.equal((JSON.parse(run.stdout) as { error: { code: string } }).error.code, "credential_file_mode", run.stdout + run.stderr);
   } finally {
     rmSync(invoked, { recursive: true, force: true });

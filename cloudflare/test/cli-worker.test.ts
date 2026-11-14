@@ -13,7 +13,7 @@ import { previousWindowOf } from "../src/cost/ledger";
 import { HOUR_MS } from "../src/limits";
 import type { Installation } from "../src/cloudflare/installation";
 import type { CollectorRun } from "../src/projects/store";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 
 const NOW = 1_793_510_415_000;
 const BUCKET = 300_000;
@@ -43,13 +43,9 @@ function seededRun(): CollectorRun {
   return { ok: true, atMs: NOW - 60_000, detail: "ok", rowsRead: 1, durationMs: 1, upstreamQueries: 1, collected: [{ project: "stuff", points }], storeOwners: [] };
 }
 
-async function token(): Promise<string> {
-  return accessToken();
-}
-
 async function through(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  headers.set("Cf-Access-Jwt-Assertion", await token());
+  for (const [name, value] of Object.entries(gatewayHeaders())) headers.set(name, value);
   return SELF.fetch(new URL(input instanceof Request ? input.url : input, ORIGIN), { method: init?.method ?? "GET", headers, redirect: init?.redirect ?? "follow", signal: init?.signal ?? null });
 }
 
@@ -57,9 +53,10 @@ function context(): CommandContext {
   const controller = new AbortController();
   return {
     origin: ORIGIN,
+    target: "orange",
     signal: controller.signal,
     now: () => NOW,
-    http: createHttpClient({ origin: ORIGIN, signal: controller.signal, fetch: through, credential: async () => ({ header: "Cf-Access-Jwt-Assertion", value: await token() }) }),
+    http: createHttpClient({ origin: ORIGIN, signal: controller.signal, fetch: through }),
     option: () => undefined,
     flag: () => false
   };

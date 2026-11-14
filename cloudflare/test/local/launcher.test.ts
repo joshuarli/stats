@@ -5,7 +5,7 @@ import { request } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { test } from "node:test";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { SCRATCH, ephemeralPrefix } from "../../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
 
@@ -87,7 +87,7 @@ async function serveDev(args: readonly string[], ready: RegExp): Promise<{ child
 }
 
 try {
-  await test("run hands a command the stack's origin and credential, and statsctl never calls cf", async () => {
+  await test("run hands a command the stack's gateway origin, and statsctl never calls cf", async () => {
     const shims = join(work, "shims");
     const log = join(work, "cf.log");
     mkdirSync(shims, { recursive: true });
@@ -107,17 +107,6 @@ try {
     const envelope = JSON.parse(cost.stdout) as { schema: string; payload: { projects: { id: string; status: string }[] } };
     assert.equal(envelope.schema, "statsctl/1");
     assert.deepEqual(envelope.payload.projects.map(project => [project.id, project.status]), [["stuff", "ok"]]);
-  });
-
-  await test("a broken or multi-line credential command exits 3", async () => {
-    const codes = join(work, "codes");
-    const script = [
-      `STATSCTL_AUTH_COMMAND=false ${STATSCTL} projects --json > /dev/null; echo "false $?" >> ${JSON.stringify(codes)}`,
-      `STATSCTL_AUTH_COMMAND="printf 'one\\ntwo'" ${STATSCTL} projects --json > /dev/null; echo "multi-line $?" >> ${JSON.stringify(codes)}`
-    ].join("; ");
-    const result = await finish(launch(["run", "--", "sh", "-c", script]));
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(readFileSync(codes, "utf8"), "false 3\nmulti-line 3\n");
   });
 
   await test("SIGTERM to run reaches its command and leaves no process or scratch state", async () => {
@@ -176,7 +165,7 @@ try {
       return { child, done };
     };
     const read = async () => {
-      const headers = { "cf-access-jwt-assertion": await accessToken() };
+      const headers = { ...gatewayHeaders() };
       assert.equal((await fetch(`${origin}/health`)).status, 200);
       const page = await fetch(`${origin}/`, { headers });
       assert.equal(page.status, 200);
@@ -242,7 +231,7 @@ try {
     const deadline = Date.now() + 45_000;
     let window: Window;
     for (;;) {
-      window = await (await fetch(`${origin}${windowPath}`, { headers: { "cf-access-jwt-assertion": await accessToken() } })).json() as Window;
+      window = await (await fetch(`${origin}${windowPath}`, { headers: { ...gatewayHeaders() } })).json() as Window;
       const worker = window.invocations.filter(row => row.stage === "worker").reduce((sum, row) => sum + row.count, 0);
       if (worker >= workerInvocations || Date.now() > deadline) break;
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -250,7 +239,7 @@ try {
     assert.equal(window.invocations.filter(row => row.stage === "worker").reduce((sum, row) => sum + row.count, 0), workerInvocations);
     assert.deepEqual([...new Set(window.invocations.map(row => row.version))], [version.id]);
 
-    const env = { ...process.env, STATS_URL: origin, STATSCTL_AUTH_COMMAND: `${JSON.stringify(process.execPath)} --experimental-strip-types ${JSON.stringify(join(CLOUDFLARE_ROOT, "local/token.ts"))}`, STATSCTL_AUTH_HEADER: "cf-access-jwt-assertion" };
+    const env = { ...process.env, STATS_URL: origin };
     const routes = await finish(spawn("sh", ["-c", `${STATSCTL} observe routes --project ${serviceName} --window 1h --json`], { env, stdio: ["ignore", "pipe", "pipe"] }));
     assert.equal(routes.status, 0, routes.stderr);
     const envelope = JSON.parse(routes.stdout) as { schema: string; project: string; payload: { routes: { label: string }[]; sampling: { kept: number; observed: number } } };

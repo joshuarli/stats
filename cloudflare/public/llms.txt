@@ -1,15 +1,14 @@
 # stats
 
-Host and Cloudflare-project telemetry for one owner. Everything except /health and host ingest sits behind Cloudflare Access. This file describes the read-only API under /api/v1. Everything is JSON except history responses, which are binary frames (see "History frames").
+Host and Cloudflare-project telemetry for one owner. Everything except /health and host ingest is reachable only from the owner's tailnet, through a gateway that asserts the caller's tailnet identity. This file describes the read-only API under /api/v1. Everything is JSON except history responses, which are binary frames (see "History frames").
 
 ## Authentication
 
-Send a Cloudflare Access token. From a machine logged in with `cf access login`:
+From a device on the owner's tailnet, send no credential:
 
-    tok=$(cf access token https://stats.17166969.xyz)
-    curl -s -H "cf-access-token: $tok" https://stats.17166969.xyz/api/v1/projects
+    curl -s https://stats.17166969.xyz/api/v1/projects
 
-A missing or invalid token answers 401. Errors are `{"error":{"code","message"}}`. Do not call the `/admin/*` routes; they create, rotate, revoke, and purge hosts and services.
+A request that does not come through the gateway answers 401. Errors are `{"error":{"code","message"}}`. Do not call the `/admin/*` routes; they create, rotate, revoke, and purge hosts and services.
 
 ## Projects (Cloudflare Workers and R2)
 

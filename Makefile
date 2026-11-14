@@ -18,7 +18,7 @@ dev-doctor: node-ready
 bench-dev: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/bench/dev-loop.ts $(BENCH_ARGS)
 
-.PHONY: work-ready node-ready auth-ready access-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
+.PHONY: work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -95,16 +95,9 @@ auth-ready:
 	@out=$$(cf -q auth whoami 2>&1) || { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; }; \
 	printf '%s\n' "$$out" | rg -q 'Unable to find token for provided application|Please run login command to generate token' && { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; } || true
 
-access-ready:
-	@out=$$(cf -q access token '$(STATS_URL)' 2>&1) || { printf '%s\n' "$$out" >&2; echo "Access token for $(STATS_URL) is missing or expired; run: cf access login $(STATS_URL)" >&2; exit 1; }; \
-	printf '%s\n' "$$out" | rg -q 'Unable to find token for provided application|Please run login command to generate token' && { printf '%s\n' "$$out" >&2; echo "Access token for $(STATS_URL) is missing or expired; run: cf access login $(STATS_URL)" >&2; exit 1; } || true
-
 worker-check: node-ready
 	cd cloudflare && pnpm build && cf -q deploy --prebuilt --dry-run --mode production
 	cd cloudflare && pnpm run build:observe && cd observe-worker && cf -q deploy --prebuilt --dry-run --mode production
-
-observe-deploy: auth-ready node-ready
-	cd cloudflare && pnpm run build:observe && cd observe-worker && cf -q deploy --prebuilt --mode production
 
 worker-bundle: node-ready
 	cd cloudflare && pnpm build
@@ -112,23 +105,18 @@ worker-bundle: node-ready
 observe-bundle: node-ready
 	cd cloudflare && pnpm run build:observe
 
-worker-deploy: access-ready auth-ready work-ready worker-bundle observe-deploy stats-deploy
+observe-deploy stats-deploy worker-deploy:
+	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/CAMPAIGN-OPENORANGE.md' >&2; exit 1
 
-stats-deploy: access-ready auth-ready work-ready worker-bundle
-	@set -eu; \
-	(cd cloudflare && cf -q deploy --prebuilt --mode production $(if $(SECRETS_FILE),--secrets-file '$(SECRETS_FILE)')); \
-	version=$$(cd cloudflare && cf -q workers deployments list --worker stats --per-page 1 | jaq -er '.deployments[0].versions | if length == 1 and .[0].percentage == 100 then .[0].version_id else error("the latest stats deployment does not serve one version at 100%, so the source map was not registered") end'); \
-	$(MAKE) observe-sourcemap VERSION="$$version"
-
-observe-sourcemap: access-ready node-ready
+observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }
-	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' OBSERVE_AUTH_COMMAND="cf -q access token '$(STATS_URL)'" OBSERVE_AUTH_HEADER=cf-access-token pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
+	cd cloudflare && OBSERVE_URL='$(STATS_URL)/api/observe/stats' pnpm -s observe sourcemap '$(VERSION)' .cloudflare/output/v0/workers/default/bundle/index.js.map
 
 worker-test: work-ready node-ready
 	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:all
 
-deploy: access-ready auth-ready work-ready
+deploy: auth-ready work-ready
 	@scripts/step.sh 'fixtures' $(MAKE) --no-print-directory fixtures
 	@scripts/step.sh 'worker tests' $(MAKE) --no-print-directory worker-test
 	@scripts/step.sh 'agent tests' $(MAKE) --no-print-directory agent-test
@@ -160,7 +148,7 @@ ingest-bench: work-ready node-ready
 bench-local: work-ready node-ready
 	@cd cloudflare && pnpm -s build >&2 && pnpm -s run build:observe >&2 && TMPDIR='$(CURDIR)/.work/tmp' node bench/local.ts
 
-smoke-deployed: access-ready
+smoke-deployed:
 	STATS_URL='$(STATS_URL)' deploy/deployed-smoke.sh
 
 smoke-local: work-ready node-ready worker-bundle observe-bundle

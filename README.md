@@ -4,7 +4,7 @@ A small Linux and macOS host monitor. One binary (static musl on Linux)
 samples CPU, load, memory, pressure, disks, network, and filesystems every 15
 seconds and posts batches
 over outbound HTTPS to a Cloudflare Worker. The Worker stores them in a
-SQLite-backed Durable Object and serves a dashboard behind Cloudflare Access.
+SQLite-backed Durable Object and serves a dashboard reachable only on the tailnet.
 The agent runs on ordinary Debian and Alpine hosts without root, systemd,
 containers, or a language runtime.
 
@@ -55,8 +55,7 @@ configuration, and token.
 
 ## Install on macOS or Alpine
 
-With this repository and `cf access login https://stats.17166969.xyz` done,
-point it at the host:
+From a tailnet device with this repository, point it at the host:
 
 ```sh
 make add-host NAME=m1-max SSH=josh@m1-max
@@ -231,7 +230,7 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 
 ## Dashboard
 
-Open the Worker's hostname and sign in through Access, or use the Node
+Open `https://stats.17166969.xyz` from a tailnet device (no login), or use the Node
 installation's tailnet origin. Hosts are at `/`, projects at `#/projects`, and
 services at `#/services`. Host pages show resource status, charts and device
 tables; service pages combine deployment markers, host resources and

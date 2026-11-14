@@ -4,7 +4,7 @@ import type { Installation } from "../src/cloudflare/installation";
 import { retentionDelayMs } from "../src/core/installation/schema";
 import { historyQuery } from "../src/aggregate";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 import { readFrame as frame } from "./support/history";
 import { fixtureText, frame as encode, frameFor, post, source } from "./ingest-worker";
 import type { SourceBatch } from "../src/ingest/encode.ts";
@@ -26,11 +26,11 @@ async function ingest(token: string, name: string, hostId: string): Promise<Resp
 }
 
 async function history(hostId: string, range: string, kind: string): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?range=${range}&kind=${kind}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?range=${range}&kind=${kind}`, { headers: { ...gatewayHeaders() } });
 }
 
 async function historySearch(hostId: string, search: string, headers: Record<string, string> = {}): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?${search}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken(), ...headers } });
+  return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/history?${search}`, { headers: { ...gatewayHeaders(), ...headers } });
 }
 
 describe("history query", () => {
@@ -403,7 +403,7 @@ describe("history reads", () => {
 
 describe("system details", () => {
   async function system(hostId: string): Promise<Response> {
-    return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/system`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+    return SELF.fetch(`https://example.com/api/v1/hosts/${hostId}/system`, { headers: { ...gatewayHeaders() } });
   }
 
   it("keeps what the agent last reported, serves it behind Access, and drops it with the host", async () => {

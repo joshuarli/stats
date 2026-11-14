@@ -104,9 +104,7 @@ Why a lower monthly estimate is not necessarily a win
    guardrails for failures, lost data, and coverage. Trust its verdict, not the estimate.
 
 Authentication
-   statsctl runs \`cf access token <origin>\` with no stdin and a 20 s limit and sends the
-   output in the cf-access-token header. Override with STATSCTL_AUTH_COMMAND (run with
-   sh -c) and STATSCTL_AUTH_HEADER. It never starts a login; if it fails, run
-   cf access login <origin>. The credential is sent only to the configured origin.
-   A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: no credential is
-   sent, and only check ingest, deploy mark, services, service deployments, and verify --service work there.`;
+   statsctl sends no credential. Stats is reachable only on the tailnet; its gateway, or
+   tailscale serve on a Node origin, asserts the caller's tailnet identity.
+   A tailnet origin (host ending .ts.net, or a bare name) is a Node origin: only check ingest,
+   deploy mark, services, service deployments, and verify --service work there.`;

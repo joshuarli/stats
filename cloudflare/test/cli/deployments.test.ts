@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EXIT } from "../../src/cli/exit.ts";
-import { authorized, deploymentHistory, fakeOrigin, runCli, sendJson, tokenEnv } from "./support.ts";
+import { authorized, deploymentHistory, fakeOrigin, runCli, sendJson } from "./support.ts";
 
 const BASE = 1_699_999_800_000;
 const HOUR = 3_600_000;
@@ -16,7 +16,7 @@ async function listed(deployments: unknown[], sync?: unknown): Promise<{ code: n
     sendJson(response, deploymentHistory("stats", { deployments, ...(sync === undefined ? {} : { sync }) }));
   });
   try {
-    const run = await runCli(["deployments", "--project", "stats", "--json", "--origin", origin.origin], tokenEnv());
+    const run = await runCli(["deployments", "--project", "stats", "--json", "--origin", origin.origin], {});
     const parsed = JSON.parse(run.stdout) as { payload: { deployments: Listed[]; sync: { ageMs: number | null } | null } };
     return { code: run.code, payload: parsed.payload, stdout: run.stdout };
   } finally {
@@ -64,7 +64,7 @@ await test("deployments reports sync age and exits 4 when the history does not d
   assert.equal(typeof fresh.payload.sync?.ageMs, "number");
   const origin = await fakeOrigin((_, response) => { sendJson(response, { projectId: "other" }); });
   try {
-    const run = await runCli(["deployments", "--project", "stats", "--json", "--origin", origin.origin], tokenEnv());
+    const run = await runCli(["deployments", "--project", "stats", "--json", "--origin", origin.origin], {});
     assert.equal(run.code, EXIT.transport);
     assert.equal((JSON.parse(run.stdout) as { error: { code: string } }).error.code, "contract");
   } finally {

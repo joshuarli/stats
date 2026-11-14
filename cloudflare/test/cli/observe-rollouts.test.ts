@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RolloutFinding, RolloutsPayload } from "../../src/cli/commands/observe-rollouts.ts";
 import { EXIT } from "../../src/cli/exit.ts";
-import { authorized, deploymentHistory, fakeOrigin, projectEntry, runCli, sendJson, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
+import { authorized, deploymentHistory, fakeOrigin, projectEntry, runCli, sendJson, type FakeOrigin, type Handler } from "./support.ts";
 
 const HOUR = 3_600_000;
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -66,7 +66,7 @@ function handler(nowMs: number, services: Readonly<Record<string, Service>>): Ha
 async function check(services: Readonly<Record<string, Service>>, args: readonly string[], body: (result: { code: number | null; stdout: string; stderr: string; origin: FakeOrigin }) => void): Promise<void> {
   const origin = await fakeOrigin(handler(Date.now(), services));
   try {
-    const result = await runCli(["observe", "rollouts", ...args, "--origin", origin.origin], tokenEnv());
+    const result = await runCli(["observe", "rollouts", ...args, "--origin", origin.origin], {});
     body({ ...result, origin });
   } finally {
     await origin.close();
@@ -186,7 +186,7 @@ await test("an unrecorded rollout is a contract failure, exit 4", async () => {
     response.writeHead(404).end();
   });
   try {
-    const result = await runCli(["observe", "rollouts", "--json", "--origin", origin.origin], tokenEnv());
+    const result = await runCli(["observe", "rollouts", "--json", "--origin", origin.origin], {});
     assert.equal(result.code, EXIT.transport);
   } finally {
     await origin.close();

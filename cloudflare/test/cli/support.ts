@@ -28,7 +28,6 @@ export function runCli(args: readonly string[], env: Readonly<Record<string, str
   });
 }
 
-export const tokenEnv = (extra: Readonly<Record<string, string>> = {}): Record<string, string> => ({ STATSCTL_AUTH_COMMAND: `printf '%s' ${TOKEN}`, ...extra });
 
 export interface Seen {
   readonly method: string;
@@ -89,5 +88,5 @@ export const observeHealth = (newestAtMs: number, overrides: Record<string, unkn
 });
 
 export function authorized(request: IncomingMessage): boolean {
-  return request.headers["cf-access-token"] === TOKEN;
+  return request.headers["authorization"] === undefined && request.headers["cf-access-token"] === undefined;
 }

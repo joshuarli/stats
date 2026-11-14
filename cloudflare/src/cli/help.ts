@@ -17,17 +17,17 @@ const OUTPUT_LINES = [
 const AUTH_LINES = [
   "credentials:",
   `  Origin is --origin, else STATS_URL, else ${DEFAULT_ORIGIN}.`,
-  "  The credential is the output of `cf access token <origin>` (no stdin, 20 s limit), sent",
-  "  in the cf-access-token header to that origin only. Redirects are never followed.",
-  "  Override with STATSCTL_AUTH_COMMAND (run with sh -c) and STATSCTL_AUTH_HEADER.",
-  "  statsctl never starts a login; on failure it exits 3 and says: run: cf access login <origin>.",
+  "  statsctl sends no credential. Stats is reachable only on the tailnet, and its gateway",
+  "  (or tailscale serve on a Node origin) asserts the caller's tailnet identity. Redirects",
+  "  are never followed.",
   "",
   "targets:",
-  "  An origin whose host ends in .ts.net, or is a bare name with no dot (http or https), is a Node",
-  "  origin behind tailscale serve: statsctl sends no credential there. Any other origin is Cloudflare.",
-  "  Commands whose help says they support a Node origin work there. Every other command reads",
-  "  Cloudflare telemetry and exits 2 with unsupported_on_target before any request.",
-  "  `deploy mark` sends only its service deploy token, on both targets, never the Access credential."
+  `  ${DEFAULT_ORIGIN} and loopback origins are the orange target (the Worker on OpenOrange).`,
+  "  An origin whose host ends in .ts.net, or is a bare name with no dot, is a Node origin.",
+  "  Any other origin needs STATSCTL_TARGET=orange or STATSCTL_TARGET=node.",
+  "  Commands whose help says they support a Node origin work there. Every other command",
+  "  exits 2 with unsupported_on_target before any request.",
+  "  `deploy mark` sends only its service deploy token, on both targets."
 ];
 
 function optionLine(name: string, spec: OptionSpec): readonly [string, string] {
@@ -83,7 +83,7 @@ export function commandHelp(command: Command): string {
     ...command.description,
     "",
     `access: ${command.access === "mutation" ? "MUTATION, it changes remote state" : "read-only"}`,
-    `targets: ${command.targets.length === 2 ? "Cloudflare origin and Node origin" : "Cloudflare origin only; exits 2 with unsupported_on_target on a Node origin"}`,
+    `targets: ${command.targets.length === 2 ? "orange origin and Node origin" : "orange origin only; exits 2 with unsupported_on_target on a Node origin"}`,
     "",
     ...optionBlock("options:", command.options),
     ...(rules.length === 0 ? [] : ["option rules (violations exit 2):", ...rules, ""]),

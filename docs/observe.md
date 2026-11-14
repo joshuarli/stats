@@ -202,9 +202,9 @@ dependencies, and fails a command whose response does not validate against
 `src/observe/client/decode.ts`.
 
 - **Target and auth.** `--base` or `OBSERVE_URL`, and a header produced by a
-  command: `OBSERVE_AUTH_COMMAND` with the required `OBSERVE_AUTH_HEADER` (for
-  stats, `cf access token <host>` into `cf-access-token`). Credentials never come
-  from argv.
+  command: `OBSERVE_AUTH_COMMAND` with the required `OBSERVE_AUTH_HEADER`, for
+  origins that need one; the tailnet stats origin needs none. Credentials never
+  come from argv.
 - **Read commands.** `health`, `routes`, `issues`, `issue <fingerprint>`,
   `traces`, `trace <id>` (a text waterfall), and `deployment <rollout id>`.
 - **Write commands.** `issue resolve|reopen <fingerprint>` and `sourcemap`, which

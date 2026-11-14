@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 import { CloudflareSql } from "../src/cloudflare/sql";
 import { authenticateDeployToken, authenticateIngestToken } from "../src/core/installation/services";
 import type { DeploymentHistory } from "../src/deployments/model";
@@ -15,7 +15,7 @@ afterEach(() => {
 
 async function admin(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  headers.set("Cf-Access-Jwt-Assertion", await accessToken());
+  for (const [name, value] of Object.entries(gatewayHeaders())) headers.set(name, value);
   return SELF.fetch(`${ORIGIN}/api/v1${path}`, { ...init, headers });
 }
 

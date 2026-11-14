@@ -1,96 +1,49 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { verifyAccess } from "../src/cloudflare/access";
-import { accessToken, b64url } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 
-const audience = "test-aud";
-
-function api(token?: string): Promise<Response> {
-  return SELF.fetch("https://example.com/api/v1/hosts", { headers: token === undefined ? {} : { "Cf-Access-Jwt-Assertion": token } });
+function api(headers: Record<string, string> = {}): Promise<Response> {
+  return SELF.fetch("https://example.com/api/v1/hosts", { headers });
 }
 
-function decodePart(value: string): Uint8Array {
-  const padded = value.replace(/-/gu, "+").replace(/_/gu, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-
-function tamperedSignature(token: string): string {
-  const parts = token.split(".");
-  const signature = parts[2]!;
-  const index = Math.floor(signature.length / 2);
-  parts[2] = `${signature.slice(0, index)}${signature[index] === "A" ? "B" : "A"}${signature.slice(index + 1)}`;
-  return parts.join(".");
-}
-
-function tamperedPayload(token: string): string {
-  const parts = token.split(".");
-  const claims = JSON.parse(new TextDecoder().decode(decodePart(parts[1]!))) as Record<string, unknown>;
-  claims.aud = "other";
-  parts[1] = b64url(JSON.stringify(claims));
-  return parts.join(".");
-}
-
-describe("Access authorization", () => {
-  it("accepts a signed assertion and rejects every invalid shape", async () => {
+describe("Gateway authorization", () => {
+  it("accepts gateway-asserted users and tagged machines and rejects forged or missing assertions", async () => {
     expect((await api()).status).toBe(401);
-    expect((await api(await accessToken({ aud: "other" }))).status).toBe(401);
-    expect((await api(await accessToken({ iss: "https://other.cloudflareaccess.com" }))).status).toBe(401);
-    expect((await api(await accessToken({ exp: Math.floor(Date.now() / 1000) - 120 }))).status).toBe(401);
-    expect((await api(await accessToken({}, { kid: "unknown" }))).status).toBe(401);
-    expect((await api(await accessToken({}, { alg: "HS256" }))).status).toBe(401);
-    expect((await api(`${await accessToken()}.x`)).status).toBe(401);
-    const valid = await accessToken();
-    const response = await api(valid);
+    expect((await api({ "Tailscale-User-Login": "tester@example.com" })).status).toBe(401);
+    expect((await api({ "Stats-Tailnet-Identity": "user:tester@example.com" })).status).toBe(401);
+    expect((await api(gatewayHeaders("wrong-secret"))).status).toBe(401);
+    expect((await api(gatewayHeaders(undefined, "user:"))).status).toBe(401);
+    expect((await api(gatewayHeaders(undefined, "tags:tag:ci"))).status).toBe(200);
+    const response = await api(gatewayHeaders());
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
-  it("rejects a signature or payload altered after signing", async () => {
-    const valid = await accessToken();
-    expect((await api(tamperedSignature(valid))).status).toBe(401);
-    expect((await api(tamperedPayload(valid))).status).toBe(401);
-  });
-
-  it("rejects a not-yet-valid assertion and accepts an audience array", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    expect((await api(await accessToken({ nbf: now + 3_600 }))).status).toBe(401);
-    expect((await api(await accessToken({ aud: [audience, "another-aud"] }))).status).toBe(200);
-  });
-
-  it("returns 503 when no JWKS is available", async () => {
-    const request = new Request("https://example.com/api/v1/hosts", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
-    const result = await verifyAccess(request, { ENVIRONMENT: "test" } as unknown as Env);
-    expect(result).toEqual({ ok: false, status: 503, message: "Access verification is unavailable" });
-  });
-
-  it("protects static assets behind Access", async () => {
+  it("protects static assets behind the gateway", async () => {
     expect((await SELF.fetch("https://example.com/")).status).toBe(401);
-    const response = await SELF.fetch("https://example.com/", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+    const response = await SELF.fetch("https://example.com/", { headers: gatewayHeaders() });
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain("<title>Stats</title>");
     expect(response.headers.get("cache-control")).toBe("no-store");
     for (const path of [/src="([^"]+\.js)"/u.exec(html)?.[1], /href="([^"]+\.css)"/u.exec(html)?.[1]].filter((entry): entry is string => entry !== undefined)) {
-      const asset = await SELF.fetch(`https://example.com${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+      const asset = await SELF.fetch(`https://example.com${path}`, { headers: gatewayHeaders() });
       expect(asset.status, path).toBe(200);
       expect(asset.headers.get("cache-control"), path).toBe("private, max-age=31536000, immutable");
       expect(asset.headers.get("content-security-policy"), path).toContain("default-src 'self'");
     }
   });
 
-  it("serves llms.txt only behind Access", async () => {
+  it("serves llms.txt only behind the gateway", async () => {
     expect((await SELF.fetch("https://example.com/llms.txt")).status).toBe(401);
-    const response = await SELF.fetch("https://example.com/llms.txt", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+    const response = await SELF.fetch("https://example.com/llms.txt", { headers: gatewayHeaders() });
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("/api/v1/projects/:id/history");
   });
 
-  it("serves the two linked docs behind Access and no other doc", async () => {
-    const headers = { "Cf-Access-Jwt-Assertion": await accessToken() };
+  it("serves the two linked docs behind the gateway and no other doc", async () => {
+    const headers = gatewayHeaders();
     for (const path of ["/docs/protocol.md", "/docs/architecture.md"]) {
       expect((await SELF.fetch(`https://example.com${path}`)).status, path).toBe(401);
       const response = await SELF.fetch(`https://example.com${path}`, { headers });
@@ -103,8 +56,7 @@ describe("Access authorization", () => {
   });
 
   it("rejects malformed admin calls without the raw exception", async () => {
-    const token = await accessToken();
-    const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };
+    const headers = { ...gatewayHeaders(), "Content-Type": "application/json" };
     const invalidName = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: JSON.stringify({ name: "\u0000" }) });
     expect(invalidName.status).toBe(400);
     expect((await invalidName.json() as { error: { code: string } }).error.code).toBe("invalid_request");
@@ -116,14 +68,13 @@ describe("Access authorization", () => {
     const nullBody = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: "null" });
     expect(nullBody.status).toBe(400);
 
-    const missing = await SELF.fetch("https://example.com/api/v1/admin/hosts/h_00000000000000000000000000000000/rotate", { method: "POST", headers: { "Cf-Access-Jwt-Assertion": token } });
+    const missing = await SELF.fetch("https://example.com/api/v1/admin/hosts/h_00000000000000000000000000000000/rotate", { method: "POST", headers: gatewayHeaders() });
     expect(missing.status).toBe(404);
     expect((await missing.json() as { error: { code: string } }).error.code).toBe("not_found");
   });
 
   it("rejects cross-site writes and non-JSON admin bodies, and allows same-origin and header-less clients", async () => {
-    const token = await accessToken();
-    const base = { "Cf-Access-Jwt-Assertion": token };
+    const base = gatewayHeaders();
     const create = (headers: Record<string, string>) => SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers: { ...base, ...headers }, body: JSON.stringify({ name: "csrf" }) });
     const crossOrigin = await create({ "Content-Type": "text/plain", Origin: "https://evil.example" });
     expect(crossOrigin.status).toBe(403);
@@ -141,28 +92,27 @@ describe("Access authorization", () => {
   });
 
   it("provisions, rotates, and revokes a host", async () => {
-    const token = await accessToken();
-    const headers = { "Cf-Access-Jwt-Assertion": token, "Content-Type": "application/json" };
+    const headers = { ...gatewayHeaders(), "Content-Type": "application/json" };
     const created = await SELF.fetch("https://example.com/api/v1/admin/hosts", { method: "POST", headers, body: JSON.stringify({ name: "alpha" }) });
     expect(created.status).toBe(201);
     const host = await created.json() as { hostId: string; token: string; name: string };
     expect(host.hostId).toMatch(/^h_[0-9a-f]{32}$/u);
     expect(host.token).toMatch(/^nft_[A-Za-z0-9_-]{43}$/u);
 
-    const list = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: { "Cf-Access-Jwt-Assertion": token } });
+    const list = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: gatewayHeaders() });
     const listText = await list.text();
     expect((JSON.parse(listText) as { hosts: { hostId: string }[] }).hosts.some(entry => entry.hostId === host.hostId)).toBe(true);
     expect(listText.includes(host.token)).toBe(false);
 
-    const rotated = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/rotate`, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": token } });
+    const rotated = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/rotate`, { method: "POST", headers: gatewayHeaders() });
     expect((await rotated.json() as { token: string }).token).not.toBe(host.token);
-    const revoked = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    const revoked = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}`, { method: "DELETE", headers: gatewayHeaders() });
     expect(revoked.status).toBe(204);
-    const purged = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    const purged = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: gatewayHeaders() });
     expect(purged.status).toBe(204);
-    const after = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: { "Cf-Access-Jwt-Assertion": token } });
+    const after = await SELF.fetch("https://example.com/api/v1/admin/hosts", { headers: gatewayHeaders() });
     expect((await after.json() as { hosts: { hostId: string }[] }).hosts.some(entry => entry.hostId === host.hostId)).toBe(false);
-    const missing = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: { "Cf-Access-Jwt-Assertion": token } });
+    const missing = await SELF.fetch(`https://example.com/api/v1/admin/hosts/${host.hostId}/purge`, { method: "DELETE", headers: gatewayHeaders() });
     expect(missing.status).toBe(404);
   });
 });

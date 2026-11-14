@@ -8,7 +8,7 @@ import { createHttpClient } from "../../src/cli/http.ts";
 import { createVerifyCommand } from "../../src/cli/commands/verify.ts";
 import type { CommandContext } from "../../src/cli/registry.ts";
 import type { SafetyRecord } from "../../src/cli/verify/decide.ts";
-import { authorized, collector, deploymentHistory, fakeOrigin, observeHealth, projectEntry, sendJson, TOKEN, type FakeOrigin } from "./support.ts";
+import { authorized, collector, deploymentHistory, fakeOrigin, observeHealth, projectEntry, sendJson, type FakeOrigin } from "./support.ts";
 
 export const H = 3_600_000;
 export const SETTLE = 45 * 60_000;
@@ -169,8 +169,8 @@ export async function harness(world: World, policy: Record<string, unknown> = PO
       const command = createVerifyCommand({ sleep, stateDirectory: join(directory, "state") });
       const values: Record<string, string | boolean> = options["replay"] === undefined ? { project: "stats", policy: policyFile, ...options } : options;
       const context: CommandContext = {
-        origin: origin.origin, signal, now: () => world.clock.now,
-        http: createHttpClient({ origin: origin.origin, signal, credential: async () => ({ header: "cf-access-token", value: TOKEN }), backoffMs: 0 }),
+        origin: origin.origin, target: "orange", signal, now: () => world.clock.now,
+        http: createHttpClient({ origin: origin.origin, signal, backoffMs: 0 }),
         option: name => typeof values[name] === "string" ? values[name] : undefined,
         flag: name => values[name] === true
       };

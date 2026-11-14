@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { comparisonBounds } from "../../src/deployments/compare.ts";
 import { buildComparisonSpec } from "../../src/compare/spec.ts";
 import { EXIT } from "../../src/cli/exit.ts";
-import { authorized, deploymentHistory, fakeOrigin, runCli, sendJson, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
+import { authorized, deploymentHistory, fakeOrigin, runCli, sendJson, type FakeOrigin, type Handler } from "./support.ts";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const OLD = { id: uuid(1), atMs: 1_699_000_000_000, source: "wrangler", message: null, deferred: false, versions: [{ id: uuid(101), percentage: 100 }] };
@@ -44,7 +44,7 @@ async function withOrigin(handle: Handler, body: (origin: FakeOrigin) => Promise
   }
 }
 
-const run = (origin: FakeOrigin, args: readonly string[]) => runCli(["compare", "--project", "stats", ...args, "--json", "--origin", origin.origin], tokenEnv());
+const run = (origin: FakeOrigin, args: readonly string[]) => runCli(["compare", "--project", "stats", ...args, "--json", "--origin", origin.origin], {});
 
 await test("latest resolves once to the newest id and the comparison request uses it", async () => {
   await withOrigin(handler(), async origin => {
@@ -73,7 +73,7 @@ await test("an explicit id skips history, and withheld verdicts still exit 0", a
 
 await test("text output labels the comparison descriptive and points to verify", async () => {
   await withOrigin(handler(), async origin => {
-    const result = await runCli(["compare", "--project", "stats", "--deployment", NEW.id, "--origin", origin.origin], tokenEnv());
+    const result = await runCli(["compare", "--project", "stats", "--deployment", NEW.id, "--origin", origin.origin], {});
     assert.equal(result.code, EXIT.ok);
     assert.match(result.stdout, /descriptive comparison, not acceptance; run `statsctl verify`/u);
     assert.match(result.stdout, /Waiting for the full post-deployment window/u);

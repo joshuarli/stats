@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { fetchCredential, resolveOrigin, targetOf, DEFAULT_ORIGIN } from "./auth.ts";
+import { deploymentOf, resolveOrigin, DEFAULT_ORIGIN } from "./auth.ts";
 import { REGISTRY } from "./commands/index.ts";
 import { envelopeBase, failureEnvelope, successEnvelope, type Envelope } from "./envelope.ts";
 import { CommandError, EXIT, unsupportedOnTarget, usageError, type ExitCode } from "./exit.ts";
@@ -129,14 +129,20 @@ export async function main(argv: readonly string[], deps: Deps): Promise<ExitCod
     } catch (error) {
       throw usageError(error instanceof Error ? error.message : "invalid origin");
     }
-    const target = targetOf(origin);
-    if (!command.targets.includes(target)) throw unsupportedOnTarget(command.name, origin);
+    let target;
+    try {
+      target = deploymentOf(origin, deps.env).target;
+    } catch (error) {
+      throw usageError(error instanceof Error ? error.message : "unknown deployment");
+    }
+    if (!command.targets.includes(target)) throw unsupportedOnTarget(command.name, target, origin);
     const signal = deps.signal ?? new AbortController().signal;
     const context: CommandContext = {
       origin,
+      target,
       signal,
       now,
-      http: createHttpClient({ origin, signal, credential: target === "node" ? null : () => fetchCredential(origin, deps.env, signal) }),
+      http: createHttpClient({ origin, signal }),
       option: name => typeof values[name] === "string" ? values[name] : undefined,
       flag: name => values[name] === true
     };

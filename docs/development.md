@@ -31,8 +31,9 @@ build and replace the backend. A compilation error leaves the previous backend
 serving. Fix the error to recover automatically. A backend activation failure
 reports a separate error and retains the state directory.
 
-The frontend proxy supplies a short-lived test Access identity to the backend.
-The backend still validates the JWT and rejects anonymous data requests.
+The backend sits behind a local gateway (`cloudflare/local/gateway.ts`) that
+asserts a test tailnet identity with a per-session secret, as the production
+gateway does. The backend still rejects requests that bypass it.
 The local UI uses disposable test identity. No production credentials are needed.
 
 Read the `dev-ready` JSON line or its `statusFile` for the run ID, URLs, ports,

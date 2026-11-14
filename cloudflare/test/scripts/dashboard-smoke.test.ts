@@ -54,7 +54,8 @@ case "$url" in
     esac
     ;;
   */api/v1/hosts)
-    status=401
+    body='{"hosts":[]}'
+    status=200
     ;;
   */assets/*)
     if [ "$STUB_DASHBOARD_BROKEN" = yes ]; then
@@ -82,7 +83,6 @@ esac
 
 function stubs(workspace: Workspace): void {
   workspace.install("curl", CURL);
-  workspace.install("cf", "echo token\n");
   workspace.install("sleep", "exit 0\n");
   workspace.install("date", `n=$(cat "$STUB_STATE/clock" 2>/dev/null || echo 0); n=$((n + 30)); echo "$n" > "$STUB_STATE/clock"; echo "$n"\n`);
 }

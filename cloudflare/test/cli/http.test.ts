@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CommandError } from "../../src/cli/exit.ts";
-import { fetchCredential } from "../../src/cli/auth.ts";
 import { createHttpClient, HISTORY_BODY_LIMIT, type HttpClient } from "../../src/cli/http.ts";
-import { fakeOrigin, sendJson, TOKEN } from "./support.ts";
+import { fakeOrigin, sendJson } from "./support.ts";
 
 async function client(origin: string, overrides: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<HttpClient> {
-  return createHttpClient({ origin, signal: overrides.signal ?? new AbortController().signal, credential: async () => ({ header: "cf-access-token", value: TOKEN }), backoffMs: 1, ...overrides });
+  return createHttpClient({ origin, signal: overrides.signal ?? new AbortController().signal, backoffMs: 1, ...overrides });
 }
 
 async function failure(promise: Promise<unknown>): Promise<CommandError> {
@@ -123,12 +122,4 @@ await test("a per-call body limit lets a JSON body larger than the default decod
   } finally {
     await origin.close();
   }
-});
-
-await test("an interrupt while the credential command runs is a cancellation, not an authentication failure", async () => {
-  const controller = new AbortController();
-  const pending = fetchCredential("https://stats.example", { PATH: process.env["PATH"], STATSCTL_AUTH_COMMAND: "sleep 5" }, controller.signal);
-  setTimeout(() => controller.abort(), 50);
-  const error = await failure(pending);
-  assert.equal(error.code, "cancelled");
 });

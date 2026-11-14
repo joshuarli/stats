@@ -75,8 +75,8 @@ See [development](development.md) for file/name selectors and the JSON inventory
   OS layer: it removes `CLOUDFLARE_*` and `CF_*` and runs its command under
   `sandbox-exec` with only loopback network, so DNS lookups fail too.
 - **Launcher.** `cloudflare/scripts/local-stack.mjs run -- CMD` runs `CMD`
-  against an ephemeral seeded stack with `STATS_URL`, `STATSCTL_AUTH_COMMAND`,
-  and `STATSCTL_AUTH_HEADER` set, so `statsctl` reads it without `cf`. `dev`
+  against an ephemeral seeded stack with `STATS_URL` set to its gateway, so
+  `statsctl` reads it without `cf`. `dev`
   serves a persistent stack and prints the same environment.
 - **Producer exports.** `run` and `dev` take `--producer DIR`, repeatable,
   and `startStack` takes the same directories as `producers`. `DIR` is a
@@ -230,11 +230,11 @@ Constraints a change to the stack must keep:
   (`test/node/boundary.test.ts`). `topology.test.ts` asserts the built
   production config keeps `ENVIRONMENT` `production` and carries no
   `TEST_NOW_MS`.
-- **Test identity.** `ENVIRONMENT=test` plus the test Access key, tokens minted
-  by `cloudflare/local/token.ts` (one per credential call, because a token lives
-  one hour), and a listener on `127.0.0.1` only. `statsctl` reads `127.0.0.1` as
-  a Cloudflare target, so the launcher sets `STATSCTL_AUTH_HEADER` to
-  `cf-access-jwt-assertion`, the only header the Worker reads.
+- **Test identity.** `ENVIRONMENT=test`, a random per-session `GATEWAY_SECRET`,
+  and a local gateway (`cloudflare/local/gateway.ts`) on `127.0.0.1` that adds
+  the gateway headers like the production gateway. The stack's `origin` is the
+  gateway; `statsctl` reads a loopback origin as the orange target and sends no
+  credential.
 - **Clock.** A scenario pins `TEST_NOW_MS` for the `Installation` clock, but the
   collector's `now` is the scheduled time and its window is the trailing 90
   minutes, so generated rows anchor to the scheduled time. A scenario that

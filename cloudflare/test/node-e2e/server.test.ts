@@ -5,7 +5,9 @@ import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
+import type { AddressInfo } from "node:net";
 import { agentDeliversABatch } from "../agent-e2e/flow.ts";
+import { identityProxy } from "../cli/node-server.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const SCRATCH = resolve(ROOT, "../.work/tmp");
@@ -29,7 +31,7 @@ function launch(env: Record<string, string>): { child: ChildProcess; output: () 
 }
 
 async function start(dataDir: string): Promise<Started> {
-  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: LOGIN });
+  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" });
   const port = await new Promise<number>((resolvePort, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not report a port: ${launched.output()}`)), 10_000);
     launched.child.stdout!.on("data", () => {
@@ -44,7 +46,7 @@ async function start(dataDir: string): Promise<Started> {
 }
 
 async function smoke(origin: string): Promise<{ code: number | null; output: string }> {
-  const child = spawn("sh", [SMOKE], { env: { ...process.env, STATS_URL: origin, TMPDIR: SCRATCH, STATSCTL_AUTH_COMMAND: `printf '%s\n' '${LOGIN}'`, STATSCTL_AUTH_HEADER: "Tailscale-User-Login" }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn("sh", [SMOKE], { env: { ...process.env, STATS_URL: origin, TMPDIR: SCRATCH }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", chunk => { output += String(chunk); });
   child.stderr.on("data", chunk => { output += String(chunk); });
@@ -58,7 +60,13 @@ await test("the Node server passes the deployed smoke, stores the real agent's b
     const server = await start(dataDir);
     let host: { hostId: string; token: string };
     try {
-      const smoked = await smoke(server.origin);
+      const proxy = await identityProxy(Number(new URL(server.origin).port), []);
+      let smoked: { code: number | null; output: string };
+      try {
+        smoked = await smoke(`http://localhost:${(proxy.address() as AddressInfo).port}`);
+      } finally {
+        proxy.close();
+      }
       assert.equal(smoked.code, 0, smoked.output);
       assert.match(smoked.output, /^OK: /mu);
       host = await agentDeliversABatch({ origin: server.origin, credentials: { "Tailscale-User-Login": LOGIN }, request: (url, init) => fetch(url, init) });
@@ -121,8 +129,7 @@ await test("the Node server refuses to start without its allowlist or data direc
   const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-config-"));
   try {
     for (const [env, message] of [
-      [{ STATS_DATA_DIR: dataDir }, /STATS_ALLOWED_LOGINS is required/u],
-      [{ STATS_ALLOWED_LOGINS: LOGIN }, /STATS_DATA_DIR is required/u]
+      [{}, /STATS_DATA_DIR is required/u]
     ] as const) {
       const launched = launch(env);
       assert.equal(await launched.exited(), 2, launched.output());
@@ -138,7 +145,7 @@ await test("a second Node server on the same data directory exits 2 and leaves t
   try {
     const first = await start(dataDir);
     try {
-      const second = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: LOGIN });
+      const second = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" });
       assert.equal(await second.exited(), 2, second.output());
       assert.match(second.output(), /stats: STATS_DATA_DIR .* is in use by another server/u);
       assert.equal((await fetch(`${first.origin}/health`)).status, 200);
@@ -152,7 +159,7 @@ await test("a second Node server on the same data directory exits 2 and leaves t
 });
 
 function socketServer(dataDir: string, socket: string) {
-  return launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: `unix:${socket}`, STATS_ALLOWED_LOGINS: LOGIN });
+  return launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: `unix:${socket}` });
 }
 
 function overSocket(socket: string, path: string, headers: Record<string, string> = {}): Promise<number> {

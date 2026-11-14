@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { doctor } from "../scripts/dev-doctor.ts";
 import { processOwner } from "../scripts/processes.ts";
-import { accessToken } from "../test/access-token.ts";
+import { gatewayHeaders } from "../test/gateway-headers.ts";
 
 const { values } = parseArgs({ options: { root: { type: "string" }, phase: { type: "string", default: "candidate" }, legacy: { type: "boolean" }, runs: { type: "string", default: "5" }, out: { type: "string" } } });
 const originalRepo = resolve(import.meta.dirname, "../..");
@@ -115,7 +115,7 @@ async function trial(scenario: string, work: () => Promise<{ compilations: numbe
 
 try {
   browser = await chromium.launch({ headless: true });
-  page = await browser.newPage({ extraHTTPHeaders: { "cf-access-jwt-assertion": await accessToken() } });
+  page = await browser.newPage({ extraHTTPHeaders: { ...gatewayHeaders() } });
   page.on("pageerror", error => console.error(`browser: ${error.message}`));
   for (let run = 0; run < runs; run += 1) {
     await stop();

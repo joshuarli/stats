@@ -1,12 +1,11 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { expect, test, type Page } from "./fixtures";
-import { accessToken } from "../access-token.ts";
 import { dollarsPrecise } from "../../src/client/format.ts";
 import { BUCKET_MS } from "../../src/projects/queries.ts";
 import { scenario, type Mode } from "../../local/scenario.ts";
 import { addHost, ingestFixture } from "../../local/seed.ts";
-import { ACCESS_HEADER, cliEnv, productionProjects, startStack, type Stack } from "../../local/stack.ts";
+import { cliEnv, productionProjects, startStack, type Stack } from "../../local/stack.ts";
 import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
 import { ensureBuilds } from "../../scripts/ensure-build.ts";
 
@@ -23,7 +22,6 @@ async function collect(atMs: number, modes: Parameters<typeof scenario>[2]): Pro
 }
 
 async function open(page: Page, path: string): Promise<void> {
-  await page.setExtraHTTPHeaders({ [ACCESS_HEADER]: await accessToken() });
   await page.goto("about:blank");
   await page.goto(`${stack.origin}${path}`);
 }

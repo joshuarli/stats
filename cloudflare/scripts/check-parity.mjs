@@ -19,10 +19,9 @@ function run(command, args) {
 const account = JSON.parse(run("cf", ["-q", "accounts", "list"]));
 if (account.length !== 1) throw new Error("set CLOUDFLARE_ACCOUNT_ID: the profile sees more than one account");
 const accountTag = process.env.CLOUDFLARE_ACCOUNT_ID ?? account[0].id;
-const token = run("cf", ["-q", "access", "token", HOST]).trim();
 
-const response = await fetch(`${HOST}/api/v1/projects/${PROJECT}/history?range=24h&kind=worker`, { headers: { "cf-access-token": token } });
-if (!response.ok) throw new Error(`history answered ${response.status}; run cf access login ${HOST}`);
+const response = await fetch(`${HOST}/api/v1/projects/${PROJECT}/history?range=24h&kind=worker`);
+if (!response.ok) throw new Error(`history answered ${response.status}; run it from a tailnet device`);
 const history = readHistory(Buffer.from(await response.arrayBuffer()));
 const stored = history.series.find((entry) => entry.metric === "worker.invocations").values;
 

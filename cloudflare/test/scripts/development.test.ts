@@ -6,7 +6,7 @@ import { chromium } from "@playwright/test";
 import { processOwner } from "../../scripts/processes.ts";
 import { devWorkspace } from "../support/dev-workspace.ts";
 
-interface Status { readonly event: string; readonly origin: string; readonly backendOrigin: string; readonly backendPid: number; readonly runId: string; readonly artifacts: readonly { readonly target: string; readonly identity: string }[] }
+interface Status { readonly event: string; readonly origin: string; readonly backendOrigin: string; readonly workerOrigin: string; readonly backendPid: number; readonly runId: string; readonly artifacts: readonly { readonly target: string; readonly identity: string }[] }
 
 await test("development hot updates, reloads, keeps the last good build and state, and isolates shutdown", { timeout: 90_000 }, async () => {
   const workspace = devWorkspace();
@@ -58,7 +58,7 @@ await test("development hot updates, reloads, keeps the last good build and stat
     assert.notEqual(initial.origin, other.origin);
     assert.notEqual(initial.backendOrigin, other.backendOrigin);
     assert.notEqual(initial.runId, other.runId);
-    assert.equal((await fetch(`${initial.backendOrigin}/api/v1/hosts`)).status, 401);
+    assert.equal((await fetch(`${initial.workerOrigin}/api/v1/hosts`)).status, 401);
     const hosts = async (origin: string) => await (await fetch(`${origin}/api/v1/hosts`)).json() as { hosts: { hostId: string }[] };
     const before = await hosts(initial.origin);
     assert.equal(before.hosts.length, 1);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it as test } from "node:test";
 import { EXIT } from "../../src/cli/exit.ts";
 import { useColour } from "../../src/cli/text.ts";
-import { authorized, deploymentHistory, fakeOrigin, observeHealth, projectEntry, runCli, sendJson, TOKEN, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
+import { authorized, deploymentHistory, fakeOrigin, observeHealth, projectEntry, runCli, sendJson, TOKEN, type FakeOrigin, type Handler } from "./support.ts";
 
 async function withOrigin(handler: Handler, body: (origin: FakeOrigin) => Promise<void>): Promise<void> {
   const origin = await fakeOrigin(handler);
@@ -21,7 +21,7 @@ function errorOf(stdout: string): { code: string; message: string } {
   return document(stdout)["error"] as { code: string; message: string };
 }
 
-const jsonRun = (origin: FakeOrigin, args: readonly string[], extra: Record<string, string> = {}) => runCli([...args, "--json", "--origin", origin.origin], tokenEnv(extra));
+const jsonRun = (origin: FakeOrigin, args: readonly string[], extra: Record<string, string> = {}) => runCli([...args, "--json", "--origin", origin.origin], extra);
 
 await describe("contract", { concurrency: true }, () => {
   void test("the exit code map matches the contract", () => {
@@ -35,7 +35,7 @@ await describe("contract", { concurrency: true }, () => {
       ["compare", "--project", "stats"], ["check", "ingest"], ["projects", "--origin", "http://example.com"], ["projects", "--origin", "not a url"]
     ];
     await Promise.all(cases.map(async args => {
-      const run = await runCli(args, tokenEnv());
+      const run = await runCli(args, {});
       assert.equal(run.code, EXIT.usage, `${args.join(" ")}: ${run.stdout}${run.stderr}`);
       assert.notEqual(run.stderr, "", args.join(" "));
     }));
@@ -76,7 +76,7 @@ await describe("contract", { concurrency: true }, () => {
 void test("text mode prints a table, no escape codes, and nothing on stdout from diagnostics", async () => {
   await withOrigin((_, response) => { sendJson(response, [projectEntry("stats")]); }, async origin => {
     for (const extra of [{}, { NO_COLOR: "1" }, { NO_COLOR: "" }]) {
-      const run = await runCli(["projects", "--origin", origin.origin], tokenEnv(extra));
+      const run = await runCli(["projects", "--origin", origin.origin], extra);
       assert.equal(run.code, EXIT.ok);
       assert.match(run.stdout, /^project\s+worker\s+collector/u);
       assert.match(run.stdout, /stats\s+stats-worker\s+fresh/u);
@@ -170,29 +170,12 @@ void test("only GET network-class failures are retried, at most twice", async ()
   });
 });
 
-void test("a missing credential exits 3 and says how to log in, without starting a login", async () => {
-  await withOrigin((_, response) => { sendJson(response, []); }, async origin => {
-    for (const command of ["exit 1", "printf ''", "sleep 0.01; exit 3"]) {
-      const run = await jsonRun(origin, ["projects"], { STATSCTL_AUTH_COMMAND: command });
-      assert.equal(run.code, EXIT.auth);
-      assert.equal(errorOf(run.stdout).code, "credential_unavailable");
-      assert.ok(errorOf(run.stdout).message.includes(`run: cf access login ${origin.origin}`));
-      assert.equal(origin.connections(), 0);
-    }
-  });
-});
-
-void test("the credential header name is configurable and the token never reaches argv", async () => {
-  await withOrigin((request, response) => {
-    if (request.headers["x-access"] !== TOKEN) return void response.writeHead(401).end();
-    sendJson(response, []);
-  }, async origin => {
-    const run = await jsonRun(origin, ["projects"], { STATSCTL_AUTH_HEADER: "x-access" });
-    assert.equal(run.code, EXIT.ok, run.stdout);
+void test("a 401 from the origin exits 3 and statsctl sends no credential or credential command", async () => {
+  await withOrigin((_, response) => { response.writeHead(401).end(); }, async origin => {
+    const run = await jsonRun(origin, ["projects"], { STATSCTL_AUTH_COMMAND: "exit 1", STATSCTL_AUTH_HEADER: "x-access" });
+    assert.equal(run.code, EXIT.auth, run.stdout);
+    assert.equal(origin.seen[0]?.headers["x-access"], undefined);
     assert.equal(origin.seen[0]?.headers["cf-access-token"], undefined);
-    const bad = await jsonRun(origin, ["projects"], { STATSCTL_AUTH_HEADER: "bad header" });
-    assert.equal(bad.code, EXIT.usage);
-    assert.equal(errorOf(bad.stdout).code, "usage");
   });
 });
 
@@ -269,7 +252,7 @@ void test("only stats is observed; other projects report unavailable:not_observe
     assert.equal(payload["observe"]?.state, "unavailable");
     assert.deepEqual(payload["observe"]?.reasons.map(reason => reason.code), ["not_observed"]);
     assert.ok(origin.seen.every(seen => !seen.url.startsWith("/api/observe")));
-    const text = await runCli(["health", "--project", "other", "--origin", origin.origin], tokenEnv());
+    const text = await runCli(["health", "--project", "other", "--origin", origin.origin], {});
     assert.match(text.stdout, /observe: unavailable\n  not_observed:/u);
   });
 });

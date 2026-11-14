@@ -5,7 +5,7 @@ import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
 import { HOUR_MS, PROJECT_SETTLE_MS, RANGES } from "../src/limits";
 import { projectBucketWidthMs } from "../src/project-buckets";
 import type { CollectorRun } from "../src/projects/store";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 import { readFrame } from "./support/history";
 
 const NOW = 1_793_510_415_000;
@@ -18,7 +18,7 @@ function installation() {
 }
 
 async function get(path: string, headers: Record<string, string> = {}): Promise<Response> {
-  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { "Cf-Access-Jwt-Assertion": await accessToken(), ...headers } });
+  return SELF.fetch(`https://example.com/api/v1${path}`, { headers: { ...gatewayHeaders(), ...headers } });
 }
 
 async function history(range: string, kind: string): Promise<{ stepMs: number; fromMs: number; series: { metric: string; values: (number | null)[] }[] }> {

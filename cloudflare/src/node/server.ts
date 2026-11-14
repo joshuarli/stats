@@ -13,7 +13,6 @@ export interface NodeStatsOptions {
   readonly installation: (request: Request) => Promise<Response>;
   readonly observe?: ObserveService;
   readonly assets: AssetReader;
-  readonly allowedLogins: ReadonlySet<string>;
   readonly transport: "tcp" | "unix";
 }
 
@@ -84,7 +83,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
-      authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers, options.allowedLogins)),
+      authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers)),
       authorizeIngest: async (service, token) => {
         const response = await options.installation(new Request("https://installation/ingest/observe-auth", {
           method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }

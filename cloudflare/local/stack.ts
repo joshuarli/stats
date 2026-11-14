@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import { constants } from "node:os";
 import { join } from "node:path";
 import type { Miniflare, V4WorkerOptions } from "miniflare";
-import { accessToken } from "../test/access-token.ts";
+import { gatewayAssertion, gatewaySecret, startGateway } from "./gateway.ts";
 import { offlineAnalytics, type OfflineAnalytics } from "./analytics.ts";
 import type { Scenario } from "./scenario.ts";
 import { describeUnexpected, offlineOutbound, probeUrls, type OfflineOutbound } from "./outbound.ts";
@@ -12,8 +12,6 @@ import { readWorkerProducer, workerProducerBuckets, type WorkerProducer } from "
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars, RUN_ALARM_METHOD, FETCH_AT_METHOD, type BuiltWorker, type FetchedAt, type Collector } from "./topology.ts";
 
 export const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
-export const ACCESS_HEADER = "cf-access-jwt-assertion";
-const TOKEN_COMMAND = join(CLOUDFLARE_ROOT, "local/token.ts");
 
 export type DispatchInit = NonNullable<Parameters<Miniflare["dispatchFetch"]>[1]>;
 export type DispatchResponse = Awaited<ReturnType<Miniflare["dispatchFetch"]>>;
@@ -42,6 +40,7 @@ export interface StackStart {
 
 export interface Stack {
   readonly origin: string;
+  readonly workerOrigin: string;
   readonly persist: string;
   readonly stats: BuiltWorker;
   readonly analytics: OfflineAnalytics;
@@ -148,9 +147,7 @@ export function productionProjects(stats: BuiltWorker): string {
 
 export function cliEnv(origin: string): Record<string, string> {
   return {
-    STATS_URL: origin,
-    STATSCTL_AUTH_COMMAND: `node --experimental-strip-types '${TOKEN_COMMAND.replaceAll("'", "'\\''")}'`,
-    STATSCTL_AUTH_HEADER: ACCESS_HEADER
+    STATS_URL: origin
   };
 }
 
@@ -187,13 +184,11 @@ function createDiscardedOnExit(create: () => string): { readonly directory: stri
 }
 
 async function launch(shared: Shared, start: StackStart & { readonly persist: string }): Promise<Stack> {
-  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON } = readTestVars();
+  const secret = gatewaySecret();
   const mf = openWorkers(shared.stats, shared.observe, {
     text: { ENVIRONMENT: "test", ...(start.projectsJson === undefined ? {} : { PROJECTS: start.projectsJson }) },
     secrets: {
-      ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!,
-      ACCESS_AUD: ACCESS_AUD!,
-      ACCESS_JWKS_JSON: ACCESS_JWKS_JSON!,
+      GATEWAY_SECRET: secret,
       ...(start.nowMs === null ? {} : { TEST_NOW_MS: String(start.nowMs) })
     },
     analytics: shared.analytics.binding,
@@ -205,11 +200,13 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     workerProducers: shared.workerProducers,
     ...(start.producerTail === undefined ? {} : { producerTail: start.producerTail }),
     alarms: "rpc"
-  }, { port: start.port ?? 0, localExplorer: start.localExplorer === true });
+  }, { port: 0, localExplorer: start.localExplorer === true });
   let origin: string;
+  let gateway: Awaited<ReturnType<typeof startGateway>>;
   let worker: Awaited<ReturnType<Miniflare["getWorker"]>>;
   try {
-    origin = (await mf.ready).origin.replace(/\/$/u, "");
+    gateway = await startGateway((await mf.ready).origin, secret, start.port ?? 0);
+    origin = gateway.origin;
     worker = await mf.getWorker(shared.stats.name);
   } catch (error) {
     await mf.dispose();
@@ -231,10 +228,12 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    await gateway.close();
     await mf.dispose();
   };
   return {
     origin,
+    workerOrigin: (await mf.ready).origin.replace(/\/$/u, ""),
     persist: start.persist,
     stats: shared.stats,
     analytics: shared.analytics,
@@ -247,7 +246,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
       shared.outbound.scenario = `collection at ${new Date(model.nowMs).toISOString()}`;
       return (await worker.scheduled({ cron: shared.stats.crons[0]!, scheduledTime: new Date(model.nowMs) })).outcome;
     },
-    fetch: async (path, init = {}) => mf.dispatchFetch(`${origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers as HeadersInit | undefined)), [ACCESS_HEADER]: await accessToken() } }),
+    fetch: async (path, init = {}) => mf.dispatchFetch(`${origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers as HeadersInit | undefined)), ...gatewayAssertion(secret) } }),
     anonymous: async (path, init) => mf.dispatchFetch(`${origin}${path}`, init),
     observe: async (service, path) => (await (await mf.getWorker(shared.observe.name)).fetch(`https://observe/${service}${path}`)).json(),
     runAlarm: async () => {

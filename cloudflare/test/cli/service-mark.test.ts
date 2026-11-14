@@ -105,12 +105,12 @@ await test("deploy mark against a fake origin", async t => {
       assert.ok(!leaked(run));
     });
 
-    await t.test("an Access redirect exits 3 and says the path needs a bypass", async () => {
+    await t.test("a redirect exits 3 and says the request never reached Stats", async () => {
       status = 302;
       const run = await mark([]);
       assert.equal(run.code, 3, run.stdout + run.stderr);
       assert.equal((JSON.parse(run.stdout) as Document).error?.code, "access_challenge");
-      assert.match(run.stderr, /Bypass/u);
+      assert.match(run.stderr, /never reached Stats/u);
     });
 
     await t.test("a server error exits 4", async () => {

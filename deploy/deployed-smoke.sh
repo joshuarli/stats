@@ -26,43 +26,17 @@ fake="nft_smokeSMOKEsmokeSMOKEsmokeSMOKEsmokeSMOKE000"
 ingest="$base/ingest/v2/batches"
 media="application/vnd.stats.ingest.v2"
 
-access_token=
-access_header=
-credential() {
-  if [ -n "$access_token" ]; then return 0; fi
-  access_header=${STATSCTL_AUTH_HEADER:-cf-access-token}
-  if [ -n "${STATSCTL_AUTH_COMMAND:-}" ]; then
-    access_token=$(sh -c "$STATSCTL_AUTH_COMMAND") || return 1
-  else
-    access_token=$(cf -q access token "$base") || return 1
-  fi
-  [ -n "$access_token" ] || return 1
-}
-
-curl_auth() {
-  if [ -n "$access_token" ]; then
-    curl -sS -H "$access_header: $access_token" "$@"
-  else
-    curl -sS "$@"
-  fi
-}
-
 asset_refs() {
   rg -o '(src|href)="/assets/[^"]+"' "$1" | sed -E 's/.*="([^"]+)"/\1/' | sort -u
 }
 
 dashboard_ok() {
-  status=$(curl_auth -o "$work/root" -w '%{http_code}' "$base/") || return 1
-  if [ "$status" != 200 ]; then
-    if [ -n "$access_token" ]; then return 1; fi
-    credential || return 1
-    status=$(curl_auth -o "$work/root" -w '%{http_code}' "$base/") || return 1
-    [ "$status" = 200 ] || return 1
-  fi
+  status=$(curl -sS -o "$work/root" -w '%{http_code}' "$base/") || return 1
+  [ "$status" = 200 ] || return 1
   refs=$(asset_refs "$work/root") || return 1
   [ -n "$refs" ] || return 1
   for path in $refs; do
-    result=$(curl_auth -o /dev/null -w '%{http_code} %{content_type}' "$base$path") || return 1
+    result=$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' "$base$path") || return 1
     asset_status=${result%% *}
     asset_type=${result#* }
     [ "$asset_status" = 200 ] || return 1
@@ -108,10 +82,7 @@ expect 400 unknown_version "STB2 frame with version 1" -X POST -H "Authorization
 expect 401 unauthorized "valid STB2 frame with an unknown token" -X POST -H "Authorization: Bearer $fake" -H "Content-Type: $media" --data-binary "@$frame" "$ingest"
 
 api_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/hosts")
-case "$api_status" in
-  302|303|401|403) ;;
-  *) fail "GET /api/v1/hosts returned $api_status without Access credentials" ;;
-esac
+[ "$api_status" = 200 ] || fail "GET /api/v1/hosts returned $api_status; run the smoke from a tailnet device so the gateway asserts its identity"
 
 # The Worker and its assets propagate separately, so a deploy can report
 # success while the entry page references assets that are not live yet.
@@ -129,4 +100,4 @@ if [ -f "$built_index" ]; then
   [ "$live_refs" = "$built_refs" ] || fail "the dashboard at $base does not reference the built assets; run make worker-bundle and redeploy"
 fi
 
-echo "OK: $base answers with security headers, protected routes, the binary ingest v2 route (v1 is gone), and the dashboard entry assets"
+echo "OK: $base answers with security headers, the tailnet identity path, the binary ingest v2 route (v1 is gone), and the dashboard entry assets"

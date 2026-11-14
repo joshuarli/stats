@@ -3,7 +3,7 @@ import { encodeProjectBundle } from "../../src/history-frame.ts";
 import { main } from "../../src/cli/run.ts";
 import type { Price, Usage } from "../../src/cost/ledger.ts";
 import type { ProjectHistory } from "../../src/projects/history.ts";
-import { authorized, fakeOrigin, projectEntry, sendJson, tokenEnv, type FakeOrigin } from "./support.ts";
+import { authorized, fakeOrigin, projectEntry, sendJson, type FakeOrigin } from "./support.ts";
 
 export const NOW_MS = Date.UTC(2026, 10, 15, 12, 20, 0);
 const HOUR = 3_600_000;
@@ -105,7 +105,7 @@ export async function statsctl(args: readonly string[], options: { readonly orig
   let stderr = "";
   const argv = options.origin === undefined ? [...args] : [...args, "--origin", options.origin];
   const code = await main(argv, {
-    env: { PATH: process.env["PATH"] ?? "", ...tokenEnv(), ...options.env },
+    env: { PATH: process.env["PATH"] ?? "", ...options.env },
     io: { stdout: text => { stdout += text; }, stderr: text => { stderr += text; }, isTty: false },
     now: () => options.nowMs ?? NOW_MS
   });
