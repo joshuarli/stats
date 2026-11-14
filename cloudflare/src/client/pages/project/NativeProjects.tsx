@@ -54,9 +54,10 @@ function initialSection(): Section {
 }
 
 function NativeProject(props: { readonly service: Service }): JSX.Element {
+  const serviceName = props.service.name;
   const { range, view, now, tick, manualTick } = useTelemetry();
   const refreshKey = () => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`;
-  const deployments = createServiceDeployments(() => props.service.name, range, refreshKey);
+  const deployments = createServiceDeployments(() => serviceName, range, refreshKey);
   const [section, setSection] = createSignal<Section>(initialSection());
   const [data, setData] = createSignal<ApplicationTelemetry | null>(null);
   const [error, setError] = createSignal<string | null>(null);
@@ -64,13 +65,13 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     const end = Math.min(view()?.toMs ?? now(), now());
     return { fromMs: Math.max(view()?.fromMs ?? end - rangeMs[range()], now() - RETENTION_MS), toMs: end };
   };
-  const observe = createObservability(props.service.name, refreshKey, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, windowAt, () => false, () => section() === "errors");
+  const observe = createObservability(serviceName, refreshKey, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, windowAt, () => false, () => section() === "errors");
   createEffect(() => true, () => {
     const sync = () => setSection(initialSection());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   });
-  createEffect(() => ({ service: props.service.name, range: range(), view: view(), refresh: refreshKey() }), query => {
+  createEffect(() => ({ service: serviceName, range: range(), view: view(), refresh: refreshKey() }), query => {
     const window = windowAt();
     const controller = new AbortController();
     setData(null); setError(null);

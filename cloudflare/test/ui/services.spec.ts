@@ -485,14 +485,27 @@ test("native projects show service deployments, application requests, errors and
 
 test("refreshing a native project keeps its requests scoped to one detail view", async ({ page }) => {
   const requests: string[] = [];
+  let release: (() => void) | undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let holdServices = false;
+  await page.route("**/api/v1/services", async route => {
+    if (holdServices) await held;
+    await route.continue();
+  });
   page.on("request", request => { if (request.url().includes("/api/")) requests.push(new URL(request.url()).pathname); });
   await page.goto(`${origin}/#/project/web?range=6h`);
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
   await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
   requests.length = 0;
+  holdServices = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
+  const servicesLoaded = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/services");
+  release!();
+  await servicesLoaded;
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(requests.filter(path => path.endsWith("/external/telemetry"))).toHaveLength(1);
   expect(requests.filter(path => path === "/api/v1/services")).toHaveLength(1);
   expect(requests.filter(path => path === "/api/v1/services/web/deployments")).toHaveLength(1);
 });
