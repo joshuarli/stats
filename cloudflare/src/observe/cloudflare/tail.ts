@@ -1,6 +1,6 @@
 import { OBSERVE_CHANNEL, OPERATION_IDS, SAMPLE_REJECTIONS, WORKLOAD_CLASS, type OperationId, type OperationSummary, type R2Account, type RowAccount } from "../producer/channel.ts";
 import type { ServicePolicy } from "../core/policies.ts";
-import { isFailedInvocation, NO_SUMMARY_TOTALS, OTHER_ROUTE, prepareInvocation, rejection, summaryTotals, VERSION, type CountDelta, type ServiceOperationReading, type ExcludedOutcome, type InvocationKind, type MessagePolicy, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
+import { DEFAULT_MESSAGE_POLICY, isFailedInvocation, NO_SUMMARY_TOTALS, OTHER_ROUTE, prepareInvocation, rejection, summaryTotals, VERSION, type CountDelta, type ServiceOperationReading, type ExcludedOutcome, type InvocationKind, type OutcomeClass, type OutcomeEvent, type Preparation, type ObservedError, type ObservedInvocation, type Stage, type TraceContext } from "../core/model.ts";
 import { MAX_LABEL_BYTES } from "../core/limits.ts";
 import { addCount, countBucket } from "../core/counts.ts";
 import { keepReason } from "../core/sampling.ts";
@@ -26,7 +26,6 @@ export type Reduction =
   | { readonly kind: "excluded"; readonly outcome: ExcludedOutcome; readonly stage: Stage; readonly route: string }
   | { readonly kind: "rejected" };
 
-const POLICY: MessagePolicy = { safeNames: new Set() };
 const EXCLUDED_STATUSES = new Set([401, 403, 404]);
 const METHOD = /^[A-Z]{3,7}$/u;
 const RPC_METHOD = /^[A-Za-z][A-Za-z0-9]{0,63}$/u;
@@ -154,7 +153,7 @@ export async function prepareTailItems(items: readonly TailItem[], policy: Servi
       addCount(counted, rejectedCount(item, reduction.invocation.stage, nowMs));
       continue;
     }
-    const preparation = await prepareInvocation(reduction.invocation, POLICY);
+    const preparation = await prepareInvocation(reduction.invocation, DEFAULT_MESSAGE_POLICY);
     preparations.push(preparation);
     if (!preparation.ok) outcomes.push(outcomeOf(item, "rejected-invalid", routeLabel(reduction.invocation.label)));
   }

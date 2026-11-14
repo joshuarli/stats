@@ -3,10 +3,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Miniflare, V4ModuleDefinition, V4WorkerOptions } from "miniflare";
+import { Miniflare, convertV4MiniflareOptions, type V4ModuleDefinition, type V4WorkerOptions } from "miniflare";
 import { gatewayHeaders } from "../gateway-headers.ts";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
-import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, openWorkers, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, openWorkers, workers, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
 
 export const ROOT = CLOUDFLARE_ROOT;
 const STATS = readBuiltWorker(STATS_OUTPUT);
@@ -109,7 +109,7 @@ export default {
   };
 }
 
-export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE, clock: StatsClock = "fixed"): Promise<Harness> {
+export async function start(collector: Collector, bindings: Record<string, string> = {}, outbound: Outbound = UNAVAILABLE, clock: StatsClock = "fixed", applicationRelease?: string, portable = false): Promise<Harness> {
   const persist = mkdtempSync(join(tmpdir(), "observe-e2e-"));
   const { ENVIRONMENT, PROJECTS, WORKER_NAME, TEST_NOW_MS, ...secrets } = VARS;
   const statsCollector: TopologyCollector = collector === "crashing" ? { kind: "replaced", script: CRASHING_CONSUMER } : { kind: collector };
@@ -120,16 +120,24 @@ export async function start(collector: Collector, bindings: Record<string, strin
   const memoriesWorker = agentMemory === undefined
     ? { name: "usr-memories", modules: true, script: MEMORIES_PRODUCER, ...COMPAT, ...(collector === "absent" ? {} : { tails: ["memories-observe"] }) }
     : agentMemoryWorker(agentMemory);
-  const mf = openWorkers(STATS, OBSERVE, {
+  const stackOptions = {
     text: { ENVIRONMENT: ENVIRONMENT!, PROJECTS: PROJECTS!, WORKER_NAME: WORKER_NAME!, ...bindings },
-    secrets: { ...secrets, ...(clock === "fixed" ? { TEST_NOW_MS: TEST_NOW_MS! } : {}), DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
+    secrets: { ...secrets, ...(applicationRelease === undefined ? {} : { APPLICATION_EVENTS_RELEASE: applicationRelease }), ...(clock === "fixed" ? { TEST_NOW_MS: TEST_NOW_MS! } : {}), DEPLOYMENTS_ACCOUNT_ID: "0123456789abcdef0123456789abcdef", DEPLOYMENTS_API_TOKEN: "SECRET_DEPLOY_TOKEN" },
     analytics: "unbound",
     collector: statsCollector,
     outbound,
     persist: { directory: persist },
     alarms: "platform",
     extraWorkers: collector === "absent" ? [memoriesWorker] : [memoriesCollector, memoriesWorker]
-  });
+  } satisfies Parameters<typeof openWorkers>[2];
+  const topology = portable ? workers(STATS, OBSERVE, stackOptions) : null;
+  if (topology !== null) {
+    const stats = topology[0]!;
+    const bundle = join(STATS.output, "bundle");
+    const script = readFileSync(join(bundle, "index.js"), "utf8").replace('from "cloudflare:workers"', 'from "./workers-shim.js"');
+    topology[0] = { ...stats, scriptPath: undefined, modulesRoot: bundle, modules: [{ type: "ESModule", path: join(bundle, "index.js"), contents: script }, { type: "ESModule", path: join(bundle, "workers-shim.js"), contents: 'export { DurableObject } from "cloudflare:workers"; export const tracing = {};' }], tails: [] };
+  }
+  const mf = topology === null ? openWorkers(STATS, OBSERVE, stackOptions) : new Miniflare({ ...convertV4MiniflareOptions({ workers: topology }), resourcePersistencePath: persist, enableDevRegistry: false });
   if (agentMemory !== undefined) {
     const db = await mf.getD1Database("DB", "usr-memories");
     const seed = await import(pathToFileURL(join(agentMemory, "cloudflare/bench/seed.mjs")).href) as {

@@ -887,11 +887,14 @@ function upsertIssue(db: SqlStatements, group: IssueGroup, observedAt: number): 
 }
 
 function insertApplicationOccurrence(db: SqlStatements, event: ExternalEvent, failure: ApplicationFailure, observedAt: number): boolean {
+  const prepared = failure.prepared;
+  const frames = prepared?.frames ?? [];
+  const name = prepared?.name ?? failure.code;
   db.run(
-    "INSERT INTO observe_occurrences (invocation_key, ordinal, fingerprint, observed_at, trace_id, version, has_stack, propagated, source, operation, name, message, frames) VALUES (?, 0, ?, ?, ?, ?, 0, 0, 'application', ?, ?, NULL, ?)",
-    failure.invocationKey, failure.fingerprint, observedAt, event.trace?.traceId ?? null, event.release, event.operation, failure.code, formatFrames([])
+    "INSERT INTO observe_occurrences (invocation_key, ordinal, fingerprint, observed_at, trace_id, version, has_stack, propagated, source, operation, name, message, frames) VALUES (?, 0, ?, ?, ?, ?, ?, 0, 'application', ?, ?, ?, ?)",
+    failure.invocationKey, failure.fingerprint, observedAt, event.trace?.traceId ?? null, event.release, frames.length > 0 ? 1 : 0, event.operation, name, prepared?.message ?? null, formatFrames(frames)
   );
-  return upsertIssue(db, { fingerprint: failure.fingerprint, name: failure.code, operation: event.operation, frame: null }, observedAt);
+  return upsertIssue(db, { fingerprint: failure.fingerprint, name, operation: event.operation, frame: representativeFrame(frames) }, observedAt);
 }
 
 function healthBucket(nowMs: number): number {

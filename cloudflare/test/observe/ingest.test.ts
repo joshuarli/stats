@@ -362,3 +362,21 @@ await test("producer delivery evidence round-trips, survives storage, and never 
     assert.equal(decodeBatch(JSON.stringify(invalid), options).ok, false);
   } finally { db.db.close(); }
 });
+
+await test("diagnostics are bounded and malformed extensions use the invalid event path", () => {
+  const extended = { ...manifest.base, outcome: "error", error: { code: "note.save" }, diagnostics: { version: 1, name: "E".repeat(200), message: "secret".repeat(200), frames: Array.from({ length: 40 }, () => `    at run (https://example.test/index.js?token=secret:3:5)`) } };
+  const decoded = decodeBatch(JSON.stringify({ events: [extended] }), options);
+  assert.ok(decoded.ok);
+  const diagnostic = decoded.batch.events[0]!.diagnostics!;
+  assert.equal(diagnostic.name.length, 128);
+  assert.equal(diagnostic.message, "");
+  assert.equal(diagnostic.frames.length, 32);
+  assert.ok(diagnostic.frames.every(frame => frame.length <= 512 && !frame.includes("secret")));
+  for (const diagnostics of [null, { version: 2, name: "E", message: "", frames: [] }, { version: 1, name: "E", message: "", frames: [42] }]) {
+    const bad = decodeBatch(JSON.stringify({ events: [{ ...extended, diagnostics }] }), options);
+    assert.ok(!bad.ok);
+    assert.equal(bad.code, "invalid_event");
+  }
+  assert.equal(decodeBatch(golden, options).ok, true);
+  assert.equal(encodeBatch(valid.batch), golden);
+});

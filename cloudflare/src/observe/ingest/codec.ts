@@ -1,3 +1,5 @@
+import { DEFAULT_MESSAGE_POLICY, redactedMessage } from "../core/model.ts";
+import { parseStack } from "../core/stack.ts";
 import { MAX_FUTURE_SKEW_MS, RETENTION_MS } from "../core/limits.ts";
 import {
   ERROR_CODE, EVENT_ID, HOST, INGEST_SCHEMA_VERSION, INSTANCE, MAX_DURATION_MS, MAX_EVENTS, MAX_WORK_MEASUREMENTS, MAX_WORK_VALUE,
@@ -5,7 +7,7 @@ import {
   type ProducerDelivery, type ExternalBatch, type ExternalDecode, type ExternalDecodeCode, type ExternalError, type ExternalEvent, type ExternalTrace
 } from "./model.ts";
 
-const EVENT_KEYS = ["delivery", "schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace", "error"] as const;
+const EVENT_KEYS = ["delivery", "schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service", "instance", "host", "trace", "error", "diagnostics"] as const;
 const REQUIRED_KEYS = ["schemaVersion", "eventId", "atMs", "operation", "outcome", "durationMs", "work", "release", "service"] as const;
 const TRACE_KEYS = ["traceId", "spanId"] as const;
 const ERROR_KEYS = ["code"] as const;
@@ -43,6 +45,12 @@ function errorOf(value: unknown): ExternalError | null {
   if (!isRecord(value) || Object.keys(value).length !== ERROR_KEYS.length || !ERROR_KEYS.every(key => key in value)) return null;
   const { code } = value;
   return typeof code === "string" && ERROR_CODE.test(code) ? { code } : null;
+}
+
+export function diagnosticsOf(value: unknown): import("./model.ts").ExternalDiagnostics | null {
+  if (!isRecord(value) || value["version"] !== 1 || typeof value["name"] !== "string" || typeof value["message"] !== "string" || !Array.isArray(value["frames"]) || !value["frames"].every(frame => typeof frame === "string") || Object.keys(value).some(key => !["version", "name", "message", "frames"].includes(key))) return null;
+  const frames = parseStack(value["frames"].slice(0, 32).map(frame => (frame as string).slice(0, 512)).join("\n"));
+  return { version: 1, name: value["name"].slice(0, 128), message: redactedMessage(value["name"].slice(0, 128), value["message"].slice(0, 512), DEFAULT_MESSAGE_POLICY) ?? "", frames: frames.map(frame => (frame.fn === null ? `    at ${frame.file}:${frame.line}:${frame.column}` : `    at ${frame.fn} (${frame.file}:${frame.line}:${frame.column})`).slice(0, 512)) };
 }
 
 function deliveryOf(value: unknown): ProducerDelivery | null {
@@ -92,6 +100,8 @@ function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): Ext
   const error = raised === undefined ? undefined : errorOf(raised);
   if (error === null) return fail("invalid_error", "error must be exactly { code } with 1-64 lowercase letters, digits, or _.- starting with a letter");
   if (error !== undefined && outcome === SUCCESS_OUTCOME) return fail("invalid_error", `error is allowed only when outcome is not ${SUCCESS_OUTCOME}`);
+  const diagnostics = value["diagnostics"] === undefined ? undefined : diagnosticsOf(value["diagnostics"]);
+  if (diagnostics === null) return fail("invalid_event", "invalid diagnostics");
   const delivery = value["delivery"] === undefined ? undefined : deliveryOf(value["delivery"]);
   if (delivery === null || (delivery !== undefined && delivery.atMs > options.nowMs + MAX_FUTURE_SKEW_MS)) return fail("invalid_event", "invalid producer delivery evidence");
   seen.add(eventId);
@@ -109,7 +119,8 @@ function eventOf(value: unknown, options: DecodeOptions, seen: Set<string>): Ext
     ...(instance === undefined ? {} : { instance: instance as string }),
     ...(host === undefined ? {} : { host: host as string }),
     ...(trace === undefined ? {} : { trace: trace as ExternalTrace }),
-    ...(error === undefined ? {} : { error })
+    ...(error === undefined ? {} : { error }),
+    ...(diagnostics === undefined ? {} : { diagnostics })
   };
 }
 
@@ -155,7 +166,8 @@ function plainEvent(event: ExternalEvent): Record<string, unknown> {
     ...(event.instance === undefined ? {} : { instance: event.instance }),
     ...(event.host === undefined ? {} : { host: event.host }),
     ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } }),
-    ...(event.error === undefined ? {} : { error: { code: event.error.code } })
+    ...(event.error === undefined ? {} : { error: { code: event.error.code } }),
+    ...(event.diagnostics === undefined ? {} : { diagnostics: event.diagnostics })
   };
 }
 
