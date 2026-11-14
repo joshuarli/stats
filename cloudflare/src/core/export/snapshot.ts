@@ -116,11 +116,17 @@ function rowValues(shape: TableShape, row: Record<string, SqlValue>): SqlValue[]
 function digestTable(sql: SqlDatabase, shape: TableShape): { rows: number; sha256: string } {
   const hash = createHash("sha256");
   let rows = 0;
-  sql.each<Record<string, SqlValue>>(`SELECT ${selectList(shape)} FROM ${quote(shape.name)} ORDER BY ${keyColumns(shape)}`, [], row => {
-    hash.update(JSON.stringify(rowValues(shape, row)));
-    hash.update("\n");
-    rows += 1;
-  });
+  let after: SqlValue[] | null = null;
+  for (;;) {
+    const page = sql.rows<Record<string, SqlValue>>(`SELECT ${selectList(shape)} FROM ${quote(shape.name)} ${afterClause(shape, after)} ORDER BY ${keyColumns(shape)} LIMIT ?`, ...(after ?? []), MAX_PAGE_ROWS);
+    for (const row of page) {
+      hash.update(JSON.stringify(rowValues(shape, row)));
+      hash.update("\n");
+      rows += 1;
+    }
+    if (page.length < MAX_PAGE_ROWS) break;
+    after = keyOf(shape, page.at(-1)!);
+  }
   return { rows, sha256: hash.digest("hex") };
 }
 

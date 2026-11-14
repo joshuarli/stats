@@ -3,7 +3,7 @@ declare namespace Cloudflare {
     readonly INSTALLATION: DurableObjectNamespace<import("./src/cloudflare/installation").Installation>;
     readonly ASSETS: Fetcher;
     readonly ENVIRONMENT: string;
-    readonly ANALYTICS_SQL: AnalyticsSQLBinding;
+    readonly ANALYTICS_SQL?: AnalyticsSQLBinding;
     readonly PROJECTS: string;
     readonly WORKER_NAME: string;
     readonly OBSERVE: Fetcher;
