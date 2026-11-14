@@ -3,7 +3,7 @@ set -eu
 host=${1:-lisa}
 root=$(git rev-parse --show-toplevel)
 cd "$root"
-previous=$(ssh "$host" doas -n /opt/openorange/bin/oo run-args app stats | jaq -er '.[-1]')
+previous=$(ssh "$host" doas -n /opt/openorange/bin/oo deployment stats | jaq -er '.image')
 image=$(deploy/orange/build-image.sh "$host")
 switched=true
 rollback() {
