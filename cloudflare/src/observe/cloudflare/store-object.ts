@@ -7,6 +7,8 @@ import { createObserveService, type ArtifactOutcome, type MaintainedService, typ
 import { CLEANUP_INTERVAL_MS } from "../core/limits.ts";
 import { POLICIES } from "../core/policies.ts";
 import { CloudflareSql } from "../../cloudflare/sql.ts";
+import { handleMaintenance } from "../../core/export/http.ts";
+import { initializeMaintenance, maintenanceState } from "../../core/export/snapshot.ts";
 
 export interface ObserveEnv {
   readonly STORE: DurableObjectNamespace<ObservationStore>;
@@ -21,21 +23,38 @@ function policyOf(name: string | undefined): CountingPolicy {
 
 export class ObservationStore extends DurableObject<ObserveEnv> implements ObserveService {
   private readonly service: MaintainedService;
+  private readonly db: CloudflareSql;
 
   constructor(ctx: DurableObjectState, env: ObserveEnv) {
     super(ctx, env);
     const db = new CloudflareSql(ctx.storage);
+    this.db = db;
     this.service = createObserveService(db, { now: () => Date.now(), databaseBytes: () => db.databaseBytes() }, () => policyOf(ctx.id.name));
-    void ctx.blockConcurrencyWhile(async () => { initializeStore(db); });
+    void ctx.blockConcurrencyWhile(async () => { initializeStore(db); initializeMaintenance(db); });
+  }
+
+  private assertOpen(): void {
+    if (maintenanceState(this.db) !== "open") throw new Error("observation store is paused for maintenance");
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    const maintained = await handleMaintenance(request, new URL(request.url).pathname, {
+      name: `observe:${this.ctx.id.name ?? ""}`, sql: this.db, now: () => Date.now(),
+      alarmAtMs: () => this.ctx.storage.getAlarm(),
+      rearm: () => this.ctx.storage.setAlarm(Date.now())
+    });
+    return maintained ?? Response.json({ error: { code: "not_found", message: "unknown store route" } }, { status: 404 });
   }
 
   async ingest(preparations: readonly Preparation[], outcomes: readonly OutcomeEvent[], counts: readonly unknown[], flush?: unknown, captureOperations = false): Promise<IngestResult> {
+    this.assertOpen();
     const result = this.service.ingest(preparations, outcomes, counts, flush, captureOperations);
     if ((result.accepted > 0 || counts.length > 0 || (flush ?? null) !== null) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
     return result;
   }
 
   override async alarm(): Promise<void> {
+    if (maintenanceState(this.db) !== "open") return;
     const { nextAtMs } = this.service.cleanup();
     if (nextAtMs !== null) await this.ctx.storage.setAlarm(nextAtMs);
   }
@@ -44,12 +63,12 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
     if (await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now());
   }
 
-  async rollouts(rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]): Promise<RolloutResult> { return this.service.rollouts(rollouts, labels); }
+  async rollouts(rollouts: readonly ObservedRollout[], labels: readonly VersionLabel[]): Promise<RolloutResult> { this.assertOpen(); return this.service.rollouts(rollouts, labels); }
   async impact(rolloutId: string): Promise<RolloutImpact | null> { return this.service.impact(rolloutId); }
   async issues(filter: { readonly state?: IssueState; readonly introducedIn?: string; readonly cursor?: string; readonly limit?: number }): Promise<Page<IssueSummary>> { return this.service.issues(filter); }
   async issue(fingerprint: string): Promise<IssueSummary | null> { return this.service.issue(fingerprint); }
   async occurrences(fingerprint: string, filter: { readonly cursor?: string; readonly limit?: number }): Promise<Page<Occurrence>> { return this.service.occurrences(fingerprint, filter); }
-  async setIssueState(fingerprint: string, state: IssueState): Promise<boolean> { return this.service.setIssueState(fingerprint, state); }
+  async setIssueState(fingerprint: string, state: IssueState): Promise<boolean> { this.assertOpen(); return this.service.setIssueState(fingerprint, state); }
   async explore(filter: { readonly fromMs?: number; readonly toMs?: number; readonly route?: string }): Promise<Exploration> { return this.service.explore(filter); }
   async objects(filter: { readonly fromMs?: number; readonly toMs?: number }): Promise<ObjectMethods> { return this.service.objects(filter); }
   async window(query: WindowQuery): Promise<StatsWindow> { return this.service.window(query); }
@@ -57,8 +76,9 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   async traces(filter: TraceFilter): Promise<TracePage> { return this.service.traces(filter); }
   async trace(traceId: string): Promise<TraceDetail | null> { return this.service.trace(traceId); }
   async health(): Promise<ServiceHealth> { return this.service.health(); }
-  async artifact(artifact: Artifact): Promise<ArtifactOutcome> { return this.service.artifact(artifact); }
+  async artifact(artifact: Artifact): Promise<ArtifactOutcome> { this.assertOpen(); return this.service.artifact(artifact); }
   async ingestExternal(service: string, events: readonly ExternalEvent[]): Promise<ExternalIngest> {
+    this.assertOpen();
     const result = await this.service.ingestExternal(service, events);
     if (result.ok && result.accepted > 0 && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
     return result;

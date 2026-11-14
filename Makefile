@@ -18,7 +18,7 @@ dev-doctor: node-ready
 bench-dev: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/bench/dev-loop.ts $(BENCH_ARGS)
 
-.PHONY: orange-ready orange-pilot work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
+.PHONY: orange-ready orange-pilot orange-test work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -37,6 +37,9 @@ orange-ready: node-ready
 
 orange-pilot: work-ready orange-ready worker-bundle observe-bundle
 	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/pilot.test.mts
+
+orange-test: work-ready orange-ready worker-bundle observe-bundle
+	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/*.test.mts
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs

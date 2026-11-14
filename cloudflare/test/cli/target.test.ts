@@ -37,7 +37,7 @@ await test("an orange-only command against a Node origin exits 2 before any requ
   const origin = await fakeOrigin((_request, response) => { response.statusCode = 200; response.end("{}"); });
   try {
     const orangeOnly = REGISTRY.commands.filter(command => !command.targets.includes("node"));
-    assert.deepEqual(orangeOnly.map(command => command.name).sort(), ["compare", "cost", "deployments", "health", "observe deployment", "observe issues", "observe operations", "observe rollouts", "observe routes", "observe traces", "projects", "snapshot"]);
+    assert.deepEqual(orangeOnly.map(command => command.name).sort(), ["backup export", "backup fence", "backup import", "backup objects", "compare", "cost", "deployments", "health", "observe deployment", "observe issues", "observe operations", "observe rollouts", "observe routes", "observe traces", "projects", "snapshot"]);
     for (const command of orangeOnly) {
       const argv = [...command.name.split(" "), "--origin", "http://threadripper:18790", "--json", ...Object.entries(command.options).flatMap(([name, spec]) => spec.type === "string" && spec.required === true ? [`--${name}`, "x"] : [])];
       const run = await runCli(argv);

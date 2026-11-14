@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { beginImport, exportManifest, exportPage, finishImport, importProgress, importRows, maintenanceState, setFence, SnapshotError, type ObjectManifest } from "../../src/core/export/snapshot.ts";
+import { beginImport, initializeMaintenance, exportManifest, exportPage, finishImport, importProgress, importRows, maintenanceState, setFence, SnapshotError, type ObjectManifest } from "../../src/core/export/snapshot.ts";
 import { migrate } from "../../src/core/installation/schema.ts";
 import type { SqlDatabase, SqlValue } from "../../src/core/sql.ts";
 import { initializeStore } from "../../src/observe/core/store.ts";
@@ -10,6 +10,7 @@ import { nodeSqlScopes } from "../../src/node/sql.ts";
 function installation(): SqlDatabase {
   const sql = nodeSqlScopes(new DatabaseSync(":memory:")).open();
   migrate(sql);
+  initializeMaintenance(sql);
   return sql;
 }
 
@@ -94,6 +95,7 @@ await test("import rejects non-empty targets, different schemas, gaps, and corru
   assert.throws(() => beginImport(occupied, manifest), (error: unknown) => error instanceof SnapshotError && error.code === "conflict");
   const observe = nodeSqlScopes(new DatabaseSync(":memory:")).open();
   initializeStore(observe);
+  initializeMaintenance(observe);
   assert.throws(() => beginImport(observe, manifest), (error: unknown) => error instanceof SnapshotError && error.code === "incompatible");
   assert.throws(() => beginImport(installation(), { ...manifest, format: "stats-export/0" as never }), (error: unknown) => error instanceof SnapshotError && error.code === "incompatible");
   const target = installation();
@@ -112,11 +114,13 @@ await test("import rejects non-empty targets, different schemas, gaps, and corru
 await test("an observation store exports and imports through the same contract", () => {
   const source = nodeSqlScopes(new DatabaseSync(":memory:")).open();
   initializeStore(source);
+  initializeMaintenance(source);
   for (let index = 0; index < 120; index += 1) source.run("INSERT INTO observe_version_labels (version, label, message, updated_at) VALUES (?, ?, ?, ?)", `v${index}`, `label ${index}`, null, 1_700_000_000_000 + index);
   setFence(source, true);
   const manifest = exportManifest(source, "observe:stats", 1, null);
   const target = nodeSqlScopes(new DatabaseSync(":memory:")).open();
   initializeStore(target);
+  initializeMaintenance(target);
   copy(source, target, manifest, 50);
   finishImport(target);
   assert.deepEqual(target.rows("SELECT * FROM observe_version_labels ORDER BY version"), source.rows("SELECT * FROM observe_version_labels ORDER BY version"));

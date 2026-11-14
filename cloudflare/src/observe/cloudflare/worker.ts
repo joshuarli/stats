@@ -78,6 +78,7 @@ export default {
   async fetch(request: Request, env: ObserveEnv): Promise<Response> {
     const match = SERVICE_PATH.exec(new URL(request.url).pathname);
     if (match === null) return Response.json({ error: { code: "not_found", message: "unknown observed service" } }, { status: 404, headers: { "Cache-Control": "no-store" } });
+    if (match[2]!.startsWith("/admin/")) return store(env, match[1]!).fetch(new Request(`https://store${match[2]!.slice("/admin".length)}${new URL(request.url).search}`, request));
     return handleApi(request, match[2]!, store(env, match[1]!), match[1]!);
   }
 } satisfies ExportedHandler<ObserveEnv>;
