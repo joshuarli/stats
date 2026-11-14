@@ -179,11 +179,12 @@ void test("a 401 from the origin exits 3 and statsctl sends no credential or cre
   });
 });
 
-function healthOrigin(overrides: { deployments?: Handler; health?: Handler; projects?: unknown } = {}): Handler {
+function healthOrigin(overrides: { deployments?: Handler; health?: Handler; projects?: unknown; capabilities?: unknown } = {}): Handler {
   const now = Date.now();
   return (request, response, seen) => {
     if (!authorized(request)) return void response.writeHead(401).end();
     const url = request.url ?? "";
+    if (url === "/api/v1/capabilities") return sendJson(response, overrides.capabilities ?? { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true });
     if (url === "/api/v1/projects") return sendJson(response, overrides.projects ?? [projectEntry("stats"), projectEntry("other")]);
     if (url.endsWith("/deployments")) {
       if (overrides.deployments !== undefined) return overrides.deployments(request, response, seen);
@@ -208,7 +209,7 @@ void test("health reports collector, deployment sync, and observe independently 
     assert.equal(payload["deployments"]?.state, "healthy");
     assert.equal(payload["observe"]?.state, "healthy");
     assert.deepEqual(payload["readiness"], { policy: null, signals: [] });
-    assert.deepEqual(origin.seen.map(seen => seen.url).sort(), ["/api/observe/stats/health", "/api/v1/projects", "/api/v1/projects/stats/deployments"]);
+    assert.deepEqual(origin.seen.map(seen => seen.url).sort(), ["/api/observe/stats/health", "/api/v1/capabilities", "/api/v1/projects", "/api/v1/projects/stats/deployments"]);
   });
 });
 
@@ -279,5 +280,17 @@ void test("health on an unknown project is a usage error and a total outage repo
       assert.deepEqual(payload["observe"]?.reasons.map(reason => reason.code), ["contract"]);
     });
   });
+
+void test("health reports unsupported collectors without querying deployments", async () => {
+  await withOrigin(healthOrigin({ capabilities: { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true } }), async origin => {
+    const run = await jsonRun(origin, ["health", "--project", "stats"]);
+    assert.equal(run.code, EXIT.ok, run.stdout + run.stderr);
+    const payload = document(run.stdout)["payload"] as Record<string, { state: string; reasons: { code: string }[] }>;
+    assert.equal(payload["collector"]?.state, "unavailable");
+    assert.equal(payload["collector"]?.reasons[0]?.code, "provider_unavailable");
+    assert.equal(payload["deployments"]?.state, "unavailable");
+    assert.ok(origin.seen.every(seen => !seen.url.endsWith("/deployments")));
+  });
 });
 
+});

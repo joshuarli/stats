@@ -99,6 +99,7 @@ async function replay(page: Page, capture: HostCapture, latency: Latency = NO_LA
   await page.route("**/api/v1/**", async route => {
     await pause(latencyFor(route.request().url(), latency));
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/capabilities") return route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [] });
     const kind = url.searchParams.get("kind") ?? "summary";
     const kindsParam = url.searchParams.get("kinds");
@@ -134,6 +135,7 @@ async function replayProject(page: Page, name: string, capturedAtMs: number, lat
     await pause(latencyFor(route.request().url(), latency));
     const url = new URL(route.request().url());
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
+    if (url.pathname === "/api/v1/capabilities") return route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ path: captureFile(name, "projects.json"), contentType: "application/json" });
     const otherProject = /^\/api\/v1\/projects\/([^/]+)\//u.exec(url.pathname);
     if (otherProject !== null && otherProject[1] !== name) return route.fulfill({ status: 404, json: { error: { code: "not_found", message: "project is not captured" } } });

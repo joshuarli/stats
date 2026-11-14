@@ -5,7 +5,7 @@ import { getProjectHistories, type Project } from "../api";
 import { age, errorMessage, percent } from "../format";
 import { collectorStatus } from "../status";
 import { createUpdateEffect } from "../effect";
-import { createRefreshRetention, loadProjects, loadQuery } from "../queries";
+import { createRefreshRetention, loadCapabilities, loadProjects, loadQuery } from "../queries";
 import { windowParams } from "../history-path";
 import { useTelemetry, PROJECT_REFRESH_TICKS, rangeMs } from "../state";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
@@ -49,8 +49,9 @@ export function ProjectPage(): JSX.Element {
   const { tick, manualTick, range } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
+  const capabilities = createMemo(loadCapabilities);
   const project = createMemo(() => projects().find(candidate => candidate.id === (params.projectId ?? "")));
-  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { if (capabilities().analyticsCollection || capabilities().cloudflareDeployments) void refresh(projects); });
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
@@ -66,7 +67,7 @@ export function ProjectPage(): JSX.Element {
             />
           }
         >
-          {id => <ProjectView project={projects().find(candidate => candidate.id === id)!} />}
+          {id => <ProjectView capabilities={capabilities()} project={projects().find(candidate => candidate.id === id)!} />}
         </Show>
       </Loading>
     </Errored>
@@ -85,7 +86,7 @@ function initialSection(observed: boolean): SectionId {
   return "overview";
 }
 
-function ProjectView(props: { readonly project: Project }): JSX.Element {
+function ProjectView(props: { readonly project: Project; readonly capabilities: import("../../core/capabilities").RuntimeCapabilities }): JSX.Element {
   const { range, query, view, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
@@ -120,7 +121,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
       setRefreshError(errorMessage(error));
     }
   };
-  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void doRefresh(); });
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { if (props.capabilities.analyticsCollection) void doRefresh(); });
 
   const data = createMemo((): ProjectData => ({
     worker: worker(),
@@ -135,9 +136,10 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     databases: props.project.d1Databases,
     silence: silenceMinutes(collector(), now(), props.project.collector.lastSuccessAtMs)
   }));
-  const status = createMemo(() => collectorStatus(props.project.collector, now()));
+  const status = createMemo(() => props.capabilities.analyticsCollection ? collectorStatus(props.project.collector, now()) : { label: "unavailable", tone: "neutral" as const });
   const collectorNote = () => {
     switch (status().label) {
+      case "unavailable": return "Analytics collection is unavailable on this target; historical data remains available.";
       case "collecting": return undefined;
       case "waiting": return "The collector has not run yet, so there is no data.";
       case "failing": return "The last collection failed. Figures show what was collected before it.";
@@ -159,9 +161,9 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const observeWindowLabel = () => view() !== null ? "zoomed window" : rangeMs[range()] > RETENTION_MS ? "last 7 days (traces keep 7)" : `last ${range()}`;
   const observe: Observability | null = service !== null ? createObservability(service, () => `${projectTick()}:${manualTick()}`, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, observeWindow, () => active() === "requests", () => active() === "errors") : null;
   const settledMs = createMemo(() => settledWindow(worker(), HOUR_MS, null).toMs);
-  const monthSpend = createMonthSpend(() => props.project, settledMs, () => `${projectTick()}:${manualTick()}`);
+  const monthSpend = createMonthSpend(() => props.project, settledMs, () => props.capabilities.analyticsCollection ? `${projectTick()}:${manualTick()}` : "unavailable");
   const { ledger, error: ledgerLoadError, baselineError, objectMethodsError } = createProjectLedger(
-    () => props.project, ledgerWindow, () => { const zoomed = view(); return zoomed === null ? "settled-hour" : `${zoomed.fromMs}:${zoomed.toMs}`; }, () => `${projectTick()}:${manualTick()}`,
+    () => props.project, ledgerWindow, () => { const zoomed = view(); return zoomed === null ? "settled-hour" : `${zoomed.fromMs}:${zoomed.toMs}`; }, () => props.capabilities.analyticsCollection ? `${projectTick()}:${manualTick()}` : "unavailable",
     observe === null ? null : { read: observe.read, retentionMs: RETENTION_MS, now },
     monthSpend.spend
   );
@@ -173,8 +175,8 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
     writeParam("open", null);
   };
 
-  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`, () => active() === "deploys");
-  const deploymentsSettled = () => deployments.history() !== null || deployments.historyError() !== null;
+  const deployments = createProjectDeployments(id, range, () => `${projectTick()}:${manualTick()}`, { active: () => active() === "deploys", enabled: () => props.capabilities.cloudflareDeployments });
+  const deploymentsSettled = () => !props.capabilities.cloudflareDeployments || deployments.history() !== null || deployments.historyError() !== null;
   const events = createMemo(() => deployments.events().map(event => ({ ...event, onSelect: () => { showSection("deploys"); event.onSelect(); } })));
   const latest = () => deployments.history()?.deployments[0];
 
@@ -199,6 +201,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
   const navItems = createMemo(() => {
     const items: { id: SectionId; title: string; summary: () => JSX.Element }[] = [{ id: "overview", title: "Overview", summary: () => "cost and usage" }];
     items.push({ id: "deploys", title: "Deployments", summary: () => {
+      if (!props.capabilities.cloudflareDeployments) return "unavailable";
       const deployment = latest();
       if (deployment !== undefined) return <>{deployments.title(deployment)} · {age(deployment.atMs, now())}</>;
       return deploymentsSettled() ? (deployments.historyError() ?? "none recorded") : <span class="summary-pending" aria-hidden="true" />;
@@ -290,7 +293,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
               <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
                 <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
                 <div class="project-main">
-                  <DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <Loading fallback={<Skeleton rows={2} />}><RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} /></Loading>} />
+                  <Show when={props.capabilities.cloudflareDeployments} fallback={<p>Cloudflare deployment collection is unavailable.</p>}><DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <Loading fallback={<Skeleton rows={2} />}><RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} /></Loading>} /></Show>
                 </div>
               </div>
             </Show>
@@ -320,7 +323,7 @@ function ProjectView(props: { readonly project: Project }): JSX.Element {
                   {hasDatabases() ? <D1Widget data={data()} view={view()} /> : null}
                   {props.project.probes.length > 0 ? <ProbesWidget data={data()} /> : null}
                   {hasNamespaces() ? <DurableObjectsWidget data={data()} /> : null}
-                  <CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={collector().runs.at(-1)?.rowsRead} />
+                  <Show when={props.capabilities.analyticsCollection} fallback={<Widget title="Collector"><p>Analytics collection is unavailable. Historical data remains available.</p></Widget>}><CollectorWidget data={data()} collector={props.project.collector} now={now()} rowsRead={collector().runs.at(-1)?.rowsRead} /></Show>
                 </section>
               </Loading>
             </Errored>

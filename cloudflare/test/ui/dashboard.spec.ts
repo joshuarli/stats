@@ -208,7 +208,7 @@ function deploymentComparison(window: "1h" | "6h" | "24h") {
   };
 }
 
-async function mock(page: Page, options: { online?: boolean; empty?: boolean; emptyRanges?: readonly string[]; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; sparse?: boolean; unreported?: boolean; baselineScale?: number } = {}): Promise<string[]> {
+async function mock(page: Page, options: { online?: boolean; empty?: boolean; emptyRanges?: readonly string[]; system?: boolean; collector?: keyof typeof projectCollector; spike?: boolean; probes?: boolean; probeDown?: boolean; bucketless?: boolean; durableObjects?: boolean; objectStorageBytes?: number; d1?: boolean; missingD1Written?: boolean; missingD1Storage?: boolean; partialWorkerCpu?: boolean; partialR2Storage?: boolean; accelerator?: boolean; diskLatency?: boolean; manyNets?: boolean; staleGap?: boolean; sparse?: boolean; unreported?: boolean; baselineScale?: number; unavailable?: boolean } = {}): Promise<string[]> {
   const buckets = options.bucketless === true ? [] : PROJECT_BUCKETS;
   const namespaces = options.durableObjects === true ? NAMESPACES : [];
   const databases = options.d1 === true ? DATABASES : [];
@@ -233,6 +233,7 @@ async function mock(page: Page, options: { online?: boolean; empty?: boolean; em
     }
     if (url.pathname === "/api/v1/projects/stuff/deployments") return route.fulfill({ json: deploymentHistory() });
     if (url.pathname === `/api/v1/projects/stuff/deployments/${DEPLOYMENT_ID}/comparison`) return route.fulfill({ json: deploymentComparison(({ "6h": "6h", "24h": "24h" } as const)[url.searchParams.get("window") ?? ""] ?? "1h") });
+    if (url.pathname === "/api/v1/capabilities") return route.fulfill({ json: { analyticsCollection: options.unavailable !== true, cloudflareDeployments: options.unavailable !== true, tailEvents: options.unavailable !== true, applicationEvents: true } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: projects(options.collector ?? "fresh", options.probes === true, buckets, namespaces, databases) });
     if (url.pathname === "/api/v1/hosts") {
       return route.fulfill({ json: { hosts: [{ hostId, name: "alpha", createdAtMs: now - 100_000, revoked: false, lastReceivedAtMs: options.online === false ? now - 120_000 : now - 5_000, online: options.online !== false }] } });
@@ -1622,4 +1623,22 @@ test("no element id repeats on a page and no widget id repeats across pages, bec
     await page.unrouteAll({ behavior: "wait" });
   }
   expect(widgetIds.filter((id, index) => widgetIds.indexOf(id) !== index)).toEqual([]);
+});
+
+test("unavailable provider collection retains project history without polling", async ({ page }) => {
+  await page.clock.install();
+  const requests = await mock(page, { unavailable: true });
+  await page.goto("/#/project/stuff?section=deploys");
+  await expect(page.getByText("unavailable", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Cloudflare deployment collection is unavailable.")).toBeVisible();
+  const histories = () => requests.filter(path => path.includes("/projects/stuff/history"));
+  await expect.poll(() => histories().length).toBeGreaterThanOrEqual(4);
+  const initial = histories().length;
+  await page.clock.runFor(10 * 60_000);
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.waitForTimeout(100);
+  expect(histories()).toHaveLength(initial);
+  expect(requests.filter(path => path.includes("/projects/stuff/deployments"))).toEqual([]);
+  await page.getByRole("button", { name: "6h", exact: true }).click();
+  await expect.poll(() => histories().length).toBeGreaterThan(initial);
 });

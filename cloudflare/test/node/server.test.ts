@@ -301,3 +301,15 @@ await test("a deploy marker needs only its service token, from any peer and with
     }
   }
 });
+
+await test("capabilities require trusted identity and disclose only runtime support", async () => {
+  const served = await serve();
+  const forged = await serve("203.0.113.7");
+  try {
+    assert.equal((await served.fetch("/api/v1/capabilities")).status, 401);
+    assert.equal((await forged.fetch("/api/v1/capabilities", { headers: login(ALLOWED) })).status, 401);
+    const reply = await served.fetch("/api/v1/capabilities", { headers: login(ALLOWED) });
+    assert.equal(reply.status, 200);
+    assert.deepEqual(JSON.parse(reply.text), { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
+  } finally { await served.close(); await forged.close(); }
+});

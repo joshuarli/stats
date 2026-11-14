@@ -83,6 +83,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
+      capabilities: { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true },
       authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers)),
       authorizeIngest: async (service, token) => {
         const response = await options.installation(new Request("https://installation/ingest/observe-auth", {

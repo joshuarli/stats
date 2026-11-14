@@ -65,20 +65,17 @@ Writes were refused from 05:52 to about 06:06 depending on each host's DNS
 cache, longer than the agent queue, so hosts lost the oldest samples of that
 window; the gap reads as missing data, never zero.
 
-## Rollback
+## Recovery
 
-The Cloudflare `Installation` and observation stores stay fenced and unchanged
-as the rollback source until the verification period ends; do not delete the
-`stats` or `stats-observe` Workers or their Durable Objects before then.
+On 2026-11-14 the Cloudflare `stats` and `stats-observe` Workers were deleted
+after their old tail consumer references were removed. Their Durable Object
+namespaces are gone, so a DNS reversal cannot restore those stores.
 
-- **No new writes on `lisa` yet:** recreate the Workers custom domain for
-  `stats.17166969.xyz` on the `stats` Worker, delete the A record, and run
-  `statsctl backup fence --state open` against Cloudflare.
-- **After new writes on `lisa`:** the Cloudflare objects are not empty, so
-  `backup import` cannot merge into them. Fence `lisa`, export it, and either
-  accept losing the samples written since the cutover or import the `lisa`
-  export into fresh Durable Objects on a new Cloudflare deployment. A DNS
-  reversal alone is not a data rollback.
+The source cutover export is at `/Users/josh/backups/openorange/stats/source-cutover`;
+all 10 objects and 627,253 rows were reverified. Recover by importing a logical
+backup into a fresh OpenOrange namespace. This cutover export predates subsequent
+Orange writes. A fresh full Orange export was aborted after three minutes and
+writes were reopened; a fresh logical full backup is not complete.
 
 ## Not carried over
 
@@ -86,9 +83,9 @@ as the rollback source until the verification period ends; do not delete the
   traffic charts for `stuff`, `usr-memories`, `nanoshop-storied`, `discover`
   and `discover-preview` stop at the cutover. Their project probes ran inside
   the same collector and stopped too.
-- Tail events from `usr-memories`, `nanoshop-*` and `discover*` still go to the
-  Cloudflare `stats-observe` Worker, which is fenced; they are not collected.
-  Keep that Worker until those projects drop `tailConsumers`, or Cloudflare
-  rejects their deploys.
+- The old Cloudflare tail consumer references were removed before the Workers
+  were deleted. Cloudflare tail events are not collected on OpenOrange.
 - OpenOrange tails report zero CPU and no diagnostics, so Stats' own operations
   arrive as application events with wall-clock durations, not platform CPU.
+
+The authenticated `/api/v1/capabilities` endpoint reports provider collection and tail events unavailable on OpenOrange. Imported project history remains readable; the collector status does not describe that retained data as live.
