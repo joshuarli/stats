@@ -19,6 +19,7 @@ Inventory complete; slices S1–S3 in progress. Production has not moved.
 | Observe Worker `stats-observe` | `ObservationStore` DO per service (`getByName(service)`), cron `17 * * * *`, tail handler | Same DO on Orange; scheduling persisted in the object (alarms) |
 | Stuff Worker `stuff` | TS host + Rust WASM, six R2 buckets, `caches.default`, `cf.cacheKey` | Orange Worker or native server over shared S3 store; per-registry publication coordinator |
 | Hosts | `lisa` 100.68.104.43 (Alpine 3.25 musl x86_64, OpenRC, Docker, 242 GB free), `threadripper` (same OS, 94% disk) | Runtime and ingress on `lisa` |
+| Tansu | Native Rust server on `lisa` (OpenRC, 127.0.0.1:3001), public through cloudflared tunnel `tansu-tunnel` at `tansu.17166969.xyz`, passkeys | Same binary and vault behind the shared tailnet ingress; tunnel retired; owner ruling 2026-11-13: tailnet-only, not an OpenOrange app |
 | External Cloudflare producers | `usr-memories`, `nanoshop-storied`, `discover`, `discover-preview` (Analytics SQL + tails) | Optional isolated provider adapter or retired; reported at close |
 | Credentials | Access team/aud, host/service/deployment tokens (SHA-256 verifiers), CF deployments token, R2 keys | Tailnet identity; scoped tokens kept; S3 keys per app bucket set |
 
@@ -52,7 +53,8 @@ Inventory complete; slices S1–S3 in progress. Production has not moved.
 | S7 | stuff | Shared stack: Engine, S3 store, ingress, identity, TLS, backups, OpenRC | rehearsal on `lisa` with local DNS override |
 | S8 | stuff | Registries served from S3 with a publication coordinator | conformance suites + real clients |
 | S9 | stuff | Resumable R2 → S3 copy and verification | rehearsal on copied data |
-| S10 | both | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
+| S11 | tansu | `tansu.17166969.xyz` served by the shared ingress; tunnel retired | passkey login and `/api/v2/health` through the ingress |
+| S10 | all | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
 
 ## Needs environment / owner
 
