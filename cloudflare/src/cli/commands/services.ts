@@ -237,7 +237,7 @@ async function postMarker(context: CommandContext, service: string, token: strin
   }
   const { status } = response;
   const challenged = (status >= 300 && status < 400) || ((status === 200 || status === 401 || status === 403) && isHtml(response, bytes));
-  if (challenged) throw authError("access_challenge", `${path} answered ${status}, an Access challenge or login page, so the request never reached the Worker; the path needs a Bypass Access application on ${context.origin}`);
+  if (challenged) throw authError("access_challenge", `${path} answered ${status}, a redirect or login page, so the request never reached Stats at ${context.origin}`);
   if (status === 401 || status === 403) throw authError("marker_unauthorized", `${path} answered ${status}${errorCode(bytes)}; the deploy token was refused`);
   if (status === 409) throw new CommandError(EXIT.usage, "marker_conflict", `${path} answered 409${errorCode(bytes)}; this marker id was recorded with a different version, message, host set, or at-ms; use a new --marker-id`);
   if (status === 400 || status === 413 || status === 415) throw usageError(`${path} answered ${status}${errorCode(bytes)}`);
@@ -256,12 +256,12 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   summary: "record a deployment marker for a service",
   description: [
     "MUTATION: writes one deployment marker for the named service. POSTs {markerId, version, message, hostIds, atMs} to /ingest/services/NAME/deployments and prints the stored marker.",
-    "The service deploy token comes from the token file, the JSON returned once when the service was created, and is sent only to the configured origin in the Authorization header. No Access or other credential is sent, on either target.",
+    "The service deploy token comes from the token file, the JSON returned once when the service was created, and is sent only to the configured origin in the Authorization header. No other credential is sent, on either target.",
     "The marker id defaults to v-VERSION, so repeating a deploy is idempotent. Exit 0 when the marker was recorded (201) and when an identical marker already existed (200, created false). A marker id already recorded with a different version, message, host set, or at-ms exits 2 with marker_conflict. Use a new --marker-id to record another deploy of the same version, such as a rollback to it; with the default, that rollback records nothing and the newer marker stays latest.",
-    "Exit 3 when the token file or the token is refused, or when an Access challenge intercepts the request (access_challenge). Exit 4 on transport failure."
+    "Exit 3 when the token file or the token is refused, or when a redirect or login page intercepts the request (access_challenge). Exit 4 on transport failure."
   ],
   access: "mutation",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     service: { type: "string", placeholder: "NAME", required: true, description: "service name, as created through POST /api/v1/admin/services" },
     version: { type: "string", placeholder: "V", required: true, description: "what was deployed: a commit, tag, or semver (1-128 of A-Za-z0-9._:+-, starting with a letter or digit)" },
@@ -273,8 +273,7 @@ export const deployMarkCommand = defineCommand<DeployMarkPayload>({
   },
   examples: ["statsctl deploy mark --service stats-node --version 9df651c1a2b3 --message 'make node-deploy' --token-file .work/credentials/stats-node-deploy.json --origin http://threadripper.tailcf741.ts.net:18790"],
   limitations: [
-    "Markers older than 30 days are dropped by the server.",
-    "On Cloudflare the marker path is under /ingest/*, which must bypass Access; otherwise the request fails with access_challenge."
+    "Markers older than 30 days are dropped by the server."
   ],
   async run(context) {
     const service = requireService(context);
@@ -309,7 +308,7 @@ export const servicesCommand = defineCommand<ServicesPayload>({
   summary: "list the services that report deployment markers",
   description: ["Lists every service with its hosts, health URL, and unit. Deploy tokens are never listed."],
   access: "read",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {},
   examples: ["statsctl services", "statsctl services --json --origin http://threadripper.tailcf741.ts.net:18790"],
   limitations: ["Services are created through POST /api/v1/admin/services; see docs/operations.md."],
@@ -329,7 +328,7 @@ export const serviceDeploymentsCommand = defineCommand<ServiceDeploymentsPayload
   summary: "list a service's deployment markers",
   description: ["Lists the service's markers newest first with version, message, and hosts. Markers are kept for 30 days."],
   access: "read",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: { service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" } },
   examples: ["statsctl service deployments --service stats-node", "statsctl service deployments --service stats-node --json"],
   limitations: [`Text output shows the newest ${TEXT_ROWS} markers; --json carries all of them.`],
@@ -365,10 +364,10 @@ export const serviceCreateCommand = defineCommand<ServiceCreatePayload>({
     "MUTATION: creates one service through POST /api/v1/admin/services and writes the response to a new JSON file with mode 0600.",
     "The file holds the deploy token used by `statsctl deploy mark` and the ingest token reserved for application telemetry. Neither token is printed in text or JSON output; the file is the only copy.",
     "The command refuses to overwrite an existing file and refuses a symbolic link or a file readable by group or others.",
-    "Management routes use the target's human authentication: a Cloudflare Access credential on the Cloudflare origin, or the Tailscale identity a tailnet origin provides."
+    "Management routes use the tailnet identity the target's gateway or tailscale serve asserts; statsctl sends no credential."
   ],
   access: "mutation",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     name: { type: "string", placeholder: "NAME", required: true, description: "service name: 1-32 lowercase letters, digits, or hyphens, starting with a letter" },
     host: { type: "string", placeholder: "ID[,ID...]", required: true, description: "host ids the service runs on, comma-separated" },
@@ -422,7 +421,7 @@ export const serviceInspectCommand = defineCommand<ServiceInspectPayload>({
   summary: "show one service's configuration and latest deployment marker",
   description: ["Reads the service and its marker history, then prints the hosts, health URL, unit, creation time, and the newest marker with its version and deployment id."],
   access: "read",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: { service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" } },
   examples: ["statsctl service inspect --service stats-node", "statsctl service inspect --service stats-node --json"],
   limitations: ["Marker history is kept for 30 days; a service whose last deploy is older shows no latest marker."],
@@ -461,7 +460,7 @@ export const serviceTokenRotateCommand = defineCommand<ServiceRotatePayload>({
     "Use --kind deploy for the marker token read by `statsctl deploy mark`, or --kind ingest for the application telemetry token."
   ],
   access: "mutation",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" },
     kind: { type: "string", placeholder: "deploy|ingest", description: "which credential to rotate (default: deploy)" },
@@ -515,7 +514,7 @@ export const serviceTokenRevokeCommand = defineCommand<ServiceRevokePayload>({
     "Use `service token rotate` to invalidate one token without deleting the service."
   ],
   access: "mutation",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" },
     "credential-file": { type: "string", placeholder: "FILE", description: "optional credential file to verify the service name before revoking" }
@@ -552,7 +551,7 @@ export const serviceCheckCommand = defineCommand<ServiceCheckPayload>({
     "Exit 0 when the probe is up and a marker exists, 5 when the health URL or marker is missing or the probe does not answer, and 7 when the probe answers with a failing status."
   ],
   access: "read",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: { service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" } },
   examples: ["statsctl service check --service stats-node", "statsctl service check --service stats-node --json"],
   limitations: ["The probe is one request from this machine; it does not read the server's recorded probe series."],

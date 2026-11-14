@@ -1,6 +1,6 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 import type { Installation } from "../src/cloudflare/installation";
 import type { DeploymentHistory } from "../src/deployments/model";
 import type { DeploymentComparison } from "../src/deployments/compare";
@@ -12,7 +12,7 @@ const VERSION = "00000000-0000-4000-8000-000000000102";
 const stub = () => env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
 const path = "/api/v1/projects/stuff/deployments";
 async function get(suffix = "", method = "GET"): Promise<Response> {
-  return SELF.fetch(`https://example.com${path}${suffix}`, { method, headers: { "Cf-Access-Jwt-Assertion": await accessToken() } });
+  return SELF.fetch(`https://example.com${path}${suffix}`, { method, headers: { ...gatewayHeaders() } });
 }
 
 beforeEach(async () => {
@@ -38,7 +38,7 @@ describe("deployment API", () => {
     expect((await get(`/${ID}/comparison?window=1h&window=24h`)).status).toBe(400);
     expect((await get(`/${ID}/comparison?window=7d`)).status).toBe(400);
     expect((await get(`/${ID}/comparison?window=toString`)).status).toBe(400);
-    expect((await SELF.fetch("https://example.com/api/v1/projects/missing/deployments", { headers: { "Cf-Access-Jwt-Assertion": await accessToken() } })).status).toBe(404);
+    expect((await SELF.fetch("https://example.com/api/v1/projects/missing/deployments", { headers: { ...gatewayHeaders() } })).status).toBe(404);
   });
   it("records through the binding, lists events and withholds unproven comparisons", async () => {
     await runInDurableObject(stub(), async (instance: Installation) => {
@@ -72,7 +72,7 @@ describe("deployment API", () => {
 });
 
 it("overview lists select the same retained deployment as history", async () => {
-  const headers = { "Cf-Access-Jwt-Assertion": await accessToken() };
+  const headers = { ...gatewayHeaders() };
   const list = async () => await (await SELF.fetch("https://example.com/api/v1/projects", { headers })).json() as { id: string; latestDeployment: { status: string; deployment?: unknown; versions?: unknown[] } }[];
   const project = async () => (await list()).find(item => item.id === "stuff")!.latestDeployment;
   expect(await project()).toEqual({ status: "none" });

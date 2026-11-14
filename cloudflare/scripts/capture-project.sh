@@ -11,10 +11,9 @@ ranges=${*:-1h}
 here=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 base=${STATS_URL:-https://stats.17166969.xyz}
 out="$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)/test/ui/captures/$id"
-token=$(cf -q access token "$base")
 
 get() {
-  curl -fsS -H "cf-access-token: $token" "$base$1"
+  curl -fsS "$base$1"
 }
 
 projects=$(get /api/v1/projects)

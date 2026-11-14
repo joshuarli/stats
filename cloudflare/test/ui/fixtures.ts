@@ -34,7 +34,7 @@ export const test = base.extend<{ serverOrigin: string; assetsDirectory: string 
       const entry = stageNode(artifacts, owner.directory);
       const data = join(owner.directory, "data");
       mkdirSync(data);
-      const child = owner.start("node-server", process.execPath, [entry], { cwd: ROOT, env: { STATS_DATA_DIR: data, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: "playwright@example.com" } });
+      const child = owner.start("node-server", process.execPath, [entry], { cwd: ROOT, env: { STATS_DATA_DIR: data, STATS_LISTEN: "127.0.0.1:0" } });
       let output = "";
       const timeout = setTimeout(() => child.kill("SIGKILL"), 10_000);
       try {

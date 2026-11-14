@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history.ts";
 import { readHistory } from "../test/support/history.ts";
 
@@ -10,8 +9,7 @@ if (target === undefined || !target.startsWith("/") || process.argv.length > 3) 
 }
 const base = process.env.STATS_URL ?? "https://stats.17166969.xyz";
 const path = target.startsWith("/api/") ? target : `/api/v1${target}`;
-const token = execFileSync("cf", ["-q", "access", "token", base], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
-const response = await fetch(`${base}${path}`, { headers: { "cf-access-token": token } });
+const response = await fetch(`${base}${path}`);
 const type = (response.headers.get("content-type") ?? "").split(";")[0].trim();
 const body = Buffer.from(await response.arrayBuffer());
 if (!response.ok) {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CommandError, EXIT } from "../../src/cli/exit.ts";
 import { POLICY_SCHEMA } from "../../src/cli/verify/policy.ts";
-import { runCli, tokenEnv } from "./support.ts";
+import { runCli } from "./support.ts";
 import { CANDIDATE, handler, harness, newWorld, POLICY } from "./verify-support.ts";
 import { fakeOrigin } from "./support.ts";
 
@@ -35,7 +35,7 @@ await test("verify rejects a missing selector, a bad policy, and replay mixed wi
       [["verify", "--project", "stats", "--deployment", CANDIDATE.id, "--policy", bad, "--wait", "--readiness"], "usage"]
     ];
     for (const [args, code] of cases) {
-      const run = await runCli([...args, "--json", "--origin", origin.origin], tokenEnv());
+      const run = await runCli([...args, "--json", "--origin", origin.origin], {});
       assert.equal(run.code, EXIT.usage, `${args.join(" ")}: ${run.stdout}${run.stderr}`);
       assert.equal(document(run.stdout).error.code, code, args.join(" "));
     }
@@ -65,16 +65,16 @@ await test("health --policy lists the policy's signals and a plain health leaves
   const origin = await fakeOrigin(handler(world));
   const h = await harness(world);
   try {
-    const plain = await runCli(["health", "--project", "stats", "--json", "--origin", origin.origin], tokenEnv());
+    const plain = await runCli(["health", "--project", "stats", "--json", "--origin", origin.origin], {});
     assert.equal(plain.code, EXIT.ok, plain.stdout + plain.stderr);
     assert.deepEqual(document(plain.stdout).payload.readiness, { policy: null, signals: [] });
-    const run = await runCli(["health", "--project", "stats", "--policy", h.policyFile, "--json", "--origin", origin.origin], tokenEnv());
+    const run = await runCli(["health", "--project", "stats", "--policy", h.policyFile, "--json", "--origin", origin.origin], {});
     assert.equal(run.code, EXIT.ok, run.stdout + run.stderr);
     const readiness = document(run.stdout).payload.readiness as { policy: string; signals: { signal: string; status: string }[] };
     assert.equal(readiness.policy, POLICY.id);
     assert.deepEqual(readiness.signals.map(signal => signal.signal), ["analytics-collector", "deployment-history", "observe-events", "observe-invocations", "operation-summaries", "probes"]);
     assert.ok(readiness.signals.every(signal => signal.status === "available"), JSON.stringify(readiness.signals));
-    const wrong = await runCli(["health", "--project", "alpha", "--policy", h.policyFile, "--json", "--origin", origin.origin], tokenEnv());
+    const wrong = await runCli(["health", "--project", "alpha", "--policy", h.policyFile, "--json", "--origin", origin.origin], {});
     assert.equal(wrong.code, EXIT.usage);
   } finally {
     await h.close();

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import { test } from "node:test";
-import { fakeOrigin, runCli, sendJson, TOKEN, tokenEnv, type Handler } from "./support.ts";
+import { fakeOrigin, runCli, sendJson, type Handler } from "./support.ts";
 
 const HOST_A = `h_${"a".repeat(32)}`;
 const HOST_B = `h_${"b".repeat(32)}`;
@@ -70,12 +70,12 @@ const marked = {
   markers: [{ deploymentId: deployment.id, markerId: "v-1.2.3", hostIds: [HOST_A] }]
 };
 
-await test("service check reports an up probe, the latest marker, and does not send Access to the health URL", async () => {
+await test("service check reports an up probe, the latest marker, and sends no credential", async () => {
   const target = await fixture();
   target.service = { name: "web", hostIds: [HOST_A, HOST_B], healthUrl: `${target.origin}/health`, unit: "web.service", createdAtMs: 1_700_000_000_000 };
   target.history = marked;
   try {
-    const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], tokenEnv());
+    const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], {});
     assert.equal(run.code, 0, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; status: number }; latest: { version: string; markerId: string }; healthUrl: string; hostIds: string[] } }).payload;
     assert.equal(payload.probe.state, "up");
@@ -88,11 +88,11 @@ await test("service check reports an up probe, the latest marker, and does not s
     const api = target.seen.filter(item => item.url.startsWith("/api/v1/"));
     const probe = target.seen.filter(item => item.url === "/health");
     assert.equal(api.length, 2);
-    assert.ok(api.every(item => item.headers["cf-access-token"] === TOKEN));
+    assert.ok(api.every(item => item.headers["cf-access-token"] === undefined && item.headers["authorization"] === undefined));
     assert.equal(probe.length, 1);
     assert.equal(probe[0]?.headers["cf-access-token"], undefined);
 
-    const text = await runCli(["service", "check", "--service", "web", "--origin", target.origin], tokenEnv());
+    const text = await runCli(["service", "check", "--service", "web", "--origin", target.origin], {});
     assert.equal(text.code, 0, text.stdout + text.stderr);
     assert.match(text.stdout, /probe: up, status 200/u);
     assert.match(text.stdout, /latest marker: 1\.2\.3/u);
@@ -107,7 +107,7 @@ await test("service check reports a failing probe as regressed", async () => {
   target.history = marked;
   target.probeStatus = 503;
   try {
-    const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], tokenEnv());
+    const run = await runCli(["service", "check", "--service", "web", "--origin", target.origin, "--json"], {});
     assert.equal(run.code, 7, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; status: number; detail: string } } }).payload;
     assert.equal(payload.probe.state, "down");
@@ -123,7 +123,7 @@ await test("service check treats a missing health URL, a missing marker, and an 
   unconfigured.service = { name: "web", hostIds: [HOST_A], healthUrl: null, unit: null, createdAtMs: 1_700_000_000_000 };
   unconfigured.history = marked;
   try {
-    const run = await runCli(["service", "check", "--service", "web", "--origin", unconfigured.origin, "--json"], tokenEnv());
+    const run = await runCli(["service", "check", "--service", "web", "--origin", unconfigured.origin, "--json"], {});
     assert.equal(run.code, 5, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; detail: string } } }).payload;
     assert.equal(payload.probe.state, "unavailable");
@@ -136,7 +136,7 @@ await test("service check treats a missing health URL, a missing marker, and an 
   const unmarked = await fixture();
   unmarked.service = { name: "web", hostIds: [HOST_A], healthUrl: `${unmarked.origin}/health`, unit: null, createdAtMs: 1_700_000_000_000 };
   try {
-    const run = await runCli(["service", "check", "--service", "web", "--origin", unmarked.origin, "--json"], tokenEnv());
+    const run = await runCli(["service", "check", "--service", "web", "--origin", unmarked.origin, "--json"], {});
     assert.equal(run.code, 5, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { latest: unknown; probe: { state: string } } }).payload;
     assert.equal(payload.latest, null);
@@ -149,7 +149,7 @@ await test("service check treats a missing health URL, a missing marker, and an 
   unreachable.service = { name: "web", hostIds: [HOST_A], healthUrl: "http://127.0.0.1:1/health", unit: null, createdAtMs: 1_700_000_000_000 };
   unreachable.history = marked;
   try {
-    const run = await runCli(["service", "check", "--service", "web", "--origin", unreachable.origin, "--json"], tokenEnv());
+    const run = await runCli(["service", "check", "--service", "web", "--origin", unreachable.origin, "--json"], {});
     assert.equal(run.code, 5, run.stdout + run.stderr);
     const payload = (JSON.parse(run.stdout) as { payload: { probe: { state: string; status: number | null } } }).payload;
     assert.equal(payload.probe.state, "unavailable");

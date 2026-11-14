@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { openStatsWorker } from "../../local/stack.ts";
 import { HISTORY_KINDS } from "../../src/limits.ts";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { fixtureBytes, manifest, openHarness, ROOT, withHost } from "./support.ts";
 
 const VARS = (JSON.parse(readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8")) as { vars: Record<string, string> }).vars;
@@ -33,7 +33,7 @@ await test("the same fixture frames give identical acknowledgment bytes, history
   const node = openHarness(VARS["PROJECTS"]!);
   try {
     const origin = (await mf.ready).origin;
-    const access = { "cf-access-jwt-assertion": await accessToken() };
+    const access = { ...gatewayHeaders() };
     const worker = async (path: string, init: { method: string; headers: Record<string, string>; body: Uint8Array<ArrayBuffer> } | null = null) =>
       observe(await mf.dispatchFetch(`${origin}${path}`, init === null ? { headers: { "accept-encoding": "identity", ...access } } : { ...init, headers: { "accept-encoding": "identity", ...access, ...init.headers } }) as unknown as Response);
     const core = async (path: string, init: { method: string; headers: Record<string, string>; body: Uint8Array<ArrayBuffer> } | null = null) =>

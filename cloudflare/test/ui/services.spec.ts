@@ -110,7 +110,7 @@ test.beforeAll(async () => {
   await installation.observe.forService("web").ingestExternal("web", [...activity(before, 40, "before"), ...activity(after, 55, "after")]);
   nowMs = NOW;
 
-  server = createStatsServer({ installation: request => installation.core.fetch(request), observe: observeHandler(installation), assets: await openAssets(BUILT_ASSETS), allowedLogins: new Set([LOGIN]), transport: "tcp" });
+  server = createStatsServer({ installation: request => installation.core.fetch(request), observe: observeHandler(installation), assets: await openAssets(BUILT_ASSETS), transport: "tcp" });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("service test server has no TCP address");

@@ -28,7 +28,6 @@ async function serve(now: number, listener?: (incoming: IncomingMessage, outgoin
     installation: request => installation.core.fetch(request),
     observe: observeHandler(installation),
     assets: await openAssets(assets),
-    allowedLogins: new Set([LOGIN]),
     transport: "tcp"
   }));
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -127,7 +126,6 @@ await test("the ingest path ignores the peer's Tailscale identity and authentica
     installation: request => installation.core.fetch(request),
     observe: observeHandler(installation),
     assets: await openAssets(assets),
-    allowedLogins: new Set([LOGIN]),
     transport: "tcp"
   });
   const server = createServer((incoming, outgoing) => {

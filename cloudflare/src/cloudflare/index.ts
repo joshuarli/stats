@@ -1,4 +1,4 @@
-import { verifyAccess } from "./access.ts";
+import { gatewayDecision } from "./gateway.ts";
 import { Installation } from "./installation.ts";
 import { collectDeployments } from "./deployments/collector.ts";
 import { parseProjects } from "../projects/config.ts";
@@ -34,7 +34,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     markInvocation();
     return handleStatsRequest(request, {
-      authorize: candidate => verifyAccess(candidate, env),
+      authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request("https://installation/ingest/observe-auth", {
           method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }

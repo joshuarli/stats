@@ -6,7 +6,7 @@ to a Cloudflare Worker. The Worker forwards ingest and API calls to one
 SQLite-backed Durable Object, which stores raw samples and rollups and answers
 history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
 configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
-served through the same Worker, reads that API behind Cloudflare Access. The wire contract between agent and Worker is in
+served through the same Worker, reads that API behind a tailnet-only gateway. The wire contract between agent and Worker is in
 [`protocol.md`](protocol.md). The same core also runs as a Node server
 (`cloudflare/src/node/`) for a tailnet-only instance; see [Node server](#node-server).
 
@@ -15,10 +15,10 @@ served through the same Worker, reads that API behind Cloudflare Access. The wir
 `cloudflare/src/` is split into a portable core and Cloudflare adapters.
 
 - **Adapters** are `src/cloudflare/` and `src/observe/cloudflare/`. The first
-  holds the stats Worker entry (`index.ts`, which wires Access, the Durable
+  holds the stats Worker entry (`index.ts`, which wires gateway identity, the Durable
   Object, assets, and the observe binding into the shared handler, and owns
   the scheduled handler), the `Installation` Durable Object wrapper
-  (`installation.ts`), Access verification (`access.ts`), the Analytics
+  (`installation.ts`), the gateway identity check (`gateway.ts`), the Analytics
   collector and its row parsers (`projects/`), the Cloudflare API deployment
   collector (`deployments/`), and the `ctx.storage.sql`, clock, alarm, and
   operation-mark adapters for the core's ports. The second holds the
@@ -94,7 +94,7 @@ and keeps `seq` unique.
 ## Worker
 
 `handleStatsRequest` in `cloudflare/src/core/http.ts` is the whole routing
-table; `cloudflare/src/cloudflare/index.ts` calls it with Access as the auth
+table; `cloudflare/src/cloudflare/index.ts` calls it with the gateway identity check as the auth
 decision, the Durable Object as the `Installation` transport, the `ASSETS`
 binding, and the `OBSERVE` service. `/health` is public.
 `POST /ingest/v2/batches` with a token-shaped bearer, the STB2 media type, no
@@ -106,10 +106,10 @@ and answers with an STA2 acknowledgment (`src/ingest/ack.ts`). Any request to
 the retired `/ingest/v1/batches` answers `410 Gone`.
 
 Every other path that serves assets or data first passes the target's auth
-decision, which on the Worker is `verifyAccess` in `src/cloudflare/access.ts`. Assets run through the Worker
+decision, which on the Worker is `gatewayDecision` in `src/cloudflare/gateway.ts`. Assets run through the Worker
 (`assets.run_worker_first`), so a cache hit cannot bypass authorization.
 Methods other than GET and HEAD on non-API paths are rejected before routing.
-`/api/observe/<service>/*` passes the same Access check and is then proxied
+`/api/observe/<service>/*` passes the same identity check and is then proxied
 over the `OBSERVE` service binding to `stats-observe`, the observability
 collector in [Observability product](observe.md). The only writes it passes are
 an issue's resolve or reopen and a source-map upload, and both must be
@@ -185,19 +185,21 @@ Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
 
 Two authorization boundaries:
 
-- **Humans** carry `Cf-Access-Jwt-Assertion`. The Worker verifies the RS256
-  signature against the team JWKS (cached one hour), plus issuer, audience,
-  expiry, and not-before with 60 s leeway. Edge Access alone is not trusted.
-  Any valid Access identity may use the admin routes, so the Access policy is
-  the owner allow-list. `ACCESS_JWKS_JSON` is honored only when
-  `ENVIRONMENT=test`.
+- **Humans and tagged machines** reach Stats only through the tailnet gateway
+  (`stuff/deploy/openorange/`). The gateway listens on the ingress machine's
+  Tailscale address, strips client-supplied identity headers, resolves the peer
+  with tailscaled `whois`, and forwards `Stats-Gateway-Secret` with
+  `Stats-Tailnet-Identity: user:<login>` or `tags:<tag:a,tag:b>`. The Worker
+  compares the secret in constant time and validates the identity shape; an
+  unset `GATEWAY_SECRET` answers 503. The tailnet policy decides which devices
+  reach the gateway; there is no login allowlist.
 - **Hosts** send `Bearer nft_<43 base64url chars>`: 32 random bytes, stored only
   as a SHA-256 verifier, compared in constant time, bound to one host id, and
   individually rotatable and revocable. Rotating a revoked host clears the
   revocation.
 - **Deploy scripts** send a service's deploy token, in the same format and
   stored the same way, only to `POST /ingest/services/:name/deployments`.
-  That route never checks Access or Tailscale identity, like ingest.
+  That route never checks gateway or Tailscale identity, like ingest.
 
 Revocation keeps the host row, verifier, and telemetry, so history stays
 readable. Purge deletes the host row, raw samples, and rollups in one
@@ -211,7 +213,7 @@ Ingest rejections other than duplicates, alarm failures, and the 500 catch-all
 write a fixed JSON line to Workers Logs (`event`, `hostId` when known, and
 `code`). `cloudflare.config.ts` enables Workers Logs at 10% head sampling.
 
-Configuration: `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are Worker secrets;
+Configuration: `GATEWAY_SECRET` is a Worker secret;
 `ENVIRONMENT`, `INSTALLATION`, `ASSETS`, `ANALYTICS_SQL`, and `PROJECTS` are
 bindings declared in `cloudflare.config.ts`, which also declares the cron. The Durable Object id is the fixed name `installation`.
 
@@ -424,7 +426,7 @@ none of these fields.
 `GET /api/observe/stats/window?from=<ms>&to=<ms>[&operation=<id>][&class=<name>]`
 returns one half-open window: operation rows, outcome rows, invocation rows and
 lag totals, with `filterRevision` and `bucketMs`. It is read-only and passes
-the same Access check as every observe route.
+the same identity check as every observe route.
 For a sampled service it adds `counts`: one row per `(version, stage, route,
 operation)` with `count` (kept plus sampled-out), `failed`, `cpuMsSum`,
 `wallMsSum`, `rowAccounts`, `rowsRead`, `rowsWritten`, `statements`,
@@ -508,10 +510,11 @@ it plugs into the handler:
 - **Auth.** `src/node/tailscale.ts`. A non-ingest, non-health request is
   accepted only when the TCP peer is loopback (or the connection is on the
   Unix socket named by `STATS_LISTEN`, which has no TCP peer and is
-  reachable only through filesystem permissions) and its `Tailscale-User-Login`
-  header is in `STATS_ALLOWED_LOGINS`; otherwise it gets `401 unauthorized`
-  before any data is read. The server is meant to sit behind
-  `tailscale serve`, which sets that header for tailnet users. Ingest ignores
+  reachable only through filesystem permissions) and carries a nonempty
+  `Tailscale-User-Login` header; otherwise it gets `401 unauthorized` before
+  any data is read. The server is meant to sit behind `tailscale serve`, which
+  sets that header for tailnet users; it does not set it for tagged machines,
+  so they cannot use a Node origin. Ingest ignores
   Tailscale headers and requires the host bearer token, as on the Worker.
   On both targets a non-GET, non-HEAD, non-OPTIONS `/api/v1` request is
   rejected with `403 forbidden` when its `Origin` is not its own origin or
@@ -574,12 +577,10 @@ same optional field with project deployments, and the Node target's empty
 project list behaves the same way.
 
 `POST /ingest/services/:name/deployments` records a deploy marker. Its only
-credential is `Authorization: Bearer <deploy token>`. It skips Access and
-Tailscale identity, so a CI runner or a deploy script on any host can reach it,
-as an agent reaches ingest. It lives under `/ingest/` because Access matches
-applications by path, not method: the zone's `/ingest/*` Bypass lets the
-marker through, while `GET /api/v1/services/:name/deployments` stays behind
-Access. A `POST` to that `/api/v1` path answers `405`. Rejections, all before
+credential is `Authorization: Bearer <deploy token>`. It skips gateway and
+Tailscale identity checks, so a deploy script on any tailnet host can reach it,
+as an agent reaches ingest, while `GET /api/v1/services/:name/deployments`
+needs identity. A `POST` to that `/api/v1` path answers `405`. Rejections, all before
 any write:
 
 | Check | Answer |

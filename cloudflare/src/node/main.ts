@@ -31,7 +31,6 @@ async function main(): Promise<void> {
     installation: request => installation.core.fetch(request),
     observe: observeHandler(installation),
     assets,
-    allowedLogins: config.allowedLogins,
     transport: config.listen.kind === "unix" ? "unix" : "tcp"
   });
   let draining = false;

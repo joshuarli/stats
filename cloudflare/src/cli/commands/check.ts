@@ -139,7 +139,7 @@ export const checkIngestCommand = defineCommand<CheckIngestPayload>({
     "Use only with the synthetic-check host credential."
   ],
   access: "mutation",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     "credential-file": { type: "string", placeholder: "FILE", required: true, description: "host credential JSON {hostId, token} as returned by POST /api/v1/admin/hosts, mode 0600; never passed in argv" }
   },

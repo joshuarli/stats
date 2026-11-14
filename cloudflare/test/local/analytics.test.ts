@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { offlineOutbound } from "../../local/outbound.ts";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { offlineAnalytics, UNEXPECTED_QUERY, type OfflineAnalytics } from "../../local/analytics.ts";
 import { DATASETS, QUERY_KINDS, RECORDED_AT_MS, expectedQueries, queryKey, rows, scenario, type QueryKind } from "../../local/scenario.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, openWorkers, readBuiltWorker, readTestVars } from "../../local/topology.ts";
@@ -15,7 +15,7 @@ const PRODUCTION_PROJECTS = (() => {
   if (binding?.type !== "text") throw new TypeError("the built stats config has no PROJECTS text binding");
   return binding.value;
 })();
-const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON } = readTestVars();
+const { GATEWAY_SECRET } = readTestVars();
 const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 const CALLER = `export default { async fetch(request, env) {
   try { return Response.json({ ok: true, result: await env.ANALYTICS_SQL.query(await request.json()) }); }
@@ -27,7 +27,7 @@ const persist = mkdtempSync(join(SCRATCH, "analytics-"));
 const provider: OfflineAnalytics = offlineAnalytics(STATS);
 const mf = openWorkers(STATS, OBSERVE, {
   text: { ENVIRONMENT: "test" },
-  secrets: { ACCESS_TEAM_DOMAIN: ACCESS_TEAM_DOMAIN!, ACCESS_AUD: ACCESS_AUD!, ACCESS_JWKS_JSON: ACCESS_JWKS_JSON!, TEST_NOW_MS: String(RECORDED_AT_MS) },
+  secrets: { GATEWAY_SECRET: GATEWAY_SECRET!, TEST_NOW_MS: String(RECORDED_AT_MS) },
   analytics: provider.binding,
   collector: { kind: "absent" },
   outbound: offlineOutbound([]).handler,
@@ -57,7 +57,7 @@ try {
     assert.deepEqual([...new Set(calls.map(call => call.dataset ?? "none"))].sort(byText), [...DATASETS].sort(byText));
     assert.deepEqual([...new Set(calls.map(call => call.kind ?? "none"))].sort(byText), [...QUERY_KINDS].sort(byText));
     assert.ok(calls.every(call => call.rows > 0), "every answered query returned rows");
-    const response = await mf.dispatchFetch("https://stats.example/api/v1/projects", { headers: { "cf-access-jwt-assertion": await accessToken() } });
+    const response = await mf.dispatchFetch("https://stats.example/api/v1/projects", { headers: { ...gatewayHeaders() } });
     const projects = await response.json() as { id: string; collector: { lastSuccessAtMs: number | null; lastError: string | null; stale: boolean } }[];
     assert.equal(response.status, 200);
     assert.deepEqual(projects.map(project => project.id).sort(byText), (JSON.parse(PRODUCTION_PROJECTS) as { id: string }[]).map(project => project.id).sort(byText));

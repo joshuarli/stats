@@ -42,7 +42,7 @@ await test("every help path works offline without a credential command or a sock
 await test("help states what an agent needs to run each command", async () => {
   const top = (await runCli(["--help"])).stdout;
   for (const name of commandNames) assert.ok(top.includes(name), name);
-  for (const needle of ["cf access token", "STATSCTL_AUTH_COMMAND", "half-open", "UTC", "NO_COLOR", "exit codes", "[mutation]"]) assert.ok(top.includes(needle), needle);
+  for (const needle of ["sends no credential", "STATSCTL_TARGET", "half-open", "UTC", "NO_COLOR", "exit codes", "[mutation]"]) assert.ok(top.includes(needle), needle);
   const check = (await runCli(["check", "ingest", "--help"])).stdout;
   assert.match(check, /access: MUTATION/);
   const verify = (await runCli(["verify", "--help"])).stdout;

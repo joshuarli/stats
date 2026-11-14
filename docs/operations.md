@@ -48,8 +48,8 @@ make integration-local     # the offline local stack: collection, statsctl, and 
 make dev-local             # a persistent local stack on http://127.0.0.1:8789; make reset-local clears it
 ```
 
-`cloudflare/scripts/api.mjs <path>` reads the live API as JSON. It gets an
-Access token through `cf access token`, sends a GET to `/api/v1<path>`, and
+`cloudflare/scripts/api.mjs <path>` reads the live API as JSON. From a tailnet
+device it sends a GET to `/api/v1<path>` with no credential, and
 decodes history frames back into the JSON-shaped history, so
 `node cloudflare/scripts/api.mjs '/hosts/<id>/history?range=1h&kinds=summary' | jaq .`
 works like the old JSON API. Errors print the status and body and exit 1.
@@ -61,35 +61,22 @@ login account. On Alpine it builds the static musl binary and installs the
 OpenRC service as the `stats` user, using passwordless `doas` or `sudo`. In
 both cases it creates the host when the label is new, rotates the token when
 the server has the host but the target has no config, installs the binary,
-config, token, and service unit, and waits for a fresh receipt. It needs
-`cf access login https://<host>` and SSH access to the target; `SSH=local`
+config, token, and service unit, and waits for a fresh receipt. It needs a
+tailnet device and SSH access to the target; `SSH=local`
 installs on the machine running the command. A rerun updates only the binary,
 config, or service unit that changed. A Linux host also needs an entry in
 `deploy/hosts.json` to receive `make deploy-hosts` updates.
 
-`make deploy` runs `fixtures`, `worker-test`, and `agent-test` in order,
-rebuilds and deploys the Worker with `make worker-deploy`, runs `deploy/deployed-smoke.sh`,
-then updates the hosts. `STATS_DOMAIN` defaults to `stats.17166969.xyz`.
-Pass `SECRETS_FILE=...` to upload Worker secrets; omitting it leaves existing
-secrets in place. The `cf` session must be authenticated (`make auth-ready`),
-and `make deploy`, `make worker-deploy`, `make stats-deploy`, and
-`make observe-sourcemap` check the Access token up front (`make access-ready`)
-so a missing session fails before anything is built or deployed.
-
-`make worker-deploy` then registers the new stats version's source map with
-`stats-observe` (`make observe-sourcemap VERSION=...` repeats it), which needs
-an Access session from `cf access login https://$STATS_DOMAIN`.
-
-`make worker-deploy` deploys `stats-observe` first (`make observe-deploy`),
-because Cloudflare rejects a `stats` deploy whose tail consumer does not
-exist (`[10203]`). For the same reason, stopping collection means removing
-`tailConsumers` from `cloudflare.config.ts` and deploying `stats` before
-`stats-observe` can be deleted (`[100109]`).
+Cloudflare Worker deployment is retired: `make worker-deploy`,
+`make stats-deploy`, and `make observe-deploy` exit with an error, because this
+tree authenticates through the tailnet gateway. The OpenOrange deployment
+replaces them; see [the campaign](CAMPAIGN-OPENORANGE.md).
+`make observe-sourcemap VERSION=...` uploads a source map from a tailnet device
+with no credential.
 
 A host deploy installs through `stats.new` and `mv`, keeps the previous binary
 as `/usr/local/bin/stats.prev`, and after restart polls `/api/v1/hosts` for a
-new `lastReceivedAtMs` on that host. The poll uses `cf access token`, so run
-`cf access login https://<host>` once before deploying a host directly.
+new `lastReceivedAtMs` on that host. The poll needs a tailnet device and no credential.
 
 ## Ingest protocol v2 cutover
 
@@ -193,8 +180,8 @@ cf workers deployments create --worker stats \
 ## Measuring a deployment with statsctl
 
 `statsctl` answers whether a deployed version used fewer resources for the same
-work. It reads the production origin through Access, so run it from a machine
-logged in with `cf access login https://stats.17166969.xyz`:
+work. It reads the production origin through the tailnet gateway, so run it from a
+tailnet device; it sends no credential:
 
 ```sh
 pnpm --dir cloudflare -s statsctl help workflow
@@ -210,9 +197,8 @@ first and fix anything unhealthy before trusting a verdict. Exit codes: 0 read
 succeeded or improved, 2 usage, 3 authentication, 4 transport or contract
 failure, 5 pending or insufficient data, 6 unchanged or confounded, 7
 regressed, 8 `observe rollouts` found settled rollouts to look at. `--json` prints one `statsctl/1` document. Resumable verdict state
-and snapshots live under `.work/statsctl/`. Authentication runs
-`cf access token <origin>`; set `STATSCTL_AUTH_COMMAND` and
-`STATSCTL_AUTH_HEADER` to use another credential source.
+and snapshots live under `.work/statsctl/`. `https://stats.17166969.xyz` and loopback origins are the orange target, tailnet
+names are Node origins, and any other origin needs `STATSCTL_TARGET`.
 
 ### Checking settled rollouts
 
@@ -236,7 +222,7 @@ and transport or contract failures. The command keeps no record of what it has
 reported, so a rollout with findings is listed again on every run until it ages
 past `--within`; choose `--within` to bound that repetition. Scheduling it (a
 host timer or an agent routine) and the alert destination are not set up and
-need a production Access credential.
+need a tailnet device.
 
 `check ingest` writes one real sample using the credential supplied with
 `--credential-file`. Use the dedicated `synthetic-check` host credential from
@@ -283,12 +269,10 @@ name differs from `stats`, which is the Rust agent.
   marked breaking (`!`). A `statsctl` newer than the server it reads finds an
   added field missing and fails with `server_older` (exit 4), whose message names
   the field. A field present with the wrong type is still `contract`.
-- **Authentication.** The credential command defaults to
-  `cf access token <origin>`, run with stdin closed and a 20 second timeout. A
-  failure exits 3 with `run: cf access login <origin>`; `statsctl` never starts a
-  login. The credential goes only to the configured origin, redirects are not
-  followed, and a 3xx, an HTML 200, a 401, or a 403 is exit 3. A credential
-  never enters argv, a snapshot, a log, or a report field.
+- **Authentication.** `statsctl` sends no credential; the gateway asserts the
+  caller's tailnet identity. Redirects are not followed, and a 3xx, an HTML
+  200, a 401, or a 403 is exit 3. Host and service tokens never enter argv, a
+  snapshot, a log, or a report field.
 - **Requests.** Each has a 15 second timeout and a body cap of 8 MiB for history
   and 1 MiB for JSON. Only GETs that fail with a network error, 502, 503, or 504
   retry, twice, with jittered backoff. History kinds are bundled into one request
@@ -427,7 +411,7 @@ duration, and rows are), so work on it buys latency and headroom, not money. Sto
 working a lane when its top item is under 10% of the project's list cost, or when
 the last two fixes each moved their metric by less than one sample of noise. Do
 not reduce retention, resolution, collection cadence, sample persistence, or
-Access coverage as an optimization.
+access-control coverage as an optimization.
 
 ## Observability
 
@@ -464,7 +448,7 @@ project list by editing `PROJECTS` there and redeploying.
 
 Check a deployment from your machine:
 
-- `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket of the last 24 hours with `cf sql query` and fails above 5% total error; it needs `cf access login`.
+- `node cloudflare/scripts/check-parity.mjs` compares every settled stored Worker bucket of the last 24 hours with `cf sql query` and fails above 5% total error; it needs a tailnet device and a `cf` session for the account query.
 - `node cloudflare/scripts/check-analytics-sql.mjs` runs the five queries
   read-only against the live account through `cf sql query` and fails on a
   non-200 response or a row the parser rejects.
@@ -491,6 +475,9 @@ Live runs took 0.5 to 2.1 s of wall time.
 
 ## First deployment
 
+This section describes the retired Cloudflare deployment and is kept as
+history until the OpenOrange runbook replaces it.
+
 1. Create an Access application for the dashboard hostname with an owner allow
    policy, and record the team domain and audience. Access fronts the whole
    hostname, so also create path-scoped Bypass/Everyone applications for
@@ -506,7 +493,7 @@ Live runs took 0.5 to 2.1 s of wall time.
 2. Deploy with `make worker-deploy SECRETS_FILE=...`, setting
    `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`. Without the team domain every
    Access-protected route returns 503; without the audience, 401.
-3. Authenticate through Access (`cf access login https://<host>`), then
+3. Authenticate through Access, then
    provision each host with `POST /api/v1/admin/hosts` and a body of
    `{"name": "<label>"}`. The 201 response carries `hostId` and the token,
    which is shown only once; store it in an owner-only file, install the agent config and token
@@ -534,7 +521,6 @@ make worker-bundle
 mkdir -p "$HOME/.local/share/stats-node"
 cd cloudflare && \
   STATS_DATA_DIR="$HOME/.local/share/stats-node" \
-  STATS_ALLOWED_LOGINS=you@example.com \
   node --experimental-strip-types src/node/main.ts
 ```
 
@@ -542,7 +528,6 @@ cd cloudflare && \
 | --- | --- |
 | `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
 | `STATS_LISTEN` | `IPV4:PORT`, `[IPV6]:PORT`, or `unix:/absolute/path.sock`. Default `127.0.0.1:18791`; port `0` picks a free one. A socket's directory must exist; a stale socket file is replaced, a live one stops startup with exit 2, and the socket is `0600` and removed on shutdown. |
-| `STATS_ALLOWED_LOGINS` | Required. Comma-separated Tailscale logins allowed to read the API and dashboard. |
 
 A missing or invalid value stops startup with exit code 2 and a
 `stats: <variable> ...` line on stderr. Once listening, the server prints
@@ -581,7 +566,7 @@ user's device, a page on another site could otherwise drive writes. Every
 `cross-site`. Clients that send neither header, such as `curl` and
 `statsctl`, are unaffected. `POST /api/v1/admin/hosts` also requires
 `Content-Type: application/json` and answers `415 unsupported_media_type`
-otherwise. The Worker applies the same rule behind Access.
+otherwise. The Worker applies the same rule behind the gateway.
 
 ### In a container on threadripper
 
@@ -592,7 +577,7 @@ before stopping the running container. Use the source-run setup above until
 the bundle includes its runtime dependency closure.
 
 ```sh
-STATS_ALLOWED_LOGINS=joshua.r.li.98@gmail.com make node-deploy
+make node-deploy
 ```
 
 `deploy/node/deploy.sh` refuses a tree with uncommitted tracked changes,
@@ -671,15 +656,13 @@ record and read markers.
 
 Create a service once with a human credential. The 201 response is the only
 place the deploy token appears, so write it straight to an owner-only file.
-On Cloudflare, log in with `cf access login https://stats.17166969.xyz` first.
-The Access token reaches `curl` through a `printf` builtin and a file
-descriptor, so it never appears in an argv:
+From a tailnet device the gateway asserts identity, so the request carries no
+credential:
 
 ```sh
 umask 077
 mkdir -p .work/credentials
 curl -sS https://stats.17166969.xyz/api/v1/admin/services \
-  -H @<(printf 'Cf-Access-Jwt-Assertion: %s\n' "$(cf access token https://stats.17166969.xyz)") \
   -H 'Content-Type: application/json' \
   -d '{"name":"web","hostIds":["h_..."],"healthUrl":"https://web.example.com/health","unit":"web.service"}' \
   > .work/credentials/web-deploy.json
@@ -700,7 +683,7 @@ curl -sS http://threadripper.tailcf741.ts.net:18790/api/v1/admin/services \
 Record a deploy after it succeeds. The token file is the creation response
 saved above. `statsctl` checks it like the `check ingest` credential file
 (mode 0600, read from the invocation directory, `name` must equal `--service`),
-sends the token only in the `Authorization` header, and sends no Access
+sends the token only in the `Authorization` header, and sends no other
 credential on either target. `--host` defaults to the service's `hostIds` from
 the file, and `--marker-id` defaults to `v-<version>`, so repeating a deploy is
 idempotent:
@@ -725,14 +708,11 @@ without it the server stamps the receive time. The same
 `markerId` with a different version, message, host set, or `--at-ms` answers
 409, which
 `deploy mark` reports as `marker_conflict` with exit 2. A 401 or 403 exits 3,
-and so does an Access challenge (`access_challenge`).
+and so does a redirect or login page (`access_challenge`).
 
-The marker `POST` goes to `/ingest/services/NAME/deployments`, so on
-Cloudflare the existing `/ingest/*` Bypass application lets it reach the
-Worker; no other Access application is needed. Access matches by path, not
-method, so the readback stays on `/api/v1`, behind Access. The Node target
-needs nothing extra: the marker route ignores Tailscale identity, so any
-process that can reach the tailnet origin can mark with the token.
+The marker `POST` goes to `/ingest/services/NAME/deployments` and ignores
+gateway and Tailscale identity, so any process that can reach the origin can
+mark with the token; the readback stays on `/api/v1` and needs identity.
 
 ### Comparing a service's deployments
 

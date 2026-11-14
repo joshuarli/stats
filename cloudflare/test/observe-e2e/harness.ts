@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Miniflare, V4ModuleDefinition, V4WorkerOptions } from "miniflare";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { CLOUDFLARE_ROOT, OBSERVE_OUTPUT, STATS_OUTPUT, collectorModules as builtCollectorModules, collectorWorker, openWorkers, readBuiltWorker, readTestVars, type Collector as TopologyCollector } from "../../local/topology.ts";
 
@@ -158,7 +158,7 @@ export async function start(collector: Collector, bindings: Record<string, strin
 }
 
 export async function accessHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
-  return { "cf-access-jwt-assertion": await accessToken(), ...extra };
+  return { ...gatewayHeaders(), ...extra };
 }
 
 export async function createHost(harness: Harness, name = HOST_NAME): Promise<{ hostId: string; token: string }> {

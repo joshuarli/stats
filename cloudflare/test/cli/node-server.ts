@@ -12,7 +12,7 @@ export interface Node {
 export async function startNode(dataDir: string): Promise<Node> {
   const child = spawn(process.execPath, ["--experimental-strip-types", "src/node/main.ts"], {
     cwd: CLOUDFLARE_DIR,
-    env: { PATH: process.env["PATH"] ?? "", STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: LOGIN },
+    env: { PATH: process.env["PATH"] ?? "", STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let output = "";

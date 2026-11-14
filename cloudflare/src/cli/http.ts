@@ -1,5 +1,4 @@
 import { authError, CommandError, EXIT, transportError } from "./exit.ts";
-import type { Credential } from "./auth.ts";
 import { ServerOlderError } from "../observe/client/decode.ts";
 
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -10,7 +9,6 @@ const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
 export interface HttpOptions {
   readonly origin: string;
-  readonly credential: (() => Promise<Credential>) | null;
   readonly signal: AbortSignal;
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
@@ -90,7 +88,6 @@ export function createHttpClient(options: HttpOptions): HttpClient {
   const backoffMs = options.backoffMs ?? 250;
   const random = options.random ?? Math.random;
   let count = 0;
-  let credential: Promise<Credential> | undefined;
 
   function url(path: string): URL {
     if (!path.startsWith("/") || path.startsWith("//")) throw new TypeError(`request path must be absolute: ${path}`);
@@ -100,11 +97,10 @@ export function createHttpClient(options: HttpOptions): HttpClient {
   }
 
   async function attempt(target: URL, accept: string, limit: number, extra: ReplyOptions): Promise<Reply> {
-    const secret = options.credential === null ? null : await (credential ??= options.credential());
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), timeoutMs);
     const signal = AbortSignal.any([options.signal, timeout.signal]);
-    const headers: Record<string, string> = secret === null ? { accept } : { accept, [secret.header]: secret.value };
+    const headers: Record<string, string> = { accept };
     if (extra.ifNoneMatch !== undefined) headers["if-none-match"] = extra.ifNoneMatch;
     if (extra.contentType !== undefined) headers["content-type"] = extra.contentType;
     count += 1;

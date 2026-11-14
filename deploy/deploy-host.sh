@@ -76,22 +76,12 @@ trap 'reraise INT' 2
 trap 'reraise TERM' 15
 
 base=${STATS_URL:-https://stats.17166969.xyz}
-access_token=
 host_id=
 baseline=
 
-# The token must be fetched outside the receipt pipeline: each side of
-# a POSIX pipeline runs in a subshell, so a fetch inside the pipeline
-# lost the cache and re-ran cf on every poll.
-ensure_token() {
-  if [ -z "$access_token" ]; then
-    access_token=$(cf -q access token "$base") || return 1
-  fi
-}
-
 api_receipt() {
   # shellcheck disable=SC2016
-  curl -fsS -H "Cf-Access-Jwt-Assertion: $access_token" "$base/api/v1/hosts" | jaq --arg id "$host_id" -er '[.hosts[] | select(.hostId == $id)][0].lastReceivedAtMs // 0'
+  curl -fsS "$base/api/v1/hosts" | jaq --arg id "$host_id" -er '[.hosts[] | select(.hostId == $id)][0].lastReceivedAtMs // 0'
 }
 
 prepare_receipt() {
@@ -99,19 +89,15 @@ prepare_receipt() {
     echo "$label: cannot read the agent hostId" >&2
     exit 1
   }
-  ensure_token || {
-    echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
-    exit 1
-  }
   api_receipt >/dev/null || {
-    echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
+    echo "$label: cannot read /api/v1/hosts; run it from a tailnet device" >&2
     exit 1
   }
 }
 
 take_baseline() {
   baseline=$(api_receipt) || {
-    echo "$label: cannot read /api/v1/hosts; run cf access login $base" >&2
+    echo "$label: cannot read /api/v1/hosts; run it from a tailnet device" >&2
     exit 1
   }
 }

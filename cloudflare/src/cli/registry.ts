@@ -12,6 +12,7 @@ export type Access = "read" | "mutation";
 
 export interface CommandContext {
   readonly origin: string;
+  readonly target: Target;
   readonly http: HttpClient;
   readonly signal: AbortSignal;
   readonly now: () => number;
@@ -41,7 +42,7 @@ export interface Command extends Omit<CommandSpec<unknown>, "run" | "render" | "
   execute(context: CommandContext): Promise<{ readonly result: CommandResult<unknown>; readonly text: readonly string[] }>;
 }
 
-const CLOUDFLARE_ONLY: readonly Target[] = ["cloudflare"];
+const ORANGE_ONLY: readonly Target[] = ["orange"];
 
 export function defineCommand<P>(spec: CommandSpec<P>): Command {
   return {
@@ -49,7 +50,7 @@ export function defineCommand<P>(spec: CommandSpec<P>): Command {
     summary: spec.summary,
     description: spec.description,
     access: spec.access,
-    targets: spec.targets ?? CLOUDFLARE_ONLY,
+    targets: spec.targets ?? ORANGE_ONLY,
     options: spec.options,
     exclusive: spec.exclusive ?? [],
     together: spec.together ?? [],

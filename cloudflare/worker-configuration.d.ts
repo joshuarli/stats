@@ -8,9 +8,7 @@ declare namespace Cloudflare {
     readonly WORKER_NAME: string;
     readonly OBSERVE: Fetcher;
     readonly TEST_NOW_MS?: string;
-    readonly ACCESS_TEAM_DOMAIN?: string;
-    readonly ACCESS_AUD?: string;
-    readonly ACCESS_JWKS_JSON?: string;
+    readonly GATEWAY_SECRET?: string;
     readonly FIXTURES?: string;
     readonly DEPLOYMENTS_ACCOUNT_ID?: string;
     readonly DEPLOYMENTS_API_TOKEN?: string;

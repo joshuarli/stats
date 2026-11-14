@@ -12,7 +12,6 @@ export type Listen =
 export interface NodeConfig {
   readonly databasePath: string;
   readonly listen: Listen;
-  readonly allowedLogins: ReadonlySet<string>;
 }
 
 export class NodeConfigError extends Error {
@@ -57,17 +56,9 @@ function listen(value: string | undefined): Listen {
   return { kind: "tcp", host, port };
 }
 
-function allowedLogins(value: string | undefined): ReadonlySet<string> {
-  if (value === undefined || value.trim() === "") throw new NodeConfigError("STATS_ALLOWED_LOGINS is required");
-  const logins = value.split(",").map(login => login.trim());
-  if (logins.some(login => login === "" || /[\s\p{Cc}]/u.test(login))) throw new NodeConfigError("STATS_ALLOWED_LOGINS must be comma-separated logins with no empty entries or whitespace inside a login");
-  return new Set(logins);
-}
-
 export function nodeConfig(env: Readonly<Record<string, string | undefined>>): NodeConfig {
   return {
     databasePath: join(dataDirectory(env["STATS_DATA_DIR"]), DATABASE_FILE),
-    listen: listen(env["STATS_LISTEN"]),
-    allowedLogins: allowedLogins(env["STATS_ALLOWED_LOGINS"])
+    listen: listen(env["STATS_LISTEN"])
   };
 }

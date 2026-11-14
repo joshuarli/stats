@@ -8,7 +8,7 @@ import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../src/ingest/http.ts";
 import { openAssets } from "../../src/node/assets.ts";
 import { createStatsServer } from "../../src/node/server.ts";
 import { tokenHash } from "../../src/auth.ts";
-import { accessToken } from "../access-token.ts";
+import { gatewayHeaders } from "../gateway-headers.ts";
 import { fixtureBytes, manifest, openHarness, ROOT, scratchDirectory, withHost } from "./support.ts";
 
 const VARS = (JSON.parse(readFileSync(join(ROOT, "wrangler.test.jsonc"), "utf8")) as { vars: Record<string, string> }).vars;
@@ -44,12 +44,12 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
   const harness = openHarness(VARS["PROJECTS"]!);
   const assets = scratchDirectory("parity-assets");
   writeFileSync(join(assets, "index.html"), "<!doctype html>");
-  const server = createStatsServer({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), allowedLogins: new Set([LOGIN]), transport: "tcp" });
+  const server = createStatsServer({ installation: request => harness.core.fetch(request), assets: await openAssets(assets), transport: "tcp" });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const workerOrigin = (await mf.ready).origin;
     const nodeOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const access = { "cf-access-jwt-assertion": await accessToken() };
+    const access = { ...gatewayHeaders() };
     const secrets: string[] = [];
     const exchanged = async (path: string, exchange: Exchange, authorized: boolean) => {
       const base = { "accept-encoding": "identity", ...exchange.headers };

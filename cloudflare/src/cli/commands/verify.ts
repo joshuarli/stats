@@ -7,7 +7,6 @@ import { DEFAULT_ORIGIN } from "../auth.ts";
 import { decodeProjects } from "../decode.ts";
 import type { ResultMeta, Warning } from "../envelope.ts";
 import { EXIT, transportError, unsupportedOnTarget, usageError, type ExitCode } from "../exit.ts";
-import { targetOf } from "../auth.ts";
 import { defineCommand, type Command, type CommandContext } from "../registry.ts";
 import { MEASUREMENT_REVISION } from "../revisions.ts";
 import { SERVICE_LEVEL_METRICS, SERVICE_WORK_METRICS } from "../../deployments/service-compare.ts";
@@ -164,7 +163,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
       "Target judgement: the metric is the sum over the operation's organic (non-synthetic) buckets divided by its work denominator, per side, with at least 100 operations on each side. It counts only when the change is at least minChangePercent and floor. Moving the wrong way by that much is regressed; a smaller move is unchanged."
     ],
     access: "read",
-    targets: ["cloudflare", "node"],
+    targets: ["orange", "node"],
     options: {
       project: { type: "string", placeholder: "ID", description: "project id from `statsctl projects`; must match the policy (required unless --replay or --service)" },
       service: { type: "string", placeholder: "NAME", description: "verify a service's deployment marker from `statsctl services` instead of a project; takes a service policy (see below), one read, no waiting" },
@@ -194,7 +193,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
     async run(context) {
       const replayFile = context.option("replay");
       if (replayFile !== undefined) {
-        if (targetOf(context.origin) === "node") throw unsupportedOnTarget("verify without --service", context.origin);
+        if (context.target === "node") throw unsupportedOnTarget("verify without --service", context.target, context.origin);
         const path = resolveInvocationPath(replayFile);
         const text = readStateText(path);
         if (text === null) throw usageError(`cannot open the state file ${path}`);
@@ -206,7 +205,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
 
       const serviceName = context.option("service");
       if (serviceName !== undefined) return serviceVerification(context, serviceName);
-      if (targetOf(context.origin) === "node") throw unsupportedOnTarget("verify without --service", context.origin);
+      if (context.target === "node") throw unsupportedOnTarget("verify without --service", context.target, context.origin);
 
       const project = requireProject(context);
       const requested = context.option("deployment");

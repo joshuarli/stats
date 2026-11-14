@@ -13,6 +13,7 @@ export interface BackendStart {
 export interface BackendReady {
   readonly event: "backend-ready";
   readonly origin: string;
+  readonly workerOrigin: string;
   readonly producers: readonly { readonly service: string; readonly origin: string }[];
 }
 
@@ -59,7 +60,7 @@ async function activate(options: BackendStart): Promise<void> {
   };
   if (stopping !== undefined) return;
   schedule();
-  process.send?.({ event: "backend-ready", origin: stack.origin, producers: [...stack.producers, ...stack.workerProducers].map(producer => ({ service: producer.service, origin: producer.origin })) } satisfies BackendReady);
+  process.send?.({ event: "backend-ready", origin: stack.origin, workerOrigin: stack.workerOrigin, producers: [...stack.producers, ...stack.workerProducers].map(producer => ({ service: producer.service, origin: producer.origin })) } satisfies BackendReady);
 }
 
 if (import.meta.main) {

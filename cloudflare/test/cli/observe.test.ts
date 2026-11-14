@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EXIT } from "../../src/cli/exit.ts";
-import { authorized, fakeOrigin, runCli, sendJson, tokenEnv, type FakeOrigin, type Handler } from "./support.ts";
+import { authorized, fakeOrigin, runCli, sendJson, type FakeOrigin, type Handler } from "./support.ts";
 
 const ROLLOUT = "rollout-1";
 const heatmap = { fromMs: 0, bucketMs: 60_000, edges: [], cells: [], failed: [], p95WallMs: [] };
@@ -40,7 +40,7 @@ async function withOrigin(handle: Handler, body: (origin: FakeOrigin) => Promise
   }
 }
 
-const run = (origin: FakeOrigin, args: readonly string[], json = true) => runCli([...args, ...(json ? ["--json"] : []), "--origin", origin.origin], tokenEnv());
+const run = (origin: FakeOrigin, args: readonly string[], json = true) => runCli([...args, ...(json ? ["--json"] : []), "--origin", origin.origin], {});
 
 await test("observe commands read only, with GET requests to the stats observe API", async () => {
   await withOrigin(handler(), async origin => {

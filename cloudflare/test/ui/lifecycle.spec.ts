@@ -550,7 +550,7 @@ test("malformed history frame and auth 401 during refresh surface explicit error
 
   mode = "401";
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.locator(".notice-warn")).toContainText("Sign in through Cloudflare Access.");
+  await expect(page.locator(".notice-warn")).toContainText("Open Stats from a device on the tailnet.");
   await expect(page.locator(".strip-cell", { hasText: "CPU" })).toContainText("24%");
   await expect(page.getByRole("region", { name: "Charts" })).toBeVisible();
 

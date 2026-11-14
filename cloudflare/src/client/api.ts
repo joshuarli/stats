@@ -132,7 +132,7 @@ function failureMessage(error: unknown): string {
 }
 
 function statusMessage(status: number): string {
-  if (status === 401 || status === 403) return "Sign in through Cloudflare Access.";
+  if (status === 401 || status === 403) return "Open Stats from a device on the tailnet.";
   if (status === 404) return "No telemetry is stored for this target.";
   if (status === 503) return "The telemetry service is not configured correctly.";
   if (status === 429) return "Telemetry is rate limited. Try again shortly.";
@@ -269,7 +269,7 @@ async function getJson<T>(path: string, decode: (value: unknown) => T, signal: A
   if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    throw await failureForResponse(response, "The response was not telemetry JSON. Sign in through Cloudflare Access.", 0);
+    throw await failureForResponse(response, "The response was not telemetry JSON. Open Stats from a device on the tailnet.", 0);
   }
   let body: unknown;
   try {
@@ -317,7 +317,7 @@ async function fetchHistory<T>(
   }
   if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
   if ((response.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase() !== HISTORY_CONTENT_TYPE) {
-    throw await failureForResponse(response, "The response was not telemetry history. Sign in through Cloudflare Access.", 0);
+    throw await failureForResponse(response, "The response was not telemetry history. Open Stats from a device on the tailnet.", 0);
   }
   let bytes: ArrayBuffer | Uint8Array;
   try {

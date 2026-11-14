@@ -28,7 +28,7 @@ await test("the shipped Node bundle serves without workspace dependencies", { ti
 
     const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${stage}`, `--allow-fs-read=${data}`, `--allow-fs-write=${data}`, "--allow-net", entry], {
       cwd: stage,
-      env: { STATS_DATA_DIR: data, STATS_LISTEN: "127.0.0.1:0", STATS_ALLOWED_LOGINS: "bundle@example.com" },
+      env: { STATS_DATA_DIR: data, STATS_LISTEN: "127.0.0.1:0" },
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10_000,
       killSignal: "SIGKILL"

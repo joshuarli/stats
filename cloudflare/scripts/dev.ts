@@ -5,7 +5,6 @@ import { parseArgs } from "node:util";
 import { constants } from "node:os";
 import solid from "@solidjs/vite-plugin";
 import { createServer, type Connect } from "vite";
-import { accessToken } from "../test/access-token.ts";
 import type { BackendMessage, BackendReady, BackendStart } from "../local/dev-backend.ts";
 import { ensureBuilds, ROOT, type BuiltArtifact } from "./ensure-build.ts";
 import { runtimeVersions } from "./dev-doctor.ts";
@@ -46,7 +45,7 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
   let fatal: unknown;
   const status = (event: string, extra: Record<string, unknown> = {}): void => {
     const origin = frontend?.resolvedUrls?.local[0]?.replace(/\/$/u, "");
-    const record = { event, runId: owner.directory.split(sep).at(-1), pid: process.pid, backendPid: runtime?.child.pid, state, statusFile, origin, backendOrigin: backend?.origin, ports: { frontend: origin === undefined ? null : Number(new URL(origin).port), backend: backend === undefined ? null : Number(new URL(backend.origin).port) }, artifacts: activeArtifacts.map(artifact => ({ target: artifact.target, identity: artifact.identity, output: artifact.output })), runtimes: versions.map(runtime => ({ consumer: runtime.consumer, miniflare: runtime.miniflare.version, workerd: runtime.workerd.version })), ...extra };
+    const record = { event, runId: owner.directory.split(sep).at(-1), pid: process.pid, backendPid: runtime?.child.pid, state, statusFile, origin, backendOrigin: backend?.origin, workerOrigin: backend?.workerOrigin, ports: { frontend: origin === undefined ? null : Number(new URL(origin).port), backend: backend === undefined ? null : Number(new URL(backend.origin).port) }, artifacts: activeArtifacts.map(artifact => ({ target: artifact.target, identity: artifact.identity, output: artifact.output })), runtimes: versions.map(runtime => ({ consumer: runtime.consumer, miniflare: runtime.miniflare.version, workerd: runtime.workerd.version })), ...extra };
     writeFileSync(statusFile, JSON.stringify(record));
     console.log(JSON.stringify(record));
   };
@@ -113,14 +112,12 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
     if (!/^\/(?:api(?:\/|$)|ingest(?:\/|$)|health(?:\?|$)|docs(?:\/|$))/u.test(incoming.url ?? "")) { next(); return; }
     const current = backend;
     if (current === undefined) { outgoing.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: { code: "backend_reloading", message: "Local backend is restarting" } })); return; }
-    void accessToken().then(token => {
-      const target = new URL(current.origin);
-      const proxied = request({ hostname: target.hostname, port: target.port, method: incoming.method, path: incoming.url, headers: { ...incoming.headers, host: target.host, "cf-access-jwt-assertion": token } }, response => { outgoing.writeHead(response.statusCode ?? 502, response.headers); response.pipe(outgoing); });
-      proxied.on("error", () => { if (!outgoing.headersSent) outgoing.writeHead(502); outgoing.end("Local backend unavailable"); });
-      incoming.on("aborted", () => proxied.destroy());
-      outgoing.on("close", () => proxied.destroy());
-      incoming.pipe(proxied);
-    }).catch(error => { console.error(error); outgoing.writeHead(500).end(); });
+    const target = new URL(current.origin);
+    const proxied = request({ hostname: target.hostname, port: target.port, method: incoming.method, path: incoming.url, headers: { ...incoming.headers, host: target.host } }, response => { outgoing.writeHead(response.statusCode ?? 502, response.headers); response.pipe(outgoing); });
+    proxied.on("error", () => { if (!outgoing.headersSent) outgoing.writeHead(502); outgoing.end("Local backend unavailable"); });
+    incoming.on("aborted", () => proxied.destroy());
+    outgoing.on("close", () => proxied.destroy());
+    incoming.pipe(proxied);
   };
   try {
     release = await acquireOwnership(`${state}.sqlite`, controller.signal, 1000);

@@ -390,7 +390,7 @@ export const observeApplicationCommand = defineCommand<ApplicationPayload>({
     "This is the service's own telemetry, not Cloudflare tail observation: any service with an ingest credential has it, including services observe routes and observe operations do not accept. failed counts events whose outcome is not ok. Durations are the service's own reported durationMs."
   ],
   access: "read",
-  targets: ["cloudflare", "node"],
+  targets: ["orange", "node"],
   options: {
     service: { type: "string", placeholder: "NAME", required: true, description: "the service that reports application telemetry, for example tansu or niceforge-forge" },
     window

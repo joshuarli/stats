@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { foldWideRoutes, MAX_ROUTES_PER_PROJECT, parseDurableObjectRows, parseRouteRows, routeKey } from "../src/cloudflare/projects/parse";
 import { durableObjectQuery } from "../src/projects/queries";
 import type { CollectorRun } from "../src/projects/store";
-import { accessToken } from "./access-token";
+import { gatewayHeaders } from "./gateway-headers";
 import { readFrame } from "./support/history";
 
 const NOW = 1_793_510_415_000;
@@ -16,7 +16,7 @@ function installation() {
 
 async function history(kind: string): Promise<{ series: { metric: string; values: (number | null)[] }[] }> {
   const response = await SELF.fetch(`https://example.com/api/v1/projects/stuff/history?range=1h&kind=${kind}`, {
-    headers: { "Cf-Access-Jwt-Assertion": await accessToken() },
+    headers: { ...gatewayHeaders() },
   });
   expect(response.status).toBe(200);
   return await readFrame(response) as Awaited<ReturnType<typeof history>>;

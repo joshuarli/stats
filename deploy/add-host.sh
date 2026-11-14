@@ -200,15 +200,11 @@ hash_file() {
   fi
 }
 
-access_token=
 api() {
-  if [ -z "$access_token" ]; then
-    access_token=$(cf -q access token "$base") || die "cf access token $base failed; run cf access login $base"
-  fi
-  curl -fsS -H "Cf-Access-Jwt-Assertion: $access_token" "$@"
+  curl -fsS "$@"
 }
 
-api "$base/api/v1/hosts" > "$work/hosts.json" || die "cannot read $base/api/v1/hosts; run cf access login $base"
+api "$base/api/v1/hosts" > "$work/hosts.json" || die "cannot read $base/api/v1/hosts; run it from a tailnet device"
 
 remote_host_id=
 if config_present; then

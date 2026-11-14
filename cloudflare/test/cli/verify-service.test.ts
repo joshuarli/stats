@@ -8,7 +8,7 @@ import { compareServiceDeployment, SERVICE_COMPARISON_CAVEAT, type MinuteRollup,
 import type { ExternalEvent, ExternalEventRecord } from "../../src/observe/ingest/model.ts";
 import { parseServicePolicyText } from "../../src/cli/verify/policy.ts";
 import { decodeServiceComparison } from "../../src/deployments/service-decode.ts";
-import { fakeOrigin, runCli, sendJson, tokenEnv } from "./support.ts";
+import { fakeOrigin, runCli, sendJson } from "./support.ts";
 
 const SCRATCH_ROOT = resolve(import.meta.dirname, "../../../.work/tmp");
 mkdirSync(SCRATCH_ROOT, { recursive: true });
@@ -64,7 +64,7 @@ interface Document {
 async function verify(body: unknown, args: string[], policy = policyFile("policy.json"), deploymentId = CANDIDATE.id) {
   const origin = await fakeOrigin((_request, response) => sendJson(response, body));
   try {
-    const run = await runCli(["verify", "--service", "web", "--deployment", deploymentId, "--policy", policy, "--origin", origin.origin, "--json", ...args], tokenEnv());
+    const run = await runCli(["verify", "--service", "web", "--deployment", deploymentId, "--policy", policy, "--origin", origin.origin, "--json", ...args], {});
     return { run, document: JSON.parse(run.stdout) as Document, urls: origin.seen.map(seen => seen.url) };
   } finally {
     await origin.close();
@@ -117,7 +117,7 @@ await test("a comparison between git commit markers decodes as the dashboard and
 async function runCliText(body: unknown): Promise<string> {
   const origin = await fakeOrigin((_request, response) => sendJson(response, body));
   try {
-    const run = await runCli(["verify", "--service", "web", "--deployment", CANDIDATE.id, "--policy", policyFile("policy.json"), "--origin", origin.origin], tokenEnv());
+    const run = await runCli(["verify", "--service", "web", "--deployment", CANDIDATE.id, "--policy", policyFile("policy.json"), "--origin", origin.origin], {});
     return run.stdout;
   } finally {
     await origin.close();
@@ -250,13 +250,13 @@ await test("--service refuses --project, --wait, and a policy for another servic
   const policy = policyFile("policy.json");
   const base = ["verify", "--service", "web", "--deployment", CANDIDATE.id, "--policy", policy, "--json"];
   for (const extra of [["--project", "stats"], ["--wait"], ["--readiness"], ["--safety-check-file", "x"]]) {
-    const run = await runCli([...base, ...extra], tokenEnv());
+    const run = await runCli([...base, ...extra], {});
     assert.equal(run.code, 2, extra.join(" "));
   }
-  const other = await runCli(["verify", "--service", "api", "--deployment", CANDIDATE.id, "--policy", policy, "--json"], tokenEnv());
+  const other = await runCli(["verify", "--service", "api", "--deployment", CANDIDATE.id, "--policy", policy, "--json"], {});
   assert.equal(other.code, 2);
   assert.match(other.stderr, /policy is for service web, not api/u);
-  const node = await runCli(["verify", "--project", "stats", "--deployment", CANDIDATE.id, "--policy", policy, "--origin", "http://threadripper:18790", "--json"], tokenEnv());
+  const node = await runCli(["verify", "--project", "stats", "--deployment", CANDIDATE.id, "--policy", policy, "--origin", "http://threadripper:18790", "--json"], {});
   assert.equal(node.code, 2);
   assert.equal((JSON.parse(node.stdout) as Document).error?.code, "unsupported_on_target");
 });
