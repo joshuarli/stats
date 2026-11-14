@@ -13,6 +13,7 @@ import { profileWindow, type ProfileWindow } from "./profile.ts";
 import { receiveEvents } from "../ingest/failures.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements } from "../../core/sql.ts";
+import { readApplicationTelemetry, type ApplicationTelemetry } from "../application/telemetry.ts";
 
 export interface ServiceHealth extends Health {
   readonly databaseBytes: number;
@@ -36,6 +37,7 @@ export interface ObserveService {
   ingestExternal(service: string, events: readonly ExternalEvent[]): Promise<ExternalIngest>;
   external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]>;
   externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow>;
+  applicationTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationTelemetry>;
 }
 
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
@@ -133,6 +135,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
     ingestExternal: async (service, events) => ingestExternal(db, service, await receiveEvents(service, events), clock.now()),
     external: async (service, filter) => readExternalEvents(db, service, clock.now(), filter),
     externalOperations: async (service, filter) => summarizeExternalOperations(db, service, clock.now(), filter),
+    applicationTelemetry: async (service, filter) => readApplicationTelemetry(db, service, clock.now(), filter),
     ingest: (preparations, outcomes, counts, flush, captureOperations = false) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush), captureOperations),
     cleanup: () => {
       const now = clock.now();
