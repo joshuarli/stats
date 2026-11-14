@@ -280,6 +280,7 @@ export const backupFenceCommand = defineCommand<{ readonly state: string; readon
 
 export const backupExportCommand = defineCommand<{ readonly directory: string; readonly objects: readonly { readonly object: string; readonly tables: number; readonly rows: number }[] }>({
   name: "backup export",
+  requestTimeoutMs: 120_000,
   summary: "export every fenced durable object to a new verified backup directory",
   description: [
     "Writes DIR/index.json and, per object, manifest.json plus one NDJSON file per table, all mode 0600 in mode 0700 directories. Each table's row count and SHA-256 are checked against the object's manifest before the next table starts.",
@@ -314,6 +315,7 @@ export const backupExportCommand = defineCommand<{ readonly directory: string; r
 
 export const backupImportCommand = defineCommand<{ readonly objects: readonly { readonly object: string; readonly rows: number }[] }>({
   name: "backup import",
+  requestTimeoutMs: 120_000,
   summary: "restore a verified backup into fresh, empty durable objects",
   description: [
     "MUTATION: verifies every table file against its manifest, then for each object begins an import (the object must be empty and have identical table definitions), sends rows from the recorded progress, and finishes, which re-checks every count and digest before the object reopens.",

@@ -26,6 +26,7 @@ export interface CommandSpec<P> {
   readonly description: readonly string[];
   readonly access: Access;
   readonly targets?: readonly Target[];
+  readonly requestTimeoutMs?: number;
   readonly options: OptionSpecs;
   readonly exclusive?: readonly (readonly string[])[];
   readonly together?: readonly (readonly string[])[];
@@ -51,6 +52,7 @@ export function defineCommand<P>(spec: CommandSpec<P>): Command {
     description: spec.description,
     access: spec.access,
     targets: spec.targets ?? ORANGE_ONLY,
+    ...(spec.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: spec.requestTimeoutMs }),
     options: spec.options,
     exclusive: spec.exclusive ?? [],
     together: spec.together ?? [],

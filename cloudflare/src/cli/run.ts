@@ -142,7 +142,7 @@ export async function main(argv: readonly string[], deps: Deps): Promise<ExitCod
       target,
       signal,
       now,
-      http: createHttpClient({ origin, signal }),
+      http: createHttpClient({ origin, signal, ...(command.requestTimeoutMs === undefined ? {} : { timeoutMs: command.requestTimeoutMs }) }),
       option: name => typeof values[name] === "string" ? values[name] : undefined,
       flag: name => values[name] === true
     };
