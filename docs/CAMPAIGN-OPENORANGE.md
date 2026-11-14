@@ -58,7 +58,7 @@ Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is r
 | S9 | stuff | Resumable R2 → S3 copy and verification | rehearsal on copied data |
 | S11 | tansu | `tansu.17166969.xyz` served by the shared ingress; tunnel retired | passkey login and `/api/v2/health` through the ingress |
 | S12 | stuff (`~/d/stuff`) | Fleet standards: `openorange` tag, stats/stuff retagged, runtime compatibility group names OpenOrange/Rivet, inventory adapter reads Orange descriptors; Cloudflare kept for remaining Cloudflare projects | `make repomod-test` |
-| S13 | discover | Discover on Orange with the public/tailnet split; Worker-side WebP conversion; probe whether the pinned runtime loads native code | discover's `make check` + split-ingress rehearsal |
+| S13 | discover | Discover on Orange with the public/tailnet split; WebP renditions in the Worker through the static musl `rimage` binary (owner ruling 2026-11-13; `../rimage`), spawned per image over stdin/stdout at the current contract (WebP q85, metadata stripped, 2400/960 caps); probe that the pinned runtime permits `node:child_process` first | discover's `make check` + split-ingress rehearsal |
 | S10 | all | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
 
 ## Needs environment / owner
