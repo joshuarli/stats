@@ -349,6 +349,7 @@ Provenance and privacy:
 | `@stats/producer` | 0.2.0 | `https://npm.17166969.xyz` |
 | `stats-producer` | 0.2.0 | `https://crates.17166969.xyz` |
 
-Publication is an owner action: run `make publish-producer` and
-`make publish-producer-crate` from a checkout whose registry credentials are
-available. The versions above are the ones this contract targets.
+Both 0.2.0 packages are published. To publish a new version, use
+`make publish-producer` and `make publish-producer-crate` with the native Stuff
+CLI and protected publishing-service credentials. Pulls are public; publishing
+uses the private tailnet endpoint. The versions above define this contract.

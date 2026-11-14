@@ -1,10 +1,14 @@
 # Tracing and profiling
 
-Stats diagnoses its own performance with Cloudflare's built-in Workers traces
-and production CPU profiles. It does not run an APM SDK or receive
-OpenTelemetry data. Cloudflare's tools have been enough for every performance
-question asked so far, and the heavier options all add cost to the Worker that
-is being measured.
+Cloudflare profiling and trace guidance below applies to the retained provider
+adapter. Production runs on OpenOrange, where application diagnostics and
+wall-clock operations arrive directly and platform CPU is unavailable.
+See [local profiling](profiling.md) for offline reproduction and
+[OpenOrange](openorange.md) for production capabilities.
+
+The Cloudflare adapter supports the provider's built-in traces and CPU profiles.
+Stats runs no APM SDK and receives no OpenTelemetry data. The local stack can
+reproduce provider operations without deploying them.
 
 The one exception is the error-tracking product described in
 `docs/observe.md`. It keeps 7 days of per-invocation records

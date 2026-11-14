@@ -1,8 +1,19 @@
-# Cloudflare deployment tracking
+# Deployment tracking
 
-This is an opt-in, read-only addition to the Cloudflare project dashboard. It is
-deployed and enabled in production, and its sync is healthy; see
-[Verification record](#verification-record).
+Service markers work on OpenOrange and Node. Project deployment polling below
+belongs to the retained Cloudflare adapter; it is not enabled by the default
+OpenOrange deployment. Imported project deployments remain historical data.
+Use [service operations](operations.md#services-and-deploy-markers) for current
+application deployment markers.
+
+Project and service list responses carry optional `latestDeployment` summaries.
+They distinguish an available latest item, no retained deployment and unavailable
+data. Overview rows use those summaries; detail and comparison views use full
+histories. The readers select only the latest item's referenced metadata and
+keep the list usable when an individual summary fails.
+
+Cloudflare project tracking is opt-in and read-only. Its historical production
+validation is in the [verification record](#verification-record).
 
 ## Enable and verify
 
@@ -24,7 +35,7 @@ These are the steps that enabled tracking; repeat them for a new environment.
    a partially configured pair reports a configuration failure.
 3. Deploy normally when ready. The existing five-minute cron polls each
    configured Worker, including `stuff`, `usr-memories`, and `stats`. Check
-   `GET /api/v1/projects/:id/deployments` behind Access. Confirm successful sync,
+   `GET /api/v1/projects/:id/deployments` behind the tailnet gateway. Confirm successful sync,
    the deployment timestamp, immutable deployment id, version ids and traffic
    allocations against Cloudflare's deployment list. Verify version tags/messages
    when available; version enrichment is best effort and permission-dependent.
@@ -103,7 +114,7 @@ new deployment identities.
 
 ## API and interpretation
 
-Both routes use the existing Access boundary and no-store responses:
+Both routes use the target's identity boundary and no-store responses:
 
 ```text
 GET /api/v1/projects/:id/deployments

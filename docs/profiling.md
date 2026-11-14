@@ -97,9 +97,9 @@ The service name is admitted only inside the local stack. Its collector copy is
 built with `OBSERVE_LOCAL_SERVICES` set to that name, and
 `src/observe/cloudflare/worker.ts` admits names in that list with the
 `PROFILE_POLICY` (keep every invocation, capture its operation account). The
-deployed `stats-observe` has no such variable, so production still drops any
-script name outside `OBSERVED_SERVICES`; nothing in production ingest, auth, or
-routing changes. The stack refuses a producer whose name is an existing
+Cloudflare collector configuration has no such variable, so that adapter drops
+script names outside `OBSERVED_SERVICES`. The local override changes no deployed
+ingest or authorization policy. The stack refuses a producer whose name is an existing
 observed service, and a Worker whose output directory has a binding type other
 than text, SQLite Durable Object, assets, or R2. It also refuses cron triggers,
 which it does not fire.

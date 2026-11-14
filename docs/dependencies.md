@@ -1,6 +1,10 @@
 # Dependencies and toolchain
 
-Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm from `package.json` (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Builds use `cloudflare.config.ts`, `vite.config.ts`, and `cf`.
+Toolchain pins live in `rust-toolchain.toml`, `.node-version`, `package.json`,
+`agent/scripts/build-static.sh` and `agent/build/Dockerfile`. `make node-ready`
+checks Node and pnpm. Exact frontend dependencies live in `cloudflare/package.json`.
+Builds use the typed Cloudflare output, Vite and `cf`; production deploys that
+output through OpenOrange.
 OpenOrange descriptors derive from that typed build output. Deployment uses
 `deploy/orange/build-image.sh` and the shared host stack. The project declares
 no Wrangler dependency and never runs the Wrangler CLI.
@@ -140,7 +144,7 @@ handling, persistent history, and caught-error diagnostics across restart.
 OpenOrange's tail shim supplies neither real CPU measurements nor caught-error
 stacks. Stats sends application events with portable diagnostics instead.
 
-The earlier evaluation at `9f1b43c` (`docs/rivet-openorange-evaluation.md`)
+The earlier evaluation recorded in Git at `9f1b43c`
 proved 1,444 portable assertions and a reload soak on macOS ARM64. That
 evaluation did not prove independent restore. Its rejection and performance
 adoption gate were superseded by the owner decision and the implemented

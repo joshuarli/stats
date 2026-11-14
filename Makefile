@@ -115,7 +115,7 @@ observe-bundle: node-ready
 	cd cloudflare && pnpm run build:observe
 
 observe-deploy:
-	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/CAMPAIGN-OPENORANGE.md' >&2; exit 1
+	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/openorange.md' >&2; exit 1
 
 stats-deploy worker-deploy: auth-ready work-ready node-ready
 	deploy/orange/deploy.sh '$(ORANGE_HOST)'

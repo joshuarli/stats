@@ -2,7 +2,7 @@
 
 ## Bootstrap the checkout
 
-Use the Node version in `.node-version` and pnpm 12.18.0. Run these commands
+Use Node from `.node-version` and pnpm from `package.json`. Run these commands
 from the repository root:
 
 ```sh
@@ -101,6 +101,21 @@ To run external service checks, prepare Tansu and Niceforge, then set
 `TANSU_DIR` and `NICEFORGE_DIR` and select `--suite services-external`.
 The Nanoshop checkout route requires `NANOSHOP_DIR` and
 `--suite producer-external`. Neither external route counts as default coverage.
+
+## Build the agent
+
+Run `make agent-build` for both static Linux targets, or `make agent-build-macos`
+on a Mac. The cross-build requirements and release artifacts are in
+[operations](operations.md#release-build).
+
+For a native source build, run
+`cargo build --release --manifest-path agent/Cargo.toml`. Default builds omit
+the Linux block probe. To include it, build `agent/scripts/build-probe.sh` with
+a BPF-capable clang selected by `LLVM_CLANG`, then build the agent with
+`STATS_BLOCK_PROBE=/path/to/block_latency.bpf.o cargo build --features block-latency`.
+Run the latter command from `agent/`. The embedded probe assumes the standard
+`block_rq_issue` and `block_rq_complete` layout, with `dev_t` at offset 8 and
+`sector_t` at offset 16. It does not parse tracepoint format files.
 
 ## Prepare or measure builds
 

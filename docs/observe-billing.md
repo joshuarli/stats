@@ -1,5 +1,9 @@
 # Observation billing facts
 
+Historical Cloudflare billing record, superseded for production operation by
+the [OpenOrange cutover](openorange.md). Keep these dated measurements for the
+retained provider adapter. They are neither current prices nor OpenOrange costs.
+
 What `stats-observe` costs per observed invocation, for Nanoshop's cost model
 to cite. A platform fact names its source page and the date it was read. A
 measured figure names the command that produced it. List prices are Workers

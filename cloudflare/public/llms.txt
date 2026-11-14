@@ -1,6 +1,6 @@
 # stats
 
-Host and Cloudflare-project telemetry for one owner. Everything except /health and host ingest is reachable only from the owner's tailnet, through a gateway that asserts the caller's tailnet identity. This file describes the read-only API under /api/v1. Everything is JSON except history responses, which are binary frames (see "History frames").
+Host and application telemetry for one owner, running on OpenOrange. Data and asset routes require the owner's tailnet gateway; health and token-authenticated ingest have their own boundaries. This file describes the API under /api/v1. Everything is JSON except history responses, which are binary frames (see "History frames").
 
 ## Authentication
 
@@ -12,11 +12,13 @@ A request that does not come through the gateway answers 401. Errors are `{"erro
 
 ## Projects (Cloudflare Workers and R2)
 
+The Cloudflare provider adapter is retained but disabled in the default OpenOrange deployment. Imported project history remains readable. Read GET /api/v1/capabilities before assuming provider collection, tails or live project metrics are available.
+
     GET /api/v1/projects
     GET /api/v1/projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|probes|collector
     GET /api/v1/projects/:id/history?range=1h&kinds=worker,r2,collector
 
-`/projects` lists each project with its Worker, buckets, probes, and `collector.lastRunAtMs`, `lastSuccessAtMs`, `lastError`, `stale`. Project ids today: stuff, usr-memories, stats, stats-observe, nanoshop-storied. `/projects` also gives each project `workerBilling`: `requests-and-cpu`, or `cpu-only` for `stats-observe`, whose tail invocations are priced by CPU alone. `kinds` replaces `kind` and returns the selected histories as one bundle, decoded `{projectId, histories: {kind: history}}`. History responses carry `ETag`; send `If-None-Match` to receive `304` when no collector run has changed the data.
+`/projects` lists the configured project ids, resources and collector status. `workerBilling` distinguishes `requests-and-cpu` from `cpu-only`. `kinds` replaces `kind` and returns the selected histories as one bundle, decoded `{projectId, histories: {kind: history}}`. History responses carry `ETag`; send `If-None-Match` to receive `304` when the source data has not changed.
 
 Decoded, a response for any kind except `collector` is:
 
@@ -59,7 +61,7 @@ Host and project history answers with content type `application/vnd.stats.histor
 
 ## statsctl
 
-For cost, comparison, and deployment-verification questions, use `statsctl` instead of calling these routes by hand. It reads the same API with your Access token and prints one `statsctl/1` JSON document with `--json`:
+For cost, comparison, and deployment-verification questions, use `statsctl` instead of calling these routes by hand. It reads through the tailnet gateway without a human credential and prints one `statsctl/1` JSON document with `--json`:
 
     pnpm --dir cloudflare -s statsctl help workflow
     pnpm --dir cloudflare -s statsctl health --project stats --json
@@ -73,11 +75,11 @@ Service administration writes one owner-only credential file and never prints ei
     pnpm --dir cloudflare -s statsctl service token rotate --service tansu --kind ingest --credential-file .work/credentials/tansu.json
     pnpm --dir cloudflare -s statsctl service check --service tansu
 
-Only `check ingest`, `deploy mark`, and the `service create`/`service token rotate`/`service token revoke` commands write: `check ingest` only to the `synthetic-check` host, `deploy mark` one deployment marker, and the service commands only the service they name and the local credential file.
+Only explicitly classified mutation commands write. Use `check ingest` with a dedicated synthetic-check host; the CLI does not enforce that role. `deploy mark` writes a service marker, and service administration changes the named service and protected credential file. Command help lists access and target capabilities.
 
 ## More
 
 - [Wire protocol](/docs/protocol.md): the binary host ingest format, validation, and rate semantics.
 - [Architecture](/docs/architecture.md): components, routes, auth, storage, and rollups.
 
-Both are Markdown, served behind the same Access token.
+Both are Markdown, served behind the same tailnet identity boundary.

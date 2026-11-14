@@ -2,13 +2,15 @@
 
 A Rust agent, static musl on Linux and native on macOS (`agent/src/linux.rs`,
 `agent/src/macos.rs`), samples each host and posts binary STB2 batches over HTTPS
-to a Cloudflare Worker. The Worker forwards ingest and API calls to one
-SQLite-backed Durable Object, which stores raw samples and rollups and answers
-history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
-configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
-served through the same Worker, reads that API behind a tailnet-only gateway. The wire contract between agent and Worker is in
-[`protocol.md`](protocol.md). The same core also runs as a Node server
-(`cloudflare/src/node/`) for a tailnet-only instance; see [Node server](#node-server).
+to the Stats server. Production runs the Worker-shaped application on OpenOrange
+with Rivet actors and durable SQLite state. The Solid dashboard shares its
+tailnet gateway. Deployment and recovery are in [OpenOrange](openorange.md).
+The wire contract is [protocol.md](protocol.md).
+
+The portable core also has a [Node server](#node-server) and retained Cloudflare
+adapters. The latter implement Analytics SQL collection, provider deployment
+polling and tails. OpenOrange omits those bindings and reports them unavailable;
+imported provider history remains readable. Application events arrive directly.
 
 ## Source layout
 
@@ -93,6 +95,11 @@ and keeps `seq` unique.
 
 ## Worker
 
+The same request handler runs on OpenOrange and the reference Cloudflare
+topology. Provider-specific collection and tail behavior below apply only to
+the Cloudflare adapter. Production capabilities are described in
+[OpenOrange](openorange.md#not-carried-over).
+
 `handleStatsRequest` in `cloudflare/src/core/http.ts` is the whole routing
 table; `cloudflare/src/cloudflare/index.ts` calls it with the gateway identity check as the auth
 decision, the Durable Object as the `Installation` transport, the `ASSETS`
@@ -154,7 +161,7 @@ Worker entry, the `ObservationStore` Durable Object, the tail reducer, the
 deployment-to-rollout mapping, and the trace-context mark. `observe.tsconfig.json`
 typechecks everything outside `cloudflare/` without Workers types, so a
 Cloudflare dependency there fails the build.
-`cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
+`cloudflare/public/llms.txt` is an ordinary asset, so it passes the identity gate; it
 tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`
 into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
@@ -536,7 +543,7 @@ it has no Cloudflare tail consumer, Analytics SQL collector or deployment poll.
 
 Source runs need installed runtime dependencies. See
 [Node operations](operations.md#run-on-node) for backup, deployment preflight
-and the current container packaging limitation.
+and container preflight.
 
 ## Services and deploy markers
 

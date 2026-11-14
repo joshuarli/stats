@@ -4,7 +4,8 @@ Stats runs on OpenOrange on `lisa`, reachable only from the tailnet at
 `https://stats.17166969.xyz` (a DNS-only A record to `lisa`'s Tailscale
 address). The shared host stack (Rivet Engine, S3 store, Caddy ingress with
 ACME DNS-01, whois identity sidecar, OpenRC units, backups) is defined in
-`stuff/deploy/openorange/` and documented in `stuff/docs/openorange-runtime.md`.
+[`stuff/deploy/openorange/`](https://github.com/laputa-systems/stuff/tree/main/deploy/openorange)
+and its [shared-stack runbook](https://github.com/laputa-systems/stuff/blob/main/docs/openorange-runtime.md).
 This page covers what Stats owns.
 
 ## What runs
@@ -19,12 +20,15 @@ This page covers what Stats owns.
 ## Deploy
 
 ```sh
-deploy/orange/build-image.sh lisa                # builds a committed tree on lisa, prints stats:<commit>
-ssh lisa doas /opt/openorange/bin/install-app stats stats:<commit>
-sh deploy/deployed-smoke.sh                      # from a tailnet device
+make stats-deploy ORANGE_HOST=lisa
 ```
 
-`install-app` keeps the previous image for `oo set-image stats <ref>` rollback.
+The deploy script builds a committed tree, conditionally selects its image,
+restarts Stats and runs health and live smoke checks. Failure restores the
+previous image only if this deployment still owns the selected image.
+Read the selection with `ssh lisa doas -n /opt/openorange/bin/oo deployment stats`.
+For manual rollback, conditionally select the previous image with
+`oo set-image stats PREVIOUS --if-current CURRENT`, then restart `oo-app.stats`.
 The actor schema migrates forward on start; rolling back an image across a
 schema migration needs a restore.
 
@@ -92,3 +96,14 @@ the shared-stack runbook records recovery tooling and the archive digest.
   arrive as application events with wall-clock durations, not platform CPU.
 
 The authenticated `/api/v1/capabilities` endpoint reports provider collection and tail events unavailable on OpenOrange. Imported project history remains readable; the collector status does not describe that retained data as live.
+
+## Shared migration recovery
+
+Stuff, Discover and Tansu cutover records live in their owning repositories.
+The shared stack's [runbook](https://github.com/laputa-systems/stuff/blob/main/docs/openorange-runtime.md)
+records resource retirement, the off-host archive checksum and runtime recovery.
+The second copy is `/Users/josh/backups/openorange` on the Mac. Discover's
+fresh logical snapshots and independent recovery reports are under
+`discover/cutover-refresh` and `discover-preview/cutover-refresh`; their source
+artifacts were unchanged from the physical snapshot. Protected runtime contexts
+and the selected configuration are retained alongside them.
