@@ -25,12 +25,16 @@ export async function captureApplicationRequest(request: Request, run: () => Pro
   const started = options.monotonic();
   const atMs = options.now();
   let status = 500;
+  let cancelled = false;
   try {
     const response = await run();
     status = response.status;
     return response;
+  } catch (error) {
+    cancelled = request.signal.aborted;
+    throw error;
   } finally {
     const durationMs = Math.min(86_400_000, Math.max(0, Math.round(options.monotonic() - started)));
-    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs, operation: requestOperation(request), outcome: status >= 500 ? "error" : "ok", durationMs, work: { http_status: status }, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE }, options);
+    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs, operation: requestOperation(request), outcome: cancelled ? "cancelled" : status >= 500 ? "error" : "ok", durationMs, work: cancelled ? {} : { http_status: status }, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE }, options);
   }
 }

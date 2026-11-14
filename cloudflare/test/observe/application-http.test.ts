@@ -38,3 +38,14 @@ await test("a thrown handler is recorded as 500 and telemetry delivery failures 
   await Promise.all(pending);
   assert.equal(await response.text(), "ok");
 });
+
+await test("cancelled requests never manufacture an HTTP 500 response", async () => {
+  const controller = new AbortController();
+  const events: ExternalEvent[] = [];
+  const pending: Promise<unknown>[] = [];
+  const request = new Request("https://stats/api/v1/services/stats/deployments", { signal: controller.signal });
+  await assert.rejects(captureApplicationRequest(request, async () => { controller.abort(); throw new Error("aborted"); }, { release: "v1", now: () => 1_794_600_000_000, monotonic: () => 10, waitUntil: promise => pending.push(promise), post: async body => { events.push(...body.events); return true; } }), /aborted/);
+  await Promise.all(pending);
+  assert.equal(events[0]?.outcome, "cancelled");
+  assert.equal(events[0]?.work["http_status"], undefined);
+});

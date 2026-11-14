@@ -41,8 +41,8 @@ export function NativeProjectPage(): JSX.Element {
   const { range, tick, manualTick } = useTelemetry();
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
-    <Show when={services().find(service => service.name === params.projectId)} keyed fallback={<EmptyState title="Project not found" detail="This service is not registered." action={<a href={routeWithRange("#/projects", range())}>Back to projects</a>} />}>
-      {service => <NativeProject service={service} />}
+    <Show when={services().find(service => service.name === params.projectId)?.name} keyed fallback={<EmptyState title="Project not found" detail="This service is not registered." action={<a href={routeWithRange("#/projects", range())}>Back to projects</a>} />}>
+      {name => <NativeProject service={services().find(service => service.name === name)!} />}
     </Show>
   </Loading></Errored>;
 }
@@ -86,7 +86,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
       <div class="project-pills" aria-label="Project health">
         <Show when={data()?.totals}>{total => <><button class="project-pill tone-neutral" onClick={() => showSection("requests")}>{count(total().requests)} HTTP requests</button><button class={`project-pill tone-${total().status5xx > 0 ? "bad" : "neutral"}`} onClick={() => showSection("signals")}>{count(total().status5xx)} 5xx</button></>}</Show>
         <Show when={observe.health()}>{health => <button class="project-pill tone-neutral" onClick={() => showSection("errors")}>{health().openIssues} open errors</button>}</Show>
-        <Show when={latest()}>{value => <button class="project-pill tone-neutral" onClick={() => showSection("deploys")}>{deploymentTitle(value(), value().deployment)} · {age(value().deployment.atMs, now())}</button>}</Show>
+        <Show when={latest()}>{value => <button class="project-pill tone-neutral" onClick={() => showSection("deploys")}>{deploymentTitle(value(), value().deployment, "service")} · {age(value().deployment.atMs, now())}</button>}</Show>
       </div>
     </PageHeader>
     <div class="project-layout">

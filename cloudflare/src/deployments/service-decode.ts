@@ -1,7 +1,7 @@
 import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
 import { decodeDeploymentComparison } from "./decode.ts";
 import type { ComparisonWindow } from "./compare.ts";
-import { SOURCE_NAMES, UNRECORDED_COVERAGE_EVIDENCE, type ApplicationCoverage, type ApplicationSuppression, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WindowCoverage, type WorkSummary } from "./service-compare.ts";
+import { SERVICE_LEVEL_METRICS, SERVICE_WORK_METRICS, SOURCE_NAMES, UNRECORDED_COVERAGE_EVIDENCE, type ApplicationCoverage, type ApplicationSuppression, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WindowCoverage, type WorkSummary } from "./service-compare.ts";
 import { UUID, annotation, record, type Deployment, type LatestDeployment } from "./model.ts";
 
 function string(value: unknown, limit: number): string {
@@ -179,5 +179,10 @@ export function decodeServiceComparison(value: unknown, deploymentId: string, wi
     if (name === undefined || (status !== "available" && status !== "unavailable")) throw new Error("invalid service source");
     return { source: name, status, detail: string(source["detail"], 200) };
   });
-  return { ...decodeDeploymentComparison(value, deploymentId, window), hostIds: hostIds(item["hostIds"]), sources, work: item["work"] === undefined ? [] : list(item["work"], 64, workSummary), applicationSuppression: applicationSuppression(item["applicationSuppression"]), applicationCoverage: applicationCoverage(item["applicationCoverage"]) };
+  const work = item["work"] === undefined ? [] : list(item["work"], 64, workSummary);
+  const fixedMetrics = SERVICE_WORK_METRICS.filter(metric => !metric.needsWork).length;
+  const perWorkMetrics = SERVICE_WORK_METRICS.filter(metric => metric.needsWork).length;
+  const metricLimit = SERVICE_LEVEL_METRICS.length + work.reduce((total, operation) => total + fixedMetrics + new Set([...operation.before.work, ...operation.after.work].map(measurement => measurement.key)).size * perWorkMetrics, 0);
+  const unitLimit = Math.max(32, ...work.flatMap(operation => [...operation.before.work, ...operation.after.work].map(measurement => `CPU-s/${measurement.key}`.length)));
+  return { ...decodeDeploymentComparison(value, deploymentId, window, { metricLimit, unitLimit }), hostIds: hostIds(item["hostIds"]), sources, work, applicationSuppression: applicationSuppression(item["applicationSuppression"]), applicationCoverage: applicationCoverage(item["applicationCoverage"]) };
 }

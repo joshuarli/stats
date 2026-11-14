@@ -482,3 +482,17 @@ test("native projects show service deployments, application requests, errors and
   expect(reads.some(path => path.endsWith("/external/telemetry"))).toBe(true);
   expect(reads.some(path => path.startsWith("/api/v1/projects") || /\/(explore|traces|rollouts)(\/|$)/u.test(path))).toBe(false);
 });
+
+test("refreshing a native project keeps its requests scoped to one detail view", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/")) requests.push(new URL(request.url()).pathname); });
+  await page.goto(`${origin}/#/project/web?range=6h`);
+  await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
+  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
+  requests.length = 0;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
+  await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
+  expect(requests.filter(path => path === "/api/v1/services")).toHaveLength(1);
+  expect(requests.filter(path => path === "/api/v1/services/web/deployments")).toHaveLength(1);
+});
