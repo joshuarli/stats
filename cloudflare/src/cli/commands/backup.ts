@@ -120,7 +120,7 @@ function* tableLines(file: string): Generator<string> {
 }
 
 async function exportObject(context: CommandContext, object: string, directory: string): Promise<{ readonly object: string; readonly tables: number; readonly rows: number }> {
-  const fetched = await context.http.getJson(`${objectPath(object)}/export/manifest`, decodeManifest, { bodyLimit: HISTORY_BODY_LIMIT });
+  const fetched = await withRetry(() => context.http.getJson(`${objectPath(object)}/export/manifest`, decodeManifest, { bodyLimit: HISTORY_BODY_LIMIT }));
   if (fetched.kind !== "ok") throw transportError("contract", `${object} manifest was not returned`);
   const manifest = fetched.value;
   if (manifest.object !== object) throw transportError("contract", `${object} answered with the manifest of ${manifest.object}`);
@@ -135,7 +135,7 @@ async function exportObject(context: CommandContext, object: string, directory: 
       let after: readonly SqlValue[] | null = null;
       for (;;) {
         const query = new URLSearchParams({ table: table.name, limit: String(MAX_PAGE_ROWS), ...(after === null ? {} : { after: JSON.stringify(after) }) });
-        const page = await context.http.getJson(`${objectPath(object)}/export/rows?${query}`, decodePage, { bodyLimit: HISTORY_BODY_LIMIT });
+        const page = await withRetry(() => context.http.getJson(`${objectPath(object)}/export/rows?${query}`, decodePage, { bodyLimit: HISTORY_BODY_LIMIT }));
         if (page.kind !== "ok") throw transportError("contract", `${object} ${table.name} page was not returned`);
         for (const row of page.value.rows) {
           const line = JSON.stringify(row);
@@ -299,7 +299,7 @@ export const backupExportCommand = defineCommand<{ readonly directory: string; r
     const staging = `${directory}.partial`;
     if (existsSync(staging)) throw usageError(`${staging} exists from an interrupted export; remove it first`);
     mkdirSync(staging, { recursive: true, mode: 0o700 });
-    const exported = await eachLimited(objects, OBJECT_CONCURRENCY, object => exportObject(context, object, staging));
+    const exported = await eachLimited(objects, 1, object => exportObject(context, object, staging));
     const index: BackupIndex = { format: BACKUP_FORMAT, exportFormat: EXPORT_FORMAT, origin: context.origin, createdAtMs: context.now(), objects };
     writeExclusive(join(staging, "index.json"), `${JSON.stringify(index, null, 2)}\n`);
     verifyBackup(staging);
