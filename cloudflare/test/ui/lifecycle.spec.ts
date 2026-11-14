@@ -257,6 +257,7 @@ test("project A to B navigation at the same range never shows A's data under B",
     if (req.url().includes("/projects/")) aborted.push(new URL(req.url()).pathname);
   });
 
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({
     json: [
       { id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } },
@@ -722,6 +723,7 @@ test("projects overview requests no from=0 or eager range history, reuses ledger
   await installBaseRoutes(page);
   const historyUrls: string[] = [];
 
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({
     json: [
       { id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } },
@@ -763,6 +765,7 @@ test("projects overview requests no from=0 or eager range history, reuses ledger
 test("a paused projects overview requests no ledger history as the wall clock rolls past a bucket", async ({ page }) => {
   await installBaseRoutes(page);
   const historyUrls: string[] = [];
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({
     json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }]
   }));
@@ -791,6 +794,7 @@ test("closed project page defers comparison and occurrences until their sections
   let healthCalls = 0;
   let issuesCalls = 0;
 
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({
     json: [
       { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: ["b25c2595ba784bb1bd51a87a3e87c62b"], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }
@@ -953,6 +957,7 @@ test("changing the project range aborts the previous ledger windows", async ({ p
   page.on("requestfailed", request => {
     if (request.url().includes("/projects/alpha/history")) aborted.push(request.url());
   });
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
   await page.route("**/api/v1/projects/alpha/deployments", route => route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } }));
   await page.route("**/api/v1/projects/alpha/history*", async route => {
@@ -999,6 +1004,7 @@ test("filtering out an expanded project aborts its fallback trend request", asyn
   page.on("requestfailed", request => {
     if (request.url().includes("/projects/broken/history?range=")) cancelled = true;
   });
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "broken", name: "broken", worker: "broken", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
   await page.route("**/api/v1/projects/broken/deployments", route => route.fulfill({ json: { projectId: "broken", worker: "broken", enabled: true, sync: null, deployments: [], versions: [] } }));
   await page.route("**/api/v1/projects/broken/history*", async route => {
@@ -1031,6 +1037,7 @@ test("projects overview renders the latest summary from the list response and is
   let deploymentRequests = 0;
   page.on("request", request => { if (request.url().includes("/deployments")) deploymentRequests += 1; });
   const latestDeployment = { status: "available", deployment: { id: "00000000-0000-4000-8000-0000000000aa", atMs: NOW - 60_000, source: "api", message: null, deferred: false, versions: [{ id: "7f3a8e2b-9c1d-4e5f-6a7b-8c9d0e1f2a3b", percentage: 100 }] }, versions: [{ id: "7f3a8e2b-9c1d-4e5f-6a7b-8c9d0e1f2a3b", tag: "release", message: null }] };
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false }, latestDeployment }] }));
   await page.route("**/api/v1/projects/alpha/history*", route => fulfillHistory(route, projectBundle("alpha", 500)));
   await page.goto("/#/projects");
@@ -1096,6 +1103,7 @@ test("a new settled window does not reuse an older monthly bill @mobile", async 
   const gate = createGate();
   let waiting = false;
   let fail = true;
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({ json: [{ id: "alpha", name: "alpha", worker: "alpha", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }] }));
   await page.route("**/api/v1/projects/alpha/deployments", route => route.fulfill({ json: { projectId: "alpha", worker: "alpha", enabled: true, sync: null, deployments: [], versions: [] } }));
   await page.route("**/api/v1/projects/alpha/history*", async route => {
@@ -1139,6 +1147,7 @@ test("a project change does not reuse another project's monthly bill", async ({ 
   const gate = createGate();
   let waiting = false;
   const collector = { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false };
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({ json: ["alpha", "bravo"].map(id => ({ id, name: id, worker: id, workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector })) }));
   await page.route("**/api/v1/projects/*/deployments", route => {
     const id = /\/projects\/([^/]+)\/deployments/u.exec(route.request().url())?.[1];

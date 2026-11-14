@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CommandError, EXIT } from "../../src/cli/exit.ts";
 import { POLICY_SCHEMA } from "../../src/cli/verify/policy.ts";
-import { runCli } from "./support.ts";
+import { runCli, sendJson } from "./support.ts";
 import { CANDIDATE, handler, harness, newWorld, POLICY } from "./verify-support.ts";
 import { fakeOrigin } from "./support.ts";
 
@@ -14,6 +14,23 @@ interface Document {
 }
 
 const document = (stdout: string) => JSON.parse(stdout) as Document;
+
+await test("readiness refuses unavailable providers before resolving latest or reading retained comparisons", async () => {
+  const h = await harness(newWorld());
+  const origin = await fakeOrigin((request, response) => {
+    if (request.url === "/api/v1/capabilities") return sendJson(response, { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
+    return sendJson(response, { error: "unexpected provider read" }, 500);
+  });
+  try {
+    const run = await runCli(["verify", "--readiness", "--project", "stats", "--deployment", "latest", "--policy", h.policyFile, "--json", "--origin", origin.origin]);
+    assert.equal(run.code, EXIT.pending, run.stderr);
+    const payload = (JSON.parse(run.stdout) as { payload: { ready: boolean; deployment: { id: string | null }; signals: { status: string }[] } }).payload;
+    assert.equal(payload.ready, false);
+    assert.equal(payload.deployment.id, null);
+    assert.ok(payload.signals.length > 0 && payload.signals.every(signal => signal.status === "unavailable:provider_unavailable"));
+    assert.deepEqual(origin.seen.map(request => request.url), ["/api/v1/capabilities"]);
+  } finally { await origin.close(); await h.close(); }
+});
 
 await test("help verify explains every policy field, guardrail, and flag, offline", async () => {
   const { stdout, code } = await runCli(["help", "verify"]);

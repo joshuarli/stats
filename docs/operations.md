@@ -67,9 +67,11 @@ installs on the machine running the command. A rerun updates only the binary,
 config, or service unit that changed. A Linux host also needs an entry in
 `deploy/hosts.json` to receive `make deploy-hosts` updates.
 
-Cloudflare Worker deployment is retired: `make worker-deploy`,
-`make stats-deploy`, and `make observe-deploy` exit with an error, because this
-tree authenticates through the tailnet gateway. The OpenOrange deployment
+`make stats-deploy` and `make worker-deploy` build and install the OpenOrange
+image on `lisa` (`ORANGE_HOST` overrides the SSH destination), then run the live
+smoke through the tailnet gateway. A failed health or smoke check restores the
+previous image. `make observe-deploy` is retired; observation storage is bundled
+in the same Orange image. The OpenOrange deployment
 replaces them; see [the campaign](CAMPAIGN-OPENORANGE.md).
 `make observe-sourcemap VERSION=...` uploads a source map from a tailnet device
 with no credential.

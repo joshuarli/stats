@@ -15,18 +15,28 @@ image is `stats:f5634ec4e719` in namespace `stats-prod`, with ACME and a
 DNS-only record. S1–S7 and the Stats cutover landed. Orange integration
 checks cover fresh-namespace recovery, interrupted-import resume, exact
 ingest/replay, durable history, and caught-error stacks across restart.
-The deployed smoke passes. Cloudflare `stats` and `stats-observe` remain
-fenced as the rollback source.
+The deployed smoke passes. Cloudflare `stats` and `stats-observe`, their
+Durable Object namespaces, and their three Access applications are deleted.
+The protected source backup has 10 objects and 627,253 verified rows. A fresh
+physical backup and recovery rehearsal remain required for subsequent writes.
 
-Stuff S8 serving and S9 copy tooling landed in `~/d/stuff` at `e50756c`.
-Image packaging landed at `463f8d9`. The Linux image
-`stuff:463f8d96a4bd` is staged behind the tailnet ingress. A temporary real-S3
-object passed HTTPS GET, HEAD and range checks and was removed. Production
-registry DNS and data remain on Cloudflare. Next: publication coordination,
-blob-host routing, deployment drain, full-data rehearsal and registry cutover.
-Discover has no deployed Orange image yet. Remaining: S11 (Tansu tunnel
-retirement), S12 (fleet standards), S13 (Discover migration), and unsupported
-provider capability presentation. The campaign remains open.
+Stuff has a durable publication coordinator, signed streaming S3 gateway,
+blob-host routing, and version-specific GC. The complete Python GC workflow
+uses a renewing service lease. Native publication against Lisa's real S3 is
+under rehearsal in isolated buckets; production registry DNS remains on
+Cloudflare. Cargo copying and final full-data, drain, and cutover checks remain.
+
+Discover and preview run staged Orange images. Full restores verified 15,475
+and 667 rows respectively, including search reconstruction and every referenced
+artifact. Their buckets passed deep byte verification. Public publication,
+final source fencing, and cutover remain; split DNS requires Tailscale admin
+authentication. The outbound public tunnel is connected without DNS cutover.
+
+Tansu is served through shared ingress, with final passkey verification and
+old tunnel deletion remaining. S12 fleet tagging and Orange dependency
+inventory are merged. Stats capability presentation is implemented and tested.
+The campaign remains open until the remaining services and recovery checks
+pass and their old Cloudflare resources are retired.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 

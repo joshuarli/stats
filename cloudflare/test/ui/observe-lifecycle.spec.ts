@@ -28,6 +28,7 @@ async function installBase(
   });
   await page.route("**/api/v1/**", async route => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/v1/capabilities") return route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } });
     if (url.pathname === "/api/v1/hosts") return route.fulfill({ json: { hosts: [] } });
     if (url.pathname === "/api/v1/projects") return route.fulfill({ json: [STATS] });
     if (url.pathname === "/api/v1/projects/stats/deployments") return route.fulfill({ json: scenario.deployments });

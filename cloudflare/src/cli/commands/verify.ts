@@ -1,4 +1,5 @@
 import { isComparisonWindow, type ComparisonWindow } from "../../deployments/compare.ts";
+import { decodeCapabilities } from "../../core/capabilities.ts";
 import type { ComparisonSpec } from "../../compare/spec.ts";
 import { decodeDeploymentComparison } from "../../deployments/decode.ts";
 import { UUID } from "../../deployments/model.ts";
@@ -25,7 +26,7 @@ import { requireProject } from "./deployments.ts";
 export interface ReadinessPayload {
   readonly kind: "readiness";
   readonly policy: { readonly id: string; readonly hash: string };
-  readonly deployment: { readonly requested: string; readonly id: string };
+  readonly deployment: { readonly requested: string; readonly id: string | null };
   readonly ready: boolean;
   readonly signals: readonly ReadinessSignal[];
   readonly requests: number;
@@ -257,13 +258,22 @@ async function serviceVerification(context: CommandContext, serviceName: string)
 
 async function readiness(context: CommandContext, policy: Policy, requested: string, safety: SafetyRecord | null): Promise<{ payload: ReadinessPayload; exit: ExitCode } & ResultMeta> {
   const before = context.http.requests();
-  const deploymentId = requested === "latest" ? await resolveLatest(context.http, policy.project) : requested;
-  const observed = policy.project === OBSERVED_PROJECT;
   const fetchValue = async <T>(path: string, decode: (value: unknown) => T): Promise<T> => {
     const fetched = await context.http.getJson(path, decode);
     if (fetched.kind !== "ok") throw transportError("contract", `${path} answered not-modified to an unconditional request`);
     return fetched.value;
   };
+  const capabilities = await fetchValue("/api/v1/capabilities", decodeCapabilities);
+  if (!capabilities.analyticsCollection || !capabilities.cloudflareDeployments) {
+    const signals: ReadinessSignal[] = [];
+    if (!capabilities.analyticsCollection) signals.push({ signal: "analytics-collector", status: "unavailable:provider_unavailable", message: "analytics collection is unavailable on this target" });
+    if (!capabilities.cloudflareDeployments) signals.push({ signal: "deployment-comparison", status: "unavailable:provider_unavailable", message: "Cloudflare deployment collection is unavailable on this target" });
+    const id = requested === "latest" ? null : requested;
+    const payload: ReadinessPayload = { kind: "readiness", policy: { id: policy.id, hash: policyHash(policy) }, deployment: { requested, id }, ready: false, signals, requests: context.http.requests() - before };
+    return { project: policy.project, identities: { deploymentIds: id === null ? [] : [id] }, measurementRevision: MEASUREMENT_REVISION, payload, exit: EXIT.pending };
+  }
+  const deploymentId = requested === "latest" ? await resolveLatest(context.http, policy.project) : requested;
+  const observed = policy.project === OBSERVED_PROJECT;
   const projects = await source(() => fetchValue("/api/v1/projects", decodeProjects));
   const comparison = await source(() => fetchValue(comparisonPath(policy.project, deploymentId, policy.window), value => decodeDeploymentComparison(value, deploymentId, policy.window)));
   const observeHealth = observed ? await source(() => fetchValue(`/api/observe/${OBSERVED_PROJECT}/health`, decodeHealth)) : null;

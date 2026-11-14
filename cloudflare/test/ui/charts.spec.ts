@@ -316,6 +316,7 @@ test("charts support resize, cross-chart cursor sync, tooltips, keyboard navigat
 
 test("project charts shade unsettled provisional buckets and mark them in the tooltip", async ({ page }) => {
   await installChartRoutes(page);
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   await page.route("**/api/v1/projects", route => route.fulfill({
     json: [
       { id: "stats", name: "stats", worker: "stats", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW - 60_000, lastSuccessAtMs: NOW - 60_000, lastError: null, stale: false } }

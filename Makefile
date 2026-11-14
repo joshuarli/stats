@@ -5,6 +5,7 @@ STATS_URL ?= https://$(STATS_DOMAIN)
 SECRETS_FILE ?=
 SSH ?= local
 STUFF ?= stuff
+ORANGE_HOST ?= lisa
 export STATS_DOMAIN
 export STATS_URL
 
@@ -101,8 +102,7 @@ lint: node-ready
 	pnpm --filter @stats/telemetry lint
 
 auth-ready:
-	@out=$$(cf -q auth whoami 2>&1) || { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; }; \
-	printf '%s\n' "$$out" | rg -q 'Unable to find token for provided application|Please run login command to generate token' && { printf '%s\n' "$$out" >&2; echo 'Cloudflare auth is missing or expired; run the appropriate cf login command' >&2; exit 1; } || true
+	ssh '$(ORANGE_HOST)' 'test -x /opt/openorange/bin/oo && doas -n true'
 
 worker-check: node-ready
 	cd cloudflare && pnpm build && cf -q deploy --prebuilt --dry-run --mode production
@@ -114,8 +114,11 @@ worker-bundle: node-ready
 observe-bundle: node-ready
 	cd cloudflare && pnpm run build:observe
 
-observe-deploy stats-deploy worker-deploy:
+observe-deploy:
 	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/CAMPAIGN-OPENORANGE.md' >&2; exit 1
+
+stats-deploy worker-deploy: auth-ready work-ready node-ready
+	deploy/orange/deploy.sh '$(ORANGE_HOST)'
 
 observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }

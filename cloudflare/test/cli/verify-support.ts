@@ -103,6 +103,7 @@ export function handler(world: World) {
     if (!authorized(request)) return void response.writeHead(401).end();
     const url = new URL(request.url ?? "", "http://x");
     const { pathname, searchParams } = url;
+    if (pathname === "/api/v1/capabilities") return sendJson(response, { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true });
     if (pathname === "/api/v1/projects") return sendJson(response, [projectEntry("stats", { probes: world.probes.map(name => ({ name, url: `https://x/${name}` })) })]);
     if (pathname === "/api/v1/projects/stats/deployments") return sendJson(response, deploymentHistory("stats", { deployments: world.deployments, sync: { lastAttemptAtMs: world.syncedAtMs, lastSuccessAtMs: world.syncedAtMs, error: null, truncated: false } }));
     const compared = /^\/api\/v1\/projects\/stats\/deployments\/([^/]+)\/comparison$/u.exec(pathname);

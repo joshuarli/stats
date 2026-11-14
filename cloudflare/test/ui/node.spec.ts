@@ -42,14 +42,17 @@ test("the Node target renders a host the real server stored, with projects absen
   await expect(page.getByText("Project not found")).toBeVisible();
 });
 
-test("the Node target refuses the dashboard without an allowed Tailscale login", async ({ browser, baseURL }) => {
-  for (const headers of [{}, { "Tailscale-User-Login": "intruder@example.com" }]) {
+test("the Node target requires a Tailscale identity and accepts another authenticated user", async ({ browser, baseURL }) => {
+  for (const headers of [{}, { "Stats-Tailnet-Identity": "user:forged@example.com" }]) {
     const context = await browser.newContext({ extraHTTPHeaders: headers });
     const response = await context.request.get(`${baseURL}/`);
     expect(response.status()).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "unauthorized" } });
     await context.close();
   }
+  const context = await browser.newContext({ extraHTTPHeaders: { "Tailscale-User-Login": "another@example.com" } });
+  expect((await context.request.get(`${baseURL}/`)).status()).toBe(200);
+  await context.close();
 });
 
 test("the Node target serves the built lazy Errors assets intact", async ({ request, assetsDirectory }) => {
