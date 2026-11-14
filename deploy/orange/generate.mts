@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { OBSERVE_OUTPUT, STATS_OUTPUT, readBuiltWorker, type Binding, type BuiltWorker } from "../../cloudflare/local/topology.ts";
@@ -32,7 +32,7 @@ const DROPPED_BINDINGS: Readonly<Record<Binding["type"], string | null>> = {
 
 const TAIL_REASON = "OpenOrange tails report zero CPU and no diagnostics; operations arrive as application events instead";
 
-function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[]): Record<string, unknown> {
+function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[], root: string): Record<string, unknown> {
   const vars: Record<string, string> = {};
   const durableObjects: { name: string; class_name: string }[] = [];
   const services: { binding: string; service: string }[] = [];
@@ -49,7 +49,7 @@ function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[]): 
       case "durable-object": durableObjects.push({ name, class_name: binding.exportName }); break;
       case "worker": services.push({ binding: name, service: binding.worker }); break;
       case "r2": r2.push({ binding: name, bucket_name: binding.name }); break;
-      case "assets": assets = { binding: name, directory: join(worker.output, "assets"), run_worker_first: true }; break;
+      case "assets": assets = { binding: name, directory: join(root, "assets"), run_worker_first: true }; break;
     }
   }
   if (worker.assets !== null && assets === undefined) throw new TypeError(`${worker.name} declares assets without an assets binding`);
@@ -63,7 +63,7 @@ function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[]): 
   }
   return {
     name: worker.name,
-    main: join(worker.output, "bundle", worker.mainModule),
+    main: join(root, "bundle", worker.mainModule),
     no_bundle: true,
     compatibility_date: worker.compatibilityDate,
     compatibility_flags: [...worker.compatibilityFlags],
@@ -79,15 +79,22 @@ function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[]): 
   };
 }
 
-export function generate(outDir: string, profile: Profile, outputs = { stats: STATS_OUTPUT, observe: OBSERVE_OUTPUT }): Generated {
+export type Layout = "in-place" | "packaged";
+
+export function generate(outDir: string, profile: Profile, layout: Layout = "in-place", outputs = { stats: STATS_OUTPUT, observe: OBSERVE_OUTPUT }): Generated {
   const stats = readBuiltWorker(outputs.stats);
   const observe = readBuiltWorker(outputs.observe);
   if (stats.name !== "stats" || observe.name !== "stats-observe") throw new TypeError(`unexpected built workers ${stats.name} and ${observe.name}`);
   const dropped: Dropped[] = [];
   mkdirSync(outDir, { recursive: true });
+  const root = (worker: BuiltWorker, directory: string): string => {
+    if (layout === "in-place") return worker.output;
+    cpSync(worker.output, join(outDir, directory), { recursive: true });
+    return `./${directory}`;
+  };
   const written = { stats: join(outDir, "stats.jsonc"), observe: join(outDir, "observe.jsonc") };
-  writeFileSync(written.stats, `${JSON.stringify(descriptor(stats, profile, dropped), null, 2)}\n`, { mode: profile.kind === "dev" ? 0o600 : 0o644 });
-  writeFileSync(written.observe, `${JSON.stringify(descriptor(observe, profile, dropped), null, 2)}\n`);
+  writeFileSync(written.stats, `${JSON.stringify(descriptor(stats, profile, dropped, root(stats, "stats")), null, 2)}\n`, { mode: profile.kind === "dev" ? 0o600 : 0o644 });
+  writeFileSync(written.observe, `${JSON.stringify(descriptor(observe, profile, dropped, root(observe, "observe")), null, 2)}\n`);
   return { ...written, dropped };
 }
 
@@ -97,6 +104,6 @@ if (import.meta.main) {
     console.error("usage: node deploy/orange/generate.mts --out DIR --release ID");
     process.exit(2);
   }
-  const generated = generate(resolve(values.out), { kind: "production", release: values.release });
+  const generated = generate(resolve(values.out), { kind: "production", release: values.release }, "packaged");
   console.log(JSON.stringify(generated, null, 2));
 }
