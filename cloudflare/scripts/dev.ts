@@ -21,9 +21,7 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
   mkdirSync(resolve(state, ".."), { recursive: true });
   const parent = realpathSync(resolve(state, ".."));
   if ((parent !== realpathSync(work) && !parent.startsWith(`${realpathSync(work)}${sep}`)) || !state.startsWith(`${work}${sep}`) || (existsSync(state) && lstatSync(state).isSymbolicLink())) throw new Error("development state must be inside this checkout's .work directory without a state symlink");
-  if ((values.service?.length ?? 0) > 0 && values.service!.length !== values["producer-worker"]?.length) throw new Error("--service needs one value per --producer-worker");
-  if ((values["producer-var"]?.length ?? 0) > 0 && (values["producer-worker"]?.length ?? 0) === 0) throw new Error("--producer-var needs --producer-worker");
-  const producerVars = values["producer-var"] === undefined ? {} : (await import("../local/worker-producer.ts")).parseProducerVars(values["producer-var"]);
+  if (values.producer?.length || values["producer-worker"]?.length || values.service?.length || values["producer-var"]?.length) throw new Error("producer options require node cloudflare/scripts/local-stack.mjs dev --producer DIR");
   const versions = runtimeVersions();
   const controller = new AbortController();
   const owner = processOwner("dev", { signals: false });
@@ -45,7 +43,7 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
   let fatal: unknown;
   const status = (event: string, extra: Record<string, unknown> = {}): void => {
     const origin = frontend?.resolvedUrls?.local[0]?.replace(/\/$/u, "");
-    const record = { event, runId: owner.directory.split(sep).at(-1), pid: process.pid, backendPid: runtime?.child.pid, state, statusFile, origin, backendOrigin: backend?.origin, workerOrigin: backend?.workerOrigin, ports: { frontend: origin === undefined ? null : Number(new URL(origin).port), backend: backend === undefined ? null : Number(new URL(backend.origin).port) }, artifacts: activeArtifacts.map(artifact => ({ target: artifact.target, identity: artifact.identity, output: artifact.output })), runtimes: versions.map(runtime => ({ consumer: runtime.consumer, miniflare: runtime.miniflare.version, workerd: runtime.workerd.version })), ...extra };
+    const record = { event, runId: owner.directory.split(sep).at(-1), pid: process.pid, backendPid: backend?.pid, state, statusFile, origin, backendOrigin: backend?.origin, workerOrigin: backend?.workerOrigin, ports: { frontend: origin === undefined ? null : Number(new URL(origin).port), backend: backend === undefined ? null : Number(new URL(backend.origin).port) }, artifacts: activeArtifacts.map(artifact => ({ target: artifact.target, identity: artifact.identity, output: artifact.output })), runtimes: versions.map(runtime => ({ consumer: runtime.consumer, miniflare: runtime.miniflare.version, workerd: runtime.workerd.version })), ...extra };
     writeFileSync(statusFile, JSON.stringify(record));
     console.log(JSON.stringify(record));
   };
@@ -68,9 +66,8 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
       if (runtime === child && !controller.signal.aborted) { fatal = new Error("active backend exited"); controller.abort(); }
     }, error => { if (runtime === child && !controller.signal.aborted) { fatal = error; controller.abort(); } });
     runtime = child;
-    const workerProducers = await Promise.all((values["producer-worker"] ?? []).map(async (dir, index) => ({ dir, service: values.service?.[index] ?? (await import("../local/topology.ts")).readBuiltWorker(dir).name, vars: producerVars })));
-    const options: BackendStart = { state, statsOutput: join(artifacts.find(artifact => artifact.target === "stats")!.output, "v0/workers/default"), observeOutput: join(artifacts.find(artifact => artifact.target === "observe")!.output, "v0/workers/default"), initialize, producers: values.producer ?? [], workerProducers };
-    const timeout = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    const options: BackendStart = { state, statsOutput: join(artifacts.find(artifact => artifact.target === "stats")!.output, "v0/workers/default"), observeOutput: join(artifacts.find(artifact => artifact.target === "observe")!.output, "v0/workers/default"), initialize };
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 120_000);
     try {
       backend = await Promise.race([
         new Promise<BackendReady>((done, reject) => {

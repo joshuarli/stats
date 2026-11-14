@@ -31,7 +31,7 @@ build and replace the backend. A compilation error leaves the previous backend
 serving. Fix the error to recover automatically. A backend activation failure
 reports a separate error and retains the state directory.
 
-The backend sits behind a local gateway (`cloudflare/local/gateway.ts`) that
+The OpenOrange backend sits behind a local gateway (`cloudflare/local/gateway.ts`) that
 asserts a test tailnet identity with a per-session secret, as the production
 gateway does. The backend still rejects requests that bypass it.
 The local UI uses disposable test identity. No production credentials are needed.
@@ -69,10 +69,7 @@ To reset a named state, run
 `make dev DEV_ARGS='--state ../.work/local/experiment --reset'`.
 Reset uses the same ownership lock and refuses a live owner.
 
-To host producer fixtures, pass `--producer DIR` or
-`--producer-worker DIR --service NAME`. Repeat `--producer-var NAME=VALUE` to
-inject text bindings. Values are not printed. See [profiling](profiling.md) for
-producer export and workload prerequisites.
+For Cloudflare producer tail fixtures, use `node cloudflare/scripts/local-stack.mjs dev --producer DIR`. The Miniflare local stack also supports `--producer-worker DIR --service NAME` and `--producer-var NAME=VALUE`; see [profiling](profiling.md). The OpenOrange dev workflow rejects these options.
 
 ## Select tests
 

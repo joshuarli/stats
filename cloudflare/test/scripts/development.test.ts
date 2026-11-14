@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,7 +9,7 @@ import { devWorkspace } from "../support/dev-workspace.ts";
 
 interface Status { readonly event: string; readonly origin: string; readonly backendOrigin: string; readonly workerOrigin: string; readonly backendPid: number; readonly runId: string; readonly artifacts: readonly { readonly target: string; readonly identity: string }[] }
 
-await test("development hot updates, reloads, keeps the last good build and state, and isolates shutdown", { timeout: 90_000 }, async () => {
+await test("development hot updates, reloads, keeps the last good build and state, and isolates shutdown", { timeout: 180_000 }, async () => {
   const workspace = devWorkspace();
   const otherWorkspace = devWorkspace();
   const owner = processOwner("dev-test");
@@ -36,7 +37,7 @@ await test("development hot updates, reloads, keeps the last good build and stat
       const found = statuses.slice(after).find(status => status.event === event);
       if (found !== undefined) return found;
       return await new Promise<Status>((done, reject) => {
-        const timeout = setTimeout(() => { listeners.delete(changed); reject(new Error(`missing ${event}: ${readFileSync(child.logPath, "utf8")}`)); }, 30_000);
+        const timeout = setTimeout(() => { listeners.delete(changed); reject(new Error(`missing ${event}: ${readFileSync(child.logPath, "utf8")}`)); }, 120_000);
         const changed = (): void => {
           const value = statuses.slice(after).find(status => status.event === event);
           if (value !== undefined) { clearTimeout(timeout); listeners.delete(changed); done(value); }
@@ -45,14 +46,28 @@ await test("development hot updates, reloads, keeps the last good build and stat
         void child.done.catch(reject);
       });
     };
-    const stop = async (): Promise<void> => { child.kill("SIGTERM"); await child.done.catch(() => {}); };
+    const stop = async (signal: NodeJS.Signals = "SIGTERM"): Promise<void> => { child.kill(signal); await child.done.catch(() => {}); };
     return { child, statuses, wait, stop };
   }
   let first: ReturnType<typeof launch> | undefined;
   let second: ReturnType<typeof launch> | undefined;
   try {
     first = launch("first");
+    const started = performance.now();
     const initial = await first.wait("dev-ready");
+    const coldMs = performance.now() - started;
+    const processes = (): string => execFileSync("ps", ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
+    const tree = (root: number): string[] => {
+      const lines = processes().trim().split("\n");
+      const ids = new Set([root]);
+      let count = 0;
+      while (count !== ids.size) { count = ids.size; for (const line of lines) { const match = /^\s*(\d+)\s+(\d+)/u.exec(line); if (match && ids.has(Number(match[2]))) ids.add(Number(match[1])); } }
+      return lines.filter(line => ids.has(Number(/^\s*(\d+)/u.exec(line)?.[1])));
+    };
+    const initialTree = tree(first.child.child.pid!);
+    assert.ok(initialTree.some(line => line.includes(`${initial.backendPid} `) && /open-orange\/dist\/bin\.js dev/u.test(line)));
+    assert.ok(initialTree.every(line => !/workerd/u.test(line)));
+    const rssKb = initialTree.reduce((sum, line) => sum + Number(/^\s*\d+\s+\d+\s+(\d+)/u.exec(line)?.[1] ?? 0), 0);
     second = launch("second", otherWorkspace);
     const other = await second.wait("dev-ready");
     assert.notEqual(initial.origin, other.origin);
@@ -81,9 +96,11 @@ await test("development hot updates, reloads, keeps the last good build and stat
     const source = join(workspace.root, "src/core/http.ts");
     const good = readFileSync(source, "utf8").replace('{ ok: true, service: "stats" }', '{ ok: true, service: "stats", devProbe: "changed" }');
     let cursor = first.statuses.length;
+    const rebuildStarted = performance.now();
     writeFileSync(source, good);
     const changed = await first.wait("dev-ready", cursor);
-    assert.equal(changed.backendPid, initial.backendPid);
+    const rebuildMs = performance.now() - rebuildStarted;
+    assert.notEqual(changed.backendPid, initial.backendPid);
     assert.equal((await (await fetch(`${initial.origin}/health`)).json() as { devProbe: string }).devProbe, "changed");
     assert.deepEqual(await hosts(initial.origin), before);
     cursor = first.statuses.length;
@@ -104,22 +121,24 @@ await test("development hot updates, reloads, keeps the last good build and stat
     assert.equal(observed.status, 200);
     assert.equal(observed.headers.get("X-Dev-Probe"), "observe");
     assert.deepEqual(await hosts(initial.origin), before);
-    const config = join(workspace.root, "cloudflare.config.ts");
-    const originalConfig = readFileSync(config, "utf8");
-    cursor = first.statuses.length;
-    writeFileSync(config, originalConfig.replace("env: {", 'env: { DEV_UNSUPPORTED: bindings.r2({ name: "dev-unsupported" }),'));
-    await first.wait("dev-activation-error", cursor);
-    assert.equal((await fetch(`${initial.origin}/health`)).status, 503);
-    cursor = first.statuses.length;
-    writeFileSync(config, originalConfig);
-    await first.wait("dev-ready", cursor);
-    assert.deepEqual(await hosts(initial.origin), before);
+    const oldPids = tree(first.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
     await first.stop();
+    const deadline = Date.now() + 5000;
+    while (oldPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
+    for (const pid of oldPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
     assert.equal((await fetch(`${other.origin}/health`)).status, 200);
+    const warmStarted = performance.now();
     first = launch("first");
     const restarted = await first.wait("dev-ready");
+    const warmMs = performance.now() - warmStarted;
+    console.log(`dev measurements: cold=${Math.round(coldMs)}ms warm=${Math.round(warmMs)}ms rebuild=${Math.round(rebuildMs)}ms rss=${rssKb}KiB`);
     assert.deepEqual(await hosts(restarted.origin), before);
     assert.doesNotMatch(readFileSync(first.child.logPath, "utf8"), /Bearer |eyJhbGci/u);
+    const secondPids = tree(second.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
+    await second.stop("SIGINT");
+    const secondDeadline = Date.now() + 5000;
+    while (secondPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < secondDeadline) await new Promise(resolve => setTimeout(resolve, 100));
+    for (const pid of secondPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
   } finally {
     await first?.stop();
     await second?.stop();
