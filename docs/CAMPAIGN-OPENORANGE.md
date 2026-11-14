@@ -9,7 +9,11 @@ revision), whose evidence is reused below.
 
 ## Status
 
-Inventory complete; slices S1–S3 in progress. Production has not moved.
+Accepted: S2 (stats `d56da0c8`, tailnet gateway identity), S7 (stuff
+`6db7ed3`, shared stack running on `lisa`: Engine 3.1.2-rc.1 on file-system
+storage, versitygw store, Caddy on 100.68.104.43:443 with internal CA,
+whois sidecar, loopback public listener for Discover). Next: S1. Production
+has not moved; every app hostname on the ingress answers 503 until deployed.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 
@@ -63,6 +67,10 @@ Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is r
 
 ## Needs environment / owner
 
-- A Cloudflare API token limited to DNS edit on `17166969.xyz` for ACME
-  DNS-01 and the record change.
-- Tailnet policy grants for tagged machines that must reach the ingress.
+- A Cloudflare API token limited to DNS edit on `17166969.xyz`, saved on
+  `lisa` as `/etc/openorange/cloudflare-dns.env`, for ACME DNS-01 and records.
+- The Discover tunnel (cloudflared on `lisa` to `127.0.0.1:18480`) and split
+  DNS so tailnet clients reach Discover hostnames on the tailnet address.
+- Tailnet policy grants for tagged machines, and one tagged device to prove it.
+- An off-disk backup destination for `bin/backup --dest`; today every copy
+  lives on `lisa`'s single NVMe.
