@@ -1,3 +1,4 @@
+import { NativeProjectsPage, nativeProjects } from "./project/NativeProjects";
 import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, onCleanup, onSettled, refresh, Show, untrack, type ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
@@ -29,6 +30,11 @@ interface ProjectMetrics {
 }
 
 export function ProjectsPage(): JSX.Element {
+  const capabilities = createMemo(loadCapabilities);
+  return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}><Show when={nativeProjects(capabilities())} fallback={<LegacyProjectsPage />}><NativeProjectsPage /></Show></Loading></Errored>;
+}
+
+function LegacyProjectsPage(): JSX.Element {
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Widget title="Projects"><Skeleton rows={2} /></Widget>}>
