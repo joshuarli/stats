@@ -20,6 +20,7 @@ Inventory complete; slices S1–S3 in progress. Production has not moved.
 | Stuff Worker `stuff` | TS host + Rust WASM, six R2 buckets, `caches.default`, `cf.cacheKey` | Orange Worker or native server over shared S3 store; per-registry publication coordinator |
 | Hosts | `lisa` 100.68.104.43 (Alpine 3.25 musl x86_64, OpenRC, Docker, 242 GB free), `threadripper` (same OS, 94% disk) | Runtime and ingress on `lisa` |
 | Tansu | Native Rust server on `lisa` (OpenRC, 127.0.0.1:3001), public through cloudflared tunnel `tansu-tunnel` at `tansu.17166969.xyz`, passkeys | Same binary and vault behind the shared tailnet ingress; tunnel retired; owner ruling 2026-11-13: tailnet-only, not an OpenOrange app |
+| Discover (`../discover`) | Worker `discover`/`discover-preview` with `ResearchSpace` DO, R2 `discover-artifacts`/`discover-preview-artifacts`, daily cron, tail to `stats-observe`; public reader `hq.`, public bearer MCP `research.`, `/admin` behind Access; renditions made locally with ffmpeg | Same Worker and DO on Orange; owner ruling 2026-11-13: reader and `/mcp` public through an outbound-only Cloudflare Tunnel into the shared Caddy, `/admin` only on the tailnet ingress with gateway identity (404 through the tunnel); WebP conversion runs in the Worker without workerd limits |
 | External Cloudflare producers | `usr-memories`, `nanoshop-storied`, `discover`, `discover-preview` (Analytics SQL + tails) | Optional isolated provider adapter or retired; reported at close |
 | Credentials | Access team/aud, host/service/deployment tokens (SHA-256 verifiers), CF deployments token, R2 keys | Tailnet identity; scoped tokens kept; S3 keys per app bucket set |
 
@@ -57,6 +58,7 @@ Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is r
 | S9 | stuff | Resumable R2 → S3 copy and verification | rehearsal on copied data |
 | S11 | tansu | `tansu.17166969.xyz` served by the shared ingress; tunnel retired | passkey login and `/api/v2/health` through the ingress |
 | S12 | stuff (`~/d/stuff`) | Fleet standards: `openorange` tag, stats/stuff retagged, runtime compatibility group names OpenOrange/Rivet, inventory adapter reads Orange descriptors; Cloudflare kept for remaining Cloudflare projects | `make repomod-test` |
+| S13 | discover | Discover on Orange with the public/tailnet split; Worker-side WebP conversion; probe whether the pinned runtime loads native code | discover's `make check` + split-ingress rehearsal |
 | S10 | all | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
 
 ## Needs environment / owner
