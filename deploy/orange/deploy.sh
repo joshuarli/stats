@@ -13,6 +13,9 @@ rollback() {
         if ssh "$host" doas -n /opt/openorange/bin/oo set-image stats "$previous" --if-current "$image" &&
            ssh "$host" doas -n /sbin/rc-service oo-app.stats restart; then
             echo 'Deployment failed; restored the previous Orange image' >&2
+            if ssh "$host" doas -n /opt/openorange/bin/oo wait app stats 90; then
+                ssh "$host" doas -n /opt/openorange/bin/oo record-deployment stats --if-current "$previous" || echo 'Rollback deployment marker pending; run oo sync-deployments stats' >&2
+            fi
         else
             echo 'Orange rollback failed; inspect oo-app.stats on the host' >&2
             code=1
@@ -39,4 +42,5 @@ if ! deploy/deployed-smoke.sh; then
     exit 1
 fi
 switched=false
+ssh "$host" doas -n /opt/openorange/bin/oo record-deployment stats --if-current "$image"
 printf 'deployed %s on %s\n' "$image" "$host"

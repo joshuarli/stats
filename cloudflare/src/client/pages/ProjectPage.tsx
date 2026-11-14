@@ -1,3 +1,4 @@
+import { NativeProjectPage, nativeProjects } from "./project/NativeProjects";
 import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
@@ -45,6 +46,11 @@ const RequestExplorerWidget = lazy(() => import("./project/Requests").then(modul
 const LINKED_SECTIONS: readonly (readonly [string, SectionId])[] = [["deployment", "deploys"], ["issue", "errors"], ["issues", "errors"], ["introduced", "errors"], ["route", "requests"], ["band", "requests"], ["traces", "requests"], ["trace", "requests"]];
 
 export function ProjectPage(): JSX.Element {
+  const capabilities = createMemo(loadCapabilities);
+  return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}><Show when={nativeProjects(capabilities())} fallback={<LegacyProjectPage />}><NativeProjectPage /></Show></Loading></Errored>;
+}
+
+function LegacyProjectPage(): JSX.Element {
   const params = useParams();
   const { tick, manualTick, range } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));

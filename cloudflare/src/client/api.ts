@@ -396,3 +396,36 @@ export function getFleetHistories(hostId: string, query: HistoryQuery, signal: A
 export function getCapabilities(signal: AbortSignal) {
   return getJson("/api/v1/capabilities", decodeCapabilities, signal);
 }
+
+export function decodeApplicationTelemetry(value: unknown): import("../observe/application/telemetry.ts").ApplicationTelemetry {
+  const root = record(value);
+  const integer = (v: unknown): number => { if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) throw new Error("expected a nonnegative safe integer"); return v; };
+  const totals = (v: unknown) => {
+    const x = record(v);
+    return { events: integer(x.events), failed: integer(x.failed), requests: integer(x.requests), status2xx: integer(x.status2xx), status3xx: integer(x.status3xx), status4xx: integer(x.status4xx), status5xx: integer(x.status5xx), durationMsSum: integer(x.durationMsSum), durationMsMax: integer(x.durationMsMax), firstAtMs: integer(x.firstAtMs), lastAtMs: integer(x.lastAtMs) };
+  };
+  if (root.provenance !== "application") throw new Error("invalid application provenance");
+  const buckets = array(root.buckets, v => ({ ...totals(v), atMs: integer(record(v).atMs) }));
+  const operations = array(root.operations, v => ({ ...totals(v), operation: string(record(v).operation) }));
+  const recent = array(root.recent, v => {
+    const row = record(v), e = record(row.event), work = record(e.work);
+    if (row.provenance !== "application" || e.schemaVersion !== 1) throw new Error("invalid application event");
+    const decodedWork: Record<string, number> = {};
+    for (const [key, item] of Object.entries(work)) decodedWork[key] = integer(item);
+    const diagnostics = e.diagnostics === undefined ? undefined : record(e.diagnostics);
+    if (diagnostics !== undefined && diagnostics.version !== 1) throw new Error("invalid diagnostics");
+    return { eventId: string(row.eventId), service: string(row.service), receivedAtMs: integer(row.receivedAtMs), provenance: "application" as const, event: {
+      schemaVersion: 1 as const, eventId: string(e.eventId), atMs: integer(e.atMs), operation: string(e.operation), outcome: string(e.outcome), durationMs: integer(e.durationMs), work: decodedWork, release: string(e.release), service: string(e.service),
+      ...(e.error === undefined ? {} : { error: { code: string(record(e.error).code) } }),
+      ...(diagnostics === undefined ? {} : { diagnostics: { version: 1 as const, name: string(diagnostics.name), message: string(diagnostics.message), frames: array(diagnostics.frames, string) } })
+    } };
+  });
+  if (buckets.length > 120 || operations.length > 20 || recent.length > 50) throw new Error("application telemetry exceeds response limits");
+  const fromMs = integer(root.fromMs), toMs = integer(root.toMs), stepMs = integer(root.stepMs);
+  if (fromMs >= toMs || stepMs === 0 || buckets.some(bucket => bucket.atMs < fromMs || bucket.atMs >= toMs || bucket.events === 0)) throw new Error("invalid application telemetry window");
+  return { provenance: "application", fromMs, toMs, stepMs, totals: root.totals === null ? null : totals(root.totals), buckets, operations, recent, moreOperations: boolean(root.moreOperations), moreRecent: boolean(root.moreRecent) };
+}
+
+export function getApplicationTelemetry(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<import("../observe/application/telemetry.ts").ApplicationTelemetry> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationTelemetry, signal);
+}

@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { SELF, createExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/cloudflare/index";
 import { gatewayHeaders } from "./gateway-headers";
@@ -11,11 +11,11 @@ describe("Gateway authorization", () => {
   it("reports unavailable bindings without accessing providers and rejects forged identities", async () => {
     const env = { GATEWAY_SECRET: "secret" } as Env;
     const request = (headers: Record<string, string>) => new Request("https://example.com/api/v1/capabilities", { headers });
-    const response = await worker.fetch(request({ "Stats-Gateway-Secret": "secret", "Stats-Tailnet-Identity": "user:test@example.com" }), env);
+    const response = await worker.fetch(request({ "Stats-Gateway-Secret": "secret", "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext());
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
-    expect((await worker.fetch(request({ "Stats-Gateway-Secret": "wrong", "Stats-Tailnet-Identity": "user:test@example.com" }), env)).status).toBe(401);
-    expect((await worker.fetch(request({ "Stats-Tailnet-Identity": "user:test@example.com" }), env)).status).toBe(401);
+    expect((await worker.fetch(request({ "Stats-Gateway-Secret": "wrong", "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext())).status).toBe(401);
+    expect((await worker.fetch(request({ "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext())).status).toBe(401);
   });
   it("accepts gateway-asserted users and tagged machines and rejects forged or missing assertions", async () => {
     expect((await api()).status).toBe(401);

@@ -19,9 +19,9 @@ await test("application telemetry summarizes the full window with bounded detail
   try {
     for (let start = 0; start < 6000; start += 100) {
       const batch = Array.from({ length: 100 }, (_, index) => event(start + index));
-      await ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
+      ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
     }
-    await ingestExternal(db, "other", await receiveEvents("other", [event(0, "other")]), T0);
+    ingestExternal(db, "other", await receiveEvents("other", [event(0, "other")]), T0);
     const result = readApplicationTelemetry(db, "stats", T0, { fromMs: T0 - H, toMs: T0 });
     assert.equal(result.totals?.events, 6000);
     assert.equal(result.totals?.failed, 3000);
@@ -47,7 +47,7 @@ await test("application telemetry uses a half-open window and rejects malformed 
   const db = database();
   try {
     const batch = [event(0), { ...event(1), atMs: T0 }];
-    await ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
+    ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
     const result = readApplicationTelemetry(db, "stats", T0, { fromMs: T0 - H, toMs: T0 });
     assert.equal(result.totals?.events, 1);
     const store = createObserveService(db, { now: () => T0, databaseBytes: () => 0 });

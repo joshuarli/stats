@@ -9,8 +9,14 @@ import { isObservedService } from "../observe/services.ts";
 import { rolloutsFromDeployments } from "../observe/cloudflare/rollouts.ts";
 import { decodeDeploymentHistory } from "../deployments/decode.ts";
 import { handleStatsRequest } from "../core/http.ts";
+import { captureApplicationRequest } from "../observe/application/http.ts";
+import type { RuntimeCapabilities } from "../core/capabilities.ts";
 
 export { Installation };
+
+function capabilities(env: Env): RuntimeCapabilities {
+  return { analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
+}
 
 async function forwardProjectRollouts(env: Env, store: DurableObjectStub<Installation>, project: string, service: string): Promise<void> {
   try {
@@ -31,10 +37,10 @@ async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>)
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     markInvocation();
-    return handleStatsRequest(request, {
-      capabilities: { analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true },
+    const run = () => handleStatsRequest(request, {
+      capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request("https://installation/ingest/observe-auth", {
@@ -50,6 +56,11 @@ export default {
       assets: asset => env.ASSETS.fetch(asset),
       observe: (target, init) => env.OBSERVE.fetch(target, init)
     });
+    if (env.APPLICATION_EVENTS_RELEASE === undefined) return run();
+    return captureApplicationRequest(request, run, {
+      release: env.APPLICATION_EVENTS_RELEASE, now: () => Date.now(), monotonic: () => performance.now(), waitUntil: promise => { ctx.waitUntil(promise); },
+      post: async body => (await env.OBSERVE.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) }))).ok
+    });
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
@@ -60,6 +71,7 @@ export default {
         ? Promise.resolve(null)
         : runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, storeWorker: env.WORKER_NAME, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
       (async () => {
+        if (!capabilities(env).cloudflareDeployments) return;
         try {
           await collectDeployments({
             projects: parseProjects(env.PROJECTS),

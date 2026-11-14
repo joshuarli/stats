@@ -6,6 +6,13 @@ OpenOrange deployment. Imported project deployments remain historical data.
 Use [service operations](operations.md#services-and-deploy-markers) for current
 application deployment markers.
 
+The default native Projects dashboard uses registered services, application
+events and these service markers. Successful OpenOrange activations are
+recorded by the shared host helper after health checks, including healthy
+rollbacks. Marker identity includes the selected node version, so returning to
+an earlier release records a separate deployment. Request status and elapsed
+work are available independently of Cloudflare analytics and billing.
+
 Project and service list responses carry optional `latestDeployment` summaries.
 They distinguish an available latest item, no retained deployment and unavailable
 data. Overview rows use those summaries; detail and comparison views use full

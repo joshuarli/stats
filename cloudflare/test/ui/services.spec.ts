@@ -454,3 +454,31 @@ test("failed historical probes show data availability without claiming current h
   await expect(page.locator(".service-facts")).toContainText("Health probe data: available");
   await expect(page.locator(".service-facts")).not.toContainText("Health: up");
 });
+
+test("native projects show service deployments, application requests, errors and signal charts without Cloudflare reads", async ({ page }) => {
+  await installation.observe.forService("web").ingestExternal("web", [
+    { schemaVersion: 1, eventId: "native-http-1", atMs: NOW - 60_000, operation: "http.get.notes", outcome: "ok", durationMs: 17, work: { http_status: 200 }, release: "1.1.0", service: "web" },
+    { schemaVersion: 1, eventId: "native-http-2", atMs: NOW - 30_000, operation: "http.post.notes", outcome: "error", durationMs: 29, work: { http_status: 503 }, error: { code: "notes.failed" }, release: "1.1.0", service: "web" }
+  ]);
+  const reads: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/")) reads.push(new URL(request.url()).pathname); });
+  await page.goto(`${origin}/#/projects?range=6h`);
+  await expect(page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true })).toBeVisible();
+  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
+  await expect(page.getByText("http.get.notes", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Deployments release markers/u }).click();
+  await expect(page.getByRole("button", { name: /1.1.0/u }).first()).toBeVisible();
+  await page.getByRole("button", { name: /^Requests recent/u }).click();
+  const recent = page.getByRole("table", { name: "Recent application events" });
+  await expect(recent.getByRole("row", { name: /http.post.notes/u })).toContainText("http_status: 503");
+  await expect(recent.getByRole("row", { name: /http.get.notes/u })).toContainText("17");
+  await page.getByRole("button", { name: /^Signals events/u }).click();
+  await expect(page.getByRole("img", { name: /^Application event counts/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^HTTP response status/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^Application event mean wall time/u })).toBeVisible();
+  await page.getByRole("button", { name: /^Errors issues/u }).click();
+  await expect(page.getByText("notes.failed", { exact: true }).first()).toBeVisible();
+  expect(reads.some(path => path.endsWith("/external/telemetry"))).toBe(true);
+  expect(reads.some(path => path.startsWith("/api/v1/projects") || /\/(explore|traces|rollouts)(\/|$)/u.test(path))).toBe(false);
+});

@@ -54,10 +54,11 @@ export function toApplicationEvent(summary: OperationSummary, options: Applicati
   };
 }
 
-function postEvent(event: ExternalEvent, options: ApplicationEventSinkOptions): void {
-  const promise = options.post({ events: [event] }).then(ok => { if (!ok) console.error(JSON.stringify({ event: "application_event_failed", message: "ingest did not accept the event" })); return ok; });
+export function postApplicationEvent(event: ExternalEvent, options: ApplicationEventSinkOptions): void {
+  const promise = Promise.resolve().then(() => options.post({ events: [event] })).then(ok => {
+    if (!ok) console.error(JSON.stringify({ event: "application_event_failed" }));
+  }).catch(() => { console.error(JSON.stringify({ event: "application_event_failed" })); });
   if (options.waitUntil !== undefined) options.waitUntil(promise);
-  void promise.catch((error: unknown) => console.error(JSON.stringify({ event: "application_event_failed", message: error instanceof Error ? error.message : String(error) })));
 }
 
 export function applicationEventErrorReporter(options: ApplicationEventSinkOptions): (message: unknown) => void {
@@ -67,13 +68,13 @@ export function applicationEventErrorReporter(options: ApplicationEventSinkOptio
     if (typeof report.operation !== "string" || !ERROR_CODE.test(report.operation) || typeof report.name !== "string" || typeof report.message !== "string" || (report.stack !== null && typeof report.stack !== "string")) return;
     const diagnostics = diagnosticsOf({ version: 1, name: report.name, message: report.message, frames: report.stack?.split("\n") ?? [] });
     if (diagnostics === null) return;
-    postEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs: options.now(), operation: report.operation, outcome: "error", durationMs: 0, work: {}, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE, error: { code: report.operation }, diagnostics }, options);
+    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs: options.now(), operation: report.operation, outcome: "error", durationMs: 0, work: {}, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE, error: { code: report.operation }, diagnostics }, options);
   };
 }
 
 export function applicationEventOperations(options: ApplicationEventSinkOptions): OperationSink {
   return {
     invocation: () => {},
-    operation: summary => postEvent(toApplicationEvent(summary, options), options)
+    operation: summary => postApplicationEvent(toApplicationEvent(summary, options), options)
   };
 }

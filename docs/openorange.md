@@ -17,6 +17,30 @@ This page covers what Stats owns.
 | Durable state | `Installation` and one `ObservationStore` per service, as Rivet actors in namespace `stats-prod` |
 | Access | The ingress asserts `Stats-Tailnet-Identity` with the per-app `GATEWAY_SECRET`; ingest and deploy markers keep their bearer tokens |
 
+## Project telemetry
+
+The default Projects view lists registered services and reads their native
+deployment markers and application events. Overview shows operation counts;
+Requests shows the newest 50 events; Signals charts counts, reported HTTP
+statuses and elapsed wall time. Errors retains issue triage and diagnostics.
+Range and zoom apply within the seven-day event retention. Missing intervals
+stay gaps. The API is `GET /api/observe/NAME/external/telemetry?from=MS&to=MS`;
+totals cover the whole window while operation and recent-event detail are capped.
+
+Stats captures HTTP status and time to response headers under bounded route
+labels. It excludes health checks and application-event ingest, and records no
+request URLs, query strings, headers or bodies. Delivery runs in the request's
+`waitUntil` with a five-second timeout and logs a bounded failure code; it does
+not block the response or retry failed request events. Accepted events persist
+in the observation actor. Other applications appear when they report events
+through the producer SDK.
+
+Cloudflare analytics, tail capture, deployment polling and cost views remain in
+the Cloudflare adapter. The generated OpenOrange descriptors disable those
+provider bindings; native views use application events without CPU or billing
+estimates. Selecting a Cloudflare deployment with those capabilities enabled
+restores its existing project views.
+
 ## Deploy
 
 ```sh
@@ -26,6 +50,13 @@ make stats-deploy ORANGE_HOST=lisa
 The deploy script builds a committed tree, conditionally selects its image,
 restarts Stats and runs health and live smoke checks. Failure restores the
 previous image only if this deployment still owns the selected image.
+Successful activations and healthy rollbacks are recorded through the shared
+host's `oo record-deployment` helper. Provision the Stats service's protected
+deploy credential on the host as described in
+[deployment markers](https://github.com/laputa-systems/stuff/blob/main/deploy/openorange/DEPLOYMENTS.md).
+Delivery failures retain the exact marker for `oo sync-deployments stats` and
+leave the healthy app selected. Repeated releases after a rollback get a new
+marker because the selected node version changes.
 Read the selection with `ssh lisa doas -n /opt/openorange/bin/oo deployment stats`.
 For manual rollback, conditionally select the previous image with
 `oo set-image stats PREVIOUS --if-current CURRENT`, then restart `oo-app.stats`.

@@ -12,15 +12,14 @@ import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";
 import "./observe.css";
 
-import type { ObservedService } from "../../../observe/services";
 const TRACE_ID = /^[0-9a-f]{32}$/u;
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 export const MOMENT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 export type ObserveRead = <T>(path: string, signal: AbortSignal, decode: (value: unknown) => T) => Promise<T>;
 
-function observeBase(service: ObservedService): string {
-  return `/api/observe/${service}`;
+function observeBase(service: string): string {
+  return `/api/observe/${encodeURIComponent(service)}`;
 }
 
 async function readFrom<T>(base: string, path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
@@ -87,7 +86,7 @@ function modalParam(view: ModalView | undefined): string | null {
 }
 
 export function createObservability(
-  service: ObservedService,
+  service: string,
   refreshKey: () => string,
   windowKey: () => string,
   windowAt: () => TimeWindow,
