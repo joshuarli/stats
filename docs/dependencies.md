@@ -1,6 +1,9 @@
 # Dependencies and toolchain
 
-Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm from `package.json` (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Build and deploy use `cloudflare.config.ts`, `vite.config.ts`, and `cf`; the project declares no Wrangler dependency and never runs the Wrangler CLI.
+Pins: Rust `nightly-2026-09-15` (`rust-toolchain.toml`), Node from `.node-version`, pnpm from `package.json` (both enforced by `make node-ready`), and the laputa-systems LLVM musl toolchain `llvm-musl-23.1.5-c4f9b08` plus an Alpine 3.23 image, rustup 1.29.3 and the pinned Rust inside it (all pinned in `agent/scripts/build-static.sh` and `agent/build/Dockerfile`). Every npm dependency is pinned exactly in `cloudflare/package.json`. Builds use `cloudflare.config.ts`, `vite.config.ts`, and `cf`.
+OpenOrange descriptors derive from that typed build output. Deployment uses
+`deploy/orange/build-image.sh` and the shared host stack. The project declares
+no Wrangler dependency and never runs the Wrangler CLI.
 
 ## Agent crates
 
@@ -44,8 +47,9 @@ build-time and image-size effects.
 
 ## Build tools
 
-The Worker/dashboard build uses Vite and `cf deploy --prebuilt` uploads its
-Build Output. The CLI and Node server also use Vite SSR builds, configured by
+The Worker/dashboard build uses Vite. `deploy/orange/generate.mts` maps its
+Build Output into OpenOrange descriptors and rejects unsupported fields.
+The CLI and Node server also use Vite SSR builds, configured by
 `cloudflare/vite.statsctl.config.ts` and `cloudflare/vite.node.config.ts`.
 esbuild is no longer a direct dependency; the test plugin and its Wrangler
 dependency still bring it in. Stats does not invoke the Wrangler CLI or ship
@@ -115,38 +119,41 @@ runtime; the `stats` Worker and dashboard do not include it.
 `@jridgewell/sourcemap-codec` is a direct dev dependency at the same
 version so tests can build small maps.
 
-## Rivet 3 / OpenOrange for the local default and single-host self-host (declined 2026-11-13)
+## OpenOrange runtime
 
-Evaluated as a `make dev` replacement and as a single-host self-host path.
-The Cloudflare path remains the default everywhere; the self-host path as
-specified is rejected. The portable behavior matched the baseline (1444/1444
-parity assertions) and a 100-cycle / 30-minute soak passed with zero
-rejected samples, but:
+The owner selected self-hosted OpenOrange on 2026-11-13. `make dev` uses
+Orange locally. Production runs on Linux x86_64 on `lisa` behind the tailnet
+gateway. Deployment and recovery commands are in [openorange.md](openorange.md).
 
-- The required backup/restore behavior fails: OpenOrange exposes no
-  supported consistent export, so a fresh-namespace restore cannot be
-  produced. The only demonstrated restore was a same-namespace
-  stop-the-world copy of the state directory.
-- The performance hurdle was never honestly evaluable: no candidate
-  dev-loop bench arm exists, so adoption could not be justified on speed.
-- The pinned line is a pre-release (`3.1.2-rc.1`), proven on macOS ARM64
-  only, and `@rivet-dev/services` was `UNLICENSED` (unused, optional).
+`deploy/orange/package.json` and its lockfile isolate open-orange 1.0.2,
+rivetkit 3.1.2-rc.1, and `@rivet-dev/services` 0.2.5. The application image
+pins Node 26.13.1 Debian by digest. Rivet's services binary requires glibc,
+so the application image uses Debian even though the host runs Alpine.
+The shared Engine and object-store image pins belong to
+`stuff/deploy/openorange/images.lock.json`.
 
-Revisit if upstream ships a supported consistent export
-(tracking: <https://github.com/rivet-dev/open-orange/issues/24>): prove a
-fresh-namespace restore on Linux, re-run the resilience soak, and add a
-candidate dev-loop bench phase before re-evaluating adoption. The full
-evidence and verdict record live in git history at `9f1b43c`
-(`docs/rivet-openorange-evaluation.md`); the evaluation closure was
-removed rather than parked in-tree.
+The release-candidate runtime remains pinned. Application state stays in
+`Installation` and per-service `ObservationStore` objects. A versioned logical
+export restores into a fresh namespace independently of Engine directories.
+`make orange-test` verifies restore, resumed import, duplicate/conflict
+handling, persistent history, and caught-error diagnostics across restart.
+OpenOrange's tail shim supplies neither real CPU measurements nor caught-error
+stacks. Stats sends application events with portable diagnostics instead.
+
+The earlier evaluation at `9f1b43c` (`docs/rivet-openorange-evaluation.md`)
+proved 1,444 portable assertions and a reload soak on macOS ARM64. That
+evaluation did not prove independent restore. Its rejection and performance
+adoption gate were superseded by the owner decision and the implemented
+logical recovery path. The historical evidence remains in Git.
 
 ## Alchemy for deployment (declined 2026-11-07)
 
-Stats stays on `cf` and `cloudflare.config.ts` rather than adopting Alchemy as
-infrastructure as code. The config is already typed and declarative: the
-SQLite `Installation` Durable Object, every binding, the crons and the tail
-consumer. The only orchestration is deploying `stats-observe` before `stats`
-and reading the new version ID for source-map upload.
+Alchemy was declined for the former Cloudflare deployment. The typed
+`cloudflare.config.ts` remains the build configuration; the OpenOrange
+generator and shared host stack now own deployment. At the time of that
+evaluation, `cf` declared the SQLite `Installation` object, bindings, crons,
+and tail consumer. Deployment uploaded `stats-observe` before `stats` and
+used the new version ID for source-map upload.
 
 Alchemy would cost more than it saves here:
 

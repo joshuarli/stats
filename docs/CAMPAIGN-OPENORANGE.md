@@ -9,14 +9,21 @@ revision), whose evidence is reused below.
 
 ## Status
 
-Stats production moved to OpenOrange on 2026-11-14 at 06:00 UTC (record and
-rollback in [openorange.md](openorange.md)). Accepted: S2, S7, S1, S4, and
-the Stats part of S10 (image `stats:2a3745f2aa5e`, namespace `stats-prod`,
-ACME certificates, DNS-only record). Cloudflare `stats`/`stats-observe` stay
-deployed and fenced as the rollback source. Next: S5 (caught-error
-diagnostics, unsupported provider metrics in the UI), S6 (`make dev` on
-Orange), S11 (tansu tunnel retirement), then Stuff S8/S9, Discover S13 and
-fleet standards S12.
+Stats production runs on OpenOrange on `lisa` (cutover 2026-11-14 at
+06:00 UTC; record and rollback in [openorange.md](openorange.md)). The live
+image is `stats:f5634ec4e719` in namespace `stats-prod`, with ACME and a
+DNS-only record. S1–S7 and the Stats cutover landed. Orange integration
+checks cover fresh-namespace recovery, interrupted-import resume, exact
+ingest/replay, durable history, and caught-error stacks across restart.
+The deployed smoke passes. Cloudflare `stats` and `stats-observe` remain
+fenced as the rollback source.
+
+Stuff S8 serving and S9 copy tooling landed in `~/d/stuff` at `e50756c`.
+Its production image packaging is next, followed by the publication
+coordinator, real-store migration rehearsal and registry cutover. Stuff and
+Discover have no deployed Orange images yet. Remaining: S11 (Tansu tunnel
+retirement), S12 (fleet standards), S13 (Discover migration), and unsupported
+provider capability presentation. The campaign remains open.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 
