@@ -98,7 +98,7 @@ and keeps `seq` unique.
 The same request handler runs on OpenOrange and the reference Cloudflare
 topology. Provider-specific collection and tail behavior below apply only to
 the Cloudflare adapter. Production capabilities are described in
-[OpenOrange](openorange.md#not-carried-over).
+[OpenOrange](openorange.md#retained-cloudflare-adapter).
 
 `handleStatsRequest` in `cloudflare/src/core/http.ts` is the whole routing
 table; `cloudflare/src/cloudflare/index.ts` calls it with the gateway identity check as the auth

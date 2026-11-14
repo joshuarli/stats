@@ -104,6 +104,16 @@ tailnet device; it sends no credential:
 
 ```sh
 pnpm --dir cloudflare -s statsctl help workflow
+pnpm --dir cloudflare -s statsctl service inspect --service stats --json
+pnpm --dir cloudflare -s statsctl service deployments --service stats --json
+pnpm --dir cloudflare -s statsctl verify --service stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/service-example.json --json
+```
+
+Native deployments use registered services and application events. See
+[project telemetry](openorange.md#project-telemetry) for request and signal reads.
+The retained Cloudflare adapter uses project histories instead:
+
+```sh
 pnpm --dir cloudflare -s statsctl health --project stats --json
 pnpm --dir cloudflare -s statsctl deployments --project stats --json
 pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/example.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
@@ -111,15 +121,17 @@ pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT
 
 `statsctl help workflow` holds the full recipes and `statsctl help verify`
 the policy fields; this page does not copy them. The same binary also runs as
-`node --experimental-strip-types cloudflare/src/cli/statsctl.ts`. Run `health`
-first and fix anything unhealthy before trusting a verdict. Exit codes: 0 read
+`node --experimental-strip-types cloudflare/src/cli/statsctl.ts`. For Cloudflare
+projects, run `health` first and resolve unhealthy sources before trusting a verdict.
+That command judges provider collection and tail data, which are unavailable on
+the default OpenOrange deployment. Exit codes: 0 read
 succeeded or improved, 2 usage, 3 authentication, 4 transport or contract
 failure, 5 pending or insufficient data, 6 unchanged or confounded, 7
 regressed, 8 `observe rollouts` found settled rollouts to look at. `--json` prints one `statsctl/1` document. Resumable verdict state
 and snapshots live under `.work/statsctl/`. `https://stats.17166969.xyz` and loopback origins are the orange target, tailnet
 names are Node origins, and any other origin needs `STATSCTL_TARGET`.
 
-### Checking settled rollouts
+### Checking Cloudflare tail rollouts
 
 ```sh
 pnpm --dir cloudflare -s statsctl observe rollouts --settle 3h --within 24h --json

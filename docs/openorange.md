@@ -110,24 +110,33 @@ namespaces are gone, so a DNS reversal cannot restore those stores.
 The source cutover export is at `/Users/josh/backups/openorange/stats/source-cutover`;
 all 10 objects and 627,253 rows were reverified. Recover by importing a logical
 backup into a fresh OpenOrange namespace. This cutover export predates subsequent
-Orange writes. A fresh full logical export was aborted after three minutes and
-writes were reopened. Subsequent physical snapshot `20261114T184204Z` passed
-independent Engine/S3 restoration and an off-host SHA-256 check. Its protected
+Orange writes. Physical snapshot `20261114T184204Z` passed independent Engine/S3
+restoration and an off-host SHA-256 check. Its protected
 Mac copy is `/Users/josh/backups/openorange/lisa/post-stuff-cutover/state.tar`;
 the shared-stack runbook records recovery tooling and the archive digest.
 
-## Not carried over
+The later fenced snapshot `20261114T214525Z` includes the native deployment
+outbox and delivery receipts. Its 76,609 files are preserved in
+`/Users/josh/backups/openorange/lisa/post-native-observability/state.tar.gz`.
+The 5,112,712,834-byte Mac archive matches Lisa's SHA-256:
+`7a7b33689724196b34f22291d1642c742541efa3bbf963de8e5eeba2676db8ca`.
+Matching runtime images and restore instructions are under
+`/Users/josh/backups/openorange/stats/native-observability/`.
+Restore the selected image, node version and marker state from the same snapshot.
+The recovery notes distinguish that snapshot's Stats image from the newer
+production image. Writes after the fence are outside this backup.
 
-- Cloudflare project collection (Analytics SQL) is skipped: project cost and
-  traffic charts for `stuff`, `usr-memories`, `nanoshop-storied`, `discover`
-  and `discover-preview` stop at the cutover. Their project probes ran inside
-  the same collector and stopped too.
-- The old Cloudflare tail consumer references were removed before the Workers
-  were deleted. Cloudflare tail events are not collected on OpenOrange.
-- OpenOrange tails report zero CPU and no diagnostics, so Stats' own operations
-  arrive as application events with wall-clock durations, not platform CPU.
+## Retained Cloudflare adapter
 
-The authenticated `/api/v1/capabilities` endpoint reports provider collection and tail events unavailable on OpenOrange. Imported project history remains readable; the collector status does not describe that retained data as live.
+OpenOrange skips Cloudflare Analytics SQL, provider deployment polling, tail
+capture and the project probes that ran inside the provider collector. Imported
+Worker, R2, D1 and cost histories remain historical. The Cloudflare adapter keeps
+its collection and billing implementation for a separate provider deployment.
+
+The Orange tail shim supplies no usable CPU or caught-error diagnostics.
+Stats reports its operations, HTTP requests and errors through application
+events instead. The default Projects dashboard uses those native events and
+service markers. `/api/v1/capabilities` reports the enabled sources.
 
 ## Shared migration recovery
 

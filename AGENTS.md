@@ -17,7 +17,7 @@ make lint              # type-aware Oxlint
 make check             # release gate; offline network sandbox is macOS-only
 make stats-deploy      # deploy stats; observation receiver must already be compatible
 pnpm --dir cloudflare -s statsctl help workflow
-pnpm --dir cloudflare -s statsctl health --project stats --json
+pnpm --dir cloudflare -s statsctl service inspect --service stats --json
 pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json
 ```
 
