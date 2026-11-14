@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.head_ref || github.run_id }}"
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
+env:
+  TMPDIR: ${{ github.workspace }}/.work/tmp
+  PNPM_CONFIG_STORE_DIR: ${{ github.workspace }}/.work/tmp/pnpm-store
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
+        with:
+          version: 12.21.0
+          runtime: node@26.13.1
+          install: false
+
+      - name: Install dependencies
+        run: |
+          mkdir -p .work/tmp
+          pnpm install --frozen-lockfile
+
+      - name: Check fixtures
+        run: node scripts/check-fixtures.mjs
+
+      - name: Agent tests
+        run: cd agent && cargo test --all-targets
+
+      - name: Telemetry typecheck and tests
+        run: |
+          pnpm --filter @stats/telemetry typecheck
+          pnpm --filter @stats/telemetry test
+
+      - name: Dashboard tests
+        run: |
+          pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
+          pnpm --filter @stats/telemetry build:all
+          pnpm --filter @stats/telemetry test:ui
