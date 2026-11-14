@@ -6,9 +6,23 @@ Host and application telemetry for one owner, running on OpenOrange. Data and as
 
 From a device on the owner's tailnet, send no credential:
 
-    curl -s https://stats.17166969.xyz/api/v1/projects
+    curl -s https://stats.17166969.xyz/api/v1/services
 
 A request that does not come through the gateway answers 401. Errors are `{"error":{"code","message"}}`. Do not call the `/admin/*` routes; they create, rotate, revoke, and purge hosts and services.
+
+## Native projects and application events
+
+OpenOrange projects are registered services. Read capabilities first; the default enables applicationEvents and disables analyticsCollection, cloudflareDeployments and tailEvents.
+
+    GET /api/v1/services
+    GET /api/v1/services/:name/deployments
+    GET /api/v1/services/:name/deployments/:id/comparison?window=1h|6h|24h
+    GET /api/observe/:name/external/telemetry?from=MS&to=MS
+    GET /api/observe/:name/issues
+
+Service lists include bounded latestDeployment summaries. Native deployment markers record verified activations, including rollbacks. Comparisons remain pending until their measurement windows fill.
+
+Application telemetry retains seven days. Its provenance is application; totals summarize all events in the half-open window, buckets are sparse, operations lists the 20 busiest operations, and recent contains the newest 50 event records. moreOperations and moreRecent indicate omitted detail. Empty totals is null; missing buckets are gaps. HTTP events carry work.http_status and elapsed time to response headers. Other events report application work. durationMsSum divided by events is mean event wall time, including waits, not CPU time. Request URLs, headers, query strings and bodies are never captured. Cancelled requests have no invented HTTP status. Accepted events persist; failed request-event delivery is best effort.
 
 ## Projects (Cloudflare Workers and R2)
 
