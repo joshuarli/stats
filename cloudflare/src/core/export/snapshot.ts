@@ -54,18 +54,17 @@ function quote(name: string): string {
   return `"${name}"`;
 }
 
-function ensureControl(sql: SqlDatabase): void {
+export function initializeMaintenance(sql: Pick<SqlDatabase, "run">): void {
   sql.run(`CREATE TABLE IF NOT EXISTS ${MAINTENANCE_TABLE} (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL CHECK (state IN ('fenced', 'importing'))) STRICT`);
   sql.run(`CREATE TABLE IF NOT EXISTS ${IMPORT_TABLE} (table_name TEXT PRIMARY KEY, manifest TEXT NOT NULL, rows INTEGER NOT NULL) STRICT`);
 }
 
 export function maintenanceState(sql: SqlDatabase): MaintenanceState {
-  ensureControl(sql);
   return sql.rows<{ state: MaintenanceState }>(`SELECT state FROM ${MAINTENANCE_TABLE} WHERE id = 1`)[0]?.state ?? "open";
 }
 
 export function setFence(sql: SqlDatabase, fenced: boolean): MaintenanceState {
-  ensureControl(sql);
+  initializeMaintenance(sql);
   const state = maintenanceState(sql);
   if (state === "importing") throw new SnapshotError("maintenance", "an import is in progress");
   if (fenced) sql.run(`INSERT OR REPLACE INTO ${MAINTENANCE_TABLE} (id, state) VALUES (1, 'fenced')`);
@@ -207,7 +206,7 @@ export interface ImportProgress {
 }
 
 export function importProgress(sql: SqlDatabase): readonly ImportProgress[] {
-  ensureControl(sql);
+  initializeMaintenance(sql);
   return sql.rows<{ table_name: string; rows: number }>(`SELECT table_name, rows FROM ${IMPORT_TABLE} ORDER BY table_name`).map(row => ({ table: row.table_name, rows: row.rows }));
 }
 

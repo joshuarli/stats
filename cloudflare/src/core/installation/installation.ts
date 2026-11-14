@@ -1,3 +1,5 @@
+import { handleMaintenance, maintenanceDenial } from "../export/http.ts";
+import { initializeMaintenance, maintenanceState } from "../export/snapshot.ts";
 import { bearerToken, constantTimeEqual, generateHostId, generateToken, tokenHash } from "../../auth.ts";
 import { canonicalJson, type Sample, type SystemInfo } from "../../protocol.ts";
 import { decodeFrame } from "../../ingest/frame.ts";
@@ -112,6 +114,11 @@ export class InstallationCore {
     const sql = this.ports.sql.open();
     migrate(sql);
     initializeDeployments(sql);
+    initializeMaintenance(sql);
+  }
+
+  private assertOpen(sql: SqlDatabase): void {
+    if (maintenanceState(sql) !== "open") throw new Error("installation is paused for maintenance");
   }
 
   private invalidateHistory(): void {
@@ -391,6 +398,7 @@ export class InstallationCore {
     const operation = this.operationRun();
     operation.describe(() => ({ operation: "deployments.poll", synthetic: false }));
     try {
+      this.assertOpen(operation.sql);
       if (!parseProjects(this.config.projects()).some(item => item.id === poll.project && item.worker === poll.worker)) throw new Error("unknown deployment project");
       if (!Number.isSafeInteger(poll.atMs) || poll.atMs < 0 || poll.deployments.length > 300 || poll.versions.length > 4) throw new Error("invalid deployment poll");
       saveDeploymentPoll(operation.sql, poll);
@@ -403,6 +411,7 @@ export class InstallationCore {
   async recordCollectorRun(run: CollectorRun): Promise<{ metricRowsWritten: number }> {
     const operation = this.operationRun();
     try {
+      this.assertOpen(operation.sql);
       const result = await this.storeCollectorRun(operation, run);
       if (run.ok) {
         try {
@@ -456,6 +465,7 @@ export class InstallationCore {
   async alarm(): Promise<void> {
     const operation = this.operationRun();
     try {
+      if (maintenanceState(operation.sql) !== "open") return;
       try {
         purgeDeployments(operation.sql, this.now());
         purgeServiceDeployments(operation.sql, this.now());
@@ -628,6 +638,16 @@ export class InstallationCore {
     const deployments = /^\/projects\/([a-z][a-z0-9-]{0,31})\/deployments(?:\/([0-9a-f-]{36})\/comparison)?$/i.exec(url.pathname);
     const operation = this.operationRun();
     try {
+      if (url.pathname.startsWith("/admin/")) {
+        const maintained = await handleMaintenance(request, url.pathname.slice("/admin".length), {
+          name: "installation", sql: operation.sql, now: () => this.now(),
+          alarmAtMs: () => this.ports.scheduler.pending(),
+          rearm: () => this.ensureAlarm(this.now())
+        });
+        if (maintained !== null) return maintained;
+      }
+      const denied = maintenanceDenial(operation.sql, request.method);
+      if (denied !== null) return denied;
       if (deployments !== null) return await this.deploymentsApi(request, url, deployments, operation);
       return await this.route(request, operation);
     } finally {
