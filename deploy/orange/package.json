@@ -1,0 +1,16 @@
+{
+  "name": "@stats/orange",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.20.0",
+  "description": "Pinned OpenOrange runtime closure for Stats; installed with --ignore-workspace so it stays out of the application lockfile.",
+  "engines": {
+    "node": ">=26.13.1 <26.14.0"
+  },
+  "dependencies": {
+    "open-orange": "1.0.2",
+    "rivetkit": "3.1.2-rc.1",
+    "@rivet-dev/services": "0.2.5"
+  }
+}
