@@ -44,6 +44,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Topic | Doc |
 | --- | --- |
 | Agent installation, configuration and dashboard use | [README](README.md) |
+| OpenOrange deployment, backup/restore, cutover record and rollback | [OpenOrange](docs/openorange.md) |
 | Host wire format, validation and rate semantics | [Protocol](docs/protocol.md) |
 | Binary ingest and history rationale, measurements and limits | [Ingest](docs/binary-ingest.md), [history](docs/binary-history.md) |
 | Components, routes, auth, storage, rollups and frontend constraints | [Architecture](docs/architecture.md) |

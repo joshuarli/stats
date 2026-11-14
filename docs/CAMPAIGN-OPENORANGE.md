@@ -9,16 +9,14 @@ revision), whose evidence is reused below.
 
 ## Status
 
-Accepted: S2 (`d56da0c8`, tailnet gateway identity), S7 (stuff `6db7ed3`,
-shared stack on `lisa`), S1 (`f0667539`, descriptors and `make orange-pilot`),
-S4 (`7e4ac3dd`, fenced export/import, `make orange-test` restores into a fresh
-namespace). Staging: image `stats:9ec6d1e7d059` (Node 26.13.1 Debian, pinned
-digest) runs both Workers in namespace `stats` on `lisa` behind the ingress
-(internal CA); verified with `--resolve` from the Mac: identity, forged-header
-401, STB2 ingest with acks and duplicate replay, history, persistence across
-an app restart. The staging namespace now holds a probe host, so the cutover
-import targets a fresh namespace. Next: S5/S6, then the Cloudflare-side export
-build for S10. Production has not moved.
+Stats production moved to OpenOrange on 2026-11-14 at 06:00 UTC (record and
+rollback in [openorange.md](openorange.md)). Accepted: S2, S7, S1, S4, and
+the Stats part of S10 (image `stats:2a3745f2aa5e`, namespace `stats-prod`,
+ACME certificates, DNS-only record). Cloudflare `stats`/`stats-observe` stay
+deployed and fenced as the rollback source. Next: S5 (caught-error
+diagnostics, unsupported provider metrics in the UI), S6 (`make dev` on
+Orange), S11 (tansu tunnel retirement), then Stuff S8/S9, Discover S13 and
+fleet standards S12.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 
@@ -72,8 +70,6 @@ Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is r
 
 ## Needs environment / owner
 
-- A Cloudflare API token limited to DNS edit on `17166969.xyz`, saved on
-  `lisa` as `/etc/openorange/cloudflare-dns.env`, for ACME DNS-01 and records.
 - The Discover tunnel (cloudflared on `lisa` to `127.0.0.1:18480`) and split
   DNS so tailnet clients reach Discover hostnames on the tailnet address.
 - Tailnet policy grants for tagged machines, and one tagged device to prove it.
