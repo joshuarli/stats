@@ -476,3 +476,5 @@ on every run, not for speed.
 Measurement caveat: an unrelated benchmark was running on the host, with a
 load average between 3.7 and 10.5 on 18 cores. The sides were interleaved, so
 read the absolute times as inflated and the ratios as indicative.
+
+The development-loop test runs OpenOrange with isolated persisted state; local stack tests retain Miniflare for Cloudflare producer coverage.
