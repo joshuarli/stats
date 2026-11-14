@@ -10,7 +10,7 @@ rm -rf "$context"
 mkdir -p "$context/orange"
 (cd cloudflare && pnpm -s build && pnpm -s run build:observe) >&2
 node --experimental-strip-types deploy/orange/generate.mts --out "$context/app" --release "stats-$release" >&2
-cp deploy/orange/package.json deploy/orange/pnpm-lock.yaml deploy/orange/pnpm-workspace.yaml deploy/orange/.npmrc deploy/orange/Dockerfile "$context/orange/"
+cp deploy/orange/package.json deploy/orange/pnpm-lock.yaml deploy/orange/pnpm-workspace.yaml deploy/orange/Dockerfile "$context/orange/"
 mv "$context/orange/Dockerfile" "$context/Dockerfile"
 remote=".cache/stats-orange/$release"
 ssh "$host" "mkdir -p $remote"
