@@ -180,7 +180,8 @@ export function exportPage(sql: SqlDatabase, table: string, after: readonly SqlV
 }
 
 function normalized(definition: string): string {
-  return definition.replace(/\s+/gu, " ").replace(/\s*([(),])\s*/gu, "$1").trim();
+  const body = definition.slice(Math.max(0, definition.indexOf("(")));
+  return body.replace(/\s+/gu, " ").replace(/\s*([(),])\s*/gu, "$1").trim();
 }
 
 function sameShape(manifest: TableManifest, shape: TableShape): boolean {
