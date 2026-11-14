@@ -5,9 +5,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { createNetworkTracker, summarizeNetwork } from "./bench-network.mjs";
+import { isNative, nativeRoutes, selectRoutes, accountNetwork, validSamples } from "./bench-native-routes.mjs";
 import { attachPreviewFallbacks } from "./bench-preview-fallbacks.mjs";
 
-const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--fleet-sort-only] [--json] [--out PATH]";
+const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--fleet-sort-only] [--routes NAMES] [--service NAME] [--json] [--out PATH]";
 
 const args = process.argv.slice(2);
 function option(name, fallback) {
@@ -72,7 +73,8 @@ async function ensurePreview(url) {
   throw new Error(`preview did not become ready at ${activeBase}`);
 }
 
-const spawnedPreview = await ensurePreview(base);
+const explicitBase = option("--base", null) !== null || process.env.BASE !== undefined;
+const spawnedPreview = explicitBase ? null : await ensurePreview(base);
 const cleanupPreview = () => {
   if (spawnedPreview !== null) {
     try {
@@ -100,7 +102,11 @@ async function fetchOptionalJson(path, fallback) {
 
 const hosts = (await fetchJson("/api/v1/hosts")).hosts ?? [];
 if (args.includes("--fleet-sort-only") && hosts.length <= 10) throw new Error("fleet sort benchmark needs more than ten hosts");
-const projects = await fetchJson("/api/v1/projects");
+const capabilityProbe = await fetchOptionalJson("/api/v1/capabilities", null);
+if (explicitBase && capabilityProbe.missing) throw new Error("Capabilities endpoint is missing");
+const capabilities = capabilityProbe.value;
+const native = isNative(capabilities);
+const projects = native ? [] : await fetchJson("/api/v1/projects");
 const serviceProbe = await fetchOptionalJson("/api/v1/services", { services: [] });
 const rawServices = serviceProbe.value;
 const services = Array.isArray(rawServices) ? rawServices : (rawServices.services ?? []);
@@ -114,8 +120,9 @@ const fallbackServices = services.length > 0 ? services : (primaryHost === undef
   unit: "web.service",
   createdAtMs: primaryHost.createdAtMs
 }]);
-const primaryServiceName = fallbackServices[0]?.name ?? "web";
-const deploymentProbe = await fetchOptionalJson(`/api/v1/services/${encodeURIComponent(primaryServiceName)}/deployments`, {});
+const primaryServiceName = option("--service", fallbackServices[0]?.name ?? "web");
+if (native && !services.some(service => service.name === primaryServiceName)) throw new Error(`Unknown service: ${primaryServiceName}`);
+const deploymentProbe = explicitBase ? { missing: false } : await fetchOptionalJson(`/api/v1/services/${encodeURIComponent(primaryServiceName)}/deployments`, {});
 const missingPreviewEndpoints = { services: serviceProbe.missing, deployments: deploymentProbe.missing };
 
 function median(values) {
@@ -135,7 +142,7 @@ function spread(values) {
 }
 
 async function waitForSelector(page, selector) {
-  await page.waitForFunction(sel => document.querySelector(sel) !== null, selector, { timeout: 30_000 });
+  await page.locator(selector).first().waitFor({ state: "attached", timeout: 30_000 });
 }
 
 async function readCdpState(cdp) {
@@ -157,7 +164,9 @@ async function readCdpState(cdp) {
   };
 }
 
-function summarizeSamples(samples) {
+function summarizeSamples(allSamples) {
+  const samples = validSamples(allSamples);
+  if (samples.length === 0) return { validRuns: 0, failedRequestsByRun: allSamples.map(sample => sample.failedRequests), requestDetailsByRun: allSamples.map(sample => sample.requestDetails) };
   const numericKeys = [
     "fcpMs", "lcpMs", "readyMs", "ttfbMs",
     "jsBytes", "jsKb", "cssBytes", "cssKb", "apiBytes", "apiKb", "historyBytes", "observeBytes", "jsonBytes",
@@ -182,11 +191,15 @@ function summarizeSamples(samples) {
   summary.spreadReadyMs = spread(samples.map(sample => Math.round(sample.readyMs)));
   summary.requestList = representative?.requestList ?? [];
   summary.apiRequestList = representative?.apiRequestList ?? [];
-  summary.failedRequestsByRun = samples.map(sample => sample.failedRequests);
+  summary.validRuns = samples.length;
+  summary.failedRequestsByRun = allSamples.map(sample => sample.failedRequests);
+  summary.successfulRequestsByRun = allSamples.map(sample => sample.successfulRequests);
+  summary.requestDetailsByRun = allSamples.map(sample => sample.requestDetails);
+  summary.sampleSpreads = Object.fromEntries(numericKeys.map(key => [key, spread(samples.map(sample => sample[key]))]));
   return summary;
 }
 
-const routeTargets = [
+const legacyRouteTargets = [
   {
     name: "fleet",
     hash: "#/",
@@ -252,6 +265,8 @@ const routeTargets = [
   }])
 ];
 
+const routeTargets = selectRoutes(native ? [...legacyRouteTargets.filter(route => !route.name.startsWith("project") || route.name === "projects"), ...nativeRoutes(activeBase, primaryServiceName)] : legacyRouteTargets, option("--routes", null));
+
 const initScript = () => {
   window.__bench = { lcp: 0, longTasks: [] };
   new PerformanceObserver(list => {
@@ -267,7 +282,7 @@ const browser = await chromium.launch();
 async function runRetentionTrace(steps) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
+  if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -484,7 +499,7 @@ async function measureConditionalHistoryAndCharts() {
   if (primaryHost === undefined || statsProject === undefined) return { conditionalHistory: null, charts: null };
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
+  if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -627,7 +642,7 @@ for (const target of routeTargets) {
   for (let run = 0; run < runs; run += 1) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
-    await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
+    if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
     await page.addInitScript(initScript);
     const tracker = createNetworkTracker(page, activeBase);
     const cdp = await context.newCDPSession(page);
@@ -661,7 +676,8 @@ for (const target of routeTargets) {
       };
     }, readyMs);
     const afterCold = await readCdpState(cdp);
-    const coldNet = summarizeNetwork(tracker.snapshot());
+    const coldRecords = tracker.snapshot();
+    const coldNet = accountNetwork(coldRecords, summarizeNetwork(coldRecords));
     coldSamples.push({
       ...paintTiming,
       ...coldNet,
@@ -689,7 +705,8 @@ for (const target of routeTargets) {
     const warmReadyMs = await page.evaluate(start => performance.now() - start, warmStart);
     await tracker.waitForQuiet();
     const afterWarm = await readCdpState(cdp);
-    const warmNet = summarizeNetwork(tracker.snapshot());
+    const warmRecords = tracker.snapshot();
+    const warmNet = accountNetwork(warmRecords, summarizeNetwork(warmRecords));
     warmSamples.push({
       readyMs: warmReadyMs,
       ...warmNet,
@@ -713,9 +730,11 @@ for (const target of routeTargets) {
   });
 }
 
-const { conditionalHistory, charts } = await measureConditionalHistoryAndCharts();
-const fleetMetricSort = await measureFleetMetricSort();
-const previewNodeTimings = await measurePreviewNodeTimings();
+const narrow = option("--routes", null) !== null || native;
+const { conditionalHistory, charts } = narrow ? { conditionalHistory: null, charts: null } : await measureConditionalHistoryAndCharts();
+const fleetMetricSort = narrow ? null : await measureFleetMetricSort();
+const previewNodeTimings = narrow ? null : await measurePreviewNodeTimings();
+if (native && retentionSteps > 0) throw new Error("Retention trace is only available for legacy projects");
 const retention = retentionSteps > 0 ? await runRetentionTrace(retentionSteps) : null;
 
 await browser.close();
@@ -724,6 +743,10 @@ cleanupPreview();
 const output = {
   generatedAt: new Date().toISOString(),
   base: activeBase,
+  capabilities,
+  service: primaryServiceName,
+  availableServices: services.map(service => service.name),
+  project: native ? primaryServiceName : statsProject?.id ?? null,
   scale: process.env.PREVIEW_SCALE ?? "default",
   fixture: {
     hosts: hosts.length,
@@ -734,7 +757,7 @@ const output = {
   latency,
   downKbps,
   cpuRate,
-  caveat: "Assets are served uncompressed by the local preview, so jsKb/cssKb are raw transfer sizes; compare compressed bundle sizes with bench-bundle.mjs.",
+  caveat: explicitBase ? "Response body sizes are decoded payload sizes." : "Assets are served uncompressed by the local preview, so jsKb/cssKb are raw transfer sizes; compare compressed bundle sizes with bench-bundle.mjs.",
   results,
   conditionalHistory,
   charts,
