@@ -1,3 +1,4 @@
+import { decodeCapabilities } from "../../core/capabilities.ts";
 import { decodeDeploymentHistory } from "../../deployments/decode.ts";
 import { decodeHealth, decodeStatsWindow, type ObserveHealth } from "../../observe/client/decode.ts";
 import type { Warning } from "../envelope.ts";
@@ -148,18 +149,21 @@ export const healthCommand = defineCommand<HealthPayload>({
     const policy = policyFile === undefined ? null : readPolicyFile(policyFile);
     if (policy !== null && policy.project !== project) throw usageError(`the policy is for project ${policy.project}, not ${project}`);
     const observed = project === OBSERVED_PROJECT;
+    const capabilities = await fetchValue(context, "/api/v1/capabilities", decodeCapabilities);
+    const unsupported = (message: string): Read<never> => ({ ok: false, error: transportError("provider_unavailable", message) });
     const [projects, deployments, observe] = await Promise.all([
       attempt(() => fetchValue(context, "/api/v1/projects", decodeProjects)),
-      attempt(() => fetchValue(context, `/api/v1/projects/${encodeURIComponent(project)}/deployments`, value => decodeDeploymentHistory(value, project))),
+      capabilities.cloudflareDeployments ? attempt(() => fetchValue(context, `/api/v1/projects/${encodeURIComponent(project)}/deployments`, value => decodeDeploymentHistory(value, project))) : Promise.resolve(unsupported("Cloudflare deployment collection is unavailable")),
       observed ? attempt(() => fetchValue(context, `/api/observe/${encodeURIComponent(project)}/health`, decodeHealth)) : Promise.resolve(null)
     ]);
-    const attempts = [projects, deployments, ...(observe === null ? [] : [observe])];
+    const attempts = [projects, ...(capabilities.cloudflareDeployments ? [deployments] : []), ...(observe === null ? [] : [observe])];
     for (const read of attempts) if (!read.ok && read.error.exit === EXIT.auth) throw read.error;
     const failures = attempts.filter(read => !read.ok);
     const first = failures[0];
     if (first !== undefined && !first.ok && failures.length === attempts.length) throw first.error;
     const warnings: Warning[] = failures.flatMap(read => read.ok ? [] : [{ code: read.error.code, message: read.error.message }]);
-    const collector = collectorSection(projects, project);
+    if (projects.ok && !projects.value.some(candidate => candidate.id === project)) throw usageError(`unknown project ${project}; known: ${projects.value.map(candidate => candidate.id).join(", ")}`);
+    const collector = capabilities.analyticsCollection ? collectorSection(projects, project) : { state: "unavailable" as const, reasons: [{ code: "provider_unavailable", message: "analytics collection is unavailable" }], data: null };
     let readiness: HealthPayload["readiness"] = { policy: null, signals: [] };
     if (policy !== null) {
       const span = readinessWindow(context.now(), policy);
@@ -168,7 +172,7 @@ export const healthCommand = defineCommand<HealthPayload>({
       const projectSource: Source<ProjectSummary> = !projects.ok ? asSource(projects) : entry === undefined ? { ok: false, code: "unknown_project", message: `unknown project ${project}` } : { ok: true, value: entry };
       const signals = readinessSignals(policy, {
         nowMs: context.now(),
-        project: projectSource,
+        project: capabilities.analyticsCollection ? projectSource : { ok: false, code: "provider_unavailable", message: "analytics collection is unavailable" },
         observeHealth: observe === null ? null : asSource(observe),
         window: window === null ? null : asSource(window),
         history: asSource(deployments)

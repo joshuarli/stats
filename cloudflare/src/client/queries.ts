@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { getFleetHistories, getHosts, getProjects, getServices, getSystem, type HistoryQuery, type Host, type HostSystem, type Project, type Service } from "./api";
+import { getCapabilities, getFleetHistories, getHosts, getProjects, getServices, getSystem, type HistoryQuery, type Host, type HostSystem, type Project, type Service } from "./api";
 import type { DiskSeries, FilesystemSeries, FleetHistories, NetSeries, SummaryTable } from "./history";
 import { windowParams } from "./history-path";
 
@@ -141,4 +141,8 @@ export function loadFleetRows(
     const [history, system] = await Promise.all([historyPromise, systemPromise]);
     return { ...fleetMetrics(host, history), system };
   }), refresh === undefined ? undefined : { ...refresh, key: `${hosts.map(host => host.hostId).join(",")}|${queryKey}` });
+}
+
+export function loadCapabilities() {
+  return loadQuery(signal => getCapabilities(signal));
 }

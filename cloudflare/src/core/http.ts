@@ -1,3 +1,4 @@
+import type { RuntimeCapabilities } from "./capabilities.ts";
 import { bearerToken } from "../auth.ts";
 import { HISTORY_CONTENT_TYPE } from "../binary/history.ts";
 import { readLimitedText } from "../body.ts";
@@ -15,6 +16,7 @@ export type AuthDecision =
 export type ObserveService = (target: string, init?: RequestInit) => Promise<Response>;
 
 export interface StatsTarget {
+  readonly capabilities: RuntimeCapabilities;
   readonly authorize: (request: Request) => Promise<AuthDecision>;
   readonly authorizeIngest: (service: string, token: string) => Promise<boolean>;
   readonly serviceExists: (service: string) => Promise<boolean>;
@@ -212,6 +214,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (!decision.ok) return denied(decision);
     if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
+    if (suffix === "/capabilities") return request.method === "GET" ? secure(Response.json(target.capabilities)) : error(405, "invalid_request", "GET required");
     if (suffix === "/admin/objects" || suffix.startsWith("/admin/objects/")) return secure(await maintainObject(request, target, suffix));
     if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
     if (request.method === "POST" && SERVICE_DEPLOYMENTS_SUFFIX.test(suffix)) return error(405, "invalid_request", "post deploy markers to /ingest/services/NAME/deployments");

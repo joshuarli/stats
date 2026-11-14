@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, 
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
-import { loadProjects } from "../queries";
+import { loadCapabilities, loadProjects } from "../queries";
 import { collectorStatus } from "../status";
 import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../state";
 import { metricTrack, type MetricHistory, type ProjectHistories } from "../history";
@@ -42,7 +42,8 @@ function Projects(): JSX.Element {
   const { range, now, tick, manualTick, lists } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const projects = createMemo(loadProjects);
-  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { void refresh(projects); });
+  const capabilities = createMemo(loadCapabilities);
+  createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { if (capabilities().analyticsCollection || capabilities().cloudflareDeployments) void refresh(projects); });
   const [search, setSearch] = createSignal(lists.projects.search);
   const { sort, sortBy } = createSort<ProjectSortKey>(lists.projects.sort);
   let returnProject = lists.projects.returnProject;
@@ -72,7 +73,7 @@ function Projects(): JSX.Element {
     const values = metrics();
     const value = (project: Project): number | string | null => {
       if (key === "name") return project.name;
-      if (key === "collector") return collectorStatus(project.collector, now()).label;
+      if (key === "collector") return capabilities().analyticsCollection ? collectorStatus(project.collector, now()).label : "unavailable";
       const entry = values.get(project.id);
       if (entry === undefined) return null;
       if (key === "requests") return entry.requests;
@@ -131,7 +132,7 @@ function Projects(): JSX.Element {
                 <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
-            <For each={sortedProjects()}>{(project) => <ProjectRow project={project} visible={matches(project)} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
+            <For each={sortedProjects()}>{(project) => <ProjectRow collectionAvailable={capabilities().analyticsCollection} project={project} visible={matches(project)} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
           </table>
         </ProjectsTable>
       </Widget>
@@ -191,14 +192,14 @@ function Change(props: { readonly amount: Amount | null; readonly worseUp: boole
   return <Show when={text()}>{value => <span class={`projects-change${tone()}`}>{value()}</span>}</Show>;
 }
 
-function ProjectRow(props: { readonly project: Project; readonly visible: boolean; readonly reportMetrics: (id: string, value: ProjectMetrics) => void; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
+function ProjectRow(props: { readonly collectionAvailable: boolean; readonly project: Project; readonly visible: boolean; readonly reportMetrics: (id: string, value: ProjectMetrics) => void; readonly onNavigate: (id: string) => void; readonly onMount: (id: string, link: HTMLAnchorElement) => void }): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const refreshKey = () => `${projectTick()}:${manualTick()}`;
+  const refreshKey = () => props.collectionAvailable ? `${projectTick()}:${manualTick()}` : "unavailable";
   const [open, setOpen] = createSignal(false);
   const [fallbackHistories, setFallbackHistories] = createSignal<ProjectHistories | null>(null);
   const [historyError, setHistoryError] = createSignal<string | null>(null);
-  const status = createMemo(() => collectorStatus(props.project.collector, now()));
+  const status = createMemo(() => props.collectionAvailable ? collectorStatus(props.project.collector, now()) : { label: "unavailable", tone: "neutral" as const });
 
   const window = createMemo((): TimeWindow => {
     refreshKey();
@@ -341,7 +342,7 @@ function ProjectRow(props: { readonly project: Project; readonly visible: boolea
             <span class="cell-stack"><span class="mono">{deployment().title}</span><span class="cell-note">{age(deployment().atMs, now())}</span></span>
           )}</Show>
         </td>
-        <td><StateCell tone={status().tone} label={status().label} note={age(props.project.collector.lastSuccessAtMs, now())} /></td>
+        <td><StateCell tone={status().tone} label={status().label} note={props.collectionAvailable ? age(props.project.collector.lastSuccessAtMs, now()) : ""} /></td>
         <td class="projects-toggle">
           <button type="button" class="icon-button" aria-expanded={open() ? "true" : "false"} aria-label={`${open() ? "Hide" : "Show"} ${props.project.name} trends`} onClick={() => setOpen(value => !value)}>
             <span class="projects-chevron" aria-hidden="true">›</span>

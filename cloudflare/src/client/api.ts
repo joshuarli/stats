@@ -1,3 +1,4 @@
+import { decodeCapabilities } from "../core/capabilities.ts";
 import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
 import type { LatestDeployment } from "../deployments/model.ts";
 import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/history.ts";
@@ -390,4 +391,8 @@ export function getHostHistories(hostId: string, query: HistoryQuery, signal: Ab
 
 export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
   return getHistory(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems`, decodeFleetHistories, fleetCache, signal);
+}
+
+export function getCapabilities(signal: AbortSignal) {
+  return getJson("/api/v1/capabilities", decodeCapabilities, signal);
 }

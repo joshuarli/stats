@@ -34,6 +34,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     markInvocation();
     return handleStatsRequest(request, {
+      capabilities: { analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true },
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request("https://installation/ingest/observe-auth", {

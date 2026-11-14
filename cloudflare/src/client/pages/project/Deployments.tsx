@@ -99,19 +99,19 @@ export type ProjectDeployments = ReturnType<typeof createDeployments>;
 const DEPLOYMENT_PAGE = 8;
 const WINDOW_FOR_RANGE: Record<Range, ComparisonWindow> = { "1h": "1h", "6h": "6h", "24h": "24h", "7d": "24h", "30d": "24h" };
 
-export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean = () => true) {
-  return createDeployments("project", projectId, range, refreshKey, active);
+export function createProjectDeployments(projectId: () => string, range: () => Range, refreshKey: () => string, options: { readonly active: () => boolean; readonly enabled: () => boolean }) {
+  return createDeployments("project", projectId, range, refreshKey, options.active, options.enabled);
 }
 
 export function createServiceDeployments(serviceName: () => string, range: () => Range, refreshKey: () => string) {
-  return createDeployments("service", serviceName, range, refreshKey, () => true);
+  return createDeployments("service", serviceName, range, refreshKey, () => true, () => true);
 }
 
 type ComparisonState =
   | { readonly kind: "ok"; readonly value: AnyComparison }
   | { readonly kind: "error"; readonly deploymentId: string; readonly window: ComparisonWindow; readonly message: string };
 
-function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean) {
+function createDeployments(kind: DeploymentKind, projectId: () => string, range: () => Range, refreshKey: () => string, active: () => boolean, enabled: () => boolean) {
   const routes = ROUTES[kind];
   const [history, setHistory] = createSignal<DeploymentHistory | null>(null);
   const [selected, setSelected] = createSignal("");
@@ -129,7 +129,8 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
   let linkPending = true;
   const { now, showWindow } = useTelemetry();
 
-  createEffect(() => ({ project: projectId(), tick: refreshKey() }), ({ project }) => {
+  createEffect(() => ({ project: projectId(), tick: refreshKey(), enabled: enabled() }), ({ project, enabled }) => {
+    if (!enabled) return;
     const controller = new AbortController();
     void routes.history(project, controller.signal).then(value => {
       if (controller.signal.aborted) return;
@@ -145,7 +146,7 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
     return () => controller.abort();
   });
 
-  createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey(), active: active() }), query => {
+  createEffect(() => ({ project: projectId(), id: selected(), window: window(), tick: refreshKey(), active: active() && enabled() }), query => {
     if (!query.active) return;
     const controller = new AbortController();
     if (query.id === "") { setComparisonState(null); return; }
