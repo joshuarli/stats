@@ -19,9 +19,12 @@ The deployed smoke passes. Cloudflare `stats` and `stats-observe` remain
 fenced as the rollback source.
 
 Stuff S8 serving and S9 copy tooling landed in `~/d/stuff` at `e50756c`.
-Its production image packaging is next, followed by the publication
-coordinator, real-store migration rehearsal and registry cutover. Stuff and
-Discover have no deployed Orange images yet. Remaining: S11 (Tansu tunnel
+Image packaging landed at `463f8d9`. The Linux image
+`stuff:463f8d96a4bd` is staged behind the tailnet ingress. A temporary real-S3
+object passed HTTPS GET, HEAD and range checks and was removed. Production
+registry DNS and data remain on Cloudflare. Next: publication coordination,
+blob-host routing, deployment drain, full-data rehearsal and registry cutover.
+Discover has no deployed Orange image yet. Remaining: S11 (Tansu tunnel
 retirement), S12 (fleet standards), S13 (Discover migration), and unsupported
 provider capability presentation. The campaign remains open.
 
