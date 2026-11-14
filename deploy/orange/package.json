@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.20.0",
+  "packageManager": "pnpm@12.21.0",
   "description": "Pinned OpenOrange runtime closure for Stats; installed with --ignore-workspace so it stays out of the application lockfile.",
   "engines": {
     "node": ">=26.13.1 <26.14.0"
