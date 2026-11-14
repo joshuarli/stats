@@ -2,8 +2,10 @@
 
 Owner decision (2026-11-13): Stats and Stuff run on OpenOrange on the owner's
 Tailscale machines. `https://stats.17166969.xyz` and every Stuff registry
-hostname stay. Cloudflare remains only the DNS provider, with DNS-only
-records. This supersedes the evaluate-only framing of the Rivet/OpenOrange
+hostname stay. Stats, Tansu and publishing use DNS-only tailnet addresses.
+Anonymous Stuff pulls and Discover reader/MCP traffic use an outbound public
+tunnel; Cloudflare supplies DNS and this network edge. Application compute,
+coordination and storage run on Lisa. This supersedes the evaluate-only framing of the Rivet/OpenOrange
 evaluation (`9f1b43c`, `docs/rivet-openorange-evaluation.md` at that
 revision), whose evidence is reused below.
 
@@ -11,32 +13,40 @@ revision), whose evidence is reused below.
 
 Stats production runs on OpenOrange on `lisa` (cutover 2026-11-14 at
 06:00 UTC; record and rollback in [openorange.md](openorange.md)). The live
-image is `stats:f5634ec4e719` in namespace `stats-prod`, with ACME and a
+image is `stats:b298a5754d40` in namespace `stats-prod`, with ACME and a
 DNS-only record. S1–S7 and the Stats cutover landed. Orange integration
 checks cover fresh-namespace recovery, interrupted-import resume, exact
 ingest/replay, durable history, and caught-error stacks across restart.
 The deployed smoke passes. Cloudflare `stats` and `stats-observe`, their
 Durable Object namespaces, and their three Access applications are deleted.
 The protected source backup has 10 objects and 627,253 verified rows. A fresh
-physical backup and recovery rehearsal remain required for subsequent writes.
+physical backup and recovery rehearsal were subsequently completed, including
+the verified off-host archive on the Mac.
 
-Stuff has a durable publication coordinator, signed streaming S3 gateway,
-blob-host routing, and version-specific GC. The complete Python GC workflow
-uses a renewing service lease. Native publication against Lisa's real S3 is
-under rehearsal in isolated buckets; production registry DNS remains on
-Cloudflare. Cargo copying and final full-data, drain, and cutover checks remain.
+Stuff production runs on Lisa with anonymous public GET/HEAD pulls and private
+publishing at `stuff-publish.17166969.xyz`. Mac, Threadripper and Lisa performed
+real coordinated publications. Distributed drain conflicts, full-data restore,
+all retained source generations, public blob checksums and range semantics
+passed. The old Worker and all six R2 buckets are deleted. The post-retirement
+doctor passed with hash-verified samples across every registry. Public DNS and
+a fresh GitHub runner now pass after the temporary private-DNS interruption.
 
-Discover and preview run staged Orange images. Full restores verified 15,475
-and 667 rows respectively, including search reconstruction and every referenced
-artifact. Their buckets passed deep byte verification. Public publication,
-final source fencing, and cutover remain; split DNS requires Tailscale admin
-authentication. The outbound public tunnel is connected without DNS cutover.
+Discover and preview run on Lisa. Fresh fenced source snapshots restored
+15,475 and 667 rows, rebuilt 552 and 7 search rows, and passed independent
+recovery. All 14,241 and 56 source artifacts matched their verified copy
+ledgers. Public readers and authenticated bearer MCP pass; public admin paths
+return 404. `hq-admin.` and `hq-preview-admin.` resolve directly to Lisa for
+tailnet administration, without split DNS. Origin, alternate-port and CSRF
+checks pass. Both source Workers, Durable Object namespaces, artifact buckets
+and their two Access applications are deleted.
 
-Tansu is served through shared ingress, with final passkey verification and
-old tunnel deletion remaining. S12 fleet tagging and Orange dependency
+Tansu is served through shared ingress; its old tunnel is deleted. The login
+page and passkey options pass; a hardware passkey login remains unverified.
+S12 fleet tagging and Orange dependency
 inventory are merged. Stats capability presentation is implemented and tested.
-The campaign remains open until the remaining services and recovery checks
-pass and their old Cloudflare resources are retired.
+The migration and source retirement are complete. The remaining manual proof
+is a hardware passkey login and a request from a real tagged node; no tagged
+node was available. No authorization checks were weakened to replace them.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 
@@ -85,13 +95,22 @@ Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is r
 | S9 | stuff | Resumable R2 → S3 copy and verification | rehearsal on copied data |
 | S11 | tansu | `tansu.17166969.xyz` served by the shared ingress; tunnel retired | passkey login and `/api/v2/health` through the ingress |
 | S12 | stuff (`~/d/stuff`) | Fleet standards: `openorange` tag, stats/stuff retagged, runtime compatibility group names OpenOrange/Rivet, inventory adapter reads Orange descriptors; Cloudflare kept for remaining Cloudflare projects | `make repomod-test` |
-| S13 | discover | Discover on Orange with the public/tailnet split; WebP renditions in the Worker through the static musl `rimage` binary (owner ruling 2026-11-13; `../rimage`), spawned per image over stdin/stdout (process isolation for untrusted uploads; rimage is permissive since `5647a06`, so linking would also be allowed) at the current contract (WebP q85, metadata stripped, 2400/960 caps), with `../rimage` fixes made there as integration needs them; probe that the pinned runtime permits `node:child_process` first | discover's `make check` + split-ingress rehearsal |
+| S13 | discover | Discover on Orange with public reader/MCP and private administration; WebP renditions use the static musl `joshuarli/img` binary at `6c98669e7e41ef8269f9a2d7f37cf35add71ff27`, spawned per image over stdin/stdout with WebP q85, metadata stripped and 2400/960 caps | full release gates, native conversion, recovery and live split-ingress checks |
 | S10 | all | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
 
-## Needs environment / owner
+## Recovery and remaining manual proofs
 
-- The Discover tunnel (cloudflared on `lisa` to `127.0.0.1:18480`) and split
-  DNS so tailnet clients reach Discover hostnames on the tailnet address.
-- Tailnet policy grants for tagged machines, and one tagged device to prove it.
-- An off-disk backup destination for `bin/backup --dest`; today every copy
-  lives on `lisa`'s single NVMe.
+The protected second copy is `/Users/josh/backups/openorange` on the Mac.
+`lisa/post-stuff-cutover/state.tar` is the 9,256,069,120-byte physical snapshot
+`20261114T184204Z`, verified against SHA-256
+`39caece0385a875ca8b19e7cbc94826e18186139d86426584789652893b8b48d`.
+Independent restoration checked Engine state and every S3 object. Discover's
+fresh logical snapshots and independent recovery reports are under
+`discover/cutover-refresh` and `discover-preview/cutover-refresh`; their source
+artifact identities did not change from the physical snapshot. Protected
+runtime build contexts and the selected configuration are retained alongside
+the snapshots. Source retirement receipts preserve exact resource inventories.
+
+When available, complete one real tagged-node request and Tansu hardware
+passkey login. The current policy permits HTTPS, and the three publishing
+hosts passed without policy changes.

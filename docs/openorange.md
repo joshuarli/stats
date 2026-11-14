@@ -74,8 +74,11 @@ namespaces are gone, so a DNS reversal cannot restore those stores.
 The source cutover export is at `/Users/josh/backups/openorange/stats/source-cutover`;
 all 10 objects and 627,253 rows were reverified. Recover by importing a logical
 backup into a fresh OpenOrange namespace. This cutover export predates subsequent
-Orange writes. A fresh full Orange export was aborted after three minutes and
-writes were reopened; a fresh logical full backup is not complete.
+Orange writes. A fresh full logical export was aborted after three minutes and
+writes were reopened. Subsequent physical snapshot `20261114T184204Z` passed
+independent Engine/S3 restoration and an off-host SHA-256 check. Its protected
+Mac copy is `/Users/josh/backups/openorange/lisa/post-stuff-cutover/state.tar`;
+the shared-stack runbook records recovery tooling and the archive digest.
 
 ## Not carried over
 
