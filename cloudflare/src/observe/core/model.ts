@@ -125,6 +125,12 @@ export interface MessagePolicy {
   readonly safeNames: ReadonlySet<string>;
 }
 
+export const DEFAULT_MESSAGE_POLICY: MessagePolicy = { safeNames: new Set() };
+
+export function redactedMessage(name: string, message: string, policy: MessagePolicy): string | null {
+  return policy.safeNames.has(name) ? truncateUtf8(message, MAX_MESSAGE_BYTES) : null;
+}
+
 export interface PreparedError {
   readonly ordinal: number;
   readonly source: ErrorSource;
@@ -210,9 +216,9 @@ export function rejection(input: ObservedInvocation): Rejection | null {
   return null;
 }
 
-async function prepareError(error: ObservedError, ordinal: number, policy: MessagePolicy): Promise<PreparedError> {
+export async function prepareError(error: ObservedError, ordinal: number, policy: MessagePolicy): Promise<PreparedError> {
   const name = truncateUtf8(error.name, MAX_NAME_BYTES);
-  const message = policy.safeNames.has(name) ? truncateUtf8(error.message, MAX_MESSAGE_BYTES) : null;
+  const message = redactedMessage(name, error.message, policy);
   const frames = error.stack === null ? [] : parseStack(truncateUtf8(error.stack, MAX_STACK_BYTES));
   return { ordinal, source: error.source, operation: error.operation, name, message, frames, fingerprint: await fingerprint({ operation: error.operation, name, message, frames }) };
 }

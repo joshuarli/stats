@@ -280,3 +280,5 @@ instrumented. Request-rate and CPU charts stay on the project page. Rollouts hav
 no CI write path, because the stats proxy refuses rollout writes on purpose.
 Local per-operation resource profiling is a local-stack tool only
 ([Local profiling](profiling.md)); it is not a production feature.
+
+Caught application errors can carry version 1 diagnostics with normalized stack frames. Error messages are suppressed under the tail policy; uploaded maps resolve frames for the event release. Application events do not supply provider CPU measurements. See [integration](integration.md) for bounds.

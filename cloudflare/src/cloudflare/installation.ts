@@ -1,6 +1,8 @@
+import diagnostics from "node:diagnostics_channel";
+import { OBSERVE_CHANNEL } from "../observe/producer/channel.ts";
 import { DurableObject } from "cloudflare:workers";
 import { cloudflareOperations } from "./operations.ts";
-import { applicationEventOperations } from "../observe/application/sink.ts";
+import { applicationEventErrorReporter, applicationEventOperations } from "../observe/application/sink.ts";
 import { cloudflareClock, cloudflareScheduler } from "./ports.ts";
 import { cloudflareSqlScopes } from "./sql.ts";
 import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
@@ -12,6 +14,10 @@ import type { OperationRun } from "../operations.ts";
 import type { CollectorRun } from "../projects/store.ts";
 import type { SystemInfo } from "../protocol.ts";
 
+type EventOptions = Parameters<typeof applicationEventErrorReporter>[0];
+let currentEventOptions: EventOptions | undefined;
+let errorReporterSubscribed = false;
+
 export class Installation extends DurableObject<Env> {
   private readonly core: InstallationCore;
 
@@ -20,18 +26,23 @@ export class Installation extends DurableObject<Env> {
     const clock = cloudflareClock(() => this.env);
     const observe = "OBSERVE" in this.env ? this.env.OBSERVE : undefined;
     const release = this.env.APPLICATION_EVENTS_RELEASE;
-    const operations = release !== undefined && observe !== undefined
-      ? applicationEventOperations({
-          post: async body => {
-            const response = await observe.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
-            return response.ok;
-          },
-          service: "stats",
-          release: release,
-          now: () => Date.now(),
-          waitUntil: promise => { this.ctx.waitUntil(promise); }
-        })
-      : cloudflareOperations;
+    const eventOptions = release !== undefined && observe !== undefined ? {
+      post: async (body: { readonly events: readonly import("../observe/ingest/model.ts").ExternalEvent[] }) => {
+        const response = await observe.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+        return response.ok;
+      },
+      service: "stats", release, now: () => Date.now(), waitUntil: (promise: Promise<unknown>) => { this.ctx.waitUntil(promise); }
+    } : undefined;
+    if (eventOptions !== undefined) {
+      currentEventOptions = eventOptions;
+      if (!errorReporterSubscribed) {
+        diagnostics.channel(OBSERVE_CHANNEL).subscribe(message => {
+          if (currentEventOptions !== undefined) applicationEventErrorReporter(currentEventOptions)(message);
+        });
+        errorReporterSubscribed = true;
+      }
+    }
+    const operations = eventOptions === undefined ? cloudflareOperations : applicationEventOperations(eventOptions);
     this.core = new InstallationCore(
       {
         sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations, probesServices: false,

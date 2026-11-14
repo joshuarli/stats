@@ -27,6 +27,17 @@ export interface EventError {
   readonly code: string;
 }
 
+export interface Diagnostics {
+  readonly version: 1;
+  readonly name: string;
+  readonly message: string;
+  readonly frames: readonly string[];
+}
+
+export function boundedDiagnostics(value: Diagnostics): Diagnostics {
+  return { version: 1, name: value.name.slice(0, 128), message: value.message.slice(0, 512), frames: value.frames.slice(0, 32).map(frame => frame.slice(0, 512)) };
+}
+
 export interface ProducerDelivery {
   readonly id: string;
   readonly sequence: number;
@@ -52,6 +63,7 @@ export interface OperationEvent {
   readonly host?: string;
   readonly trace?: Trace;
   readonly error?: EventError;
+  readonly diagnostics?: Diagnostics;
 }
 
 export function workOf(value: Readonly<Record<string, number>>): Readonly<Record<string, number>> | null {
@@ -81,7 +93,8 @@ function plainEvent(event: OperationEvent): Record<string, unknown> {
     ...(event.instance === undefined ? {} : { instance: event.instance }),
     ...(event.host === undefined ? {} : { host: event.host }),
     ...(event.trace === undefined ? {} : { trace: { traceId: event.trace.traceId, spanId: event.trace.spanId } }),
-    ...(event.error === undefined ? {} : { error: { code: event.error.code } })
+    ...(event.error === undefined ? {} : { error: { code: event.error.code } }),
+    ...(event.diagnostics === undefined ? {} : { diagnostics: boundedDiagnostics(event.diagnostics) })
   };
 }
 

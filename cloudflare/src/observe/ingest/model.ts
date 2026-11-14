@@ -30,6 +30,13 @@ export interface ExternalError {
   readonly code: string;
 }
 
+export interface ExternalDiagnostics {
+  readonly version: 1;
+  readonly name: string;
+  readonly message: string;
+  readonly frames: readonly string[];
+}
+
 export interface ProducerDelivery {
   readonly id: string;
   readonly sequence: number;
@@ -55,12 +62,14 @@ export interface ExternalEvent {
   readonly host?: string;
   readonly trace?: ExternalTrace;
   readonly error?: ExternalError;
+  readonly diagnostics?: ExternalDiagnostics;
 }
 
 export interface ApplicationFailure {
   readonly fingerprint: string;
   readonly invocationKey: string;
   readonly code: string;
+  readonly prepared?: import("../core/model.ts").PreparedError;
 }
 
 export interface ReceivedEvent {

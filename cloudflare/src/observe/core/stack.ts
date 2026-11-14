@@ -51,7 +51,7 @@ function normalizeFunction(fn: string): string {
 }
 
 export function normalizeFile(file: string): string {
-  const path = file.replace(/^file:\/\//u, "");
+  const path = file.replace(/[?#].*$/u, "").replace(/^file:\/\//u, "");
   const source = path.lastIndexOf("/src/");
   if (source >= 0) return path.slice(source + 1);
   if (path.startsWith("src/")) return path;

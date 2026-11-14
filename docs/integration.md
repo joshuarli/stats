@@ -152,11 +152,23 @@ Grouping:
 - A failing event with `error.code` is grouped as an issue. Stats derives the
   issue's fingerprint, a 64-character lowercase hex SHA-256 over the service,
   the operation, and the code, so events with the same operation and code share
-  one issue and a different operation or code is a separate issue. A producer
-  never supplies a fingerprint.
+  one issue and a different operation or code is a separate issue when no
+  diagnostics are present. A producer never supplies a fingerprint.
+- An optional `diagnostics` object has `version: 1`, `name`, `message`, and
+  `frames` (stack lines). The name is limited to 128 characters, the message
+  to 512, and frames to 32 lines of 512 characters each; longer values are
+  truncated. Invalid shapes or versions reject the batch as `invalid_event`.
+  The TypeScript producer accepts it as `diagnostics`. The receiver applies
+  the tail policy: messages are suppressed and stack lines are parsed and
+  normalized before storage, including removal of URL queries and fragments.
+  Send only diagnostic data safe for the observation service.
+- With diagnostics, grouping uses the same name, operation, and parsed frames
+  as caught tail errors; uploaded source maps resolve the retained frames.
 - Each new event adds one occurrence with source `application`, the event's
-  `release` as its version, its trace id when present, and no message or stack
-  frames. The issue is named by the code and opens or reopens like any other.
+  `release` as its version and its trace id when present. Without diagnostics,
+  it has no message or stack frames and the issue is named by the code. With
+  diagnostics, the issue uses the error name and normalized frames. The issue
+  opens or reopens like any other.
   A duplicate event id adds no occurrence. Occurrences expire with the 7-day
   retention.
 - A failure without `error` is counted, not grouped: it appears in the
