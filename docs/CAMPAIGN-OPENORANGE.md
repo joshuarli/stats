@@ -9,11 +9,16 @@ revision), whose evidence is reused below.
 
 ## Status
 
-Accepted: S2 (stats `d56da0c8`, tailnet gateway identity), S7 (stuff
-`6db7ed3`, shared stack running on `lisa`: Engine 3.1.2-rc.1 on file-system
-storage, versitygw store, Caddy on 100.68.104.43:443 with internal CA,
-whois sidecar, loopback public listener for Discover). Next: S1. Production
-has not moved; every app hostname on the ingress answers 503 until deployed.
+Accepted: S2 (`d56da0c8`, tailnet gateway identity), S7 (stuff `6db7ed3`,
+shared stack on `lisa`), S1 (`f0667539`, descriptors and `make orange-pilot`),
+S4 (`7e4ac3dd`, fenced export/import, `make orange-test` restores into a fresh
+namespace). Staging: image `stats:9ec6d1e7d059` (Node 26.13.1 Debian, pinned
+digest) runs both Workers in namespace `stats` on `lisa` behind the ingress
+(internal CA); verified with `--resolve` from the Mac: identity, forged-header
+401, STB2 ingest with acks and duplicate replay, history, persistence across
+an app restart. The staging namespace now holds a probe host, so the cutover
+import targets a fresh namespace. Next: S5/S6, then the Cloudflare-side export
+build for S10. Production has not moved.
 
 ## Inventory (source revisions: stats `1124d0e7`, stuff `25e4fd0`)
 
