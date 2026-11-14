@@ -98,6 +98,12 @@ await test("import rejects non-empty targets, different schemas, gaps, and corru
   initializeMaintenance(observe);
   assert.throws(() => beginImport(observe, manifest), (error: unknown) => error instanceof SnapshotError && error.code === "incompatible");
   assert.throws(() => beginImport(installation(), { ...manifest, format: "stats-export/0" as never }), (error: unknown) => error instanceof SnapshotError && error.code === "incompatible");
+  const respaced = { ...manifest, tables: manifest.tables.map(table => ({ ...table, sql: `${table.sql.replaceAll(",", " ,\n ")} ` })) };
+  const spacing = installation();
+  beginImport(spacing, respaced);
+  assert.equal(maintenanceState(spacing), "importing");
+  const renamed = { ...manifest, tables: manifest.tables.map(table => table.name === "hosts" ? { ...table, sql: table.sql.replace("name TEXT", "label TEXT") } : table) };
+  assert.throws(() => beginImport(installation(), renamed), (error: unknown) => error instanceof SnapshotError && error.code === "incompatible");
   const target = installation();
   beginImport(target, manifest);
   assert.throws(() => importRows(target, "samples", 3, []), (error: unknown) => error instanceof SnapshotError && error.code === "conflict");

@@ -132,7 +132,7 @@ function digestTable(sql: SqlDatabase, shape: TableShape): { rows: number; sha25
 
 function schemaVersion(sql: SqlDatabase): SchemaVersion {
   const hash = createHash("sha256");
-  for (const shape of shapes(sql)) hash.update(`${shape.name}\n${shape.sql}\n`);
+  for (const shape of shapes(sql)) hash.update(`${shape.name}\n${normalized(shape.sql)}\n`);
   return { sha256: hash.digest("hex") };
 }
 
@@ -179,13 +179,17 @@ export function exportPage(sql: SqlDatabase, table: string, after: readonly SqlV
   return { rows, next: rows.length < found.length ? next : null };
 }
 
+function normalized(definition: string): string {
+  return definition.replace(/\s+/gu, " ").replace(/\s*([(),])\s*/gu, "$1").trim();
+}
+
 function sameShape(manifest: TableManifest, shape: TableShape): boolean {
-  return manifest.sql === shape.sql && JSON.stringify(manifest.columns) === JSON.stringify(shape.columns) && JSON.stringify(manifest.key) === JSON.stringify(shape.key);
+  return normalized(manifest.sql) === normalized(shape.sql) && JSON.stringify(manifest.columns) === JSON.stringify(shape.columns) && JSON.stringify(manifest.key) === JSON.stringify(shape.key);
 }
 
 export function beginImport(sql: SqlDatabase, manifest: ObjectManifest): void {
   if (manifest.format !== EXPORT_FORMAT) throw new SnapshotError("incompatible", `unsupported export format ${String(manifest.format)}`);
-  if (manifest.object.length === 0 || manifest.schema.sha256 !== schemaVersion(sql).sha256) throw new SnapshotError("incompatible", "the export's table definitions do not match this object's");
+  if (manifest.object.length === 0) throw new SnapshotError("incompatible", "the export names no object");
   sql.transaction(() => {
     const state = maintenanceState(sql);
     const existing = sql.rows<{ manifest: string }>(`SELECT manifest FROM ${IMPORT_TABLE} LIMIT 1`)[0];
