@@ -10,7 +10,7 @@ rollback() {
     code=$?
     trap - 0 HUP INT TERM
     if [ "$switched" = true ]; then
-        if ssh "$host" doas -n /opt/openorange/bin/oo set-image stats "$previous" &&
+        if ssh "$host" doas -n /opt/openorange/bin/oo set-image stats "$previous" --if-current "$image" &&
            ssh "$host" doas -n /sbin/rc-service oo-app.stats restart; then
             echo 'Deployment failed; restored the previous Orange image' >&2
         else
@@ -24,7 +24,7 @@ trap rollback 0
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-ssh "$host" doas -n /opt/openorange/bin/oo set-image stats "$image"
+ssh "$host" doas -n /opt/openorange/bin/oo set-image stats "$image" --if-current "$previous"
 ssh "$host" doas -n /sbin/rc-service oo-app.stats restart
 deadline=$(( $(date +%s) + 90 ))
 until curl -fsS --connect-timeout 5 --max-time 10 "${STATS_URL:-https://stats.17166969.xyz}/health" >/dev/null; do
