@@ -23,6 +23,8 @@ Inventory complete; slices S1–S3 in progress. Production has not moved.
 | External Cloudflare producers | `usr-memories`, `nanoshop-storied`, `discover`, `discover-preview` (Analytics SQL + tails) | Optional isolated provider adapter or retired; reported at close |
 | Credentials | Access team/aud, host/service/deployment tokens (SHA-256 verifiers), CF deployments token, R2 keys | Tailnet identity; scoped tokens kept; S3 keys per app bucket set |
 
+Stuff work integrates in the development clone `~/d/stuff`; `~/repos/stuff` is repomod's canonical checkout.
+
 ## Architecture rulings
 
 - Shared host stack lives in `stuff/deploy/openorange/`: Rivet Engine,
@@ -54,6 +56,7 @@ Inventory complete; slices S1–S3 in progress. Production has not moved.
 | S8 | stuff | Registries served from S3 with a publication coordinator | conformance suites + real clients |
 | S9 | stuff | Resumable R2 → S3 copy and verification | rehearsal on copied data |
 | S11 | tansu | `tansu.17166969.xyz` served by the shared ingress; tunnel retired | passkey login and `/api/v2/health` through the ingress |
+| S12 | stuff (`~/d/stuff`) | Fleet standards: `openorange` tag, stats/stuff retagged, runtime compatibility group names OpenOrange/Rivet, inventory adapter reads Orange descriptors; Cloudflare kept for remaining Cloudflare projects | `make repomod-test` |
 | S10 | all | Cutover: fence, final export/import, DNS, verification, rollback plan | runbook rehearsal |
 
 ## Needs environment / owner
