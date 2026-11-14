@@ -11,7 +11,35 @@ import { invocationDirectory } from "../snapshot-store.ts";
 const BACKUP_FORMAT = "stats-backup/1";
 const OBJECT = /^(installation|observe:[a-z][a-z0-9-]{0,31})$/u;
 const TABLE = /^[a-z_][a-z0-9_]{0,62}$/u;
-const IMPORT_PAGE_BYTES = MAX_PAGE_BYTES;
+const IMPORT_PAGE_BYTES = MAX_PAGE_BYTES / 4;
+const IMPORT_PAGE_ROWS = MAX_PAGE_ROWS / 4;
+const OBJECT_CONCURRENCY = 4;
+const ROW_ATTEMPTS = 6;
+
+async function eachLimited<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await work(items[index]!);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+}
+
+async function withRetry<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let tries = 1; ; tries += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      const retryable = error instanceof CommandError && error.exit === EXIT.transport && error.code !== "contract";
+      if (!retryable || tries >= ROW_ATTEMPTS) throw error;
+      await new Promise(wake => setTimeout(wake, Math.min(30_000, 500 * 2 ** tries)));
+    }
+  }
+}
 
 interface BackupIndex {
   readonly format: typeof BACKUP_FORMAT;
@@ -182,7 +210,7 @@ function decodeProgress(value: unknown): Progress {
 
 async function importObject(context: CommandContext, directory: string, object: string): Promise<{ readonly object: string; readonly rows: number }> {
   const manifest = readObjectManifest(directory, object);
-  const begun = await context.http.postJson(`${objectPath(object)}/import/begin`, manifest, decodeProgress);
+  const begun = await withRetry(() => context.http.postJson(`${objectPath(object)}/import/begin`, manifest, decodeProgress));
   let rows = 0;
   for (const table of manifest.tables) {
     const done = begun.progress.find(entry => entry.table === table.name)?.rows ?? 0;
@@ -190,20 +218,21 @@ async function importObject(context: CommandContext, directory: string, object: 
     let batch: SqlValue[][] = [];
     let bytes = 0;
     const flush = async (): Promise<void> => {
-      if (batch.length > 0 && offset + batch.length > done) await context.http.postJson(`${objectPath(object)}/import/rows`, { table: table.name, offset, rows: batch }, value => value);
+      const page = batch;
+      if (page.length > 0 && offset + page.length > done) await withRetry(() => context.http.postJson(`${objectPath(object)}/import/rows`, { table: table.name, offset, rows: page }, value => value));
       offset += batch.length;
       batch = [];
       bytes = 0;
     };
     for (const line of tableLines(join(directory, directoryName(object), `${table.name}.ndjson`))) {
-      if (batch.length >= MAX_PAGE_ROWS || (batch.length > 0 && bytes + line.length > IMPORT_PAGE_BYTES)) await flush();
+      if (batch.length >= IMPORT_PAGE_ROWS || (batch.length > 0 && bytes + line.length > IMPORT_PAGE_BYTES)) await flush();
       batch.push(JSON.parse(line) as SqlValue[]);
       bytes += line.length;
     }
     await flush();
     rows += offset;
   }
-  await context.http.postJson(`${objectPath(object)}/import/finish`, {}, value => value);
+  await withRetry(() => context.http.postJson(`${objectPath(object)}/import/finish`, {}, value => value));
   return { object, rows };
 }
 
@@ -270,8 +299,7 @@ export const backupExportCommand = defineCommand<{ readonly directory: string; r
     const staging = `${directory}.partial`;
     if (existsSync(staging)) throw usageError(`${staging} exists from an interrupted export; remove it first`);
     mkdirSync(staging, { recursive: true, mode: 0o700 });
-    const exported = [];
-    for (const object of objects) exported.push(await exportObject(context, object, staging));
+    const exported = await eachLimited(objects, OBJECT_CONCURRENCY, object => exportObject(context, object, staging));
     const index: BackupIndex = { format: BACKUP_FORMAT, exportFormat: EXPORT_FORMAT, origin: context.origin, createdAtMs: context.now(), objects };
     writeExclusive(join(staging, "index.json"), `${JSON.stringify(index, null, 2)}\n`);
     verifyBackup(staging);
@@ -303,8 +331,7 @@ export const backupImportCommand = defineCommand<{ readonly objects: readonly { 
     verifyBackup(directory);
     const index = readIndex(directory);
     const objects = selected(context, index.objects);
-    const imported = [];
-    for (const object of objects) imported.push(await importObject(context, directory, object));
+    const imported = await eachLimited(objects, OBJECT_CONCURRENCY, object => importObject(context, directory, object));
     return { payload: { objects: imported } };
   },
   render(payload) {
