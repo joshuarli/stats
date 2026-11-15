@@ -1,8 +1,8 @@
 # Validate or roll back the hardening release
 
 Run these commands from the Stats checkout with its pinned Node and pnpm.
-The deployed application is `stats:434ea6ed31f5`, Orange node version 15.
-The previous application image is `stats:a7528f3bdc75`.
+The deployed application is `stats:1ea3e6af2dc3`, Orange node version 20.
+The previous application image is `stats:506b622debb4`.
 
 ## Verify the deployed application
 
@@ -17,14 +17,16 @@ The previous application image is `stats:a7528f3bdc75`.
 3. Load 1h, 6h and 24h, allowing each initial request to finish.
 4. Switch among those completed windows. Confirm charts update without another summary request.
 5. Click Refresh. Confirm a fresh summary request completes.
-6. Inspect that response's `Server-Timing` fields. Compare `app-store`, `app-query` and `app-read` from the same response.
+6. Inspect that response's `Server-Timing` fields. Compare `app-dispatch`, `app-store`, `app-query` and `app-read` from the same response. They overlap; do not add them.
 7. Open Requests and inspect the corresponding `http.get.application-summary` event. Confirm integer microsecond work fields are present.
-8. Inspect delivery metadata after a request burst. Allow roughly one second before expecting newly captured HTTP events.
+8. Inspect delivery metadata after a request burst. Allow roughly one second before expecting newly captured HTTP events. Browser transport's HTTP 202 means admission, not durable ingestion.
 
-The browser burst verification retained sixteen test responses and a concurrent
-page capabilities request in one batch. All responses returned 200. Delivery
-reported zero drops. That bounded check does not establish lossless delivery
-under an outage or sustained overload.
+The latest paced verification observes all 200 browser journeys becoming
+queryable within 1.52 seconds, with no browser or producer drops. A separate
+burst stores 908 of 1,005 journeys and reports the other 97 as browser transport
+drops; producer drops are zero. These checks do not establish lossless delivery
+under an outage or sustained overload. See the
+[delivery evidence](../bench/results/2026-11-15-producer-boundaries/README.md).
 
 ## Repeat targeted verification locally
 
@@ -61,7 +63,7 @@ the Engine or change its persistence.
 Confirm no later operator has selected another image before running:
 
 ```sh
-ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:a7528f3bdc75 --if-current stats:434ea6ed31f5'
+ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:506b622debb4 --if-current stats:1ea3e6af2dc3'
 ssh josh@lisa 'doas -n /sbin/rc-service oo-app.stats restart'
 ssh josh@lisa 'doas -n /opt/openorange/bin/oo wait app stats 120'
 ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
@@ -69,8 +71,12 @@ ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
 
 Stop if conditional selection fails. Inspect the concurrent deployment instead
 of overriding it. Verify HTTPS and the dashboard after the health check.
-There is no durable-data migration to reverse. Application rollback retains
-stored canonical events and disables the new batching by selecting the old code.
+There is no canonical-data migration to reverse. This rollback retains stored
+events and the rebuildable covering index, while selecting the earlier query.
+The previous image retains the bounded producer-drain fix. Do not drop the
+index as part of application rollback. The protected pre-index logical backup
+and exact native recovery checks are recorded with the
+[index evidence](../bench/results/2026-11-15-covering-index/README.md).
 
 ## Resume deferred infrastructure work
 

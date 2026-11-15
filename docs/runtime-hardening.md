@@ -8,7 +8,7 @@ S3 backup work remains deferred as P1 in shared-infrastructure ticket STUF-75.
 
 | Component | Verified artifact |
 | --- | --- |
-| Stats | `stats:434ea6ed31f5`, Orange node version 15 |
+| Stats | `stats:1ea3e6af2dc3`, Orange node version 20 |
 | OpenOrange | `open-orange` 1.0.2 |
 | RivetKit | 3.1.2-rc.1 |
 | Native services package | `@rivet-dev/services` 0.2.5 |
@@ -50,15 +50,20 @@ REJECTED is excluded from this rollout.
 | 7 | BENEFICIAL | Add disposable Orange development | Implemented. `make orange-dev` uses the production descriptor generator and removes its runtime and state on SIGTERM |
 | 8 | REQUIRED | Establish recurring off-host recovery guarantees | Deferred by owner as STUF-75 P1. No backup SLO or measured full-host RTO is claimed |
 | 9 | BENEFICIAL | Reproduce Engine S3 startup failure | Isolated exact-image test: HTTP default times out. `AWS_ALLOW_HTTP=true` becomes healthy. Production remains filesystem-backed |
-| 10 | EXPERIMENTAL | Tune native SQLite caches | No setting changed. Cache misses and page fetch costs are not yet collected for ObservationStore |
+| 10 | EXPERIMENTAL | Tune native SQLite caches | No setting changed. Native profiling identifies storage waits; raising the staging TTL produces no useful measured gain |
 | 11 | EXPERIMENTAL | Expand native runtime gauges | First-Worker metrics omit ObservationStore. Whole-application coverage remains unproven |
 | 12 | EXPERIMENTAL | Add independent Engine and runner nodes | Architecture proposal only. Requires independent log storage, failure rehearsals and scoped credentials |
-| 13 | REJECTED | Ship the covering JSON expression index | No established native cold-read benefit and a larger fixture footprint. Removed before deployment |
+| 13 | REJECTED | Ship the compact JSON expression index | Native SQLite still seeks the canonical table. No established cold-read benefit; removed before deployment |
 | 14 | REJECTED | Switch live Engine persistence to VersityGW | Startup compatibility alone does not establish durability, recovery or migration safety |
 | 15 | REJECTED | Introduce a general trace backend or orchestration stack | No demonstrated need. Existing producer and private bridge provide the scoped measurements |
+| 16 | BENEFICIAL | Cover summary reads with the payload-containing index | Deployed. Five native interleaved rounds remove canonical seeks and reduce first-1h SQL from median 2,465 ms to 123 ms. One following 24h sequence regresses; per-range browser acceptance remains separate |
 
 Measurements, workload boundaries and rejected-index evidence are in the
 [range-refresh record](../bench/results/2026-11-14-range-refresh/README.md).
+The later native profile, genuine covering index, write costs and compatibility
+proofs are in the [index record](../bench/results/2026-11-15-covering-index/README.md).
+Current browser and scale acceptance belongs to the
+[performance campaign](CAMPAIGN-STATS-PERFORMANCE.md).
 The local batching result is not a claim that Lisa's page loads improve by
 the same ratio. Live delivery verifies one producer, shared batching and zero
 reported drops for the test burst and concurrent page request.
@@ -80,9 +85,11 @@ reported drops for the test burst and concurrent page request.
 | Security | Forged or absent gateway identity fails. Valid tagged identity passes. Platform ingest uses its dedicated verifier without an Installation lookup | Engine admin credentials remain server-side. A narrower Engine token has not been validated |
 | Provider parity | Miniflare remains the fast compatibility and fixture runtime. Orange descriptors omit Analytics SQL and provider tails | Provider CPU, billing and unsupported APIs remain absent rather than becoming zeros |
 
-The native tests are `deploy/orange/{pilot,backup,diagnostics,platform,dev}.test.mts`.
-The current observation suite passes 202 cases, and the producer suite passes
-eighteen. These counts describe targeted verification, not a complete release
+The native tests are `deploy/orange/{pilot,backup,diagnostics,platform,dev,lifecycle}.test.mts`.
+The current observation suite passes 210 cases, and the producer/buffering suites
+pass 23. The isolated lifecycle fixture also verifies constructor replacement
+after idle, autonomous overdue alarms and idempotent interrupted-request replay.
+These counts describe targeted verification, not a complete release
 gate for unrelated Rust or frontend changes.
 
 ## Applicable upstream reports
