@@ -17,6 +17,7 @@ export default defineConfig({
   },
   timeout: 30_000,
   fullyParallel: true,
+  retries: process.env["CI"] === "true" ? 2 : 0,
   workers: Math.max(1, Math.min(availableParallelism(), 8)),
   use: { trace: "off" },
   projects: [
