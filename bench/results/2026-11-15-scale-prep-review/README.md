@@ -61,7 +61,7 @@ sleep/wake signal, committed to Stuff main at `d28e47c`. A concurrent ticket
 allocation required replacing the initial branch-only ticket ID before
 integration. Awake P2 evidence is unchanged.
 
-## Single rebuild in progress
+## Single rebuild result
 
 The allowed rebuild started on November 15 in the existing isolated container,
 using namespace `stats-scale-rebuild-20261115` and protected root
@@ -70,4 +70,24 @@ bundles and the checksummed 203,950-event corpus with 250 ms pacing between
 500-row import pages. Prior failed states remain intact. Driver and log are
 `rebuild-scale-once.mjs` and `campaign-rebuild-20261115.log` under the protected
 host scratch directory. No additional rebuild is authorized by this record.
-The full workload budget remains unused until preparation succeeds.
+The driver exited 1 with HTTP 500 and plain `Internal Server Error` after
+70,500 acknowledged rows. At 19:08:47.884 UTC the private Engine logged
+another filesystem fence with `reason=staged_write_abort_failed`. The failure
+resource snapshot reports 3,175,346,176 bytes, 1,514 cumulative memory-limit
+events and zero OOM kills. Counts are cumulative container counters, not
+per-attempt deltas. The complete fixture was not prepared, so no full timing
+run or exact-output acceptance comparison was possible.
+
+W2 is blocked on fixture durability after its allowed single rebuild. There
+will be no further rebuild in this campaign. W4 is also blocked: its required
+combined W2 workload cannot run on an incomplete fixture. No overhead samples,
+CPU bound, latency bound or collector-failure acceptance is claimed.
+
+W5's single investigation localizes the observed failure to Engine volume
+fencing, rather than a Stats validation rejection. It does not prove the
+underlying cause is an Engine defect rather than configuration or resource
+limits. Repeated ordinary restart and interrupted-request recovery acceptance
+remain blocked. Stuff STUF-87 (P1, assumed) carries the logs, binary provenance,
+resource caveat and required recovery proof. Engine repair remains outside
+this campaign. Existing isolated lifecycle evidence is retained, without
+promoting it to repeated native recovery acceptance.

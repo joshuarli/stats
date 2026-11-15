@@ -10,14 +10,19 @@ container regressions and pinned-Node lint pass. Preserved imports failed
 before the full corpus was ready; their cause is not yet classified.
 No full W2 run was started and its budget remains three runs. See the
 [review and failure evidence](../bench/results/2026-11-15-scale-prep-review/README.md).
-The single W2 rebuild is running in protected Lisa state
+The single W2 rebuild failed in protected Lisa state
 `campaign-rebuild-20261115/`, namespace `stats-scale-rebuild-20261115`.
 Its driver is `rebuild-scale-once.mjs` and output is
-`campaign-rebuild-20261115.log`; inspect its process before any continuation.
-Do not start another rebuild. W3's two observability checks found no positive
+`campaign-rebuild-20261115.log`; it exited 1 after 70,500 acknowledged rows.
+The private Engine fenced its volume again. W2 is blocked on fixture durability
+(Stuff STUF-87); no full timing run was possible. Do not start another rebuild.
+W3's two observability checks found no positive
 sleep signal; the sleep condition is blocked as unobservable, tracked in
-Stuff STUF-86. W2, W4 and W5 remain unfinished; W6 still awaits the soak
-deadline. The campaign is not closed.
+Stuff STUF-86. W4 is blocked on the unavailable complete W2 workload. W5's
+single investigation localized the failure to Engine volume fencing, but did
+not establish whether configuration/resource limits or an Engine defect is
+the underlying cause; repeated native recovery is blocked on STUF-87.
+W6 still awaits the soak deadline. The campaign is not closed.
 
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
@@ -38,10 +43,10 @@ does not need a redeploy to be current.
 | P3 | **Pass** on the current corpus, with a warm asset cache | Repeat at tenfold within P6 |
 | P4 | **Pass** for the observed cohort: 17 of 17 journeys over 1 s | None. Population coverage is not claimed |
 | P5 | **Pass** on desktop and mobile; guidance is live | None |
-| P6 | Component evidence only | W2 |
-| P7 | Freshness **passes**; overhead **open** | W4 |
+| P6 | **Blocked (fixture import volume fencing)**; component evidence only | Stuff STUF-87; [rebuild evidence](../bench/results/2026-11-15-scale-prep-review/README.md#single-rebuild-result) |
+| P7 | Freshness **passes**; overhead **blocked (complete W2 workload unavailable)** | W4; no study or precision claim |
 | P8 | Browser heap **passes**; the 24h soak is **running** | W6 |
-| P9 | Partial; a command-volume quorum failure is unresolved | W5 |
+| P9 | **Blocked (native volume fencing; underlying cause unresolved)**; partial lifecycle evidence retained | W5 investigation exhausted; Stuff STUF-87 |
 
 ## Hard constraints right now
 
