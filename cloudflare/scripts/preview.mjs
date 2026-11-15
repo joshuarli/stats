@@ -45,8 +45,11 @@ async function loadCaptures() {
   return found;
 }
 
+const profile = process.env.PREVIEW_PROFILE ?? "production";
+if (!["production", "legacy"].includes(profile)) throw new Error("PREVIEW_PROFILE must be production or legacy");
+const production = profile === "production" ? await readJson(join(captures, "production", "data.json")) : undefined;
 const capturesFound = await loadCaptures();
-const previewNow = Math.max(...capturesFound.map(capture => capture.capturedAtMs));
+const previewNow = production?.capture.capturedAtMs ?? Math.max(...capturesFound.map(capture => capture.capturedAtMs));
 const shiftFor = capture => previewNow - capture.capturedAtMs;
 
 const hostsById = new Map();
@@ -198,7 +201,7 @@ function json(response, body, status = 200) {
 
 const observeSource = process.env.PREVIEW_OBSERVE ?? "scenario";
 if (!["scenario", "capture"].includes(observeSource)) throw new Error("PREVIEW_OBSERVE must be scenario or capture");
-const scenario = observeSource === "scenario" ? await buildScenario(previewNow) : undefined;
+const scenario = production === undefined && observeSource === "scenario" ? await buildScenario(previewNow) : undefined;
 const scenarioStore = scenario === undefined ? undefined : scenarioStoreFor(scenario, previewNow);
 
 async function readBody(request) {
@@ -242,6 +245,39 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     const path = decodeURIComponent(url.pathname);
+    if (production !== undefined && (path.startsWith("/api/") || path.startsWith("/ingest/"))) {
+      const missing = () => json(response, { error: { code: "not_found", message: "request not captured" } }, 404);
+      if (request.method !== "GET") return missing();
+      if (path === "/api/v1/capabilities") return json(response, production.capabilities);
+      if (path === "/api/v1/hosts") return json(response, production.hosts);
+      if (path === "/api/v1/services") return json(response, production.services);
+      const deploy = /^\/api\/v1\/services\/([^/]+)\/deployments$/u.exec(path);
+      if (deploy) { const body = production[`${deploy[1]}-deployments`]; return body ? json(response, body) : missing(); }
+      const app = /^\/api\/observe\/([^/]+)\/external\/telemetry(\/summary)?$/u.exec(path);
+      if (app) {
+        const from = Number(url.searchParams.get("from")), to = Number(url.searchParams.get("to"));
+        const range = Object.entries(production.capture.windows).find(([, duration]) => to === previewNow && from === to - duration)?.[0];
+        const body = production[`${app[1]}-${app[2] ? "summary" : "recent"}-${range}`];
+        return body ? json(response, body) : missing();
+      }
+      const host = /^\/api\/v1\/hosts\/([^/]+)\/(system|history)$/u.exec(path);
+      if (host && host[1] === production.capture.hostId) {
+        if (host[2] === "system") return json(response, production["host-system"]);
+        const from = Number(url.searchParams.get("from")), to = Number(url.searchParams.get("to"));
+        const requestedRange = url.searchParams.get("range");
+        if (requestedRange !== null && (url.searchParams.has("from") || url.searchParams.has("to"))) return missing();
+        const range = requestedRange ?? Object.entries(production.capture.windows).find(([, duration]) => to === previewNow && from === to - duration)?.[0];
+        const kinds = url.searchParams.get("kinds");
+        if (kinds !== null) {
+          const entries = kinds.split(",").map(kind => [kind, production[`host-${kind}-${range}`]]);
+          return entries.some(([, body]) => !body) ? missing() : frame(request, response, { hostId: host[1], histories: Object.fromEntries(entries) });
+        }
+        const body = production[`host-${url.searchParams.get("kind") ?? "summary"}-${range}`];
+        return body ? frame(request, response, body) : missing();
+      }
+      return missing();
+    }
+    if (path === "/api/v1/capabilities") return json(response, { projectSource: "cloudflare", analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true });
     if (path === "/api/v1/hosts") return json(response, { hosts });
     if (path === "/api/v1/projects") return json(response, projects);
     if (path === "/api/v1/services") return json(response, { services });
@@ -328,9 +364,10 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  const firstHost = hosts.find(host => capturesFound.some(capture => capture.hostId === host.hostId)) ?? hosts[0];
-  console.log(`preview on http://127.0.0.1:${port}/ (${capturesFound.map(capture => capture.name).join(", ")} at ${new Date(previewNow).toISOString()})`);
-  console.log(scenario === undefined ? "observe: production capture" : `observe: fault-injection scenario, ${scenario.invocations} invocations (PREVIEW_OBSERVE=capture for the production capture)`);
+  const firstHost = production !== undefined ? production.hosts.hosts.find(host => host.hostId === production.capture.hostId) : hosts.find(host => capturesFound.some(capture => capture.hostId === host.hostId)) ?? hosts[0];
+  console.log(`preview on http://127.0.0.1:${port}/ (${production !== undefined ? "production" : capturesFound.map(capture => capture.name).join(", ")} at ${new Date(previewNow).toISOString()})`);
+  console.log(production !== undefined ? "observe: native production capture" : scenario === undefined ? "observe: legacy capture" : `observe: fault-injection scenario, ${scenario.invocations} invocations (PREVIEW_OBSERVE=capture for the legacy capture)`);
   if (firstHost !== undefined) console.log(`host:    http://127.0.0.1:${port}/#/host/${firstHost.hostId}`);
-  if (projects[0] !== undefined) console.log(`project: http://127.0.0.1:${port}/#/project/${projects[0].id}`);
+  const firstProject = production !== undefined ? production.services.services.find(service => service.name === "stats")?.name : projects[0]?.id;
+  if (firstProject !== undefined) console.log(`project: http://127.0.0.1:${port}/#/project/${firstProject}`);
 });

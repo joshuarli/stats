@@ -1,0 +1,22 @@
+{
+  "engineUnchanged": true,
+  "deniedConnections": [
+    {
+      "host": "172.29.80.11",
+      "port": 6420,
+      "connected": false,
+      "error": "ENETUNREACH"
+    },
+    {
+      "host": "1.1.1.1",
+      "port": 443,
+      "connected": false,
+      "error": "ENETUNREACH"
+    }
+  ],
+  "unauthenticatedStatus": 401,
+  "forgedIdentityStatus": 401,
+  "frontendAssetFilesScanned": 45,
+  "secretsInAssets": 0,
+  "publicTunnelHostStatus": 404
+}

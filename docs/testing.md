@@ -342,9 +342,8 @@ the page scrolls on its own.
 through the real core store with injected faults: a canary that introduces
 a parser bug, a v1.4.0 deploy that adds an ingest error, regresses the
 resolved parser bug, and makes host history reads CPU-hot, and a poll
-failure carried across every version. The spec and `make preview` answer
-`/api/observe/stats/*` from it through the real API handler;
-`PREVIEW_OBSERVE=capture make preview` serves the production capture. Its WebP goldens
+failure carried across every version. The spec and legacy preview profile answer `/api/observe/stats/*` from it through the real API handler;
+`PREVIEW_PROFILE=legacy PREVIEW_OBSERVE=capture make preview` serves the legacy capture. Its WebP goldens
 (`observe.spec.ts-snapshots/`) cover the route explorer, the Deployment card
 with v1.4.0's impact, the Errors card, and the trace modal on desktop and
 mobile; they come from the scenario, so they change only when the scenario
@@ -352,8 +351,7 @@ or the design does. Local workerd sets no
 script version, so the two-Worker test proves that a polled deployment is
 forwarded and stored, while version attribution is covered by the core
 tests. `cloudflare/scripts/capture-project.sh stats` also
-saves the production observe responses, which `make preview` serves from
-`/api/observe/stats/*`.
+saves the legacy observe responses for that profile.
 
 ## Dashboard lifecycle and payload checks
 
@@ -399,17 +397,26 @@ each run; discard runs that overlap load.
 compares the host summary and charts on each captured host page, the cost
 ledger and charts on the `stuff` project page at 1h, its charts at 6h, and its
 Deployment card at the 1h and 6h ranges. The ledger reads `from`/`to` windows, which the replay and
-`make preview` answer by slicing the shortest captured range that covers the
+legacy preview answer by slicing the shortest captured range that covers the
 window. Baselines live beside the spec as WebP files, and `make
 dashboard-test` rejects tracked PNGs. The replay hides the section bar and
 zeroes the card scroll offset, because Playwright's scroll-into-view would
 otherwise leave a card shorter than the viewport partly off-screen and
 unpainted.
 
-Recapture fixture data with `cloudflare/scripts/capture-host.sh` or
+`make preview` replays the checked-in native production capture with its clock
+frozen at capture time. Application windows are 1h, 6h, and 24h; uncaptured
+windows and host histories return 404. The capture contains all registered hosts
+and representative history for lisa. Set `PREVIEW_PROFILE=legacy` to use the
+older Cloudflare and synthetic scenario fixtures.
+`cloudflare/scripts/capture-production.mjs` performs serial read-only production
+requests into private `.work/tmp/preview-production` scratch; review and sanitize
+that data before updating the checked-in fixture.
+
+Recapture legacy fixture data with `cloudflare/scripts/capture-host.sh` or
 `cloudflare/scripts/capture-project.sh` against the deployed service. The
 `stuff` deployment files (`deployments.json` and `comparison-1h|6h|24h.json`)
-are hand-built, not captured, and both the replay and `make preview` serve them.
+are hand-built, not captured, and both the replay and legacy preview serve them.
 `capture-project.sh` deletes the project's capture directory first, so restore
 those four files from git after a `stuff` capture and set `sync.lastAttemptAtMs`
 and `sync.lastSuccessAtMs` in `deployments.json` a minute before the new

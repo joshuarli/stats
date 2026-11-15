@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { readApplicationSummary, readApplicationSummaryTimed, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
 import { cleanup, initializeStore, ingestExternal } from "../../src/observe/core/store.ts";
-import { APPLICATION_SNAPSHOT_POLICY, APPLICATION_SUMMARY_TABLE } from "../../src/observe/application/schema.ts";
+import { APPLICATION_ROLLUP_TABLE, APPLICATION_SNAPSHOT_POLICY, APPLICATION_SUMMARY_TABLE } from "../../src/observe/application/schema.ts";
 import { beginImport, exportManifest, exportPage, finishImport, importRows, initializeMaintenance, setFence } from "../../src/core/export/snapshot.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
@@ -42,12 +42,12 @@ await test("summary reads use compact scalar rows without opening canonical even
     let query = "";
     let parameters: SqlValue[] = [];
     context.mock.method(db, "rows", (sql: string, ...values: SqlValue[]) => {
-      if (sql.includes("WITH events AS MATERIALIZED")) { query = sql; parameters = values; }
+      if (sql.includes("WITH ranges AS MATERIALIZED")) { query = sql; parameters = values; }
       return original(sql, ...values);
     });
     assert.equal(readApplicationSummary(db, "stats", T0, {}).totals?.events, 2);
     const plan = db.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(...parameters) as { detail: string }[];
-    assert.ok(plan.some(row => row.detail.includes(`SEARCH ${APPLICATION_SUMMARY_TABLE} USING PRIMARY KEY`)));
+    assert.ok(plan.some(row => row.detail.includes("SEARCH p USING PRIMARY KEY")));
     const roots = db.rows<{ rootpage: number }>("SELECT rootpage FROM sqlite_master WHERE name = 'observe_external_events' OR tbl_name = 'observe_external_events'");
     const code = db.db.prepare(`EXPLAIN ${query}`).all(...parameters) as { opcode: string; p1: number; p2: number }[];
     assert.ok(!code.some(op => op.opcode === "OpenRead" && roots.some(root => op.p2 === root.rootpage)));
@@ -86,6 +86,10 @@ await test("projection creation and backfill roll back together and repeat initi
     assert.throws(() => initializeStore(db), /injected write failure/u);
     assert.deepEqual(db.rows("SELECT name FROM sqlite_master WHERE name = ? OR name LIKE 'observe_projection_%'", APPLICATION_SUMMARY_TABLE), []);
     db.failOnRun = null;
+    db.failOnRun = query => query.startsWith(`INSERT INTO ${APPLICATION_ROLLUP_TABLE}`);
+    assert.throws(() => initializeStore(db), /injected write failure/u);
+    assert.deepEqual(db.rows("SELECT name FROM sqlite_master WHERE name = ? OR name LIKE 'observe_rollup_%'", APPLICATION_ROLLUP_TABLE), []);
+    db.failOnRun = null;
     initializeStore(db);
     db.failOnRun = query => query.startsWith(`INSERT INTO ${APPLICATION_SUMMARY_TABLE}`);
     initializeStore(db);
@@ -107,6 +111,7 @@ await test("canonical mutation, rollback and cleanup maintain exact projection r
     assert.deepEqual(readApplicationSummary(db, "stats", T0, {}), summary);
     assert.equal(cleanup(db, T0 + 8 * D).deleted, 2);
     assert.deepEqual(db.rows(`SELECT * FROM ${APPLICATION_SUMMARY_TABLE}`), []);
+    assert.deepEqual(db.rows(`SELECT * FROM ${APPLICATION_ROLLUP_TABLE}`), []);
   } finally { db.db.close(); }
 });
 
@@ -126,6 +131,7 @@ await test("canonical snapshot import rebuilds the real projection and resumes w
       if (table.name === "observe_external_events") {
         beginImport(to, manifest, APPLICATION_SNAPSHOT_POLICY);
         assert.equal(to.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${APPLICATION_SUMMARY_TABLE}`)[0]?.n, 3);
+        assert.ok(to.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${APPLICATION_ROLLUP_TABLE}`)[0]!.n > 0);
         importRows(to, table.name, 0, page.rows);
       }
     }
@@ -245,7 +251,7 @@ await test("summary diagnostics separate aggregate and issue reads without chang
     let monotonic = 100;
     const read = db.rows.bind(db);
     context.mock.method(db, "rows", (query: string, ...parameters: SqlValue[]) => {
-      monotonic += query.includes("WITH events") ? 37 : 7;
+      monotonic += query.includes("WITH ranges") ? 37 : 7;
       return read(query, ...parameters);
     });
     const result = readApplicationSummaryTimed(db, "stats", T0, {}, () => monotonic);

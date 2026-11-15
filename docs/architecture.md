@@ -1095,15 +1095,21 @@ when Requests opens; issue details and deployment comparisons load when their
 sections open. Refresh keeps the last successful data visible and reports a
 read failure; a changed time window clears data from the previous selection.
 
-Application summary SQL scans `observe_application_projection`: one scalar row
-per canonical event, keyed by service, event time and event ID. Canonical insert,
-update and delete triggers maintain it within the same transaction. The schema
-transaction creates and backfills it once; later actor activations skip that
-backfill. Scalars retain the original JSON expressions' nulls; HTTP status uses
-an internal zero sentinel that summary reads convert to null. Canonical payloads,
-duplicate identity and summary response shapes remain unchanged. Logical backups
-omit the projection and restore it through the canonical-table triggers. The old
-payload-containing index remains available to the compatible rollback reader.
+Application summary SQL combines whole-minute and whole-second cells from
+`observe_application_rollups` with fractional boundary events from
+`observe_application_projection`. The projection stores one scalar row per
+canonical event. Canonical mutation triggers maintain the projection, whose
+triggers maintain both rollup resolutions in the same transaction. Deletion
+rebuilds the affected second cell before its minute cell, preserving maxima.
+The schema transaction creates and backfills derived state once; later actor
+activations skip the backfill.
+
+Scalars retain the original JSON expressions' nulls. HTTP status uses an internal
+zero sentinel that reads convert to null. Operation keys distinguish null from
+empty text. Canonical payloads, duplicate identity and complete summary responses
+remain unchanged. Logical backups omit both derived tables and rebuild them
+through the canonical mutation triggers. The payload-containing index remains
+available for legacy projection backfill.
 
 `cloudflare/src/client/` is a Solid application built by Vite's client
 environment and charted with uPlot. `api.ts` decodes every response once at the
