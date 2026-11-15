@@ -10,7 +10,7 @@ import { POLICIES } from "../core/policies.ts";
 import { CloudflareSql } from "../../cloudflare/sql.ts";
 import { handleMaintenance } from "../../core/export/http.ts";
 import { initializeMaintenance, maintenanceState } from "../../core/export/snapshot.ts";
-import type { ApplicationSummary, ApplicationTelemetry } from "../application/telemetry.ts";
+import type { ApplicationSummaryRead, ApplicationTelemetry } from "../application/telemetry.ts";
 
 export interface ObserveEnv {
   readonly STORE: DurableObjectNamespace<ObservationStore>;
@@ -89,5 +89,5 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   async externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow> { return this.service.externalOperations(service, filter); }
   async applicationTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationTelemetry> { return this.service.applicationTelemetry(service, filter); }
   async platformTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<PlatformTelemetry> { return this.service.platformTelemetry(service, filter); }
-  async applicationSummary(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationSummary> { return this.service.applicationSummary(service, filter); }
+  async applicationSummary(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationSummaryRead> { return this.service.applicationSummary(service, filter); }
 }

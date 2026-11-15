@@ -266,7 +266,14 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
       const fromMs = milliseconds(values, "from");
       const toMs = milliseconds(values, "to");
       const filter = { ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) };
-      return json(path === "/external/telemetry/summary" ? await store.applicationSummary(service, filter) : await store.applicationTelemetry(service, filter));
+      if (path !== "/external/telemetry/summary") return json(await store.applicationTelemetry(service, filter));
+      const started = performance.now();
+      const result = await store.applicationSummary(service, filter);
+      const storeMs = performance.now() - started;
+      const encoding = performance.now();
+      const response = json(result.data);
+      response.headers.set("Server-Timing", `app-store;dur=${storeMs.toFixed(3)}, app-query;dur=${result.queryMs.toFixed(3)}, app-issues;dur=${result.issuesMs.toFixed(3)}, app-read;dur=${result.readMs.toFixed(3)}, app-encode;dur=${(performance.now() - encoding).toFixed(3)}`);
+      return response;
     }
     if (path === "/external/operations") {
       const values = params(url, ["from", "to"]);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createObserveService } from "../../src/observe/core/service.ts";
-import { readApplicationSummary, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
+import { readApplicationSummary, readApplicationSummaryTimed, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
 import { ingestExternal } from "../../src/observe/core/store.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
 import type { SqlValue } from "../../src/core/sql.ts";
@@ -75,6 +75,7 @@ await test("summary reads preserve complete aggregates without loading recent ev
     const store = createObserveService(db, { now: () => T0, databaseBytes: () => 0 });
     const response = await handleApi(new Request("https://observe/external/telemetry/summary"), "/external/telemetry/summary", store, "stats", T0);
     assert.equal(response.status, 200);
+    assert.match(response.headers.get("Server-Timing")!, /app-store;dur=\d+\.\d{3}, app-query;dur=\d+\.\d{3}, app-issues;dur=\d+\.\d{3}, app-read;dur=\d+\.\d{3}, app-encode;dur=\d+\.\d{3}/u);
     assert.deepEqual(await response.json(), summary);
   } finally { db.db.close(); }
 });
@@ -112,5 +113,22 @@ await test("summary keeps HTTP status boundaries and background durations distin
     assert.equal(result.totals?.failed, 0);
     assert.deepEqual(Object.keys(result.buckets[0]!).sort(), [...Object.keys(result.totals!), "atMs"].sort());
     assert.deepEqual(Object.keys(result.operations[0]!).sort(), [...Object.keys(result.totals!), "operation"].sort());
+  } finally { db.db.close(); }
+});
+
+await test("summary diagnostics separate aggregate and issue reads without changing data", async context => {
+  const db = database();
+  try {
+    ingestExternal(db, "stats", await receiveEvents("stats", [event(1)]), T0);
+    const expected = readApplicationSummary(db, "stats", T0, {});
+    let monotonic = 100;
+    const read = db.rows.bind(db);
+    context.mock.method(db, "rows", (query: string, ...parameters: SqlValue[]) => {
+      monotonic += query.includes("WITH events") ? 37 : 7;
+      return read(query, ...parameters);
+    });
+    const result = readApplicationSummaryTimed(db, "stats", T0, {}, () => monotonic);
+    assert.deepEqual(result.data, expected);
+    assert.deepEqual({ queryMs: result.queryMs, issuesMs: result.issuesMs, readMs: result.readMs }, { queryMs: 37, issuesMs: 7, readMs: 44 });
   } finally { db.db.close(); }
 });

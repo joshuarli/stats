@@ -101,7 +101,10 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.equal(observationKeys().size, 2, "the platform sink has a separate actor identity");
     assert.equal(installation().length, before, "platform transport authentication must not invoke Installation");
     assert.equal((await fetch(`${session.origin}/api/v1/projects`, { headers })).status, 503, "the fixture produces a real observed actor failure");
-    assert.equal((await fetch(`${session.origin}/api/observe/stats/external/telemetry/summary`, { headers })).status, 200);
+    const summaryResponse = await fetch(`${session.origin}/api/observe/stats/external/telemetry/summary`, { headers });
+    assert.equal(summaryResponse.status, 200);
+    assert.match(summaryResponse.headers.get("Server-Timing")!, /app-query;dur=\d+\.\d{3}/u);
+    assert.match(summaryResponse.headers.get("Server-Timing")!, /app-total;dur=\d+\.\d{3}/u);
     const deliveryDeadline = Date.now() + 10_000;
     while (bridge.counters().admitted < 4 && Date.now() < deliveryDeadline) await new Promise(done => setTimeout(done, 50));
     assert.ok(bridge.counters().admitted >= 4, "real native spans reach the translator");

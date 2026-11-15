@@ -11,7 +11,7 @@ import { nodeSqlScopes } from '../src/node/sql.ts';
 import { createStatsServer } from '../src/node/server.ts';
 import { initializeStore } from '../src/observe/core/store.ts';
 import { handleApi } from '../src/observe/http/api.ts';
-import { readApplicationSummary as candidate } from '../src/observe/application/telemetry.ts';
+import { readApplicationSummary as candidate, readApplicationSummaryTimed } from '../src/observe/application/telemetry.ts';
 
 const { values } = parseArgs({ options: { baseline: { type: 'string' }, events: { type: 'string' }, repeat: { type: 'string', default: '1' }, rounds: { type: 'string', default: '5' }, implementation: { type: 'string' } } });
 if (!values.baseline || !values.events) throw new Error('usage: node scripts/bench-application-summary.mjs --baseline FILE --events FILE [--repeat 1..10] [--rounds 5..20] [--implementation baseline|candidate]');
@@ -40,7 +40,7 @@ try {
   const expected = baseline(sql, 'stats', now, filter);
   assert.equal(expected.totals?.events, captured.length * repeat);
   let read = baseline;
-  const store = { applicationSummary: async (service, window) => read(sql, service, now, window) };
+  const store = { applicationSummary: async (service, window) => read === candidate ? readApplicationSummaryTimed(sql, service, now, window, () => performance.now()) : ({ data: read(sql, service, now, window), queryMs: 0, issuesMs: 0, readMs: 0 }) };
   server = createStatsServer({ installation: request => core.fetch(request), assets: async () => new Response(null, { status: 404 }), transport: 'tcp', observe: (target, init) => {
     const url = new URL(target), path = url.pathname.replace(/^\/stats/u, '');
     return handleApi(new Request(`https://observe${path}${url.search}`, init), path, store, 'stats', now);

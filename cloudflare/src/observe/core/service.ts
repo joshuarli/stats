@@ -15,7 +15,7 @@ import { profileWindow, type ProfileWindow } from "./profile.ts";
 import { receiveEvents } from "../ingest/failures.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
 import type { SqlStatements } from "../../core/sql.ts";
-import { readApplicationSummary, readApplicationTelemetry, type ApplicationSummary, type ApplicationTelemetry } from "../application/telemetry.ts";
+import { readApplicationSummaryTimed, readApplicationTelemetry, type ApplicationSummaryRead, type ApplicationTelemetry } from "../application/telemetry.ts";
 
 export interface ServiceHealth extends Health {
   readonly databaseBytes: number;
@@ -41,7 +41,7 @@ export interface ObserveService {
   externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow>;
   applicationTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationTelemetry>;
   platformTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<PlatformTelemetry>;
-  applicationSummary(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationSummary>;
+  applicationSummary(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationSummaryRead>;
 }
 
 export type ArtifactOutcome = { readonly result: ArtifactResult } | { readonly problem: string };
@@ -141,7 +141,7 @@ export function createObserveService(db: SqlStatements, clock: ServiceClock, pol
     externalOperations: async (service, filter) => summarizeExternalOperations(db, service, clock.now(), filter),
     applicationTelemetry: async (service, filter) => readApplicationTelemetry(db, service, clock.now(), filter),
     platformTelemetry: async (service, filter) => readPlatformTelemetry(db, service, clock.now(), filter),
-    applicationSummary: async (service, filter) => readApplicationSummary(db, service, clock.now(), filter),
+    applicationSummary: async (service, filter) => readApplicationSummaryTimed(db, service, clock.now(), filter, () => performance.now()),
     ingest: (preparations, outcomes, counts, flush, captureOperations = false) => ingest(db, preparations, clock.now(), outcomes, { ...policy(), counts }, decodeFlush(flush), captureOperations),
     cleanup: () => {
       const now = clock.now();

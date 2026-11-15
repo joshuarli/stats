@@ -81,3 +81,14 @@ contains the controlled native comparison and its limits.
 Upstream references: [OpenOrange monitoring](https://openorange.dev/docs/operations/monitoring/),
 [Rivet tracing](https://rivet.dev/docs/tracing/) and
 [pinned native instrumentation](https://github.com/rivet-dev/rivet/blob/e5ed3911ebff8ddc35c08b3f6c6eb3f795d042f9/rivetkit-rust/packages/rivetkit-core/src/telemetry.rs).
+
+## Dashboard range-read diagnosis
+
+Application-summary reads expose nested elapsed times through `Server-Timing`
+and the existing `http.get.application-summary` observation: aggregate query,
+issue count, complete actor read, actor call and response encoding. The event
+also records `requested_window_ms`. The JSON summary and ingest format remain
+unchanged. These measurements share a request, while native actor samples need
+not identify the logical method. SQL elapsed time includes the synchronous
+binding call and result materialization; it is not database CPU time. See the
+[range-refresh record](../bench/results/2026-11-14-range-refresh/README.md).

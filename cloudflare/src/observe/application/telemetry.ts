@@ -36,6 +36,19 @@ export interface ApplicationTelemetry extends ApplicationSummary {
   readonly moreRecent: boolean;
 }
 
+export interface ApplicationSummaryRead {
+  readonly data: ApplicationSummary;
+  readonly queryMs: number;
+  readonly issuesMs: number;
+  readonly readMs: number;
+}
+
+interface ReadClock {
+  readonly now: () => number;
+  queryMs: number;
+  issuesMs: number;
+}
+
 const HTTP_STATUS = "CASE WHEN json_type(payload, '$.work.http_status') = 'integer' AND json_extract(payload, '$.work.http_status') BETWEEN 100 AND 599 THEN json_extract(payload, '$.work.http_status') END";
 const MEASURES = `COUNT(*) AS events,
   SUM(outcome <> 'ok') AS failed,
@@ -77,10 +90,11 @@ function windowTotals(buckets: readonly ApplicationTotals[]): ApplicationTotals 
   return checked(total);
 }
 
-export function readApplicationSummary(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">): ApplicationSummary {
+function summarize(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">, clock?: ReadClock): ApplicationSummary {
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const stepMs = Math.max(1000, Math.ceil((toMs - fromMs) / 120_000) * 1000);
   // OpenOrange 1.0.2 treats a leading WITH as a write turn. Keep SELECT first until its read classifier supports CTEs.
+  const queryStarted = clock?.now();
   const rows = db.rows<SummaryRow>(
     `SELECT * FROM (WITH events AS MATERIALIZED (
       SELECT event_at, json_extract(payload, '$.operation') AS operation,
@@ -100,20 +114,35 @@ export function readApplicationSummary(db: SqlStatements, service: string, nowMs
     ORDER BY kind, atMs, events DESC, operation`,
     service, fromMs, toMs, fromMs, stepMs, stepMs, fromMs
   );
+  if (clock !== undefined) clock.queryMs = clock.now() - queryStarted!;
   const buckets: (ApplicationTotals & { readonly atMs: number })[] = [];
   const operations: (ApplicationTotals & { readonly operation: string })[] = [];
   for (const { kind, atMs, operation, ...totals } of rows) {
     if (kind === 0) buckets.push({ ...checked(totals), atMs });
     else operations.push({ ...checked(totals), operation });
   }
+  const issuesStarted = clock?.now();
+  const openIssues = openIssueCount(db, nowMs);
+  if (clock !== undefined) clock.issuesMs = clock.now() - issuesStarted!;
   return {
     provenance: PROVENANCE, fromMs, toMs, stepMs,
     totals: windowTotals(buckets),
-    openIssues: openIssueCount(db, nowMs),
+    openIssues,
     buckets,
     operations: operations.slice(0, 20),
     moreOperations: operations.length > 20,
   };
+}
+
+export function readApplicationSummary(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">): ApplicationSummary {
+  return summarize(db, service, nowMs, filter);
+}
+
+export function readApplicationSummaryTimed(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">, monotonic: () => number): ApplicationSummaryRead {
+  const started = monotonic();
+  const clock: ReadClock = { now: monotonic, queryMs: 0, issuesMs: 0 };
+  const data = summarize(db, service, nowMs, filter, clock);
+  return { data, queryMs: clock.queryMs, issuesMs: clock.issuesMs, readMs: monotonic() - started };
 }
 
 export function readApplicationTelemetry(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">): ApplicationTelemetry {
