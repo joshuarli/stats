@@ -189,7 +189,7 @@ function parseJson(text: string): unknown {
   }
 }
 
-function serviceOf(row: ServiceRow): Service {
+function serviceOf(row: Pick<ServiceRow, "name" | "host_ids" | "health_url" | "unit" | "created_at_ms">): Service {
   return { name: row.name, hostIds: JSON.parse(row.host_ids) as string[], healthUrl: row.health_url, unit: row.unit, createdAtMs: row.created_at_ms };
 }
 
@@ -247,6 +247,24 @@ export async function createService(sql: SqlDatabase, text: string | null, now: 
 
 export function listServices(sql: SqlDatabase): Service[] {
   return sql.rows<ServiceRow>("SELECT * FROM services ORDER BY name").map(serviceOf);
+}
+
+export function listServicesWithDeployments(sql: SqlDatabase, now: number, onError: (error: unknown) => void): Service[] {
+  const rows = sql.rows<Pick<ServiceRow, "name" | "host_ids" | "health_url" | "unit" | "created_at_ms"> & { payload: string | null }>(
+    `SELECT name, host_ids, health_url, unit, created_at_ms,
+      (SELECT payload FROM service_deployments WHERE service = services.name AND at_ms >= ? ORDER BY at_ms DESC, rowid DESC LIMIT 1) AS payload
+    FROM services ORDER BY name`, now - DEPLOYMENT_RETENTION_MS,
+  );
+  return rows.map(row => {
+    const service = serviceOf(row);
+    try {
+      const latestDeployment: LatestDeployment = row.payload === null ? { status: "none" } : { status: "available", deployment: JSON.parse(row.payload) as Deployment, versions: [] };
+      return { ...service, latestDeployment };
+    } catch (error) {
+      onError(error);
+      return { ...service, latestDeployment: { status: "unavailable" } };
+    }
+  });
 }
 
 export function readService(sql: SqlDatabase, name: string): Service | null {
@@ -315,14 +333,6 @@ export async function recordMarker(sql: SqlDatabase, name: string, text: string 
     sql.run("INSERT INTO service_deployments (service, marker_id, id, at_ms, host_ids, payload) VALUES (?, ?, ?, ?, ?, ?)", name, request.markerId, id, now, JSON.stringify(request.hostIds), JSON.stringify(deployment));
     return { ok: true, value: { created: true, marker: { service: name, markerId: request.markerId, hostIds: request.hostIds, deployment } } };
   });
-}
-
-export function readLatestServiceDeployment(sql: SqlDatabase, service: string, now: number): LatestDeployment {
-  const row = sql.rows<{ payload: string }>(
-    "SELECT payload FROM service_deployments WHERE service = ? AND at_ms >= ? ORDER BY at_ms DESC, rowid DESC LIMIT 1",
-    service, now - DEPLOYMENT_RETENTION_MS,
-  )[0];
-  return row === undefined ? { status: "none" } : { status: "available", deployment: JSON.parse(row.payload) as Deployment, versions: [] };
 }
 
 export function readServiceDeployments(sql: SqlDatabase, service: Service, now: number): ServiceDeploymentHistory {
