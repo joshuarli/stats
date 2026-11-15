@@ -7,7 +7,7 @@ await test("projects only approved fields with exact timing, trace identity and 
   const result = projectBatch(batch(), policy);
   assert.equal(result.received, 1);
   assert.equal(result.events.length, 1);
-  assert.deepEqual(result.events[0], { eventId: `${"a".repeat(32)}-${"b".repeat(16)}`, atMs: 1794700000000, operation: "platform.installation.invoke", release: "stats-123456789abc_oo-1.0.2_rk-3.1.2-rc.1", outcome: "ok", durationMs: 1, work: { duration_us: 1235, sample_ppm: 100000 }, trace: { traceId: "a".repeat(32), spanId: "b".repeat(16) } });
+  assert.deepEqual(result.events[0], { eventId: `${"a".repeat(32)}-${"b".repeat(16)}`, atMs: 1794700000000, operation: "platform.installation.invoke", release: "stats-123456789abc_oo-1.0.2_rk-3.1.2-rc.1_nr-3.1.1", outcome: "ok", durationMs: 1, work: { duration_us: 1235, sample_ppm: 100000 }, trace: { traceId: "a".repeat(32), spanId: "b".repeat(16) } });
   assert.doesNotMatch(JSON.stringify(result), /secret|SELECT|db.statement|actor.id|actor.key/iu);
 });
 await test("rejects invalid clocks and trace IDs and filters other actors, scopes and resources", () => {

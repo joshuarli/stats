@@ -5,6 +5,7 @@ export interface BridgePolicy {
   readonly resourceService: string;
   readonly openorangeVersion: string;
   readonly rivetkitVersion: string;
+  readonly nativeVersion: string;
   readonly samplePpm: number;
   readonly actors: readonly { readonly role: ActorRole; readonly name: string; readonly key: string }[];
 }
@@ -35,7 +36,7 @@ function attributes(value: unknown): ReadonlyMap<string, string> | null {
   return result;
 }
 export function validatePolicy(policy: BridgePolicy): void {
-  if (!RELEASE.test(policy.resourceService) || !RELEASE.test(policy.openorangeVersion) || !RELEASE.test(policy.rivetkitVersion) || !Number.isInteger(policy.samplePpm) || policy.samplePpm < 1 || policy.samplePpm > 1_000_000) throw new TypeError("invalid platform bridge policy");
+  if (!RELEASE.test(policy.resourceService) || !RELEASE.test(policy.openorangeVersion) || !RELEASE.test(policy.rivetkitVersion) || !RELEASE.test(policy.nativeVersion) || !Number.isInteger(policy.samplePpm) || policy.samplePpm < 1 || policy.samplePpm > 1_000_000) throw new TypeError("invalid platform bridge policy");
   if (policy.actors.length !== 2 || new Set(policy.actors.map(actor => actor.role)).size !== 2) throw new TypeError("both Stats actor roles are required");
   for (const actor of policy.actors) {
     const prefix = actor.role === "installation" ? "installation-" : actor.role === "observation" ? "observation-store-" : null;
@@ -54,7 +55,7 @@ export function projectBatch(value: unknown, policy: BridgePolicy): ProjectedBat
       received += scope["spans"].length;
       if (received > MAX_SPANS) throw new RangeError("OTLP span cap exceeded");
       for (const raw of scope["spans"]) {
-        if (tags?.get("service.name") !== policy.resourceService || tags.get("rivetkit.version") !== policy.rivetkitVersion || tags.get("openorange.version") !== policy.openorangeVersion || scope["scope"]["name"] !== "rivetkit") { filtered++; continue; }
+        if (tags?.get("service.name") !== policy.resourceService || tags.get("rivetkit.version") !== policy.nativeVersion || tags.get("openorange.version") !== policy.openorangeVersion || scope["scope"]["name"] !== "rivetkit") { filtered++; continue; }
         if (!record(raw)) { invalid++; continue; }
         const attrs = attributes(raw["attributes"]);
         const actor = policy.actors.find(candidate => candidate.name === attrs?.get("rivet.actor.name") && candidate.key === attrs.get("rivet.actor.key"));
@@ -65,7 +66,7 @@ export function projectBatch(value: unknown, policy: BridgePolicy): ProjectedBat
         if (operation === null) { filtered++; continue; }
         const { traceId, spanId, startTimeUnixNano: start, endTimeUnixNano: end } = raw;
         const sourceRelease = tags.get("service.version");
-        const release = `${sourceRelease}_oo-${policy.openorangeVersion}_rk-${policy.rivetkitVersion}`;
+        const release = `${sourceRelease}_oo-${policy.openorangeVersion}_rk-${policy.rivetkitVersion}_nr-${policy.nativeVersion}`;
         if (typeof traceId !== "string" || !TRACE.test(traceId) || typeof spanId !== "string" || !SPAN.test(spanId) || typeof start !== "string" || !NS.test(start) || typeof end !== "string" || !NS.test(end) || sourceRelease === undefined || !RELEASE.test(release)) { invalid++; continue; }
         const startNs = BigInt(start), durationNs = BigInt(end) - startNs;
         const atMs = Number(startNs / 1_000_000n);
