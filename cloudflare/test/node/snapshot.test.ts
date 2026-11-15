@@ -6,6 +6,7 @@ import { migrate } from "../../src/core/installation/schema.ts";
 import type { SqlDatabase, SqlValue } from "../../src/core/sql.ts";
 import { initializeStore } from "../../src/observe/core/store.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
+import { handleMaintenance } from "../../src/core/export/http.ts";
 
 function installation(): SqlDatabase {
   const sql = nodeSqlScopes(new DatabaseSync(":memory:")).open();
@@ -130,4 +131,39 @@ await test("an observation store exports and imports through the same contract",
   copy(source, target, manifest, 50);
   finishImport(target);
   assert.deepEqual(target.rows("SELECT * FROM observe_version_labels ORDER BY version"), source.rows("SELECT * FROM observe_version_labels ORDER BY version"));
+});
+
+await test("derived state leaves logical snapshots unchanged and rebuilds on resumable import", async () => {
+  const sourceDb = new DatabaseSync(":memory:"), targetDb = new DatabaseSync(":memory:");
+  const source = nodeSqlScopes(sourceDb).open(), target = nodeSqlScopes(targetDb).open();
+  const policy = { derivedTables: new Set(["derived_cache", "future_derived_cache"]) };
+  const canonical = "CREATE TABLE canonical_events (id TEXT PRIMARY KEY, payload TEXT NOT NULL)";
+  const derived = "CREATE TABLE derived_cache (id TEXT PRIMARY KEY, payload TEXT NOT NULL)";
+  try {
+    for (const sql of [source, target]) { sql.run(canonical); initializeMaintenance(sql); }
+    source.run("INSERT INTO canonical_events VALUES ('one', 'first'), ('two', 'second')");
+    setFence(source, true);
+    const original = exportManifest(source, "observe:stats", 1, null);
+    for (const sql of [source, target]) sql.run(derived);
+    source.run("INSERT INTO derived_cache VALUES ('private-derived-value', 'rebuildable')");
+    target.run("INSERT INTO derived_cache VALUES ('stale', 'discard-before-import')");
+    target.run("CREATE TRIGGER rebuild_cache AFTER INSERT ON canonical_events BEGIN INSERT INTO derived_cache VALUES (NEW.id, NEW.payload); END");
+    assert.deepEqual(exportManifest(source, "observe:stats", 1, null, policy), original);
+    assert.throws(() => exportPage(source, "derived_cache", null, 10, policy), (error: unknown) => error instanceof SnapshotError && error.code === "invalid");
+    const response = await handleMaintenance(new Request("https://store/export/manifest"), "/export/manifest", { name: "observe:stats", sql: source, now: () => 1, alarmAtMs: () => Promise.resolve(null), rearm: () => Promise.resolve(), snapshotPolicy: policy });
+    assert.deepEqual(await response!.json(), original);
+    beginImport(target, original, policy);
+    assert.deepEqual(target.rows("SELECT * FROM derived_cache"), []);
+    const page = exportPage(source, "canonical_events", null, 10, policy);
+    importRows(target, "canonical_events", 0, page.rows.slice(0, 1));
+    beginImport(target, original, policy);
+    assert.equal(target.rows("SELECT * FROM derived_cache").length, 1, "resuming must retain derived rows built by acknowledged pages");
+    importRows(target, "canonical_events", 0, page.rows);
+    finishImport(target, policy);
+    assert.deepEqual(target.rows("SELECT * FROM derived_cache ORDER BY id"), source.rows("SELECT * FROM canonical_events ORDER BY id"));
+    setFence(target, true);
+    assert.deepEqual(exportManifest(target, "observe:stats", 1, null, policy), original);
+    assert.throws(() => beginImport(target, original, policy), (error: unknown) => error instanceof SnapshotError && error.code === "conflict");
+    assert.equal(target.rows("SELECT * FROM derived_cache").length, 2, "a rejected import must not clear derived state");
+  } finally { sourceDb.close(); targetDb.close(); }
 });

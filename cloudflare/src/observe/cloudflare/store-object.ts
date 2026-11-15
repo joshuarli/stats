@@ -10,6 +10,7 @@ import { POLICIES } from "../core/policies.ts";
 import { CloudflareSql } from "../../cloudflare/sql.ts";
 import { handleMaintenance } from "../../core/export/http.ts";
 import { initializeMaintenance, maintenanceState } from "../../core/export/snapshot.ts";
+import { APPLICATION_SNAPSHOT_POLICY } from "../application/schema.ts";
 import type { ApplicationSummaryRead, ApplicationTelemetry } from "../application/telemetry.ts";
 
 export interface ObserveEnv {
@@ -42,6 +43,7 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   override async fetch(request: Request): Promise<Response> {
     const maintained = await handleMaintenance(request, new URL(request.url).pathname, {
       name: `observe:${this.ctx.id.name ?? ""}`, sql: this.db, now: () => Date.now(),
+      snapshotPolicy: APPLICATION_SNAPSHOT_POLICY,
       alarmAtMs: () => this.ctx.storage.getAlarm(),
       rearm: () => this.ctx.storage.setAlarm(Date.now())
     });

@@ -12,6 +12,11 @@ const NAME = /^[a-z_][a-z0-9_]{0,62}$/u;
 
 export type MaintenanceState = "open" | "fenced" | "importing";
 
+/** Derived tables are rebuilt by canonical-table triggers and are not logical backup data. */
+export interface SnapshotPolicy {
+  readonly derivedTables: ReadonlySet<string>;
+}
+
 export interface TableManifest {
   readonly name: string;
   readonly sql: string;
@@ -80,9 +85,9 @@ interface TableShape {
   readonly rowid: boolean;
 }
 
-function shapes(sql: SqlDatabase): TableShape[] {
+function shapes(sql: SqlDatabase, policy?: SnapshotPolicy): TableShape[] {
   const tables = sql.rows<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY name");
-  return tables.filter(table => !INTERNAL_TABLES.has(table.name)).map(table => {
+  return tables.filter(table => !INTERNAL_TABLES.has(table.name) && !policy?.derivedTables.has(table.name)).map(table => {
     const info = sql.rows<{ name: string; pk: number }>(`PRAGMA table_info(${quote(table.name)})`);
     const columns = info.map(column => column.name);
     for (const column of columns) quote(column);
@@ -130,26 +135,26 @@ function digestTable(sql: SqlDatabase, shape: TableShape): { rows: number; sha25
   return { rows, sha256: hash.digest("hex") };
 }
 
-function schemaVersion(sql: SqlDatabase): SchemaVersion {
+function schemaVersion(sql: SqlDatabase, policy?: SnapshotPolicy): SchemaVersion {
   const hash = createHash("sha256");
-  for (const shape of shapes(sql)) hash.update(`${shape.name}\n${normalized(shape.sql)}\n`);
+  for (const shape of shapes(sql, policy)) hash.update(`${shape.name}\n${normalized(shape.sql)}\n`);
   return { sha256: hash.digest("hex") };
 }
 
-export function exportManifest(sql: SqlDatabase, object: string, nowMs: number, alarmAtMs: number | null): ObjectManifest {
+export function exportManifest(sql: SqlDatabase, object: string, nowMs: number, alarmAtMs: number | null, policy?: SnapshotPolicy): ObjectManifest {
   if (maintenanceState(sql) !== "fenced") throw new SnapshotError("maintenance", "export needs a fenced object");
   return {
     format: EXPORT_FORMAT,
     object,
-    schema: schemaVersion(sql),
+    schema: schemaVersion(sql, policy),
     exportedAtMs: nowMs,
     alarmAtMs,
-    tables: shapes(sql).map(shape => ({ name: shape.name, sql: shape.sql, columns: shape.columns, key: shape.key, ...digestTable(sql, shape) }))
+    tables: shapes(sql, policy).map(shape => ({ name: shape.name, sql: shape.sql, columns: shape.columns, key: shape.key, ...digestTable(sql, shape) }))
   };
 }
 
-function shapeOf(sql: SqlDatabase, table: string): TableShape {
-  const shape = shapes(sql).find(candidate => candidate.name === table);
+function shapeOf(sql: SqlDatabase, table: string, policy?: SnapshotPolicy): TableShape {
+  const shape = shapes(sql, policy).find(candidate => candidate.name === table);
   if (shape === undefined) throw new SnapshotError("invalid", `unknown table ${table}`);
   return shape;
 }
@@ -160,9 +165,9 @@ function afterClause(shape: TableShape, after: readonly SqlValue[] | null): stri
   return `WHERE (${keyColumns(shape)}) > (${after.map(() => "?").join(", ")})`;
 }
 
-export function exportPage(sql: SqlDatabase, table: string, after: readonly SqlValue[] | null, limit: number): Page {
+export function exportPage(sql: SqlDatabase, table: string, after: readonly SqlValue[] | null, limit: number, policy?: SnapshotPolicy): Page {
   if (maintenanceState(sql) !== "fenced") throw new SnapshotError("maintenance", "export needs a fenced object");
-  const shape = shapeOf(sql, table);
+  const shape = shapeOf(sql, table, policy);
   const bounded = Math.max(1, Math.min(MAX_PAGE_ROWS, Math.floor(limit)));
   const found = sql.rows<Record<string, SqlValue>>(`SELECT ${selectList(shape)} FROM ${quote(shape.name)} ${afterClause(shape, after)} ORDER BY ${keyColumns(shape)} LIMIT ?`, ...(after ?? []), bounded + 1);
   const rows: SqlValue[][] = [];
@@ -188,7 +193,7 @@ function sameShape(manifest: TableManifest, shape: TableShape): boolean {
   return normalized(manifest.sql) === normalized(shape.sql) && JSON.stringify(manifest.columns) === JSON.stringify(shape.columns) && JSON.stringify(manifest.key) === JSON.stringify(shape.key);
 }
 
-export function beginImport(sql: SqlDatabase, manifest: ObjectManifest): void {
+export function beginImport(sql: SqlDatabase, manifest: ObjectManifest, policy?: SnapshotPolicy): void {
   if (manifest.format !== EXPORT_FORMAT) throw new SnapshotError("incompatible", `unsupported export format ${String(manifest.format)}`);
   if (manifest.object.length === 0) throw new SnapshotError("incompatible", "the export names no object");
   sql.transaction(() => {
@@ -198,13 +203,16 @@ export function beginImport(sql: SqlDatabase, manifest: ObjectManifest): void {
       if (existing?.manifest !== JSON.stringify(manifest)) throw new SnapshotError("conflict", "a different import is in progress");
       return;
     }
-    const local = shapes(sql);
+    const local = shapes(sql, policy);
     const names = local.map(shape => shape.name);
     if (JSON.stringify(names) !== JSON.stringify(manifest.tables.map(table => table.name))) throw new SnapshotError("incompatible", "export tables do not match this object's tables");
     for (const shape of local) {
       const expected = manifest.tables.find(table => table.name === shape.name)!;
       if (!sameShape(expected, shape)) throw new SnapshotError("incompatible", `table ${shape.name} has a different definition`);
       if (sql.rows<{ found: number }>(`SELECT EXISTS (SELECT 1 FROM ${quote(shape.name)}) AS found`)[0]?.found === 1) throw new SnapshotError("conflict", `import needs an empty object; ${shape.name} has rows`);
+    }
+    for (const name of policy?.derivedTables ?? []) {
+      if (sql.rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", name).length > 0) sql.run(`DELETE FROM ${quote(name)}`);
     }
     sql.run(`INSERT OR REPLACE INTO ${MAINTENANCE_TABLE} (id, state) VALUES (1, 'importing')`);
     for (const table of manifest.tables) sql.run(`INSERT INTO ${IMPORT_TABLE} (table_name, manifest, rows) VALUES (?, ?, 0)`, table.name, JSON.stringify(manifest));
@@ -243,13 +251,13 @@ export function importRows(sql: SqlDatabase, table: string, offset: number, rows
   });
 }
 
-export function finishImport(sql: SqlDatabase): ObjectManifest {
+export function finishImport(sql: SqlDatabase, policy?: SnapshotPolicy): ObjectManifest {
   if (maintenanceState(sql) !== "importing") throw new SnapshotError("maintenance", "no import is in progress");
   const stored = sql.rows<{ manifest: string }>(`SELECT manifest FROM ${IMPORT_TABLE} LIMIT 1`)[0];
   if (stored === undefined) throw new SnapshotError("integrity", "the import has no manifest");
   const manifest = JSON.parse(stored.manifest) as ObjectManifest;
   for (const table of manifest.tables) {
-    const actual = digestTable(sql, shapeOf(sql, table.name));
+    const actual = digestTable(sql, shapeOf(sql, table.name, policy));
     if (actual.rows !== table.rows || actual.sha256 !== table.sha256) throw new SnapshotError("integrity", `${table.name} holds ${actual.rows} rows with digest ${actual.sha256.slice(0, 12)}, expected ${table.rows} with ${table.sha256.slice(0, 12)}`);
   }
   sql.transaction(() => {

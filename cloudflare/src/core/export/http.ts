@@ -1,12 +1,13 @@
 import { readLimitedText } from "../../body.ts";
 import type { SqlDatabase, SqlValue } from "../sql.ts";
-import { beginImport, exportManifest, exportPage, finishImport, importProgress, importRows, MAX_PAGE_BYTES, MAX_PAGE_ROWS, maintenanceState, setFence, SnapshotError, type ObjectManifest } from "./snapshot.ts";
+import { beginImport, exportManifest, exportPage, finishImport, importProgress, importRows, MAX_PAGE_BYTES, MAX_PAGE_ROWS, maintenanceState, setFence, SnapshotError, type ObjectManifest, type SnapshotPolicy } from "./snapshot.ts";
 
 export const MAINTENANCE_PATH = /^\/(maintenance|export\/manifest|export\/rows|import\/begin|import\/rows|import\/finish|import\/progress)$/u;
 const MAX_IMPORT_BODY_BYTES = MAX_PAGE_BYTES * 2;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 
 export interface MaintainedObject {
+  readonly snapshotPolicy?: SnapshotPolicy;
   readonly name: string;
   readonly sql: SqlDatabase;
   readonly now: () => number;
@@ -62,16 +63,16 @@ export async function handleMaintenance(request: Request, path: string, object: 
       if (state === "open") await object.rearm();
       return json({ object: object.name, state });
     }
-    if (route === "export/manifest" && request.method === "GET") return json(exportManifest(sql, object.name, object.now(), await object.alarmAtMs()));
+    if (route === "export/manifest" && request.method === "GET") return json(exportManifest(sql, object.name, object.now(), await object.alarmAtMs(), object.snapshotPolicy));
     if (route === "export/rows" && request.method === "GET") {
       const table = url.searchParams.get("table") ?? "";
       const limit = Number(url.searchParams.get("limit") ?? MAX_PAGE_ROWS);
-      return json(exportPage(sql, table, cursor(url.searchParams.get("after")), Number.isFinite(limit) ? limit : MAX_PAGE_ROWS));
+      return json(exportPage(sql, table, cursor(url.searchParams.get("after")), Number.isFinite(limit) ? limit : MAX_PAGE_ROWS, object.snapshotPolicy));
     }
     if (route === "import/begin" && request.method === "POST") {
       const manifest = await body(request, MAX_MANIFEST_BYTES) as ObjectManifest;
       if (manifest?.object !== object.name) throw new SnapshotError("incompatible", `the export is for ${String(manifest?.object)}, not ${object.name}`);
-      beginImport(sql, manifest);
+      beginImport(sql, manifest, object.snapshotPolicy);
       return json({ object: object.name, state: maintenanceState(sql), progress: importProgress(sql) });
     }
     if (route === "import/progress" && request.method === "GET") return json({ object: object.name, state: maintenanceState(sql), progress: importProgress(sql) });
@@ -81,7 +82,7 @@ export async function handleMaintenance(request: Request, path: string, object: 
       return json(importRows(sql, value.table, value.offset, rowsOf(value.rows)));
     }
     if (route === "import/finish" && request.method === "POST") {
-      const manifest = finishImport(sql);
+      const manifest = finishImport(sql, object.snapshotPolicy);
       await object.rearm();
       return json({ object: object.name, state: maintenanceState(sql), tables: manifest.tables.map(table => ({ name: table.name, rows: table.rows, sha256: table.sha256 })) });
     }

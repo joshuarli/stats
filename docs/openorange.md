@@ -69,6 +69,12 @@ schema migration needs a restore.
 The application export is the recovery contract; it does not depend on the
 Engine's directories.
 
+The observation store reserves `observe_application_projection` for rebuildable
+read state. Logical exports omit it from table data and schema fingerprints.
+A fresh import clears existing derived rows before canonical-table triggers
+rebuild them; resuming an import retains work from acknowledged pages. Deploy
+this snapshot-policy support as the rollback release before creating the table.
+
 ```sh
 pnpm --dir cloudflare -s statsctl backup fence --state fenced
 pnpm --dir cloudflare -s statsctl backup export --out .work/backups/<name>

@@ -1,3 +1,7 @@
+import type { SnapshotPolicy } from "../../core/export/snapshot.ts";
+
+export const APPLICATION_SUMMARY_TABLE = "observe_application_projection";
+export const APPLICATION_SNAPSHOT_POLICY: SnapshotPolicy = { derivedTables: new Set([APPLICATION_SUMMARY_TABLE]) };
 export const APPLICATION_SUMMARY_INDEX = "observe_external_events_covering";
 const FIELDS = [
   ["json_extract(payload, '$.operation')", "operation"],
