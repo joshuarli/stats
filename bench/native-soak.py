@@ -1,5 +1,6 @@
 import argparse
 import collections
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -80,7 +81,7 @@ def actors():
                 params["cursor"] = cursor
             body = get(cfg.engine_url, "/actors?" + urllib.parse.urlencode(params), headers)
             for actor in body["actors"]:
-                state = "destroyed" if actor.get("destroy_ts") is not None else "sleeping" if actor.get("sleep_ts") is not None else "connectable" if actor.get("connectable_ts") is not None else "pending"
+                state = "destroyed" if actor.get("destroy_ts") is not None else "sleeping" if actor.get("sleep_ts") is not None else "connectable" if actor.get("connectable_ts") is not None else "pending" if actor.get("pending_allocation_ts") is not None else "unknown"
                 states[state] += 1
             cursor = body["pagination"]["cursor"]
             if cursor is None:
@@ -109,7 +110,7 @@ with open(args.output, "x", encoding="utf-8") as output:
         output.flush()
         os.fsync(output.fileno())
 
-    emit({"kind": "start", "atMs": time.time_ns() // 1_000_000, "image": expected.image, "version": expected.version, "samples": args.samples, "intervalSeconds": args.interval, "traffic": "existing production traffic; no synthetic ingestion", "qualification": "collection only; P8 requires analysis and queue coverage", "gaps": ["runtime inbox depth unavailable", "application producer queues visible only through delivered observations"], "samplerPid": os.getpid()})
+    emit({"kind": "start", "atMs": time.time_ns() // 1_000_000, "image": expected.image, "version": expected.version, "scriptSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "samples": args.samples, "intervalSeconds": args.interval, "traffic": "existing production traffic; no synthetic ingestion", "qualification": "collection only; P8 requires analysis and queue coverage", "gaps": ["runtime inbox depth unavailable", "null actor lifecycle timestamps do not establish state", "application producer queues visible only through delivered observations"], "samplerPid": os.getpid()})
     completed = 0
     degraded = 0
     for index in range(args.samples):

@@ -57,12 +57,15 @@ Unavailable measurements remain errors. A deployment change stops collection.
 The sampler does not ingest synthetic events or mutate application data.
 
 The one-sample native probe returns all four measurement groups successfully.
-The 1,441-sample run started at **2026-11-15 16:35:05 UTC**, at 60-second intervals;
+The 1,441-sample run started at **2026-11-15 16:41:10 UTC**, at 60-second intervals;
 its earliest completion is the same time on November 16. Protected output is
-`/home/josh/.work/stats-perf-campaign/maintained-rollup-soak.jsonl` on Lisa. The
+`/home/josh/.work/stats-perf-campaign/maintained-rollup-soak-v2.jsonl` on Lisa. The
 initial samples have no unavailable groups. No plateau or 24-hour result is
-claimed yet. Runtime inbox depth and undelivered application-producer queues
-remain gaps; the file's completion flag describes collection, not P8 acceptance.
+claimed yet. Runtime inbox depth, null Engine lifecycle timestamps and undelivered
+application-producer queues remain gaps; the file's completion flag describes
+collection, not P8 acceptance. The earlier file is preserved as an invalid trial:
+it classified null lifecycle timestamps as pending allocation. The active sampler
+reports those states as unknown and records its source SHA-256.
 
 ```sh
 doas python3 /home/josh/.work/stats-perf-campaign/native-soak.py \
@@ -71,6 +74,6 @@ doas python3 /home/josh/.work/stats-perf-campaign/native-soak.py \
 
 Output creation is exclusive, so use a fresh protected path. Do not start a
 duplicate sampler. The active sampler PID is recorded in the first output row
-and `maintained-rollup-soak.pid`. Before sending SIGTERM, verify that PID still
+and `maintained-rollup-soak-v2.pid`. Before sending SIGTERM, verify that PID still
 belongs to this sampler. A signal ends collection with an incomplete record.
 Keep its script, output and running process during campaign scratch cleanup.
