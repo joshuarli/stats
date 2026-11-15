@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, output: { type: "string" }, rounds: { type: "string", default: "5" }, hours: { type: "string" }, compare: { type: "boolean", default: false }, clients: { type: "string", default: "1" } } });
+const { values } = parseArgs({ options: { root: { type: "string" }, output: { type: "string" }, rounds: { type: "string", default: "5" }, hours: { type: "string" }, compare: { type: "boolean", default: false }, clients: { type: "string", default: "1" }, variants: { type: "string" } } });
 assert.ok(values.root && values.output);
 const rounds = Number(values.rounds); assert.ok(Number.isSafeInteger(rounds) && rounds >= 0 && rounds <= 5);
 const clients = Number(values.clients); assert.ok([1, 10].includes(clients));
@@ -42,7 +42,8 @@ for (let attempt = 0; attempt < 120; attempt++) {
 }
 readiness.ms = performance.now() - readinessStarted;
 assert.ok(ready, "fixture actor did not become ready; no summary timing samples accepted");
-const variants = values.compare ? ["payload", "projection"] : [undefined];
+assert.ok(values.variants === undefined || values.compare && ["projection,seconds", "projection,hierarchy"].includes(values.variants));
+const variants = values.compare ? (values.variants?.split(",") ?? ["payload", "projection"]) : [undefined];
 async function sample(round, hours, variant, client) {
   const toMs = proof.toMs, fromMs = toMs - hours * 3600000;
   const started = performance.now();
