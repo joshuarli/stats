@@ -48,6 +48,9 @@ jobs:
       - name: Agent tests
         run: cd agent && cargo test --all-targets
 
+      - name: Install Playwright chromium
+        run: pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
+
       - name: Telemetry typecheck and tests
         run: |
           pnpm --filter @stats/telemetry typecheck
@@ -55,6 +58,5 @@ jobs:
 
       - name: Dashboard tests
         run: |
-          pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
           pnpm --filter @stats/telemetry build:all
           pnpm --filter @stats/telemetry test:ui
