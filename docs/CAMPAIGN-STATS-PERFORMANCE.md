@@ -10,8 +10,14 @@ container regressions and pinned-Node lint pass. Preserved imports failed
 before the full corpus was ready; their cause is not yet classified.
 No full W2 run was started and its budget remains three runs. See the
 [review and failure evidence](../bench/results/2026-11-15-scale-prep-review/README.md).
-W2–W5 remain unfinished; W6 still awaits the soak deadline. The campaign
-is not closed.
+The single W2 rebuild is running in protected Lisa state
+`campaign-rebuild-20261115/`, namespace `stats-scale-rebuild-20261115`.
+Its driver is `rebuild-scale-once.mjs` and output is
+`campaign-rebuild-20261115.log`; inspect its process before any continuation.
+Do not start another rebuild. W3's two observability checks found no positive
+sleep signal; the sleep condition is blocked as unobservable, tracked in
+Stuff STUF-85. W2, W4 and W5 remain unfinished; W6 still awaits the soak
+deadline. The campaign is not closed.
 
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
@@ -28,7 +34,7 @@ does not need a redeploy to be current.
 | ID | State | Remaining work |
 | --- | --- | --- |
 | P1 | **Pass** on the current corpus | Repeat at tenfold within P6 |
-| P2 | Awake 1h/6h/24h and 7d **pass**. After actor sleep: **open** | W3 |
+| P2 | Awake 1h/6h/24h and 7d **pass**. After actor sleep: **blocked (unobservable)** | Stuff STUF-85; [evidence](../bench/results/2026-11-15-scale-prep-review/README.md#w3-sleep-observability) |
 | P3 | **Pass** on the current corpus, with a warm asset cache | Repeat at tenfold within P6 |
 | P4 | **Pass** for the observed cohort: 17 of 17 journeys over 1 s | None. Population coverage is not claimed |
 | P5 | **Pass** on desktop and mobile; guidance is live | None |

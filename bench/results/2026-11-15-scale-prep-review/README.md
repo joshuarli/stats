@@ -45,3 +45,28 @@ the three full-run budget is unchanged.
 
 The production soak PID 3384 was observed alive. Production was not deployed,
 the shared Engine was not restarted, and the sampler was not modified.
+
+## W3 sleep observability
+
+Two checks of the isolated Engine actor-list endpoint returned the observation
+actor with null `sleep_ts`, `start_ts` and `connectable_ts`. The actor names
+endpoint exposes names and metadata only. Source inspection of
+`cloudflare/src/observe/cloudflare/store-object.ts` confirms the constructor
+does not expose a generation marker; `health()` returns service health rather
+than constructor identity. Neither check produced positive sleep evidence.
+No sleep latency samples were accepted and no idle interval was substituted.
+
+W3 is blocked: unobservable. Stuff STUF-85 (P2, assumed) tracks a positive
+sleep/wake signal, filed on branch `fix/stats-campaign-blockers` at
+`e1833cc`. Awake P2 evidence is unchanged.
+
+## Single rebuild in progress
+
+The allowed rebuild started on November 15 in the existing isolated container,
+using namespace `stats-scale-rebuild-20261115` and protected root
+`/bench/campaign-rebuild-20261115`. It uses the pinned production image's
+bundles and the checksummed 203,950-event corpus with 250 ms pacing between
+500-row import pages. Prior failed states remain intact. Driver and log are
+`rebuild-scale-once.mjs` and `campaign-rebuild-20261115.log` under the protected
+host scratch directory. No additional rebuild is authorized by this record.
+The full workload budget remains unused until preparation succeeds.
