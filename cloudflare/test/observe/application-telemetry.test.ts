@@ -32,6 +32,7 @@ await test("application telemetry summarizes the full window with bounded detail
     assert.equal(result.totals?.requestDurationMsMax, 10);
     assert.equal(result.operations.length, 20);
     assert.equal(result.moreOperations, true);
+    assert.deepEqual(result.operations.map(row => row.operation), Array.from({ length: 25 }, (_, index) => `operation-${index}`).sort().slice(0, 20));
     assert.equal(result.recent.length, 50);
     assert.equal(result.moreRecent, true);
     assert.equal(result.recent[0]?.eventId, "event-5999");
@@ -63,7 +64,7 @@ await test("summary reads preserve complete aggregates without loading recent ev
     assert.equal(summary.totals?.cancelled, 1);
     assert.equal(summary.totals?.requestDurationMsSum, 20);
     assert.equal(summary.totals?.durationMsSum, 150);
-    assert.equal(reads.mock.callCount(), 3);
+    assert.equal(reads.mock.callCount(), 2);
     assert.equal("recent" in summary, false);
     assert.doesNotMatch(JSON.stringify(summary), /private-request-id/);
     const store = createObserveService(db, { now: () => T0, databaseBytes: () => 0 });
@@ -86,5 +87,25 @@ await test("application telemetry uses a half-open window and rejects malformed 
     const valid = await handleApi(new Request(`https://observe/external/telemetry?from=${T0 - H}&to=${T0}`), "/external/telemetry", store, "stats", T0);
     assert.equal(valid.status, 200);
     assert.equal((await valid.json() as { totals: { events: number } }).totals.events, 1);
+  } finally { db.db.close(); }
+});
+
+await test("summary keeps HTTP status boundaries and background durations distinct", async () => {
+  const db = database();
+  try {
+    const statuses = [99, 100, 199, 200, 299, 300, 399, 400, 499, 500, 599, 600];
+    const batch = statuses.map((status, index) => ({ ...event(index), outcome: "ok", durationMs: index + 1, work: { http_status: status } }));
+    ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
+    const result = readApplicationSummary(db, "stats", T0, { fromMs: T0 - H, toMs: T0 });
+    assert.equal(result.totals?.events, 12);
+    assert.equal(result.totals?.requests, 10);
+    assert.equal(result.totals?.requestDurationMsSum, 65);
+    assert.equal(result.totals?.requestDurationMsMax, 11);
+    assert.equal(result.totals?.durationMsSum, 78);
+    assert.equal(result.totals?.durationMsMax, 12);
+    assert.deepEqual([result.totals?.status2xx, result.totals?.status3xx, result.totals?.status4xx, result.totals?.status5xx], [2, 2, 2, 2]);
+    assert.equal(result.totals?.failed, 0);
+    assert.deepEqual(Object.keys(result.buckets[0]!).sort(), [...Object.keys(result.totals!), "atMs"].sort());
+    assert.deepEqual(Object.keys(result.operations[0]!).sort(), [...Object.keys(result.totals!), "operation"].sort());
   } finally { db.db.close(); }
 });
