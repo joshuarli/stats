@@ -59,7 +59,7 @@ jobs:
         run: cd deploy/orange && pnpm install --frozen-lockfile
 
       - name: Tests
-        run: make test
+        run: make test-ci
 
   dashboard:
     name: dashboard
