@@ -13,9 +13,9 @@ attempt and defines when to report a result as blocked.
 Production runs `stats:6cc06db247a3` on Orange node version 24, built from code
 revision `af4890a3bb5`. The rollback image is `stats:03d3d4f1fcb8` on node
 version 23. Earlier images are unsuitable rollback targets after rollup creation;
-see [the handoff](runtime-hardening-handoff.md). The deployed code exists only on
-`feat/runtime-hardening` in `.work/wt/runtime-hardening`, which master does not
-contain yet.
+see [the handoff](runtime-hardening-handoff.md). Master contains the deployed
+code. Every later commit changes only bench, docs, CI or tests, so production
+does not need a redeploy to be current.
 
 | ID | State | Remaining work |
 | --- | --- | --- |
@@ -45,27 +45,27 @@ contain yet.
 
 Execute in order. W2–W5 may interleave while the soak runs. Each item has an
 attempt budget. When an item exhausts it, record the evidence as **blocked**
-with its cause, then move on. Do not extend the budget silently. Exceeding it
-requires an explicit owner decision.
+with its cause, then move on. Budgets are fixed; do not extend them.
 
-### W1. Reconcile the repository (no deployment)
+### W1. Repository reconciliation (done 2026-11-15)
 
-1. In `.work/wt/runtime-hardening`, decide whether the uncommitted
-   `bench/native-scale-fixture.mjs` change and the untracked
-   `bench/native-scale-engine*.mjs` and `bench/native-scale-fixture.test.mjs`
-   files are needed. Commit them with passing tests, or delete them.
-2. Merge `feat/runtime-hardening` into master. Run `make lint` and the affected
-   suites (`pnpm --dir cloudflare test:observe` and the preview-production
-   tests). Push.
-3. Retire worktrees whose changes are already on master. These match the
-   integration branch: `perf-summary-rollups`, `preview-production` and
-   `perf-producer-drain`. Diff the files in `perf-overview`, `perf-native-recovery`
-   and `perf-live-reads` against master before deleting anything. Their content
-   differs and has not been reviewed. Leave the unrelated `btree`, `ci-pnpm`,
-   `upgrade-*` and `s10-schema2` worktrees alone.
+`feat/runtime-hardening` is merged into master, and master passes `make lint`.
+All campaign worktrees are retired. Their uncommitted drafts were not on master,
+so they were pushed unreviewed to `origin` instead of being deleted:
 
-Done when production's code revision is on master and only the active
-integration worktree remains for this campaign.
+- `wip/native-scale-prep`: private-Engine preparation for the tenfold fixture
+  (`bench/native-scale-engine.mjs` and changes to `bench/native-scale-fixture.mjs`).
+  Its tests run only inside the Linux fixture container. Start W2 by reviewing
+  and verifying it there, then merge it or drop it.
+- `park/perf-overview`, `park/perf-native-recovery`, `park/perf-live-reads`,
+  `park/preview-production`, `park/perf-producer-drain` and
+  `park/native-dashboard-bench`: earlier drafts of work that has since landed.
+  Use them only if a W item needs something missing from master. Delete them at
+  campaign close.
+
+Create new worktrees under `.work/wt/` from master, and retire each after it is
+integrated. The `btree`, `ci-pnpm`, `upgrade-*` and `s10-schema2` worktrees are
+unrelated to this campaign. Leave them alone.
 
 ### W2. P6 tenfold acceptance on `stats-next` (budget: 3 full runs)
 
@@ -159,6 +159,12 @@ P1–P3 smoke on production. Rewrite this Status section so that every goal read
 ends there, even if some goals are blocked. Blocked goals become tickets.
 
 ## Charter
+
+The campaign runs unattended. The coordinating agent makes every decision itself
+and does not wait for owner input. When this document leaves a choice open,
+pick the option that preserves the acceptance thresholds and the data
+contracts, then record the choice and its reason in Status. Do not ask for
+permission or confirmation.
 
 Repository changes and production application deployments are authorized
 without further approval, subject to the deploy freeze above. Commit and push
