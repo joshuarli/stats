@@ -1,0 +1,23 @@
+{
+  "release": "stats-1ea3e6af2dc3",
+  "sourceSha256": "dcbe76d2fb999056831a46ed29018b900167e21c4b744d51a47c092ce59d9512",
+  "fromMs": 1794734214099,
+  "toMs": 1794741114099,
+  "capturedEvents": 13828,
+  "slowDeliveredJourneys": 17,
+  "excludedNotCompletedByCaptureEnd": 0,
+  "cached": 0,
+  "attributed": 17,
+  "coverage": 1,
+  "pass": true,
+  "interpretation": "paired stored HTTP trace and complete same-response browser/server timings; nested residuals locate a timing boundary, not a proven cause",
+  "toleranceUs": 2000,
+  "dominantPhases": {
+    "query": 7,
+    "actor": 5,
+    "network": 3,
+    "dispatch": 2
+  },
+  "gaps": {},
+  "examples": []
+}

@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { origin: { type: "string" }, output: { type: "string" } } });
+const { values } = parseArgs({ options: { origin: { type: "string" }, output: { type: "string" }, hours: { type: "string", default: "168" } } });
 assert.ok(values.origin && values.output, "--origin HTTPS_ORIGIN --output PRIVATE_FILE are required");
 const origin = new URL(values.origin);
 assert.ok(origin.protocol === "https:" && origin.pathname === "/" && !origin.search && !origin.hash && !origin.username && !origin.password, "a bare HTTPS origin is required");
-const capturedAtMs = Date.now(), toMs = capturedAtMs - 300_000, fromMs = capturedAtMs - 7 * 86_400_000;
+const hours = Number(values.hours);
+assert.ok(Number.isSafeInteger(hours) && hours >= 1 && hours <= 168);
+const capturedAtMs = Date.now(), toMs = capturedAtMs - 300_000, fromMs = capturedAtMs - hours * 3_600_000;
 const events = new Map();
 let reads = 0;
 
