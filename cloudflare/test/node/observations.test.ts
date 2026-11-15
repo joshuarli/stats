@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
@@ -71,14 +71,17 @@ await test("an interrupted legacy import rolls back and resumes without duplicat
   initializeStore(sql);
   const old = createObserveService(sql, { now: () => T, databaseBytes: () => 0 });
   await old.ingestExternal("alpha", [event("alpha")]);
-  const payload = sql.rows<{ payload: string }>("SELECT payload FROM observe_external_events")[0]!.payload;
-  sql.run("UPDATE observe_external_events SET payload = 'invalid'");
+  mkdirSync(`${path}.observe`);
+  const targetPath = join(`${path}.observe`, "alpha.sqlite");
+  const target = new DatabaseSync(targetPath);
+  target.exec("CREATE TABLE node_observe_migration (id INTEGER PRIMARY KEY CHECK (id = 1)); CREATE TRIGGER interrupt_migration BEFORE INSERT ON node_observe_migration BEGIN SELECT RAISE(ABORT, 'interrupted'); END");
+  target.close();
   try {
-    assert.throws(() => new NodeObservations(legacy, path, { now: () => T }), SyntaxError);
-    const partial = new DatabaseSync(join(`${path}.observe`, "alpha.sqlite"));
+    assert.throws(() => new NodeObservations(legacy, path, { now: () => T }), /interrupted/u);
+    const partial = new DatabaseSync(targetPath);
     assert.equal(partial.prepare("SELECT COUNT(*) AS n FROM observe_external_events").get()!["n"], 0);
+    partial.exec("DROP TRIGGER interrupt_migration");
     partial.close();
-    sql.run("UPDATE observe_external_events SET payload = ?", payload);
     const registry = new NodeObservations(legacy, path, { now: () => T });
     assert.equal((await registry.forService("alpha").external("alpha", {})).length, 1);
     assert.throws(() => registry.forService("alpha").external("beta", {}), RangeError);
