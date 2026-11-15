@@ -19,6 +19,7 @@ import { applicationTrack } from "./native-series";
 import { RecentApplicationEvents } from "./RecentApplicationEvents";
 import "./project.css";
 
+const Platform = lazy(() => import("./Platform"));
 const IssuesWidget = lazy(() => import("./ObserveSection").then(module => ({ default: module.IssuesWidget })));
 const ObserveModal = lazy(() => import("./ObserveSection").then(module => ({ default: module.ObserveModal })));
 const ApplicationOverview = lazy(() => import("./ApplicationOverview").then(module => ({ default: module.ApplicationOverview })));
@@ -48,8 +49,8 @@ export function NativeProjectPage(): JSX.Element {
   </Loading></Errored>;
 }
 
-type Section = "overview" | "deploys" | "errors" | "requests" | "signals";
-const sections: readonly Section[] = ["overview", "deploys", "errors", "requests", "signals"];
+type Section = "overview" | "deploys" | "errors" | "requests" | "signals" | "platform";
+const sections: readonly Section[] = ["overview", "deploys", "errors", "requests", "signals", "platform"];
 function initialSection(): Section {
   return sections.find(item => item === readParam("section")) ?? (readParam("deployment") !== null ? "deploys" : readParam("issue") !== null ? "errors" : "overview");
 }
@@ -58,7 +59,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
   const serviceName = props.service.name;
   const { range, view, now, tick, manualTick } = useTelemetry();
   const refreshKey = () => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`;
-  const [section, setSection] = createSignal<Section>(initialSection());
+  const [section, setSection] = createSignal<Section>(serviceName === "stats" || initialSection() !== "platform" ? initialSection() : "overview");
   const deployments = createServiceDeployments(() => serviceName, range, refreshKey, { active: () => section() === "deploys" });
   const [data, setData] = createSignal<ApplicationSummary | ApplicationTelemetry | null>(null);
   const [error, setError] = createSignal<string | null>(null);
@@ -73,7 +74,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
   };
   const observe = createObservability(serviceName, refreshKey, () => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`, windowAt, () => false, () => section() === "errors", { enabled: () => section() === "errors" });
   createEffect(() => true, () => {
-    const sync = () => setSection(initialSection());
+    const sync = () => setSection(serviceName === "stats" || initialSection() !== "platform" ? initialSection() : "overview");
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   });
@@ -110,11 +111,12 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
       </div>
     </PageHeader>
     <div class="project-layout">
-      <nav class="project-sidebar" aria-label="Project sections"><For each={sections}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "overview" ? "application activity" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
+      <nav class="project-sidebar" aria-label="Project sections"><For each={sections.filter(item => item !== "platform" || serviceName === "stats")}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "platform" ? "sampled platform operations" : item === "overview" ? "application activity" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
       <div class="project-content">
         <Show when={section() === "deploys"}><div class={deployments.listed() ? "project-body with-rail" : "project-body"}><Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show><div class="project-main"><DeploymentsWidget deployments={deployments} /></div></div></Show>
         <Show when={section() === "errors"}><Loading fallback={<Skeleton rows={4} />}><IssuesWidget observe={observe} /></Loading></Show>
-        <Show when={section() !== "deploys" && section() !== "errors"}>
+        <Show when={section() === "platform" && serviceName === "stats"}><Loading fallback={<Skeleton rows={3} />}><Platform windowAt={windowAt} refreshKey={refreshKey} selection={() => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`} now={now} /></Loading></Show>
+        <Show when={section() !== "deploys" && section() !== "errors" && section() !== "platform"}>
           <Show when={error()}>{message => <Notice tone="warn">{message()}</Notice>}</Show><Show when={data()} fallback={error() === null ? <Skeleton rows={3} /> : <EmptyState title="Telemetry could not be read" detail="Use Refresh to retry." />}>{telemetry => <>
             <Show when={section() === "overview"}><Loading fallback={<Skeleton rows={3} chart />}><ApplicationOverview data={telemetry()} refreshing={refreshing()} loadedAtMs={loadedAtMs()} onRequests={() => showSection("requests")} onErrors={() => showSection("errors")} /></Loading></Show>
             <Show when={section() === "signals"}><ApplicationSignals data={telemetry()} /></Show>

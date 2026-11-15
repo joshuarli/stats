@@ -1,3 +1,4 @@
+import { DURATION_BOUNDS_US, SQLITE_OPERATIONS, type PlatformTelemetry } from "../../../packages/platform-bridge/src/contract.ts";
 import { decodeCapabilities } from "../core/capabilities.ts";
 import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
 import type { LatestDeployment } from "../deployments/model.ts";
@@ -446,4 +447,29 @@ export function getApplicationTelemetry(service: string, fromMs: number, toMs: n
 
 export function getApplicationSummary(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<ApplicationSummary> {
   return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry/summary?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationSummary, signal);
+}
+
+export function decodePlatformTelemetry(value: unknown): PlatformTelemetry {
+  const root = record(value), caps = record(root.capabilities);
+  const integer = applicationInteger;
+  const fromMs = integer(root.fromMs), toMs = integer(root.toMs);
+  if (fromMs >= toMs || caps.actorRequests !== true || caps.sqlite !== true || caps.outboundRpc !== false || caps.runtimeMetrics !== false) throw new Error("invalid platform window or capabilities");
+  const operations = array(root.operations, value => {
+    const row = record(value), operation = string(row.operation), release = string(row.release);
+    const allowed = ["installation", "observation"].flatMap(role => [`platform.${role}.invoke`, ...SQLITE_OPERATIONS.map(op => `platform.${role}.sqlite.${op}`)]);
+    const count = integer(row.count), failed = integer(row.failed), meanUs = number(row.meanUs), maxUs = integer(row.maxUs), p50UpperUs = integer(row.p50UpperUs), p95UpperUs = integer(row.p95UpperUs);
+    const histogram = array(row.histogram, item => { const bin = record(item); return { upperUs: integer(bin.upperUs), count: integer(bin.count) }; });
+    if (!allowed.includes(operation) || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(release) || count === 0 || failed > count || meanUs < 0 || meanUs > maxUs || histogram.length === 0 || histogram.some((bin, i) => !DURATION_BOUNDS_US.some(bound => bound === bin.upperUs) || bin.count === 0 || (i > 0 && bin.upperUs <= histogram[i - 1]!.upperUs)) || histogram.reduce((sum, bin) => sum + bin.count, 0) !== count) throw new Error("invalid platform operation");
+    const percentile = (fraction: number) => { let n = 0; return histogram.find(bin => (n += bin.count) >= Math.ceil(count * fraction))!.upperUs; };
+    if (p50UpperUs !== percentile(0.5) || p95UpperUs !== percentile(0.95) || maxUs > histogram[histogram.length - 1]!.upperUs) throw new Error("invalid platform histogram");
+    return { operation, release, count, failed, meanUs, maxUs, p50UpperUs, p95UpperUs, histogram };
+  });
+  if (operations.length > 80 || new Set(operations.map(row => `${row.operation}\n${row.release}`)).size !== operations.length) throw new Error("invalid platform groups");
+  const delivery = root.delivery === null ? null : (() => { const d = record(root.delivery); const result = { atMs: integer(d.atMs), release: string(d.release), samplePpm: integer(d.samplePpm), received: integer(d.received), admitted: integer(d.admitted), filtered: integer(d.filtered), invalid: integer(d.invalid), dropped: integer(d.dropped), queued: integer(d.queued), sent: integer(d.sent), exporterLoss: "unknown" as const }; if (d.exporterLoss !== "unknown" || result.samplePpm > 1_000_000 || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(result.release)) throw new Error("invalid platform delivery"); return result; })();
+  return { fromMs, toMs, operations, delivery, truncated: boolean(root.truncated), capabilities: { actorRequests: true, sqlite: true, outboundRpc: false, runtimeMetrics: false } };
+}
+
+export async function getPlatformTelemetry(fromMs: number, toMs: number, signal: AbortSignal): Promise<PlatformTelemetry | null> {
+  try { return await getJson(`/api/observe/stats-platform/platform?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodePlatformTelemetry, signal); }
+  catch (error) { if (error instanceof ApiFailure && error.status === 404) return null; throw error; }
 }

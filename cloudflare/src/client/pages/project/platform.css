@@ -1,0 +1,6 @@
+.platform { display: grid; gap: var(--gap); min-width: 0; }
+.platform-select { text-align: left; color: var(--accent); cursor: pointer; }
+.platform-histogram { display: grid; gap: var(--space-xs); }
+.platform-bin { display: grid; grid-template-columns: minmax(125px, 1fr) minmax(0, 2fr) auto; gap: var(--space-sm); align-items: center; font-variant-numeric: tabular-nums; }
+.platform-bar { display: block; height: 10px; border-radius: 4px; background: var(--accent); }
+.platform-delivery { display: flex; flex-wrap: wrap; gap: var(--space-md); text-transform: capitalize; }
