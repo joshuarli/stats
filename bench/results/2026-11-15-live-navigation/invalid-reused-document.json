@@ -1,0 +1,163 @@
+{
+  "valid": false,
+  "adequateSamples": false,
+  "pass": false,
+  "source": "new production document per sample; normal HTTP asset cache; no client summary survives navigation; awake actor, no disk-cold claim",
+  "deployment": {
+    "image": "stats:9eabfbe5cce3",
+    "version": 22
+  },
+  "gates": [
+    {
+      "host": "mac",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "mac",
+      "post": true,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": true,
+      "exitCode": 0
+    }
+  ],
+  "summary": {
+    "healthMs": {
+      "p50": 407.5,
+      "p95": 407.5,
+      "p99": 407.5
+    },
+    "chartsMs": {
+      "p50": 424,
+      "p95": 424,
+      "p99": 424
+    }
+  },
+  "records": [
+    {
+      "sample": 0,
+      "chartsMs": 424,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 27.5,
+        "responseStart": 27.299999982118607,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 407.5,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 27,
+        "encodedBodySize": 500517,
+        "transferSize": 508617
+      },
+      "timeOrigin": 1794752588078,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8510,
+        "fromMs": 1794748988182,
+        "toMs": 1794752588182
+      },
+      "work": {
+        "body_us": 3400,
+        "bootstrap_us": 208800,
+        "decode_us": 300,
+        "dispatch_us": 166427,
+        "encode_us": 530,
+        "fetch_us": 178500,
+        "health_us": 407500,
+        "issues_us": 6478,
+        "query_us": 134606,
+        "read_us": 141890,
+        "render_us": 32800,
+        "store_us": 163118,
+        "total_us": 166570
+      }
+    },
+    {
+      "sample": 1,
+      "chartsMs": 424,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 27.5,
+        "responseStart": 27.299999982118607,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 407.5,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 27,
+        "encodedBodySize": 500517,
+        "transferSize": 508617
+      },
+      "timeOrigin": 1794752588078,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8510,
+        "fromMs": 1794748988182,
+        "toMs": 1794752588182
+      },
+      "work": {
+        "body_us": 3400,
+        "bootstrap_us": 208800,
+        "decode_us": 300,
+        "dispatch_us": 166427,
+        "encode_us": 530,
+        "fetch_us": 178500,
+        "health_us": 407500,
+        "issues_us": 6478,
+        "query_us": 134606,
+        "read_us": 141890,
+        "render_us": 32800,
+        "store_us": 163118,
+        "total_us": 166570
+      }
+    }
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: open must create a new document"
+}

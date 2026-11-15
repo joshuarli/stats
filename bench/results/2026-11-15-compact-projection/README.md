@@ -81,6 +81,22 @@ source review finds no supported projection defect; parent-owned tests provide
 runtime evidence. P6 concurrency, actual actor-sleep latency, instrumentation
 overhead and the full-day soak remain open.
 
+The subsequent [full production run](production-reads.json) passes all four
+Mac/Lisa gates and validates 200 uncached selections per range:
+
+| Range | Click to complete p95 | p99 |
+| --- | ---: | ---: |
+| 1h | 118.3 ms | 172.2 ms |
+| 6h | 215.3 ms | 320.1 ms |
+| 24h | 320.8 ms | 531.7 ms |
+| 7d | 316.8 ms | 354.5 ms |
+
+Every returned window, count and chart matches. No errors, cancellations or
+unsettled reads occur, and the selected deployment remains unchanged. This
+establishes awake P2 acceptance on the current live corpus. It is not an
+interleaved live speedup comparison: retained data and request times differ from
+the earlier release. [Initial-document navigation](../2026-11-15-live-navigation/README.md)+also passes on this release. Scale acceptance remains separate.
+
 Earlier restart comparisons are excluded: one stops before actor readiness;
 another completes but fails the post-run timing gate. They support no speedup
 claim. The valid comparison uses one warmed connection without process restarts.

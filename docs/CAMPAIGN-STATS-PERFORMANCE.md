@@ -7,16 +7,19 @@ the frozen production corpus. Last deployed revision: `9eabfbe5cce3`.
 Production application: `stats:9eabfbe5cce3`, Orange node version 22.
 The compatible rollback image is `stats:a309aaf60b7c`, node version 21.
 The compact projection is live and all 117 shared health checks pass.
-The following full browser results were recorded on node version 20; a new
-200-selection-per-range run is in progress. Post-deploy browser smoke validates
-five real uncached selections per range, with correct counts and charts, zero
-errors and cancellations, and all four Mac/Lisa timing gates passing.
-P1 passes on the current live corpus: 200 cached selections per range, p95 below
-35 ms and no summary fetches. P2's awake, empty-client-cache portion also passes:
-200 uncached selections per range yield click-to-complete p95 of 146 ms (1h),
-300 ms (6h), 364 ms (24h) and 375 ms (7d). All counts, windows and charts match
-their real responses; all requests settle and all four Mac/Lisa timing gates
-pass. Actor-sleep and initial-document navigation acceptance remain open.
+P1's prior 200-cached-selections-per-range run passes with p95 below 35 ms and no
+summary fetches; the frontend implementation is unchanged. P2's awake,
+empty-client-cache portion passes again on node version 22: 200 uncached
+selections per range yield click-to-complete p95 of 118 ms (1h), 215 ms (6h),
+321 ms (24h) and 317 ms (7d). All counts, windows and charts match their real
+responses; no requests fail, cancel or remain unsettled. All four Mac/Lisa timing
+gates pass. Positive actor-sleep acceptance remains open.
+
+P3 passes on the current corpus: 200 genuine new documents reach useful health
+and complete charts at p95 374 ms. Every navigation uses the default 1h range,
+an awake actor and the normal HTTP asset cache. All documents have distinct
+navigation origins, real uncached summaries and matching visible data; all four
+timing gates pass. This is not tenfold or cold-asset percentile acceptance.
 
 P4 has complete paired timing evidence for all 17 delivered journeys over one
 second in the captured release cohort. Stored browser and HTTP trace/span IDs
@@ -175,6 +178,7 @@ stable candidate. It is required evidence, not a waived gate.
 - [Browser journey measurements](../bench/results/2026-11-14-project-journey/README.md)
 - [Live cached range acceptance](../bench/results/2026-11-15-live-cached-ranges/README.md)
 - [Live awake uncached range acceptance](../bench/results/2026-11-15-live-reads/README.md)
+- [Live initial-document navigation](../bench/results/2026-11-15-live-navigation/README.md)
 - [Slow journey attribution coverage](../bench/results/2026-11-15-journey-coverage/README.md)
 - [Tenfold native baseline](../bench/results/2026-11-15-tenfold-baseline/README.md)
 - [Compact projection comparison](../bench/results/2026-11-15-compact-projection/README.md)

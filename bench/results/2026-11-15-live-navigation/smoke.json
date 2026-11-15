@@ -1,0 +1,341 @@
+{
+  "valid": true,
+  "adequateSamples": false,
+  "pass": false,
+  "source": "new production document per sample; normal HTTP asset cache; no client summary survives navigation; awake actor, no disk-cold claim",
+  "deployment": {
+    "image": "stats:9eabfbe5cce3",
+    "version": 22
+  },
+  "gates": [
+    {
+      "host": "mac",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "mac",
+      "post": true,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": true,
+      "exitCode": 0
+    }
+  ],
+  "summary": {
+    "healthMs": {
+      "p50": 170.2,
+      "p95": 774.6,
+      "p99": 774.6
+    },
+    "chartsMs": {
+      "p50": 170.30000001192093,
+      "p95": 791.4000000059605,
+      "p99": 791.4000000059605
+    }
+  },
+  "records": [
+    {
+      "sample": 0,
+      "chartsMs": 776.0999999940395,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "documentNavigation": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 30.30000001192093,
+        "responseStart": 27.19999998807907,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 757.7,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 27,
+        "encodedBodySize": 500247,
+        "transferSize": 508347
+      },
+      "timeOrigin": 1794752633978,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 118,
+        "events": 8532,
+        "fromMs": 1794749034089,
+        "toMs": 1794752634089
+      },
+      "work": {
+        "body_us": 3500,
+        "bootstrap_us": 208400,
+        "decode_us": 300,
+        "dispatch_us": 522701,
+        "encode_us": 286,
+        "fetch_us": 535900,
+        "health_us": 757700,
+        "issues_us": 6208,
+        "query_us": 157862,
+        "read_us": 164630,
+        "render_us": 27900,
+        "store_us": 510163,
+        "total_us": 522884
+      }
+    },
+    {
+      "sample": 1,
+      "chartsMs": 791.4000000059605,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "documentNavigation": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 11.599999994039536,
+        "responseStart": 9.299999982118608,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 774.6,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 26,
+        "encodedBodySize": 500517,
+        "transferSize": 51612
+      },
+      "timeOrigin": 1794752634810.9,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8532,
+        "fromMs": 1794749034823,
+        "toMs": 1794752634823
+      },
+      "work": {
+        "body_us": 4600,
+        "bootstrap_us": 50700,
+        "decode_us": 100,
+        "dispatch_us": 707972,
+        "encode_us": 519,
+        "fetch_us": 718400,
+        "health_us": 774600,
+        "issues_us": 563,
+        "query_us": 34066,
+        "read_us": 35186,
+        "render_us": 17500,
+        "store_us": 704683,
+        "total_us": 708115
+      }
+    },
+    {
+      "sample": 2,
+      "chartsMs": 163.2999999821186,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "documentNavigation": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 13.399999976158142,
+        "responseStart": 11.099999994039536,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 163.3,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 26,
+        "encodedBodySize": 500545,
+        "transferSize": 51640
+      },
+      "timeOrigin": 1794752635689.3,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8567,
+        "fromMs": 1794749035704,
+        "toMs": 1794752635704
+      },
+      "work": {
+        "body_us": 5500,
+        "bootstrap_us": 53000,
+        "decode_us": 100,
+        "dispatch_us": 87439,
+        "encode_us": 345,
+        "fetch_us": 98700,
+        "health_us": 163300,
+        "issues_us": 597,
+        "query_us": 65746,
+        "read_us": 66869,
+        "render_us": 5900,
+        "store_us": 84574,
+        "total_us": 87587
+      }
+    },
+    {
+      "sample": 3,
+      "chartsMs": 141,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "documentNavigation": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 11.400000005960464,
+        "responseStart": 9.200000017881392,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 141,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 25,
+        "encodedBodySize": 500527,
+        "transferSize": 51322
+      },
+      "timeOrigin": 1794752635994.6,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8567,
+        "fromMs": 1794749036007,
+        "toMs": 1794752636007
+      },
+      "work": {
+        "body_us": 4400,
+        "bootstrap_us": 47300,
+        "decode_us": 100,
+        "dispatch_us": 64907,
+        "encode_us": 264,
+        "fetch_us": 76500,
+        "health_us": 141000,
+        "issues_us": 714,
+        "query_us": 46156,
+        "read_us": 47104,
+        "render_us": 12600,
+        "store_us": 62262,
+        "total_us": 65122
+      }
+    },
+    {
+      "sample": 4,
+      "chartsMs": 170.30000001192093,
+      "checks": {
+        "complete": true,
+        "counts": true,
+        "documentNavigation": true,
+        "health": true,
+        "initialDocument": true,
+        "settled": true,
+        "source": true,
+        "status": true,
+        "window": true
+      },
+      "document": {
+        "encodedBodySize": 868,
+        "responseEnd": 14.199999988079073,
+        "responseStart": 12,
+        "transferSize": 1168,
+        "type": "navigate"
+      },
+      "done": true,
+      "healthMs": 170.2,
+      "ok": true,
+      "range": "1h",
+      "resources": {
+        "count": 26,
+        "encodedBodySize": 500527,
+        "transferSize": 51622
+      },
+      "timeOrigin": 1794752636182,
+      "viewport": {
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "devicePixelRatio": 1,
+        "height": 633,
+        "width": 1280
+      },
+      "window": {
+        "buckets": 119,
+        "events": 8567,
+        "fromMs": 1794749036197,
+        "toMs": 1794752636197
+      },
+      "work": {
+        "body_us": 6300,
+        "bootstrap_us": 54200,
+        "decode_us": 0,
+        "dispatch_us": 81943,
+        "encode_us": 443,
+        "fetch_us": 95400,
+        "health_us": 170200,
+        "issues_us": 664,
+        "query_us": 39945,
+        "read_us": 41918,
+        "render_us": 14200,
+        "store_us": 78708,
+        "total_us": 82101
+      }
+    }
+  ]
+}
