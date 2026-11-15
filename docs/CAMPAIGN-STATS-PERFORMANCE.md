@@ -33,7 +33,10 @@ drops or errors. A separate burst accounts for 908 stored journeys and 97
 reported browser transport drops, with zero producer drops. Instrumentation CPU
 and latency overhead remain open. P8's browser check retains 0.50 MiB after 200
 navigation cycles with delivery enabled; DOM nodes and listeners remain flat.
-The required 24-hour native soak has not started.
+A read-only production soak started at 2026-11-15 16:35:05 UTC on node version 24.
+It samples application RSS, actor states, retention backlog and the private bridge
+queue once per minute. It requires a full day and analysis; runtime inbox depth
+and undelivered application-producer queues remain explicit coverage gaps.
 
 The native tenfold fixture contains 203,950 independent event identities. All
 complete summaries match an independent reference; duplicate acknowledgment,
