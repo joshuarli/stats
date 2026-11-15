@@ -1,3 +1,4 @@
+import { PLATFORM_SERVICE } from "../../../../packages/platform-bridge/src/contract.ts";
 import { constantTimeEqual, generateToken, tokenHash } from "../../auth.ts";
 import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory, type LatestDeployment } from "../../deployments/model.ts";
 import { SERVICE_NAME } from "../../protocol.ts";
@@ -232,6 +233,7 @@ export async function createService(sql: SqlDatabase, text: string | null, now: 
   const parsed = parseDefinition(parseJson(text));
   if (!parsed.ok) return parsed;
   const definition = parsed.value;
+  if (definition.name === PLATFORM_SERVICE) return invalid("this service name is reserved for runtime telemetry");
   const deployToken = generateToken();
   const ingestToken = generateToken();
   const deployHash = await tokenHash(deployToken);

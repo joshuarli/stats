@@ -1,3 +1,4 @@
+import { PLATFORM_SERVICE } from "../../../../packages/platform-bridge/src/contract.ts";
 import type { IssueState, TraceFilter, WindowQuery } from "../core/store.ts";
 import { OPERATION_IDS, type OperationId } from "../producer/channel.ts";
 import type { ObserveService } from "../core/service.ts";
@@ -253,6 +254,12 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
       const fromMs = milliseconds(values, "from");
       const toMs = milliseconds(values, "to");
       return json(await store.profile({ ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) }));
+    }
+    if (path === "/platform") {
+      if (service !== PLATFORM_SERVICE) return failure(404, "not_found", "unknown platform sink");
+      const values = params(url, ["from", "to"]);
+      const fromMs = milliseconds(values, "from"), toMs = milliseconds(values, "to");
+      return json(await store.platformTelemetry(service, { ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) }));
     }
     if (path === "/external/telemetry" || path === "/external/telemetry/summary") {
       const values = params(url, ["from", "to"]);

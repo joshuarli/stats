@@ -323,3 +323,16 @@ await test("large events split into bounded batches including delivery snapshots
     assert.ok(server.received.length > 1);
   } finally { await producer.shutdown(); await server.close(); }
 });
+
+await test("a forwarder preserves per-event source releases and rejects invalid overrides", async () => {
+  const server = await serve((_request, _index, response) => json(response, { accepted: 2, duplicate: 0 }));
+  const producer = createProducer(configure(server.endpoint));
+  try {
+    producer.record({ operation: "forward.span", outcome: "ok", durationMs: 1, release: "source-r2" });
+    producer.record({ operation: "forward.span", outcome: "ok", durationMs: 1 });
+    producer.record({ operation: "forward.span", outcome: "ok", durationMs: 1, release: "unsafe release" });
+    await producer.flush();
+    assert.deepEqual(JSON.parse(server.received[0]!.body).events.map((event: { release: string }) => event.release), ["source-r2", "9df651c1a2b3"]);
+    assert.equal(producer.stats().dropped, 1);
+  } finally { await producer.shutdown(); await server.close(); }
+});

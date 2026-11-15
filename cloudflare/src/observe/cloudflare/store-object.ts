@@ -1,3 +1,4 @@
+import type { PlatformTelemetry } from "../../../../packages/platform-bridge/src/contract.ts";
 import { DurableObject } from "cloudflare:workers";
 import type { Artifact, ObservedRollout, OutcomeEvent, Preparation, VersionLabel } from "../core/model.ts";
 import type { ExternalEvent, ExternalEventRecord, ExternalFilter, ExternalIngest } from "../ingest/model.ts";
@@ -87,5 +88,6 @@ export class ObservationStore extends DurableObject<ObserveEnv> implements Obser
   async external(service: string, filter: ExternalFilter): Promise<readonly ExternalEventRecord[]> { return this.service.external(service, filter); }
   async externalOperations(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ExternalOperationsWindow> { return this.service.externalOperations(service, filter); }
   async applicationTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationTelemetry> { return this.service.applicationTelemetry(service, filter); }
+  async platformTelemetry(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<PlatformTelemetry> { return this.service.platformTelemetry(service, filter); }
   async applicationSummary(service: string, filter: Pick<ExternalFilter, "fromMs" | "toMs">): Promise<ApplicationSummary> { return this.service.applicationSummary(service, filter); }
 }
