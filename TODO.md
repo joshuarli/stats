@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 128
+Next: 129
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -12,6 +12,15 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
+
+### STA-128 · P2 · Measure observation overhead after the tenfold fixture is usable
+
+- **Area:** Performance
+- **Where:** docs/CAMPAIGN-STATS-PERFORMANCE.md W4; bench/results/2026-11-15-scale-prep-review/README.md; Stuff STUF-87
+- **Problem:** P7 freshness passes but enabled instrumentation overhead and collector-failure outcome parity remain unmeasured. The required combined W2 workload cannot run because the single allowed complete-fixture rebuild failed with native volume fencing. No CPU or request-latency bound has been established. P2 assumed for the unresolved production instrumentation cost.
+- **Recommendation:** After STUF-87 permits a complete exact-output-verified tenfold fixture, run five interleaved enabled/disabled rounds with representative ingestion and ten real dashboard clients, separating Stats CPU from Engine CPU. Require less than 3 percent CPU and 5 percent latency overhead, preserve failed outcomes, verify collector failure leaves application results unchanged, and report inconclusive when same-variant spread exceeds either threshold. Do not extend the closed campaign budgets.
+- **Fix with:** make-it-fast
+- **Effort:** M
 
 ### STA-122 · P3 · A refresh re-decodes the top-level lists and remounts every row
 
@@ -49,6 +58,9 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** architect
 - **Effort:** L
 
+
+
+
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
@@ -57,8 +69,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** From a tailnet device, review the deployed project and host pages and file or fix concrete issues. Imported Cloudflare history is retained data, not current provider collection. Close this ticket when the live pages are reviewed.
 - **Fix with:** none
 - **Effort:** S
-
-
 
 
 ### STA-49 · P4 · Nanoshop route and operation parity needs external verification
@@ -81,6 +91,8 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Effort:** S
 
 
+
+
 ### STA-82 · P4 · Service cgroup I/O may count one I/O twice on stacked devices
 
 - **Area:** Data
@@ -89,8 +101,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** Read `io.stat` on a host with stacked storage and compare the per-device lines with `iostat`. If devices double count, sum only devices that are not holders of another listed device, and add a fixture for it.
 - **Fix with:** none
 - **Effort:** M
-
-
 
 
 ### STA-83 · P4 · The offline local stack has no Linux network sandbox
