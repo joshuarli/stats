@@ -28,7 +28,7 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, readLatestServiceDeployment, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
+import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, listServicesWithDeployments, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -758,10 +758,13 @@ export class InstallationCore {
       if (removed !== null && request.method === "DELETE") {
         return deleteService(sql, removed[1]!) ? new Response(null, { status: 204 }) : failure("not_found", "service not found", 404);
       }
-      if (path === "/services" && request.method === "GET") return json({ services: listServices(sql).map(service => {
-        try { return { ...service, latestDeployment: readLatestServiceDeployment(sql, service.name, this.now()) }; }
-        catch (error) { reportError("deployments.api", error); return { ...service, latestDeployment: { status: "unavailable" } }; }
-      }) });
+      if (path === "/services" && request.method === "GET") {
+        try { return json({ services: listServicesWithDeployments(sql, this.now(), error => reportError("deployments.api", error)) }); }
+        catch (error) {
+          reportError("deployments.api", error);
+          return json({ services: listServices(sql).map(service => ({ ...service, latestDeployment: { status: "unavailable" } })) });
+        }
+      }
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
       if (comparison !== null) return await this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
       const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);

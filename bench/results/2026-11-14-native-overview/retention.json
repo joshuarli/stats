@@ -1,0 +1,82 @@
+{
+  "browser": "158.0.8127.18",
+  "cycles": 30,
+  "before": {
+    "heapKb": 3763.34375,
+    "nodes": 416,
+    "listeners": 41,
+    "plots": 0,
+    "liveElements": 82
+  },
+  "after": {
+    "heapKb": 5034.76171875,
+    "nodes": 416,
+    "listeners": 41,
+    "plots": 0,
+    "liveElements": 82
+  },
+  "checkpoints": [
+    {
+      "heapKb": 3763.34375,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 1,
+      "heapKb": 4123.96484375,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 2,
+      "heapKb": 4481.546875,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 5,
+      "heapKb": 4605.45703125,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 10,
+      "heapKb": 4900.75,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 20,
+      "heapKb": 4935.125,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    },
+    {
+      "cycle": 30,
+      "heapKb": 5030.58203125,
+      "nodes": 416,
+      "listeners": 41,
+      "plots": 0,
+      "liveElements": 82
+    }
+  ],
+  "delta": {
+    "heapKb": 1271.41796875,
+    "nodes": 0,
+    "listeners": 0
+  },
+  "failures": [],
+  "pass": true
+}

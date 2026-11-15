@@ -220,12 +220,14 @@ const fleetSeeds = [...entryFiles, ...modulepreloadFiles];
 const routeSpecs = [
   ["fleet", fleetSeeds, false],
   ["host", [...fleetSeeds, findJsByStem("HostPage")], false],
-  ["projects", [...fleetSeeds, findJsByStem("ProjectsPage")], false],
-  ["projectsExpanded", [...fleetSeeds, findJsByStem("ProjectsPage")], true],
-  ["project", [...fleetSeeds, findJsByStem("ProjectPage")], false],
-  ["projectErrors", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("ObserveSection")], false],
-  ["projectRequests", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("Requests")], false],
-  ["projectOpen", [...fleetSeeds, findJsByStem("ProjectPage")], true],
+  ["projects", [...fleetSeeds, findJsByStem("ProjectsPage"), findJsByStem("CloudflareProjectsPage")], false],
+  ["projectsExpanded", [...fleetSeeds, findJsByStem("CloudflareProjectsPage")], true],
+  ["project", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("CloudflareProjectPage")], false],
+  ["projectErrors", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("CloudflareProjectPage"), findJsByStem("ObserveSection")], false],
+  ["projectRequests", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("CloudflareProjectPage"), findJsByStem("Requests")], false],
+  ["projectOpen", [...fleetSeeds, findJsByStem("CloudflareProjectPage")], true],
+  ["nativeProjects", [...fleetSeeds, findJsByStem("ProjectsPage"), findJsByStem("NativeProjects")], false],
+  ["nativeProject", [...fleetSeeds, findJsByStem("ProjectPage"), findJsByStem("NativeProjects"), findJsByStem("ApplicationOverview")], false],
   ["services", [...fleetSeeds, findJsByStem("ServicesPage")], false],
   ["service", [...fleetSeeds, findJsByStem("ServicePage")], false]
 ];
@@ -269,7 +271,7 @@ if (comparePath !== null) {
   const routeComparisons = {};
   const gates = [];
   const reviewThreshold = 1.05;
-  const routeNames = ["fleet", "host", "projects", "projectsExpanded", "project", "projectErrors", "projectRequests", "projectOpen", "services", "service"];
+  const routeNames = ["fleet", "host", "projects", "projectsExpanded", "project", "projectErrors", "projectRequests", "projectOpen", "nativeProjects", "nativeProject", "services", "service"];
   for (const routeName of routeNames) {
     const baseRoute = baseline.routes?.[routeName];
     const currentRoute = routes[routeName];

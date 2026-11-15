@@ -171,6 +171,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  uplot@1.6.32: 63a1b6d8703916ffc69305f6e311e60a5ab4f139f652d5879aa9572a6840d193
+
 importers:
 
   .: {}
@@ -194,7 +197,7 @@ importers:
         version: 2.0.0-rc.20
       uplot:
         specifier: 1.6.32
-        version: 1.6.32
+        version: 1.6.32(patch_hash=63a1b6d8703916ffc69305f6e311e60a5ab4f139f652d5879aa9572a6840d193)
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.v.16
@@ -2475,7 +2478,7 @@ snapshots:
     dependencies:
       pathe: 2.0.3
 
-  uplot@1.6.32: {}
+  uplot@1.6.32(patch_hash=63a1b6d8703916ffc69305f6e311e60a5ab4f139f652d5879aa9572a6840d193): {}
 
   vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2):
     dependencies:

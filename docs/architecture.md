@@ -1083,6 +1083,18 @@ fixed queries run, and no request data reaches SQL.
 
 ## Dashboard
 
+The project routes load their implementation from the declared
+`projectSource` capability. Native pages use the service catalog; Cloudflare
+project and billing modules load only for that adapter. Disabling collection
+does not change which catalog owns historical data.
+
+The native overview reads the compact application summary and deployment
+markers. It renders request traffic, failures, mean and maximum wall time,
+current open issues and observed time by operation. Full event payloads load
+when Requests opens; issue details and deployment comparisons load when their
+sections open. Refresh keeps the last successful data visible and reports a
+read failure; a changed time window clears data from the previous selection.
+
 `cloudflare/src/client/` is a Solid application built by Vite's client
 environment and charted with uPlot. `api.ts` decodes every response once at the
 boundary; request failures stay in the typed `ApiFailure` channel. A history
@@ -1097,8 +1109,8 @@ for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
 browser never sees a host token or an operator secret. Each route is its own lazy chunk. Chart code (uPlot) loads only when a chart
 renders: the projects overview fetches it when a row first expands its trends,
 and the project page fetches its errors, requests, trace, and modal views when a
-section or modal first opens. Health and issue counts for the header pills stay
-eager. The project page's initial cost ledger already renders charts, so uPlot
+section or modal first opens. On the Cloudflare adapter, health and issue counts
+for the header pills stay eager. Its initial cost ledger already renders charts, so uPlot
 is required there. During the completed frontend work, the owner set its payload
 budget to 95% of the recorded baseline. Later accepted integration growth is
 recorded in the [integration milestone](dashboard-integration-milestone.md).

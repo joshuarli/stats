@@ -466,10 +466,13 @@ test("native projects show service deployments, application requests, errors and
   await expect(page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true })).toBeVisible();
   await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
-  await expect(page.getByText("http.get.notes", { exact: true })).toBeVisible();
+  await expect(page.getByText("GET notes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^HTTP requests per minute/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /^HTTP response wall time/u })).toBeVisible();
+  expect(reads.some(path => path.endsWith("/comparison") || path.endsWith("/health") || path.endsWith("/issues"))).toBe(false);
   await page.getByRole("button", { name: /^Deployments release markers/u }).click();
   await expect(page.getByRole("button", { name: /1.1.0/u }).first()).toBeVisible();
-  await page.getByRole("button", { name: /^Requests recent/u }).click();
+  await page.getByRole("button", { name: /^Requests HTTP/u }).click();
   const recent = page.getByRole("table", { name: "Recent application events" });
   await expect(recent.getByRole("row", { name: /http.post.notes/u })).toContainText("http_status: 503");
   await expect(recent.getByRole("row", { name: /http.get.notes/u })).toContainText("17");
@@ -495,17 +498,50 @@ test("refreshing a native project keeps its requests scoped to one detail view",
   page.on("request", request => { if (request.url().includes("/api/")) requests.push(new URL(request.url()).pathname); });
   await page.goto(`${origin}/#/project/web?range=6h`);
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
-  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
+  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry/summary")).length).toBe(1);
   requests.length = 0;
   holdServices = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry")).length).toBe(1);
+  await expect.poll(() => requests.filter(path => path.endsWith("/external/telemetry/summary")).length).toBe(1);
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
   const servicesLoaded = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/services");
   release!();
   await servicesLoaded;
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  expect(requests.filter(path => path.endsWith("/external/telemetry"))).toHaveLength(1);
+  expect(requests.filter(path => path.endsWith("/external/telemetry/summary"))).toHaveLength(1);
   expect(requests.filter(path => path === "/api/v1/services")).toHaveLength(1);
   expect(requests.filter(path => path === "/api/v1/services/web/deployments")).toHaveLength(1);
+});
+
+test("a failed native overview refresh preserves its last successful charts", async ({ page }) => {
+  await page.goto(`${origin}/#/project/web?range=6h`);
+  const overview = page.locator(".native-overview");
+  await expect(overview.getByRole("heading", { name: "Application overview" })).toBeVisible();
+  const countBefore = await overview.locator(".native-summary-item strong").first().textContent();
+  await page.route("**/external/telemetry/summary?*", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "summary unavailable" } } }));
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("The telemetry service is not configured correctly.")).toBeVisible();
+  await expect(overview.locator(".native-summary-item strong").first()).toHaveText(countBefore!);
+  await expect(overview.locator(".uplot")).toHaveCount(3);
+  await expect(overview).toHaveAttribute("aria-busy", "false");
+});
+
+test("returning to a native overview range before its replacement loads reads fresh data", async ({ page }) => {
+  await page.goto(`${origin}/#/project/web?range=6h`);
+  await expect(page.locator(".native-overview")).toBeVisible();
+  let release: (() => void) | undefined;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let count = 0;
+  await page.route("**/external/telemetry/summary?*", async route => {
+    count += 1;
+    if (count === 1) await held;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "1h", exact: true }).click();
+    await expect.poll(() => count).toBe(1);
+    await page.getByRole("button", { name: "6h", exact: true }).click();
+    await expect(page.locator(".native-overview")).toBeVisible();
+    expect(count).toBe(2);
+  } finally { release!(); }
 });

@@ -5,6 +5,7 @@ declare namespace Cloudflare {
     readonly ENVIRONMENT: string;
     readonly ANALYTICS_SQL?: AnalyticsSQLBinding;
     readonly PROJECTS: string;
+    readonly PROJECT_SOURCE: "cloudflare" | "services";
     readonly WORKER_NAME: string;
     readonly OBSERVE: Fetcher;
     readonly TEST_NOW_MS?: string;

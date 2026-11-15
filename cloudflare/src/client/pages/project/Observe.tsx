@@ -91,7 +91,8 @@ export function createObservability(
   windowKey: () => string,
   windowAt: () => TimeWindow,
   exploring: () => boolean,
-  errorsOpen: () => boolean = () => true
+  errorsOpen: () => boolean = () => true,
+  options: { readonly enabled: () => boolean } = { enabled: () => true }
 ) {
   const base = observeBase(service);
   const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
@@ -126,7 +127,8 @@ export function createObservability(
   const occurrences = createMemo(() => keyedValue(occurrencesResult(), issueId()));
   const occurrencesError = createMemo(() => keyedError(occurrencesResult(), issueId()));
 
-  createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
+  createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation(), enabled: options.enabled() || modals().some(modal => modal.kind === "issue") }), query => {
+    if (!query.enabled) return;
     const controller = new AbortController();
     void Promise.all([
       read("/health", controller.signal, decodeHealth),

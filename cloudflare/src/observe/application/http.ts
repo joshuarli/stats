@@ -4,10 +4,13 @@ function requestOperation(request: Request): string {
   const path = new URL(request.url).pathname;
   const route = path === "/ingest/v2/batches" ? "host-ingest"
     : /^\/ingest\/services\/[^/]+\/deployments$/u.test(path) ? "deploy-mark"
+    : /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external\/telemetry\/summary$/u.test(path) ? "application-summary"
     : /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external(?:\/telemetry|\/operations)?$/u.test(path) ? "application-events"
     : path.startsWith("/api/observe/") ? "observe"
     : /^\/api\/v1\/admin(?:\/|$)/u.test(path) ? "admin"
     : /^\/api\/v1\/hosts(?:\/|$)/u.test(path) ? "hosts"
+    : /^\/api\/v1\/services\/[^/]+\/deployments\/[^/]+\/comparison$/u.test(path) ? "service-comparison"
+    : /^\/api\/v1\/services\/[^/]+\/deployments$/u.test(path) ? "service-deployments"
     : /^\/api\/v1\/services(?:\/|$)/u.test(path) ? "services"
     : /^\/api\/v1\/projects(?:\/|$)/u.test(path) ? "projects"
     : path === "/api/v1/capabilities" ? "capabilities"

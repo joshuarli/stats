@@ -15,7 +15,7 @@ import type { RuntimeCapabilities } from "../core/capabilities.ts";
 export { Installation };
 
 function capabilities(env: Env): RuntimeCapabilities {
-  return { analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
+  return { projectSource: env.PROJECT_SOURCE, analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
 }
 
 async function forwardProjectRollouts(env: Env, store: DurableObjectStub<Installation>, project: string, service: string): Promise<void> {
