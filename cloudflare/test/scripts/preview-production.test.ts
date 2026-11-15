@@ -4,6 +4,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { readHistory } from '../support/history.ts';
 
+interface ProductionCapture {
+  [window: string]: unknown;
+  capture: { capturedAtMs: number; hostId: string };
+}
+
 async function stop(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise<void>(resolve => child.once('exit', () => resolve()));
@@ -12,8 +17,8 @@ async function stop(child: ChildProcess): Promise<void> {
   try { await Promise.race([exited, new Promise<never>((_, reject) => { const limit = setTimeout(() => reject(new Error('preview did not exit')), 4000); limit.unref(); })]); } finally { clearTimeout(timer); }
 }
 
-test('preview serves captured native windows and rejects uncaptured requests', async () => {
-  const data = JSON.parse(await readFile(new URL('../ui/captures/production/data.json', import.meta.url), 'utf8'));
+await test('preview serves captured native windows and rejects uncaptured requests', async () => {
+  const data = JSON.parse(await readFile(new URL('../ui/captures/production/data.json', import.meta.url), 'utf8')) as ProductionCapture;
   const port = 4199;
   const child = spawn(process.execPath, ['scripts/preview.mjs'], { cwd: new URL('../..', import.meta.url), env: { ...process.env, PREVIEW_PORT: String(port) }, stdio: 'pipe' });
   try {
@@ -36,11 +41,11 @@ test('preview serves captured native windows and rejects uncaptured requests', a
     const history = await get(`/api/v1/hosts/${data.capture.hostId}/history?range=1h&kind=summary`);
     assert.equal(history.status, 200);
     assert.equal((await get(`/api/v1/hosts/${data.capture.hostId}/history?range=1h&from=${now - 21600000}&to=${now}&kind=summary`)).status, 404);
-    assert.deepEqual(readHistory(Buffer.from(await history.arrayBuffer())), data['host-summary-1h']);
+    assert.deepEqual(readHistory(await history.arrayBuffer()), data['host-summary-1h']);
   } finally { await stop(child); }
 });
 
-test('legacy profile serves Cloudflare capabilities and project fixtures', async () => {
+await test('legacy profile serves Cloudflare capabilities and project fixtures', async () => {
   const child = spawn(process.execPath, ['scripts/preview.mjs'], { cwd: new URL('../..', import.meta.url), env: { ...process.env, PREVIEW_PORT: '4197', PREVIEW_PROFILE: 'legacy' }, stdio: 'pipe' });
   try {
     await new Promise<void>((resolve, reject) => { child.stdout.on('data', () => resolve()); child.once('exit', code => reject(new Error(`preview exited ${code}`))); });
