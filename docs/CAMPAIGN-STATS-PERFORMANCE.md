@@ -3,8 +3,8 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last deployed revision: `506b622debb4`.
-Production application: `stats:506b622debb4`, Orange node version 19.
+the frozen production corpus. Last deployed revision: `1ea3e6af2dc3`.
+Production application: `stats:1ea3e6af2dc3`, Orange node version 20.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
 that this campaign's latency goals pass. P1 passes on the current live corpus.
 P5 incident fixtures pass. Tenfold scale and the other full acceptance goals
@@ -25,18 +25,28 @@ expression index. A genuinely covering index removes them. Five interleaved Lisa
 rounds reduce first-1h aggregate SQL from median 2,465 ms to 123 ms. Complete
 response equality, old-data backfill, export compatibility, duplicate identity,
 native restart and write-cost checks pass. The following 24h read is slower
-after the variants warm different pages. Production navigation and percentile
-acceptance remain open. Next: deploy the derived index and measure browser
-journeys, then address the remaining bottleneck.
+after the variants warm different pages. The index is live; all 117 shared-stack
+health checks pass. One wide-window navigation takes 1,334 ms, including
+1,075 ms of aggregate SQL. Its useful-health phase exceeds one second. This is
+a diagnostic sample, not percentile acceptance. Next: collect per-range awake
+uncached distributions and measure retained browser heap before choosing the
+next optimization.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
 The isolated lifecycle fixture proves constructor replacement after idle,
 autonomous overdue alarms after runtime restart, and idempotent interrupted
 request replay. Local readiness stayed below 15 seconds in three starts. This
 is platform-fixture proof; production recovery acceptance remains open.
 The overview guidance is live. Five incident fixtures, plus missing and historical
-data, pass working-destination tests on desktop and mobile. No active child
-writers. The parent owns index rollout and browser acceptance. S3 work remains
-deferred.
+data, pass working-destination tests on desktop and mobile. A separate Pi lane
+owns only the production uncached-range harness and evidence; the parent owns
+the independent browser-retention check and integration. S3 work remains deferred.
+
+P8's browser check passes: after 20 warmup cycles, 200 navigation cycles retain
+0.50 MiB with telemetry delivery enabled, below the 5 MiB limit. DOM nodes and
+listeners remain unchanged. This is frozen response replay with deployed assets;
+the 24-hour native soak remains open. The tenfold corpus is prepared privately:
+203,950 events with unique identities and unchanged timestamps, event fields
+and per-event JSON byte lengths. No tenfold latency acceptance is claimed yet.
 
 ## Charter
 
@@ -150,6 +160,7 @@ stable candidate. It is required evidence, not a waived gate.
 - [Live cached range acceptance](../bench/results/2026-11-15-live-cached-ranges/README.md)
 - [Producer delivery and freshness](../bench/results/2026-11-15-producer-boundaries/README.md)
 - [Covering-index evidence and costs](../bench/results/2026-11-15-covering-index/README.md)
+- [Retained browser heap](../bench/results/2026-11-15-browser-retention/README.md)
 - [Runtime capabilities and remaining gaps](runtime-hardening.md)
 - [Production validation and rollback](runtime-hardening-handoff.md)
 - [Frontend measurement history](frontend-efficiency.md)
