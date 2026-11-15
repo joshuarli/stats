@@ -5,8 +5,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFile
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, mode: { type: "string", default: "prepare" }, listen: { type: "string", default: "127.0.0.1" }, resume: { type: "boolean", default: false } } });
-assert.ok(values.root && ["prepare", "serve"].includes(values.mode));
+const { values } = parseArgs({ options: { root: { type: "string" }, mode: { type: "string", default: "prepare" }, listen: { type: "string", default: "127.0.0.1" }, resume: { type: "boolean", default: false }, baseline: { type: "string" }, candidate: { type: "string" } } });
+assert.ok(values.root && ["prepare", "serve", "ingest-cost"].includes(values.mode));
 assert.ok(["127.0.0.1", "0.0.0.0"].includes(values.listen));
 assert.equal(process.platform, "linux", "run inside the isolated production image");
 const root = resolve(values.root), state = join(root, "native-scale-state");
@@ -16,7 +16,7 @@ const pause = ms => new Promise(done => setTimeout(done, ms));
 const sha256 = body => createHash("sha256").update(body).digest("hex");
 mkdirSync(state, { recursive: true, mode: 0o700 });
 let auth, active, stopping = false;
-if (values.mode === "prepare" && !values.resume) {
+if ((values.mode === "prepare" && !values.resume) || (values.mode === "ingest-cost" && !existsSync(authPath))) {
   assert.ok(!existsSync(authPath), "preparation requires fresh disposable state");
   auth = { secret: randomBytes(32).toString("hex") };
   writeFileSync(authPath, JSON.stringify(auth), { flag: "wx", mode: 0o600 });
@@ -31,6 +31,13 @@ if (values.mode === "prepare" && !values.resume) {
     writeFileSync(join(state, `${name}.jsonc`), JSON.stringify(descriptor), { flag: "wx", mode: 0o600 });
   }
 } else auth = JSON.parse(readFileSync(authPath, "utf8"));
+if (values.mode === "ingest-cost") {
+  assert.ok(values.baseline && values.candidate);
+  const path = join(state, "observe.jsonc"), descriptor = JSON.parse(readFileSync(path, "utf8"));
+  descriptor.main = join(state, "observe-cost.js");
+  writeFileSync(descriptor.main, readFileSync(values.baseline));
+  writeFileSync(path, JSON.stringify(descriptor), { mode: 0o600 });
+}
 const headers = { "Stats-Gateway-Secret": auth.secret, "Stats-Tailnet-Identity": "user:benchmark@example.invalid", "content-type": "application/json" };
 async function start() {
   assert.ok(existsSync("/.dockerenv"), "fixture runtime management requires an isolated Docker container");
@@ -45,7 +52,7 @@ async function start() {
     if (comm !== "rivet-engine" || /^State:\s+[ZX]/mu.test(status ?? "")) unlinkSync(stampPath);
   }
   const started = performance.now();
-  const child = spawn(process.execPath, ["/orange/node_modules/open-orange/dist/bin.js", "dev", "--json", "--ip", values.listen, "--port", "8787", "--config", join(state, "stats.jsonc"), "--config", join(state, "observe.jsonc")], { cwd: state, detached: true, env: { ...process.env, OTEL_SDK_DISABLED: "true", RIVET_LOG_LEVEL: process.env.RIVET_LOG_LEVEL ?? "error" }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["/orange/node_modules/open-orange/dist/bin.js", "dev", "--json", "--ip", values.listen, "--port", "8787", "--config", join(state, "stats.jsonc"), "--config", join(state, "observe.jsonc")], { cwd: state, detached: true, env: { ...process.env, OTEL_SDK_DISABLED: "true", RIVET_LOG_LEVEL: process.env.RIVET_LOG_LEVEL ?? "error", WRANGLER_LOG_PATH: join(state, "wrangler.log") }, stdio: ["ignore", "pipe", "pipe"] });
   const owner = { child, origin: null, failed: false, stderr: "", stdout: "" }; active = owner;
   let buffer = "";
   child.stdout.on("data", chunk => {
@@ -63,7 +70,7 @@ async function start() {
   child.once("exit", () => { owner.failed = true; });
   const deadline = Date.now() + 120000;
   while (!owner.origin && !owner.failed && !stopping && Date.now() < deadline) await pause(50);
-  if (!owner.origin || owner.failed || stopping) { writeFileSync(join(state, "startup-error.log"), owner.stderr, { mode: 0o600 }); throw new Error("isolated runtime did not become ready; private startup log retained"); }
+  if (!owner.origin || owner.failed || stopping) { writeFileSync(join(state, "startup-error.log"), JSON.stringify({ stdout: owner.stdout, stderr: owner.stderr }), { mode: 0o600 }); throw new Error("isolated runtime did not become ready; private startup log retained"); }
   assert.equal(new URL(owner.origin).hostname, "127.0.0.1");
   return performance.now() - started;
 }
@@ -119,7 +126,53 @@ function reference(events, fromMs, toMs) {
 }
 try {
   const readinessMs = [await start()];
-  if (values.mode === "serve") {
+  if (values.mode === "ingest-cost") {
+    const hosts = await request("/api/v1/hosts"); assert.equal(hosts.status, 200);
+    if (hosts.body.hosts.length === 0) assert.equal((await post("/api/v1/admin/hosts", { name: "write-cost-fixture" })).status, 201);
+    const raw = readFileSync(join(root, "corpus.json"));
+    assert.equal(sha256(raw), "4ef33788757e84e614b35dd2509a942987b7e5350d634bc327a4055d5dd3e006");
+    const captured = JSON.parse(raw).events.slice(0, 512).map(row => row.event);
+    assert.equal(captured.length, 512);
+    const latest = Math.max(...captured.map(event => event.atMs)), shift = Date.now() - 60_000 - latest;
+    const fromMs = Math.min(...captured.map(event => event.atMs)) + shift, toMs = latest + shift + 1;
+    const results = [], failures = [];
+    const sources = Object.fromEntries(["baseline", "candidate"].map(variant => [variant, sha256(readFileSync(values[variant]))]));
+    const save = () => writeFileSync(join(root, "projection-ingest-cost.json"), JSON.stringify({ sourceSha256: sha256(raw), sources, workload: "eight durable 64-event batches per fresh actor, five alternating rounds, instrumentation disabled", results, failures }) + "\n", { mode: 0o600 });
+    try {
+      for (let round = 0; round < 5; round++) for (const variant of (round % 2 ? ["candidate", "baseline"] : ["baseline", "candidate"])) {
+        await stop();
+        writeFileSync(join(state, "observe-cost.js"), readFileSync(values[variant]));
+        await start();
+        const hosts = await request("/api/v1/hosts"); assert.equal(hosts.status, 200);
+        const service = `perf-${variant === "baseline" ? "b" : "c"}-${round}-${randomBytes(4).toString("hex")}`;
+        const created = await post("/api/v1/admin/services", { name: service, hostIds: [hosts.body.hosts[0].hostId] }); assert.equal(created.status, 201);
+        const healthPath = `/api/observe/${service}/health`;
+        const before = await request(healthPath); assert.equal(before.status, 200);
+        const input = captured.map((event, index) => ({ ...event, service, eventId: `ingest-proof-${index}`, atMs: event.atMs + shift }));
+        const cpu = () => Number(/^usage_usec (\d+)/mu.exec(readFileSync("/sys/fs/cgroup/cpu.stat", "utf8"))[1]);
+        const cpuBefore = cpu(), started = performance.now(), batchMs = [];
+        let accepted = 0;
+        const ingest = events => request(`/ingest/observe/v1/${service}/batches`, { method: "POST", headers: { authorization: `Bearer ${created.body.ingestToken}` }, body: JSON.stringify({ events }) });
+        for (let offset = 0; offset < input.length; offset += 64) {
+          const batch = input.slice(offset, offset + 64); assert.ok(Buffer.byteLength(JSON.stringify({ events: batch })) < 65536);
+          const began = performance.now(), result = await ingest(batch);
+          batchMs.push(performance.now() - began);
+          assert.equal(result.status, 202); assert.equal(result.body.accepted, batch.length); accepted += result.body.accepted;
+        }
+        const wallMs = performance.now() - started, cpuUs = cpu() - cpuBefore;
+        assert.equal(accepted, 512);
+        const duplicate = await ingest(input.slice(0, 64)); assert.equal(duplicate.status, 200);
+        assert.deepEqual(duplicate.body, { accepted: 0, duplicate: 64 });
+        const conflict = await ingest([{ ...input[0], durationMs: input[0].durationMs + 1 }]); assert.equal(conflict.status, 409);
+        const summary = await request(`/api/observe/${service}/external/telemetry/summary?from=${fromMs}&to=${toMs}`); assert.equal(summary.status, 200);
+        const expected = reference(input, fromMs, toMs);
+        for (const key of ["totals", "buckets", "operations"]) assert.deepEqual(summary.body[key], expected[key]);
+        const after = await request(healthPath); assert.equal(after.status, 200);
+        const record = { round, variant, accepted, duplicate: 64, conflict: 409, wallMs, cpuUs, batchMs, databaseBytesBefore: before.body.databaseBytes, databaseBytesAfter: after.body.databaseBytes };
+        results.push(record); save(); console.log(JSON.stringify(record));
+      }
+    } catch (error) { failures.push({ name: error.name, message: error.message }); save(); throw error; }
+  } else if (values.mode === "serve") {
     console.log(JSON.stringify({ ready: true, port: 8787, instrumentation: "disabled", state: "isolated embedded Engine and disposable application state" }));
     while (!stopping) { await pause(1000); assert.ok(active && !active.failed, "runtime exited"); }
   } else {

@@ -1,0 +1,227 @@
+{
+  "sourceSha256": "4ef33788757e84e614b35dd2509a942987b7e5350d634bc327a4055d5dd3e006",
+  "sources": {
+    "baseline": "8b18b5595b2f85dd661fed349c72721e88e6a5f74e58a08c5d1a9c0c5f25eecb",
+    "candidate": "0066d6bf4d2bdbba2a60b90d9ee2dc5f72dc1e62623b6b51b898c1c6df684456"
+  },
+  "workload": "eight durable 64-event batches per fresh actor, five alternating rounds, instrumentation disabled",
+  "results": [
+    {
+      "round": 0,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 632.6289739999993,
+      "cpuUs": 1041328,
+      "batchMs": [
+        89.88596999999936,
+        70.82926600000064,
+        62.381185000002006,
+        72.04653099999996,
+        96.97333200000139,
+        80.53993899999841,
+        79.39028000000326,
+        78.807034999998
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 0,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 635.319193000003,
+      "cpuUs": 1015083,
+      "batchMs": [
+        96.89573699999892,
+        96.0033739999999,
+        67.50083699999959,
+        71.44428899999912,
+        84.93673199999466,
+        71.36005999999907,
+        67.82301400000142,
+        77.55882999999449
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 1,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 670.9582609999998,
+      "cpuUs": 1062095,
+      "batchMs": [
+        89.54332799999975,
+        78.0495360000059,
+        84.45363899999938,
+        74.08568899999955,
+        76.69307699999626,
+        101.00890500000241,
+        95.35007799999585,
+        70.52831899999728
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 1,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 635.462996000002,
+      "cpuUs": 1021524,
+      "batchMs": [
+        88.95295900000201,
+        83.43688900000416,
+        60.84963400000561,
+        60.81995199999801,
+        64.3668450000041,
+        116.99049399999785,
+        75.31859899999836,
+        82.94778899999801
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 2,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 606.7073539999983,
+      "cpuUs": 971966,
+      "batchMs": [
+        78.26799900000333,
+        77.0535979999986,
+        60.952369999999064,
+        87.7559479999909,
+        99.80777300000773,
+        74.60467999998946,
+        61.700370999998995,
+        65.37933500000509
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 2,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 617.95621199999,
+      "cpuUs": 1023108,
+      "batchMs": [
+        96.28539400000591,
+        86.30206100000942,
+        66.76701300000423,
+        67.24486700000125,
+        85.73585599999933,
+        84.51328299999295,
+        61.97764199999801,
+        68.00613900000462
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 3,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 664.8833900000027,
+      "cpuUs": 1050201,
+      "batchMs": [
+        98.56962500000373,
+        63.43816400000651,
+        85.53052200000093,
+        73.70239999999467,
+        65.56713799999852,
+        105.34563399999752,
+        92.82698999998684,
+        78.65073000000848
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 3,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 632.4293670000043,
+      "cpuUs": 1011833,
+      "batchMs": [
+        113.36153700000432,
+        80.62800799999968,
+        79.12872399999469,
+        66.40795900000376,
+        100.42565900000045,
+        64.76005199999781,
+        67.06502599999658,
+        59.289866999999504
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 4,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 612.0715190000046,
+      "cpuUs": 975854,
+      "batchMs": [
+        84.5931120000023,
+        86.98434100000304,
+        72.54561700001068,
+        63.86251999999513,
+        67.58359799999744,
+        67.72740099999646,
+        99.91889099999389,
+        67.43979400000535
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 4,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 670.8372260000033,
+      "cpuUs": 1047048,
+      "batchMs": [
+        92.10545800000546,
+        129.06250299999374,
+        82.7597769999993,
+        65.78378599999996,
+        96.70360399999481,
+        70.78987500000221,
+        66.9865240000072,
+        64.68008299999929
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    }
+  ],
+  "failures": [],
+  "timingValid": true,
+  "hostGates": {
+    "before": 0,
+    "after": 0
+  },
+  "clientExit": 0
+}

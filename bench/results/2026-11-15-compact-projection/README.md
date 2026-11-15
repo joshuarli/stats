@@ -35,8 +35,36 @@ dominates wide reads; the improvement alone does not prove ten-client targets.
 checks against the original 20,395-event corpus. Its SQLite page accounting is
 1,794,048 bytes for the compact table versus 9,261,056 bytes for the payload
 index in that database. This is added storage while the rollback index remains.
-Write overhead, actual sleeping-actor latency and production migration time
-remain unmeasured. Snapshot-policy support must precede the table rollout.
+Actual sleeping-actor latency and production migration time remain unmeasured.
+Snapshot-policy support is live as `stats:a309aaf60b7c`, node version 21.
+
+The write comparison uses fresh small actors in separate disposable state, the
+same two-CPU, 3 GiB limits as production, and actual compiled baseline and
+candidate sources identified by SHA-256. Five alternating rounds each accept
+eight durable 64-event batches, acknowledge 64 exact duplicates and reject one
+changed duplicate with 409. All complete summaries match an independent
+reference. Both timing gates and the client exit 0. [ingest.json](ingest.json)
+contains every sample.
+
+| Eight-batch workload | Baseline median (range) | Compact table median (range) |
+| --- | ---: | ---: |
+| HTTP acknowledgment | 632.4 ms (606.7–635.5) | 664.9 ms (618.0–671.0) |
+| Container CPU | 1,011.8 ms (972.0–1,041.3) | 1,047.0 ms (1,015.1–1,062.1) |
+| SQLite allocation after 512 events | 811,008 bytes | 856,064 bytes |
+
+The timing ranges overlap; the median differences are smaller than the observed
+candidate spreads. This does not establish zero write overhead or satisfy the
+separate instrumentation-overhead goal. The compact table adds 45,056 bytes at
+512 events, including its schema. The read benefit justifies retaining it.
+
+The [earlier write trial](ingest-busy.json) is excluded because its post-run
+timing gate exits 75. Two subsequent attempts stop during embedded-Engine
+startup: its command volume reports quorum unavailable and the CLI terminates
+on `depot/open_failed`. The original tenfold state and private logs remain
+preserved. Those failures precede candidate code and do not demonstrate a
+projection defect; they remain an unresolved native recovery gap. The valid
+write comparison uses a fresh write-only fixture and does not claim to repair
+the failed read fixture.
 
 Earlier restart comparisons are excluded: one stops before actor readiness;
 another completes but fails the post-run timing gate. They support no speedup

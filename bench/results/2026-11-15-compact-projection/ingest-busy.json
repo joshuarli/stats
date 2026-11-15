@@ -1,0 +1,228 @@
+{
+  "sourceSha256": "4ef33788757e84e614b35dd2509a942987b7e5350d634bc327a4055d5dd3e006",
+  "sources": {
+    "baseline": "8b18b5595b2f85dd661fed349c72721e88e6a5f74e58a08c5d1a9c0c5f25eecb",
+    "candidate": "0066d6bf4d2bdbba2a60b90d9ee2dc5f72dc1e62623b6b51b898c1c6df684456"
+  },
+  "workload": "eight durable 64-event batches per fresh actor, five alternating rounds, instrumentation disabled",
+  "results": [
+    {
+      "round": 0,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 767.350583999998,
+      "cpuUs": 1223798,
+      "batchMs": [
+        124.25854599999911,
+        83.67819799999961,
+        77.48124300000018,
+        103.88924199999929,
+        137.17137699999876,
+        75.46240899999975,
+        85.07293000000027,
+        78.83532699999887
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 0,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 991.643548,
+      "cpuUs": 1386869,
+      "batchMs": [
+        145.97376400000212,
+        293.96915499999886,
+        81.28801699999894,
+        139.2365159999972,
+        82.09419599999819,
+        85.50915900000109,
+        73.82553599999665,
+        88.06870499999786
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 1,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 695.8108149999971,
+      "cpuUs": 1104258,
+      "batchMs": [
+        82.57295899999735,
+        93.29528500000015,
+        83.80398199999763,
+        76.10075900000083,
+        74.02039400000649,
+        96.54884499999753,
+        94.84289899999567,
+        92.99014700000407
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 1,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 706.8846520000006,
+      "cpuUs": 1126616,
+      "batchMs": [
+        74.56306100000074,
+        108.64662699999462,
+        75.77187599999888,
+        71.69593400000304,
+        101.59285800000362,
+        64.35742200000095,
+        101.56631800000469,
+        107.21906799999852
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 2,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 651.1815539999952,
+      "cpuUs": 1104226,
+      "batchMs": [
+        92.76546799999778,
+        96.47215899999719,
+        72.28504600000451,
+        89.00213599999552,
+        92.01928300000145,
+        63.72389100000146,
+        63.05446200000006,
+        79.97939900000347
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 2,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 774.2217870000022,
+      "cpuUs": 1137430,
+      "batchMs": [
+        88.84841500000039,
+        88.50402700000268,
+        76.00563500000862,
+        95.92439299999387,
+        83.52866799999902,
+        114.74845699999423,
+        115.62594299999182,
+        109.8781389999931
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 3,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 732.1047890000045,
+      "cpuUs": 1119356,
+      "batchMs": [
+        102.64075800000865,
+        71.19635900000867,
+        79.9007580000034,
+        63.670043000005535,
+        133.13231000000087,
+        70.59788800000388,
+        98.57717699999921,
+        110.47653899999568
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    },
+    {
+      "round": 3,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 688.0705750000052,
+      "cpuUs": 1109566,
+      "batchMs": [
+        79.43386900000041,
+        102.43165299999237,
+        78.05750500000431,
+        83.69000100000994,
+        102.28456599998754,
+        99.54762300000584,
+        66.0408080000052,
+        74.99272599999676
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 4,
+      "variant": "baseline",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 703.1554730000062,
+      "cpuUs": 1103105,
+      "batchMs": [
+        94.63044199999422,
+        85.74717800000508,
+        72.66973200000939,
+        88.37195699999575,
+        74.6354879999999,
+        123.17509699999937,
+        72.96348500000022,
+        89.30922799999826
+      ],
+      "databaseBytesBefore": 221184,
+      "databaseBytesAfter": 811008
+    },
+    {
+      "round": 4,
+      "variant": "candidate",
+      "accepted": 512,
+      "duplicate": 64,
+      "conflict": 409,
+      "wallMs": 728.2827889999899,
+      "cpuUs": 1152935,
+      "batchMs": [
+        97.28504200000316,
+        104.73013200002606,
+        78.62531499998295,
+        116.33141099999193,
+        85.30571200000122,
+        79.9935070000065,
+        81.67451899999287,
+        82.61507299999357
+      ],
+      "databaseBytesBefore": 229376,
+      "databaseBytesAfter": 856064
+    }
+  ],
+  "failures": [],
+  "timingValid": false,
+  "hostGates": {
+    "before": 0,
+    "after": 75
+  },
+  "clientExit": 0,
+  "excludedReason": "post-run host load exceeds gate"
+}
