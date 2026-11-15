@@ -148,3 +148,23 @@ fresh logical snapshots and independent recovery reports are under
 `discover/cutover-refresh` and `discover-preview/cutover-refresh`; their source
 artifacts were unchanged from the physical snapshot. Protected runtime contexts
 and the selected configuration are retained alongside them.
+
+## Application overview release (2026-11-14)
+
+`stats:87ff3ca79243` is deployed at Orange node version 8. The production
+browser verified all three overview charts, recent requests, mobile layout and
+release history. A fixed historical window retained all 1,851 events and 1,464
+requests; the same six services and host associations remained registered.
+Performance and memory evidence is in [frontend efficiency](frontend-efficiency.md#native-application-overview-2026-11-14).
+
+The first image attempt inherited a protected shell's 077 umask and could not
+read root-owned application files as the runtime user. The deploy script
+restored the previous healthy image. Images now give the runtime user ownership
+of application artifacts, and an isolated image preflight reads both descriptors,
+entry modules and the dashboard asset before production selection changes.
+
+The selected image and protected replay/verification captures are saved under
+`~/backups/openorange/stats/performance-overview` on the Mac. Retain that image
+supplement with the earlier full physical backup; it does not contain Engine
+or Store state. Shared health after the subsequent registry-stream repair
+reported 92 passes, one disk-capacity warning and no failures.
