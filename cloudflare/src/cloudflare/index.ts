@@ -12,6 +12,7 @@ import { rolloutsFromDeployments } from "../observe/cloudflare/rollouts.ts";
 import { decodeDeploymentHistory } from "../deployments/decode.ts";
 import { handleStatsRequest } from "../core/http.ts";
 import { captureApplicationRequest } from "../observe/application/http.ts";
+import { bufferedApplicationPost } from "../observe/application/buffered.ts";
 import type { RuntimeCapabilities } from "../core/capabilities.ts";
 
 export { Installation };
@@ -66,7 +67,7 @@ export default {
     if (env.APPLICATION_EVENTS_RELEASE === undefined) return run();
     return captureApplicationRequest(request, run, {
       release: env.APPLICATION_EVENTS_RELEASE, now: () => Date.now(), monotonic: () => performance.now(), waitUntil: promise => { ctx.waitUntil(promise); },
-      post: async body => (await env.OBSERVE.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) }))).ok
+      post: bufferedApplicationPost(env.OBSERVE, env.APPLICATION_EVENTS_RELEASE)
     });
   },
 

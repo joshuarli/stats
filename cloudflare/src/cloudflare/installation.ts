@@ -3,6 +3,7 @@ import { OBSERVE_CHANNEL } from "../observe/producer/channel.ts";
 import { DurableObject } from "cloudflare:workers";
 import { cloudflareOperations } from "./operations.ts";
 import { applicationEventErrorReporter, applicationEventOperations } from "../observe/application/sink.ts";
+import { bufferedApplicationPost } from "../observe/application/buffered.ts";
 import { cloudflareClock, cloudflareScheduler } from "./ports.ts";
 import { cloudflareSqlScopes } from "./sql.ts";
 import { InstallationCore, type AdminResult, type HostSummary, type LatestSample } from "../core/installation/installation.ts";
@@ -27,10 +28,7 @@ export class Installation extends DurableObject<Env> {
     const observe = "OBSERVE" in this.env ? this.env.OBSERVE : undefined;
     const release = this.env.APPLICATION_EVENTS_RELEASE;
     const eventOptions = release !== undefined && observe !== undefined ? {
-      post: async (body: { readonly events: readonly import("../observe/ingest/model.ts").ExternalEvent[] }) => {
-        const response = await observe.fetch(new Request("https://observe/stats/ingest/observe/v1/batches", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
-        return response.ok;
-      },
+      post: bufferedApplicationPost(observe, release),
       service: "stats", release, now: () => Date.now(), waitUntil: (promise: Promise<unknown>) => { this.ctx.waitUntil(promise); }
     } : undefined;
     if (eventOptions !== undefined) {

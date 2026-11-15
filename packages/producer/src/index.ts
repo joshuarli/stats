@@ -37,6 +37,10 @@ export interface ProducerConfig {
   readonly newEventId?: () => string;
 }
 
+export type BindingProducerConfig = Omit<ProducerConfig, "endpoint" | "token" | "fetch"> & {
+  readonly postBatch: (body: string, signal: AbortSignal) => Promise<Response>;
+};
+
 export interface OperationInput {
   readonly release?: string;
   readonly operation: string;
@@ -97,28 +101,38 @@ function serverMessage(error: unknown): string {
 }
 
 export function createProducer(config?: ProducerConfig | null): Producer {
+  return configuredProducer(config);
+}
+
+export function createBindingProducer(config?: BindingProducerConfig | null): Producer {
+  return configuredProducer(config);
+}
+
+function configuredProducer(config?: ProducerConfig | BindingProducerConfig | null): Producer {
   if (config === undefined || config === null) return disabledProducer();
   const settings = config;
-  const endpoint = settings.endpoint.trim();
   const service = settings.service.trim();
   const release = settings.release.trim();
-  const staticToken = typeof settings.token === "string" ? settings.token.trim() : null;
-  if (endpoint === "" || service === "" || release === "" || staticToken === "") return disabledProducer();
+  if (service === "" || release === "") return disabledProducer();
+  let delivery: { readonly kind: "binding"; readonly post: BindingProducerConfig["postBatch"] } | { readonly kind: "http"; readonly target: string; readonly fetch: typeof fetch; readonly token: () => string };
+  if ("postBatch" in settings) {
+    if (typeof settings.postBatch !== "function") throw new TypeError("postBatch must be a function");
+    delivery = { kind: "binding", post: settings.postBatch };
+  } else {
+    const endpoint = settings.endpoint.trim();
+    const staticToken = typeof settings.token === "string" ? settings.token.trim() : null;
+    if (endpoint === "" || staticToken === "") return disabledProducer();
+    let base: URL;
+    try { base = new URL(endpoint); } catch { throw new TypeError("endpoint must be a URL"); }
+    if ((base.protocol !== "https:" && base.protocol !== "http:") || base.pathname !== "/" || base.search !== "" || base.hash !== "" || base.username !== "" || base.password !== "") throw new TypeError("endpoint must be a bare http or https origin");
+    const fetchFn = settings.fetch ?? globalThis.fetch;
+    if (typeof fetchFn !== "function") return disabledProducer();
+    delivery = { kind: "http", target: new URL(`/ingest/observe/v1/${encodeURIComponent(service)}/batches`, base).toString(), fetch: fetchFn, token: () => typeof settings.token === "string" ? settings.token : settings.token() };
+  }
   if (!SERVICE.test(service)) throw new TypeError("service must be 1-32 lowercase letters, digits, or hyphens, starting with a letter");
   if (!RELEASE.test(release)) throw new TypeError("release must be 1-64 letters, digits, or ._:+- starting with a letter or digit");
   if (config.instance !== undefined && !INSTANCE.test(config.instance)) throw new TypeError("instance must be 1-128 letters, digits, or ._:- starting with a letter or digit");
   if (config.host !== undefined && !HOST.test(config.host)) throw new TypeError("host must be 1-128 letters, digits, or ._:- starting with a letter or digit");
-  let base: URL;
-  try {
-    base = new URL(endpoint);
-  } catch {
-    throw new TypeError("endpoint must be a URL");
-  }
-  if ((base.protocol !== "https:" && base.protocol !== "http:") || base.pathname !== "/" || base.search !== "" || base.hash !== "" || base.username !== "" || base.password !== "") {
-    throw new TypeError("endpoint must be a bare http or https origin");
-  }
-  const fetchFn = config.fetch ?? globalThis.fetch;
-  if (typeof fetchFn !== "function") return disabledProducer();
   const queueLimit = bound(config.queueLimit, DEFAULT_QUEUE_LIMIT, 1, MAX_QUEUE_LIMIT);
   const batchSize = bound(config.batchSize, DEFAULT_BATCH_SIZE, 1, MAX_EVENTS);
   const flushIntervalMs = bound(config.flushIntervalMs, DEFAULT_FLUSH_INTERVAL_MS, 1, 3_600_000);
@@ -130,8 +144,6 @@ export function createProducer(config?: ProducerConfig | null): Producer {
   const sleep = config.sleep ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)));
   const now = config.now ?? Date.now;
   const newEventId = config.newEventId ?? defaultEventId;
-  const tokenValue = () => typeof settings.token === "string" ? settings.token : settings.token();
-  const target = new URL(`/ingest/observe/v1/${encodeURIComponent(service)}/batches`, base).toString();
   const encoder = new TextEncoder();
 
   const producerId = defaultEventId();
@@ -252,20 +264,21 @@ export function createProducer(config?: ProducerConfig | null): Producer {
   async function send(batch: readonly OperationEvent[]): Promise<void> {
     const body = encodeBatch(batch);
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-      let token: string;
+      let token: string | undefined;
       try {
-        token = tokenValue();
+        if (delivery.kind === "http") token = delivery.token();
       } catch {
         drop(batch, "token_unavailable");
         return;
       }
       let response: Response;
       try {
-        response = await fetchFn(target, {
+        const signal = AbortSignal.timeout(timeoutMs);
+        response = delivery.kind === "binding" ? await delivery.post(body, signal) : await delivery.fetch(delivery.target, {
           method: "POST",
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
           body,
-          signal: AbortSignal.timeout(timeoutMs)
+          signal
         });
       } catch (error) {
         if (attempt === maxRetries) {
@@ -295,7 +308,7 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       if (response.status === 401 || response.status === 403) {
         let next: string | null = null;
         try {
-          next = tokenValue();
+          next = delivery.kind === "http" ? delivery.token() : null;
         } catch {
           next = null;
         }

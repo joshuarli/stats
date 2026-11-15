@@ -32,6 +32,12 @@ producer.record({ operation: "note.save", outcome: "error", durationMs: 30, erro
 `createProducer()` with no config, or with an empty endpoint, service, release,
 or static token, returns a no-op producer that opens no connections.
 
+`createBindingProducer({ service, release, postBatch, ...limits })` uses the same
+queue, encoding and acknowledgment checks through a private service binding.
+`postBatch(body, signal)` must honor cancellation and return the ingestion
+response. The binding owns authorization. No endpoint or bearer token is used.
+The caller must keep `flush()` alive through its runtime's background-task API.
+
 ## Delivery
 
 - The queue holds at most 256 events by default and is capped at 256. The

@@ -22,6 +22,14 @@ The dashboard marks those capabilities unavailable.
 The Engine persists actor data in its filesystem tier. The separate S3-compatible
 store is not that persistence path. This feature changes neither storage backend.
 
+Stats batches its own HTTP and Installation events through the existing private
+observation binding. Each producer queues at most 128 events and sends at most
+64 per batch. Background tasks retain a shared flush for one second. Requests
+do not wait for telemetry delivery. Transport timeouts are five seconds, with
+one retry. Overflow drops the oldest event and increments delivery metadata.
+An abrupt runtime exit can lose queued events. Telemetry ingestion remains
+excluded from HTTP capture, preventing recursive observations.
+
 ## Privacy and authentication
 
 The receiver requires a dedicated bearer credential and an exact resource,

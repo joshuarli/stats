@@ -131,6 +131,24 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.equal(telemetry.delivery.exporterLoss, "unknown");
     assert.ok(telemetry.operations.every(row => row.release === "platform-proof_oo-1.0.2_rk-3.1.2-rc.1_nr-3.1.1"));
     assert.equal(forwardFailures, 0, "the real native exporter must authenticate to the bridge");
+    const burstAtMs = Date.now();
+    const burst = await Promise.all(Array.from({ length: 16 }, () => fetch(`${session!.origin}/api/v1/capabilities`, { headers })));
+    assert.ok(burst.every(response => response.status === 200));
+    let captured: { event: { operation: string; delivery?: { id: string; sequence: number; accepted: number } } }[] = [];
+    const burstDeadline = Date.now() + 10_000;
+    while (Date.now() < burstDeadline) {
+      const response = await fetch(`${session.origin}/api/observe/stats/external?from=${burstAtMs}&to=${Date.now() + 1}`, { headers });
+      assert.equal(response.status, 200);
+      const body = await response.json() as { events: typeof captured };
+      captured = body.events.filter(row => row.event.operation === "http.get.capabilities");
+      if (captured.length === 16) break;
+      await new Promise(done => setTimeout(done, 50));
+    }
+    assert.equal(captured.length, 16, "every real HTTP response eventually retains its observation");
+    assert.ok(captured.every(row => row.event.delivery !== undefined));
+    assert.equal(new Set(captured.map(row => row.event.delivery!.id)).size, 1, "native requests reuse the same bounded producer");
+    assert.equal(new Set(captured.map(row => row.event.delivery!.sequence)).size, 16);
+    assert.ok(new Set(captured.map(row => row.event.delivery!.accepted)).size < 16, "the real binding combines events across HTTP requests");
     collector.closeAllConnections();
     await new Promise<void>(done => collector.close(() => done()));
     for (let n = 0; n < 30; n++) assert.equal((await fetch(`${session.origin}/api/v1/hosts`, { headers })).status, 200, "collector failure must not fail actor requests");

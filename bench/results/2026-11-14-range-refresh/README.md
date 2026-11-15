@@ -53,3 +53,80 @@ overhead. Both host load gates pass. Combined harness RSS is 146,178,048 bytes;
 this is not an isolated per-query allocation measurement. JSON remains 37,398
 bytes. Instrumented headers add a small fixed set of numeric durations; the
 existing observation event gains at most six numeric work fields.
+
+## Repeated range selection
+
+The component retains five successful summaries per selection and refresh
+generation. Manual refresh and the five-minute generation invalidate reuse.
+Cached summaries keep their original timestamp. Detail payloads are excluded.
+An interrupted replacement still revalidates, preserving the existing behavior.
+
+The live `stats:a7528f3bdc75` browser loads 1h, 6h and 24h once. Five rounds of
+those three selections add zero summary requests. All three charts remain
+visible. This verifies removed network work. Host load gates failed during
+the live check, so no browser latency claim is made from that check.
+The focused browser suites pass on desktop and mobile, including manual
+refresh, generation changes, failed reads and interrupted replacements.
+
+First reads still require server work. Stored HTTP events now contain the
+paired timings. One 31,439 ms response has 31,390 ms in `app-store` and
+2,851 ms in `app-read`. Other slow reads spend most of their time in
+`app-query`. These are production diagnostics under shared load.
+
+## Batched self-observation
+
+The native comparison uses the same 1,847 captured events, pinned Orange and
+Rivet closure, and filesystem-backed local Engine. Each round restarts the
+runtime. The workload issues sixteen concurrent capabilities requests, then
+completes a summary HTTP read. Both variants retain identical summaries and
+all sixteen HTTP events. Five interleaved comparisons have zero failures.
+Both timing gates pass.
+
+| Measurement | Individual posts | Bounded producer |
+| --- | --- | --- |
+| Median request burst plus summary | 146.87 ms | 58.05 ms |
+| Range across five rounds | 133.56–198.14 ms | 52.08–65.04 ms |
+| Ingestion batches for sixteen events | 16 | 1 |
+| Median time until events are readable | 183.81 ms | 1,056.57 ms |
+| Process tree RSS range | 875,408–893,040 KiB | 875,616–891,648 KiB |
+| Packaged Stats Worker bundle | 960 KiB | 1,012 KiB |
+
+The improvement comes from removing separate actor ingestion turns before
+the read. The SQL itself still reads the same data. The workload models a
+page request burst, rather than a full browser navigation. Lisa's slower disk
+and shared workloads require independent live validation.
+
+The tradeoff is roughly one second of observation delay. Each producer holds
+at most 128 queued events plus one active batch of at most 64. Overflow drops
+oldest events and updates delivery counters. Runtime termination can lose
+queued events. `waitUntil` owns the shared flush, while HTTP responses proceed.
+The native test proves cross-request batching through the actual binding.
+Saturation, bounded retries, duplicate acknowledgments and auth rejection
+also pass. The complete native suite passes all five cases.
+
+`native-batching.json` preserves the result rows. To repeat the comparison,
+generate separate packaged production descriptors and bundles for each revision
+in fresh directories under `.work/tmp`. Supply the protected event capture:
+
+```sh
+node bench/results/2026-11-14-range-refresh/native-batching.mjs \
+  --source "$CAPTURE" --baseline "$BASELINE" --candidate "$CANDIDATE"
+```
+
+The harness seeds disposable state and preserves exact response equality.
+Use `--prepared` only to rerun against fixtures already seeded by the harness.
+The raw production capture is deliberately excluded from this repository.
+
+## Rejected expression index
+
+A covering expression index removed payload-table access in Node's query plan.
+Native testing against 14,776 captured events did not establish a cold-read
+benefit. Five interleaved cold reads had overlapping spreads: baseline
+191–1,273 ms, candidate 385–1,336 ms. Median cold reads were 195 ms and
+477 ms. Warm medians were 36.9 ms and 33.4 ms.
+
+The fixture footprint grew from 134,096 to 303,880 KiB, including Engine
+artifacts. This is not an isolated index-size measurement. The small warm
+benefit does not justify the unproven cold behavior and storage cost.
+The index was removed before deployment. Private evidence and its patch are
+preserved with the Mac's protected campaign backup.
