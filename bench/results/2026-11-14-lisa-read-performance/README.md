@@ -91,3 +91,23 @@ perf-gate-ready -1
 Add `--repeat 10` for the larger workload. Use `--implementation baseline` or
 `--implementation candidate` in separate processes for resource checks.
 The checked-in JSON files contain measurements, not captured event payloads.
+
+## Production verification
+
+Lisa runs `stats:1215ac973d62`, Orange node version 10. Deployment preflight,
+security headers, STB2 smoke checks and deployment-marker delivery pass.
+A fixed production window retains exactly the same aggregates for 1,715 events.
+All seven original service associations remain unchanged. A concurrent Agentctl
+rollout adds an eighth service.
+
+The live overview renders three charts at desktop and mobile widths without
+horizontal overflow. One desktop reload completes its summary read in 624 ms.
+That observation is a functional check, not a controlled production speedup.
+The final shared-stack health check has 110 passes, one existing disk warning
+and no failures. Some earlier checks time out on Stuff and npm landing pages
+while separate build jobs load Lisa. The last retry passes those checks.
+
+The selected image restarts only Stats. Engine and other application containers
+remain running. The previous image remains available through the deployment
+rollback path. Native Orange diagnostics, 27 focused Node tests, 12 workerd
+service tests, type checks and type-aware lint pass.
