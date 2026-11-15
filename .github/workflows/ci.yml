@@ -61,6 +61,9 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
 
+      - name: Install the OpenOrange runtime
+        run: cd deploy/orange && pnpm install --frozen-lockfile
+
       - name: Telemetry typecheck and tests
         run: |
           pnpm --filter @stats/telemetry typecheck
