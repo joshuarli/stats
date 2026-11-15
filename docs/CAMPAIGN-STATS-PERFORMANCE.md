@@ -3,10 +3,10 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last deployed revision: `9eabfbe5cce3`.
-Production application: `stats:9eabfbe5cce3`, Orange node version 22.
-The compatible rollback image is `stats:a309aaf60b7c`, node version 21.
-The compact projection is live and all 117 shared health checks pass.
+the frozen production corpus. Last deployed revision: `6cc06db247a3`.
+Production application: `stats:6cc06db247a3`, Orange node version 24.
+The compatible rollback image is `stats:03d3d4f1fcb8`, node version 23.
+Exact second/minute rollups are live; deployment smoke and marker delivery pass.
 P1's prior 200-cached-selections-per-range run passes with p95 below 35 ms and no
 summary fetches; the frontend implementation is unchanged. P2's awake,
 empty-client-cache portion passes again on node version 22: 200 uncached
@@ -59,6 +59,13 @@ than the observed candidate spreads. The protected pre-projection backup holds
 16 tables and 228,029 rows, including 52,393 canonical events. Its 59-second
 observation-only fence is reopened and verified. Ten-client acceptance remains
 open.
+
+Maintained second/minute rollups now reduce ten-client 24h HTTP p95 from
+5,513 ms to 398 ms in five alternating native rounds, with 50 warm responses
+per range and variant. All 480 complete response hashes match, both Lisa timing
+gates pass, and native writes preserve acknowledgments, duplicate detection and
+the exact canonical snapshot. The [rollup evidence](../bench/results/2026-11-15-maintained-rollups/README.md)
+separates this component result from full P6 browser and ingest acceptance.
 
 Reopening the disposable read fixture later encounters a native command-volume
 quorum failure before candidate code runs. The failed state and Engine logs are

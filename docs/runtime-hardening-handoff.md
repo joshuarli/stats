@@ -1,8 +1,8 @@
 # Validate or roll back the hardening release
 
 Run these commands from the Stats checkout with its pinned Node and pnpm.
-The deployed application is `stats:9eabfbe5cce3`, Orange node version 22.
-The compatible rollback image is `stats:a309aaf60b7c`, node version 21.
+The deployed application is `stats:6cc06db247a3`, Orange node version 24.
+The compatible rollback image is `stats:03d3d4f1fcb8`, node version 23.
 
 ## Verify the deployed application
 
@@ -63,7 +63,7 @@ the Engine or change its persistence.
 Confirm no later operator has selected another image before running:
 
 ```sh
-ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:a309aaf60b7c --if-current stats:9eabfbe5cce3'
+ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:03d3d4f1fcb8 --if-current stats:6cc06db247a3'
 ssh josh@lisa 'doas -n /sbin/rc-service oo-app.stats restart'
 ssh josh@lisa 'doas -n /opt/openorange/bin/oo wait app stats 120'
 ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
@@ -72,10 +72,11 @@ ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
 Stop if conditional selection fails. Inspect the concurrent deployment instead
 of overriding it. Verify HTTPS and the dashboard after the health check.
 There is no canonical-data migration to reverse. This rollback retains stored
-events, the projection and its mutation triggers while selecting the payload
-index query. The rollback reader excludes derived rows from logical snapshots.
-Do not drop the projection, triggers or index during rollback. Earlier images
-do not exclude the projection from snapshots and are unsuitable rollback targets.
+events, both derived tables and their mutation triggers while selecting the
+compact-projection query. The rollback reader excludes both derived tables
+from logical snapshots. Do not drop derived tables, triggers or the old payload
+index during rollback. Earlier readers do not exclude rollups from snapshots
+and are unsuitable rollback targets after rollup creation.
 The protected pre-projection logical backup contains 16 tables and 228,029 rows,
 including 52,393 canonical events. Read and write comparisons, exact native
 restore checks and the unresolved private Engine reopening failure are recorded
