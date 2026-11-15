@@ -19,8 +19,16 @@ export function bufferedApplicationPost(binding: ObservationBinding, release: st
     }))
   });
   let pending: Promise<boolean> | null = null;
+  let reportedDrops = 0;
+  const reportLoss = () => {
+    const stats = producer.stats();
+    if (stats.dropped <= reportedDrops) return;
+    reportedDrops = stats.dropped;
+    console.error(JSON.stringify({ event: "application_delivery_loss", dropped: stats.dropped, queued: stats.queued, retries: stats.retries, lastError: stats.lastError }));
+  };
   const post: Post = body => {
     if (body.events.some(event => event.service !== APPLICATION_EVENTS_SERVICE)) return Promise.resolve(false);
+    if (pending === null) reportLoss();
     const dropped = producer.stats().dropped;
     for (const event of body.events) {
       producer.record({
@@ -38,7 +46,7 @@ export function bufferedApplicationPost(binding: ObservationBinding, release: st
       pending = new Promise<void>(resolve => { setTimeout(resolve, 1000); })
         .then(async () => { await producer.flush(); return producer.stats().dropped === dropped; })
         .catch(() => false)
-        .finally(() => { pending = null; });
+        .finally(() => { reportLoss(); pending = null; });
     }
     return pending;
   };

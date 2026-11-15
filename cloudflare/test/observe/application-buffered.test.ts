@@ -73,3 +73,15 @@ await test("binding producers retry boundedly, accept duplicate acknowledgments,
   assert.equal(denied.stats().retries, 0);
   assert.equal(denied.stats().lastError, "http_403");
 });
+
+await test("delivery loss logs bounded SDK diagnostics without receiver bodies or credentials", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const logs = context.mock.method(console, "error", () => {});
+  const post = bufferedApplicationPost({ fetch: () => Promise.resolve(new Response("private receiver detail", { status: 403 })) }, "binding-proof");
+  const pending = Array.from({ length: 16 }, (_, index) => post({ events: [event(index)] }));
+  context.mock.timers.tick(1000);
+  assert.ok((await Promise.all(pending)).every(result => !result));
+  assert.equal(logs.mock.calls.length, 1);
+  assert.deepEqual(JSON.parse(logs.mock.calls[0]!.arguments[0] as string), { event: "application_delivery_loss", dropped: 16, queued: 0, retries: 0, lastError: "http_403" });
+  assert.doesNotMatch(JSON.stringify(logs.mock.calls), /private receiver detail/u);
+});
