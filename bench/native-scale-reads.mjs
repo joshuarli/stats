@@ -42,7 +42,7 @@ for (let attempt = 0; attempt < 120; attempt++) {
 }
 readiness.ms = performance.now() - readinessStarted;
 assert.ok(ready, "fixture actor did not become ready; no summary timing samples accepted");
-assert.ok(values.variants === undefined || values.compare && ["projection,seconds", "projection,hierarchy"].includes(values.variants));
+assert.ok(values.variants === undefined || values.compare && ["projection,seconds", "projection,hierarchy", "projection,rollups"].includes(values.variants));
 const variants = values.compare ? (values.variants?.split(",") ?? ["payload", "projection"]) : [undefined];
 async function sample(round, hours, variant, client) {
   const toMs = proof.toMs, fromMs = toMs - hours * 3600000;

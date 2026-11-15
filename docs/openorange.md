@@ -69,15 +69,17 @@ schema migration needs a restore.
 The application export is the recovery contract; it does not depend on the
 Engine's directories.
 
-The observation store maintains `observe_application_projection` as rebuildable
-scalar read state. Logical exports omit it from table data and schema fingerprints.
-A fresh import clears existing derived rows before canonical-table triggers
-rebuild them; resuming an import retains work from acknowledged pages. Deploy
-the snapshot-policy reader as the rollback release before creating the table.
-That reader is deployed as `stats:a309aaf60b7c` (node version 21). A projection
-rollout can roll back to that image without reversing canonical data changes;
-retain the derived table and triggers. Earlier images do not exclude the table
-from logical exports and are unsuitable rollback targets after table creation.
+The observation store maintains `observe_application_projection` and
+`observe_application_rollups` as rebuildable read state. Logical exports omit
+both tables and retain the 16-table canonical schema fingerprint. A fresh import
+clears derived rows before canonical mutation triggers rebuild them; resuming an
+import retains work from acknowledged pages.
+
+Before creating rollups, deploy the snapshot-policy reader that excludes both
+derived tables. That compatible reader is `stats:03d3d4f1fcb8` (node version 23).
+It retains the compact projection query. Keep both derived tables and their
+triggers during rollback. Earlier projection-only readers do not exclude the
+rollup table and are unsuitable rollback targets after its creation.
 
 ```sh
 pnpm --dir cloudflare -s statsctl backup fence --state fenced
