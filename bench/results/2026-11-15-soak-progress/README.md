@@ -14,6 +14,11 @@ under the campaign's requirement of no unavailable groups. Initial successful
 probe samples were not evidence that the complete series stayed available.
 No plateau result is claimed.
 
+Stuff STUF-88 (P2, assumed) tracks inventory availability and the preserved
+sample failures. Stats STA-128 (P2, assumed) retains the separate P7 overhead
+study blocked by the incomplete fixture. Both tickets are committed and
+pushed in their owning repositories.
+
 The current sampler must still finish untouched. After the deadline, verify
 its terminal record and absence of its process before considering W6's one
 allowed invalidation restart with a fresh output path. Preserve this series.

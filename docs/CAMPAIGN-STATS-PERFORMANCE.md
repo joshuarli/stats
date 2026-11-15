@@ -18,12 +18,14 @@ The private Engine fenced its volume again. W2 is blocked on fixture durability
 (Stuff STUF-87); no full timing run was possible. Do not start another rebuild.
 W3's two observability checks found no positive
 sleep signal; the sleep condition is blocked as unobservable, tracked in
-Stuff STUF-86. W4 is blocked on the unavailable complete W2 workload. W5's
+Stuff STUF-86. W4 is blocked on the unavailable complete W2 workload; Stats
+STA-128 retains the overhead and collector-failure acceptance study. W5's
 single investigation localized the failure to Engine volume fencing, but did
 not establish whether configuration/resource limits or an Engine defect is
 the underlying cause; repeated native recovery is blocked on STUF-87.
 W6 still awaits the soak deadline. Read-only inspection found actor-list HTTP
-503 samples and an application-health timeout in the live series; it cannot
+503 samples and an application-health timeout in the live series (Stuff
+STUF-88); it cannot
 pass the no-unavailable-groups requirement. Preserve the running sampler until
 completion, then apply the one allowed invalidation restart. The analyzer and
 its six regression tests are ready; see the
@@ -50,7 +52,7 @@ does not need a redeploy to be current.
 | P4 | **Pass** for the observed cohort: 17 of 17 journeys over 1 s | None. Population coverage is not claimed |
 | P5 | **Pass** on desktop and mobile; guidance is live | None |
 | P6 | **Blocked (fixture import volume fencing)**; component evidence only | Stuff STUF-87; [rebuild evidence](../bench/results/2026-11-15-scale-prep-review/README.md#single-rebuild-result) |
-| P7 | Freshness **passes**; overhead **blocked (complete W2 workload unavailable)** | W4; no study or precision claim |
+| P7 | Freshness **passes**; overhead **blocked (complete W2 workload unavailable)** | STA-128; W4 has no study or precision claim |
 | P8 | Browser heap **passes**; the 24h soak is **running** | W6 |
 | P9 | **Blocked (native volume fencing; underlying cause unresolved)**; partial lifecycle evidence retained | W5 investigation exhausted; Stuff STUF-87 |
 
