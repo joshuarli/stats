@@ -1,6 +1,10 @@
 import type { JsonReadMeasurement } from "./api.ts";
 import { readTimings } from "../observe/application/timing.ts";
 import type { Range } from "./state.ts";
+import type { ProjectJourney } from "../observe/application/journey.ts";
+import { deliverProjectJourney, setJourneyDeliveryAvailable } from "./journey-delivery.ts";
+
+export type { ProjectJourney } from "../observe/application/journey.ts";
 
 type Source = "navigation" | "range" | "refresh";
 let intent: { readonly source: Source; readonly at: number } | null = null;
@@ -21,18 +25,6 @@ export function observeProjectNavigation(): () => void {
   };
   document.addEventListener("click", clicked, true);
   return () => document.removeEventListener("click", clicked, true);
-}
-
-export interface ProjectJourney {
-  readonly schemaVersion: 1;
-  readonly source: Source;
-  readonly range: Range;
-  readonly cache: boolean;
-  readonly outcome: "ok" | "error" | "cancelled";
-  readonly startedAtMs: number;
-  readonly durationMs: number;
-  readonly trace: { readonly traceId: string; readonly spanId: string };
-  readonly work: Readonly<Record<string, number>>;
 }
 
 export function startProjectJourney(range: Range, options: { readonly navigation: boolean }) {
@@ -59,12 +51,16 @@ export function startProjectJourney(range: Range, options: { readonly navigation
     frames.clear();
     const detail: ProjectJourney = { schemaVersion: 1, source, range, cache, outcome, startedAtMs: Math.round(performance.timeOrigin + started), durationMs: Math.max(0, performance.now() - started), trace, work };
     window.dispatchEvent(new CustomEvent<ProjectJourney>("stats:project-journey", { detail }));
+    deliverProjectJourney(detail);
   };
   return {
     trace,
     measured: (measurement: JsonReadMeasurement) => {
       if (closed) return;
-      Object.assign(work, readTimings(measurement.serverTiming), { bootstrap_us: us(measurement.startedMs - started), fetch_us: us(measurement.fetchMs), body_us: us(measurement.bodyMs), decode_us: us(measurement.decodeMs) });
+      if (measurement.journeyDelivery !== undefined) setJourneyDeliveryAvailable(measurement.journeyDelivery);
+      Object.assign(work, readTimings(measurement.serverTiming), { bootstrap_us: us(measurement.startedMs - started), fetch_us: us(measurement.fetchMs),
+        ...(measurement.bodyMs === undefined ? {} : { body_us: us(measurement.bodyMs) }),
+        ...(measurement.decodeMs === undefined ? {} : { decode_us: us(measurement.decodeMs) }) });
     },
     dataReady: (window: { readonly fromMs: number; readonly toMs: number }, cached: boolean) => {
       if (closed) return;

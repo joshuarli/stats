@@ -108,6 +108,11 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-query;dur=\d+\.\d{3}/u);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-dispatch;dur=\d+\.\d{3}/u);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-total;dur=\d+\.\d{3}/u);
+    assert.equal(summaryResponse.headers.get("Stats-Ui-Observations"), "1");
+    const browserTrace = { traceId: "3".repeat(32), spanId: "4".repeat(16) };
+    const browserResponse = await post("/api/v1/ui-journeys", { schemaVersion: 1, source: "range", range: "6h", cache: false, outcome: "ok", startedAtMs: Date.now(), durationMs: 1500, trace: browserTrace, work: { query_us: 1_400_000, fetch_us: 1_490_000, render_us: 10_000 }, asset: "index-proof.js", dropped: 2 });
+    assert.equal(browserResponse.status, 202);
+    assert.deepEqual(await browserResponse.json(), { admitted: true });
     const deliveryDeadline = Date.now() + 10_000;
     while (bridge.counters().admitted < 4 && Date.now() < deliveryDeadline) await new Promise(done => setTimeout(done, 50));
     assert.ok(bridge.counters().admitted >= 4, "real native spans reach the translator");
@@ -141,6 +146,11 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.deepEqual(measuredRead?.event.trace, summaryTrace);
     assert.ok(measuredRead!.event.work["query_us"]! >= 0);
     assert.ok(measuredRead!.event.work["dispatch_us"]! >= 0);
+    const browserRead = correlation.events.filter(row => row.event.operation === "ui.range.6h.read");
+    assert.equal(browserRead.length, 1, "one browser event is persisted without recursive HTTP transport events");
+    assert.deepEqual(browserRead[0]!.event.trace, browserTrace);
+    assert.equal(browserRead[0]!.event.work["query_us"], 1_400_000);
+    assert.equal(browserRead[0]!.event.work["transport_dropped"], 2);
     const burstAtMs = Date.now();
     const burst = await Promise.all(Array.from({ length: 16 }, () => fetch(`${session!.origin}/api/v1/capabilities`, { headers })));
     assert.ok(burst.every(response => response.status === 200));

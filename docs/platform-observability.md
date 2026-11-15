@@ -36,13 +36,31 @@ The overview emits bounded `stats:project-journey` browser events for navigation
 range selection and refresh. They contain cache status, outcome, a generated
 trace identity and numeric phase durations. They contain no project names,
 raw URLs, request bodies or user identity. The frontend retains no event history.
-Browser delivery into Stats is not yet implemented.
+When the summary response advertises browser observation support, the browser
+posts these measurements to `/api/v1/ui-journeys`. This route uses the normal
+tailnet authentication and cross-origin write checks. It accepts at most 4 KiB,
+only the fixed phase fields, valid trace IDs and a bounded asset basename. The
+server supplies the Stats service and deployed release; the asset basename is
+retained separately as the browser instance. Client-supplied release, service,
+URLs and arbitrary attributes are rejected.
+
+The browser allows two in-flight posts, no queue and no retries, with a
+three-second timeout. Unavailable delivery, overflow and failed admissions
+increment a bounded cumulative `transport_dropped` counter on later events.
+This counter is local to one document; it cannot establish fleet completeness.
+HTTP 202 means best-effort admission, not durable ingestion. The existing server
+producer supplies batching and bounded retries. Neither browser transport nor
+its server handler generates another HTTP observation. Abrupt page or runtime
+exit can lose observations. Older assets continue to work during deployments;
+clients without an advertised receiver keep measurements local.
 
 The read sends a W3C trace identity that the native HTTP event validates and
 retains. Browser durations separate bootstrap, response headers, body reading,
 JSON decoding and rendering. Rendering includes lazy overview-module loading
 and all three current chart draws through the next animation frame. Nested
 server timings overlap those phases and must not be added to them.
+Failed reads report only phases they reached. Cancelled journeys can lack
+pending request measurements; these remain coverage gaps.
 
 `app-dispatch` measures the Stats Worker's complete observation-binding fetch.
 The existing HTTP event stores it as `dispatch_us`. Its difference from

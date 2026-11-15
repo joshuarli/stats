@@ -9,6 +9,7 @@ import { MAX_BATCH_BYTES } from "../observe/ingest/model.ts";
 import { isObservedService, OBSERVED_SERVICES } from "../observe/services.ts";
 import { MAX_MARKER_BODY_BYTES } from "./installation/services.ts";
 import { APPLICATION_SUMMARY_PATH } from "../observe/application/timing.ts";
+import { decodeBrowserJourney, MAX_UI_JOURNEY_BYTES, UI_JOURNEY_HEADER, UI_JOURNEY_PATH, type BrowserJourney } from "../observe/application/journey.ts";
 
 export type AuthDecision =
   | { readonly ok: true }
@@ -24,6 +25,7 @@ export interface StatsTarget {
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: (request: Request) => Promise<Response>;
   readonly observe: ObserveService | null;
+  readonly recordBrowserJourney?: (journey: BrowserJourney) => void;
 }
 
 const SECURITY: Record<string, string> = {
@@ -134,6 +136,7 @@ async function observe(request: Request, target: StatsTarget, path: string): Pro
     const started = performance.now();
     const response = await target.observe(service);
     const headers = new Headers(response.headers);
+    if (target.recordBrowserJourney !== undefined) headers.set(UI_JOURNEY_HEADER, "1");
     headers.append("Server-Timing", `app-dispatch;dur=${Math.max(0, performance.now() - started).toFixed(3)}`);
     return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
   }
@@ -222,6 +225,19 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (!decision.ok) return denied(decision);
     if (crossSiteWrite(request)) return error(403, "forbidden", "cross-origin request");
     const suffix = path.slice("/api/v1".length);
+    if (path === UI_JOURNEY_PATH) {
+      if (request.method !== "POST") return error(405, "invalid_request", "POST required");
+      if (target.recordBrowserJourney === undefined) return error(503, "unavailable", "browser observations are unavailable");
+      if (!isJson(request)) return error(415, "unsupported_media_type", "application/json required");
+      const body = await readLimitedText(request, MAX_UI_JOURNEY_BYTES);
+      if (body === null) return error(413, "too_large", "observation exceeds the body cap");
+      let parsed: unknown;
+      try { parsed = JSON.parse(body); } catch { return error(400, "invalid_request", "invalid observation"); }
+      const journey = decodeBrowserJourney(parsed, Date.now());
+      if (journey === null) return error(400, "invalid_request", "invalid observation");
+      target.recordBrowserJourney(journey);
+      return secure(Response.json({ admitted: true }, { status: 202 }));
+    }
     if (suffix === "/capabilities") return request.method === "GET" ? secure(Response.json(target.capabilities)) : error(405, "invalid_request", "GET required");
     if (suffix === "/admin/objects" || suffix.startsWith("/admin/objects/")) return secure(await maintainObject(request, target, suffix));
     if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");

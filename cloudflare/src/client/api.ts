@@ -1,4 +1,5 @@
 import { DURATION_BOUNDS_US, PLATFORM_OPERATIONS, type PlatformTelemetry } from "../../../packages/platform-bridge/src/contract.ts";
+import { UI_JOURNEY_HEADER } from "../observe/application/journey.ts";
 import { decodeCapabilities } from "../core/capabilities.ts";
 import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
 import type { LatestDeployment } from "../deployments/model.ts";
@@ -270,9 +271,10 @@ export function openHistoryFrame<T>(
 export interface JsonReadMeasurement {
   readonly startedMs: number;
   readonly fetchMs: number;
-  readonly bodyMs: number;
-  readonly decodeMs: number;
+  readonly bodyMs?: number;
+  readonly decodeMs?: number;
   readonly serverTiming: string | null;
+  readonly journeyDelivery: boolean | undefined;
 }
 
 export interface JsonReadObservation {
@@ -282,30 +284,36 @@ export interface JsonReadObservation {
 
 async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal, observation?: JsonReadObservation): Promise<T> {
   const started = observation === undefined ? 0 : performance.now();
-  const response = await send(path, { Accept: "application/json", ...(observation === undefined ? {} : { traceparent: `00-${observation.trace.traceId}-${observation.trace.spanId}-00` }) }, signal);
-  const headersAt = observation === undefined ? 0 : performance.now();
-  if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) {
-    throw await failureForResponse(response, "The response was not telemetry JSON. Open Stats from a device on the tailnet.", 0);
-  }
-  let body: unknown;
-  let bodyAt = headersAt;
+  let response: Response | undefined, headersAt: number | undefined, bodyAt: number | undefined;
   try {
-    if (observation === undefined) body = await response.json();
-    else {
-      const text = await response.text();
-      bodyAt = performance.now();
-      body = JSON.parse(text) as unknown;
+    response = await send(path, { Accept: "application/json", ...(observation === undefined ? {} : { traceparent: `00-${observation.trace.traceId}-${observation.trace.spanId}-00` }) }, signal);
+    if (observation !== undefined) headersAt = performance.now();
+    if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw await failureForResponse(response, "The response was not telemetry JSON. Open Stats from a device on the tailnet.", 0);
     }
-  } catch (error) {
-    throw new ApiFailure(0, "The response was not valid JSON.", error);
+    let body: unknown;
+    try {
+      if (observation === undefined) body = await response.json();
+      else {
+        const text = await response.text();
+        bodyAt = performance.now();
+        body = JSON.parse(text) as unknown;
+      }
+    } catch (error) { throw new ApiFailure(0, "The response was not valid JSON.", error); }
+    return contract(() => decode(body));
+  } finally {
+    if (observation !== undefined) {
+      const ended = performance.now();
+      try {
+        observation.measured({ startedMs: started, fetchMs: (headersAt ?? ended) - started,
+          ...(headersAt === undefined ? {} : { bodyMs: (bodyAt ?? ended) - headersAt }),
+          ...(bodyAt === undefined ? {} : { decodeMs: ended - bodyAt }),
+          serverTiming: response?.headers.get("Server-Timing") ?? null, journeyDelivery: response === undefined ? undefined : response.headers.get(UI_JOURNEY_HEADER) === "1" });
+      } catch { console.error("ui_read_measurement_failed"); }
+    }
   }
-  const value = contract(() => decode(body));
-  try {
-    observation?.measured({ startedMs: started, fetchMs: headersAt - started, bodyMs: bodyAt - headersAt, decodeMs: performance.now() - bodyAt, serverTiming: response.headers.get("Server-Timing") });
-  } catch { console.error("ui_read_measurement_failed"); }
-  return value;
 }
 
 export async function getHistory<T>(

@@ -8,6 +8,11 @@ declare global {
 
 test("@mobile project journeys measure real chart completion, cache reuse, errors and cancellation", async ({ page }) => {
   const journeys: ProjectJourney[] = [];
+  const deliveries: Record<string, unknown>[] = [];
+  await page.route("**/api/v1/ui-journeys", route => {
+    deliveries.push(route.request().postDataJSON() as Record<string, unknown>);
+    return route.fulfill({ status: 202, json: { admitted: true } });
+  });
   await page.exposeFunction("captureProjectJourney", (journey: ProjectJourney) => { journeys.push(journey); });
   await page.addInitScript(() => window.addEventListener("stats:project-journey", event => { void window.captureProjectJourney((event as CustomEvent<ProjectJourney>).detail); }));
   await page.route("**/api/v1/hosts", route => route.fulfill({ json: { hosts: [] } }));
@@ -24,7 +29,7 @@ test("@mobile project journeys measure real chart completion, cache reuse, error
     const url = new URL(route.request().url()), fromMs = Number(url.searchParams.get("from")), toMs = Number(url.searchParams.get("to"));
     const n = Math.round((toMs - fromMs) / 3600000);
     const totals = { events: n, failed: 0, cancelled: 0, requests: n, requestDurationMsSum: n, requestDurationMsMax: 1, status2xx: n, status3xx: 0, status4xx: 0, status5xx: 0, durationMsSum: n, durationMsMax: 1, firstAtMs: fromMs + 1000, lastAtMs: fromMs + 1000 };
-    await route.fulfill({ headers: { "Server-Timing": "app-store;dur=5.000, app-query;dur=2.000, app-total;dur=8.000, secret;dur=99" }, json: { provenance: "application", fromMs, toMs, stepMs: Math.max(1000, Math.ceil((toMs - fromMs) / 120000) * 1000), totals, openIssues: 0, buckets: [{ ...totals, atMs: fromMs }], operations: [], moreOperations: false } });
+    await route.fulfill({ headers: { "Stats-Ui-Observations": "1", "Server-Timing": "app-store;dur=5.000, app-query;dur=2.000, app-total;dur=8.000, secret;dur=99" }, json: { provenance: "application", fromMs, toMs, stepMs: Math.max(1000, Math.ceil((toMs - fromMs) / 120000) * 1000), totals, openIssues: 0, buckets: [{ ...totals, atMs: fromMs }], operations: [], moreOperations: false } });
   });
   await page.goto("/#/project/stats");
   await expect.poll(() => journeys.filter(entry => entry.outcome === "ok").length).toBe(1);
@@ -38,6 +43,9 @@ test("@mobile project journeys measure real chart completion, cache reuse, error
   expect(first.work["render_us"]).toBeGreaterThan(0);
   expect(first.work["health_us"]).toBeGreaterThan(0);
   expect(parents[0]).toBe(`00-${first.trace.traceId}-${first.trace.spanId}-00`);
+  await expect.poll(() => deliveries.length).toBe(1);
+  expect(deliveries[0]).toMatchObject({ ...first, dropped: 0 });
+  expect(deliveries[0]!["asset"]).toMatch(/\.js$/u);
   expect(JSON.stringify(journeys)).not.toMatch(/secret|api\/observe|stats\.17166969/u);
 
   await page.getByRole("button", { name: "6h", exact: true }).click();

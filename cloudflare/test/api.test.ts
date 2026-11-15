@@ -11,6 +11,20 @@ afterEach(() => {
 });
 
 describe("dashboard decoding", () => {
+  it("failed reads retain only phases that actually ran", async () => {
+    const measurements: import("../src/client/api").JsonReadMeasurement[] = [];
+    const observed = { trace: { traceId: "1".repeat(32), spanId: "2".repeat(16) }, measured: (entry: import("../src/client/api").JsonReadMeasurement) => { measurements.push(entry); } };
+    vi.stubGlobal("fetch", async () => { throw new Error("unavailable"); });
+    await expect(getApplicationSummary("stats", 1000, 61000, signal, observed)).rejects.toBeInstanceOf(ApiFailure);
+    expect(measurements[0]).toMatchObject({ journeyDelivery: undefined });
+    expect(measurements[0]!.fetchMs).toBeGreaterThanOrEqual(0);
+    expect(measurements[0]!.bodyMs).toBeUndefined();
+    expect(measurements[0]!.decodeMs).toBeUndefined();
+    vi.stubGlobal("fetch", async () => new Response(null, { status: 503, headers: { "Stats-Ui-Observations": "1" } }));
+    await expect(getApplicationSummary("stats", 1000, 61000, signal, observed)).rejects.toBeInstanceOf(ApiFailure);
+    expect(measurements[1]).toMatchObject({ journeyDelivery: true });
+    expect(measurements[1]!.decodeMs).toBeUndefined();
+  });
   it("measurement failures do not turn a valid summary into a failed read", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const summary = { provenance: "application", fromMs: 1000, toMs: 61000, stepMs: 1000, totals: null, openIssues: 0, buckets: [], operations: [], moreOperations: false };

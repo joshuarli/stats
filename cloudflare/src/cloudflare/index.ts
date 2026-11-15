@@ -13,6 +13,8 @@ import { decodeDeploymentHistory } from "../deployments/decode.ts";
 import { handleStatsRequest } from "../core/http.ts";
 import { captureApplicationRequest } from "../observe/application/http.ts";
 import { bufferedApplicationPost } from "../observe/application/buffered.ts";
+import { postApplicationEvent } from "../observe/application/sink.ts";
+import type { BrowserJourney } from "../observe/application/journey.ts";
 import type { RuntimeCapabilities } from "../core/capabilities.ts";
 
 export { Installation };
@@ -42,6 +44,11 @@ async function forwardRollouts(env: Env, store: DurableObjectStub<Installation>)
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     markInvocation();
+    const release = env.APPLICATION_EVENTS_RELEASE;
+    const events = release === undefined ? null : {
+      release, now: () => Date.now(), monotonic: () => performance.now(), waitUntil: (promise: Promise<unknown>) => { ctx.waitUntil(promise); },
+      post: bufferedApplicationPost(env.OBSERVE, release)
+    };
     const run = () => handleStatsRequest(request, {
       capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
@@ -62,13 +69,16 @@ export default {
       },
       installation: internal => env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(internal),
       assets: asset => env.ASSETS.fetch(asset),
-      observe: (target, init) => env.OBSERVE.fetch(target, init)
+      observe: (target, init) => env.OBSERVE.fetch(target, init),
+      ...(events === null ? {} : { recordBrowserJourney: (journey: BrowserJourney) => {
+        postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs: journey.startedAtMs,
+          operation: `ui.${journey.source}.${journey.range}.${journey.cache ? "cache" : "read"}`, outcome: journey.outcome,
+          durationMs: Math.round(journey.durationMs), trace: journey.trace, instance: `browser:${journey.asset}`,
+          work: { ...journey.work, transport_dropped: journey.dropped }, service: "stats", release: events.release
+        }, events);
+      } })
     });
-    if (env.APPLICATION_EVENTS_RELEASE === undefined) return run();
-    return captureApplicationRequest(request, run, {
-      release: env.APPLICATION_EVENTS_RELEASE, now: () => Date.now(), monotonic: () => performance.now(), waitUntil: promise => { ctx.waitUntil(promise); },
-      post: bufferedApplicationPost(env.OBSERVE, env.APPLICATION_EVENTS_RELEASE)
-    });
+    return events === null ? run() : captureApplicationRequest(request, run, events);
   },
 
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
