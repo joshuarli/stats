@@ -58,7 +58,7 @@ function initialSection(): Section {
 function NativeProject(props: { readonly service: Service }): JSX.Element {
   const serviceName = props.service.name;
   const { range, view, now, tick, manualTick } = useTelemetry();
-  const refreshKey = () => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`;
+  const refreshKey = createMemo(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`);
   const [section, setSection] = createSignal<Section>(serviceName === "stats" || initialSection() !== "platform" ? initialSection() : "overview");
   const deployments = createServiceDeployments(() => serviceName, range, refreshKey, { active: () => section() === "deploys" });
   const [data, setData] = createSignal<ApplicationSummary | ApplicationTelemetry | null>(null);
