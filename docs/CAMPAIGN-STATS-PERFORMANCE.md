@@ -3,10 +3,14 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last deployed revision: `1ea3e6af2dc3`.
-Production application: `stats:a309aaf60b7c`, Orange node version 21.
-This deploy adds the compatible snapshot reader and passes all 117 shared health
-checks. The following browser results use the unchanged query in node version 20.
+the frozen production corpus. Last deployed revision: `9eabfbe5cce3`.
+Production application: `stats:9eabfbe5cce3`, Orange node version 22.
+The compatible rollback image is `stats:a309aaf60b7c`, node version 21.
+The compact projection is live and all 117 shared health checks pass.
+The following full browser results were recorded on node version 20; a new
+200-selection-per-range run is in progress. Post-deploy browser smoke validates
+five real uncached selections per range, with correct counts and charts, zero
+errors and cancellations, and all four Mac/Lisa timing gates passing.
 P1 passes on the current live corpus: 200 cached selections per range, p95 below
 35 ms and no summary fetches. P2's awake, empty-client-cache portion also passes:
 200 uncached selections per range yield click-to-complete p95 of 146 ms (1h),
@@ -45,7 +49,13 @@ Canonical events and summary APIs stay intact. The implemented projection passes
 213 observation tests, backfill and mutation regressions, type checks and lint.
 Native backup restores exact application summaries through canonical tables and
 rebuilds the projection. The compatible snapshot reader is live before rollout.
-No derived table is deployed yet. Write cost and ten-client measurements follow.
+Five alternating native write rounds per version preserve all acknowledgments,
+duplicates and conflicts; both timing gates pass. A 512-event actor uses 45,056
+additional SQLite bytes. Median acknowledgment and CPU differences are smaller
+than the observed candidate spreads. The protected pre-projection backup holds
+16 tables and 228,029 rows, including 52,393 canonical events. Its 59-second
+observation-only fence is reopened and verified. Ten-client acceptance remains
+open.
 
 Reopening the disposable read fixture later encounters a native command-volume
 quorum failure before candidate code runs. The failed state and Engine logs are

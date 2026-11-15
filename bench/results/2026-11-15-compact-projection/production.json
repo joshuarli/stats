@@ -1,0 +1,24 @@
+{
+  "image": "stats:9eabfbe5cce3",
+  "nodeVersion": 22,
+  "rollbackImage": "stats:a309aaf60b7c",
+  "health": {
+    "ok": true,
+    "checks": 117
+  },
+  "deploymentSmoke": true,
+  "backup": {
+    "tables": 16,
+    "rows": 228029,
+    "canonicalEvents": 52393,
+    "eventSha256": "e68103c794d242830f712069b68f4c452ba4fbf0ba4a567a5e4bccf8add4f5cf",
+    "fenceStart": "2026-11-15T14:09:59Z",
+    "fenceEnd": "2026-11-15T14:10:58Z",
+    "verifiedOpen": true
+  },
+  "independentSourceReview": {
+    "state": "succeeded",
+    "supportedDefects": 0,
+    "runtimeProof": "parent owns runtime verification"
+  }
+}

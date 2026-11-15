@@ -2,7 +2,7 @@
 
 Verdict: retain the compact per-event table for implementation and further
 validation. Wide warmed reads improve beyond the observed spread. Production
-still uses the payload-containing covering index; no projection is deployed.
+now uses the projection in `stats:9eabfbe5cce3`, Orange node version 22.
 
 The same isolated native fixture holds 203,950 events, both read structures and
 the pinned production runtime. A test-only selector alternates two fixed SQL
@@ -65,6 +65,21 @@ preserved. Those failures precede candidate code and do not demonstrate a
 projection defect; they remain an unresolved native recovery gap. The valid
 write comparison uses a fresh write-only fixture and does not claim to repair
 the failed read fixture.
+
+The [production record](production.json) confirms the selected image, 117 shared
+health checks, deployment smoke and a protected pre-projection snapshot of
+52,393 canonical events. The observation-only write fence lasts 59 seconds and
+is verified open afterward. Observations emitted during that pause can be
+absent; this is not a lossless telemetry claim. Host ingest remains unfenced.
+The compatible rollback image is `stats:a309aaf60b7c`.
+
+[Production browser smoke](production-smoke.json) validates five uncached
+selections per range. Every count, returned window and chart matches; no errors,
+cancellations or unsettled requests occur. All four Mac/Lisa timing gates pass.
+This smoke check is insufficient for percentile acceptance. An independent
+source review finds no supported projection defect; parent-owned tests provide
+runtime evidence. P6 concurrency, actual actor-sleep latency, instrumentation
+overhead and the full-day soak remain open.
 
 Earlier restart comparisons are excluded: one stops before actor readiness;
 another completes but fails the post-run timing gate. They support no speedup

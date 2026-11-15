@@ -5,10 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 
 const exec = promisify(execFile);
-const { values } = parseArgs({ options: { 'per-range': { type: 'string' }, output: { type: 'string' } } });
+const { values } = parseArgs({ options: { 'per-range': { type: 'string' }, output: { type: 'string' }, image: { type: 'string' }, version: { type: 'string' } } });
 const count = Number(values['per-range']);
 assert.ok(Number.isSafeInteger(count) && count >= 5 && count <= 2000 && count % 5 === 0 && values.output);
 assert.ok(!existsSync(values.output), 'output already exists');
+assert.match(values.image ?? '', /^stats:[a-f0-9]{12}$/u);
+const version = Number(values.version); assert.ok(Number.isSafeInteger(version) && version > 0);
 let session;
 const ranges = ['1h', '6h', '24h', '7d'];
 const records = [], gates = [];
@@ -41,7 +43,7 @@ let error;
 try {
   session = await command('agent-browser', ['session', 'id', '--scope', 'worktree', '--prefix', 'stats-live-reads-corrected']);
   deployment = JSON.parse(await command('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'josh@lisa', 'doas -n /opt/openorange/bin/oo deployment stats']));
-  assert.equal(deployment.image, 'stats:1ea3e6af2dc3'); assert.equal(deployment.version, 20);
+  assert.equal(deployment.image, values.image); assert.equal(deployment.version, version);
   await browser(['--init-script', fileURLToPath(new URL('./live-project-probe.js', import.meta.url)), 'open', 'https://stats.17166969.xyz']);
   viewport = decode(await browser(['eval', '--stdin'], '({width:innerWidth,height:innerHeight,devicePixelRatio,browser:navigator.userAgent})'));
   if (!await gate('mac', false) || !await gate('lisa', false)) throw new Error('perf gate deferred: host busy');

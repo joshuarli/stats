@@ -33,8 +33,10 @@ or tenfold acceptance. Ordinary server page-cache reuse is retained.
 
 ```sh
 node bench/live-project-browser.mjs --per-range 5 \
+  --image stats:1ea3e6af2dc3 --version 20 \
   --output .work/tmp/live-smoke.json
 node bench/live-project-browser.mjs --per-range 200 \
+  --image stats:1ea3e6af2dc3 --version 20 \
   --output .work/tmp/live-accepted.json
 ```
 

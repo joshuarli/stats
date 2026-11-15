@@ -1,8 +1,8 @@
 # Validate or roll back the hardening release
 
 Run these commands from the Stats checkout with its pinned Node and pnpm.
-The deployed application is `stats:1ea3e6af2dc3`, Orange node version 20.
-The previous application image is `stats:506b622debb4`.
+The deployed application is `stats:9eabfbe5cce3`, Orange node version 22.
+The compatible rollback image is `stats:a309aaf60b7c`, node version 21.
 
 ## Verify the deployed application
 
@@ -63,7 +63,7 @@ the Engine or change its persistence.
 Confirm no later operator has selected another image before running:
 
 ```sh
-ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:506b622debb4 --if-current stats:1ea3e6af2dc3'
+ssh josh@lisa 'doas -n /opt/openorange/bin/oo set-image stats stats:a309aaf60b7c --if-current stats:9eabfbe5cce3'
 ssh josh@lisa 'doas -n /sbin/rc-service oo-app.stats restart'
 ssh josh@lisa 'doas -n /opt/openorange/bin/oo wait app stats 120'
 ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
@@ -72,11 +72,14 @@ ssh josh@lisa 'doas -n /opt/openorange/bin/health --json'
 Stop if conditional selection fails. Inspect the concurrent deployment instead
 of overriding it. Verify HTTPS and the dashboard after the health check.
 There is no canonical-data migration to reverse. This rollback retains stored
-events and the rebuildable covering index, while selecting the earlier query.
-The previous image retains the bounded producer-drain fix. Do not drop the
-index as part of application rollback. The protected pre-index logical backup
-and exact native recovery checks are recorded with the
-[index evidence](../bench/results/2026-11-15-covering-index/README.md).
+events, the projection and its mutation triggers while selecting the payload
+index query. The rollback reader excludes derived rows from logical snapshots.
+Do not drop the projection, triggers or index during rollback. Earlier images
+do not exclude the projection from snapshots and are unsuitable rollback targets.
+The protected pre-projection logical backup contains 16 tables and 228,029 rows,
+including 52,393 canonical events. Read and write comparisons, exact native
+restore checks and the unresolved private Engine reopening failure are recorded
+with the [projection evidence](../bench/results/2026-11-15-compact-projection/README.md).
 
 ## Resume deferred infrastructure work
 
