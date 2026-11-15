@@ -55,19 +55,11 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
 
-      - name: Check fixtures
-        run: node scripts/check-fixtures.mjs
-
-      - name: Agent tests
-        run: cd agent && cargo test --all-targets
-
       - name: Install the OpenOrange runtime
         run: cd deploy/orange && pnpm install --frozen-lockfile
 
-      - name: Telemetry typecheck and tests
-        run: |
-          pnpm --filter @stats/telemetry typecheck
-          pnpm --filter @stats/telemetry test
+      - name: Tests
+        run: make test-ci
 
   dashboard:
     name: dashboard

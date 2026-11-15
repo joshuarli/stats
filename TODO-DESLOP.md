@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 6
+Next: 9
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier Calibration). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -9,14 +9,6 @@ Not started.
 
 ## Tickets
 
-### DSLP-1 · P2 · Ground: baseline, boundaries, and CI test entry point
-
-- **Area:** deslop · ground
-- **Where:** AGENTS.md, Makefile, .github/workflows/
-- **Problem:** Base 05cc14f183f; code lines Rust 6.5k, TypeScript 62.0k (fleet/loc/v1, vendored included); timings not yet measured. CI does not run make test: runs tests directly on pull requests; run make test or make test-ci instead so CI and local verification share one entry point. Open fleet lint findings: mdtool 20, rust-collections 6, gha-syntax 4, typescript-stack 3, audit-upgrades 2, make-lint-target 2, audit-lock 1, make-clean-target 1, and 3 more. Over 50k lines, so Types, Tests, and Dead code run per component; largest first-party groups: cloudflare/src (33k), cloudflare/test (30k), agent (5k). Consumers in the fleet: discover, tansu; their tests are the consumer check for API changes. Perf gate: decide in Ground whether a user-visible hot path needs a workload.
-- **Recommendation:** Run the deslop Ground step. Accept: CI runs make test and is green, and AGENTS.md has a Verification section.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
 
@@ -52,5 +44,27 @@ Not started.
 - **Problem:** No dead-code scan has run.
 - **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
 - **Fix with:** deslop
+- **Effort:** M
+
+
+
+
+### DSLP-7 · P2 · Local macOS make test fails: development test runs setuid ps inside sandbox-exec
+
+- **Area:** deslop · ground
+- **Where:** cloudflare/test/scripts/development.test.ts:59; scripts/offline-run.sh:26; Makefile:192
+- **Problem:** Since 78de162 the development hot-update test reads the process tree with execFileSync("ps", ...). make test runs it through scripts/offline-run.sh, whose sandbox-exec profile forbids exec of the setuid /bin/ps: `sandbox-exec -p "(version 1)(allow default)(deny network-outbound)" ps` fails with Operation not permitted (exit 71). So local make test exits 2 on every Mac (integration-local is Darwin-only, so Linux CI never runs this test). Reproduced at d06efa5: make -k test leaves this as the only failure.
+- **Recommendation:** Read the process tree and RSS without a setuid binary inside the sandbox (for example sample it from outside the sandboxed command, or use a non-setuid source), keep the RSS and no-workerd assertions, and verify make test on macOS.
+- **Fix with:** root-cause
+- **Effort:** S
+
+
+### DSLP-8 · P2 · Exercise the legacy upgrade test in CI
+
+- **Area:** deslop · ground
+- **Where:** cloudflare/test/local/upgrade.test.ts:39; .github/workflows/ci.yml
+- **Problem:** The local upgrade test skips without the built baseline worktree. CI does not prepare that baseline; the baseline CI test job reports one skipped test and Ground reproduced the missing-baseline skip locally.
+- **Recommendation:** Prepare a pinned baseline build in CI and verify that the upgrade test runs rather than skips.
+- **Fix with:** test-audit
 - **Effort:** M
 

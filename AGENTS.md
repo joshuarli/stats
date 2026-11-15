@@ -25,6 +25,20 @@ See [testing](docs/testing.md) for e2e, local-stack and producer checks, and
 [operations](docs/operations.md) for deployment and CLI recipes. `make node-ready`
 enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 
+## Verification
+
+- `make test`: about 3 minutes warm on macOS after `make orange-ready`. Linux CI runs `make test-ci` (everything except the macOS-rendered dashboard goldens, which the macOS `dashboard` job runs) and skips the macOS-only offline `integration-local` suite.
+- `make lint`: under 2s; `make check` is the release gate.
+- Agent CLI/config and exit behavior: `agent/tests/`, `agent/src/config.rs` tests; installer: `cloudflare/test/scripts/installer.test.ts`.
+- statsctl CLI flags, exit codes and outputs: `cloudflare/test/cli/` and `cloudflare/test/cli-worker.test.ts`.
+- Producer APIs (TypeScript and Rust): `cloudflare/test/producer/`, `packages/stats-producer/` tests; fleet consumers: discover and tansu.
+- STB2/STA2 wire and stored history formats: `fixtures/v2/`, `agent/tests/conformance.rs`, `cloudflare/test/ingest/` and `cloudflare/test/binary/`.
+- HTTP ingest, auth, health, history, projects and observation endpoints: `cloudflare/test/api.test.ts`, `cloudflare/test/node/`, `cloudflare/test/observe-e2e/`.
+- Config, migration and persisted state: `cloudflare/test/migration.test.ts`, `cloudflare/test/local/upgrade.test.ts` (requires baseline build).
+- Dashboard behavior and assets: `cloudflare/test/ui/`; local stack and producer integration: `docs/testing.md`.
+- Performance: `make ingest-bench`, `make dashboard-bench`, and workloads in `bench/README.md`; use the relevant shipped path for a change.
+- Components for later steps: agent; producer packages; cloudflare binary/ingest/core; cloudflare observe; cloudflare projects/deployments/cost; cloudflare node/adapters; cloudflare CLI; cloudflare client/dashboard; scripts and deployment; corresponding `cloudflare/test/` suites by subsystem.
+
 ## Invariants
 
 - Ingest is STB2/STA2 without negotiation; `fixtures/v2/` is the cross-language oracle and malformed frames are rejected whole.
