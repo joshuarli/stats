@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { readApplicationSummary, readApplicationSummaryTimed, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
-import { ingestExternal } from "../../src/observe/core/store.ts";
+import { initializeStore, ingestExternal } from "../../src/observe/core/store.ts";
+import { APPLICATION_SUMMARY_INDEX } from "../../src/observe/application/schema.ts";
+import { exportManifest, initializeMaintenance, setFence } from "../../src/core/export/snapshot.ts";
+import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
 import type { SqlValue } from "../../src/core/sql.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
@@ -13,6 +16,50 @@ const event = (index: number, service = "stats"): ExternalEvent => ({
   schemaVersion: 1, eventId: `event-${index}`, atMs: T0 - H + index,
   operation: `operation-${index % 25}`, outcome: index % 2 === 0 ? "ok" : "error",
   durationMs: 10, work: index % 3 === 0 ? { http_status: 503 } : {}, release: "release-1", service
+});
+
+await test("summary reads use a covering index without seeking canonical event rows", async context => {
+  const db = database();
+  try {
+    ingestExternal(db, "stats", await receiveEvents("stats", [event(0), event(1)]), T0);
+    const original = db.rows.bind(db);
+    let query = "";
+    let parameters: SqlValue[] = [];
+    context.mock.method(db, "rows", (sql: string, ...values: SqlValue[]) => {
+      if (sql.includes("WITH events AS MATERIALIZED")) { query = sql; parameters = values; }
+      return original(sql, ...values);
+    });
+    assert.equal(readApplicationSummary(db, "stats", T0, {}).totals?.events, 2);
+    const plan = db.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(...parameters) as { detail: string }[];
+    assert.ok(plan.some(row => row.detail.includes(`USING COVERING INDEX ${APPLICATION_SUMMARY_INDEX}`)));
+    const root = db.db.prepare("SELECT rootpage FROM sqlite_master WHERE name = 'observe_external_events'").get() as { rootpage: number };
+    const code = db.db.prepare(`EXPLAIN ${query}`).all(...parameters) as { opcode: string; p1: number; p2: number }[];
+    assert.ok(!code.some(op => op.opcode === "OpenRead" && op.p2 === root.rootpage), "expression-only indexes still open and seek the canonical table even without reading its payload column");
+  } finally { db.db.close(); }
+});
+
+await test("backfilling the derived index preserves canonical rows, export compatibility and duplicate identity", async () => {
+  const db = database();
+  try {
+    const sql = nodeSqlScopes(db.db).open();
+    db.run(`DROP INDEX ${APPLICATION_SUMMARY_INDEX}`);
+    const batch = [event(0), { ...event(1), outcome: "cancelled" }, { ...event(2), work: { http_status: 503.5 } }];
+    const received = await receiveEvents("stats", batch);
+    assert.deepEqual(ingestExternal(db, "stats", received, T0), { ok: true, accepted: 3, duplicate: 0 });
+    initializeMaintenance(sql);
+    setFence(sql, true);
+    const before = exportManifest(sql, "observe:stats", T0, null);
+    initializeStore(db);
+    assert.deepEqual(exportManifest(sql, "observe:stats", T0, null), before);
+    const summary = readApplicationSummary(db, "stats", T0, {});
+    assert.equal(summary.totals?.events, 3);
+    assert.equal(summary.totals.requests, 1);
+    assert.equal(summary.totals.cancelled, 1);
+    setFence(sql, false);
+    assert.deepEqual(ingestExternal(db, "stats", received, T0), { ok: true, accepted: 0, duplicate: 3 });
+    assert.deepEqual(ingestExternal(db, "stats", await receiveEvents("stats", [{ ...batch[0]!, durationMs: 999 }]), T0), { ok: false, code: "event_conflict" });
+    assert.deepEqual(readApplicationSummary(db, "stats", T0, {}).totals, summary.totals);
+  } finally { db.db.close(); }
 });
 
 await test("application telemetry summarizes the full window with bounded detail and service isolation", async () => {

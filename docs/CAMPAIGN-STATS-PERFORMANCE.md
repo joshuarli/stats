@@ -3,30 +3,40 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last deployed revision: `05cc14f183f7`.
-Production application: `stats:05cc14f183f7`, Orange node version 17.
+the frozen production corpus. Last deployed revision: `506b622debb4`.
+Production application: `stats:506b622debb4`, Orange node version 19.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
 that this campaign's latency goals pass. P1 passes on the current live corpus.
-Tenfold scale and the other acceptance goals remain open.
+P5 incident fixtures pass. Tenfold scale and the other full acceptance goals
+remain open.
 
 P4 measurement boundaries now have browser and native regressions. A frozen
 20,395-event corpus and 1,000 cached interactions per variant establish no
 measurable timing overhead. Bounded browser delivery and trace correlation are
 live, with native persistence coverage and 117 passing production health checks.
-The live P1 run has 200 samples per range, p95 below 34 ms and no measured summary
-fetches. A stress-burst completeness check exposes browser and producer drops.
-Delivery acceptance remains open. Cold reads still spend seconds in aggregate
-SQL. A five-round isolated Lisa cache-retention trial shows no useful gain.
-Next: test sequential canonical-table reads against random secondary-index
-lookups, preserving exact summaries and stored data.
+Live P1 repeats retain 200 samples per range, p95 below 35 ms and no measured
+summary fetches. Producer drains now stop at an accepted boundary. The burst
+accounts for all 1,005 observations: 908 stored and 97 reported browser drops.
+Two hundred paced observations become queryable at p95 below 1.45 seconds,
+with no drops or errors. Instrumentation CPU and latency overhead remain open.
+
+Native profiling identifies canonical-table lookups hidden behind the compact
+expression index. A genuinely covering index removes them. Five interleaved Lisa
+rounds reduce first-1h aggregate SQL from median 2,465 ms to 123 ms. Complete
+response equality, old-data backfill, export compatibility, duplicate identity,
+native restart and write-cost checks pass. The following 24h read is slower
+after the variants warm different pages. Production navigation and percentile
+acceptance remain open. Next: deploy the derived index and measure browser
+journeys, then address the remaining bottleneck.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
 The isolated lifecycle fixture proves constructor replacement after idle,
 autonomous overdue alarms after runtime restart, and idempotent interrupted
 request replay. Local readiness stayed below 15 seconds in three starts. This
 is platform-fixture proof; production recovery acceptance remains open.
-An isolated frontend lane owns five incident fixtures and overview guidance.
-The parent owns query diagnosis and delivery gaps. No failed candidate is
-selected for production.
+The overview guidance is live. Five incident fixtures, plus missing and historical
+data, pass working-destination tests on desktop and mobile. No active child
+writers. The parent owns index rollout and browser acceptance. S3 work remains
+deferred.
 
 ## Charter
 
@@ -138,6 +148,8 @@ stable candidate. It is required evidence, not a waived gate.
 - [Prior range and batching measurements](../bench/results/2026-11-14-range-refresh/README.md)
 - [Browser journey measurements](../bench/results/2026-11-14-project-journey/README.md)
 - [Live cached range acceptance](../bench/results/2026-11-15-live-cached-ranges/README.md)
+- [Producer delivery and freshness](../bench/results/2026-11-15-producer-boundaries/README.md)
+- [Covering-index evidence and costs](../bench/results/2026-11-15-covering-index/README.md)
 - [Runtime capabilities and remaining gaps](runtime-hardening.md)
 - [Production validation and rollback](runtime-hardening-handoff.md)
 - [Frontend measurement history](frontend-efficiency.md)

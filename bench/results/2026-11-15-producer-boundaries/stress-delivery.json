@@ -1,0 +1,14 @@
+{
+  "browserDrops": 97,
+  "delivered": 908,
+  "done": true,
+  "expected": 1005,
+  "ids": [
+    "7777c44b-a25c-4a78-8478-3ddc8259e69b"
+  ],
+  "producerDrops": 0,
+  "releases": [
+    "stats-506b622debb4"
+  ],
+  "unique": 908
+}

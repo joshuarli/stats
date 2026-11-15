@@ -1,0 +1,12 @@
+{
+  "sourceSha256": "4ef33788757e84e614b35dd2509a942987b7e5350d634bc327a4055d5dd3e006",
+  "proof": [
+    {
+      "condition": "write-replay-restart",
+      "accepted": 64,
+      "duplicate": 64,
+      "conflictStatus": 409,
+      "persisted": 64
+    }
+  ]
+}

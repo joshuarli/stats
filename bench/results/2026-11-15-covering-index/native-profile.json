@@ -1,0 +1,173 @@
+[
+  {
+    "totalNs": 2534369493,
+    "transactionWaitNs": 9917,
+    "workerWaitNs": 68515,
+    "storageNs": 2433845534,
+    "executionNs": 100322885,
+    "rows": 131,
+    "cacheMissPages": 881
+  },
+  {
+    "totalNs": 2495246803,
+    "transactionWaitNs": 19905,
+    "workerWaitNs": 48261,
+    "storageNs": 2319595138,
+    "executionNs": 175491309,
+    "rows": 139,
+    "cacheMissPages": 828
+  },
+  {
+    "totalNs": 489253243,
+    "transactionWaitNs": 8032,
+    "workerWaitNs": 57759,
+    "storageNs": 201766826,
+    "executionNs": 287336957,
+    "rows": 141,
+    "cacheMissPages": 48
+  },
+  {
+    "totalNs": 195870327,
+    "transactionWaitNs": 11384,
+    "workerWaitNs": 84299,
+    "storageNs": 13684438,
+    "executionNs": 182013660,
+    "rows": 141,
+    "cacheMissPages": 2
+  },
+  {
+    "totalNs": 3028668984,
+    "transactionWaitNs": 34083,
+    "workerWaitNs": 593232,
+    "storageNs": 2922808752,
+    "executionNs": 105100917,
+    "rows": 131,
+    "cacheMissPages": 881
+  },
+  {
+    "totalNs": 2546916076,
+    "transactionWaitNs": 9988,
+    "workerWaitNs": 83251,
+    "storageNs": 2372156417,
+    "executionNs": 174534909,
+    "rows": 139,
+    "cacheMissPages": 828
+  },
+  {
+    "totalNs": 397989502,
+    "transactionWaitNs": 13619,
+    "workerWaitNs": 2786670,
+    "storageNs": 221281060,
+    "executionNs": 173792145,
+    "rows": 141,
+    "cacheMissPages": 48
+  },
+  {
+    "totalNs": 142856328,
+    "transactionWaitNs": 10406,
+    "workerWaitNs": 48260,
+    "storageNs": 9960497,
+    "executionNs": 132752028,
+    "rows": 141,
+    "cacheMissPages": 2
+  },
+  {
+    "totalNs": 69302962,
+    "transactionWaitNs": 9848,
+    "workerWaitNs": 65861,
+    "storageNs": 0,
+    "executionNs": 69147843,
+    "rows": 139,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 130688705,
+    "transactionWaitNs": 8520,
+    "workerWaitNs": 47771,
+    "storageNs": 0,
+    "executionNs": 130534914,
+    "rows": 141,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 145773673,
+    "transactionWaitNs": 8521,
+    "workerWaitNs": 58667,
+    "storageNs": 0,
+    "executionNs": 145619811,
+    "rows": 141,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 3165143976,
+    "transactionWaitNs": 14667,
+    "workerWaitNs": 59575,
+    "storageNs": 3052069532,
+    "executionNs": 112870089,
+    "rows": 131,
+    "cacheMissPages": 881
+  },
+  {
+    "totalNs": 2857821562,
+    "transactionWaitNs": 13758,
+    "workerWaitNs": 67607,
+    "storageNs": 2663199594,
+    "executionNs": 193831923,
+    "rows": 139,
+    "cacheMissPages": 832
+  },
+  {
+    "totalNs": 450977937,
+    "transactionWaitNs": 14666,
+    "workerWaitNs": 42603,
+    "storageNs": 209016782,
+    "executionNs": 241781873,
+    "rows": 141,
+    "cacheMissPages": 49
+  },
+  {
+    "totalNs": 184166729,
+    "transactionWaitNs": 14108,
+    "workerWaitNs": 51124,
+    "storageNs": 7020175,
+    "executionNs": 177008968,
+    "rows": 141,
+    "cacheMissPages": 2
+  },
+  {
+    "totalNs": 10287982,
+    "transactionWaitNs": 5727,
+    "workerWaitNs": 40648,
+    "storageNs": 0,
+    "executionNs": 10133285,
+    "rows": 131,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 62909123,
+    "transactionWaitNs": 10407,
+    "workerWaitNs": 42114,
+    "storageNs": 0,
+    "executionNs": 62754425,
+    "rows": 139,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 157605289,
+    "transactionWaitNs": 13200,
+    "workerWaitNs": 47282,
+    "storageNs": 0,
+    "executionNs": 157431664,
+    "rows": 141,
+    "cacheMissPages": 0
+  },
+  {
+    "totalNs": 173012504,
+    "transactionWaitNs": 14737,
+    "workerWaitNs": 42533,
+    "storageNs": 0,
+    "executionNs": 172855920,
+    "rows": 141,
+    "cacheMissPages": 0
+  }
+]

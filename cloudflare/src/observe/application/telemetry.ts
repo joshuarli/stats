@@ -1,4 +1,5 @@
 import type { SqlStatements } from "../../core/sql.ts";
+import { APPLICATION_SUMMARY_INDEX, APPLICATION_SUMMARY_PROJECTION } from "./schema.ts";
 import { eventWindow, openIssueCount } from "../core/store.ts";
 import { PROVENANCE, type ExternalEvent, type ExternalEventRecord, type ExternalFilter } from "../ingest/model.ts";
 
@@ -49,7 +50,6 @@ interface ReadClock {
   issuesMs: number;
 }
 
-const HTTP_STATUS = "CASE WHEN json_type(payload, '$.work.http_status') = 'integer' AND json_extract(payload, '$.work.http_status') BETWEEN 100 AND 599 THEN json_extract(payload, '$.work.http_status') END";
 const MEASURES = `COUNT(*) AS events,
   SUM(outcome <> 'ok') AS failed,
   SUM(outcome = 'cancelled') AS cancelled,
@@ -97,11 +97,8 @@ function summarize(db: SqlStatements, service: string, nowMs: number, filter: Pi
   const queryStarted = clock?.now();
   const rows = db.rows<SummaryRow>(
     `SELECT * FROM (WITH events AS MATERIALIZED (
-      SELECT event_at, json_extract(payload, '$.operation') AS operation,
-        json_extract(payload, '$.outcome') AS outcome,
-        json_extract(payload, '$.durationMs') AS duration_ms,
-        ${HTTP_STATUS} AS http_status
-      FROM observe_external_events WHERE service = ? AND event_at >= ? AND event_at < ?
+      SELECT ${APPLICATION_SUMMARY_PROJECTION}
+      FROM observe_external_events INDEXED BY ${APPLICATION_SUMMARY_INDEX} WHERE service = ? AND event_at >= ? AND event_at < ?
     ), buckets AS (
       SELECT 0 AS kind, CAST((event_at - ?) / ? AS INTEGER) * ? + ? AS atMs,
         NULL AS operation, ${MEASURES}
