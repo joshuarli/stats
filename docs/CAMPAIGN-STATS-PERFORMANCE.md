@@ -3,18 +3,24 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last accepted revision: `eb3ec6c3183`.
-Production application: `stats:434ea6ed31f5`, Orange node version 15.
+the frozen production corpus. Last deployed revision: `7e5f99120e74`.
+Production application: `stats:7e5f99120e74`, Orange node version 16.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
 that this campaign's latency goals pass. No full goal is marked complete.
 
 P4 measurement boundaries now have browser and native regressions. A frozen
 20,395-event corpus and 1,000 cached interactions per variant establish no
 measurable timing overhead. Stats delivery of browser observations remains open.
-Worker dispatch timing now has native HTTP and persistence coverage. Next:
-deploy the measurement slice, capture first-read phase distributions on Lisa,
-then add bounded, authenticated browser delivery to the existing event pipeline.
+Worker dispatch timing is live, with native persistence coverage and 117 passing
+production health checks. Diagnostic first reads spend seconds in aggregate SQL;
+repeated reads spend tens to hundreds of milliseconds there. These profiled
+samples are diagnosis, not percentile acceptance. Bounded authenticated browser
+delivery is the current implementation slice.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
+The isolated lifecycle fixture proves constructor replacement after idle,
+autonomous overdue alarms after runtime restart, and idempotent interrupted
+request replay. Local readiness stayed below 15 seconds in three starts. This
+is platform-fixture proof; production recovery acceptance remains open.
 No active child writers. No failed candidate is selected for production.
 
 ## Charter
