@@ -3,13 +3,18 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, output: { type: "string" }, rounds: { type: "string", default: "5" }, hours: { type: "string" }, compare: { type: "boolean", default: false } } });
+const { values } = parseArgs({ options: { root: { type: "string" }, output: { type: "string" }, rounds: { type: "string", default: "5" }, hours: { type: "string" }, compare: { type: "boolean", default: false }, clients: { type: "string", default: "1" } } });
 assert.ok(values.root && values.output);
 const rounds = Number(values.rounds); assert.ok(Number.isSafeInteger(rounds) && rounds >= 0 && rounds <= 5);
+const clients = Number(values.clients); assert.ok([1, 10].includes(clients));
 const proof = JSON.parse(readFileSync(`${values.root}/native-scale-preparation.json`, "utf8"));
+const runtimeSources = Object.fromEntries(["stats", "observe"].map(name => {
+  const descriptor = JSON.parse(readFileSync(`${values.root}/native-scale-state/${name}.jsonc`, "utf8"));
+  return [name, createHash("sha256").update(readFileSync(descriptor.main)).digest("hex")];
+}));
 const auth = JSON.parse(readFileSync(`${values.root}/native-scale-state/fixture-auth.json`, "utf8"));
 const headers = { "Stats-Gateway-Secret": auth.secret, "Stats-Tailnet-Identity": "user:benchmark@example.invalid" };
-const expected = new Map(), records = [];
+const expected = new Map(), records = [], failures = [];
 const readiness = { attempts: [], ms: null };
 const windows = values.hours === undefined ? [1, 6, 24, 144] : [Number(values.hours)];
 assert.ok(windows.every(hours => [1, 6, 24, 144].includes(hours)));
@@ -38,7 +43,7 @@ for (let attempt = 0; attempt < 120; attempt++) {
 readiness.ms = performance.now() - readinessStarted;
 assert.ok(ready, "fixture actor did not become ready; no summary timing samples accepted");
 const variants = values.compare ? ["payload", "projection"] : [undefined];
-for (let round = -1; round < rounds; round++) for (const hours of windows) for (const variant of (round >= 0 && round % 2 ? [...variants].reverse() : variants)) {
+async function sample(round, hours, variant, client) {
   const toMs = proof.toMs, fromMs = toMs - hours * 3600000;
   const started = performance.now();
   const response = await fetch(`http://127.0.0.1:8787/api/observe/stats/external/telemetry/summary?from=${fromMs}&to=${toMs}${variant === undefined ? "" : `&__prototype=${variant}`}`, { headers, signal: AbortSignal.timeout(120000) });
@@ -50,7 +55,12 @@ for (let round = -1; round < rounds; round++) for (const hours of windows) for (
   assert.equal(data.totals.events, counts.get(hours)); assert.ok(data.buckets.length && data.operations.length);
   const hash = createHash("sha256").update(text).digest("hex");
   if (expected.has(hours)) assert.equal(hash, expected.get(hours), "complete response changed"); else expected.set(hours, hash);
-  records.push({ round, condition: round === -1 ? "first-ranges-after-actor-readiness" : "awake-repeated", variant, actualSource: response.headers.get("Stats-Prototype-Source"), hours, ms, timing: response.headers.get("server-timing"), events: data.totals.events, responseSha256: hash });
-  writeFileSync(values.output, JSON.stringify({ diagnostic: true, hostGates: "recorded separately; not percentile acceptance", sourceImage: proof.sourceImage, fixtureSha256: proof.fixtureSha256, events: proof.events, readiness, state: "production image with embedded Engine, two Workers, instrumentation disabled, separate small client; historical fixed windows; 144h covers full corpus and is not seven-day acceptance; metadata-only actor readiness precedes all range timing", records }) + "\n", { mode: 0o600 });
+  records.push({ round, client, condition: round === -1 ? "first-ranges-after-actor-readiness" : "awake-repeated", variant, actualSource: response.headers.get("Stats-Prototype-Source"), hours, ms, timing: response.headers.get("server-timing"), events: data.totals.events, responseSha256: hash });
   console.log(JSON.stringify(records.at(-1)));
+}
+for (let round = -1; round < rounds; round++) for (const hours of windows) for (const variant of (round >= 0 && round % 2 ? [...variants].reverse() : variants)) {
+  const outcomes = await Promise.allSettled(Array.from({ length: clients }, (_, client) => sample(round, hours, variant, client)));
+  for (let client = 0; client < outcomes.length; client++) if (outcomes[client].status === "rejected") failures.push({ round, hours, variant, client, error: String(outcomes[client].reason) });
+  writeFileSync(values.output, JSON.stringify({ diagnostic: true, hostGates: "recorded separately; not percentile acceptance", sourceImage: proof.sourceImage, runtimeSources, fixtureSha256: proof.fixtureSha256, events: proof.events, readiness, clients, state: "base production image with compiled sources identified by checksum, pinned private Engine, two Workers, instrumentation disabled, separate small client; historical fixed windows; 144h covers full corpus and is not seven-day acceptance; metadata-only actor readiness precedes all range timing", records, failures }) + "\n", { mode: 0o600 });
+  assert.equal(failures.length, 0, "all concurrent reads must complete correctly; failures are retained in output");
 }

@@ -95,7 +95,8 @@ Every returned window, count and chart matches. No errors, cancellations or
 unsettled reads occur, and the selected deployment remains unchanged. This
 establishes awake P2 acceptance on the current live corpus. It is not an
 interleaved live speedup comparison: retained data and request times differ from
-the earlier release. [Initial-document navigation](../2026-11-15-live-navigation/README.md)+also passes on this release. Scale acceptance remains separate.
+the earlier release. [Initial-document navigation](../2026-11-15-live-navigation/README.md)
+also passes on this release. Scale acceptance remains separate.
 
 Earlier restart comparisons are excluded: one stops before actor readiness;
 another completes but fails the post-run timing gate. They support no speedup

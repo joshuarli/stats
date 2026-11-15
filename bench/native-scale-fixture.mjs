@@ -39,10 +39,18 @@ if (values.mode === "ingest-cost") {
   writeFileSync(path, JSON.stringify(descriptor), { mode: 0o600 });
 }
 const headers = { "Stats-Gateway-Secret": auth.secret, "Stats-Tailnet-Identity": "user:benchmark@example.invalid", "content-type": "application/json" };
+const externalEndpoint = process.env.RIVET_ENDPOINT;
+if (externalEndpoint) {
+  assert.equal(values.mode, "serve", "an external Engine currently serves already prepared fixture state");
+  const endpoint = new URL(externalEndpoint);
+  assert.equal(endpoint.hostname, "127.0.0.1"); assert.equal(endpoint.protocol, "http:");
+  assert.ok(!endpoint.username && !endpoint.password && process.env.RIVET_NAMESPACE);
+  assert.ok(typeof auth.engineToken === "string" && auth.engineToken.length > 0, "external fixture Engine credentials must be in the protected auth file");
+}
 async function start() {
   assert.ok(existsSync("/.dockerenv"), "fixture runtime management requires an isolated Docker container");
   const identities = join(state, ".open-orange", "rivetkit");
-  for (const identity of existsSync(identities) ? readdirSync(identities) : []) {
+  for (const identity of !externalEndpoint && existsSync(identities) ? readdirSync(identities) : []) {
     const stampPath = join(identities, identity, ".rivetkit", "var", "engine", "runtime.json");
     if (!existsSync(stampPath)) continue;
     const stamp = JSON.parse(readFileSync(stampPath, "utf8"));
@@ -52,7 +60,7 @@ async function start() {
     if (comm !== "rivet-engine" || /^State:\s+[ZX]/mu.test(status ?? "")) unlinkSync(stampPath);
   }
   const started = performance.now();
-  const child = spawn(process.execPath, ["/orange/node_modules/open-orange/dist/bin.js", "dev", "--json", "--ip", values.listen, "--port", "8787", "--config", join(state, "stats.jsonc"), "--config", join(state, "observe.jsonc")], { cwd: state, detached: true, env: { ...process.env, OTEL_SDK_DISABLED: "true", RIVET_LOG_LEVEL: process.env.RIVET_LOG_LEVEL ?? "error", WRANGLER_LOG_PATH: join(state, "wrangler.log") }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["/orange/node_modules/open-orange/dist/bin.js", externalEndpoint ? "serve" : "dev", ...(externalEndpoint ? [] : ["--json"]), "--ip", values.listen, "--port", "8787", "--config", join(state, "stats.jsonc"), "--config", join(state, "observe.jsonc")], { cwd: state, detached: true, env: { ...process.env, ...(externalEndpoint ? { RIVET_TOKEN: auth.engineToken } : {}), OTEL_SDK_DISABLED: "true", RIVET_LOG_LEVEL: process.env.RIVET_LOG_LEVEL ?? "error", WRANGLER_LOG_PATH: join(state, "wrangler.log") }, stdio: ["ignore", "pipe", "pipe"] });
   const owner = { child, origin: null, failed: false, stderr: "", stdout: "" }; active = owner;
   let buffer = "";
   child.stdout.on("data", chunk => {
@@ -62,6 +70,10 @@ async function start() {
     let end;
     while ((end = buffer.indexOf("\n")) >= 0) {
       const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+      if (externalEndpoint) {
+        const ready = /orange serve listening on (http:\/\/(?:127\.0\.0\.1|0\.0\.0\.0):\d+)/u.exec(line);
+        if (ready) owner.origin = ready[1].replace("0.0.0.0", "127.0.0.1");
+      }
       try { const event = JSON.parse(line); if (event.type === "ready") owner.origin = event.url.replace("0.0.0.0", "127.0.0.1").replace(/\/$/u, ""); } catch {}
     }
   });
@@ -173,7 +185,7 @@ try {
       }
     } catch (error) { failures.push({ name: error.name, message: error.message }); save(); throw error; }
   } else if (values.mode === "serve") {
-    console.log(JSON.stringify({ ready: true, port: 8787, instrumentation: "disabled", state: "isolated embedded Engine and disposable application state" }));
+    console.log(JSON.stringify({ ready: true, port: 8787, instrumentation: "disabled", state: externalEndpoint ? "orange serve with independently managed private Engine and disposable state" : "isolated embedded Engine and disposable application state" }));
     while (!stopping) { await pause(1000); assert.ok(active && !active.failed, "runtime exited"); }
   } else {
     const raw = readFileSync(join(root, "corpus-10x.json"));
