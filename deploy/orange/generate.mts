@@ -55,7 +55,10 @@ function descriptor(worker: BuiltWorker, profile: Profile, dropped: Dropped[], r
   if (worker.assets !== null && assets === undefined) throw new TypeError(`${worker.name} declares assets without an assets binding`);
   for (const consumer of worker.tailConsumers) dropped.push({ worker: worker.name, item: `tail consumer ${consumer}`, reason: TAIL_REASON });
   if (worker.env.has("APPLICATION_EVENTS_RELEASE") || worker.env.has("GATEWAY_SECRET")) throw new TypeError(`${worker.name} binds a name the generator owns`);
-  if (worker.env.has("INSTALLATION")) vars["APPLICATION_EVENTS_RELEASE"] = profile.release;
+  if (worker.env.has("INSTALLATION")) {
+    vars["APPLICATION_EVENTS_RELEASE"] = profile.release;
+    vars["PROJECT_SOURCE"] = "services";
+  }
   if (profile.kind === "dev") {
     vars["ENVIRONMENT"] = profile.nowMs === null ? "development" : "test";
     if (worker.assets !== null) vars["GATEWAY_SECRET"] = profile.gatewaySecret;

@@ -103,8 +103,8 @@ export function createProjectDeployments(projectId: () => string, range: () => R
   return createDeployments("project", projectId, range, refreshKey, options.active, options.enabled);
 }
 
-export function createServiceDeployments(serviceName: () => string, range: () => Range, refreshKey: () => string) {
-  return createDeployments("service", serviceName, range, refreshKey, () => true, () => true);
+export function createServiceDeployments(serviceName: () => string, range: () => Range, refreshKey: () => string, options: { readonly active: () => boolean } = { active: () => true }) {
+  return createDeployments("service", serviceName, range, refreshKey, options.active, () => true);
 }
 
 type ComparisonState =

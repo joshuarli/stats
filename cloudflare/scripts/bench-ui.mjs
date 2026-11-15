@@ -8,7 +8,7 @@ import { createNetworkTracker, summarizeNetwork } from "./bench-network.mjs";
 import { isNative, nativeRoutes, selectRoutes, accountNetwork, validSamples } from "./bench-native-routes.mjs";
 import { attachPreviewFallbacks } from "./bench-preview-fallbacks.mjs";
 
-const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--retention N] [--fleet-sort-only] [--routes NAMES] [--service NAME] [--json] [--out PATH]";
+const USAGE = "usage: node scripts/bench-ui.mjs [--base URL] [--runs N] [--latency MS] [--down KBPS] [--cpu RATE] [--now MS] [--retention N] [--fleet-sort-only] [--routes NAMES] [--service NAME] [--json] [--out PATH]";
 
 const args = process.argv.slice(2);
 function option(name, fallback) {
@@ -29,11 +29,14 @@ const runs = Number(option("--runs", "5"));
 const latency = Number(option("--latency", "150"));
 const downKbps = Number(option("--down", "1600"));
 const cpuRate = Number(option("--cpu", "1"));
+const frozenTime = option("--now", null);
+const frozenNow = frozenTime === null ? null : Number(frozenTime);
 const retentionSteps = Number(option("--retention", "0"));
 const outArg = option("--out", null);
 const outPath = outArg === null ? null : resolve(initialCwd, outArg);
 
 if (!Number.isInteger(runs) || runs < 1) throw new Error(`--runs must be a positive integer\n${USAGE}`);
+if (frozenNow !== null && (!Number.isSafeInteger(frozenNow) || frozenNow <= 0)) throw new Error(`--now must be a positive epoch millisecond timestamp\n${USAGE}`);
 if (!Number.isInteger(retentionSteps) || retentionSteps < 0) throw new Error(`--retention must be a non-negative integer\n${USAGE}`);
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -282,6 +285,7 @@ const browser = await chromium.launch();
 async function runRetentionTrace(steps) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  if (frozenNow !== null) await page.clock.setFixedTime(frozenNow);
   if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
@@ -396,6 +400,7 @@ async function measureFleetMetricSort() {
   if (hosts.length <= 10) return null;
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  if (frozenNow !== null) await page.clock.setFixedTime(frozenNow);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
   await cdp.send("Performance.enable");
@@ -499,6 +504,7 @@ async function measureConditionalHistoryAndCharts() {
   if (primaryHost === undefined || statsProject === undefined) return { conditionalHistory: null, charts: null };
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  if (frozenNow !== null) await page.clock.setFixedTime(frozenNow);
   if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
   const tracker = createNetworkTracker(page, activeBase);
   const cdp = await context.newCDPSession(page);
@@ -642,6 +648,7 @@ for (const target of routeTargets) {
   for (let run = 0; run < runs; run += 1) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
+    if (frozenNow !== null) await page.clock.setFixedTime(frozenNow);
     if (!explicitBase) await attachPreviewFallbacks(page, fallbackServices, missingPreviewEndpoints);
     await page.addInitScript(initScript);
     const tracker = createNetworkTracker(page, activeBase);
@@ -757,6 +764,7 @@ const output = {
   latency,
   downKbps,
   cpuRate,
+  frozenNow,
   caveat: explicitBase ? "Response body sizes are decoded payload sizes." : "Assets are served uncompressed by the local preview, so jsKb/cssKb are raw transfer sizes; compare compressed bundle sizes with bench-bundle.mjs.",
   results,
   conditionalHistory,

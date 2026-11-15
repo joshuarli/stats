@@ -5,20 +5,19 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import { EventEmitter } from 'node:events';
 
-const routesModule = new URL('../../scripts/bench-native-routes.mjs', import.meta.url).href;
-const serverModule = new URL('../../scripts/bench-native-server.mjs', import.meta.url).href;
-const networkModule = new URL('../../scripts/bench-network.mjs', import.meta.url).href;
-const { isNative, nativeRoutes, selectRoutes, accountNetwork, validSamples } = await import(routesModule);
-const { createBenchServer } = await import(serverModule);
-const { createNetworkTracker, summarizeNetwork } = await import(networkModule);
+import { isNative, nativeRoutes, selectRoutes, accountNetwork, validSamples } from '../../scripts/bench-native-routes.mjs';
+import { createBenchServer } from '../../scripts/bench-native-server.mjs';
+import { createNetworkTracker, summarizeNetwork } from '../../scripts/bench-network.mjs';
 
-test('native route selection uses service names and concrete readiness states', () => {
-  const capabilities = { applicationEvents: true, analyticsCollection: false, cloudflareDeployments: false, tailEvents: false };
+await test('native route selection uses service names and concrete readiness states', () => {
+  const capabilities = { projectSource: 'services', applicationEvents: true, analyticsCollection: false, cloudflareDeployments: false, tailEvents: false };
   assert.equal(isNative(capabilities), true);
-  assert.equal(isNative({ ...capabilities, tailEvents: true }), false);
+  assert.equal(isNative({ ...capabilities, projectSource: 'cloudflare' }), false);
   assert.equal(isNative(null), false);
   const routes = nativeRoutes('http://127.0.0.1:1234', 'api / v1');
-  assert.equal(selectRoutes(routes, 'project')[0].hash, '#/project/api%20%2F%20v1');
+  const selected = selectRoutes(routes, 'project');
+  assert.ok(selected[0]);
+  assert.equal(selected[0].hash, '#/project/api%20%2F%20v1');
   assert.match(routes[0].ready, /h2.*Application overview/u);
   assert.match(routes[1].ready, /Recent application events.*No recent events/u);
   assert.match(routes[2].ready, /Application signals.*uplot/u);
@@ -27,11 +26,11 @@ test('native route selection uses service names and concrete readiness states', 
   assert.equal(selectRoutes(routes, null), routes);
 });
 
-test('completed responses include real error bodies and non-2xx failures', async () => {
+await test('completed responses include real error bodies and non-2xx failures', async () => {
   const page = new EventEmitter();
   const tracker = createNetworkTracker(page, 'http://127.0.0.1:8000');
   for (const [path, status, body] of [['/api/ok', 200, 'hello'], ['/api/fail', 503, 'bad'], ['/api/redirect', 302, 'go'], ['/api/cached', 304, 'ignored']] as const) {
-    const entry = { url: () => `http://127.0.0.1:8000${path}`, method: () => 'GET', response: async () => ({ status: () => status, body: async () => Buffer.from(body) }) };
+    const entry = { url: () => `http://127.0.0.1:8000${path}`, method: () => 'GET', response: async () => ({ status: () => status, body: async () => new TextEncoder().encode(body) }) };
     page.emit('request', entry); page.emit('requestfinished', entry);
   }
   await tracker.waitForQuiet(0, 500);
@@ -40,6 +39,7 @@ test('completed responses include real error bodies and non-2xx failures', async
   assert.equal(summary.apiBytes, 10);
   assert.equal(summary.successfulRequests, 2);
   const cached = records.find((record: { status: number }) => record.status === 304);
+  assert.ok(cached);
   assert.equal(cached.bytes, 0);
   const cachedSummary = accountNetwork([cached], summarizeNetwork([cached]));
   assert.deepEqual(cachedSummary.failedRequests, []);
@@ -48,12 +48,12 @@ test('completed responses include real error bodies and non-2xx failures', async
   assert.deepEqual(summary.failedRequests, [{ path: '/api/fail', status: 503 }, { path: '/api/redirect', status: 302 }]);
 });
 
-test('loopback proxy serves assets and forwards only bounded read requests without credentials', async () => {
+await test('loopback proxy serves assets and forwards only bounded read requests without credentials', async () => {
   const scratch = resolve('.work/tmp');
   await mkdir(scratch, { recursive: true });
   const dir = await mkdtemp(resolve(scratch, 'bench-proxy-'));
   await writeFile(resolve(dir, 'index.html'), 'asset');
-  let seen: { method?: string; authorization?: string; cookie?: string; path?: string } | undefined;
+  let seen: { method: string | undefined; authorization: string | undefined; cookie: string | undefined; path: string | undefined } | undefined;
   const upstream = createServer((req, res) => {
     seen = { method: req.method, authorization: req.headers.authorization, cookie: req.headers.cookie, path: req.url };
     if (req.url === '/api/slow') return;
@@ -80,7 +80,7 @@ test('loopback proxy serves assets and forwards only bounded read requests witho
   } finally { await instance.close(); upstream.closeAllConnections(); await new Promise<void>(done => upstream.close(() => done())); await rm(dir, { recursive: true, force: true }); }
 });
 
-test('native and legacy readiness selectors wait for their actual content', async () => {
+await test('native and legacy readiness selectors wait for their actual content', async () => {
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch();
   try {

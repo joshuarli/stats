@@ -1,5 +1,5 @@
 export function isNative(capabilities) {
-  return capabilities?.applicationEvents === true && !capabilities.analyticsCollection && !capabilities.cloudflareDeployments && !capabilities.tailEvents;
+  return capabilities?.projectSource === 'services';
 }
 
 export function nativeRoutes(base, service) {

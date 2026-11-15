@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createObserveService } from "../../src/observe/core/service.ts";
-import { readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
+import { readApplicationSummary, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
 import { ingestExternal } from "../../src/observe/core/store.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
@@ -28,6 +28,8 @@ await test("application telemetry summarizes the full window with bounded detail
     assert.equal(result.totals?.requests, 2000);
     assert.equal(result.totals?.status5xx, 2000);
     assert.equal(result.totals?.durationMsSum, 60_000);
+    assert.equal(result.totals?.requestDurationMsSum, 20_000);
+    assert.equal(result.totals?.requestDurationMsMax, 10);
     assert.equal(result.operations.length, 20);
     assert.equal(result.moreOperations, true);
     assert.equal(result.recent.length, 50);
@@ -40,6 +42,34 @@ await test("application telemetry summarizes the full window with bounded detail
     const absent = readApplicationTelemetry(db, "absent", T0, {});
     assert.equal(absent.totals, null);
     assert.deepEqual(absent.buckets, []);
+  } finally { db.db.close(); }
+});
+
+await test("summary reads preserve complete aggregates without loading recent event payloads", async context => {
+  const db = database();
+  try {
+    const batch: ExternalEvent[] = [
+      { ...event(0), eventId: "private-request-id", durationMs: 20, work: { http_status: 200 } },
+      { ...event(1), outcome: "ok", durationMs: 120, work: {} },
+      { ...event(2), outcome: "cancelled", durationMs: 10, work: {} }
+    ];
+    ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
+    const detail = readApplicationTelemetry(db, "stats", T0, {});
+    const reads = context.mock.method(db, "rows");
+    const summary = readApplicationSummary(db, "stats", T0, {});
+    assert.deepEqual(summary.totals, detail.totals);
+    assert.deepEqual(summary.buckets, detail.buckets);
+    assert.deepEqual(summary.operations, detail.operations);
+    assert.equal(summary.totals?.cancelled, 1);
+    assert.equal(summary.totals?.requestDurationMsSum, 20);
+    assert.equal(summary.totals?.durationMsSum, 150);
+    assert.equal(reads.mock.callCount(), 3);
+    assert.equal("recent" in summary, false);
+    assert.doesNotMatch(JSON.stringify(summary), /private-request-id/);
+    const store = createObserveService(db, { now: () => T0, databaseBytes: () => 0 });
+    const response = await handleApi(new Request("https://observe/external/telemetry/summary"), "/external/telemetry/summary", store, "stats", T0);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), summary);
   } finally { db.db.close(); }
 });
 

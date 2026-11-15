@@ -9,11 +9,11 @@ function api(headers: Record<string, string> = {}): Promise<Response> {
 
 describe("Gateway authorization", () => {
   it("reports unavailable bindings without accessing providers and rejects forged identities", async () => {
-    const env = { GATEWAY_SECRET: "secret" } as Env;
+    const env = { GATEWAY_SECRET: "secret", PROJECT_SOURCE: "cloudflare" } as Env;
     const request = (headers: Record<string, string>) => new Request("https://example.com/api/v1/capabilities", { headers });
     const response = await worker.fetch(request({ "Stats-Gateway-Secret": "secret", "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext());
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
+    expect(await response.json()).toEqual({ projectSource: "cloudflare", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
     expect((await worker.fetch(request({ "Stats-Gateway-Secret": "wrong", "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext())).status).toBe(401);
     expect((await worker.fetch(request({ "Stats-Tailnet-Identity": "user:test@example.com" }), env, createExecutionContext())).status).toBe(401);
   });

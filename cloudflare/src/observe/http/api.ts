@@ -254,11 +254,12 @@ export async function handleApi(request: Request, path: string, store: ObserveSe
       const toMs = milliseconds(values, "to");
       return json(await store.profile({ ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) }));
     }
-    if (path === "/external/telemetry") {
+    if (path === "/external/telemetry" || path === "/external/telemetry/summary") {
       const values = params(url, ["from", "to"]);
       const fromMs = milliseconds(values, "from");
       const toMs = milliseconds(values, "to");
-      return json(await store.applicationTelemetry(service, { ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) }));
+      const filter = { ...(fromMs === undefined ? {} : { fromMs }), ...(toMs === undefined ? {} : { toMs }) };
+      return json(path === "/external/telemetry/summary" ? await store.applicationSummary(service, filter) : await store.applicationTelemetry(service, filter));
     }
     if (path === "/external/operations") {
       const values = params(url, ["from", "to"]);

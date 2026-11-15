@@ -7,6 +7,7 @@ import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
 import { decodeIssues } from "../observe/client/decode.ts";
 import type { IssueSummary, Page } from "../observe/core/store.ts";
+import type { ApplicationSummary, ApplicationTelemetry } from "../observe/application/telemetry.ts";
 import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history.ts";
 
@@ -397,16 +398,31 @@ export function getCapabilities(signal: AbortSignal) {
   return getJson("/api/v1/capabilities", decodeCapabilities, signal);
 }
 
-export function decodeApplicationTelemetry(value: unknown): import("../observe/application/telemetry.ts").ApplicationTelemetry {
+function applicationInteger(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("expected a nonnegative safe integer");
+  return value;
+}
+
+export function decodeApplicationSummary(value: unknown): ApplicationSummary {
   const root = record(value);
-  const integer = (v: unknown): number => { if (typeof v !== "number" || !Number.isSafeInteger(v) || v < 0) throw new Error("expected a nonnegative safe integer"); return v; };
+  const integer = applicationInteger;
   const totals = (v: unknown) => {
     const x = record(v);
-    return { events: integer(x.events), failed: integer(x.failed), requests: integer(x.requests), status2xx: integer(x.status2xx), status3xx: integer(x.status3xx), status4xx: integer(x.status4xx), status5xx: integer(x.status5xx), durationMsSum: integer(x.durationMsSum), durationMsMax: integer(x.durationMsMax), firstAtMs: integer(x.firstAtMs), lastAtMs: integer(x.lastAtMs) };
+    return { events: integer(x.events), failed: integer(x.failed), cancelled: integer(x.cancelled), requests: integer(x.requests), requestDurationMsSum: integer(x.requestDurationMsSum), requestDurationMsMax: integer(x.requestDurationMsMax), status2xx: integer(x.status2xx), status3xx: integer(x.status3xx), status4xx: integer(x.status4xx), status5xx: integer(x.status5xx), durationMsSum: integer(x.durationMsSum), durationMsMax: integer(x.durationMsMax), firstAtMs: integer(x.firstAtMs), lastAtMs: integer(x.lastAtMs) };
   };
   if (root.provenance !== "application") throw new Error("invalid application provenance");
   const buckets = array(root.buckets, v => ({ ...totals(v), atMs: integer(record(v).atMs) }));
   const operations = array(root.operations, v => ({ ...totals(v), operation: string(record(v).operation) }));
+  if (buckets.length > 120 || operations.length > 20) throw new Error("application telemetry exceeds response limits");
+  const fromMs = integer(root.fromMs), toMs = integer(root.toMs), stepMs = integer(root.stepMs);
+  if (fromMs >= toMs || stepMs === 0 || buckets.some(bucket => bucket.atMs < fromMs || bucket.atMs >= toMs || bucket.events === 0)) throw new Error("invalid application telemetry window");
+  return { provenance: "application", fromMs, toMs, stepMs, totals: root.totals === null ? null : totals(root.totals), openIssues: integer(root.openIssues), buckets, operations, moreOperations: boolean(root.moreOperations) };
+}
+
+export function decodeApplicationTelemetry(value: unknown): ApplicationTelemetry {
+  const summary = decodeApplicationSummary(value);
+  const root = record(value);
+  const integer = applicationInteger;
   const recent = array(root.recent, v => {
     const row = record(v), e = record(row.event), work = record(e.work);
     if (row.provenance !== "application" || e.schemaVersion !== 1) throw new Error("invalid application event");
@@ -420,12 +436,14 @@ export function decodeApplicationTelemetry(value: unknown): import("../observe/a
       ...(diagnostics === undefined ? {} : { diagnostics: { version: 1 as const, name: string(diagnostics.name), message: string(diagnostics.message), frames: array(diagnostics.frames, string) } })
     } };
   });
-  if (buckets.length > 120 || operations.length > 20 || recent.length > 50) throw new Error("application telemetry exceeds response limits");
-  const fromMs = integer(root.fromMs), toMs = integer(root.toMs), stepMs = integer(root.stepMs);
-  if (fromMs >= toMs || stepMs === 0 || buckets.some(bucket => bucket.atMs < fromMs || bucket.atMs >= toMs || bucket.events === 0)) throw new Error("invalid application telemetry window");
-  return { provenance: "application", fromMs, toMs, stepMs, totals: root.totals === null ? null : totals(root.totals), buckets, operations, recent, moreOperations: boolean(root.moreOperations), moreRecent: boolean(root.moreRecent) };
+  if (recent.length > 50) throw new Error("application telemetry exceeds response limits");
+  return { ...summary, recent, moreRecent: boolean(root.moreRecent) };
 }
 
 export function getApplicationTelemetry(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<import("../observe/application/telemetry.ts").ApplicationTelemetry> {
   return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationTelemetry, signal);
+}
+
+export function getApplicationSummary(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<ApplicationSummary> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry/summary?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationSummary, signal);
 }

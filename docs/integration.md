@@ -188,6 +188,31 @@ The golden frame and the malformed corpus are in `fixtures/observe-ingest/`.
 JSON object order is not significant; the golden file is the canonical encoder
 output of the TypeScript and Rust producers.
 
+### Reading application telemetry
+
+Authenticated clients read `GET /api/observe/:service/external/telemetry/summary`
+with optional epoch-millisecond `from` and `to` parameters. The window is
+half-open and bounded by the seven-day retention. The response contains
+`provenance: "application"`, the effective window, whole-window `totals`,
+sparse time `buckets`, the busiest 20 `operations`, `moreOperations`, and the
+service's current retained `openIssues` count. The issue count is current state,
+not a count restricted to the selected window. Missing activity gives
+`totals: null` and no buckets. This endpoint returns no individual event payloads.
+
+`GET /api/observe/:service/external/telemetry` adds the newest 50 `recent`
+events and `moreRecent`. Its aggregates cover the entire window, including
+events outside that detail limit. `failed` includes every non-`ok` outcome;
+`cancelled` identifies cancellations within that count. HTTP request counts and
+`requestDurationMsSum`/`requestDurationMsMax` use only events with a valid
+integer `work.http_status`; background event duration stays separate. Durations
+are application-reported elapsed milliseconds, with no CPU or billing claim.
+
+`GET /api/v1/capabilities` declares `projectSource: "services" | "cloudflare"`.
+Node and OpenOrange use the service catalog. The retained Cloudflare adapter
+uses its configured project catalog, including stored history when provider
+collection is unavailable. Clients must use this explicit source rather than
+infer it from the collection flags.
+
 ## 6. Credential scope
 
 Each credential authenticates exactly one capability. A credential presented on
