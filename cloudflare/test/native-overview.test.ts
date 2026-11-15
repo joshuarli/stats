@@ -7,6 +7,15 @@ const last: ApplicationTotals = { ...first, events: 4, failed: 2, cancelled: 1, 
 const data: ApplicationSummary = { provenance: "application", fromMs: 1000, toMs: 3500, stepMs: 1000, openIssues: 0, totals: { ...first, events: 6, failed: 2, cancelled: 1, requests: 3, requestDurationMsSum: 114, requestDurationMsMax: 80, status2xx: 2, status5xx: 1, durationMsSum: 294, lastAtMs: 3001 }, buckets: [{ ...first, atMs: 1000 }, { ...last, atMs: 3000 }], operations: [], moreOperations: false };
 
 describe("native project overview", () => {
+  it("locates the first failure bucket and labels a measured mean change with sample counts", () => {
+    const model = applicationOverview(data);
+    expect(model.firstFailure?.atMs).toBe(3000);
+    expect(model.latencyChange).toEqual({ baselineAtMs: 1000, atMs: 3000, baselineMeanMs: 14, meanMs: 50, baselineCount: 1, count: 2 });
+  });
+  it("does not infer a latency change from absent samples or a zero-duration reference", () => {
+    expect(applicationOverview({ ...data, totals: null, buckets: [] }).latencyChange).toBeNull();
+    expect(applicationOverview({ ...data, buckets: [{ ...first, requestDurationMsSum: 0, atMs: 1000 }, { ...last, atMs: 3000 }] }).latencyChange).toBeNull();
+  });
   it("separates HTTP wall time from background work and excludes cancellations from failures", () => {
     const model = applicationOverview(data);
     expect(model.http).toBe(true);

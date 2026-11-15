@@ -29,8 +29,13 @@ export function applicationOverview(data: ApplicationSummary) {
     failures: http ? operation.status5xx : operation.failed - operation.cancelled
   })).sort((left, right) => right.wallMs - left.wallMs || left.operation.localeCompare(right.operation));
   const peak = ranked[0]?.wallMs ?? 0;
+  const firstFailure = data.buckets.find(bucket => http ? bucket.status5xx > 0 : bucket.failed > bucket.cancelled);
+  const measuredBuckets = data.buckets.filter(bucket => measured(bucket) > 0);
+  const baseline = measuredBuckets[0];
+  const elevated = baseline === undefined ? undefined : measuredBuckets.slice(1).find(bucket => duration(baseline) > 0 && duration(bucket) / measured(bucket) >= 2 * duration(baseline) / measured(baseline));
   return {
-    http, events, failed, count,
+    http, events, failed, count, firstFailure,
+    latencyChange: baseline === undefined || elevated === undefined ? null : { baselineAtMs: baseline.atMs, atMs: elevated.atMs, baselineMeanMs: duration(baseline) / measured(baseline), meanMs: duration(elevated) / measured(elevated), baselineCount: measured(baseline), count: measured(elevated) },
     failures: http ? totals?.status5xx ?? 0 : failed,
     errorPercent: http && totals !== null ? totals.status5xx / totals.requests * 100 : null,
     meanMs: totals === null || count === 0 ? null : duration(totals) / count,

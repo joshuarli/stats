@@ -18,6 +18,8 @@ export function ApplicationOverview(props: {
   readonly loadedAtMs: number;
   readonly onRequests: () => void;
   readonly onErrors: () => void;
+  readonly deployment: { readonly title: string; readonly atMs: number } | undefined;
+  readonly onDeployments: () => void;
   readonly onReady?: (data: ApplicationSummary) => void;
 }): JSX.Element {
   const { now } = useTelemetry();
@@ -32,6 +34,8 @@ export function ApplicationOverview(props: {
   };
   onSettled(() => { if (model().events === 0) props.onReady?.(props.data); });
   createUpdateEffect(() => props.data, data => { if (model().events === 0) props.onReady?.(data); });
+  const time = (atMs: number) => new Date(atMs).toLocaleString();
+  const historical = () => props.loadedAtMs - props.data.toMs > 30_000;
   const perMinute = (value: number | undefined) => `${count(value)}/min`;
   return <div class="native-overview" aria-busy={props.refreshing ? "true" : "false"} data-from-ms={props.data.fromMs} data-to-ms={props.data.toMs}>
     <Widget title="Application overview" meta={props.refreshing ? "Refreshing" : `Updated ${age(props.loadedAtMs, now())}`}>
@@ -49,6 +53,12 @@ export function ApplicationOverview(props: {
         <Show when={props.data.totals}>
           {total => <span class="cell-note">Last event {age(total().lastAtMs, now())}</span>}
         </Show>
+      </div>
+      <div class="native-diagnosis" aria-label="Investigation context">
+        <Show when={model().firstFailure}>{bucket => <div>First {model().http ? "server errors" : "failures"} observed in bucket starting {time(bucket().atMs)} (bucket width {milliseconds(props.data.stepMs)}). <button type="button" class="native-text-link" onClick={props.onRequests}>Investigate events →</button></div>}</Show>
+        <Show when={model().latencyChange}>{change => <div>Mean wall time rose to {milliseconds(change().meanMs)} across {count(change().count)} events at {time(change().atMs)}. The first measured bucket at {time(change().baselineAtMs)} averaged {milliseconds(change().baselineMeanMs)} across {count(change().baselineCount)} events (bucket width {milliseconds(props.data.stepMs)}). <button type="button" class="native-text-link" onClick={props.onRequests}>Investigate events →</button></div>}</Show>
+        <div>{historical() ? "Historical window" : "Current window"}: <Show when={props.data.totals} fallback="No event time available">{total => <>last event {time(total().lastAtMs)}{!historical() && now() - total().lastAtMs > Math.max(props.data.stepMs * 2, 60_000) ? " · Activity may be stale" : ""}</>}</Show></div>
+        <Show when={props.deployment}>{deployment => <div>Latest deployment: {deployment().title} · {time(deployment().atMs)} <button type="button" class="native-text-link" onClick={props.onDeployments}>View deployments →</button></div>}</Show>
       </div>
       <div class="native-summary-strip" aria-label="Project summary">
         <button type="button" class="native-summary-item" onClick={props.onRequests}>

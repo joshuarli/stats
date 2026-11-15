@@ -1,4 +1,5 @@
 .native-overview { display: grid; gap: var(--ui-space-lg); min-width: 0; }
+.native-diagnosis { display: grid; gap: var(--ui-space-xs); margin-bottom: var(--ui-space-md); color: var(--ui-muted); }
 .native-health-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-md); margin-bottom: var(--ui-space-lg); }
 .native-state { display: inline-flex; align-items: center; gap: var(--ui-space-sm); color: var(--ui-muted); font-weight: var(--ui-weight-medium); }
 .native-state.needs-attention { color: var(--ui-warn); }
