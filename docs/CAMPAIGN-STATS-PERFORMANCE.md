@@ -22,7 +22,13 @@ Stuff STUF-86. W4 is blocked on the unavailable complete W2 workload. W5's
 single investigation localized the failure to Engine volume fencing, but did
 not establish whether configuration/resource limits or an Engine defect is
 the underlying cause; repeated native recovery is blocked on STUF-87.
-W6 still awaits the soak deadline. The campaign is not closed.
+W6 still awaits the soak deadline. Read-only inspection found actor-list HTTP
+503 samples and an application-health timeout in the live series; it cannot
+pass the no-unavailable-groups requirement. Preserve the running sampler until
+completion, then apply the one allowed invalidation restart. The analyzer and
+its six regression tests are ready; see the
+[progress record](../bench/results/2026-11-15-soak-progress/README.md).
+The campaign is not closed.
 
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
