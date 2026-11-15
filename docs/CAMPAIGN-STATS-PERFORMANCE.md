@@ -4,7 +4,9 @@
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
 the frozen production corpus. Last deployed revision: `1ea3e6af2dc3`.
-Production application: `stats:1ea3e6af2dc3`, Orange node version 20.
+Production application: `stats:a309aaf60b7c`, Orange node version 21.
+This deploy adds the compatible snapshot reader and passes all 117 shared health
+checks. The following browser results use the unchanged query in node version 20.
 P1 passes on the current live corpus: 200 cached selections per range, p95 below
 35 ms and no summary fetches. P2's awake, empty-client-cache portion also passes:
 200 uncached selections per range yield click-to-complete p95 of 146 ms (1h),
@@ -35,11 +37,19 @@ not sustained-ingest acceptance. With the loader removed, repeated 24h reads
 take 918–975 ms across five samples, mostly in SQL; the first takes 12.1 seconds.
 Both Lisa timing gates pass. P6 remains open.
 
-Next: compare a compact, exact derived read table against the payload-containing
-index in isolated native trials. Canonical events and summary APIs stay intact.
-Snapshot-policy support is committed as `59540026ca3`, with unit, native restore,
-observation, type and lint checks passing. It must be the compatible rollback
-reader before any production table rollout. No derived table is deployed yet.
+The compact, exact derived table improves warmed 24h reads from a median
+1,043 ms to 640 ms across five alternating rounds. All 48 complete comparison
+responses match baseline digests and actual query-source markers. Both Lisa
+timing gates pass. This is component evidence, not concurrency acceptance.
+Canonical events and summary APIs stay intact. The implemented projection passes
+213 observation tests, backfill and mutation regressions, type checks and lint.
+Native backup restores exact application summaries through canonical tables and
+rebuilds the projection. The compatible snapshot reader is live before rollout.
+No derived table is deployed yet. Write cost and ten-client measurements follow.
+
+Reopening the disposable read fixture later encounters a native command-volume
+quorum failure before candidate code runs. The failed state and Engine logs are
+preserved. This is an unresolved recovery gap; production remains healthy.
 The isolated lifecycle fixture verifies idle constructor replacement, overdue
 alarms and interrupted replay; broader P9 recovery remains open. S3 stays
 deferred. Integration: `.work/wt/runtime-hardening`, `feat/runtime-hardening`.
@@ -157,6 +167,7 @@ stable candidate. It is required evidence, not a waived gate.
 - [Live awake uncached range acceptance](../bench/results/2026-11-15-live-reads/README.md)
 - [Slow journey attribution coverage](../bench/results/2026-11-15-journey-coverage/README.md)
 - [Tenfold native baseline](../bench/results/2026-11-15-tenfold-baseline/README.md)
+- [Compact projection comparison](../bench/results/2026-11-15-compact-projection/README.md)
 - [Producer delivery and freshness](../bench/results/2026-11-15-producer-boundaries/README.md)
 - [Covering-index evidence and costs](../bench/results/2026-11-15-covering-index/README.md)
 - [Retained browser heap](../bench/results/2026-11-15-browser-retention/README.md)

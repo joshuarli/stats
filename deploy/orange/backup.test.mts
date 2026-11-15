@@ -40,8 +40,8 @@ async function statsctl(origin: string, args: readonly string[]): Promise<{ code
   return { code, stdout, stderr };
 }
 
-async function json<T>(response: Response): Promise<T> {
-  assert.equal(response.status, 200, await response.clone().text());
+async function json<T>(response: Response, status = 200): Promise<T> {
+  assert.equal(response.status, status, await response.clone().text());
   return response.json() as Promise<T>;
 }
 
@@ -65,6 +65,19 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
     assert.equal(decodeAck(new Uint8Array(await (await ingest(origin)).arrayBuffer()), seqs).accepted, seqs.length);
     const service = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "backup-svc", hostIds: [host.hostId] }) });
     assert.equal(service.status, 201);
+    const { ingestToken } = await service.json() as { ingestToken: string };
+    const applicationNow = Date.now();
+    const events = [
+      { schemaVersion: 1, eventId: "backup-request", atMs: applicationNow - 1000, operation: "http.get", outcome: "ok", durationMs: 12, work: { http_status: 200 }, release: "backup", service: "backup-svc" },
+      { schemaVersion: 1, eventId: "backup-task", atMs: applicationNow - 500, operation: "task.run", outcome: "cancelled", durationMs: 7, work: {}, release: "backup", service: "backup-svc" }
+    ];
+    const ingestEvents = (base: string) => fetch(`${base}/ingest/observe/v1/backup-svc/batches`, { method: "POST", headers: { Authorization: `Bearer ${ingestToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ events }) });
+    const admittedEvents = await json<{ accepted: number; duplicate: number }>(await ingestEvents(origin), 202);
+    assert.deepEqual([admittedEvents.accepted, admittedEvents.duplicate], [2, 0]);
+    const summaryPath = `/api/observe/backup-svc/external/telemetry/summary?from=${applicationNow - 60_000}&to=${applicationNow}`;
+    const sourceSummary = await json<{ totals: { events: number; requests: number } }>(await fetch(`${origin}${summaryPath}`));
+    assert.equal(sourceSummary.totals.events, 2);
+    assert.equal(sourceSummary.totals.requests, 1);
 
     const unfenced = await statsctl(origin, ["backup", "export", "--out", backup]);
     assert.equal(unfenced.code, 4, "export refuses unfenced objects");
@@ -106,6 +119,12 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
     assert.deepEqual(new Uint8Array(await (await fetch(`${restored}${historyPath}`, { headers: { "accept-encoding": "identity" } })).arrayBuffer()), sourceHistory);
     assert.deepEqual(await json<unknown>(await fetch(`${restored}/api/v1/hosts`)), sourceHosts);
     assert.deepEqual((await json<{ services: { name: string }[] }>(await fetch(`${restored}/api/v1/services`))).services.map(entry => entry.name), sourceServices.services.map(entry => entry.name));
+    assert.deepEqual(await json<unknown>(await fetch(`${restored}${summaryPath}`)), sourceSummary);
+    const observationManifest = JSON.parse(readFileSync(join(backup, "observe-backup-svc", "manifest.json"), "utf8")) as { tables: { name: string }[] };
+    assert.equal(observationManifest.tables.length, 16);
+    assert.equal(observationManifest.tables.some(table => table.name === "observe_application_projection"), false);
+    const replayedEvents = await json<{ accepted: number; duplicate: number }>(await ingestEvents(restored));
+    assert.deepEqual([replayedEvents.accepted, replayedEvents.duplicate], [0, 2]);
     const replay = await ingest(restored);
     assert.equal(replay.status, 200, "the restored verifier still authenticates the host token");
     assert.equal(decodeAck(new Uint8Array(await replay.arrayBuffer()), seqs).duplicates, seqs.length);

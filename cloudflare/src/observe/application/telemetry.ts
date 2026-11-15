@@ -1,5 +1,5 @@
 import type { SqlStatements } from "../../core/sql.ts";
-import { APPLICATION_SUMMARY_INDEX, APPLICATION_SUMMARY_PROJECTION } from "./schema.ts";
+import { APPLICATION_SUMMARY_TABLE } from "./schema.ts";
 import { eventWindow, openIssueCount } from "../core/store.ts";
 import { PROVENANCE, type ExternalEvent, type ExternalEventRecord, type ExternalFilter } from "../ingest/model.ts";
 
@@ -97,8 +97,8 @@ function summarize(db: SqlStatements, service: string, nowMs: number, filter: Pi
   const queryStarted = clock?.now();
   const rows = db.rows<SummaryRow>(
     `SELECT * FROM (WITH events AS MATERIALIZED (
-      SELECT ${APPLICATION_SUMMARY_PROJECTION}
-      FROM observe_external_events INDEXED BY ${APPLICATION_SUMMARY_INDEX} WHERE service = ? AND event_at >= ? AND event_at < ?
+      SELECT event_at, operation, outcome, duration_ms, NULLIF(http_status, 0) AS http_status
+      FROM ${APPLICATION_SUMMARY_TABLE} WHERE service = ? AND event_at >= ? AND event_at < ?
     ), buckets AS (
       SELECT 0 AS kind, CAST((event_at - ?) / ? AS INTEGER) * ? + ? AS atMs,
         NULL AS operation, ${MEASURES}

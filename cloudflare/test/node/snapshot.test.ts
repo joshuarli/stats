@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { beginImport, initializeMaintenance, exportManifest, exportPage, finishImport, importProgress, importRows, maintenanceState, setFence, SnapshotError, type ObjectManifest } from "../../src/core/export/snapshot.ts";
+import { beginImport, initializeMaintenance, exportManifest, exportPage, finishImport, importProgress, importRows, maintenanceState, setFence, SnapshotError, type ObjectManifest, type SnapshotPolicy } from "../../src/core/export/snapshot.ts";
 import { migrate } from "../../src/core/installation/schema.ts";
 import type { SqlDatabase, SqlValue } from "../../src/core/sql.ts";
 import { initializeStore } from "../../src/observe/core/store.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { handleMaintenance } from "../../src/core/export/http.ts";
+import { APPLICATION_SNAPSHOT_POLICY } from "../../src/observe/application/schema.ts";
 
 function installation(): SqlDatabase {
   const sql = nodeSqlScopes(new DatabaseSync(":memory:")).open();
@@ -26,15 +27,15 @@ function seed(sql: SqlDatabase, hosts: number): void {
   }
 }
 
-function copy(source: SqlDatabase, target: SqlDatabase, manifest: ObjectManifest, pageRows: number, interruptAfter = Infinity): number {
-  beginImport(target, manifest);
+function copy(source: SqlDatabase, target: SqlDatabase, manifest: ObjectManifest, pageRows: number, interruptAfter = Infinity, policy?: SnapshotPolicy): number {
+  beginImport(target, manifest, policy);
   let pages = 0;
   for (const table of manifest.tables) {
     let after: readonly SqlValue[] | null = null;
     let offset = importProgress(target).find(entry => entry.table === table.name)?.rows ?? 0;
     let sent = 0;
     for (;;) {
-      const page = exportPage(source, table.name, after, pageRows);
+      const page = exportPage(source, table.name, after, pageRows, policy);
       if (sent + page.rows.length > offset) {
         if (pages >= interruptAfter) return pages;
         importRows(target, table.name, sent, page.rows);
@@ -124,12 +125,12 @@ await test("an observation store exports and imports through the same contract",
   initializeMaintenance(source);
   for (let index = 0; index < 120; index += 1) source.run("INSERT INTO observe_version_labels (version, label, message, updated_at) VALUES (?, ?, ?, ?)", `v${index}`, `label ${index}`, null, 1_700_000_000_000 + index);
   setFence(source, true);
-  const manifest = exportManifest(source, "observe:stats", 1, null);
+  const manifest = exportManifest(source, "observe:stats", 1, null, APPLICATION_SNAPSHOT_POLICY);
   const target = nodeSqlScopes(new DatabaseSync(":memory:")).open();
   initializeStore(target);
   initializeMaintenance(target);
-  copy(source, target, manifest, 50);
-  finishImport(target);
+  copy(source, target, manifest, 50, Infinity, APPLICATION_SNAPSHOT_POLICY);
+  finishImport(target, APPLICATION_SNAPSHOT_POLICY);
   assert.deepEqual(target.rows("SELECT * FROM observe_version_labels ORDER BY version"), source.rows("SELECT * FROM observe_version_labels ORDER BY version"));
 });
 

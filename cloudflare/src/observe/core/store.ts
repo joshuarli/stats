@@ -2,7 +2,7 @@ import { CLEANUP_BATCH, HEALTH_BUCKET_MS, MAX_FUTURE_SKEW_MS, MAX_ISSUES, MAX_PA
 import { isFailedInvocation, NOTHING_UNSENT, OCCURRENCE_SOURCES, OTHER_ROUTE, OUTCOME_CLASSES, summaryTotals, type CountDelta, type Flush, type UnsentTally, type InvocationKind, type OccurrenceSource, type OutcomeEvent, type Preparation, type PreparedError, type PreparedInvocation, type RolloutPreparation, type Stage, type VersionLabel } from "./model.ts";
 import { formatFrames, readFrames, type StackFrame, type SymbolicatedFrame } from "./stack.ts";
 import { representativeFrame } from "./grouping.ts";
-import { APPLICATION_SUMMARY_INDEX_SQL } from "../application/schema.ts";
+import { APPLICATION_SUMMARY_INDEX_SQL, upgradeApplicationProjection } from "../application/schema.ts";
 import { cleanupCounts, COUNT_STATEMENTS, upgradeCountEntriesView, countBucket, eventBucket, oldestCountExpiryMs, recordCounts, samplingHealth, countWindow, countedRoutes, versionRequests, type CountedRoute, type SamplingHealth, type SamplingSummary } from "./counts.ts";
 import { KEEP_ALL, type Sampling } from "./sampling.ts";
 import { OPERATION_IDS, type OperationId, type OperationSummary } from "../producer/channel.ts";
@@ -458,6 +458,7 @@ export function initializeStore(db: SqlStatements): void {
       }
       db.run("DROP TABLE observe_health");
     }
+    upgradeApplicationProjection(db);
   });
 }
 

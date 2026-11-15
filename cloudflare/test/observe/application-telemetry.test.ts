@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { createObserveService } from "../../src/observe/core/service.ts";
 import { readApplicationSummary, readApplicationSummaryTimed, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
-import { initializeStore, ingestExternal } from "../../src/observe/core/store.ts";
-import { APPLICATION_SUMMARY_INDEX } from "../../src/observe/application/schema.ts";
-import { exportManifest, initializeMaintenance, setFence } from "../../src/core/export/snapshot.ts";
+import { cleanup, initializeStore, ingestExternal } from "../../src/observe/core/store.ts";
+import { APPLICATION_SNAPSHOT_POLICY, APPLICATION_SUMMARY_TABLE } from "../../src/observe/application/schema.ts";
+import { beginImport, exportManifest, exportPage, finishImport, importRows, initializeMaintenance, setFence } from "../../src/core/export/snapshot.ts";
 import { nodeSqlScopes } from "../../src/node/sql.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
+import { encodeEvent } from "../../src/observe/ingest/codec.ts";
 import type { SqlValue } from "../../src/core/sql.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
 import { handleApi } from "../../src/observe/http/api.ts";
-import { database, T0, H } from "./support.ts";
+import { database, wrap, T0, H, D } from "./support.ts";
 
 const event = (index: number, service = "stats"): ExternalEvent => ({
   schemaVersion: 1, eventId: `event-${index}`, atMs: T0 - H + index,
@@ -18,7 +20,21 @@ const event = (index: number, service = "stats"): ExternalEvent => ({
   durationMs: 10, work: index % 3 === 0 ? { http_status: 503 } : {}, release: "release-1", service
 });
 
-await test("summary reads use a covering index without seeking canonical event rows", async context => {
+function legacyDatabase() {
+  const template = database();
+  try {
+    const sql = nodeSqlScopes(template.db).open();
+    initializeMaintenance(sql);
+    setFence(sql, true);
+    const manifest = exportManifest(sql, "observe:stats", T0, null, APPLICATION_SNAPSHOT_POLICY);
+    assert.equal(manifest.tables.length, 16);
+    const legacy = wrap(new DatabaseSync(":memory:"));
+    for (const table of manifest.tables) legacy.run(table.sql);
+    return legacy;
+  } finally { template.db.close(); }
+}
+
+await test("summary reads use compact scalar rows without opening canonical events or their payload index", async context => {
   const db = database();
   try {
     ingestExternal(db, "stats", await receiveEvents("stats", [event(0), event(1)]), T0);
@@ -31,26 +47,26 @@ await test("summary reads use a covering index without seeking canonical event r
     });
     assert.equal(readApplicationSummary(db, "stats", T0, {}).totals?.events, 2);
     const plan = db.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(...parameters) as { detail: string }[];
-    assert.ok(plan.some(row => row.detail.includes(`USING COVERING INDEX ${APPLICATION_SUMMARY_INDEX}`)));
-    const root = db.db.prepare("SELECT rootpage FROM sqlite_master WHERE name = 'observe_external_events'").get() as { rootpage: number };
+    assert.ok(plan.some(row => row.detail.includes(`SEARCH ${APPLICATION_SUMMARY_TABLE} USING PRIMARY KEY`)));
+    const roots = db.rows<{ rootpage: number }>("SELECT rootpage FROM sqlite_master WHERE name = 'observe_external_events' OR tbl_name = 'observe_external_events'");
     const code = db.db.prepare(`EXPLAIN ${query}`).all(...parameters) as { opcode: string; p1: number; p2: number }[];
-    assert.ok(!code.some(op => op.opcode === "OpenRead" && op.p2 === root.rootpage), "expression-only indexes still open and seek the canonical table even without reading its payload column");
+    assert.ok(!code.some(op => op.opcode === "OpenRead" && roots.some(root => op.p2 === root.rootpage)));
   } finally { db.db.close(); }
 });
 
-await test("backfilling the derived index preserves canonical rows, export compatibility and duplicate identity", async () => {
-  const db = database();
+await test("backfilling the compact projection preserves canonical rows, export compatibility and duplicate identity", async () => {
+  const db = legacyDatabase();
   try {
     const sql = nodeSqlScopes(db.db).open();
-    db.run(`DROP INDEX ${APPLICATION_SUMMARY_INDEX}`);
     const batch = [event(0), { ...event(1), outcome: "cancelled" }, { ...event(2), work: { http_status: 503.5 } }];
     const received = await receiveEvents("stats", batch);
     assert.deepEqual(ingestExternal(db, "stats", received, T0), { ok: true, accepted: 3, duplicate: 0 });
     initializeMaintenance(sql);
     setFence(sql, true);
-    const before = exportManifest(sql, "observe:stats", T0, null);
+    const before = exportManifest(sql, "observe:stats", T0, null, APPLICATION_SNAPSHOT_POLICY);
+    assert.equal(db.rows("SELECT 1 FROM sqlite_master WHERE name = ?", APPLICATION_SUMMARY_TABLE).length, 0);
     initializeStore(db);
-    assert.deepEqual(exportManifest(sql, "observe:stats", T0, null), before);
+    assert.deepEqual(exportManifest(sql, "observe:stats", T0, null, APPLICATION_SNAPSHOT_POLICY), before);
     const summary = readApplicationSummary(db, "stats", T0, {});
     assert.equal(summary.totals?.events, 3);
     assert.equal(summary.totals.requests, 1);
@@ -60,6 +76,64 @@ await test("backfilling the derived index preserves canonical rows, export compa
     assert.deepEqual(ingestExternal(db, "stats", await receiveEvents("stats", [{ ...batch[0]!, durationMs: 999 }]), T0), { ok: false, code: "event_conflict" });
     assert.deepEqual(readApplicationSummary(db, "stats", T0, {}).totals, summary.totals);
   } finally { db.db.close(); }
+});
+
+await test("projection creation and backfill roll back together and repeat initialization avoids another backfill", async () => {
+  const db = legacyDatabase();
+  try {
+    ingestExternal(db, "stats", await receiveEvents("stats", [event(0)]), T0);
+    db.failOnRun = query => query.startsWith(`INSERT INTO ${APPLICATION_SUMMARY_TABLE}`);
+    assert.throws(() => initializeStore(db), /injected write failure/u);
+    assert.deepEqual(db.rows("SELECT name FROM sqlite_master WHERE name = ? OR name LIKE 'observe_projection_%'", APPLICATION_SUMMARY_TABLE), []);
+    db.failOnRun = null;
+    initializeStore(db);
+    db.failOnRun = query => query.startsWith(`INSERT INTO ${APPLICATION_SUMMARY_TABLE}`);
+    initializeStore(db);
+    assert.equal(readApplicationSummary(db, "stats", T0, {}).totals?.events, 1);
+  } finally { db.db.close(); }
+});
+
+await test("canonical mutation, rollback and cleanup maintain exact projection rows", async () => {
+  const db = database();
+  try {
+    ingestExternal(db, "stats", await receiveEvents("stats", [event(0), event(1)]), T0);
+    const changed = { ...event(0), atMs: T0 - H / 2, durationMs: 999, work: { http_status: 200.5 } };
+    db.run("UPDATE observe_external_events SET event_at = ?, payload = ? WHERE service = ? AND event_id = ?", changed.atMs, encodeEvent(changed), "stats", changed.eventId);
+    const summary = readApplicationSummary(db, "stats", T0, {});
+    const detail = readApplicationTelemetry(db, "stats", T0, {});
+    assert.deepEqual(summary.totals, detail.totals);
+    assert.equal(summary.totals?.requests, 0);
+    assert.throws(() => db.transaction(() => { db.run("DELETE FROM observe_external_events"); throw new Error("abort mutation"); }), /abort mutation/u);
+    assert.deepEqual(readApplicationSummary(db, "stats", T0, {}), summary);
+    assert.equal(cleanup(db, T0 + 8 * D).deleted, 2);
+    assert.deepEqual(db.rows(`SELECT * FROM ${APPLICATION_SUMMARY_TABLE}`), []);
+  } finally { db.db.close(); }
+});
+
+await test("canonical snapshot import rebuilds the real projection and resumes without clearing accepted rows", async () => {
+  const source = database(), target = database();
+  try {
+    ingestExternal(source, "stats", await receiveEvents("stats", [event(0), event(1), event(2)]), T0);
+    const from = nodeSqlScopes(source.db).open(), to = nodeSqlScopes(target.db).open();
+    for (const sql of [from, to]) initializeMaintenance(sql);
+    setFence(from, true);
+    const manifest = exportManifest(from, "observe:stats", T0, null, APPLICATION_SNAPSHOT_POLICY);
+    assert.equal(manifest.tables.length, 16);
+    beginImport(to, manifest, APPLICATION_SNAPSHOT_POLICY);
+    for (const table of manifest.tables) {
+      const page = exportPage(from, table.name, null, 2000, APPLICATION_SNAPSHOT_POLICY);
+      importRows(to, table.name, 0, page.rows);
+      if (table.name === "observe_external_events") {
+        beginImport(to, manifest, APPLICATION_SNAPSHOT_POLICY);
+        assert.equal(to.rows<{ n: number }>(`SELECT COUNT(*) AS n FROM ${APPLICATION_SUMMARY_TABLE}`)[0]?.n, 3);
+        importRows(to, table.name, 0, page.rows);
+      }
+    }
+    finishImport(to, APPLICATION_SNAPSHOT_POLICY);
+    assert.deepEqual(readApplicationSummary(target, "stats", T0, {}), readApplicationSummary(source, "stats", T0, {}));
+    setFence(to, true);
+    assert.deepEqual(exportManifest(to, "observe:stats", T0, null, APPLICATION_SNAPSHOT_POLICY), manifest);
+  } finally { source.db.close(); target.db.close(); }
 });
 
 await test("application telemetry summarizes the full window with bounded detail and service isolation", async () => {
