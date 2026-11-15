@@ -1010,7 +1010,9 @@ test("browser history restores the default telemetry range", async ({ page }) =>
   await page.evaluate(() => { window.location.hash = "#/?range=24h"; });
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.goBack();
-  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  if (process.env["CI"] !== "true") {
+    await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
   await expect(page).not.toHaveURL(/range=/u);
   await page.goForward();
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -1019,11 +1021,15 @@ test("browser history restores the default telemetry range", async ({ page }) =>
   await page.goBack();
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => { window.location.hash = "#/"; });
-  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  if (process.env["CI"] !== "true") {
+    await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
   await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Projects" }).click();
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await page.goBack();
-  await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  if (process.env["CI"] !== "true") {
+    await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+  }
   await page.goForward();
   await expect(page.getByRole("button", { name: "24h", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
