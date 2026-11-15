@@ -72,6 +72,14 @@ gates pass, and native writes preserve acknowledgments, duplicate detection and
 the exact canonical snapshot. The [rollup evidence](../bench/results/2026-11-15-maintained-rollups/README.md)
 separates this component result from full P6 browser and ingest acceptance.
 
+The same tenfold fixture now serves real HTTPS through the normal tailnet
+ingress at `stats-next.17166969.xyz`, using the deployed application bundles.
+Functional 1h, 6h and 24h browser selections match actual data and three charts.
+Its dedicated internal bridge has no published ports and cannot reach the
+production Engine or Internet. The [route evidence](../bench/results/2026-11-15-scale-ingress/README.md)
+does not claim timing acceptance. Ten concurrent browsers, representative
+ingestion and complete seven-day validation remain open.
+
 Reopening the disposable read fixture later encounters a native command-volume
 quorum failure before candidate code runs. The failed state and Engine logs are
 preserved. This is an unresolved recovery gap; production remains healthy.
