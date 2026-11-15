@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { EmptyState } from "@laputa-systems/ui-dashboard";
 import type { ApplicationSummary } from "../../../observe/application/telemetry";
@@ -10,6 +10,7 @@ import { useTelemetry } from "../../state";
 import { PanelChart } from "../host/shared";
 import { applicationOverview } from "./native-overview";
 import "./native-overview.css";
+import { createUpdateEffect } from "../../effect";
 
 export function ApplicationOverview(props: {
   readonly data: ApplicationSummary;
@@ -17,11 +18,22 @@ export function ApplicationOverview(props: {
   readonly loadedAtMs: number;
   readonly onRequests: () => void;
   readonly onErrors: () => void;
+  readonly onReady?: (data: ApplicationSummary) => void;
 }): JSX.Element {
   const { now } = useTelemetry();
   const model = createMemo(() => applicationOverview(props.data));
+  let drawnVersion: ApplicationSummary | undefined;
+  const drawn = new Set<string>();
+  const chartDrawn = (chart: string) => {
+    const data = props.data;
+    if (drawnVersion !== data) { drawnVersion = data; drawn.clear(); }
+    drawn.add(chart);
+    if (drawn.size === 3) props.onReady?.(data);
+  };
+  onSettled(() => { if (model().events === 0) props.onReady?.(props.data); });
+  createUpdateEffect(() => props.data, data => { if (model().events === 0) props.onReady?.(data); });
   const perMinute = (value: number | undefined) => `${count(value)}/min`;
-  return <div class="native-overview" aria-busy={props.refreshing ? "true" : "false"}>
+  return <div class="native-overview" aria-busy={props.refreshing ? "true" : "false"} data-from-ms={props.data.fromMs} data-to-ms={props.data.toMs}>
     <Widget title="Application overview" meta={props.refreshing ? "Refreshing" : `Updated ${age(props.loadedAtMs, now())}`}>
       <div class="native-health-line">
         <span class={`native-state ${model().needsAttention ? "needs-attention" : ""}`}>
@@ -68,13 +80,13 @@ export function ApplicationOverview(props: {
     <Show when={model().events > 0} fallback={<Widget title="Activity"><EmptyState title="No application events in this window" detail="Choose a wider range or wait for this service to report activity." /></Widget>}>
       <div class="native-overview-charts">
         <Widget title={model().http ? "Request traffic" : "Application activity"} expandable>
-          <PanelChart label={model().http ? "HTTP requests per minute" : "Application events per minute"} area series={[{ label: model().http ? "requests" : "events", color: "blue", track: model().traffic }]} format={perMinute} min={0} stepMs={props.data.stepMs} />
+          <PanelChart label={model().http ? "HTTP requests per minute" : "Application events per minute"} area series={[{ label: model().http ? "requests" : "events", color: "blue", track: model().traffic }]} format={perMinute} min={0} stepMs={props.data.stepMs} onDraw={() => chartDrawn("traffic")} />
         </Widget>
         <Widget title={model().http ? "Server errors" : "Failed work"} expandable>
-          <PanelChart label={model().http ? "HTTP server errors over time" : "Application failures over time"} series={[{ label: model().http ? "5xx" : "failed", color: "critical", track: model().failureTrack }]} format={count} min={0} stepMs={props.data.stepMs} />
+          <PanelChart label={model().http ? "HTTP server errors over time" : "Application failures over time"} series={[{ label: model().http ? "5xx" : "failed", color: "critical", track: model().failureTrack }]} format={count} min={0} stepMs={props.data.stepMs} onDraw={() => chartDrawn("errors")} />
         </Widget>
         <Widget title={model().http ? "Response latency" : "Work duration"} expandable>
-          <PanelChart label={model().http ? "HTTP response wall time" : "Application work wall time"} series={[{ label: "mean", color: "blue", track: model().mean }, { label: "maximum", color: "violet", track: model().maximum }]} format={milliseconds} min={0} stepMs={props.data.stepMs} />
+          <PanelChart label={model().http ? "HTTP response wall time" : "Application work wall time"} series={[{ label: "mean", color: "blue", track: model().mean }, { label: "maximum", color: "violet", track: model().maximum }]} format={milliseconds} min={0} stepMs={props.data.stepMs} onDraw={() => chartDrawn("latency")} />
         </Widget>
       </div>
       <Widget title="Where time goes" meta="Observed wall time">

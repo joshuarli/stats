@@ -18,6 +18,7 @@ import type { ApplicationSummary, ApplicationTelemetry } from "../../../observe/
 import { applicationTrack } from "./native-series";
 import { RecentApplicationEvents } from "./RecentApplicationEvents";
 import "./project.css";
+import { startProjectJourney } from "../../project-journey";
 
 const Platform = lazy(() => import("./Platform"));
 const IssuesWidget = lazy(() => import("./ObserveSection").then(module => ({ default: module.IssuesWidget })));
@@ -74,6 +75,8 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
   let loadedWindow: string | null = null;
   let loadedKey: string | null = null;
   let revalidateCached = false;
+  let journey: ReturnType<typeof startProjectJourney> | undefined;
+  let entered = false;
   const summaries = new Map<string, { readonly data: ApplicationSummary; readonly atMs: number }>();
   const detail = (): ApplicationTelemetry | null => { const value = data(); return value !== null && "recent" in value ? value : null; };
   const windowAt = () => {
@@ -91,12 +94,17 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     const selection = `${query.service}:${query.range}:${query.view?.fromMs ?? ""}:${query.view?.toMs ?? ""}`;
     const key = `${selection}:${query.refresh}`;
     if (!revalidateCached && data() !== null && loadedKey === key && (!query.recent || detail() !== null)) { setRefreshing(false); setError(null); return; }
+    journey?.cancel();
+    const measured = section() === "overview" ? startProjectJourney(query.range, { navigation: !entered }) : undefined;
+    if (measured !== undefined) entered = true;
+    journey = measured;
     const cached = query.recent ? undefined : summaries.get(key);
     if (cached !== undefined) {
       summaries.delete(key); summaries.set(key, cached);
+      if (!revalidateCached) measured?.dataReady(cached.data, true);
       setData(cached.data); loadedWindow = selection; loadedKey = key;
       setLoadedAtMs(cached.atMs); setRefreshing(false); setError(null);
-      if (!revalidateCached) return;
+      if (!revalidateCached) return () => measured?.cancel();
     }
     const window = windowAt();
     const controller = new AbortController();
@@ -104,11 +112,12 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     if (loadedWindow !== selection) setData(null);
     setError(null);
     setRefreshing(true);
-    if (window.fromMs >= window.toMs) { setError("The selected window is outside application telemetry retention."); setRefreshing(false); return; }
+    if (window.fromMs >= window.toMs) { setError("The selected window is outside application telemetry retention."); setRefreshing(false); measured?.fail(); return; }
     const read = query.recent ? getApplicationTelemetry : getApplicationSummary;
-    void read(query.service, window.fromMs, window.toMs, controller.signal).then(value => {
+    void read(query.service, window.fromMs, window.toMs, controller.signal, measured).then(value => {
       if (controller.signal.aborted) return;
       completed = true; revalidateCached = false;
+      measured?.dataReady(value, false);
       setData(value);
       loadedWindow = selection;
       loadedKey = key;
@@ -117,8 +126,8 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
       summaries.delete(key); summaries.set(key, { data: summaryOnly(value), atMs });
       while (summaries.size > SUMMARY_WINDOW_LIMIT) summaries.delete(summaries.keys().next().value!);
       setRefreshing(false);
-    }).catch((failure: unknown) => { if (!controller.signal.aborted) { completed = true; setError(errorMessage(failure)); setRefreshing(false); } });
-    return () => { if (!completed) revalidateCached = true; controller.abort(); };
+    }).catch((failure: unknown) => { if (!controller.signal.aborted) { completed = true; setError(errorMessage(failure)); setRefreshing(false); measured?.fail(); } });
+    return () => { if (!completed) revalidateCached = true; controller.abort(); measured?.cancel(); };
   });
   const latest = () => { const value = props.service.latestDeployment; return value?.status === "available" ? value : null; };
   const showSection = (next: Section) => { setSection(next); writeParam("section", next); };
@@ -139,7 +148,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
         <Show when={section() === "platform" && serviceName === "stats"}><Loading fallback={<Skeleton rows={3} />}><Platform windowAt={windowAt} refreshKey={refreshKey} selection={() => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`} now={now} /></Loading></Show>
         <Show when={section() !== "deploys" && section() !== "errors" && section() !== "platform"}>
           <Show when={error()}>{message => <Notice tone="warn">{message()}</Notice>}</Show><Show when={data()} fallback={error() === null ? <Skeleton rows={3} /> : <EmptyState title="Telemetry could not be read" detail="Use Refresh to retry." />}>{telemetry => <>
-            <Show when={section() === "overview"}><Loading fallback={<Skeleton rows={3} chart />}><ApplicationOverview data={telemetry()} refreshing={refreshing()} loadedAtMs={loadedAtMs()} onRequests={() => showSection("requests")} onErrors={() => showSection("errors")} /></Loading></Show>
+            <Show when={section() === "overview"}><Loading fallback={<Skeleton rows={3} chart />}><ApplicationOverview data={telemetry()} refreshing={refreshing()} loadedAtMs={loadedAtMs()} onRequests={() => showSection("requests")} onErrors={() => showSection("errors")} onReady={value => journey?.chartsReady(value)} /></Loading></Show>
             <Show when={section() === "signals"}><ApplicationSignals data={telemetry()} /></Show>
             <Show when={section() === "requests"}><Show when={detail()} fallback={<Skeleton rows={3} />}>{recent => <RecentApplicationEvents data={recent()} />}</Show></Show>
           </>}</Show>

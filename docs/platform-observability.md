@@ -32,6 +32,21 @@ excluded from HTTP capture, preventing recursive observations.
 
 ## Privacy and authentication
 
+The overview emits bounded `stats:project-journey` browser events for navigation,
+range selection and refresh. They contain cache status, outcome, a generated
+trace identity and numeric phase durations. They contain no project names,
+raw URLs, request bodies or user identity. The frontend retains no event history.
+Browser delivery into Stats is not yet implemented.
+
+The read sends a W3C trace identity that the native HTTP event validates and
+retains. Browser durations separate bootstrap, response headers, body reading,
+JSON decoding and rendering. Rendering includes lazy overview-module loading
+and all three current chart draws through the next animation frame. Nested
+server timings overlap those phases and must not be added to them.
+
+The [browser measurement record](../bench/results/2026-11-14-project-journey/README.md)
+describes the actual draw boundary, regressions and overhead comparison.
+
 The receiver requires a dedicated bearer credential and an exact resource,
 actor-name and actor-key allowlist. It emits role-based operation names,
 checked durations, valid trace and span IDs, fixed failure codes and source

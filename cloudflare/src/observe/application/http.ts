@@ -1,19 +1,7 @@
 import { APPLICATION_EVENTS_SERVICE, postApplicationEvent, type ApplicationEventSinkOptions } from "./sink.ts";
+import { readTimings } from "./timing.ts";
 
 const SUMMARY_PATH = /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external\/telemetry\/summary$/u;
-const READ_TIMINGS: Readonly<Record<string, string>> = { "app-store": "store_us", "app-query": "query_us", "app-issues": "issues_us", "app-read": "read_us", "app-encode": "encode_us" };
-
-function readTimings(header: string | null): Record<string, number> {
-  const work: Record<string, number> = {};
-  if (header === null || header.length > 512) return work;
-  for (const entry of header.split(",")) {
-    const match = /^(app-[a-z]+);dur=(\d+(?:\.\d{1,3})?)$/u.exec(entry.trim());
-    if (match === null || READ_TIMINGS[match[1]!] === undefined) continue;
-    const us = Math.round(Number(match[2]) * 1000);
-    if (Number.isSafeInteger(us) && us >= 0 && us <= 86_400_000_000) work[READ_TIMINGS[match[1]!]!] = us;
-  }
-  return work;
-}
 
 function requestOperation(request: Request): string {
   const path = new URL(request.url).pathname;
@@ -45,6 +33,8 @@ export async function captureApplicationRequest(request: Request, run: () => Pro
   let status = 500;
   let cancelled = false;
   let work: Record<string, number> = {};
+  const parent = /^00-([a-f0-9]{32})-([a-f0-9]{16})-[a-f0-9]{2}$/u.exec(request.headers.get("traceparent") ?? "");
+  const trace = parent !== null && !/^0+$/u.test(parent[1]!) && !/^0+$/u.test(parent[2]!) ? { traceId: parent[1]!, spanId: parent[2]! } : undefined;
   try {
     let response = await run();
     status = response.status;
@@ -64,6 +54,6 @@ export async function captureApplicationRequest(request: Request, run: () => Pro
     throw error;
   } finally {
     const durationMs = Math.min(86_400_000, Math.max(0, Math.round(options.monotonic() - started)));
-    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs, operation: requestOperation(request), outcome: cancelled ? "cancelled" : status >= 500 ? "error" : "ok", durationMs, work: cancelled ? {} : { http_status: status, ...work }, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE }, options);
+    postApplicationEvent({ schemaVersion: 1, eventId: crypto.randomUUID(), atMs, operation: requestOperation(request), outcome: cancelled ? "cancelled" : status >= 500 ? "error" : "ok", durationMs, work: cancelled ? {} : { http_status: status, ...work }, release: options.release, service: options.service ?? APPLICATION_EVENTS_SERVICE, ...(trace === undefined ? {} : { trace }) }, options);
   }
 }

@@ -4,6 +4,7 @@ import { duration } from "../chart-data";
 import { dateTime } from "../format";
 import { rangeLabels, ranges, useTelemetry } from "../state";
 import { Icon } from "@laputa-systems/ui-dashboard";
+import { noteProjectIntent } from "../project-journey";
 
 export function TimeBar(): JSX.Element {
   const { range, chooseRange, view, canZoomOut, live, zoomOut, resetZoom, pan, toggleLive, requestRefresh } = useTelemetry();
@@ -12,7 +13,7 @@ export function TimeBar(): JSX.Element {
       <div class={isPending(range) ? "segmented pending" : "segmented"} role="group" aria-label="Time range">
         <For each={ranges}>
           {(option) => (
-            <button class="segment" type="button" aria-pressed={latest(range) === option && view() === null ? "true" : "false"} onClick={() => { chooseRange(option); }}>
+            <button class="segment" type="button" aria-pressed={latest(range) === option && view() === null ? "true" : "false"} onClick={() => { if (range() !== option || view() !== null) noteProjectIntent("range"); chooseRange(option); }}>
               {option}
             </button>
           )}
@@ -42,7 +43,7 @@ export function TimeBar(): JSX.Element {
         <span class="live-dot" aria-hidden="true" />
         {view() === null ? "Live" : "Back to live"}<kbd>l</kbd>
       </button>
-      <button class="icon-button" type="button" aria-label="Refresh" onClick={requestRefresh}><Icon name="refresh" size={14} /></button>
+      <button class="icon-button" type="button" aria-label="Refresh" onClick={() => { noteProjectIntent("refresh"); requestRefresh(); }}><Icon name="refresh" size={14} /></button>
     </div>
   );
 }

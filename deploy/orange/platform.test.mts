@@ -101,7 +101,9 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.equal(observationKeys().size, 2, "the platform sink has a separate actor identity");
     assert.equal(installation().length, before, "platform transport authentication must not invoke Installation");
     assert.equal((await fetch(`${session.origin}/api/v1/projects`, { headers })).status, 503, "the fixture produces a real observed actor failure");
-    const summaryResponse = await fetch(`${session.origin}/api/observe/stats/external/telemetry/summary`, { headers });
+    const summaryAtMs = Date.now();
+    const summaryTrace = { traceId: "1".repeat(32), spanId: "2".repeat(16) };
+    const summaryResponse = await fetch(`${session.origin}/api/observe/stats/external/telemetry/summary`, { headers: { ...headers, traceparent: `00-${summaryTrace.traceId}-${summaryTrace.spanId}-00` } });
     assert.equal(summaryResponse.status, 200);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-query;dur=\d+\.\d{3}/u);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-total;dur=\d+\.\d{3}/u);
@@ -131,6 +133,12 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     assert.equal(telemetry.delivery.exporterLoss, "unknown");
     assert.ok(telemetry.operations.every(row => row.release === "platform-proof_oo-1.0.2_rk-3.1.2-rc.1_nr-3.1.1"));
     assert.equal(forwardFailures, 0, "the real native exporter must authenticate to the bridge");
+    const correlated = await fetch(`${session.origin}/api/observe/stats/external?from=${summaryAtMs}&to=${Date.now() + 1}`, { headers });
+    assert.equal(correlated.status, 200);
+    const correlation = await correlated.json() as { events: { event: { operation: string; trace?: typeof summaryTrace; work: Record<string, number> } }[] };
+    const measuredRead = correlation.events.find(row => row.event.operation === "http.get.application-summary");
+    assert.deepEqual(measuredRead?.event.trace, summaryTrace);
+    assert.ok(measuredRead!.event.work["query_us"]! >= 0);
     const burstAtMs = Date.now();
     const burst = await Promise.all(Array.from({ length: 16 }, () => fetch(`${session!.origin}/api/v1/capabilities`, { headers })));
     assert.ok(burst.every(response => response.status === 200));

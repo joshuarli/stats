@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HISTORY_CONTENT_TYPE } from "../src/binary/history";
-import { ApiFailure, getHosts, getSummary } from "../src/client/api";
+import { ApiFailure, getApplicationSummary, getHosts, getSummary } from "../src/client/api";
 import { encodeHistory } from "./support/history";
 
 const signal = new AbortController().signal;
@@ -11,6 +11,15 @@ afterEach(() => {
 });
 
 describe("dashboard decoding", () => {
+  it("measurement failures do not turn a valid summary into a failed read", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const summary = { provenance: "application", fromMs: 1000, toMs: 61000, stepMs: 1000, totals: null, openIssues: 0, buckets: [], operations: [], moreOperations: false };
+    vi.stubGlobal("fetch", async () => Response.json(summary));
+    await expect(getApplicationSummary("stats", 1000, 61000, signal, { trace: { traceId: "1".repeat(32), spanId: "2".repeat(16) }, measured: () => { throw new Error("private observer error"); } })).resolves.toEqual(summary);
+    expect(log).toHaveBeenCalledWith("ui_read_measurement_failed");
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("private observer error"));
+  });
+
   it("keeps the decoder error on a malformed response", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const cases: readonly [string, unknown, string][] = [

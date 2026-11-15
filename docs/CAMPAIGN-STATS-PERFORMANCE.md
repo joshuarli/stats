@@ -6,10 +6,13 @@ Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
 the frozen production corpus. Last accepted revision: `b5978bfc99a`.
 Production application: `stats:434ea6ed31f5`, Orange node version 15.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
-that this campaign's latency goals pass. Every goal below remains unproven.
+that this campaign's latency goals pass. No full goal is marked complete.
 
-Next slice: measure browser navigation and range selection through completed
-chart rendering, correlated with the same response's server timings.
+P4 measurement boundaries now have browser and native regressions. A frozen
+20,395-event corpus and 1,000 cached interactions per variant establish no
+measurable timing overhead. Stats delivery of browser observations remains open.
+Next slice: separate Worker dispatch delay from actor and SQL elapsed time,
+then add bounded, authenticated browser delivery to the existing event pipeline.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
 No active child writers. No failed candidate is selected for production.
 
@@ -38,7 +41,7 @@ in protected local storage.
 | P1 | Instant cached ranges | Selection to complete charts p95 <50 ms and p99 <100 ms. Zero summary fetches within the valid generation |
 | P2 | Fast uncached ranges | Awake actor, empty client range cache: 1h, 6h and 24h p95 <750 ms. After actor sleep: p95 <1,500 ms. Seven-day views p95 <2,000 ms |
 | P3 | Fast navigation | Initial project navigation to useful health p95 <1,000 ms and complete overview charts p95 <2,000 ms |
-| P4 | Explain slow journeys | Browser input, fetch, server, actor, SQL, decode and render phases correlate. At least 99% of delivered journeys over one second identify the dominant phase or an explicit measurement gap |
+| P4 | Explain slow journeys | Browser input, fetch, server, actor, SQL, decode and render phases correlate. At least 99% of delivered journeys over one second identify the dominant phase. Missing phases stay explicit and do not count as successful attribution |
 | P5 | Actionable overview | Scripted healthy, failing, slow, stale and post-deployment incidents expose state, onset and a useful investigation target within ten seconds |
 | P6 | Maintain performance at scale | P1–P3 pass against ten times the frozen production corpus, with representative ingestion and ten concurrent dashboard clients. Acknowledged samples remain exact and duplicate handling remains correct |
 | P7 | Cheap self-observation | Events queryable p95 <5,000 ms. Enabled instrumentation adds <3% CPU and <5% request latency against disabled instrumentation. Collector failure does not change application outcomes |
@@ -121,6 +124,7 @@ action is currently required. The full-day soak requires elapsed time and a
 stable candidate. It is required evidence, not a waived gate.
 
 - [Prior range and batching measurements](../bench/results/2026-11-14-range-refresh/README.md)
+- [Browser journey measurements](../bench/results/2026-11-14-project-journey/README.md)
 - [Runtime capabilities and remaining gaps](runtime-hardening.md)
 - [Production validation and rollback](runtime-hardening-handoff.md)
 - [Frontend measurement history](frontend-efficiency.md)

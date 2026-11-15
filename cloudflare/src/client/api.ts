@@ -267,20 +267,45 @@ export function openHistoryFrame<T>(
   };
 }
 
-async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal): Promise<T> {
-  const response = await send(path, { Accept: "application/json" }, signal);
+export interface JsonReadMeasurement {
+  readonly startedMs: number;
+  readonly fetchMs: number;
+  readonly bodyMs: number;
+  readonly decodeMs: number;
+  readonly serverTiming: string | null;
+}
+
+export interface JsonReadObservation {
+  readonly trace: { readonly traceId: string; readonly spanId: string };
+  readonly measured: (measurement: JsonReadMeasurement) => void;
+}
+
+async function getJson<T>(path: string, decode: (value: unknown) => T, signal: AbortSignal, observation?: JsonReadObservation): Promise<T> {
+  const started = observation === undefined ? 0 : performance.now();
+  const response = await send(path, { Accept: "application/json", ...(observation === undefined ? {} : { traceparent: `00-${observation.trace.traceId}-${observation.trace.spanId}-00` }) }, signal);
+  const headersAt = observation === undefined ? 0 : performance.now();
   if (!response.ok) throw await failureForResponse(response, statusMessage(response.status));
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     throw await failureForResponse(response, "The response was not telemetry JSON. Open Stats from a device on the tailnet.", 0);
   }
   let body: unknown;
+  let bodyAt = headersAt;
   try {
-    body = await response.json();
+    if (observation === undefined) body = await response.json();
+    else {
+      const text = await response.text();
+      bodyAt = performance.now();
+      body = JSON.parse(text) as unknown;
+    }
   } catch (error) {
     throw new ApiFailure(0, "The response was not valid JSON.", error);
   }
-  return contract(() => decode(body));
+  const value = contract(() => decode(body));
+  try {
+    observation?.measured({ startedMs: started, fetchMs: headersAt - started, bodyMs: bodyAt - headersAt, decodeMs: performance.now() - bodyAt, serverTiming: response.headers.get("Server-Timing") });
+  } catch { console.error("ui_read_measurement_failed"); }
+  return value;
 }
 
 export async function getHistory<T>(
@@ -445,8 +470,8 @@ export function getApplicationTelemetry(service: string, fromMs: number, toMs: n
   return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationTelemetry, signal);
 }
 
-export function getApplicationSummary(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<ApplicationSummary> {
-  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry/summary?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationSummary, signal);
+export function getApplicationSummary(service: string, fromMs: number, toMs: number, signal: AbortSignal, observation?: JsonReadObservation): Promise<ApplicationSummary> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry/summary?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationSummary, signal, observation);
 }
 
 export function decodePlatformTelemetry(value: unknown): PlatformTelemetry {

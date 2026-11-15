@@ -9,6 +9,7 @@ import type { TimeWindow } from "./chart-data";
 import { createViewState, DEFAULT_RANGE, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
 import { readParam, routeWithRange, writeParam } from "./urlState";
 import { createListState } from "./list-state";
+import { observeProjectNavigation } from "./project-journey";
 
 const HOST_PATH = /^\/host\/(h_[0-9a-f]{32})$/u;
 const SERVICE_PATH = /^\/service\/([a-z][a-z0-9-]{0,31})$/u;
@@ -56,6 +57,7 @@ export function Shell(props: ParentProps): JSX.Element {
   onCleanup(() => window.removeEventListener("hashchange", onHashChange));
 
   onSettled(() => {
+    const stopNavigation = observeProjectNavigation();
     const clock = window.setInterval(() => setNow(Date.now()), 10_000);
     const live = window.setInterval(() => {
       if (!document.hidden && views.live() && views.view() === null) views.autoRefresh();
@@ -76,6 +78,7 @@ export function Shell(props: ParentProps): JSX.Element {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      stopNavigation();
       window.clearInterval(clock);
       window.clearInterval(live);
       window.removeEventListener("keydown", onKeyDown);

@@ -4,6 +4,24 @@ import { captureApplicationRequest } from "../../src/observe/application/http.ts
 import { decodeBatch } from "../../src/observe/ingest/codec.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
 
+await test("HTTP correlation retains only valid nonzero W3C trace identities", async () => {
+  for (const [parent, valid] of [
+    ["00-11111111111111111111111111111111-2222222222222222-00", true],
+    ["00-00000000000000000000000000000000-2222222222222222-00", false],
+    ["00-11111111111111111111111111111111-0000000000000000-00", false],
+    ["secret-not-a-trace", false]
+  ] as const) {
+    const events: ExternalEvent[] = [], pending: Promise<unknown>[] = [];
+    await captureApplicationRequest(new Request("https://stats/api/v1/capabilities", { headers: { traceparent: parent } }), async () => new Response("ok"), {
+      release: "v1", now: () => 1_794_600_000_000, monotonic: () => 0,
+      waitUntil: promise => pending.push(promise), post: async body => { events.push(...body.events); return true; }
+    });
+    await Promise.all(pending);
+    assert.deepEqual(events[0]?.trace, valid ? { traceId: "11111111111111111111111111111111", spanId: "2222222222222222" } : undefined);
+    assert.doesNotMatch(JSON.stringify(events), /secret-not-a-trace/u);
+  }
+});
+
 await test("HTTP events retain bounded routes, real status and monotonic wall time without request secrets", async () => {
   const events: ExternalEvent[] = [];
   const pending: Promise<unknown>[] = [];

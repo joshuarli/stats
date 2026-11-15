@@ -37,6 +37,7 @@ const EVENT_HIT_PX = 6;
 const CLICK_SLOP_PX = 4;
 
 export interface TimeChartProps {
+  readonly onDraw?: (() => void) | undefined;
   readonly label: string;
   readonly series: readonly ChartSeries[] | (() => readonly ChartSeries[]);
   readonly format?: ((value: number | undefined) => string) | undefined;
@@ -560,7 +561,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
           telemetry.zoomTo({ fromMs, toMs });
         }],
         drawClear: [drawProvisional, drawEpisodes],
-        draw: [drawZero, drawEvents, drawLimits, drawMarkers]
+        draw: [drawZero, drawEvents, drawLimits, drawMarkers, chart => { if (props.onDraw !== undefined && chart.data === data()) props.onDraw(); }]
       }
     };
     plot = new uPlot(options, data(), element);
