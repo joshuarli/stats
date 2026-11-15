@@ -43,10 +43,15 @@ export function bufferedApplicationPost(binding: ObservationBinding, release: st
     }
     if (producer.stats().dropped !== dropped) return Promise.resolve(false);
     if (pending === null) {
-      pending = new Promise<void>(resolve => { setTimeout(resolve, 1000); })
-        .then(async () => { await producer.flush(); return producer.stats().dropped === dropped; })
+      const generation = new Promise<void>(resolve => { setTimeout(resolve, 1000); })
+        .then(async () => {
+          if (pending === generation) pending = null;
+          await producer.flush();
+          return producer.stats().dropped === dropped;
+        })
         .catch(() => false)
-        .finally(() => { reportLoss(); pending = null; });
+        .finally(() => { reportLoss(); if (pending === generation) pending = null; });
+      pending = generation;
     }
     return pending;
   };

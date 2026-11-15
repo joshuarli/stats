@@ -200,17 +200,17 @@ function configuredProducer(config?: ProducerConfig | BindingProducerConfig | nu
     return Math.max(1, Math.round(ceiling * (0.5 + random() * 0.5)));
   }
 
-  function takeBatch(): OperationEvent[] {
+  function takeBatch(boundary: number): OperationEvent[] {
     const batch: OperationEvent[] = [];
     let size = 13; // {"events":[]} plus one comma for each event after the first.
-    while (queue.length > 0 && batch.length < batchSize) {
+    while (queue.length > 0 && queue[0]!.event.delivery!.sequence <= boundary && batch.length < batchSize) {
       const next = queue[0]!;
       const added = next.size + (batch.length === 0 ? 0 : 1);
       if (size + added > MAX_BATCH_BYTES) break;
       size += added;
       batch.push(queue.shift()!.event);
     }
-    if (batch.length === 0 && queue.length > 0) {
+    if (batch.length === 0 && queue.length > 0 && queue[0]!.event.delivery!.sequence <= boundary) {
       queue.shift();
       dropped += 1;
       lastError = "event_too_large";
@@ -335,25 +335,30 @@ function configuredProducer(config?: ProducerConfig | BindingProducerConfig | nu
     }
   }
 
-  function schedule(): void {
+  function schedule(delay = flushIntervalMs): void {
     if (timer !== null || closed) return;
     timer = setTimeout(() => {
       timer = null;
       void drain();
-    }, flushIntervalMs);
+    }, delay);
     (timer as unknown as { unref?: () => void }).unref?.();
   }
 
-  function drain(): Promise<void> {
+  function drain(boundary = accepted): Promise<void> {
     if (active !== null) return active;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
     active = (async () => {
       for (;;) {
-        const batch = takeBatch();
+        const batch = takeBatch(boundary);
         if (batch.length === 0) return;
         await send(batch);
       }
     })().finally(() => {
       active = null;
+      if (queue.length > 0 && !closed) {
+        if (queue.length >= batchSize && timer !== null) { clearTimeout(timer); timer = null; }
+        schedule(queue.length >= batchSize ? 0 : flushIntervalMs);
+      }
     });
     return active;
   }
@@ -384,6 +389,7 @@ function configuredProducer(config?: ProducerConfig | BindingProducerConfig | nu
   }
 
   async function flush(): Promise<void> {
+    const boundary = accepted;
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
@@ -393,8 +399,8 @@ function configuredProducer(config?: ProducerConfig | BindingProducerConfig | nu
         await active;
         continue;
       }
-      if (queue.length === 0) return;
-      await drain();
+      if (queue.length === 0 || queue[0]!.event.delivery!.sequence > boundary) return;
+      await drain(boundary);
     }
   }
 

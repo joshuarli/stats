@@ -338,3 +338,66 @@ await test("a forwarder preserves per-event source releases and rejects invalid 
     assert.equal(producer.stats().dropped, 1);
   } finally { await producer.shutdown(); await server.close(); }
 });
+
+await test("arrivals during a send coalesce behind the drain boundary", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const bodies: number[][] = [];
+  const releases: (() => void)[] = [];
+  const fetch: typeof globalThis.fetch = async (_url, init) => {
+    const raw = init?.body;
+    if (typeof raw !== "string") throw new TypeError("expected a string body");
+    const body = JSON.parse(raw) as { events: { delivery: { sequence: number } }[] };
+    bodies.push(body.events.map(event => event.delivery.sequence));
+    await new Promise<void>(resolveSend => { releases.push(resolveSend); });
+    return Response.json({ accepted: body.events.length - 1, duplicate: 1 });
+  };
+  const producer = createProducer(configure("http://localhost", { batchSize: 2, flushIntervalMs: 100, fetch }));
+  const record = () => producer.record({ operation: "save", outcome: "ok", durationMs: 1 });
+  record(); record();
+  record();
+  releases.shift()!();
+  await new Promise<void>(resolve => { setImmediate(resolve); });
+  assert.deepEqual(bodies, [[1, 2]]);
+  assert.equal(producer.stats().queued, 1);
+  t.mock.timers.tick(100);
+  assert.deepEqual(bodies, [[1, 2], [3]]);
+  releases.shift()!();
+  await producer.flush();
+  assert.deepEqual(producer.stats(), { queued: 0, dropped: 0, sent: 1, duplicates: 2, batches: 2, retries: 0, lastError: null });
+  await producer.shutdown();
+});
+
+await test("concurrent flush and shutdown honor their boundaries under overflow", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const bodies: number[][] = [];
+  const releases: (() => void)[] = [];
+  const fetch: typeof globalThis.fetch = async (_url, init) => {
+    const raw = init?.body;
+    if (typeof raw !== "string") throw new TypeError("expected a string body");
+    const body = JSON.parse(raw) as { events: { delivery: { sequence: number } }[] };
+    bodies.push(body.events.map(event => event.delivery.sequence));
+    await new Promise<void>(resolveSend => { releases.push(resolveSend); });
+    return Response.json({ accepted: body.events.length, duplicate: 0 });
+  };
+  const producer = createProducer(configure("http://localhost", { batchSize: 2, queueLimit: 2, flushIntervalMs: 100, fetch }));
+  const record = () => producer.record({ operation: "save", outcome: "ok", durationMs: 1 });
+  record(); record(); record(); record(); record();
+  assert.equal(producer.stats().dropped, 1);
+  assert.equal(producer.stats().lastError, "queue_overflow");
+  const flushed = producer.flush();
+  record();
+  releases.shift()!();
+  await new Promise<void>(resolve => { setImmediate(resolve); });
+  assert.deepEqual(bodies, [[1, 2], [5]]);
+  releases.shift()!();
+  await flushed;
+  assert.equal(producer.stats().queued, 1);
+  const stopped = producer.shutdown();
+  record();
+  assert.deepEqual(bodies, [[1, 2], [5], [6]]);
+  releases.shift()!();
+  await stopped;
+  t.mock.timers.tick(1000);
+  assert.deepEqual(producer.stats(), { queued: 0, dropped: 3, sent: 4, duplicates: 0, batches: 3, retries: 0, lastError: "closed" });
+  assert.equal(bodies.length, 3);
+});

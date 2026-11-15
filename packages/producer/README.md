@@ -52,8 +52,11 @@ The caller must keep `flush()` alive through its runtime's background-task API.
   malformed body is never retried after the final attempt.
 - A 401 or 403 retries once when the token provider returns a different value,
   so a rotated token is picked up without a restart.
-- `flush()` and `shutdown()` resolve even when the final batch was dropped;
-  inspect `stats().lastError` and `stats().dropped`.
+- `flush()` waits for attempts on events accepted before the call, including
+  events queued during an earlier send. Later events wait for their own batch;
+  overflow can drop queued events before they are attempted. `shutdown()`
+  rejects new events and flushes those accepted before shutdown. Both resolve
+  even when a batch was dropped; inspect `stats().lastError` and `stats().dropped`.
 - `stats()` reports `queued`, `dropped`, `sent`, `duplicates`, `batches`,
   `retries`, and `lastError`.
 

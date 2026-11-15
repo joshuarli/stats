@@ -85,3 +85,32 @@ await test("delivery loss logs bounded SDK diagnostics without receiver bodies o
   assert.deepEqual(JSON.parse(logs.mock.calls[0]!.arguments[0] as string), { event: "application_delivery_loss", dropped: 16, queued: 0, retries: 0, lastError: "http_403" });
   assert.doesNotMatch(JSON.stringify(logs.mock.calls), /private receiver detail/u);
 });
+
+await test("events arriving during a flush keep their own background delivery lifetime", async context => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const batches: ExternalEvent[][] = [];
+  const releases: (() => void)[] = [];
+  const post = bufferedApplicationPost({ fetch: async request => {
+    const body = await request.json() as { events: ExternalEvent[] };
+    batches.push(body.events);
+    await new Promise<void>(resolve => { releases.push(resolve); });
+    return ack(body.events);
+  } }, "binding-proof");
+  const first = post({ events: [event(1)] });
+  context.mock.timers.tick(1000);
+  await new Promise<void>(resolve => { setImmediate(resolve); });
+  assert.equal(batches.length, 1);
+  const later = post({ events: [event(2)] });
+  assert.notEqual(later, first);
+  let laterFinished = false;
+  void later.then(() => { laterFinished = true; });
+  context.mock.timers.tick(1000);
+  releases.shift()!();
+  assert.equal(await first, true);
+  await new Promise<void>(resolve => { setImmediate(resolve); });
+  assert.equal(batches.length, 2);
+  assert.equal(laterFinished, false);
+  assert.deepEqual(batches.map(batch => batch.map(entry => entry.eventId)), [["binding-1"], ["binding-2"]]);
+  releases.shift()!();
+  assert.equal(await later, true);
+});
