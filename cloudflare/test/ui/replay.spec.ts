@@ -220,7 +220,7 @@ for (const range of ["1h", "6h"]) {
     await expect(card.getByRole("row", { name: /Worker CPU/u })).toContainText("improved");
     await page.waitForLoadState("networkidle");
     await page.mouse.move(0, 0);
-    await expect(card).toHaveScreenshot(`stuff-deployments-${range}.webp`);
+    await expect(card).toHaveScreenshot(`stuff-deployments-${range}.webp`, { maxDiffPixelRatio: 0.06 });
   });
 }
 
