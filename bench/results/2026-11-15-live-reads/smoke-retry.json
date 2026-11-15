@@ -1,0 +1,1296 @@
+{
+  "valid": true,
+  "adequateSamples": false,
+  "countPerRange": 5,
+  "source": "production awake project navigation followed by uncached range selection",
+  "gates": [
+    {
+      "host": "mac",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "mac",
+      "post": true,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": true,
+      "exitCode": 0
+    }
+  ],
+  "summary": {
+    "1h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "p95Ms": 367.5,
+      "p99Ms": 367.5,
+      "phases": {
+        "body_us": {
+          "p95Us": 6300,
+          "p99Us": 6300
+        },
+        "bootstrap_us": {
+          "p95Us": 400,
+          "p99Us": 400
+        },
+        "decode_us": {
+          "p95Us": 200,
+          "p99Us": 200
+        },
+        "dispatch_us": {
+          "p95Us": 346322,
+          "p99Us": 346322
+        },
+        "encode_us": {
+          "p95Us": 440,
+          "p99Us": 440
+        },
+        "fetch_us": {
+          "p95Us": 356400,
+          "p99Us": 356400
+        },
+        "health_us": {
+          "p95Us": 367500,
+          "p99Us": 367500
+        },
+        "issues_us": {
+          "p95Us": 732,
+          "p99Us": 732
+        },
+        "query_us": {
+          "p95Us": 22624,
+          "p99Us": 22624
+        },
+        "read_us": {
+          "p95Us": 23648,
+          "p99Us": 23648
+        },
+        "render_us": {
+          "p95Us": 7200,
+          "p99Us": 7200
+        },
+        "store_us": {
+          "p95Us": 268781,
+          "p99Us": 268781
+        },
+        "total_us": {
+          "p95Us": 346586,
+          "p99Us": 346586
+        }
+      }
+    },
+    "6h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "p95Ms": 166.5,
+      "p99Ms": 166.5,
+      "phases": {
+        "body_us": {
+          "p95Us": 7600,
+          "p99Us": 7600
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 200,
+          "p99Us": 200
+        },
+        "dispatch_us": {
+          "p95Us": 133389,
+          "p99Us": 133389
+        },
+        "encode_us": {
+          "p95Us": 606,
+          "p99Us": 606
+        },
+        "fetch_us": {
+          "p95Us": 146200,
+          "p99Us": 146200
+        },
+        "health_us": {
+          "p95Us": 166300,
+          "p99Us": 166300
+        },
+        "issues_us": {
+          "p95Us": 1042,
+          "p99Us": 1042
+        },
+        "query_us": {
+          "p95Us": 82680,
+          "p99Us": 82680
+        },
+        "read_us": {
+          "p95Us": 84133,
+          "p99Us": 84133
+        },
+        "render_us": {
+          "p95Us": 16400,
+          "p99Us": 16400
+        },
+        "store_us": {
+          "p95Us": 130004,
+          "p99Us": 130004
+        },
+        "total_us": {
+          "p95Us": 133542,
+          "p99Us": 133542
+        }
+      }
+    },
+    "24h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "p95Ms": 265.09999999403954,
+      "p99Ms": 265.09999999403954,
+      "phases": {
+        "body_us": {
+          "p95Us": 6700,
+          "p99Us": 6700
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 200,
+          "p99Us": 200
+        },
+        "dispatch_us": {
+          "p95Us": 238179,
+          "p99Us": 238179
+        },
+        "encode_us": {
+          "p95Us": 665,
+          "p99Us": 665
+        },
+        "fetch_us": {
+          "p95Us": 251900,
+          "p99Us": 251900
+        },
+        "health_us": {
+          "p95Us": 265100,
+          "p99Us": 265100
+        },
+        "issues_us": {
+          "p95Us": 772,
+          "p99Us": 772
+        },
+        "query_us": {
+          "p95Us": 215237,
+          "p99Us": 215237
+        },
+        "read_us": {
+          "p95Us": 216114,
+          "p99Us": 216114
+        },
+        "render_us": {
+          "p95Us": 9400,
+          "p99Us": 9400
+        },
+        "store_us": {
+          "p95Us": 235250,
+          "p99Us": 235250
+        },
+        "total_us": {
+          "p95Us": 238391,
+          "p99Us": 238391
+        }
+      }
+    },
+    "7d": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "p95Ms": 273.59999999403954,
+      "p99Ms": 273.59999999403954,
+      "phases": {
+        "body_us": {
+          "p95Us": 2400,
+          "p99Us": 2400
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 250124,
+          "p99Us": 250124
+        },
+        "encode_us": {
+          "p95Us": 387,
+          "p99Us": 387
+        },
+        "fetch_us": {
+          "p95Us": 261800,
+          "p99Us": 261800
+        },
+        "health_us": {
+          "p95Us": 273600,
+          "p99Us": 273600
+        },
+        "issues_us": {
+          "p95Us": 859,
+          "p99Us": 859
+        },
+        "query_us": {
+          "p95Us": 229543,
+          "p99Us": 229543
+        },
+        "read_us": {
+          "p95Us": 230782,
+          "p99Us": 230782
+        },
+        "render_us": {
+          "p95Us": 11900,
+          "p99Us": 11900
+        },
+        "store_us": {
+          "p95Us": 246987,
+          "p99Us": 246987
+        },
+        "total_us": {
+          "p95Us": 250346,
+          "p99Us": 250346
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "durationMs": 367.5,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 6300,
+        "bootstrap_us": 400,
+        "decode_us": 200,
+        "dispatch_us": 346322,
+        "encode_us": 440,
+        "fetch_us": 356400,
+        "health_us": 367500,
+        "issues_us": 681,
+        "query_us": 19550,
+        "read_us": 20728,
+        "render_us": 4200,
+        "store_us": 40109,
+        "total_us": 346586
+      }
+    },
+    {
+      "durationMs": 122.89999997615814,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 7600,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 102604,
+        "encode_us": 411,
+        "fetch_us": 111400,
+        "health_us": 122900,
+        "issues_us": 1042,
+        "query_us": 77174,
+        "read_us": 79101,
+        "render_us": 3600,
+        "store_us": 98115,
+        "total_us": 102917
+      }
+    },
+    {
+      "durationMs": 184.30000001192093,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653744725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 6700,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 162331,
+        "encode_us": 220,
+        "fetch_us": 173600,
+        "health_us": 184300,
+        "issues_us": 476,
+        "query_us": 148257,
+        "read_us": 149014,
+        "render_us": 3600,
+        "store_us": 159683,
+        "total_us": 162574
+      }
+    },
+    {
+      "durationMs": 273.59999999403954,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "7d",
+      "window": {
+        "buckets": 21,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794135347385,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 100,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 250124,
+        "encode_us": 216,
+        "fetch_us": 261800,
+        "health_us": 273600,
+        "issues_us": 859,
+        "query_us": 229543,
+        "read_us": 230782,
+        "render_us": 11400,
+        "store_us": 246987,
+        "total_us": 250346
+      }
+    },
+    {
+      "durationMs": 166.5,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 3500,
+        "bootstrap_us": 300,
+        "decode_us": 100,
+        "dispatch_us": 133389,
+        "encode_us": 606,
+        "fetch_us": 146200,
+        "health_us": 166300,
+        "issues_us": 764,
+        "query_us": 77756,
+        "read_us": 79132,
+        "render_us": 16400,
+        "store_us": 130004,
+        "total_us": 133542
+      }
+    },
+    {
+      "durationMs": 216.30000001192093,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653744725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 5700,
+        "bootstrap_us": 200,
+        "decode_us": 0,
+        "dispatch_us": 190103,
+        "encode_us": 262,
+        "fetch_us": 202400,
+        "health_us": 216300,
+        "issues_us": 759,
+        "query_us": 153292,
+        "read_us": 154571,
+        "render_us": 7900,
+        "store_us": 186683,
+        "total_us": 190403
+      }
+    },
+    {
+      "durationMs": 186.80000001192093,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "7d",
+      "window": {
+        "buckets": 21,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794135349352,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 800,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 161646,
+        "encode_us": 387,
+        "fetch_us": 173700,
+        "health_us": 186800,
+        "issues_us": 752,
+        "query_us": 141897,
+        "read_us": 142823,
+        "render_us": 11900,
+        "store_us": 158615,
+        "total_us": 161900
+      }
+    },
+    {
+      "durationMs": 301.30000001192093,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 4600,
+        "bootstrap_us": 300,
+        "decode_us": 100,
+        "dispatch_us": 276939,
+        "encode_us": 436,
+        "fetch_us": 289400,
+        "health_us": 301300,
+        "issues_us": 563,
+        "query_us": 17098,
+        "read_us": 18079,
+        "render_us": 6900,
+        "store_us": 268781,
+        "total_us": 277183
+      }
+    },
+    {
+      "durationMs": 191,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653744725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 2800,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 171674,
+        "encode_us": 364,
+        "fetch_us": 184700,
+        "health_us": 191000,
+        "issues_us": 628,
+        "query_us": 145267,
+        "read_us": 146405,
+        "render_us": 3200,
+        "store_us": 167829,
+        "total_us": 171946
+      }
+    },
+    {
+      "durationMs": 193,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "7d",
+      "window": {
+        "buckets": 21,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794135350963,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 2300,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 168173,
+        "encode_us": 367,
+        "fetch_us": 179900,
+        "health_us": 193000,
+        "issues_us": 610,
+        "query_us": 149929,
+        "read_us": 150722,
+        "render_us": 10400,
+        "store_us": 164649,
+        "total_us": 168586
+      }
+    },
+    {
+      "durationMs": 46.70000001788139,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 3500,
+        "bootstrap_us": 200,
+        "decode_us": 0,
+        "dispatch_us": 28244,
+        "encode_us": 254,
+        "fetch_us": 37700,
+        "health_us": 46700,
+        "issues_us": 537,
+        "query_us": 12118,
+        "read_us": 12982,
+        "render_us": 5300,
+        "store_us": 26061,
+        "total_us": 28451
+      }
+    },
+    {
+      "durationMs": 131.5,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 3400,
+        "bootstrap_us": 300,
+        "decode_us": 200,
+        "dispatch_us": 107087,
+        "encode_us": 429,
+        "fetch_us": 118400,
+        "health_us": 131500,
+        "issues_us": 816,
+        "query_us": 82680,
+        "read_us": 84133,
+        "render_us": 9200,
+        "store_us": 103642,
+        "total_us": 107423
+      }
+    },
+    {
+      "durationMs": 195.9000000059605,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "7d",
+      "window": {
+        "buckets": 21,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794135352463,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 2400,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 177330,
+        "encode_us": 194,
+        "fetch_us": 189000,
+        "health_us": 195900,
+        "issues_us": 781,
+        "query_us": 156540,
+        "read_us": 157584,
+        "render_us": 4100,
+        "store_us": 173851,
+        "total_us": 177525
+      }
+    },
+    {
+      "durationMs": 66.40000000596046,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 4800,
+        "bootstrap_us": 300,
+        "decode_us": 100,
+        "dispatch_us": 38792,
+        "encode_us": 227,
+        "fetch_us": 54000,
+        "health_us": 66400,
+        "issues_us": 732,
+        "query_us": 22624,
+        "read_us": 23648,
+        "render_us": 7200,
+        "store_us": 36400,
+        "total_us": 38946
+      }
+    },
+    {
+      "durationMs": 133.2000000178814,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 6300,
+        "bootstrap_us": 300,
+        "decode_us": 100,
+        "dispatch_us": 100927,
+        "encode_us": 412,
+        "fetch_us": 112600,
+        "health_us": 133200,
+        "issues_us": 617,
+        "query_us": 77046,
+        "read_us": 78166,
+        "render_us": 13800,
+        "store_us": 97016,
+        "total_us": 101367
+      }
+    },
+    {
+      "durationMs": 200.9000000059605,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653744725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 5500,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 181773,
+        "encode_us": 665,
+        "fetch_us": 192200,
+        "health_us": 200900,
+        "issues_us": 772,
+        "query_us": 154635,
+        "read_us": 156013,
+        "render_us": 2900,
+        "store_us": 177466,
+        "total_us": 182002
+      }
+    },
+    {
+      "durationMs": 190.30000001192093,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736544725,
+        "operations": 20,
+        "toMs": 1794740144725
+      },
+      "work": {
+        "body_us": 6200,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 161411,
+        "encode_us": 232,
+        "fetch_us": 176600,
+        "health_us": 190300,
+        "issues_us": 574,
+        "query_us": 13440,
+        "read_us": 14337,
+        "render_us": 7200,
+        "store_us": 32394,
+        "total_us": 161598
+      }
+    },
+    {
+      "durationMs": 102.40000000596046,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736554733,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718554733,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "work": {
+        "body_us": 3200,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 79121,
+        "encode_us": 227,
+        "fetch_us": 88700,
+        "health_us": 102400,
+        "issues_us": 512,
+        "query_us": 65104,
+        "read_us": 65843,
+        "render_us": 10100,
+        "store_us": 76804,
+        "total_us": 79277
+      }
+    },
+    {
+      "durationMs": 265.09999999403954,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736554733,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653754733,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "work": {
+        "body_us": 3200,
+        "bootstrap_us": 300,
+        "decode_us": 200,
+        "dispatch_us": 238179,
+        "encode_us": 366,
+        "fetch_us": 251900,
+        "health_us": 265100,
+        "issues_us": 528,
+        "query_us": 215237,
+        "read_us": 216114,
+        "render_us": 9400,
+        "store_us": 235250,
+        "total_us": 238391
+      }
+    },
+    {
+      "durationMs": 190.19999998807907,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736554733,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "target": "7d",
+      "window": {
+        "buckets": 21,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794135356548,
+        "operations": 20,
+        "toMs": 1794740154733
+      },
+      "work": {
+        "body_us": 2100,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 173370,
+        "encode_us": 233,
+        "fetch_us": 184800,
+        "health_us": 190200,
+        "issues_us": 509,
+        "query_us": 153251,
+        "read_us": 153871,
+        "render_us": 3000,
+        "store_us": 171284,
+        "total_us": 173567
+      }
+    }
+  ]
+}

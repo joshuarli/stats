@@ -5,48 +5,44 @@
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
 the frozen production corpus. Last deployed revision: `1ea3e6af2dc3`.
 Production application: `stats:1ea3e6af2dc3`, Orange node version 20.
-Earlier cancellation, cache and batching fixes are prerequisites, not proof
-that this campaign's latency goals pass. P1 passes on the current live corpus.
-P5 incident fixtures pass. Tenfold scale and the other full acceptance goals
-remain open.
+P1 passes on the current live corpus: 200 cached selections per range, p95 below
+35 ms and no summary fetches. P2's awake, empty-client-cache portion also passes:
+200 uncached selections per range yield click-to-complete p95 of 146 ms (1h),
+300 ms (6h), 364 ms (24h) and 375 ms (7d). All counts, windows and charts match
+their real responses; all requests settle and all four Mac/Lisa timing gates
+pass. Actor-sleep and initial-document navigation acceptance remain open.
 
-P4 measurement boundaries now have browser and native regressions. A frozen
-20,395-event corpus and 1,000 cached interactions per variant establish no
-measurable timing overhead. Bounded browser delivery and trace correlation are
-live, with native persistence coverage and 117 passing production health checks.
-Live P1 repeats retain 200 samples per range, p95 below 35 ms and no measured
-summary fetches. Producer drains now stop at an accepted boundary. The burst
-accounts for all 1,005 observations: 908 stored and 97 reported browser drops.
-Two hundred paced observations become queryable at p95 below 1.45 seconds,
-with no drops or errors. Instrumentation CPU and latency overhead remain open.
+P4 has complete paired timing evidence for all 17 delivered journeys over one
+second in the captured release cohort. Stored browser and HTTP trace/span IDs
+match, and shared server timing fields agree exactly. This is observed cohort
+coverage, not a lossless-delivery or population guarantee. P5's five incident
+fixtures, plus missing and historical data, pass on desktop and mobile. The
+overview guidance is live.
 
-Native profiling identifies canonical-table lookups hidden behind the compact
-expression index. A genuinely covering index removes them. Five interleaved Lisa
-rounds reduce first-1h aggregate SQL from median 2,465 ms to 123 ms. Complete
-response equality, old-data backfill, export compatibility, duplicate identity,
-native restart and write-cost checks pass. The following 24h read is slower
-after the variants warm different pages. The index is live; all 117 shared-stack
-health checks pass. One wide-window navigation takes 1,334 ms, including
-1,075 ms of aggregate SQL. Its useful-health phase exceeds one second. This is
-a diagnostic sample, not percentile acceptance. Next: collect per-range awake
-uncached distributions and measure retained browser heap before choosing the
-next optimization.
-Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
-The isolated lifecycle fixture proves constructor replacement after idle,
-autonomous overdue alarms after runtime restart, and idempotent interrupted
-request replay. Local readiness stayed below 15 seconds in three starts. This
-is platform-fixture proof; production recovery acceptance remains open.
-The overview guidance is live. Five incident fixtures, plus missing and historical
-data, pass working-destination tests on desktop and mobile. A separate Pi lane
-owns only the production uncached-range harness and evidence; the parent owns
-the independent browser-retention check and integration. S3 work remains deferred.
+P7 freshness passes for 200 paced observations: p95 below 1.45 seconds and no
+drops or errors. A separate burst accounts for 908 stored journeys and 97
+reported browser transport drops, with zero producer drops. Instrumentation CPU
+and latency overhead remain open. P8's browser check retains 0.50 MiB after 200
+navigation cycles with delivery enabled; DOM nodes and listeners remain flat.
+The required 24-hour native soak has not started.
 
-P8's browser check passes: after 20 warmup cycles, 200 navigation cycles retain
-0.50 MiB with telemetry delivery enabled, below the 5 MiB limit. DOM nodes and
-listeners remain unchanged. This is frozen response replay with deployed assets;
-the 24-hour native soak remains open. The tenfold corpus is prepared privately:
-203,950 events with unique identities and unchanged timestamps, event fields
-and per-event JSON byte lengths. No tenfold latency acceptance is claimed yet.
+The native tenfold fixture contains 203,950 independent event identities. All
+complete summaries match an independent reference; duplicate acknowledgment,
+conflict rejection and restart equality pass. Bulk loading encounters native
+write backpressure and is resumed from integrity-checked progress. Recovery
+retains all 189,000 previously acknowledged rows. This is fixture preparation,
+not sustained-ingest acceptance. With the loader removed, repeated 24h reads
+take 918–975 ms across five samples, mostly in SQL; the first takes 12.1 seconds.
+Both Lisa timing gates pass. P6 remains open.
+
+Next: compare a compact, exact derived read table against the payload-containing
+index in isolated native trials. Canonical events and summary APIs stay intact.
+Snapshot-policy support is committed as `59540026ca3`, with unit, native restore,
+observation, type and lint checks passing. It must be the compatible rollback
+reader before any production table rollout. No derived table is deployed yet.
+The isolated lifecycle fixture verifies idle constructor replacement, overdue
+alarms and interrupted replay; broader P9 recovery remains open. S3 stays
+deferred. Integration: `.work/wt/runtime-hardening`, `feat/runtime-hardening`.
 
 ## Charter
 
@@ -158,6 +154,9 @@ stable candidate. It is required evidence, not a waived gate.
 - [Prior range and batching measurements](../bench/results/2026-11-14-range-refresh/README.md)
 - [Browser journey measurements](../bench/results/2026-11-14-project-journey/README.md)
 - [Live cached range acceptance](../bench/results/2026-11-15-live-cached-ranges/README.md)
+- [Live awake uncached range acceptance](../bench/results/2026-11-15-live-reads/README.md)
+- [Slow journey attribution coverage](../bench/results/2026-11-15-journey-coverage/README.md)
+- [Tenfold native baseline](../bench/results/2026-11-15-tenfold-baseline/README.md)
 - [Producer delivery and freshness](../bench/results/2026-11-15-producer-boundaries/README.md)
 - [Covering-index evidence and costs](../bench/results/2026-11-15-covering-index/README.md)
 - [Retained browser heap](../bench/results/2026-11-15-browser-retention/README.md)

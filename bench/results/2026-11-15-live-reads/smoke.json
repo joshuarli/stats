@@ -1,0 +1,405 @@
+{
+  "valid": false,
+  "adequateSamples": false,
+  "countPerRange": 5,
+  "source": "production awake project navigation followed by uncached range selection",
+  "gates": [
+    {
+      "host": "mac",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "mac",
+      "post": true,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": true,
+      "exitCode": 0
+    }
+  ],
+  "summary": {
+    "1h": {
+      "attempted": 1,
+      "successful": 1,
+      "failed": 0,
+      "p95Ms": 422.40000000596046,
+      "p99Ms": 422.40000000596046,
+      "phases": {
+        "body_us": {
+          "p95Us": 3800,
+          "p99Us": 3800
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 391683,
+          "p99Us": 391683
+        },
+        "encode_us": {
+          "p95Us": 343,
+          "p99Us": 343
+        },
+        "fetch_us": {
+          "p95Us": 404100,
+          "p99Us": 404100
+        },
+        "health_us": {
+          "p95Us": 422400,
+          "p99Us": 422400
+        },
+        "issues_us": {
+          "p95Us": 698,
+          "p99Us": 698
+        },
+        "query_us": {
+          "p95Us": 25698,
+          "p99Us": 25698
+        },
+        "read_us": {
+          "p95Us": 27857,
+          "p99Us": 27857
+        },
+        "render_us": {
+          "p95Us": 14000,
+          "p99Us": 14000
+        },
+        "store_us": {
+          "p95Us": 50210,
+          "p99Us": 50210
+        },
+        "total_us": {
+          "p95Us": 392115,
+          "p99Us": 392115
+        }
+      }
+    },
+    "6h": {
+      "attempted": 1,
+      "successful": 1,
+      "failed": 0,
+      "p95Ms": 145.69999998807907,
+      "p99Ms": 145.69999998807907,
+      "phases": {
+        "body_us": {
+          "p95Us": 6600,
+          "p99Us": 6600
+        },
+        "bootstrap_us": {
+          "p95Us": 200,
+          "p99Us": 200
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 123959,
+          "p99Us": 123959
+        },
+        "encode_us": {
+          "p95Us": 232,
+          "p99Us": 232
+        },
+        "fetch_us": {
+          "p95Us": 135400,
+          "p99Us": 135400
+        },
+        "health_us": {
+          "p95Us": 145700,
+          "p99Us": 145700
+        },
+        "issues_us": {
+          "p95Us": 683,
+          "p99Us": 683
+        },
+        "query_us": {
+          "p95Us": 106191,
+          "p99Us": 106191
+        },
+        "read_us": {
+          "p95Us": 107447,
+          "p99Us": 107447
+        },
+        "render_us": {
+          "p95Us": 3400,
+          "p99Us": 3400
+        },
+        "store_us": {
+          "p95Us": 120475,
+          "p99Us": 120475
+        },
+        "total_us": {
+          "p95Us": 124381,
+          "p99Us": 124381
+        }
+      }
+    },
+    "24h": {
+      "attempted": 1,
+      "successful": 1,
+      "failed": 0,
+      "p95Ms": 186,
+      "p99Ms": 186,
+      "phases": {
+        "body_us": {
+          "p95Us": 3200,
+          "p99Us": 3200
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 0,
+          "p99Us": 0
+        },
+        "dispatch_us": {
+          "p95Us": 164897,
+          "p99Us": 164897
+        },
+        "encode_us": {
+          "p95Us": 426,
+          "p99Us": 426
+        },
+        "fetch_us": {
+          "p95Us": 176400,
+          "p99Us": 176400
+        },
+        "health_us": {
+          "p95Us": 186000,
+          "p99Us": 186000
+        },
+        "issues_us": {
+          "p95Us": 603,
+          "p99Us": 603
+        },
+        "query_us": {
+          "p95Us": 142966,
+          "p99Us": 142966
+        },
+        "read_us": {
+          "p95Us": 144181,
+          "p99Us": 144181
+        },
+        "render_us": {
+          "p95Us": 6000,
+          "p99Us": 6000
+        },
+        "store_us": {
+          "p95Us": 161619,
+          "p99Us": 161619
+        },
+        "total_us": {
+          "p95Us": 165125,
+          "p99Us": 165125
+        }
+      }
+    },
+    "7d": {
+      "attempted": 1,
+      "successful": 0,
+      "failed": 1,
+      "p95Ms": null,
+      "p99Ms": null,
+      "phases": {}
+    }
+  },
+  "records": [
+    {
+      "durationMs": 422.40000000596046,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "6h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "target": "1h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "work": {
+        "body_us": 3800,
+        "bootstrap_us": 300,
+        "decode_us": 100,
+        "dispatch_us": 391683,
+        "encode_us": 343,
+        "fetch_us": 404100,
+        "health_us": 422400,
+        "issues_us": 698,
+        "query_us": 25698,
+        "read_us": 27857,
+        "render_us": 14000,
+        "store_us": 50210,
+        "total_us": 392115
+      }
+    },
+    {
+      "durationMs": 145.69999998807907,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "6h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "target": "6h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794718522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "work": {
+        "body_us": 6600,
+        "bootstrap_us": 200,
+        "decode_us": 100,
+        "dispatch_us": 123959,
+        "encode_us": 232,
+        "fetch_us": 135400,
+        "health_us": 145700,
+        "issues_us": 683,
+        "query_us": 106191,
+        "read_us": 107447,
+        "render_us": 3400,
+        "store_us": 120475,
+        "total_us": 124381
+      }
+    },
+    {
+      "durationMs": 186,
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "24h",
+          "source": "range"
+        }
+      ],
+      "ok": true,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "target": "24h",
+      "window": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794653722847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "work": {
+        "body_us": 3200,
+        "bootstrap_us": 300,
+        "decode_us": 0,
+        "dispatch_us": 164897,
+        "encode_us": 426,
+        "fetch_us": 176400,
+        "health_us": 186000,
+        "issues_us": 603,
+        "query_us": 142966,
+        "read_us": 144181,
+        "render_us": 6000,
+        "store_us": 161619,
+        "total_us": 165125
+      }
+    },
+    {
+      "error": "Error: response and current charts or counts differ",
+      "events": [
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "1h",
+          "source": "navigation"
+        },
+        {
+          "cache": false,
+          "outcome": "ok",
+          "range": "7d",
+          "source": "range"
+        }
+      ],
+      "ok": false,
+      "seed": "1h",
+      "seedWindow": {
+        "buckets": 120,
+        "charts": 3,
+        "countsMatch": true,
+        "fromMs": 1794736522847,
+        "operations": 20,
+        "toMs": 1794740122847
+      },
+      "target": "7d"
+    }
+  ],
+  "error": "Error: sample validation failed"
+}

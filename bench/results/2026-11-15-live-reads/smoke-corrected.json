@@ -1,0 +1,2615 @@
+{
+  "valid": true,
+  "adequateSamples": false,
+  "countPerRange": 5,
+  "image": "stats:1ea3e6af2dc3",
+  "serverNode": "20",
+  "viewport": {
+    "devicePixelRatio": 1,
+    "height": 633,
+    "width": 1280
+  },
+  "source": "production awake project navigation followed by uncached range selection",
+  "gates": [
+    {
+      "host": "mac",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": false,
+      "exitCode": 0
+    },
+    {
+      "host": "mac",
+      "post": true,
+      "exitCode": 0
+    },
+    {
+      "host": "lisa",
+      "post": true,
+      "exitCode": 0
+    }
+  ],
+  "summary": {
+    "1h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "cancellations": 0,
+      "errors": 0,
+      "clickToCompleteMs": {
+        "p95": 272.39999997615814,
+        "p99": 272.39999997615814
+      },
+      "journeyMs": {
+        "p95": 272.2999999821186,
+        "p99": 272.2999999821186
+      },
+      "phases": {
+        "body_us": {
+          "p95Us": 6600,
+          "p99Us": 6600
+        },
+        "bootstrap_us": {
+          "p95Us": 500,
+          "p99Us": 500
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 248331,
+          "p99Us": 248331
+        },
+        "encode_us": {
+          "p95Us": 370,
+          "p99Us": 370
+        },
+        "fetch_us": {
+          "p95Us": 261200,
+          "p99Us": 261200
+        },
+        "health_us": {
+          "p95Us": 272300,
+          "p99Us": 272300
+        },
+        "issues_us": {
+          "p95Us": 730,
+          "p99Us": 730
+        },
+        "query_us": {
+          "p95Us": 65937,
+          "p99Us": 65937
+        },
+        "read_us": {
+          "p95Us": 66631,
+          "p99Us": 66631
+        },
+        "render_us": {
+          "p95Us": 11000,
+          "p99Us": 11000
+        },
+        "store_us": {
+          "p95Us": 244336,
+          "p99Us": 244336
+        },
+        "total_us": {
+          "p95Us": 248647,
+          "p99Us": 248647
+        }
+      }
+    },
+    "6h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "cancellations": 0,
+      "errors": 0,
+      "clickToCompleteMs": {
+        "p95": 307,
+        "p99": 307
+      },
+      "journeyMs": {
+        "p95": 307,
+        "p99": 307
+      },
+      "phases": {
+        "body_us": {
+          "p95Us": 6600,
+          "p99Us": 6600
+        },
+        "bootstrap_us": {
+          "p95Us": 400,
+          "p99Us": 400
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 282271,
+          "p99Us": 282271
+        },
+        "encode_us": {
+          "p95Us": 451,
+          "p99Us": 451
+        },
+        "fetch_us": {
+          "p95Us": 294300,
+          "p99Us": 294300
+        },
+        "health_us": {
+          "p95Us": 307000,
+          "p99Us": 307000
+        },
+        "issues_us": {
+          "p95Us": 946,
+          "p99Us": 946
+        },
+        "query_us": {
+          "p95Us": 119479,
+          "p99Us": 119479
+        },
+        "read_us": {
+          "p95Us": 120963,
+          "p99Us": 120963
+        },
+        "render_us": {
+          "p95Us": 10500,
+          "p99Us": 10500
+        },
+        "store_us": {
+          "p95Us": 137828,
+          "p99Us": 137828
+        },
+        "total_us": {
+          "p95Us": 282516,
+          "p99Us": 282516
+        }
+      }
+    },
+    "24h": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "cancellations": 0,
+      "errors": 0,
+      "clickToCompleteMs": {
+        "p95": 1277.800000011921,
+        "p99": 1277.800000011921
+      },
+      "journeyMs": {
+        "p95": 1277.699999988079,
+        "p99": 1277.699999988079
+      },
+      "phases": {
+        "body_us": {
+          "p95Us": 6900,
+          "p99Us": 6900
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 200,
+          "p99Us": 200
+        },
+        "dispatch_us": {
+          "p95Us": 1242531,
+          "p99Us": 1242531
+        },
+        "encode_us": {
+          "p95Us": 449,
+          "p99Us": 449
+        },
+        "fetch_us": {
+          "p95Us": 1256200,
+          "p99Us": 1256200
+        },
+        "health_us": {
+          "p95Us": 1277700,
+          "p99Us": 1277700
+        },
+        "issues_us": {
+          "p95Us": 783,
+          "p99Us": 783
+        },
+        "query_us": {
+          "p95Us": 1066079,
+          "p99Us": 1066079
+        },
+        "read_us": {
+          "p95Us": 1067058,
+          "p99Us": 1067058
+        },
+        "render_us": {
+          "p95Us": 15800,
+          "p99Us": 15800
+        },
+        "store_us": {
+          "p95Us": 1238767,
+          "p99Us": 1238767
+        },
+        "total_us": {
+          "p95Us": 1242748,
+          "p99Us": 1242748
+        }
+      }
+    },
+    "7d": {
+      "attempted": 5,
+      "successful": 5,
+      "failed": 0,
+      "cancellations": 0,
+      "errors": 0,
+      "clickToCompleteMs": {
+        "p95": 466.5,
+        "p99": 466.5
+      },
+      "journeyMs": {
+        "p95": 466.40000000596046,
+        "p99": 466.40000000596046
+      },
+      "phases": {
+        "body_us": {
+          "p95Us": 4100,
+          "p99Us": 4100
+        },
+        "bootstrap_us": {
+          "p95Us": 300,
+          "p99Us": 300
+        },
+        "decode_us": {
+          "p95Us": 100,
+          "p99Us": 100
+        },
+        "dispatch_us": {
+          "p95Us": 444772,
+          "p99Us": 444772
+        },
+        "encode_us": {
+          "p95Us": 242,
+          "p99Us": 242
+        },
+        "fetch_us": {
+          "p95Us": 454800,
+          "p99Us": 454800
+        },
+        "health_us": {
+          "p95Us": 466400,
+          "p99Us": 466400
+        },
+        "issues_us": {
+          "p95Us": 844,
+          "p99Us": 844
+        },
+        "query_us": {
+          "p95Us": 429117,
+          "p99Us": 429117
+        },
+        "read_us": {
+          "p95Us": 429711,
+          "p99Us": 429711
+        },
+        "render_us": {
+          "p95Us": 13600,
+          "p99Us": 13600
+        },
+        "store_us": {
+          "p95Us": 442111,
+          "p99Us": 442111
+        },
+        "total_us": {
+          "p95Us": 444975,
+          "p99Us": 444975
+        }
+      }
+    }
+  },
+  "records": [
+    {
+      "ok": true,
+      "seed": "6h",
+      "seedResult": {
+        "clickToCompleteMs": 2266.9000000059605,
+        "events": [
+          {
+            "atMs": 2266.9000000059605,
+            "cache": false,
+            "durationMs": 2266.800000011921,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 2266.800000011921,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 58.19999998807907,
+            "bodyAtMs": 2237.199999988079,
+            "requested": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 2231.2999999821186,
+            "returned": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 4400,
+          "bootstrap_us": 58100,
+          "decode_us": 300,
+          "dispatch_us": 2159890,
+          "encode_us": 244,
+          "fetch_us": 2173200,
+          "health_us": 2244700,
+          "issues_us": 23112,
+          "query_us": 1635741,
+          "read_us": 1659445,
+          "render_us": 30600,
+          "store_us": 2156412,
+          "total_us": 2160463
+        }
+      },
+      "target": "1h",
+      "targetResult": {
+        "clickToCompleteMs": 92.2000000178814,
+        "events": [
+          {
+            "atMs": 92.2000000178814,
+            "cache": false,
+            "durationMs": 92.2000000178814,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 92.2000000178814,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 85.80000001192093,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 79.80000001192093,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 1200,
+          "bootstrap_us": 300,
+          "decode_us": 100,
+          "dispatch_us": 63716,
+          "encode_us": 325,
+          "fetch_us": 79500,
+          "health_us": 92200,
+          "issues_us": 730,
+          "query_us": 42189,
+          "read_us": 43658,
+          "render_us": 11000,
+          "store_us": 60713,
+          "total_us": 63913
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 315.7999999821186,
+        "events": [
+          {
+            "atMs": 315.7999999821186,
+            "cache": false,
+            "durationMs": 315.7999999821186,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 315.7999999821186,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 33.69999998807907,
+            "bodyAtMs": 303.5,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 293.2999999821186,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6200,
+          "bootstrap_us": 33700,
+          "decode_us": 100,
+          "dispatch_us": 243396,
+          "encode_us": 439,
+          "fetch_us": 259600,
+          "health_us": 315800,
+          "issues_us": 728,
+          "query_us": 77300,
+          "read_us": 78613,
+          "render_us": 16200,
+          "store_us": 237691,
+          "total_us": 243629
+        }
+      },
+      "target": "6h",
+      "targetResult": {
+        "clickToCompleteMs": 156.2000000178814,
+        "events": [
+          {
+            "atMs": 156.2000000178814,
+            "cache": false,
+            "durationMs": 156.2000000178814,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 156.2000000178814,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 148.90000000596046,
+            "requested": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 139.40000000596046,
+            "returned": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6200,
+          "bootstrap_us": 300,
+          "decode_us": 100,
+          "dispatch_us": 127890,
+          "encode_us": 405,
+          "fetch_us": 139100,
+          "health_us": 156200,
+          "issues_us": 672,
+          "query_us": 103631,
+          "read_us": 105058,
+          "render_us": 10500,
+          "store_us": 124303,
+          "total_us": 128090
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 148.59999999403954,
+        "events": [
+          {
+            "atMs": 148.59999999403954,
+            "cache": false,
+            "durationMs": 148.5,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 148.5,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 33.599999994039536,
+            "bodyAtMs": 135.59999999403954,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 128.89999997615814,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 3600,
+          "bootstrap_us": 33500,
+          "decode_us": 0,
+          "dispatch_us": 80712,
+          "encode_us": 592,
+          "fetch_us": 95400,
+          "health_us": 148500,
+          "issues_us": 1003,
+          "query_us": 53090,
+          "read_us": 54982,
+          "render_us": 15900,
+          "store_us": 76606,
+          "total_us": 80907
+        }
+      },
+      "target": "24h",
+      "targetResult": {
+        "clickToCompleteMs": 1277.800000011921,
+        "events": [
+          {
+            "atMs": 1277.800000011921,
+            "cache": false,
+            "durationMs": 1277.699999988079,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 1277.699999988079,
+        "name": "24h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.19999998807907104,
+            "bodyAtMs": 1266.199999988079,
+            "requested": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 1256.300000011921,
+            "returned": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794654312109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6300,
+          "bootstrap_us": 200,
+          "decode_us": 0,
+          "dispatch_us": 1242531,
+          "encode_us": 247,
+          "fetch_us": 1256200,
+          "health_us": 1277700,
+          "issues_us": 604,
+          "query_us": 1066079,
+          "read_us": 1067058,
+          "render_us": 14900,
+          "store_us": 1238767,
+          "total_us": 1242748
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 120.30000001192091,
+        "events": [
+          {
+            "atMs": 120.30000001192091,
+            "cache": false,
+            "durationMs": 120.30000001192091,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 120.30000001192091,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 31.400000005960464,
+            "bodyAtMs": 113.7000000178814,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 105,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 5500,
+          "bootstrap_us": 31400,
+          "decode_us": 100,
+          "dispatch_us": 62386,
+          "encode_us": 393,
+          "fetch_us": 73700,
+          "health_us": 120300,
+          "issues_us": 726,
+          "query_us": 38399,
+          "read_us": 40104,
+          "render_us": 9600,
+          "store_us": 59509,
+          "total_us": 62608
+        }
+      },
+      "target": "7d",
+      "targetResult": {
+        "clickToCompleteMs": 466.5,
+        "events": [
+          {
+            "atMs": 466.5,
+            "cache": false,
+            "durationMs": 466.40000000596046,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 466.40000000596046,
+        "name": "7d",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.3999999761581421,
+            "bodyAtMs": 460.699999988079,
+            "requested": {
+              "fromMs": 1794135912109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 455.09999999403954,
+            "returned": {
+              "fromMs": 1794135918068,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 21,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794135918068,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 2300,
+          "bootstrap_us": 300,
+          "decode_us": 0,
+          "dispatch_us": 444772,
+          "encode_us": 242,
+          "fetch_us": 454800,
+          "health_us": 466400,
+          "issues_us": 503,
+          "query_us": 429117,
+          "read_us": 429711,
+          "render_us": 9000,
+          "store_us": 442111,
+          "total_us": 444975
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 138.69999998807907,
+        "events": [
+          {
+            "atMs": 138.69999998807907,
+            "cache": false,
+            "durationMs": 138.69999998807907,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 138.69999998807907,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 37.39999997615814,
+            "bodyAtMs": 139.89999997615814,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 129.69999998807907,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 5900,
+          "bootstrap_us": 37400,
+          "decode_us": 100,
+          "dispatch_us": 80678,
+          "encode_us": 271,
+          "fetch_us": 92300,
+          "health_us": 138700,
+          "issues_us": 547,
+          "query_us": 61958,
+          "read_us": 62909,
+          "render_us": 3000,
+          "store_us": 77308,
+          "total_us": 80883
+        }
+      },
+      "target": "6h",
+      "targetResult": {
+        "clickToCompleteMs": 166.7000000178814,
+        "events": [
+          {
+            "atMs": 166.7000000178814,
+            "cache": false,
+            "durationMs": 166.7000000178814,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 166.7000000178814,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 161.60000002384186,
+            "requested": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 151.30000001192093,
+            "returned": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6600,
+          "bootstrap_us": 400,
+          "decode_us": 100,
+          "dispatch_us": 141309,
+          "encode_us": 451,
+          "fetch_us": 150900,
+          "health_us": 166700,
+          "issues_us": 946,
+          "query_us": 119479,
+          "read_us": 120963,
+          "render_us": 8600,
+          "store_us": 137828,
+          "total_us": 141560
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 285,
+        "events": [
+          {
+            "atMs": 285,
+            "cache": false,
+            "durationMs": 285,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 285,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 36.29999998211861,
+            "bodyAtMs": 280.5,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 271.40000000596046,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6200,
+          "bootstrap_us": 36300,
+          "decode_us": 0,
+          "dispatch_us": 222923,
+          "encode_us": 362,
+          "fetch_us": 235200,
+          "health_us": 285000,
+          "issues_us": 616,
+          "query_us": 52528,
+          "read_us": 55121,
+          "render_us": 7200,
+          "store_us": 210656,
+          "total_us": 223116
+        }
+      },
+      "target": "24h",
+      "targetResult": {
+        "clickToCompleteMs": 226.9000000059605,
+        "events": [
+          {
+            "atMs": 226.9000000059605,
+            "cache": false,
+            "durationMs": 226.9000000059605,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 226.9000000059605,
+        "name": "24h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.30000001192092896,
+            "bodyAtMs": 217.5,
+            "requested": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 205.69999998807907,
+            "returned": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794654312109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 5900,
+          "bootstrap_us": 300,
+          "decode_us": 200,
+          "dispatch_us": 193623,
+          "encode_us": 375,
+          "fetch_us": 205600,
+          "health_us": 226900,
+          "issues_us": 650,
+          "query_us": 171780,
+          "read_us": 172779,
+          "render_us": 14900,
+          "store_us": 190273,
+          "total_us": 193803
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 140.59999999403954,
+        "events": [
+          {
+            "atMs": 140.59999999403954,
+            "cache": false,
+            "durationMs": 140.5,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 140.5,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 43.80000001192093,
+            "bodyAtMs": 140.59999999403954,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 130.7000000178814,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 5000,
+          "bootstrap_us": 43700,
+          "decode_us": 100,
+          "dispatch_us": 74694,
+          "encode_us": 605,
+          "fetch_us": 86900,
+          "health_us": 140500,
+          "issues_us": 665,
+          "query_us": 47378,
+          "read_us": 48607,
+          "render_us": 4700,
+          "store_us": 70439,
+          "total_us": 74922
+        }
+      },
+      "target": "7d",
+      "targetResult": {
+        "clickToCompleteMs": 333.19999998807907,
+        "events": [
+          {
+            "atMs": 333.19999998807907,
+            "cache": false,
+            "durationMs": 333.19999998807907,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 333.19999998807907,
+        "name": "7d",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.30000001192092896,
+            "bodyAtMs": 331.90000000596046,
+            "requested": {
+              "fromMs": 1794135912109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 322.40000000596046,
+            "returned": {
+              "fromMs": 1794135920653,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 21,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794135920653,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 2000,
+          "bootstrap_us": 200,
+          "decode_us": 0,
+          "dispatch_us": 310225,
+          "encode_us": 234,
+          "fetch_us": 322200,
+          "health_us": 333200,
+          "issues_us": 483,
+          "query_us": 211004,
+          "read_us": 211627,
+          "render_us": 8700,
+          "store_us": 222814,
+          "total_us": 310560
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "6h",
+      "seedResult": {
+        "clickToCompleteMs": 210.5,
+        "events": [
+          {
+            "atMs": 210.5,
+            "cache": false,
+            "durationMs": 210.30000001192093,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 210.30000001192093,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 35.30000001192093,
+            "bodyAtMs": 199.5999999940395,
+            "requested": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 190,
+            "returned": {
+              "fromMs": 1794719112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 3700,
+          "bootstrap_us": 35200,
+          "decode_us": 100,
+          "dispatch_us": 138744,
+          "encode_us": 457,
+          "fetch_us": 154700,
+          "health_us": 210300,
+          "issues_us": 616,
+          "query_us": 112737,
+          "read_us": 113923,
+          "render_us": 16400,
+          "store_us": 134741,
+          "total_us": 139084
+        }
+      },
+      "target": "1h",
+      "targetResult": {
+        "clickToCompleteMs": 104.5,
+        "events": [
+          {
+            "atMs": 104.5,
+            "cache": false,
+            "durationMs": 104.39999997615814,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 104.39999997615814,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.7000000178813934,
+            "bodyAtMs": 104.40000000596046,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 93.30000001192091,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 5200,
+          "bootstrap_us": 500,
+          "decode_us": 0,
+          "dispatch_us": 80089,
+          "encode_us": 263,
+          "fetch_us": 92800,
+          "health_us": 104400,
+          "issues_us": 510,
+          "query_us": 60697,
+          "read_us": 61575,
+          "render_us": 5800,
+          "store_us": 77109,
+          "total_us": 80400
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 129.10000002384186,
+        "events": [
+          {
+            "atMs": 129.10000002384186,
+            "cache": false,
+            "durationMs": 128.89999997615814,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 128.89999997615814,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 37,
+            "bodyAtMs": 115.80000001192091,
+            "requested": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 106.5,
+            "returned": {
+              "fromMs": 1794737112109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737112109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6400,
+          "bootstrap_us": 36900,
+          "decode_us": 0,
+          "dispatch_us": 54971,
+          "encode_us": 213,
+          "fetch_us": 69500,
+          "health_us": 128900,
+          "issues_us": 479,
+          "query_us": 37516,
+          "read_us": 38380,
+          "render_us": 16000,
+          "store_us": 51780,
+          "total_us": 55335
+        }
+      },
+      "target": "24h",
+      "targetResult": {
+        "clickToCompleteMs": 257.30000001192093,
+        "events": [
+          {
+            "atMs": 257.30000001192093,
+            "cache": false,
+            "durationMs": 257.19999998807907,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 257.19999998807907,
+        "name": "24h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 248,
+            "requested": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "responseAtMs": 238.4000000059605,
+            "returned": {
+              "fromMs": 1794654312109,
+              "toMs": 1794740712109
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794654312109,
+          "operations": 20,
+          "toMs": 1794740712109
+        },
+        "work": {
+          "body_us": 6300,
+          "bootstrap_us": 300,
+          "decode_us": 100,
+          "dispatch_us": 226531,
+          "encode_us": 309,
+          "fetch_us": 238000,
+          "health_us": 257200,
+          "issues_us": 632,
+          "query_us": 205489,
+          "read_us": 206736,
+          "render_us": 12500,
+          "store_us": 223124,
+          "total_us": 226741
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 128.09999999403954,
+        "events": [
+          {
+            "atMs": 128.09999999403954,
+            "cache": false,
+            "durationMs": 128,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 128,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 33.099999994039536,
+            "bodyAtMs": 128,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 120.69999998807909,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 4300,
+          "bootstrap_us": 33000,
+          "decode_us": 0,
+          "dispatch_us": 74592,
+          "encode_us": 308,
+          "fetch_us": 87600,
+          "health_us": 128000,
+          "issues_us": 841,
+          "query_us": 39392,
+          "read_us": 41075,
+          "render_us": 3100,
+          "store_us": 71688,
+          "total_us": 74744
+        }
+      },
+      "target": "7d",
+      "targetResult": {
+        "clickToCompleteMs": 254.5999999940395,
+        "events": [
+          {
+            "atMs": 254.5999999940395,
+            "cache": false,
+            "durationMs": 254.5,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 254.5,
+        "name": "7d",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.30000001192092896,
+            "bodyAtMs": 244.0999999940395,
+            "requested": {
+              "fromMs": 1794135922115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 236.7000000178814,
+            "returned": {
+              "fromMs": 1794135922664,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 21,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794135922664,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 4100,
+          "bootstrap_us": 200,
+          "decode_us": 100,
+          "dispatch_us": 225146,
+          "encode_us": 215,
+          "fetch_us": 236400,
+          "health_us": 254500,
+          "issues_us": 844,
+          "query_us": 196893,
+          "read_us": 198057,
+          "render_us": 13600,
+          "store_us": 222553,
+          "total_us": 225369
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "6h",
+      "seedResult": {
+        "clickToCompleteMs": 157.7000000178814,
+        "events": [
+          {
+            "atMs": 157.7000000178814,
+            "cache": false,
+            "durationMs": 157.7000000178814,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 157.7000000178814,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 32,
+            "bodyAtMs": 154.30000001192093,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 146.09999999403954,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 5000,
+          "bootstrap_us": 32000,
+          "decode_us": 100,
+          "dispatch_us": 100580,
+          "encode_us": 253,
+          "fetch_us": 114100,
+          "health_us": 157700,
+          "issues_us": 504,
+          "query_us": 82184,
+          "read_us": 82918,
+          "render_us": 6500,
+          "store_us": 97453,
+          "total_us": 100816
+        }
+      },
+      "target": "1h",
+      "targetResult": {
+        "clickToCompleteMs": 100.7999999821186,
+        "events": [
+          {
+            "atMs": 100.7999999821186,
+            "cache": false,
+            "durationMs": 100.7999999821186,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 100.7999999821186,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.19999998807907104,
+            "bodyAtMs": 95.90000000596046,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 87.7999999821186,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 5200,
+          "bootstrap_us": 200,
+          "decode_us": 0,
+          "dispatch_us": 77354,
+          "encode_us": 300,
+          "fetch_us": 87600,
+          "health_us": 100700,
+          "issues_us": 652,
+          "query_us": 53102,
+          "read_us": 54376,
+          "render_us": 7600,
+          "store_us": 74486,
+          "total_us": 77662
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 165,
+        "events": [
+          {
+            "atMs": 165,
+            "cache": false,
+            "durationMs": 165,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 165,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 37,
+            "bodyAtMs": 163.59999999403954,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 154.39999997615814,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6200,
+          "bootstrap_us": 36900,
+          "decode_us": 0,
+          "dispatch_us": 104063,
+          "encode_us": 375,
+          "fetch_us": 117600,
+          "health_us": 165000,
+          "issues_us": 755,
+          "query_us": 78478,
+          "read_us": 80113,
+          "render_us": 4300,
+          "store_us": 100517,
+          "total_us": 104350
+        }
+      },
+      "target": "6h",
+      "targetResult": {
+        "clickToCompleteMs": 307,
+        "events": [
+          {
+            "atMs": 307,
+            "cache": false,
+            "durationMs": 307,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 307,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.29999998211860657,
+            "bodyAtMs": 302.19999998807907,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 294.59999999403954,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 4600,
+          "bootstrap_us": 300,
+          "decode_us": 0,
+          "dispatch_us": 282271,
+          "encode_us": 288,
+          "fetch_us": 294300,
+          "health_us": 307000,
+          "issues_us": 781,
+          "query_us": 95165,
+          "read_us": 96889,
+          "render_us": 7800,
+          "store_us": 117416,
+          "total_us": 282516
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 135.5,
+        "events": [
+          {
+            "atMs": 135.5,
+            "cache": false,
+            "durationMs": 135.5,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 135.5,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 34.39999997615814,
+            "bodyAtMs": 135.5,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 131.5,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 1100,
+          "bootstrap_us": 34400,
+          "decode_us": 100,
+          "dispatch_us": 76248,
+          "encode_us": 212,
+          "fetch_us": 97200,
+          "health_us": 135500,
+          "issues_us": 616,
+          "query_us": 54217,
+          "read_us": 55233,
+          "render_us": 2700,
+          "store_us": 73263,
+          "total_us": 76437
+        }
+      },
+      "target": "7d",
+      "targetResult": {
+        "clickToCompleteMs": 245.5,
+        "events": [
+          {
+            "atMs": 245.5,
+            "cache": false,
+            "durationMs": 245.5,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 245.5,
+        "name": "7d",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 236.4000000059605,
+            "requested": {
+              "fromMs": 1794135922115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 232.30000001192093,
+            "returned": {
+              "fromMs": 1794135924490,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 21,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794135924490,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 1000,
+          "bootstrap_us": 300,
+          "decode_us": 0,
+          "dispatch_us": 215986,
+          "encode_us": 215,
+          "fetch_us": 232000,
+          "health_us": 245500,
+          "issues_us": 706,
+          "query_us": 196570,
+          "read_us": 197479,
+          "render_us": 12200,
+          "store_us": 213549,
+          "total_us": 216213
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "6h",
+      "seedResult": {
+        "clickToCompleteMs": 307.90000000596046,
+        "events": [
+          {
+            "atMs": 307.90000000596046,
+            "cache": false,
+            "durationMs": 307.80000001192093,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 307.80000001192093,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 60.20000001788139,
+            "bodyAtMs": 294.30000001192093,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 284.7000000178814,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6500,
+          "bootstrap_us": 60200,
+          "decode_us": 100,
+          "dispatch_us": 210155,
+          "encode_us": 510,
+          "fetch_us": 224500,
+          "health_us": 307800,
+          "issues_us": 822,
+          "query_us": 99703,
+          "read_us": 101378,
+          "render_us": 16500,
+          "store_us": 125233,
+          "total_us": 210333
+        }
+      },
+      "target": "1h",
+      "targetResult": {
+        "clickToCompleteMs": 96.90000000596046,
+        "events": [
+          {
+            "atMs": 96.90000000596046,
+            "cache": false,
+            "durationMs": 96.90000000596046,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 96.90000000596046,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.20000001788139343,
+            "bodyAtMs": 95.90000000596046,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 86.90000000596046,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6600,
+          "bootstrap_us": 200,
+          "decode_us": 100,
+          "dispatch_us": 74724,
+          "encode_us": 357,
+          "fetch_us": 86700,
+          "health_us": 96900,
+          "issues_us": 491,
+          "query_us": 55815,
+          "read_us": 56648,
+          "render_us": 3300,
+          "store_us": 71477,
+          "total_us": 75266
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 145.90000000596046,
+        "events": [
+          {
+            "atMs": 145.90000000596046,
+            "cache": false,
+            "durationMs": 145.90000000596046,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 145.90000000596046,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 39.19999998807907,
+            "bodyAtMs": 132.5,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 125.09999999403954,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 4800,
+          "bootstrap_us": 39200,
+          "decode_us": 100,
+          "dispatch_us": 70971,
+          "encode_us": 372,
+          "fetch_us": 85900,
+          "health_us": 145800,
+          "issues_us": 594,
+          "query_us": 52292,
+          "read_us": 53234,
+          "render_us": 15800,
+          "store_us": 67436,
+          "total_us": 71285
+        }
+      },
+      "target": "6h",
+      "targetResult": {
+        "clickToCompleteMs": 128.30000001192093,
+        "events": [
+          {
+            "atMs": 128.30000001192093,
+            "cache": false,
+            "durationMs": 128.30000001192093,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 128.30000001192093,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.20000001788139343,
+            "bodyAtMs": 129.30000001192093,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 121.2000000178814,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 4600,
+          "bootstrap_us": 200,
+          "decode_us": 0,
+          "dispatch_us": 108956,
+          "encode_us": 321,
+          "fetch_us": 121000,
+          "health_us": 128300,
+          "issues_us": 578,
+          "query_us": 86730,
+          "read_us": 87737,
+          "render_us": 2500,
+          "store_us": 105801,
+          "total_us": 109264
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 250.2000000178814,
+        "events": [
+          {
+            "atMs": 250.2000000178814,
+            "cache": false,
+            "durationMs": 250.2000000178814,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 250.2000000178814,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 37.599999994039536,
+            "bodyAtMs": 243.30000001192093,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 234.80000001192093,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 5500,
+          "bootstrap_us": 37600,
+          "decode_us": 0,
+          "dispatch_us": 184737,
+          "encode_us": 327,
+          "fetch_us": 197200,
+          "health_us": 250200,
+          "issues_us": 624,
+          "query_us": 75393,
+          "read_us": 76365,
+          "render_us": 9800,
+          "store_us": 90994,
+          "total_us": 184931
+        }
+      },
+      "target": "24h",
+      "targetResult": {
+        "clickToCompleteMs": 208.69999998807907,
+        "events": [
+          {
+            "atMs": 208.69999998807907,
+            "cache": false,
+            "durationMs": 208.5999999940395,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 208.5999999940395,
+        "name": "24h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.29999998211860657,
+            "bodyAtMs": 195.69999998807907,
+            "requested": {
+              "fromMs": 1794654322115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 185.7999999821186,
+            "returned": {
+              "fromMs": 1794654322115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794654322115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6900,
+          "bootstrap_us": 200,
+          "decode_us": 0,
+          "dispatch_us": 176358,
+          "encode_us": 235,
+          "fetch_us": 185500,
+          "health_us": 208500,
+          "issues_us": 686,
+          "query_us": 158768,
+          "read_us": 159828,
+          "render_us": 15800,
+          "store_us": 173542,
+          "total_us": 176519
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "6h",
+      "seedResult": {
+        "clickToCompleteMs": 215,
+        "events": [
+          {
+            "atMs": 215,
+            "cache": false,
+            "durationMs": 215,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 215,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 36.099999994039536,
+            "bodyAtMs": 205.5999999940395,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 196.19999998807907,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6800,
+          "bootstrap_us": 36100,
+          "decode_us": 100,
+          "dispatch_us": 147568,
+          "encode_us": 434,
+          "fetch_us": 160100,
+          "health_us": 215000,
+          "issues_us": 675,
+          "query_us": 120192,
+          "read_us": 121320,
+          "render_us": 11900,
+          "store_us": 144095,
+          "total_us": 147801
+        }
+      },
+      "target": "1h",
+      "targetResult": {
+        "clickToCompleteMs": 272.39999997615814,
+        "events": [
+          {
+            "atMs": 272.39999997615814,
+            "cache": false,
+            "durationMs": 272.2999999821186,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 272.2999999821186,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.29999998211860657,
+            "bodyAtMs": 269.7999999821186,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 261.5,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 5400,
+          "bootstrap_us": 200,
+          "decode_us": 100,
+          "dispatch_us": 248331,
+          "encode_us": 370,
+          "fetch_us": 261200,
+          "health_us": 272300,
+          "issues_us": 473,
+          "query_us": 65937,
+          "read_us": 66631,
+          "render_us": 5400,
+          "store_us": 244336,
+          "total_us": 248647
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 169.40000000596046,
+        "events": [
+          {
+            "atMs": 169.40000000596046,
+            "cache": false,
+            "durationMs": 169.40000000596046,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 169.40000000596046,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 34.79999998211861,
+            "bodyAtMs": 159.2999999821186,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 150,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6200,
+          "bootstrap_us": 34800,
+          "decode_us": 100,
+          "dispatch_us": 102806,
+          "encode_us": 587,
+          "fetch_us": 115200,
+          "health_us": 169400,
+          "issues_us": 744,
+          "query_us": 72291,
+          "read_us": 73801,
+          "render_us": 13100,
+          "store_us": 98645,
+          "total_us": 103021
+        }
+      },
+      "target": "6h",
+      "targetResult": {
+        "clickToCompleteMs": 116.90000000596046,
+        "events": [
+          {
+            "atMs": 116.90000000596046,
+            "cache": false,
+            "durationMs": 116.7999999821186,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 116.7999999821186,
+        "name": "6h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.4000000059604645,
+            "bodyAtMs": 117.90000000596046,
+            "requested": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 107.5,
+            "returned": {
+              "fromMs": 1794719122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794719122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6300,
+          "bootstrap_us": 300,
+          "decode_us": 100,
+          "dispatch_us": 96766,
+          "encode_us": 211,
+          "fetch_us": 107200,
+          "health_us": 116800,
+          "issues_us": 500,
+          "query_us": 81143,
+          "read_us": 81862,
+          "render_us": 2900,
+          "store_us": 94330,
+          "total_us": 96939
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 266,
+        "events": [
+          {
+            "atMs": 266,
+            "cache": false,
+            "durationMs": 266,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 266,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 38.5,
+            "bodyAtMs": 262.5,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 252.9000000059605,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 6900,
+          "bootstrap_us": 38500,
+          "decode_us": 0,
+          "dispatch_us": 201863,
+          "encode_us": 286,
+          "fetch_us": 214400,
+          "health_us": 265900,
+          "issues_us": 563,
+          "query_us": 44462,
+          "read_us": 45395,
+          "render_us": 6100,
+          "store_us": 60000,
+          "total_us": 202087
+        }
+      },
+      "target": "24h",
+      "targetResult": {
+        "clickToCompleteMs": 243.5,
+        "events": [
+          {
+            "atMs": 243.5,
+            "cache": false,
+            "durationMs": 243.5,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 243.5,
+        "name": "24h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.29999998211860657,
+            "bodyAtMs": 240.19999998807907,
+            "requested": {
+              "fromMs": 1794654322115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 233.89999997615817,
+            "returned": {
+              "fromMs": 1794654322115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794654322115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 3400,
+          "bootstrap_us": 300,
+          "decode_us": 100,
+          "dispatch_us": 221272,
+          "encode_us": 449,
+          "fetch_us": 233600,
+          "health_us": 243500,
+          "issues_us": 783,
+          "query_us": 195788,
+          "read_us": 197141,
+          "render_us": 6100,
+          "store_us": 217879,
+          "total_us": 221574
+        }
+      }
+    },
+    {
+      "ok": true,
+      "seed": "1h",
+      "seedResult": {
+        "clickToCompleteMs": 129.2000000178814,
+        "events": [
+          {
+            "atMs": 129.2000000178814,
+            "cache": false,
+            "durationMs": 129.10000002384186,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "journeyMs": 129.10000002384186,
+        "name": "1h",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 35.70000001788139,
+            "bodyAtMs": 127,
+            "requested": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 121.09999999403954,
+            "returned": {
+              "fromMs": 1794737122115,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 120,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794737122115,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 3300,
+          "bootstrap_us": 35600,
+          "decode_us": 0,
+          "dispatch_us": 70521,
+          "encode_us": 553,
+          "fetch_us": 85400,
+          "health_us": 129100,
+          "issues_us": 764,
+          "query_us": 46244,
+          "read_us": 47665,
+          "render_us": 4800,
+          "store_us": 66237,
+          "total_us": 70851
+        }
+      },
+      "target": "7d",
+      "targetResult": {
+        "clickToCompleteMs": 342,
+        "events": [
+          {
+            "atMs": 342,
+            "cache": false,
+            "durationMs": 342,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "journeyMs": 342,
+        "name": "7d",
+        "ok": true,
+        "reads": [
+          {
+            "atMs": 0.30000001192092896,
+            "bodyAtMs": 334.19999998807907,
+            "requested": {
+              "fromMs": 1794135922115,
+              "toMs": 1794740722115
+            },
+            "responseAtMs": 328.90000000596046,
+            "returned": {
+              "fromMs": 1794135929328,
+              "toMs": 1794740722115
+            },
+            "status": 200
+          }
+        ],
+        "window": {
+          "buckets": 21,
+          "charts": 3,
+          "countsMatch": true,
+          "fromMs": 1794135929328,
+          "operations": 20,
+          "toMs": 1794740722115
+        },
+        "work": {
+          "body_us": 2300,
+          "bootstrap_us": 300,
+          "decode_us": 0,
+          "dispatch_us": 317998,
+          "encode_us": 179,
+          "fetch_us": 328600,
+          "health_us": 342000,
+          "issues_us": 473,
+          "query_us": 160644,
+          "read_us": 161220,
+          "render_us": 10800,
+          "store_us": 188211,
+          "total_us": 318187
+        }
+      }
+    }
+  ]
+}
