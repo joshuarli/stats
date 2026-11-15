@@ -36,7 +36,7 @@ const gate = flag => {
 };
 try {
   const activePort = await freePort();
-  producer = createProducer({ endpoint: `http://127.0.0.1:${activePort}`, service: 'stats-platform', token: ingestToken, release: 'bridge-bench', queueLimit: 128, batchSize: 64, timeoutMs: 1000, maxRetries: 1 });
+  producer = createProducer({ endpoint: `http://127.0.0.1:${activePort}`, service: 'stats-platform', token: ingestToken, release: 'bridge-bench', queueLimit: 128, batchSize: 64, timeoutMs: 5000, maxRetries: 1 });
   bridge = createBridgeServer({ producer, token: otlpToken, policy: { resourceService: 'stats-runtime-bench', openorangeVersion: '1.0.2', rivetkitVersion: '3.1.2-rc.1', nativeVersion: '3.1.1', samplePpm: samplingPpm, actors } });
   await new Promise(done => bridge.server.listen(0, '127.0.0.1', done));
   const collector = `http://127.0.0.1:${bridge.server.address().port}/v1/traces`;
