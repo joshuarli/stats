@@ -31,4 +31,4 @@ async function stop(signal: NodeJS.Signals): Promise<void> {
 }
 for (const signal of ["SIGTERM", "SIGHUP", "SIGINT", "SIGQUIT"] as const) process.on(signal, () => { void stop(signal); });
 bridge.server.once("error", async () => { if (timer !== undefined) clearInterval(timer); await producer.shutdown(); console.error(JSON.stringify({ event: "platform_listen_failed" })); process.exitCode = 1; });
-bridge.server.listen(port, required("PLATFORM_HOST"), () => { bridge.report(); timer = setInterval(bridge.report, 30_000); timer.unref(); console.log(JSON.stringify({ event: "platform_ready" })); });
+bridge.server.listen(port, required("PLATFORM_HOST"), () => { timer = setInterval(bridge.report, 30_000); timer.unref(); console.log(JSON.stringify({ event: "platform_ready" })); });

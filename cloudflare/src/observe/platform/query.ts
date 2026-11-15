@@ -1,9 +1,8 @@
 import type { SqlStatements } from "../../core/sql.ts";
 import { eventWindow } from "../core/store.ts";
 import type { ExternalFilter } from "../ingest/model.ts";
-import { DURATION_BOUNDS_US, PLATFORM_SERVICE, SQLITE_OPERATIONS, type PlatformDelivery, type PlatformOperation, type PlatformTelemetry } from "../../../../packages/platform-bridge/src/contract.ts";
+import { DURATION_BOUNDS_US, PLATFORM_SERVICE, PLATFORM_OPERATIONS, type PlatformDelivery, type PlatformOperation, type PlatformTelemetry } from "../../../../packages/platform-bridge/src/contract.ts";
 
-const OPERATIONS = ["installation", "observation"].flatMap(actor => [`platform.${actor}.invoke`, ...SQLITE_OPERATIONS.map(operation => `platform.${actor}.sqlite.${operation}`)]);
 const GROUP_LIMIT = 80;
 type HistogramRow = { operation: string; release: string; last_at: number; upper_us: number; n: number; failed: number; sum_us: number; max_us: number };
 function exact(value: number): number { if (!Number.isSafeInteger(value) || value < 0) throw new RangeError("platform telemetry exceeds exact bounds"); return value; }
@@ -16,6 +15,7 @@ export function readPlatformTelemetry(db: SqlStatements, service: string, nowMs:
   if (service !== PLATFORM_SERVICE) throw new RangeError("platform telemetry requires its dedicated sink");
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const bin = `CASE ${DURATION_BOUNDS_US.map(bound => `WHEN duration_us <= ${bound} THEN ${bound}`).join(" ")} END`;
+  // OpenOrange 1.0.2 routes a leading WITH through a write turn; keep SELECT first.
   const rows = db.rows<HistogramRow>(
     `SELECT * FROM (WITH parsed AS MATERIALIZED (
       SELECT event_at, json_extract(payload, '$.operation') AS operation,
@@ -25,7 +25,7 @@ export function readPlatformTelemetry(db: SqlStatements, service: string, nowMs:
         AND json_type(payload, '$.work.duration_us') = 'integer'
     ), groups AS (
       SELECT operation, release, MAX(event_at) AS last_at FROM parsed
-      WHERE operation IN (${OPERATIONS.map(() => "?").join(",")}) AND duration_us BETWEEN 0 AND 86400000000
+      WHERE operation IN (${PLATFORM_OPERATIONS.map(() => "?").join(",")}) AND duration_us BETWEEN 0 AND 86400000000
       GROUP BY operation, release ORDER BY last_at DESC, operation, release LIMIT ?
     )
     SELECT p.operation, p.release, g.last_at, ${bin} AS upper_us, COUNT(*) AS n,
@@ -33,7 +33,7 @@ export function readPlatformTelemetry(db: SqlStatements, service: string, nowMs:
     FROM parsed p JOIN groups g ON p.operation = g.operation AND p.release = g.release
     WHERE duration_us BETWEEN 0 AND 86400000000 GROUP BY p.operation, p.release, upper_us
     ORDER BY g.last_at DESC, p.operation, p.release, upper_us)`,
-    service, fromMs, toMs, ...OPERATIONS, GROUP_LIMIT + 1
+    service, fromMs, toMs, ...PLATFORM_OPERATIONS, GROUP_LIMIT + 1
   );
   const grouped = new Map<string, { operation: string; release: string; count: number; failed: number; total: number; maximum: number; histogram: { upperUs: number; count: number }[] }>();
   for (const row of rows) {

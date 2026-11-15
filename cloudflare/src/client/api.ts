@@ -1,4 +1,4 @@
-import { DURATION_BOUNDS_US, SQLITE_OPERATIONS, type PlatformTelemetry } from "../../../packages/platform-bridge/src/contract.ts";
+import { DURATION_BOUNDS_US, PLATFORM_OPERATIONS, type PlatformTelemetry } from "../../../packages/platform-bridge/src/contract.ts";
 import { decodeCapabilities } from "../core/capabilities.ts";
 import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
 import type { LatestDeployment } from "../deployments/model.ts";
@@ -456,10 +456,9 @@ export function decodePlatformTelemetry(value: unknown): PlatformTelemetry {
   if (fromMs >= toMs || caps.actorRequests !== true || caps.sqlite !== true || caps.outboundRpc !== false || caps.runtimeMetrics !== false) throw new Error("invalid platform window or capabilities");
   const operations = array(root.operations, value => {
     const row = record(value), operation = string(row.operation), release = string(row.release);
-    const allowed = ["installation", "observation"].flatMap(role => [`platform.${role}.invoke`, ...SQLITE_OPERATIONS.map(op => `platform.${role}.sqlite.${op}`)]);
     const count = integer(row.count), failed = integer(row.failed), meanUs = number(row.meanUs), maxUs = integer(row.maxUs), p50UpperUs = integer(row.p50UpperUs), p95UpperUs = integer(row.p95UpperUs);
     const histogram = array(row.histogram, item => { const bin = record(item); return { upperUs: integer(bin.upperUs), count: integer(bin.count) }; });
-    if (!allowed.includes(operation) || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(release) || count === 0 || failed > count || meanUs < 0 || meanUs > maxUs || histogram.length === 0 || histogram.some((bin, i) => !DURATION_BOUNDS_US.some(bound => bound === bin.upperUs) || bin.count === 0 || (i > 0 && bin.upperUs <= histogram[i - 1]!.upperUs)) || histogram.reduce((sum, bin) => sum + bin.count, 0) !== count) throw new Error("invalid platform operation");
+    if (!PLATFORM_OPERATIONS.includes(operation) || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(release) || count === 0 || failed > count || meanUs < 0 || meanUs > maxUs || histogram.length === 0 || histogram.some((bin, i) => !DURATION_BOUNDS_US.some(bound => bound === bin.upperUs) || bin.count === 0 || (i > 0 && bin.upperUs <= histogram[i - 1]!.upperUs)) || histogram.reduce((sum, bin) => sum + bin.count, 0) !== count) throw new Error("invalid platform operation");
     const percentile = (fraction: number) => { let n = 0; return histogram.find(bin => (n += bin.count) >= Math.ceil(count * fraction))!.upperUs; };
     if (p50UpperUs !== percentile(0.5) || p95UpperUs !== percentile(0.95) || maxUs > histogram[histogram.length - 1]!.upperUs) throw new Error("invalid platform histogram");
     return { operation, release, count, failed, meanUs, maxUs, p50UpperUs, p95UpperUs, histogram };

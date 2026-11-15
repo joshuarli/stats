@@ -14,6 +14,8 @@ await test("rejects invalid clocks and trace IDs and filters other actors, scope
   for (const change of [(b: ReturnType<typeof batch>) => { b.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.traceId = "0".repeat(32); }, (b: ReturnType<typeof batch>) => { b.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.endTimeUnixNano = "1"; }]) {
     const value = batch(); change(value); const result = projectBatch(value, policy); assert.equal(result.events.length, 0); assert.equal(result.invalid, 1);
   }
+  const overflow = batch(); overflow.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.startTimeUnixNano = "18446744073709551616"; overflow.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.endTimeUnixNano = "18446744073709551617";
+  assert.equal(projectBatch(overflow, policy).invalid, 1);
   const sink = batch(); sink.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.attributes[1] = attribute("rivet.actor.key", "3".repeat(64));
   assert.equal(projectBatch(sink, policy).filtered, 1);
   const foreign = batch(); foreign.resourceSpans[0]!.resource.attributes[0] = attribute("service.name", "other-app");

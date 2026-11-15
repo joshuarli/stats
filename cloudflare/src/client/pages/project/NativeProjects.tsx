@@ -78,7 +78,8 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
   });
-  createEffect(() => ({ service: serviceName, range: range(), view: view(), refresh: refreshKey(), recent: section() === "requests" }), query => {
+  createEffect(() => ({ service: serviceName, range: range(), view: view(), refresh: refreshKey(), recent: section() === "requests", active: section() === "overview" || section() === "requests" || section() === "signals" }), query => {
+    if (!query.active) return;
     const selection = `${query.service}:${query.range}:${query.view?.fromMs ?? ""}:${query.view?.toMs ?? ""}`;
     const key = `${selection}:${query.refresh}`;
     if (data() !== null && loadedKey === key && (!query.recent || detail() !== null)) { setRefreshing(false); setError(null); return; }

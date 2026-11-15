@@ -90,6 +90,8 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     const bridgeAddress = bridge.server.address();
     assert.ok(bridgeAddress !== null && typeof bridgeAddress !== "string");
     forwardOrigin = `http://127.0.0.1:${bridgeAddress.port}`;
+    const wrong = await post(`/ingest/observe/v1/${PLATFORM_SERVICE}/batches`, { events: [] }, { authorization: `Bearer ${generateToken()}` });
+    assert.equal(wrong.status, 401);
     const ingested = await post(`/ingest/observe/v1/${PLATFORM_SERVICE}/batches`, { events: [{ schemaVersion: 1, eventId: "platform-proof", service: PLATFORM_SERVICE, release: "proof", atMs: Date.now(), operation: "platform.proof", durationMs: 1, outcome: "ok", work: {} }] }, { authorization: `Bearer ${ingestToken}` });
     assert.equal(ingested.status, 202, await ingested.clone().text());
     const deadline = Date.now() + 10_000;

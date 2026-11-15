@@ -68,9 +68,9 @@ export function projectBatch(value: unknown, policy: BridgePolicy): ProjectedBat
         const sourceRelease = tags.get("service.version");
         const release = `${sourceRelease}_oo-${policy.openorangeVersion}_rk-${policy.rivetkitVersion}_nr-${policy.nativeVersion}`;
         if (typeof traceId !== "string" || !TRACE.test(traceId) || typeof spanId !== "string" || !SPAN.test(spanId) || typeof start !== "string" || !NS.test(start) || typeof end !== "string" || !NS.test(end) || sourceRelease === undefined || !RELEASE.test(release)) { invalid++; continue; }
-        const startNs = BigInt(start), durationNs = BigInt(end) - startNs;
+        const startNs = BigInt(start), endNs = BigInt(end), durationNs = endNs - startNs;
         const atMs = Number(startNs / 1_000_000n);
-        if (!Number.isSafeInteger(atMs) || atMs <= 0 || durationNs < 0n || durationNs > 86_400_000_000_000n) { invalid++; continue; }
+        if (startNs > 18_446_744_073_709_551_615n || endNs > 18_446_744_073_709_551_615n || !Number.isSafeInteger(atMs) || atMs <= 0 || durationNs < 0n || durationNs > 86_400_000_000_000n) { invalid++; continue; }
         const durationUs = Number((durationNs + 500n) / 1000n);
         const status = raw["status"];
         const failed = (record(status) && status["code"] === 2) || /^[5][0-9]{2}$/u.test(attrs?.get("http.response.status_code") ?? "");

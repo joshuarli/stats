@@ -37,7 +37,7 @@ test("@mobile platform shows sampled operations and real histogram, only fetchin
   await expect(page.getByText(/Separate outbound RPC and runtime gauges/)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: /Overview/ }).click();
-  const closed = requests; await page.waitForTimeout(100); expect(requests).toBe(closed);
+  const closed = requests; await page.clock.fastForward(60_000); expect(requests).toBe(closed);
   await page.goto("/#/project/web");
   await expect(page.getByRole("button", { name: /Platform/ })).toHaveCount(0);
   expect(requests).toBe(closed);
@@ -54,4 +54,33 @@ test("@mobile platform distinguishes disabled, empty and stale reports", async (
   await expect(page.getByText("Delivery report unavailable or stale.")).toBeVisible();
   mode = "stale"; await page.reload();
   await expect(page.getByText("Delivery report unavailable or stale.")).toBeVisible();
+});
+
+
+test("@mobile platform keeps last good data on refresh errors and cancels a hidden request", async ({ page }) => {
+  await setup(page);
+  let mode = "good";
+  let requests = 0;
+  await page.route("**/api/observe/stats-platform/platform?*", async route => {
+    requests++;
+    if (mode === "error") return route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "temporary platform failure" } } });
+    if (mode === "pending") return;
+    return route.fulfill({ json: telemetry });
+  });
+  await page.goto("/#/project/stats?section=platform");
+  await expect(page.getByRole("table", { name: "Observed platform operations" })).toBeVisible();
+  mode = "error";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText(/Platform telemetry:/)).toBeVisible();
+  await expect(page.getByText("Actor invocation: installation.invoke")).toBeVisible();
+  mode = "pending";
+  const pending = page.waitForRequest("**/api/observe/stats-platform/platform?*");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  const request = await pending;
+  const cancelled = page.waitForEvent("requestfailed", failed => failed === request);
+  await page.getByRole("button", { name: /Overview/ }).click();
+  await cancelled;
+  const closed = requests;
+  await page.clock.fastForward(60_000);
+  expect(requests).toBe(closed);
 });

@@ -332,7 +332,9 @@ await test("a forwarder preserves per-event source releases and rejects invalid 
     producer.record({ operation: "forward.span", outcome: "ok", durationMs: 1 });
     producer.record({ operation: "forward.span", outcome: "ok", durationMs: 1, release: "unsafe release" });
     await producer.flush();
-    assert.deepEqual(JSON.parse(server.received[0]!.body).events.map((event: { release: string }) => event.release), ["source-r2", "9df651c1a2b3"]);
+    const decoded = decodeBatch(server.received[0]!.body, { service: SERVICE, nowMs: Date.now() });
+    assert.ok(decoded.ok);
+    assert.deepEqual(decoded.batch.events.map(event => event.release), ["source-r2", "9df651c1a2b3"]);
     assert.equal(producer.stats().dropped, 1);
   } finally { await producer.shutdown(); await server.close(); }
 });
