@@ -5,32 +5,59 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFile
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, mode: { type: "string", default: "prepare" }, listen: { type: "string", default: "127.0.0.1" }, resume: { type: "boolean", default: false }, baseline: { type: "string" }, candidate: { type: "string" } } });
+const { values } = parseArgs({ options: { root: { type: "string" }, mode: { type: "string", default: "prepare" }, image: { type: "string" }, listen: { type: "string", default: "127.0.0.1" }, resume: { type: "boolean", default: false }, baseline: { type: "string" }, candidate: { type: "string" }, "bundle-root": { type: "string", default: "/app" }, "runtime-auth-file": { type: "string" }, "import-delay-ms": { type: "string", default: "0" } } });
 assert.ok(values.root && ["prepare", "serve", "ingest-cost"].includes(values.mode));
 assert.ok(["127.0.0.1", "0.0.0.0"].includes(values.listen));
 assert.equal(process.platform, "linux", "run inside the isolated production image");
+if (values.mode === "prepare") assert.match(values.image ?? "", /^stats:[a-f0-9]{12}$/u, "preparation requires the actual container image reference");
 const root = resolve(values.root), state = join(root, "native-scale-state");
+const bundleRoot = resolve(values["bundle-root"]), importDelayMs = Number(values["import-delay-ms"]);
+assert.ok(Number.isSafeInteger(importDelayMs) && importDelayMs >= 0 && importDelayMs <= 5000);
+const externalEndpoint = process.env.RIVET_ENDPOINT;
+if (externalEndpoint) {
+  assert.ok(["serve", "prepare"].includes(values.mode));
+  const endpoint = new URL(externalEndpoint);
+  assert.equal(endpoint.hostname, "127.0.0.1"); assert.equal(endpoint.protocol, "http:");
+  assert.ok(!endpoint.username && !endpoint.password && /^[a-z][a-z0-9-]{0,63}$/u.test(process.env.RIVET_NAMESPACE ?? ""));
+  if (values.mode === "prepare") {
+    assert.match(process.env.RIVET_NAMESPACE, /^stats-scale-/u, "external preparation requires a dedicated fixture namespace");
+    assert.ok(Number.isSafeInteger(Number(process.env.RIVET_NODE_VERSION)) && Number(process.env.RIVET_NODE_VERSION) > 0, "external preparation requires an explicit node version");
+  }
+}
+assert.ok(values["runtime-auth-file"] === undefined || externalEndpoint && values.mode === "prepare" && !values.resume);
 const authPath = join(state, "fixture-auth.json"), proofPath = join(root, "native-scale-preparation.json");
 const planPath = join(state, "import-plan.json");
 const pause = ms => new Promise(done => setTimeout(done, ms));
 const sha256 = body => createHash("sha256").update(body).digest("hex");
+function readFixtureAuth(file) {
+  try {
+    const credentials = JSON.parse(readFileSync(file, "utf8"));
+    assert.ok(credentials && typeof credentials === "object" && typeof credentials.secret === "string" && /^[A-Za-z0-9_-]{32,128}$/u.test(credentials.secret));
+    return credentials;
+  } catch { throw new Error("could not read protected fixture credentials"); }
+}
 mkdirSync(state, { recursive: true, mode: 0o700 });
 let auth, active, stopping = false;
 if ((values.mode === "prepare" && !values.resume) || (values.mode === "ingest-cost" && !existsSync(authPath))) {
   assert.ok(!existsSync(authPath), "preparation requires fresh disposable state");
-  auth = { secret: randomBytes(32).toString("hex") };
+  if (externalEndpoint) {
+    assert.ok(values["runtime-auth-file"], "external preparation requires protected fixture runtime credentials");
+    const source = readFixtureAuth(values["runtime-auth-file"]);
+    assert.ok(typeof source.engineToken === "string" && source.engineToken.length > 0);
+    auth = { secret: source.secret, engineToken: source.engineToken };
+  } else auth = { secret: randomBytes(32).toString("hex") };
   writeFileSync(authPath, JSON.stringify(auth), { flag: "wx", mode: 0o600 });
   for (const name of ["stats", "observe"]) {
-    const descriptor = JSON.parse(readFileSync(`/app/${name}.jsonc`, "utf8"));
-    descriptor.main = join("/app", descriptor.main);
-    if (descriptor.assets) descriptor.assets.directory = join("/app", descriptor.assets.directory);
+    const descriptor = JSON.parse(readFileSync(join(bundleRoot, `${name}.jsonc`), "utf8"));
+    descriptor.main = join(bundleRoot, descriptor.main);
+    if (descriptor.assets) descriptor.assets.directory = join(bundleRoot, descriptor.assets.directory);
     delete descriptor.vars.APPLICATION_EVENTS_RELEASE;
     delete descriptor.triggers;
     descriptor.vars.GATEWAY_SECRET = auth.secret;
     descriptor.vars.ENVIRONMENT = "development";
     writeFileSync(join(state, `${name}.jsonc`), JSON.stringify(descriptor), { flag: "wx", mode: 0o600 });
   }
-} else auth = JSON.parse(readFileSync(authPath, "utf8"));
+} else auth = readFixtureAuth(authPath);
 if (values.mode === "ingest-cost") {
   assert.ok(values.baseline && values.candidate);
   const path = join(state, "observe.jsonc"), descriptor = JSON.parse(readFileSync(path, "utf8"));
@@ -39,12 +66,7 @@ if (values.mode === "ingest-cost") {
   writeFileSync(path, JSON.stringify(descriptor), { mode: 0o600 });
 }
 const headers = { "Stats-Gateway-Secret": auth.secret, "Stats-Tailnet-Identity": "user:benchmark@example.invalid", "content-type": "application/json" };
-const externalEndpoint = process.env.RIVET_ENDPOINT;
 if (externalEndpoint) {
-  assert.equal(values.mode, "serve", "an external Engine currently serves already prepared fixture state");
-  const endpoint = new URL(externalEndpoint);
-  assert.equal(endpoint.hostname, "127.0.0.1"); assert.equal(endpoint.protocol, "http:");
-  assert.ok(!endpoint.username && !endpoint.password && process.env.RIVET_NAMESPACE);
   assert.ok(typeof auth.engineToken === "string" && auth.engineToken.length > 0, "external fixture Engine credentials must be in the protected auth file");
 }
 async function start() {
@@ -84,6 +106,13 @@ async function start() {
   while (!owner.origin && !owner.failed && !stopping && Date.now() < deadline) await pause(50);
   if (!owner.origin || owner.failed || stopping) { writeFileSync(join(state, "startup-error.log"), JSON.stringify({ stdout: owner.stdout, stderr: owner.stderr }), { mode: 0o600 }); throw new Error("isolated runtime did not become ready; private startup log retained"); }
   assert.equal(new URL(owner.origin).hostname, "127.0.0.1");
+  let actorReady = false;
+  while (!actorReady && !owner.failed && !stopping && Date.now() < deadline) {
+    const result = await request("/api/v1/hosts");
+    if (result.status === 200) actorReady = true;
+    else { assert.ok([502, 503, 504].includes(result.status), `unexpected fixture readiness HTTP ${result.status}`); await pause(100); }
+  }
+  assert.ok(actorReady, "fixture Installation actor did not become ready");
   return performance.now() - started;
 }
 async function stop() {
@@ -199,7 +228,10 @@ try {
     if (previousPlan) manifest = previousPlan.manifest;
     else {
       const host = await post("/api/v1/admin/hosts", { name: "scale-fixture" }); assert.equal(host.status, 201);
+      assert.ok(typeof host.body.token === "string" && typeof host.body.hostId === "string");
       const service = await post("/api/v1/admin/services", { name: "stats", hostIds: [host.body.hostId] }); assert.equal(service.status, 201);
+      auth.hostId = host.body.hostId;
+      auth.hostToken = host.body.token;
       auth.ingestToken = service.body.ingestToken;
       writeFileSync(authPath, JSON.stringify(auth), { mode: 0o600 });
       assert.equal((await post(`${object}/maintenance`, { fenced: true })).status, 200);
@@ -237,6 +269,7 @@ try {
       assert.equal(result.status, 200); assert.equal(result.body.rows, offset + page.length);
       writeFileSync(join(state, "last-acknowledged-import.json"), JSON.stringify({ rows: result.body.rows }), { mode: 0o600 });
       if (offset % 10000 === 0) console.log(JSON.stringify({ preparing: result.body.rows, total: rows.length, containerMemoryBytes: Number(readFileSync("/sys/fs/cgroup/memory.current", "utf8")) }));
+      if (importDelayMs > 0 && offset + page.length < rows.length) await pause(importDelayMs);
     }
     const finished = await post(`${object}/import/finish`, {}); assert.equal(finished.status, 200);
     const fromMs = latest - 6 * 86400000, toMs = latest + 1;
@@ -261,7 +294,8 @@ try {
     await stop(); readinessMs.push(await start());
     const recovered = await request(summaryPath); assert.equal(recovered.status, 200);
     assert.deepEqual(recovered.body, summary.body);
-    const proof = { sourceImage: "stats:1ea3e6af2dc3", sourceSha256: corpus.metadata.sourceSha256, fixtureSha256: sha256(raw), events: events.length, preparation: "integrity-verified native snapshot import, not ingest throughput evidence", recoveredImportRows: imported, previousAcknowledgedRows, shiftMs, firstAtMs: corpus.metadata.firstAtMs + shiftMs, lastAtMs: latest, fromMs, toMs, receivedAtMs, tableSha256: table.sha256, referenceWindows, duplicate: duplicate.body.duplicate, changedDuplicateStatus: conflict.status, restoredSummaryEqual: true, readinessMs, summaryTiming: summary.timing, recoveredTiming: recovered.timing };
+    const runtimeSources = Object.fromEntries(["stats", "observe"].map(name => [name, sha256(readFileSync(JSON.parse(readFileSync(join(state, `${name}.jsonc`), "utf8")).main))]));
+    const proof = { sourceImage: values.image, runtimeSources, namespace: process.env.RIVET_NAMESPACE ?? "embedded-default", nodeVersion: externalEndpoint ? Number(process.env.RIVET_NODE_VERSION) : null, runtimeMode: externalEndpoint ? "serve" : "dev", importDelayMs, sourceSha256: corpus.metadata.sourceSha256, fixtureSha256: sha256(raw), events: events.length, preparation: "integrity-verified native snapshot import, not ingest throughput evidence", recoveredImportRows: imported, previousAcknowledgedRows, shiftMs, firstAtMs: corpus.metadata.firstAtMs + shiftMs, lastAtMs: latest, fromMs, toMs, receivedAtMs, tableSha256: table.sha256, referenceWindows, duplicate: duplicate.body.duplicate, changedDuplicateStatus: conflict.status, restoredSummaryEqual: true, readinessMs, summaryTiming: summary.timing, recoveredTiming: recovered.timing };
     writeFileSync(proofPath, JSON.stringify(proof) + "\n", { flag: "wx", mode: 0o600 });
     console.log(JSON.stringify(proof));
   }
