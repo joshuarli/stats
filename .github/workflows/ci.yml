@@ -52,14 +52,14 @@ jobs:
           mkdir -p .work/tmp
           pnpm install --frozen-lockfile
 
+      - name: Install Playwright chromium
+        run: pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
+
       - name: Check fixtures
         run: node scripts/check-fixtures.mjs
 
       - name: Agent tests
         run: cd agent && cargo test --all-targets
-
-      - name: Install Playwright chromium
-        run: pnpm --filter @stats/telemetry exec playwright install --with-deps chromium
 
       - name: Install the OpenOrange runtime
         run: cd deploy/orange && pnpm install --frozen-lockfile
@@ -68,6 +68,31 @@ jobs:
         run: |
           pnpm --filter @stats/telemetry typecheck
           pnpm --filter @stats/telemetry test
+
+  dashboard:
+    name: dashboard
+    runs-on: xcode-27
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
+        with:
+          version: 12.21.0
+          runtime: node@26.13.1
+          install: false
+
+      - name: Install dependencies
+        run: |
+          mkdir -p .work/tmp
+          pnpm install --frozen-lockfile
+
+      - name: Install Playwright chromium
+        run: pnpm --filter @stats/telemetry exec playwright install chromium
 
       - name: Dashboard tests
         run: |
