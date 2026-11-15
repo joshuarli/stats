@@ -20,8 +20,22 @@ await test("the Orange development command serves locally and removes its runtim
     const origin = output.match(/OpenOrange: (http:\/\/127\.0\.0\.1:\d+)/u)?.[1];
     assert.ok(origin, output);
     assert.equal((await fetch(`${origin}/api/v1/hosts`)).status, 200);
-    const descendants = execFileSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" }).split("\n").map(line => line.trim().split(/\s+/u).map(Number)).filter(parts => parts[1] === child.pid).map(parts => parts[0]!);
-    assert.ok(descendants.length > 0);
+    const directories = readdirSync(scratch).filter(name => name.startsWith("orange-dev-") && !before.has(name));
+    assert.equal(directories.length, 1);
+    const state = resolve(scratch, directories[0]!);
+    const processes = execFileSync("ps", ["-A", "-o", "pid=,ppid=,args="], { encoding: "utf8" }).split("\n").flatMap(line => {
+      const parts = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
+      return parts === null ? [] : [{ pid: Number(parts[1]), parent: Number(parts[2]), command: parts[3]! }];
+    });
+    const descendants = new Set([child.pid!]);
+    let known = 0;
+    while (known !== descendants.size) {
+      known = descendants.size;
+      for (const entry of processes) if (descendants.has(entry.parent)) descendants.add(entry.pid);
+    }
+    const engines = processes.filter(entry => /rivet-engine --config /u.test(entry.command) && entry.command.includes(`${state}/`));
+    assert.equal(engines.length, 1, "the probe must exercise a real owned Engine");
+    for (const engine of engines) descendants.add(engine.pid);
     child.kill("SIGTERM");
     assert.deepEqual(await exited, { code: null, signal: "SIGTERM" });
     for (const pid of descendants) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
