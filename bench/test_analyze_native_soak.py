@@ -51,7 +51,9 @@ class AnalysisTests(unittest.TestCase):
         self.assertTrue(soak.analyze(rows)["rss"]["pass"])
         for row in rows[721:-1]:
             row["resources"]["rssBytes"] = 1060
-        self.assertFalse(soak.analyze(rows)["rss"]["pass"])
+        result = soak.analyze(rows)
+        self.assertFalse(result["rss"]["pass"])
+        self.assertEqual(result["state"], "fail")
 
     def test_growing_queue_and_actor_population(self):
         rows = complete()

@@ -95,7 +95,7 @@ def analyze(records):
     result["measuredPlateauPass"] = not result["causes"]
     if result["coverageGaps"]:
         result["causes"].append("unobserved queue or lifecycle coverage remains")
-    result["state"] = "blocked" if result["causes"] else "pass"
+    result["state"] = "fail" if not result["rss"]["pass"] else "blocked" if result["causes"] else "pass"
     return result
 
 
