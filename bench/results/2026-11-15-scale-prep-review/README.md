@@ -56,9 +56,10 @@ does not expose a generation marker; `health()` returns service health rather
 than constructor identity. Neither check produced positive sleep evidence.
 No sleep latency samples were accepted and no idle interval was substituted.
 
-W3 is blocked: unobservable. Stuff STUF-85 (P2, assumed) tracks a positive
-sleep/wake signal, filed on branch `fix/stats-campaign-blockers` at
-`e1833cc`. Awake P2 evidence is unchanged.
+W3 is blocked: unobservable. Stuff STUF-86 (P2, assumed) tracks a positive
+sleep/wake signal, committed to Stuff main at `d28e47c`. A concurrent ticket
+allocation required replacing the initial branch-only ticket ID before
+integration. Awake P2 evidence is unchanged.
 
 ## Single rebuild in progress
 
