@@ -16,6 +16,8 @@ export function devWorkspace(): { readonly repo: string; readonly root: string; 
   mkdirSync(join(repo, "deploy"));
   cpSync(resolve(ROOT, "../deploy/orange"), join(repo, "deploy/orange"), { recursive: true, filter: source => !source.includes("node_modules") });
   symlinkSync(resolve(ROOT, "../deploy/orange/node_modules"), join(repo, "deploy/orange/node_modules"), "dir");
+  mkdirSync(join(repo, "packages/platform-bridge"), { recursive: true });
+  cpSync(resolve(ROOT, "../packages/platform-bridge"), join(repo, "packages/platform-bridge"), { recursive: true, filter: source => !source.includes("node_modules") });
   mkdirSync(join(repo, "docs"));
   for (const file of ["protocol.md", "architecture.md"]) copyFileSync(resolve(ROOT, "../docs", file), join(repo, "docs", file));
   symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"), "dir");
