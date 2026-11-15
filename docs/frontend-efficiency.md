@@ -343,3 +343,68 @@ The client keeps Solid 2, `@solidjs/router`, uPlot, the binary history format, a
 - Safari and Firefox timings (E3).
 - workerd end-to-end timing (E4).
 - Changing the ledger's default selection to keep uPlot off the closed project page. It was rejected; see F6.
+
+## Native application overview (2026-11-14)
+
+The native project overview now reads a bounded application summary and loads
+only its visible section. Requests loads recent event payloads on demand;
+Errors loads issue diagnostics on demand. Cloudflare billing/history modules
+remain available for the Cloudflare adapter and are split from native routes.
+The runtime capability contract explicitly identifies the project source.
+
+The overview adds request/activity, failure and wall-time trends, current issue
+counts and a ranked operation table. Missing intervals remain gaps; cancelled
+work is excluded from failures. Mean wall time includes waits and is not CPU
+usage. HTTP and background work use separate denominators.
+
+### Controlled comparison
+
+Baseline: `cca28956`; candidate: `25ec0a75` plus the uPlot allocation patch.
+Both production frontends used the same isolated Node/SQLite backend replaying
+1,847 real Stats application events captured on 2026-11-14. The source capture
+SHA-256 is `751939a91b75d632ec7fbe5d1c9548c79a677339d04c7fcc1dc5645bda822d6b`;
+raw events stay in the protected backup rather than Git. The frozen clock was
+`1794698418842`. This is a frontend comparison, not a production Rivet latency
+measurement.
+
+Apple M5 Max, 18 physical cores, 48 GiB memory; Node 26.13.1,
+Playwright 1.65.0, Chromium 158.0.8127.18; 1280×720 viewport; 150 ms latency,
+1,600 KiB/s download, no CPU slowdown. Five interleaved baseline/candidate pairs
+passed `perf-gate-ready` before and `perf-gate-ready -1` immediately after.
+All cold and warm samples completed without failed HTTP reads.
+
+| Measure | Baseline | Candidate |
+| --- | ---: | ---: |
+| Cold overview heading ready, median (range) | 4,426 ms (4,418–4,436) | 4,150 ms (4,142–4,151) |
+| Warm navigation ready, median (range) | 1,283 ms (1,282–1,286) | 783 ms (778–785) |
+| Cold decoded API bytes | 136,179 | 38,472 |
+| Cold API requests | 8 | 5 |
+| Initial project JavaScript, raw | 434,156 B | 361,127 B |
+| Cold JS heap, median | 3,008.6 KiB | 3,625.3 KiB |
+| Warm JS heap, median | 3,210.3 KiB | 4,101.8 KiB |
+
+The heading-ready endpoint does not claim that every chart has painted.
+The three charts account for higher steady heap use. Whole-dashboard JavaScript
+is 205,324 B gzip versus 199,829 B at baseline (+2.75%); native project code is
+138,372 B gzip. Bundle gates pass, including keeping uPlot out of the initial
+fleet/projects graph. Measurements and decoded network accounting are recorded
+in [browser results](../bench/results/2026-11-14-native-overview/browser.json)
+and [bundle results](../bench/results/2026-11-14-native-overview/bundle.json).
+
+### Navigation retention and reproduction
+
+Thirty project → projects cycles leave zero chart roots, zero additional DOM
+nodes and zero additional listeners after forced GC. Heap growth is 1,271.4 KiB,
+within the 2 MiB gate. The uPlot allocation patch removes a demonstrated getter
+retaining path; see [dependencies](dependencies.md#uplot-1632-rectangle-getter-retention).
+The [retention result](../bench/results/2026-11-14-native-overview/retention.json)
+records all checkpoints. The same limits failed before the patch (+458 nodes,
++22 listeners); they were not relaxed.
+
+Start a shared, read-only local replay with
+`node cloudflare/scripts/bench-native-replay.mjs --events CAPTURE --baseline BASELINE_ASSETS --candidate CANDIDATE_ASSETS`.
+It prints both loopback origins and the capture clock. Use each origin with
+`bench-ui.mjs --base URL --routes project --service stats --runs 1 --latency 150 --down 1600 --cpu 1 --now CLOCK --json`.
+Run `bench-native-retention.mjs --base CANDIDATE_URL --now CLOCK` for the
+30-cycle memory gate. Stop the replay with SIGINT/SIGTERM; it closes its servers
+and removes its isolated database. It does not mutate production.
