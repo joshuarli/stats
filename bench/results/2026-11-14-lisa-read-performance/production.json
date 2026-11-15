@@ -1,0 +1,40 @@
+{
+  "aggregateEquality": true,
+  "events": 1715,
+  "originalServices": 7,
+  "currentServices": 8,
+  "originalAssociationsPreserved": true,
+  "addedServices": [
+    "agentctl"
+  ],
+  "openIssues": 7,
+  "release": "stats-1215ac973d62",
+  "image": "stats:1215ac973d62",
+  "nodeVersion": 10,
+  "browser": {
+    "desktopWidth": 1280,
+    "mobileWidth": 390,
+    "plots": 3,
+    "horizontalOverflow": false
+  },
+  "sharedHealth": {
+    "ok": true,
+    "counts": [
+      {
+        "status": "PASS",
+        "count": 110
+      },
+      {
+        "status": "WARN",
+        "count": 1
+      }
+    ],
+    "warnings": [
+      {
+        "check": "disk free (Engine refuses to start below 10% / 4 GiB)",
+        "status": "WARN",
+        "detail": "77 GiB free, 17%"
+      }
+    ]
+  }
+}

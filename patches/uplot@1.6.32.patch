@@ -1,0 +1,32 @@
+diff --git a/dist/uPlot.cjs.js b/dist/uPlot.cjs.js
+index 98b7582dff68d4f4d9e0068cc77bec9d33ea4904..a946e1f15310a5f9cb4177e7cb9b37c6f17ad93b 100644
+--- a/dist/uPlot.cjs.js
++++ b/dist/uPlot.cjs.js
+@@ -2908,9 +2908,8 @@ function syncFontSize(axis) {
+ }
+ 
+ function uPlot(opts, data, then) {
+-	const self = {
+-		mode: ifNull(opts.mode, 1),
+-	};
++	const self = Object.create(Object.prototype);
++	self.mode = ifNull(opts.mode, 1);
+ 
+ 	const mode = self.mode;
+ 
+diff --git a/dist/uPlot.esm.js b/dist/uPlot.esm.js
+index 87473c9cfb3366f57883cb803114a87c64d4b6b8..7e325ca0b1fa15c700da0f880c7864480af97304 100644
+--- a/dist/uPlot.esm.js
++++ b/dist/uPlot.esm.js
+@@ -2906,9 +2906,8 @@ function syncFontSize(axis) {
+ }
+ 
+ function uPlot(opts, data, then) {
+-	const self = {
+-		mode: ifNull(opts.mode, 1),
+-	};
++	const self = Object.create(Object.prototype);
++	self.mode = ifNull(opts.mode, 1);
+ 
+ 	const mode = self.mode;
+ 

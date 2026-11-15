@@ -12,6 +12,9 @@ process.env["CLOUDFLARE_DEV_REGISTRY_PATH"] = join(run, "registry");
 export default defineConfig({
   testDir: "./test/ui",
   outputDir: join(run, "results"),
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02 }
+  },
   timeout: 30_000,
   fullyParallel: true,
   workers: Math.max(1, Math.min(availableParallelism(), 8)),

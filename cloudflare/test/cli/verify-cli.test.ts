@@ -18,7 +18,7 @@ const document = (stdout: string) => JSON.parse(stdout) as Document;
 await test("readiness refuses unavailable providers before resolving latest or reading retained comparisons", async () => {
   const h = await harness(newWorld());
   const origin = await fakeOrigin((request, response) => {
-    if (request.url === "/api/v1/capabilities") return sendJson(response, { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
+    if (request.url === "/api/v1/capabilities") return sendJson(response, { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
     return sendJson(response, { error: "unexpected provider read" }, 500);
   });
   try {

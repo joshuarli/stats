@@ -45,11 +45,14 @@ await test("the Stats Workers run on OpenOrange with gateway identity, exact ing
     const host = await created.json() as { hostId: string; token: string };
     const frame = withHost(fixtureBytes(batch.frame), host.hostId);
     const ingestHeaders = { Authorization: `Bearer ${host.token}`, "Content-Type": INGEST_MEDIA_TYPE };
-    const first = await fetch(`${origin}${INGEST_PATH}`, { method: "POST", headers: ingestHeaders, body: frame });
-    const firstBytes = new Uint8Array(await first.arrayBuffer());
-    if (first.status !== 200) assert.fail(`ingest answered ${first.status}: ${new TextDecoder().decode(firstBytes)}\n${session.logs.slice(-15).join("\n")}`);
-    const firstAck = decodeAck(firstBytes, seqs);
-    assert.deepEqual([first.status, firstAck.accepted, firstAck.duplicates], [200, seqs.length, 0]);
+    const simultaneous = await Promise.all(Array.from({ length: 2 }, () => fetch(`${origin}${INGEST_PATH}`, { method: "POST", headers: ingestHeaders, body: frame })));
+    const acks = await Promise.all(simultaneous.map(async response => {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (response.status !== 200) assert.fail(`ingest answered ${response.status}: ${new TextDecoder().decode(bytes)}\n${session!.logs.slice(-15).join("\n")}`);
+      return decodeAck(bytes, seqs);
+    }));
+    assert.equal(acks.reduce((sum, ack) => sum + ack.accepted, 0), seqs.length);
+    assert.equal(acks.reduce((sum, ack) => sum + ack.duplicates, 0), seqs.length);
     const replay = await fetch(`${origin}${INGEST_PATH}`, { method: "POST", headers: ingestHeaders, body: frame });
     const replayAck = decodeAck(new Uint8Array(await replay.arrayBuffer()), seqs);
     assert.deepEqual([replay.status, replayAck.accepted, replayAck.duplicates], [200, 0, seqs.length]);

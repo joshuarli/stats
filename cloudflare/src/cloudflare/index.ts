@@ -1,3 +1,5 @@
+import { constantTimeEqual, tokenHash } from "../auth.ts";
+import { PLATFORM_SERVICE } from "../../../packages/platform-bridge/src/contract.ts";
 import { gatewayDecision } from "./gateway.ts";
 import { Installation } from "./installation.ts";
 import { collectDeployments } from "./deployments/collector.ts";
@@ -15,7 +17,7 @@ import type { RuntimeCapabilities } from "../core/capabilities.ts";
 export { Installation };
 
 function capabilities(env: Env): RuntimeCapabilities {
-  return { analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
+  return { projectSource: env.PROJECT_SOURCE, analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
 }
 
 async function forwardProjectRollouts(env: Env, store: DurableObjectStub<Installation>, project: string, service: string): Promise<void> {
@@ -43,12 +45,17 @@ export default {
       capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
+        if (service === PLATFORM_SERVICE) {
+          const verifier = env.PLATFORM_BRIDGE_TOKEN_SHA256;
+          return verifier !== undefined && /^[a-f0-9]{64}$/u.test(verifier) && constantTimeEqual(await tokenHash(token), verifier);
+        }
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request("https://installation/ingest/observe-auth", {
           method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }
         }));
         return response.status === 204;
       },
       serviceExists: async service => {
+        if (service === PLATFORM_SERVICE) return /^[a-f0-9]{64}$/u.test(env.PLATFORM_BRIDGE_TOKEN_SHA256 ?? "");
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request(`https://installation/services/${encodeURIComponent(service)}`));
         return response.status === 200;
       },

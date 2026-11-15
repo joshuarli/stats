@@ -192,3 +192,25 @@ direct dependencies in stuff (`deser-value`/`deser-json` 0.10, `tempfile`
 upgrades were made; no advisory justifies churn, and the pinned Rust nightly
 is unchanged. The commands and results are reproducible with `cargo audit` in
 each workspace root.
+
+## uPlot 1.6.32 rectangle getter retention
+
+`patches/uplot@1.6.32.patch` changes the chart instance allocation from an
+object literal to `Object.create(Object.prototype)` in the ESM and CommonJS
+builds. The instance keeps its ordinary prototype, fields and API. No package
+or version was added.
+
+A Chromium 158 production heap snapshot traced a destroyed chart through
+`AllocationSite → Map → DescriptorArray → rect getter → uPlot scope → custom
+cursor binding → project owner`. The retained getter kept one detached project
+view alive: 458 DOM nodes and 22 event listeners. Allocating the instance
+without the literal's allocation-site boilerplate removes that retaining path.
+The unchanged 30-navigation check then reported zero added nodes/listeners and
+1,271 KiB heap growth, below its 2 MiB limit.
+
+[V8 documents accessor descriptors stored in maps](https://github.com/v8/v8/blob/main/docs/objects/fields-and-elements.md);
+[uPlot's pinned constructor and getter](https://github.com/leeoniya/uPlot/blob/1.6.32/src/uPlot.js)
+provide the corresponding upstream implementation. Remove the patch when an
+upstream release avoids the retaining allocation or the same production-build
+navigation check passes without it. The patch is verified through
+`cloudflare/scripts/bench-native-retention.mjs`, rather than a source-text test.

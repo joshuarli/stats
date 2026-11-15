@@ -478,3 +478,10 @@ load average between 3.7 and 10.5 on 18 cores. The sides were interleaved, so
 read the absolute times as inflated and the ratios as indicative.
 
 The development-loop test runs OpenOrange with isolated persisted state; local stack tests retain Miniflare for Cloudflare producer coverage.
+
+`make orange-test` runs the native OpenOrange regression suite against generated descriptors. `make check` requires it; frontend-only checks remain independent. The local runtime exercises concurrent ingest, restart persistence, cross-worker observation, backup and platform diagnostics. It does not prove production actor idle eviction and wake, alarm delivery, rolling release replacement, or draining in-flight work during shutdown.
+
+A logical-restore target omits the `APPLICATION_EVENTS_RELEASE` binding until
+import completes. Self-observation would otherwise populate the empty target
+while the restore client checks status. Source export still includes its
+observations, and the native test verifies restored state and duplicate ingest.

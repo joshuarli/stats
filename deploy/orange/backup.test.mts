@@ -19,9 +19,15 @@ interface Deployment {
   stop(): Promise<void>;
 }
 
-async function deploy(stateDir: string): Promise<Deployment> {
+async function deploy(stateDir: string, mode: "source" | "restore"): Promise<Deployment> {
   const secret = randomBytes(32).toString("hex");
-  generate(stateDir, { kind: "dev", release: "backup", gatewaySecret: secret, nowMs: String(NOW_MS) });
+  const generated = generate(stateDir, { kind: "dev", release: "backup", gatewaySecret: secret, nowMs: String(NOW_MS) });
+  if (mode === "restore") {
+    const descriptor = JSON.parse(readFileSync(generated.stats, "utf8")) as { vars: Record<string, string> };
+    delete descriptor.vars["APPLICATION_EVENTS_RELEASE"];
+    assert.equal("APPLICATION_EVENTS_RELEASE" in descriptor.vars, false);
+    writeFileSync(generated.stats, JSON.stringify(descriptor));
+  }
   const session = await startSession(stateDir, await freePort());
   const gateway = await startGateway(session.origin, secret);
   return { session, gateway, stop: async () => { await gateway.close(); await session.stop(); } };
@@ -49,7 +55,7 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
   let source: Deployment | undefined;
   let target: Deployment | undefined;
   try {
-    source = await deploy(join(root, "source"));
+    source = await deploy(join(root, "source"), "source");
     const origin = source.gateway.origin;
     const created = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "backup-host" }) });
     assert.equal(created.status, 201);
@@ -80,7 +86,7 @@ await test("a fenced backup restores into a fresh OpenOrange namespace with iden
     source = undefined;
     assert.ok(!readFileSync(join(backup, "installation", "hosts.ndjson"), "utf8").includes(host.token), "the backup holds the token itself");
 
-    target = await deploy(join(root, "target"));
+    target = await deploy(join(root, "target"), "restore");
     const restored = target.gateway.origin;
     const installationManifest = JSON.parse(readFileSync(join(backup, "installation", "manifest.json"), "utf8")) as { tables: { name: string }[] };
     const begun = await fetch(`${restored}/api/v1/admin/objects/installation/import/begin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(installationManifest) });

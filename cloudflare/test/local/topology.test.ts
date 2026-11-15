@@ -14,7 +14,7 @@ const SCRATCH = join(CLOUDFLARE_ROOT, "../.work/tmp");
 
 function options(persist: string): StackOptions {
   return {
-    text: { ENVIRONMENT: "test", PROJECTS: PROJECTS!, WORKER_NAME: "stats" },
+    text: { ENVIRONMENT: "test", PROJECTS: PROJECTS!, PROJECT_SOURCE: "cloudflare", WORKER_NAME: "stats" },
     secrets: { GATEWAY_SECRET: GATEWAY_SECRET! },
     analytics: { service: "analytics-provider", entrypoint: "Analytics" },
     collector: { kind: "attached" },

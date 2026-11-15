@@ -26,9 +26,9 @@ export function freePort(): Promise<number> {
   });
 }
 
-export async function startSession(stateDir: string, port: number): Promise<Session> {
+export async function startSession(stateDir: string, port: number, options: { readonly environment?: Readonly<Record<string, string>> } = {}): Promise<Session> {
   const args = [ORANGE_BIN, "dev", "--json", "--ip", "127.0.0.1", "--port", String(port), "--config", join(stateDir, "stats.jsonc"), "--config", join(stateDir, "observe.jsonc")];
-  const child = spawn(process.execPath, args, { cwd: stateDir, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, args, { cwd: stateDir, env: { ...process.env, ...options.environment }, stdio: ["ignore", "pipe", "pipe"] });
   const logs: string[] = [];
   const started = performance.now();
   let ready: { origin: string; ms: number } | undefined;

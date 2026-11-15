@@ -49,6 +49,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Builds, deployments, CLI contract and cost reports | [Operations](docs/operations.md) |
 | Toolchain pins and dependency decisions | [Dependencies](docs/dependencies.md) |
 | Service/application integration and producers | [Contract](docs/integration.md), [TypeScript](packages/producer/README.md), [Rust](packages/stats-producer/README.md) |
+| Native runtime spans, sampling and platform delivery | [Platform observations](docs/platform-observability.md) |
 | Deployment tracking and comparison | [Deployments](docs/deployments.md) |
 | Tests and screenshot verification | [Testing](docs/testing.md) |
 | Local development and build ownership | [Development](docs/development.md) |

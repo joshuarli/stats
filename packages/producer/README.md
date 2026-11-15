@@ -55,3 +55,10 @@ Call `shutdown()` before process exit to flush the queue and stop the flush
 timer.
 
 Version 0.2.0.
+
+## Forwarded releases
+
+A forwarder may set `record({ release, ... })` to preserve the source release.
+The override uses the same bounded release format as the configured release.
+When omitted, the event uses the producer's configured release. Invalid release
+labels are dropped and counted as invalid events. The stored event format is unchanged.

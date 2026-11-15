@@ -38,6 +38,7 @@ export interface ProducerConfig {
 }
 
 export interface OperationInput {
+  readonly release?: string;
   readonly operation: string;
   readonly outcome: string;
   readonly durationMs: number;
@@ -151,12 +152,13 @@ export function createProducer(config?: ProducerConfig | null): Producer {
     const eventId = input.eventId ?? newEventId();
     const atMs = input.atMs ?? now();
     const durationMs = input.durationMs;
+    const eventRelease = input.release ?? release;
     const work = workOf(input.work ?? {});
     const instance = input.instance ?? settings.instance;
     const host = input.host ?? settings.host;
     if (!EVENT_ID.test(eventId) || !OPERATION.test(input.operation) || !OUTCOME.test(input.outcome)) return null;
     if (!Number.isSafeInteger(atMs) || atMs <= 0 || !Number.isSafeInteger(durationMs) || durationMs < 0 || durationMs > MAX_DURATION_MS) return null;
-    if (work === null) return null;
+    if (work === null || typeof eventRelease !== "string" || !RELEASE.test(eventRelease)) return null;
     if (instance !== undefined && !INSTANCE.test(instance)) return null;
     if (host !== undefined && !HOST.test(host)) return null;
     if (input.trace !== undefined && (!TRACE_ID.test(input.trace.traceId) || !SPAN_ID.test(input.trace.spanId))) return null;
@@ -170,7 +172,7 @@ export function createProducer(config?: ProducerConfig | null): Producer {
       outcome: input.outcome,
       durationMs,
       work,
-      release,
+      release: eventRelease,
       service,
       ...(instance === undefined ? {} : { instance }),
       ...(host === undefined ? {} : { host }),

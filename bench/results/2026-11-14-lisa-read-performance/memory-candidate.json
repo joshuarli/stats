@@ -1,0 +1,14 @@
+{
+  "mode": "node-http-loopback-in-memory-sqlite",
+  "events": 18470,
+  "node": "v26.13.1",
+  "maxRssKiB": 156308,
+  "memory": {
+    "rss": 160059392,
+    "heapTotal": 32489472,
+    "heapUsed": 19648224,
+    "external": 10961100,
+    "arrayBuffers": 2719611
+  },
+  "failures": 0
+}

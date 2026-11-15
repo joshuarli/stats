@@ -4,7 +4,7 @@ WORKDIR /orange
 COPY orange/package.json orange/pnpm-lock.yaml orange/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts && ln -s /orange/node_modules/open-orange/dist/bin.js /usr/local/bin/orange
 WORKDIR /app
-COPY app/ /app/
+COPY --chown=node:node app/ /app/
 ENV NODE_ENV=production PORT=8080
 EXPOSE 8080
 USER node
