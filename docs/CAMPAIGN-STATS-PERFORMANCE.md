@@ -3,25 +3,30 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last deployed revision: `7e5f99120e74`.
-Production application: `stats:7e5f99120e74`, Orange node version 16.
+the frozen production corpus. Last deployed revision: `05cc14f183f7`.
+Production application: `stats:05cc14f183f7`, Orange node version 17.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
-that this campaign's latency goals pass. No full goal is marked complete.
+that this campaign's latency goals pass. P1 passes on the current live corpus.
+Tenfold scale and the other acceptance goals remain open.
 
 P4 measurement boundaries now have browser and native regressions. A frozen
 20,395-event corpus and 1,000 cached interactions per variant establish no
-measurable timing overhead. Stats delivery of browser observations remains open.
-Worker dispatch timing is live, with native persistence coverage and 117 passing
-production health checks. Diagnostic first reads spend seconds in aggregate SQL;
-repeated reads spend tens to hundreds of milliseconds there. These profiled
-samples are diagnosis, not percentile acceptance. Bounded authenticated browser
-delivery is the current implementation slice.
+measurable timing overhead. Bounded browser delivery and trace correlation are
+live, with native persistence coverage and 117 passing production health checks.
+The live P1 run has 200 samples per range, p95 below 34 ms and no measured summary
+fetches. A stress-burst completeness check exposes browser and producer drops.
+Delivery acceptance remains open. Cold reads still spend seconds in aggregate
+SQL. A five-round isolated Lisa cache-retention trial shows no useful gain.
+Next: test sequential canonical-table reads against random secondary-index
+lookups, preserving exact summaries and stored data.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
 The isolated lifecycle fixture proves constructor replacement after idle,
 autonomous overdue alarms after runtime restart, and idempotent interrupted
 request replay. Local readiness stayed below 15 seconds in three starts. This
 is platform-fixture proof; production recovery acceptance remains open.
-No active child writers. No failed candidate is selected for production.
+An isolated frontend lane owns five incident fixtures and overview guidance.
+The parent owns query diagnosis and delivery gaps. No failed candidate is
+selected for production.
 
 ## Charter
 
@@ -132,6 +137,7 @@ stable candidate. It is required evidence, not a waived gate.
 
 - [Prior range and batching measurements](../bench/results/2026-11-14-range-refresh/README.md)
 - [Browser journey measurements](../bench/results/2026-11-14-project-journey/README.md)
+- [Live cached range acceptance](../bench/results/2026-11-15-live-cached-ranges/README.md)
 - [Runtime capabilities and remaining gaps](runtime-hardening.md)
 - [Production validation and rollback](runtime-hardening-handoff.md)
 - [Frontend measurement history](frontend-efficiency.md)
