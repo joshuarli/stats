@@ -45,9 +45,13 @@ doas python3 /home/josh/.work/stats-perf-campaign/analyze-native-soak.py \
   --output /home/josh/.work/stats-perf-campaign/soak-final-analysis.json
 ```
 
-Six regression tests pass via
+Seven regression tests pass via
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s bench -p test_analyze_native_soak.py`.
 They cover incomplete collection, unavailable groups, missing samples,
 restarts, warmup exclusion, the RSS bound, growing queues and actor counts,
-counter regressions and explicit coverage gaps. A partial-series invocation
+counter regressions, missing identity evidence and explicit coverage gaps.
+The analyzer requires deployment image/version, collector PID/source checksum,
+an explicit coverage declaration and per-sample process start/OOM metadata.
+Removing these fields from otherwise complete fixtures produced false passes
+before the identity regression was fixed. A partial-series invocation
 on Lisa correctly reports blocked, with no timing or plateau acceptance.

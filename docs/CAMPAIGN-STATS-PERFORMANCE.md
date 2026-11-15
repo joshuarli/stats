@@ -28,7 +28,7 @@ W6 still awaits the soak deadline. Read-only inspection found actor-list HTTP
 STUF-88); it cannot
 pass the no-unavailable-groups requirement. Preserve the running sampler until
 completion, then apply the one allowed invalidation restart. The analyzer and
-its six regression tests are ready; see the
+its regression tests are ready; see the
 [progress record](../bench/results/2026-11-15-soak-progress/README.md).
 The campaign is not closed.
 

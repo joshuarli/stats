@@ -10,7 +10,9 @@ spec.loader.exec_module(soak)
 
 
 def complete():
-    rows = [{"kind": "start", "samples": 1441, "intervalSeconds": 60, "gaps": []}]
+    rows = [{"kind": "start", "samples": 1441, "intervalSeconds": 60, "gaps": [],
+             "image": "stats:0123456789ab", "version": 24, "samplerPid": 3384,
+             "scriptSha256": "0" * 64}]
     for index in range(1441):
         rows.append({"kind": "sample", "index": index, "atMs": index * 60_000,
                      "resources": {"startedAt": "fixed", "rssBytes": 1000, "oomKilled": False},
@@ -22,6 +24,19 @@ def complete():
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_missing_identity_or_coverage_evidence_never_passes(self):
+        for key in ("image", "version", "samplerPid", "scriptSha256", "gaps"):
+            with self.subTest(header=key):
+                rows = complete()
+                del rows[0][key]
+                self.assertEqual(soak.analyze(rows)["state"], "blocked")
+        for key in ("startedAt", "oomKilled"):
+            with self.subTest(resource=key):
+                rows = complete()
+                for row in rows[1:-1]:
+                    del row["resources"][key]
+                self.assertEqual(soak.analyze(rows)["state"], "blocked")
+
     def test_complete_flat_series_and_traffic(self):
         result = soak.analyze(complete())
         self.assertEqual(result["state"], "pass")

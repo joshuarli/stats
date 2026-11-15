@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import statistics
 
 
@@ -14,6 +15,13 @@ def analyze(records):
     if not records or records[0].get("kind") != "start":
         return {"state": "blocked", "causes": ["missing start record"]}
     start = records[0]
+    if (not isinstance(start.get("image"), str) or not re.fullmatch(r"stats:[a-f0-9]{12}", start["image"])
+            or type(start.get("version")) is not int or start["version"] <= 0
+            or type(start.get("samplerPid")) is not int or start["samplerPid"] <= 0
+            or not isinstance(start.get("scriptSha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", start["scriptSha256"])):
+        problems.append("missing or invalid collector or deployment identity")
+    if not isinstance(start.get("gaps"), list) or any(not isinstance(gap, str) or not gap for gap in start["gaps"]):
+        problems.append("missing or invalid coverage declaration")
     samples = [row for row in records if row.get("kind") == "sample"]
     ends = [row for row in records if row.get("kind") == "end"]
     if len(ends) != 1 or records[-1].get("kind") != "end" or not ends[0].get("complete"):
@@ -29,7 +37,10 @@ def analyze(records):
     if any(any(isinstance(actor, dict) and actor.get("truncated") for actor in s.get("actors", {}).values()) for s in samples):
         problems.append("truncated actor population")
     resources = [s.get("resources", {}) for s in samples]
-    if len({r.get("startedAt") for r in resources}) != 1 or any(r.get("oomKilled") for r in resources):
+    if any(not isinstance(r, dict) or not isinstance(r.get("startedAt"), str) or not r["startedAt"]
+           or type(r.get("oomKilled")) is not bool for r in resources):
+        problems.append("missing application process identity")
+    elif len({r["startedAt"] for r in resources}) != 1 or any(r["oomKilled"] for r in resources):
         problems.append("application restart or OOM")
     if not samples or samples[-1]["atMs"] - samples[0]["atMs"] < 24 * HOUR_MS:
         problems.append("less than 24 hours observed")
@@ -39,7 +50,7 @@ def analyze(records):
         problems.append("sample delayed by more than one interval")
     result = {"state": "blocked", "causes": sorted(set(problems)), "samples": len(samples),
               "deployment": {"image": start.get("image"), "version": start.get("version")},
-              "coverageGaps": start.get("gaps", []), "warmupHours": 6}
+              "coverageGaps": start.get("gaps"), "warmupHours": 6}
     if problems:
         return result
     anchor = samples[0]["atMs"]
