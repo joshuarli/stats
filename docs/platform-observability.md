@@ -35,6 +35,8 @@ ingress route. It runs without root on a read-only filesystem. Its memory limit
 is 128 MiB. The receiver admits at most four bodies concurrently, caps each body
 at 1 MiB and caps a batch at 256 spans. The producer queue holds 128 events plus
 a bounded batch in flight. Full queues drop old events and report those drops.
+Private delivery allows five seconds per attempt and one retry. A thirteen-second
+shutdown deadline fits the container's fifteen-second stop budget.
 
 The reserved `stats-platform` sink uses the existing event protocol and a
 separate credential. The Worker stores its SHA-256 verifier. This credential is

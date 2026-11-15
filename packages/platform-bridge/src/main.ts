@@ -9,7 +9,7 @@ const policy = JSON.parse(readFileSync(required("PLATFORM_POLICY_FILE"), "utf8")
 validatePolicy(policy);
 const port = Number(required("PLATFORM_PORT"));
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new TypeError("invalid platform port");
-const producer = createProducer({ endpoint: required("STATS_ORIGIN"), service: PLATFORM_SERVICE, token: required("STATS_INGEST_TOKEN"), release: required("PLATFORM_BRIDGE_RELEASE"), queueLimit: 128, batchSize: 64, timeoutMs: 1000, maxRetries: 1, maxRetryAfterMs: 1000 });
+const producer = createProducer({ endpoint: required("STATS_ORIGIN"), service: PLATFORM_SERVICE, token: required("STATS_INGEST_TOKEN"), release: required("PLATFORM_BRIDGE_RELEASE"), queueLimit: 128, batchSize: 64, timeoutMs: 5000, maxRetries: 1, maxRetryAfterMs: 1000 });
 const bridge = createBridgeServer({ producer, policy, token: required("PLATFORM_OTLP_TOKEN") });
 let timer: ReturnType<typeof setInterval> | undefined;
 let stopping = false;
@@ -17,7 +17,7 @@ async function stop(signal: NodeJS.Signals): Promise<void> {
   if (stopping) return;
   stopping = true;
   if (timer !== undefined) clearInterval(timer);
-  const deadline = setTimeout(() => { console.error(JSON.stringify({ event: "platform_shutdown_deadline", queued: producer.stats().queued })); process.exit(1); }, 8000);
+  const deadline = setTimeout(() => { console.error(JSON.stringify({ event: "platform_shutdown_deadline", queued: producer.stats().queued })); process.exit(1); }, 13_000);
   bridge.server.closeIdleConnections();
   const closed = new Promise<void>(done => bridge.server.close(() => done()));
   const force = setTimeout(() => bridge.server.closeAllConnections(), 1000);
