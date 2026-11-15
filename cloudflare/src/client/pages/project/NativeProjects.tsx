@@ -23,6 +23,12 @@ const Platform = lazy(() => import("./Platform"));
 const IssuesWidget = lazy(() => import("./ObserveSection").then(module => ({ default: module.IssuesWidget })));
 const ObserveModal = lazy(() => import("./ObserveSection").then(module => ({ default: module.ObserveModal })));
 const ApplicationOverview = lazy(() => import("./ApplicationOverview").then(module => ({ default: module.ApplicationOverview })));
+const SUMMARY_WINDOW_LIMIT = 5;
+
+function summaryOnly(value: ApplicationSummary | ApplicationTelemetry): ApplicationSummary {
+  if (!("recent" in value)) return value;
+  return { provenance: value.provenance, fromMs: value.fromMs, toMs: value.toMs, stepMs: value.stepMs, totals: value.totals, openIssues: value.openIssues, buckets: value.buckets, operations: value.operations, moreOperations: value.moreOperations };
+}
 
 export function NativeProjectsPage(): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
@@ -67,6 +73,8 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
   const [loadedAtMs, setLoadedAtMs] = createSignal(0);
   let loadedWindow: string | null = null;
   let loadedKey: string | null = null;
+  let revalidateCached = false;
+  const summaries = new Map<string, { readonly data: ApplicationSummary; readonly atMs: number }>();
   const detail = (): ApplicationTelemetry | null => { const value = data(); return value !== null && "recent" in value ? value : null; };
   const windowAt = () => {
     const end = Math.min(view()?.toMs ?? now(), now());
@@ -82,9 +90,17 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     if (!query.active) return;
     const selection = `${query.service}:${query.range}:${query.view?.fromMs ?? ""}:${query.view?.toMs ?? ""}`;
     const key = `${selection}:${query.refresh}`;
-    if (data() !== null && loadedKey === key && (!query.recent || detail() !== null)) { setRefreshing(false); setError(null); return; }
+    if (!revalidateCached && data() !== null && loadedKey === key && (!query.recent || detail() !== null)) { setRefreshing(false); setError(null); return; }
+    const cached = query.recent ? undefined : summaries.get(key);
+    if (cached !== undefined) {
+      summaries.delete(key); summaries.set(key, cached);
+      setData(cached.data); loadedWindow = selection; loadedKey = key;
+      setLoadedAtMs(cached.atMs); setRefreshing(false); setError(null);
+      if (!revalidateCached) return;
+    }
     const window = windowAt();
     const controller = new AbortController();
+    let completed = false;
     if (loadedWindow !== selection) setData(null);
     setError(null);
     setRefreshing(true);
@@ -92,13 +108,17 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
     const read = query.recent ? getApplicationTelemetry : getApplicationSummary;
     void read(query.service, window.fromMs, window.toMs, controller.signal).then(value => {
       if (controller.signal.aborted) return;
+      completed = true; revalidateCached = false;
       setData(value);
       loadedWindow = selection;
       loadedKey = key;
-      setLoadedAtMs(Date.now());
+      const atMs = Date.now();
+      setLoadedAtMs(atMs);
+      summaries.delete(key); summaries.set(key, { data: summaryOnly(value), atMs });
+      while (summaries.size > SUMMARY_WINDOW_LIMIT) summaries.delete(summaries.keys().next().value!);
       setRefreshing(false);
-    }).catch((failure: unknown) => { if (!controller.signal.aborted) { setError(errorMessage(failure)); setRefreshing(false); } });
-    return () => controller.abort();
+    }).catch((failure: unknown) => { if (!controller.signal.aborted) { completed = true; setError(errorMessage(failure)); setRefreshing(false); } });
+    return () => { if (!completed) revalidateCached = true; controller.abort(); };
   });
   const latest = () => { const value = props.service.latestDeployment; return value?.status === "available" ? value : null; };
   const showSection = (next: Section) => { setSection(next); writeParam("section", next); };
