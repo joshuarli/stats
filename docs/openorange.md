@@ -168,3 +168,16 @@ The selected image and protected replay/verification captures are saved under
 supplement with the earlier full physical backup; it does not contain Engine
 or Store state. Shared health after the subsequent registry-stream repair
 reported 92 passes, one disk-capacity warning and no failures.
+
+## Range refresh hardening (2026-11-14)
+
+`stats:434ea6ed31f5` is deployed at Orange node version 15. Slow reads survive
+live clock ticks. Completed ranges reuse a bounded summary cache, while manual
+and periodic refresh still read fresh data. Summary responses and stored HTTP
+events carry paired query and actor-call timings. Stats batches its own events
+through the existing private observation binding.
+
+The [hardening audit](runtime-hardening.md) records installed artifacts,
+compatibility evidence, measured results and unresolved gaps. The
+[deployment handoff](runtime-hardening-handoff.md) contains validation and
+rollback commands. The Engine, persistence backend and credentials are unchanged.
