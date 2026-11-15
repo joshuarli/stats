@@ -80,8 +80,9 @@ function windowTotals(buckets: readonly ApplicationTotals[]): ApplicationTotals 
 export function readApplicationSummary(db: SqlStatements, service: string, nowMs: number, filter: Pick<ExternalFilter, "fromMs" | "toMs">): ApplicationSummary {
   const { fromMs, toMs } = eventWindow(nowMs, filter.fromMs, filter.toMs);
   const stepMs = Math.max(1000, Math.ceil((toMs - fromMs) / 120_000) * 1000);
+  // OpenOrange 1.0.2 treats a leading WITH as a write turn. Keep SELECT first until its read classifier supports CTEs.
   const rows = db.rows<SummaryRow>(
-    `WITH events AS MATERIALIZED (
+    `SELECT * FROM (WITH events AS MATERIALIZED (
       SELECT event_at, json_extract(payload, '$.operation') AS operation,
         json_extract(payload, '$.outcome') AS outcome,
         json_extract(payload, '$.durationMs') AS duration_ms,
@@ -95,7 +96,7 @@ export function readApplicationSummary(db: SqlStatements, service: string, nowMs
       SELECT 1 AS kind, NULL AS atMs, operation, ${MEASURES}
       FROM events GROUP BY operation ORDER BY events DESC, operation LIMIT 21
     )
-    SELECT * FROM buckets UNION ALL SELECT * FROM operations
+    SELECT * FROM buckets UNION ALL SELECT * FROM operations)
     ORDER BY kind, atMs, events DESC, operation`,
     service, fromMs, toMs, fromMs, stepMs, stepMs, fromMs
   );

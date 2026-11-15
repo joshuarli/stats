@@ -4,6 +4,7 @@ import { createObserveService } from "../../src/observe/core/service.ts";
 import { readApplicationSummary, readApplicationTelemetry } from "../../src/observe/application/telemetry.ts";
 import { ingestExternal } from "../../src/observe/core/store.ts";
 import { receiveEvents } from "../../src/observe/ingest/failures.ts";
+import type { SqlValue } from "../../src/core/sql.ts";
 import type { ExternalEvent } from "../../src/observe/ingest/model.ts";
 import { handleApi } from "../../src/observe/http/api.ts";
 import { database, T0, H } from "./support.ts";
@@ -56,7 +57,11 @@ await test("summary reads preserve complete aggregates without loading recent ev
     ];
     ingestExternal(db, "stats", await receiveEvents("stats", batch), T0);
     const detail = readApplicationTelemetry(db, "stats", T0, {});
-    const reads = context.mock.method(db, "rows");
+    const read = db.rows.bind(db);
+    const reads = context.mock.method(db, "rows", (query: string, ...parameters: SqlValue[]) => {
+      assert.match(query, /^\s*SELECT\b/iu, "OpenOrange 1.0.2 sends other leading keywords through a write turn");
+      return read(query, ...parameters);
+    });
     const summary = readApplicationSummary(db, "stats", T0, {});
     assert.deepEqual(summary.totals, detail.totals);
     assert.deepEqual(summary.buckets, detail.buckets);

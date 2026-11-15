@@ -19,7 +19,8 @@ The larger case repeats that capture ten times with distinct database keys.
 Each case runs five interleaved rounds of ten completed requests per side.
 Each round reports mean elapsed time per request. The table reports the median
 and range of those five round means.
-The baseline is `ea3fabdf2`. The summary change is `8744257bb`.
+The baseline is `ea3fabdf2`. The summary change starts at `8744257bb`. The final query also uses the
+SELECT-first form described below.
 
 Both recorded timing runs pass `perf-gate-ready` before and immediately after.
 A separate V8 profile places most sampled CPU in SQLite execution.
@@ -28,8 +29,8 @@ Neither case has failed HTTP requests.
 
 | Workload | Baseline median (range) | Candidate median (range) | Median process CPU per request |
 | --- | --- | --- | --- |
-| 1,847 captured events | 38.54 ms (37.05–40.42) | 15.40 ms (14.36–19.23) | 39.68 → 16.89 ms |
-| 18,470 repeated events | 329.57 ms (321.24–348.99) | 109.25 ms (104.71–120.60) | 330.80 → 110.59 ms |
+| 1,847 captured events | 35.86 ms (35.62–47.09) | 14.99 ms (14.15–15.65) | 36.86 → 16.56 ms |
+| 18,470 repeated events | 367.40 ms (312.63–434.13) | 124.97 ms (105.41–137.25) | 367.32 → 125.55 ms |
 
 The replay uses warm, in-memory SQLite and HTTP loopback. It isolates backend
 read cost on Lisa. It does not measure Caddy, Tailscale, Rivet actor routing,
@@ -37,7 +38,7 @@ production queueing or cold disk latency. The load generator shares the process
 with the server. The CPU reduction follows the removed SQL work.
 
 Separate single-implementation resource runs peak at 157,720 KiB RSS for the
-baseline and 157,896 KiB for the candidate on the larger workload. These are
+baseline and 156,308 KiB for the candidate on the larger workload. These are
 single-run resource checks, not evidence of a memory improvement.
 The baseline resource run overlapped a load increase, so its timings are excluded.
 The materialized projection contains scalar fields rather than complete payloads.
@@ -45,8 +46,20 @@ SQLite can spill temporary aggregation state. Production already supplies
 writable `/tmp` on its read-only application container.
 
 The rebuilt Stats Worker grows from 298,670 to 299,027 bytes. The observation
-Worker grows from 202,115 to 202,410 bytes. Those totals include the separately
+Worker grows from 202,115 to 202,426 bytes. Those totals include the separately
 verified service-catalog batching change. No dependency is added.
+
+## OpenOrange read classification
+
+Pinned OpenOrange 1.0.2 routes a leading `WITH` through its implicit write turn.
+Its `DurableObjectTurnDatabase.executeSync` read classifier recognizes a leading
+`SELECT`. The query therefore wraps the shared CTE in an outer SELECT.
+That form keeps the same SQLite plan and response while using the read path.
+The guard can be removed when the pinned runtime recognizes read-only CTEs.
+
+The summary regression test enforces that runtime boundary. Removing the outer
+SELECT makes the test fail. The real Orange diagnostics test also executes
+the complete telemetry query and verifies persistence across a restart.
 
 ## Related service-catalog change
 
