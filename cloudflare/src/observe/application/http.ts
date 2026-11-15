@@ -1,13 +1,11 @@
 import { APPLICATION_EVENTS_SERVICE, postApplicationEvent, type ApplicationEventSinkOptions } from "./sink.ts";
-import { readTimings } from "./timing.ts";
-
-const SUMMARY_PATH = /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external\/telemetry\/summary$/u;
+import { APPLICATION_SUMMARY_PATH, readTimings } from "./timing.ts";
 
 function requestOperation(request: Request): string {
   const path = new URL(request.url).pathname;
   const route = path === "/ingest/v2/batches" ? "host-ingest"
     : /^\/ingest\/services\/[^/]+\/deployments$/u.test(path) ? "deploy-mark"
-    : SUMMARY_PATH.test(path) ? "application-summary"
+    : APPLICATION_SUMMARY_PATH.test(path) ? "application-summary"
     : /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external(?:\/telemetry|\/operations)?$/u.test(path) ? "application-events"
     : path.startsWith("/api/observe/") ? "observe"
     : /^\/api\/v1\/admin(?:\/|$)/u.test(path) ? "admin"
@@ -38,7 +36,7 @@ export async function captureApplicationRequest(request: Request, run: () => Pro
   try {
     let response = await run();
     status = response.status;
-    if (SUMMARY_PATH.test(path)) {
+    if (APPLICATION_SUMMARY_PATH.test(path)) {
       work = readTimings(response.headers.get("Server-Timing"));
       const url = new URL(request.url);
       const from = url.searchParams.get("from"), to = url.searchParams.get("to");

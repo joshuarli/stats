@@ -44,6 +44,11 @@ JSON decoding and rendering. Rendering includes lazy overview-module loading
 and all three current chart draws through the next animation frame. Nested
 server timings overlap those phases and must not be added to them.
 
+`app-dispatch` measures the Stats Worker's complete observation-binding fetch.
+The existing HTTP event stores it as `dispatch_us`. Its difference from
+`app-store` includes observation-worker routing, transport and waits before
+or after the timed actor call. It does not isolate queueing or CPU time.
+
 The [browser measurement record](../bench/results/2026-11-14-project-journey/README.md)
 describes the actual draw boundary, regressions and overhead comparison.
 

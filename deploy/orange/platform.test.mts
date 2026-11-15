@@ -106,6 +106,7 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     const summaryResponse = await fetch(`${session.origin}/api/observe/stats/external/telemetry/summary`, { headers: { ...headers, traceparent: `00-${summaryTrace.traceId}-${summaryTrace.spanId}-00` } });
     assert.equal(summaryResponse.status, 200);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-query;dur=\d+\.\d{3}/u);
+    assert.match(summaryResponse.headers.get("Server-Timing")!, /app-dispatch;dur=\d+\.\d{3}/u);
     assert.match(summaryResponse.headers.get("Server-Timing")!, /app-total;dur=\d+\.\d{3}/u);
     const deliveryDeadline = Date.now() + 10_000;
     while (bridge.counters().admitted < 4 && Date.now() < deliveryDeadline) await new Promise(done => setTimeout(done, 50));
@@ -139,6 +140,7 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     const measuredRead = correlation.events.find(row => row.event.operation === "http.get.application-summary");
     assert.deepEqual(measuredRead?.event.trace, summaryTrace);
     assert.ok(measuredRead!.event.work["query_us"]! >= 0);
+    assert.ok(measuredRead!.event.work["dispatch_us"]! >= 0);
     const burstAtMs = Date.now();
     const burst = await Promise.all(Array.from({ length: 16 }, () => fetch(`${session!.origin}/api/v1/capabilities`, { headers })));
     assert.ok(burst.every(response => response.status === 200));

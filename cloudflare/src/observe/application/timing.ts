@@ -1,4 +1,5 @@
-const READ_TIMINGS: Readonly<Record<string, string>> = { "app-store": "store_us", "app-query": "query_us", "app-issues": "issues_us", "app-read": "read_us", "app-encode": "encode_us", "app-total": "total_us" };
+export const APPLICATION_SUMMARY_PATH = /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/external\/telemetry\/summary$/u;
+const READ_TIMINGS: Readonly<Record<string, string>> = { "app-dispatch": "dispatch_us", "app-store": "store_us", "app-query": "query_us", "app-issues": "issues_us", "app-read": "read_us", "app-encode": "encode_us", "app-total": "total_us" };
 
 export function readTimings(header: string | null): Record<string, number> {
   const work: Record<string, number> = {};

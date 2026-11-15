@@ -8,6 +8,7 @@ import { MAX_ARTIFACT_BYTES } from "../observe/core/limits.ts";
 import { MAX_BATCH_BYTES } from "../observe/ingest/model.ts";
 import { isObservedService, OBSERVED_SERVICES } from "../observe/services.ts";
 import { MAX_MARKER_BODY_BYTES } from "./installation/services.ts";
+import { APPLICATION_SUMMARY_PATH } from "../observe/application/timing.ts";
 
 export type AuthDecision =
   | { readonly ok: true }
@@ -128,7 +129,14 @@ async function observe(request: Request, target: StatsTarget, path: string): Pro
   if (target.observe === null) return error(503, "unavailable", "observability is not available on this target");
   const url = new URL(request.url);
   const service = `https://observe${path.slice(OBSERVE_PREFIX.length)}${url.search}`;
-  if (request.method === "GET") return secure(await target.observe(service));
+  if (request.method === "GET") {
+    if (!APPLICATION_SUMMARY_PATH.test(path)) return secure(await target.observe(service));
+    const started = performance.now();
+    const response = await target.observe(service);
+    const headers = new Headers(response.headers);
+    headers.append("Server-Timing", `app-dispatch;dur=${Math.max(0, performance.now() - started).toFixed(3)}`);
+    return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
+  }
   const write = request.method === "POST" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/issues\/[0-9a-f]{64}\/state$/u.test(path) ? MAX_OBSERVE_BODY_BYTES
     : request.method === "PUT" && /^\/api\/observe\/[a-z][a-z0-9-]{0,31}\/artifacts\/[^/]+\/[^/]+$/u.test(path) ? MAX_ARTIFACT_BYTES
     : null;

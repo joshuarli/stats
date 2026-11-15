@@ -3,7 +3,7 @@
 ## Status
 
 Active. Goal: immediate, explainable Stats interactions on Lisa at ten times
-the frozen production corpus. Last accepted revision: `b5978bfc99a`.
+the frozen production corpus. Last accepted revision: `eb3ec6c3183`.
 Production application: `stats:434ea6ed31f5`, Orange node version 15.
 Earlier cancellation, cache and batching fixes are prerequisites, not proof
 that this campaign's latency goals pass. No full goal is marked complete.
@@ -11,7 +11,8 @@ that this campaign's latency goals pass. No full goal is marked complete.
 P4 measurement boundaries now have browser and native regressions. A frozen
 20,395-event corpus and 1,000 cached interactions per variant establish no
 measurable timing overhead. Stats delivery of browser observations remains open.
-Next slice: separate Worker dispatch delay from actor and SQL elapsed time,
+Worker dispatch timing now has native HTTP and persistence coverage. Next:
+deploy the measurement slice, capture first-read phase distributions on Lisa,
 then add bounded, authenticated browser delivery to the existing event pipeline.
 Integration checkout: `.work/wt/runtime-hardening`, branch `feat/runtime-hardening`.
 No active child writers. No failed candidate is selected for production.

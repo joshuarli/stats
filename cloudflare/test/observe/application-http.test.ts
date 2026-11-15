@@ -73,12 +73,12 @@ await test("summary HTTP events carry only bounded same-request timing fields", 
   let monotonic = 0;
   const response = await captureApplicationRequest(new Request("https://stats/api/observe/stats/external/telemetry/summary?from=100&to=3600100&secret=SECRET"), async () => {
     monotonic = 150;
-    return new Response("unchanged", { headers: { "Server-Timing": "app-store;dur=120.125, app-query;dur=37.000, app-issues;dur=7.000, app-read;dur=44.000, app-encode;dur=0.250, secret;dur=12, app-invalid;dur=900, app-query;dur=NaN" } });
+    return new Response("unchanged", { headers: { "Server-Timing": "app-dispatch;dur=140.000, app-store;dur=120.125, app-query;dur=37.000, app-issues;dur=7.000, app-read;dur=44.000, app-encode;dur=0.250, secret;dur=12, app-invalid;dur=900, app-query;dur=NaN" } });
   }, { release: "v1", now: () => 1_794_600_000_000, monotonic: () => monotonic, waitUntil: promise => pending.push(promise), post: async body => { events.push(...body.events); return true; } });
   await Promise.all(pending);
   assert.equal(await response.text(), "unchanged");
   assert.match(response.headers.get("Server-Timing")!, /app-total;dur=150\.000/u);
-  assert.deepEqual(events[0]?.work, { http_status: 200, store_us: 120125, query_us: 37000, issues_us: 7000, read_us: 44000, encode_us: 250, requested_window_ms: 3600000 });
+  assert.deepEqual(events[0]?.work, { http_status: 200, dispatch_us: 140000, store_us: 120125, query_us: 37000, issues_us: 7000, read_us: 44000, encode_us: 250, requested_window_ms: 3600000 });
   assert.doesNotMatch(JSON.stringify(events), /SECRET|secret|app-invalid|NaN/u);
   assert.equal(decodeBatch(JSON.stringify({ events }), { service: "stats", nowMs: 1_794_600_000_000 }).ok, true);
 });
