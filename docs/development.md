@@ -160,3 +160,7 @@ The `cloudflare compatibility candidate` workflow runs this command daily and
 on manual dispatch. It uploads the proposal and results for review. It creates
 no notification task and does not deploy. See the implementation constraints
 and measured evidence in [development-loop verification](dev-loop-results.md).
+
+### OpenOrange runtime
+
+Run `make orange-dev` to build both Workers and start the pinned local OpenOrange runtime behind a loopback identity gateway. This uses generated production-derived descriptors and a disposable state directory under `.work/tmp`; stopping the command removes it. This workflow does not provide frontend HMR or persistent state.
