@@ -1,10 +1,7 @@
 # Stats
 
-A Linux/macOS host agent (`agent/`), a shared telemetry core and Solid dashboard
-(`cloudflare/`), Cloudflare and Node adapters, application producers
-(`packages/`), an opt-in in-agent eBPF block-latency probe (`agent/bpf/`),
-and deploy scripts (`deploy/`). Use the topic docs below for contracts and
-operational details.
+A Linux/macOS host agent and Solid telemetry dashboard. Production runs on
+OpenOrange; `cloudflare/` also contains the portable core and reference adapters.
 
 ## Commands
 
@@ -20,7 +17,7 @@ make lint              # type-aware Oxlint
 make check             # release gate; offline network sandbox is macOS-only
 make stats-deploy      # deploy stats; observation receiver must already be compatible
 pnpm --dir cloudflare -s statsctl help workflow
-pnpm --dir cloudflare -s statsctl health --project stats --json
+pnpm --dir cloudflare -s statsctl service inspect --service stats --json
 pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json
 ```
 
@@ -30,14 +27,15 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 
 ## Invariants
 
-- Host ingest is STB2 with STA2 acknowledgments, no JSON fallback or negotiation. `fixtures/v2/` is the cross-language oracle; malformed frames are rejected whole. See [protocol](docs/protocol.md).
-- u64 values stay exact: varints, Rust `u64`, TypeScript `bigint` until a checked bound. Fixed-point values do not pass through floats. Counter deltas use only the previous sample in the same frame; rates use `monoMs` within one boot.
-- Stored samples retain canonical JSON; duplicate identity compares that text, not wire bytes. Missing data stays absent/unavailable, and counter regressions are gaps, never negative rates.
-- Tokens never enter argv, logs, telemetry responses or built assets. Provisioning returns a new token once; storage keeps only its SHA-256 verifier.
-- Every non-ingest, non-health asset/data route passes the target's auth adapter before data access: a constant-time gateway secret plus a gateway-asserted tailnet identity on the Worker, Tailscale identity over trusted local transport on Node; no login allowlist. See [architecture](docs/architecture.md).
-- Analytics reads use only `cloudflare/src/projects/queries.ts`; request data never reaches SQL. `statsctl` read commands do not mutate; command definitions declare mutation access and supported targets.
+- Ingest is STB2/STA2 without negotiation; `fixtures/v2/` is the cross-language oracle and malformed frames are rejected whole.
+- Keep u64 and fixed-point values exact; frame-local deltas and same-boot `monoMs` define rates.
+- Duplicate identity compares canonical stored JSON; absent data and counter regressions remain gaps.
+- Tokens never enter argv, logs, telemetry responses or assets; storage keeps SHA-256 verifiers.
+- Authenticate every non-ingest, non-health data or asset route before access; there is no login allowlist.
+- Only fixed project queries reach Analytics SQL; CLI definitions declare mutation access and target capabilities.
 - Dashboard goldens are WebP. `make dashboard-test` rejects tracked PNGs.
-- The default feature set never loads BPF and needs no root, service manager or language runtime. The release build enables the opt-in `block-latency` feature (Linux-only): an embedded eBPF probe that needs mounted tracefs plus `CAP_BPF`/`CAP_PERFMON`, granted by the shipped units and nothing else. Any load failure omits the `block` group. Linux binaries link no dynamic libraries; macOS binaries link only system libraries/frameworks.
+- Default builds need no root or runtime and never load BPF; release probes use only the shipped capabilities and omit failed sources.
+- Linux binaries link no dynamic libraries; macOS links only system libraries and frameworks.
 
 ## Docs
 
@@ -51,10 +49,13 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Builds, deployments, CLI contract and cost reports | [Operations](docs/operations.md) |
 | Toolchain pins and dependency decisions | [Dependencies](docs/dependencies.md) |
 | Service/application integration and producers | [Contract](docs/integration.md), [TypeScript](packages/producer/README.md), [Rust](packages/stats-producer/README.md) |
-| Deployment tracking and comparison | [Deployments](docs/deployments.md), [overview summary proposal](docs/rfc/STA-118-deployment-summaries.md) |
+| Native runtime spans, sampling and platform delivery | [Platform observations](docs/platform-observability.md) |
+| Deployment tracking and comparison | [Deployments](docs/deployments.md) |
 | Tests and screenshot verification | [Testing](docs/testing.md) |
+| Local development and build ownership | [Development](docs/development.md) |
 | Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
+| Recorded development and dashboard verification | [Dev loop](docs/dev-loop-results.md), [dashboard baseline](docs/dashboard-integration-baseline.md), [dashboard verification](docs/dashboard-integration-milestone.md) |
 | Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |
 | Optional block latency | [README: agent config](README.md) |
 | Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |
-| Open work and planned Linux power collection | [TODO](TODO.md), [power plan](docs/CAMPAIGN-LINUX-POWER.md) |
+| Open work, including Linux power | [TODO](TODO.md) |

@@ -2,13 +2,15 @@
 
 A Rust agent, static musl on Linux and native on macOS (`agent/src/linux.rs`,
 `agent/src/macos.rs`), samples each host and posts binary STB2 batches over HTTPS
-to a Cloudflare Worker. The Worker forwards ingest and API calls to one
-SQLite-backed Durable Object, which stores raw samples and rollups and answers
-history queries. A five-minute cron on the same Worker also reads Cloudflare's own analytics for
-configured projects, such as a Worker and its R2 buckets. A Solid dashboard,
-served through the same Worker, reads that API behind a tailnet-only gateway. The wire contract between agent and Worker is in
-[`protocol.md`](protocol.md). The same core also runs as a Node server
-(`cloudflare/src/node/`) for a tailnet-only instance; see [Node server](#node-server).
+to the Stats server. Production runs the Worker-shaped application on OpenOrange
+with Rivet actors and durable SQLite state. The Solid dashboard shares its
+tailnet gateway. Deployment and recovery are in [OpenOrange](openorange.md).
+The wire contract is [protocol.md](protocol.md).
+
+The portable core also has a [Node server](#node-server) and retained Cloudflare
+adapters. The latter implement Analytics SQL collection, provider deployment
+polling and tails. OpenOrange omits those bindings and reports them unavailable;
+imported provider history remains readable. Application events arrive directly.
 
 ## Source layout
 
@@ -93,6 +95,11 @@ and keeps `seq` unique.
 
 ## Worker
 
+The same request handler runs on OpenOrange and the reference Cloudflare
+topology. Provider-specific collection and tail behavior below apply only to
+the Cloudflare adapter. Production capabilities are described in
+[OpenOrange](openorange.md#retained-cloudflare-adapter).
+
 `handleStatsRequest` in `cloudflare/src/core/http.ts` is the whole routing
 table; `cloudflare/src/cloudflare/index.ts` calls it with the gateway identity check as the auth
 decision, the Durable Object as the `Installation` transport, the `ASSETS`
@@ -154,7 +161,7 @@ Worker entry, the `ObservationStore` Durable Object, the tail reducer, the
 deployment-to-rollout mapping, and the trace-context mark. `observe.tsconfig.json`
 typechecks everything outside `cloudflare/` without Workers types, so a
 Cloudflare dependency there fails the build.
-`cloudflare/public/llms.txt` is an ordinary asset, so it passes Access too; it
+`cloudflare/public/llms.txt` is an ordinary asset, so it passes the identity gate; it
 tells an agent how to authenticate and read the API. A Vite plugin in
 `cloudflare/vite.config.ts` copies `docs/protocol.md` and `docs/architecture.md`
 into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
@@ -536,7 +543,7 @@ it has no Cloudflare tail consumer, Analytics SQL collector or deployment poll.
 
 Source runs need installed runtime dependencies. See
 [Node operations](operations.md#run-on-node) for backup, deployment preflight
-and the current container packaging limitation.
+and container preflight.
 
 ## Services and deploy markers
 
@@ -1076,6 +1083,18 @@ fixed queries run, and no request data reaches SQL.
 
 ## Dashboard
 
+The project routes load their implementation from the declared
+`projectSource` capability. Native pages use the service catalog; Cloudflare
+project and billing modules load only for that adapter. Disabling collection
+does not change which catalog owns historical data.
+
+The native overview reads the compact application summary and deployment
+markers. It renders request traffic, failures, mean and maximum wall time,
+current open issues and observed time by operation. Full event payloads load
+when Requests opens; issue details and deployment comparisons load when their
+sections open. Refresh keeps the last successful data visible and reports a
+read failure; a changed time window clears data from the previous selection.
+
 `cloudflare/src/client/` is a Solid application built by Vite's client
 environment and charted with uPlot. `api.ts` decodes every response once at the
 boundary; request failures stay in the typed `ApiFailure` channel. A history
@@ -1090,8 +1109,8 @@ for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
 browser never sees a host token or an operator secret. Each route is its own lazy chunk. Chart code (uPlot) loads only when a chart
 renders: the projects overview fetches it when a row first expands its trends,
 and the project page fetches its errors, requests, trace, and modal views when a
-section or modal first opens. Health and issue counts for the header pills stay
-eager. The project page's initial cost ledger already renders charts, so uPlot
+section or modal first opens. On the Cloudflare adapter, health and issue counts
+for the header pills stay eager. Its initial cost ledger already renders charts, so uPlot
 is required there. During the completed frontend work, the owner set its payload
 budget to 95% of the recorded baseline. Later accepted integration growth is
 recorded in the [integration milestone](dashboard-integration-milestone.md).

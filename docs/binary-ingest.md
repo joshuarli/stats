@@ -83,14 +83,15 @@ make ingest-bench   # at 5a94fa3 with BASELINE_WORKTREE=.work/wt/baseline for th
   formatting the v1 collector did when it built strings.
 - **TypeScript ingest work** (`bench/ingest-decode.ts`): the complete work
   from body to stored strings on each side. v1 is the original `parseBatch`
-  (benchmark-only `bench/legacy-v1/protocol-v1.ts` at `5a94fa3`, JSON parse plus
-  validation) followed by `canonicalJson` of every sample. v2 is
+  from `5a94fa3` (JSON parse plus validation), followed by `canonicalJson` of
+  every sample. The generated legacy comparison files are no longer in the
+  working tree. v2 is
   `decodeFrame`, `validateSample` (domain checks and normalization), and
   `canonicalJson`. Each case is calibrated to at least 50 ms per round, then
   15 interleaved rounds; median and range. Both sides produce identical
   stored bytes for every workload (checked in the run).
-- **End to end** (`cloudflare/bench/ingest.workerd.ts` and its v1 twin
-  `bench/legacy-v1/ingest-v1.workerd.ts` at `5a94fa3`): 300 distinct two-sample uploads
+- **End to end** (`cloudflare/bench/ingest.workerd.ts` and a historical v1
+  comparison harness from `5a94fa3`): 300 distinct two-sample uploads
   after 30 warmups through `SELF.fetch` into the Worker, the Durable Object,
   SQLite, and the rollup rebuild under local workerd. workerd clamps timers to
   1 ms, so the mean over 300 requests is the useful figure.

@@ -114,7 +114,7 @@ function observedBasis(value: unknown): "observed-work" {
   return value;
 }
 
-export function decodeDeploymentComparison(value: unknown, deploymentId: string, window: ComparisonWindow): DeploymentComparison {
+export function decodeDeploymentComparison(value: unknown, deploymentId: string, window: ComparisonWindow, limits: { readonly metricLimit: number; readonly unitLimit: number } = { metricLimit: 96, unitLimit: 32 }): DeploymentComparison {
   const item = record(value);
   if (item["deploymentId"] !== deploymentId || item["window"] !== window) throw new Error("deployment comparison mismatch");
   const bounds = (value: unknown): WindowBounds => {
@@ -124,11 +124,11 @@ export function decodeDeploymentComparison(value: unknown, deploymentId: string,
     return { fromMs, toMs };
   };
   const verdicts: readonly Verdict[] = ["improved", "regressed", "unchanged", "insufficient-data", "confounded"];
-  const metrics = array<MetricComparison>(item["metrics"], 96, raw => {
+  const metrics = array<MetricComparison>(item["metrics"], limits.metricLimit, raw => {
     const metric = record(raw);
     const verdict = string(metric["verdict"]) as Verdict;
     if (!verdicts.includes(verdict)) throw new Error("invalid comparison verdict");
-    return { metric: string(metric["metric"]), label: string(metric["label"]), unit: string(metric["unit"], 32), before: nullableNumber(metric["before"]), after: nullableNumber(metric["after"]), delta: nullableNumber(metric["delta"]), deltaPercent: nullableNumber(metric["deltaPercent"]), verdict, ...(metric["supersededBy"] === undefined ? {} : { supersededBy: string(metric["supersededBy"], 64) }), ...(metric["reason"] === undefined ? {} : { reason: string(metric["reason"], 1000) }), ...(metric["reasonCode"] === undefined ? {} : { reasonCode: metricReasonCode(metric["reasonCode"]) }), ...(metric["basis"] === undefined ? {} : { basis: observedBasis(metric["basis"]) }) };
+    return { metric: string(metric["metric"]), label: string(metric["label"]), unit: string(metric["unit"], limits.unitLimit), before: nullableNumber(metric["before"]), after: nullableNumber(metric["after"]), delta: nullableNumber(metric["delta"]), deltaPercent: nullableNumber(metric["deltaPercent"]), verdict, ...(metric["supersededBy"] === undefined ? {} : { supersededBy: string(metric["supersededBy"], 64) }), ...(metric["reason"] === undefined ? {} : { reason: string(metric["reason"], 1000) }), ...(metric["reasonCode"] === undefined ? {} : { reasonCode: metricReasonCode(metric["reasonCode"]) }), ...(metric["basis"] === undefined ? {} : { basis: observedBasis(metric["basis"]) }) };
   });
   return { deploymentId, window, before: bounds(item["before"]), after: bounds(item["after"]), readyAtMs: time(item["readyAtMs"]), beforeInvocations: nullableNumber(item["beforeInvocations"]), afterInvocations: nullableNumber(item["afterInvocations"]), spec: decodeSpec(item["spec"]), reasons: array(item["reasons"], 20, value => string(value)), reasonCodes: array(item["reasonCodes"], 20, value => { const code = string(value, 32) as ReasonCode; if (!REASON_CODES.includes(code)) throw new Error("invalid comparison reason code"); return code; }), deferredObjects: boolean(item["deferredObjects"]), analyticsInvocations: { before: decodeBuckets(record(item["analyticsInvocations"])["before"]), after: decodeBuckets(record(item["analyticsInvocations"])["after"]) }, warnings: array(item["warnings"], 20, value => string(value)), metrics };
 }

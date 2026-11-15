@@ -2,9 +2,8 @@
 
 A small Linux and macOS host monitor. One binary (static musl on Linux)
 samples CPU, load, memory, pressure, disks, network, and filesystems every 15
-seconds and posts batches
-over outbound HTTPS to a Cloudflare Worker. The Worker stores them in a
-SQLite-backed Durable Object and serves a dashboard reachable only on the tailnet.
+seconds and posts binary batches over outbound HTTPS. OpenOrange on Lisa hosts
+the server, durable SQLite state and a dashboard reachable only on the tailnet.
 The agent runs on ordinary Debian and Alpine hosts without root, systemd,
 containers, or a language runtime.
 
@@ -12,11 +11,10 @@ Niceforge may link a registered runner to a telemetry host; that association
 lives in the Niceforge repository, and Niceforge execution never depends on
 telemetry.
 
-Deploying the Worker and provisioning hosts: [`docs/operations.md`](docs/operations.md).
+Provisioning hosts: [operations](docs/operations.md#deployment).
 Service telemetry, deployment markers, and the application contract:
 [`docs/integration.md`](docs/integration.md).
-Wire protocol (binary ingest v2): [`docs/protocol.md`](docs/protocol.md). Developer guide: [`AGENTS.md`](AGENTS.md).
-Local development: [`make dev` and focused tests](docs/development.md).
+Developer documentation starts at [AGENTS.md](AGENTS.md).
 
 ## Install the agent
 
@@ -71,13 +69,12 @@ unit, and waits for the first upload. Set `SSH=local`, or omit `SSH`, to set up
 the machine running the command. Rerunning keeps the existing host, token and
 optional agent settings while updating the endpoint, host ID and token-file path.
 
-To install the macOS agent by hand, build it natively with
-`cargo build --release --manifest-path agent/Cargo.toml`, provision the host,
-then:
+To install the macOS agent by hand, use the verified release binary for your
+platform, provision the host, then:
 
 ```sh
 install -d -m 0700 ~/.local/bin ~/.config/stats
-install -m 0755 agent/target/release/stats ~/.local/bin/stats
+install -m 0755 stats ~/.local/bin/stats
 install -m 0600 agent.json token ~/.config/stats/
 sed "s|HOME_DIR|$HOME|g" agent/contrib/launchd/xyz.17166969.stats.plist \
   > ~/Library/LaunchAgents/xyz.17166969.stats.plist
@@ -138,20 +135,14 @@ tunnels) and skips `tmpfs` and `overlay` mounts, which container hosts have
 dozens of. Set either to `true` to report them again; each list is still
 capped at 16.
 
-A Linux build can attach a `block` latency histogram by opting in with the
-`block-latency` Cargo feature (embedded probe, no collector file). The release
-build enables it. Build it with `agent/scripts/build-probe.sh`
-(needs a clang with the BPF backend; point `LLVM_CLANG` or the first argument
-at it), then build the agent with
-`STATS_BLOCK_PROBE=/path/to/block_latency.bpf.o cargo build --features block-latency`.
+A Linux release can attach a `block` latency histogram using its embedded
+eBPF probe. Source builds opt in with the `block-latency` feature; see
+[building the agent](docs/development.md#build-the-agent).
 Loading needs tracefs mounted and `CAP_BPF`/`CAP_PERFMON` (or `CAP_SYS_ADMIN`
 on older kernels); the shipped systemd and OpenRC units grant exactly those two
 capabilities and remount tracefs for the `stats` group. If the probe fails to
-load, or a read fails, `block` is absent from the sample. The probe assumes the
-standard `block_rq_issue`/`block_rq_complete` tracepoint layout (dev_t at
-offset 8, sector_t at offset 16) and does not parse the format files. macOS
-builds never contain or load BPF code. Without the feature the `block` group
-is never attached.
+load, or a read fails, `block` is absent from the sample. macOS builds never
+contain or load BPF code.
 
 `services` is optional and lists at most 16 services, each a `name` (the
 service name on the server, 1-32 lowercase letters, digits, or hyphens,
@@ -178,14 +169,8 @@ container needs its new scope in the config. `io.stat` is summed over every
 device it lists, so stacked devices (device-mapper, md) can count one I/O twice.
 Reading these files needs no privileges.
 
-A decoder that does not know the `services` group rejects the whole frame as
-`invalid_frame`. Deploy the Worker or Node server that decodes it before you
-configure `services` on any agent that reports there.
-
-A Linux agent also sends per-disk `readMs`, `writeMs`, `weightedIoMs`, and
-`inFlight` whenever `/proc/diskstats` has them, with no configuration. A decoder
-that predates these fields rejects the frame as `invalid_frame` because the disk
-head sets reserved bits. Deploy the Worker or Node server first, then update agents.
+Upgrade the receiver before enabling new agent fields. Unknown frame fields
+reject the whole upload; see [protocol compatibility](docs/protocol.md).
 
 ## Running
 
@@ -233,16 +218,11 @@ only a count every 60 seconds. On exit it prints `accepted`, `duplicates`,
 Open `https://stats.17166969.xyz` from a tailnet device (no login), or use the Node
 installation's tailnet origin. Hosts are at `/`, projects at `#/projects`, and
 services at `#/services`. Host pages show resource status, charts and device
-tables; service pages combine deployment markers, host resources and
-application telemetry. The Node target has no Cloudflare project collector.
-
-A Cloudflare project page starts with a cost ledger for the settled window,
-its change from the previous window, and the available plan-bill projection.
-Select a section for deployments, errors, requests or resource charts. Header
-health and issue counts stay visible while detailed sections load on demand.
-Project configuration lives in `cloudflare/cloudflare.config.ts`; see
-[architecture](docs/architecture.md#cloudflare-projects) for collection and
-coverage limits.
+tables. Native project pages show deployment markers, request events, issues and
+signal charts from application telemetry; service pages add host resource
+comparisons. Production has no Cloudflare collector or tail consumer.
+Cloudflare project histories and cost views remain available through the opt-in
+Cloudflare adapter. Application events continue to arrive directly on OpenOrange.
 
 Host controls:
 
@@ -259,7 +239,4 @@ render as `—` or `unavailable`; optional power, pressure and block-latency
 panels depend on the host's capabilities. Linux disk means come from
 `/proc/diskstats`; latency distributions require the optional collector.
 
-`make preview` serves captured fixtures at `http://127.0.0.1:4174/` with a
-frozen clock, for inspection without deployment or Access login. See
-[testing](docs/testing.md) for screenshot verification and
-[architecture](docs/architecture.md#dashboard) for refresh and chart behavior.
+For local development and fixture previews, see the [developer guide](AGENTS.md).

@@ -1,5 +1,10 @@
 # Operations
 
+Production runs on OpenOrange on Lisa. See [OpenOrange](openorange.md) for
+deployment and recovery. Cloudflare collection, tail and cost sections below
+describe the retained provider adapter and historical data. They do not imply
+that the default deployment collects new Cloudflare telemetry.
+
 ## Release build
 
 `make agent-build` runs `agent/scripts/build-static.sh`. It requires Docker
@@ -71,8 +76,7 @@ config, or service unit that changed. A Linux host also needs an entry in
 image on `lisa` (`ORANGE_HOST` overrides the SSH destination), then run the live
 smoke through the tailnet gateway. A failed health or smoke check restores the
 previous image. `make observe-deploy` is retired; observation storage is bundled
-in the same Orange image. The OpenOrange deployment
-replaces them; see [the campaign](CAMPAIGN-OPENORANGE.md).
+in the same Orange image. See [OpenOrange deployment](openorange.md#deploy).
 `make observe-sourcemap VERSION=...` uploads a source map from a tailnet device
 with no credential.
 
@@ -80,104 +84,17 @@ A host deploy installs through `stats.new` and `mv`, keeps the previous binary
 as `/usr/local/bin/stats.prev`, and after restart polls `/api/v1/hosts` for a
 new `lastReceivedAtMs` on that host. The poll needs a tailnet device and no credential.
 
-## Ingest protocol v2 cutover
+## Ingest protocol upgrades
 
-Ingest v2 (binary STB2 batches, `docs/protocol.md`) is a hard break with no
-negotiation. **Agents built before it cannot deliver to a v2 server**: the
-server answers their `POST /ingest/v1/batches` with `410 Gone`, which those
-agents treat as retryable, so they back off and drop their oldest queued
-samples while storing nothing. A v2 agent against a v1 server gets `405` and
-also stores nothing. The server and every agent therefore move together, and
-samples taken on a host between stopping its old agent and starting the new
-one are not recovered. Storage does not change, so neither direction migrates
-or deletes history.
+Ingest has no negotiation or JSON fallback. Deploy a compatible receiver before
+updating agents, and include every host, not only `deploy/hosts.json`. Stage and
+verify both Linux architectures and each macOS binary before stopping agents.
+After deployment, run `make smoke-deployed` and check fresh receipts and retained
+history for every host. A pause longer than the in-memory queue loses samples.
 
-`make deploy` alone is not a coordinated cutover: it deploys the Worker and
-then updates only the Linux hosts listed in `deploy/hosts.json` (today only
-`threadripper`), one at a time, while old agents elsewhere start failing.
-macOS hosts and hosts provisioned with `make add-host` but missing from the
-manifest are not updated by it. List every host first:
-
-```sh
-node cloudflare/scripts/api.mjs /hosts | jaq -r '.hosts[] | [.hostId, .name] | @tsv'
-```
-
-1. **Build and stage** from the release commit, on a quiet machine:
-   `make check` (fixtures, both agent builds' tests, the Worker suites,
-   `agent-e2e`, `smoke-local`, the dashboard suite, lint, `integration-local`), then
-   `make agent-build` for both musl targets. Build each macOS host's binary on
-   a Mac with `make agent-build-macos`. Record `stats --version` and the
-   SHA-256 of every artifact, and record the currently deployed Worker
-   version for rollback: `cf workers deployments list --worker stats`.
-2. **Verify the binary smoke test before cutover**: `make smoke-local` runs
-   `deploy/deployed-smoke.sh` against the built Worker in local workerd, and
-   `make agent-e2e` delivers a real sample from the built agent through it.
-   Both must pass before anything is deployed.
-3. **Stop the old agents** (or accept the telemetry gap and skip this):
-   `ssh <host> doas rc-service stats stop` (OpenRC),
-   `ssh <host> sudo systemctl stop stats` (systemd), or
-   `launchctl bootout gui/$(id -u)/xyz.17166969.stats` on a Mac.
-4. **Deploy the binary-only server**: `make worker-deploy`. Note the printed
-   `Current Version ID`. `make worker-deploy` deploys `stats-observe` first,
-   then `stats`; `make stats-deploy` deploys only `stats` (and registers its
-   source map, keyed by the version the latest `stats` deployment serves at
-   100%, read from `cf workers deployments list`), for changes that leave the
-   observe companion untouched.
-5. **Run the binary smoke test** against production: `make smoke-deployed`.
-   It checks that `GET /ingest/v2/batches` is 405, the v1 path is 410,
-   JSON is 415, a version-1 STB2 header is `unknown_version`, and a valid STB2
-   frame with an unknown token reaches the object and is `unauthorized`. It
-   writes nothing.
-6. **Replace and restart every agent**: `make push-hosts` for the manifest
-   hosts (each install starts the stopped service and waits for a fresh
-   receipt), and `make add-host NAME=<label> SSH=<target>` for each other host,
-   which updates the binary in place and waits for a receipt.
-7. **Verify** for every host: `online` and a recent `lastReceivedAtMs` in
-   `/hosts`; no `upload failed` lines in the agent log
-   (`/var/log/stats.log`, `journalctl -u stats`, or `log show` on macOS);
-   no `ingest_rejected` lines with `invalid_frame`, `invalid_batch`,
-   `unknown_version`, or `conflict` in Workers Logs; a duplicate replay
-   (restart one agent within a minute) answering with duplicates, not
-   conflicts; and `range=1h` history showing new points after the gap.
-8. **Verify existing history**: `range=24h`, `7d`, and `30d` history for each
-   host still returns the points from before the cutover
-   (`node cloudflare/scripts/api.mjs '/hosts/<id>/history?range=7d&kinds=summary'`).
-
-### Cutover record
-
-2026-11-04: deployed `stats` version
-`2f38a11c-a42e-4cb4-8101-2cfe16c4d865` and `stats-observe` version
-`eff00be4-1139-4790-9dc5-54487d41285e`, replacing `stats` version
-`3a4ea033-34f4-492c-99a7-7899874fd227`. Updated `threadripper` (x86_64,
-`deploy/hosts.json`), `sentry` (macOS arm64, local), and `m1-max` (macOS
-arm64, `make add-host`). All three reported fresh receipts, and 24-hour,
-7-day, and 30-day history still returned points from before the cutover.
-
-### Rolling back the cutover
-
-Roll back the server and the agents together; there is no protocol
-negotiation to fall back on. Stop the v2 agents (step 3), restore the
-recorded Worker version with `cf workers deployments create` (below), then run
-`make rollback-host-<key>` for each manifest host, which restores the v1 agent
-saved as `/usr/local/bin/stats.prev` and waits for a receipt. For other hosts,
-check out the previous release, rebuild, and rerun `make add-host`. Samples
-written by v2 are the same canonical JSON v1 writes, so the v1 server reads
-them and nothing is migrated or deleted.
-
-## Rollback
-
-A host deploy copies the current binary to `/usr/local/bin/stats.prev` before
-installing the new one. `make rollback-host-<key>` restores that copy and
-restarts the service; it fails if no previous binary exists.
-
-The Worker keeps every deployed version. List them and point the deployment at
-the version to restore:
-
-```sh
-cf workers deployments list --worker stats
-cf workers deployments create --worker stats \
-  --versions '[{"version_id":"<version-id>","percentage":100}]'
-```
+Roll back the receiver and affected agents together across a protocol break.
+Receiver rollback and state recovery are documented in [OpenOrange](openorange.md).
+`make rollback-host-<key>` restores the previous host binary and restarts it.
 
 ## Measuring a deployment with statsctl
 
@@ -187,22 +104,34 @@ tailnet device; it sends no credential:
 
 ```sh
 pnpm --dir cloudflare -s statsctl help workflow
+pnpm --dir cloudflare -s statsctl service inspect --service stats --json
+pnpm --dir cloudflare -s statsctl service deployments --service stats --json
+pnpm --dir cloudflare -s statsctl verify --service stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/service-example.json --json
+```
+
+Native deployments use registered services and application events. See
+[project telemetry](openorange.md#project-telemetry) for request and signal reads.
+The retained Cloudflare adapter uses project histories instead:
+
+```sh
 pnpm --dir cloudflare -s statsctl health --project stats --json
 pnpm --dir cloudflare -s statsctl deployments --project stats --json
-pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/EXPERIMENT.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
+pnpm --dir cloudflare -s statsctl verify --project stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/example.json --safety-check-file .work/check-ingest.json --wait --timeout 2h --json
 ```
 
 `statsctl help workflow` holds the full recipes and `statsctl help verify`
 the policy fields; this page does not copy them. The same binary also runs as
-`node --experimental-strip-types cloudflare/src/cli/statsctl.ts`. Run `health`
-first and fix anything unhealthy before trusting a verdict. Exit codes: 0 read
+`node --experimental-strip-types cloudflare/src/cli/statsctl.ts`. For Cloudflare
+projects, run `health` first and resolve unhealthy sources before trusting a verdict.
+That command judges provider collection and tail data, which are unavailable on
+the default OpenOrange deployment. Exit codes: 0 read
 succeeded or improved, 2 usage, 3 authentication, 4 transport or contract
 failure, 5 pending or insufficient data, 6 unchanged or confounded, 7
 regressed, 8 `observe rollouts` found settled rollouts to look at. `--json` prints one `statsctl/1` document. Resumable verdict state
 and snapshots live under `.work/statsctl/`. `https://stats.17166969.xyz` and loopback origins are the orange target, tailnet
 names are Node origins, and any other origin needs `STATSCTL_TARGET`.
 
-### Checking settled rollouts
+### Checking Cloudflare tail rollouts
 
 ```sh
 pnpm --dir cloudflare -s statsctl observe rollouts --settle 3h --within 24h --json
@@ -249,54 +178,16 @@ filling.
 
 ### The statsctl contract
 
-`statsctl` is a TypeScript CLI that shares the dashboard's cost engine. It
-reads project, host, service and observation APIs and also exposes explicit
-provisioning and credential mutations. There is no server endpoint for cost.
-It uses `node:util` `parseArgs`, global `fetch`, `node:fs`, and `node:crypto`,
-with no CLI framework, schema library, or SDK. Its
-name differs from `stats`, which is the Rust agent.
+Command definitions in `cloudflare/src/cli/commands/` own supported targets,
+mutation access, flags and examples. Run `statsctl help workflow` and the
+command's help before use. `--json` returns one `statsctl/1` envelope; diagnostics
+go to stderr. Decoders reject incompatible schemas rather than guessing.
 
-- **JSON envelope.** `--json` prints exactly one `statsctl/1` document on stdout.
-  It carries `schema`, `command`, `generatedAtMs`, `origin`, `project`, the
-  half-open UTC `windows`, `pricingRevision`, `measurementRevision`, `coverage`,
-  `units`, `priced`, `excluded`, `warnings`, `identities` (deployment and
-  version ids), and either `payload` or `error: {code, message}`. Numbers stay
-  numbers, u64 values stay decimal strings, and ordering is deterministic.
-  Diagnostics go to stderr, with no progress output, colour, or pager when
-  stdout is not a TTY or `NO_COLOR` is set.
-- **Schema versioning.** `statsctl/1` changes only by adding fields, to the
-  envelope, its payloads, or the observe API responses it decodes. Changing an
-  existing field's type, unit, or meaning, or removing a field, moves the schema
-  to `statsctl/2`; when the version cannot move with the change, the commit is
-  marked breaking (`!`). A `statsctl` newer than the server it reads finds an
-  added field missing and fails with `server_older` (exit 4), whose message names
-  the field. A field present with the wrong type is still `contract`.
-- **Authentication.** `statsctl` sends no credential; the gateway asserts the
-  caller's tailnet identity. Redirects are not followed, and a 3xx, an HTML
-  200, a 401, or a 403 is exit 3. Host and service tokens never enter argv, a
-  snapshot, a log, or a report field.
-- **Requests.** Each has a 15 second timeout and a body cap of 8 MiB for history
-  and 1 MiB for JSON. Only GETs that fail with a network error, 502, 503, or 504
-  retry, twice, with jittered backoff. History kinds are bundled into one request
-  per window.
-- **Snapshots.** `.work/statsctl/snapshots/` holds the raw history frames
-  (base64), the decoded deployment and observe JSON, the resolved windows,
-  project config, resource identities, the pricing and measurement revisions,
-  the git SHA of the CLI, and a SHA-256 of each input. A snapshot never holds a
-  credential or an observe stack frame. Each is capped at 4 MiB and the
-  directory at 200 MiB, pruned oldest first. `--input` refuses a snapshot whose
-  schema, pricing revision, or hash does not match, with exit 4 and a reason
-  code, and never reinterprets it.
-- **Readiness.** `health --policy FILE` and `verify --readiness` list each
-  signal a policy needs as `available` or `unavailable:<code>` with a sentence.
-  A missing signal the policy does not use never blocks it.
-- **Mutations.** `check ingest` writes a sample using the supplied host credential;
-  use only a dedicated `synthetic-check` host, as the CLI does not enforce that role.
-  `deploy mark` writes a service marker. `service create`, `service token rotate`
-  and `service token revoke` manage services and credentials. Read commands,
-  including `service check`, do not persist mutations. Command definitions own
-  the access classification and supported targets; use `statsctl help` for the
-  current options and credential-file requirements.
+Read requests use gateway identity. Mutations that need host or service tokens
+read protected credential files. Never put tokens in argv, snapshots or reports.
+Only use `check ingest` with a disposable host; it writes real samples.
+`cloudflare/src/cli/http.ts` owns request limits and read retries, and
+`cloudflare/src/cli/snapshot-store.ts` owns snapshot integrity and retention.
 
 ### Cost reports
 
@@ -475,37 +366,17 @@ cut a first run to about 130 rows but would make retention scan whole tables.
 The free-plan allowance is 100,000 rows written a day, shared with host ingest.
 Live runs took 0.5 to 2.1 s of wall time.
 
-## First deployment
+## Cloudflare adapter deployment reference
 
-This section describes the retired Cloudflare deployment and is kept as
-history until the OpenOrange runbook replaces it.
+The default Make deployment targets install OpenOrange. The retained Cloudflare
+build uses `cloudflare/cloudflare.config.ts` and the generated Build Output.
+`make worker-check` validates that output without uploading it.
 
-1. Create an Access application for the dashboard hostname with an owner allow
-   policy, and record the team domain and audience. Access fronts the whole
-   hostname, so also create path-scoped Bypass/Everyone applications for
-   `<host>/health` and `<host>/ingest/*`. Without them, Access challenges
-   health and ingest before the Worker sees them; the Worker still requires a
-   host bearer token on ingest. A zone rate-limit rule blocks `/ingest/*`
-   above 20 requests per 10 seconds per IP per colo for 10 seconds, the
-   free-plan limits and the equivalent of 120 requests per minute, so one
-   source cannot flood the single object. A token-shaped header that is not a
-   real host token still reaches the object, which parses the body and then
-   rejects the credential; the zone rule bounds how many such requests it
-   handles.
-2. Deploy with `make worker-deploy SECRETS_FILE=...`, setting
-   `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`. Without the team domain every
-   Access-protected route returns 503; without the audience, 401.
-3. Authenticate through Access, then
-   provision each host with `POST /api/v1/admin/hosts` and a body of
-   `{"name": "<label>"}`. The 201 response carries `hostId` and the token,
-   which is shown only once; store it in an owner-only file, install the agent config and token
-   (see README), then run `make deploy-hosts`.
-4. Verify with `make smoke-deployed`, then check ingest, replay dedupe,
-   latest and history, rotation, and revocation against a disposable host and
-   revoke it. Set spend alarms before fleet use.
-
-`cloudflare/wrangler.test.jsonc` is test-only configuration for
-`@cloudflare/vitest-plugin`, not a deploy configuration.
+A provider deployment needs its Analytics SQL and service bindings plus a private
+gateway that supplies the secret and asserted tailnet identity required by
+`cloudflare/src/cloudflare/gateway.ts`. The former Access JWT setup is not the
+current authorization contract. Keep data recovery and host protocol compatibility
+separate from provider activation; see [architecture](architecture.md#worker).
 
 ## Run on Node
 
@@ -550,7 +421,7 @@ passes health, and restores it if
 the replacement fails. Preflight uses an empty database and cannot prove a
 production data migration. Take the stopped backup before an upgrade.
 
-Every path other than `/health` and ingest needs an allowed
+Every path other than `/health` and ingest needs a
 `Tailscale-User-Login` header, which `tailscale serve` adds for tailnet users,
 and a loopback TCP peer. A connection on a Unix socket has no TCP peer and is
 trusted as transport, because only the owning user and root can open it; it
@@ -572,11 +443,8 @@ otherwise. The Worker applies the same rule behind the gateway.
 
 ### In a container on threadripper
 
-The Vite SSR bundle currently leaves `@jridgewell/trace-mapping` external, and
-the image ships no dependency tree. The staged bundle exits on import
-(STA-116 in [TODO](../TODO.md)); deployment preflight rejects this candidate
-before stopping the running container. Use the source-run setup above until
-the bundle includes its runtime dependency closure.
+The Vite SSR build bundles its runtime dependencies. The packaging regression
+stages only that bundle and its assets, then denies workspace reads.
 
 ```sh
 make node-deploy
@@ -759,6 +627,9 @@ container with no network sees every probe fail, so its probe failure share is
 
 ## Verified environments
 
+Historical validation, superseded as production status by the 2026-11-14
+[OpenOrange cutover](openorange.md#cutover-record-2026-11-14).
+
 Recorded 2026-10-31:
 
 - **Cloud:** live ingest, exact-replay dedupe, latest and 1 h history, the
@@ -821,3 +692,13 @@ Not yet verified:
 - aarch64 on a bare host: kernel, init, and reboot persistence.
 - Workers Paid limits, spend alarms, and overage behavior at fleet scale.
 - The Niceforge runner deep link on a live runner host.
+
+## Historical ingest cutover
+
+2026-11-04: deployed `stats` version
+`2f38a11c-a42e-4cb4-8101-2cfe16c4d865` and `stats-observe` version
+`eff00be4-1139-4790-9dc5-54487d41285e`, replacing `stats` version
+`3a4ea033-34f4-492c-99a7-7899874fd227`. Updated `threadripper` (x86_64,
+`deploy/hosts.json`), `sentry` (macOS arm64, local), and `m1-max` (macOS
+arm64, `make add-host`). All three reported fresh receipts, and 24-hour,
+7-day, and 30-day history still returned points from before the cutover.

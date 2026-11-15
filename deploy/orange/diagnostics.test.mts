@@ -33,6 +33,21 @@ await test("OpenOrange persists caught-error diagnostics without platform tails"
       if (caught === undefined) await new Promise(done => setTimeout(done, 50));
     }
     assert.ok(caught, "the caught configuration error reaches the observation object");
+    const telemetry = async () => {
+      const response = await fetch(`${session!.origin}/api/observe/stats/external/telemetry`, { headers });
+      assert.equal(response.status, 200, await response.clone().text());
+      return response.json() as Promise<import("../../cloudflare/src/observe/application/telemetry.ts").ApplicationTelemetry>;
+    };
+    let requests = await telemetry();
+    const requestDeadline = Date.now() + 10_000;
+    while (!requests.recent.some(item => item.event.operation === "http.get.projects") && Date.now() < requestDeadline) {
+      await new Promise(done => setTimeout(done, 50));
+      requests = await telemetry();
+    }
+    const request = requests.recent.find(item => item.event.operation === "http.get.projects");
+    assert.equal(request?.event.work["http_status"], 503);
+    assert.ok((requests.totals?.requests ?? 0) > 0);
+    assert.ok((requests.totals?.status5xx ?? 0) > 0);
     assert.equal(caught.event.outcome, "error");
     assert.equal(caught.event.release, "diagnostics");
     assert.equal(caught.event.diagnostics?.version, 1);
@@ -45,6 +60,7 @@ await test("OpenOrange persists caught-error diagnostics without platform tails"
     session = await startSession(root, await freePort());
     const restored = (await events()).find(item => item.event.eventId === caught.event.eventId);
     assert.deepEqual(restored?.event.diagnostics, caught.event.diagnostics);
+    assert.ok((await telemetry()).recent.some(item => item.eventId === request?.eventId), "request telemetry survives an Orange restart");
   } finally {
     await session?.stop();
     rmSync(root, { recursive: true, force: true });

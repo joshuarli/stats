@@ -1,0 +1,245 @@
+{
+  "totals": {
+    "js": {
+      "raw": 572595,
+      "gzip": 205324,
+      "gzip6": 205463,
+      "brotli": 183199,
+      "brotli5": 196988
+    },
+    "css": {
+      "raw": 91105,
+      "gzip": 20633,
+      "gzip6": 20744,
+      "brotli": 17986,
+      "brotli5": 19561
+    },
+    "all": {
+      "raw": 663700,
+      "gzip": 225957,
+      "gzip6": 226207,
+      "brotli": 201185,
+      "brotli5": 216549
+    }
+  },
+  "routes": {
+    "nativeProject": {
+      "jsChunks": [
+        "index-DHMXzr48.js",
+        "dashboard-core-8VBlXTy4.js",
+        "ui-_yehctXy.js",
+        "history-WdwEazSs.js",
+        "api-3awW2DVL.js",
+        "ProjectPage-BAZDemY4.js",
+        "NativeProjects-Cv9vh1dt.js",
+        "ApplicationOverview-SHh8ElPN.js",
+        "native-series-CGqhbsx_.js",
+        "DeploymentEvents-DQVMpfXl.js",
+        "Deployments-BPs2s3cz.js",
+        "Observe-BXI-PXwF.js",
+        "shared-Q2jp7C9Y.js",
+        "Info-vzB-C5rM.js"
+      ],
+      "jsStems": [
+        "index",
+        "dashboard-core",
+        "ui",
+        "history",
+        "api",
+        "ProjectPage",
+        "NativeProjects",
+        "ApplicationOverview",
+        "native-series",
+        "DeploymentEvents",
+        "Deployments",
+        "Observe",
+        "shared",
+        "Info"
+      ],
+      "cssChunks": [
+        "index-BOh5JlxL.css",
+        "shared-CnsZ1jie.css",
+        "ApplicationOverview-C78asbwY.css",
+        "Deployments-CdXPVWEK.css",
+        "Observe-BSInihVY.css",
+        "project-CYHx_pZa.css"
+      ],
+      "cssStems": [
+        "index",
+        "shared",
+        "ApplicationOverview",
+        "Deployments",
+        "Observe",
+        "project"
+      ],
+      "js": {
+        "raw": 361127,
+        "gzip": 138372,
+        "gzip6": 138441,
+        "brotli": 123120,
+        "brotli5": 132929
+      },
+      "css": {
+        "raw": 78626,
+        "gzip": 16975,
+        "gzip6": 17080,
+        "brotli": 14930,
+        "brotli5": 16252
+      },
+      "markers": [
+        "uplot"
+      ]
+    }
+  },
+  "comparison": {
+    "baselinePath": "/Users/josh/repos/stats/.work/wt/performance-overview/.work/tmp/baseline-bundle.json",
+    "totalJsGzipDelta": 5495,
+    "totalCssGzipDelta": 734,
+    "routes": {
+      "fleet": {
+        "baselineRaw": 237301,
+        "currentRaw": 237631,
+        "deltaRaw": 330,
+        "rawRatio": 1.0014,
+        "baselineGzip": 89508,
+        "currentGzip": 89751,
+        "deltaGzip": 243,
+        "ratio": 1.0027,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "host": {
+        "baselineRaw": 352352,
+        "currentRaw": 352706,
+        "deltaRaw": 354,
+        "rawRatio": 1.001,
+        "baselineGzip": 131665,
+        "currentGzip": 131905,
+        "deltaGzip": 240,
+        "ratio": 1.0018,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "projects": {
+        "baselineRaw": 401431,
+        "currentRaw": 307723,
+        "deltaRaw": -93708,
+        "rawRatio": 0.7666,
+        "baselineGzip": 149172,
+        "currentGzip": 112714,
+        "deltaGzip": -36458,
+        "ratio": 0.7556,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "projectsExpanded": {
+        "baselineRaw": 438355,
+        "currentRaw": 384499,
+        "deltaRaw": -53856,
+        "rawRatio": 0.8771,
+        "baselineGzip": 162368,
+        "currentGzip": 143990,
+        "deltaGzip": -18378,
+        "ratio": 0.8868,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "project": {
+        "baselineRaw": 434156,
+        "currentRaw": 424672,
+        "deltaRaw": -9484,
+        "rawRatio": 0.9782,
+        "baselineGzip": 157541,
+        "currentGzip": 155467,
+        "deltaGzip": -2074,
+        "ratio": 0.9868,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "projectErrors": {
+        "baselineRaw": 467732,
+        "currentRaw": 458240,
+        "deltaRaw": -9492,
+        "rawRatio": 0.9797,
+        "baselineGzip": 169281,
+        "currentGzip": 167196,
+        "deltaGzip": -2085,
+        "ratio": 0.9877,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "projectRequests": {
+        "baselineRaw": 464020,
+        "currentRaw": 454528,
+        "deltaRaw": -9492,
+        "rawRatio": 0.9795,
+        "baselineGzip": 168361,
+        "currentGzip": 166280,
+        "deltaGzip": -2081,
+        "ratio": 0.9876,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "projectOpen": {
+        "baselineRaw": 483685,
+        "currentRaw": 472292,
+        "deltaRaw": -11393,
+        "rawRatio": 0.9764,
+        "baselineGzip": 174782,
+        "currentGzip": 171752,
+        "deltaGzip": -3030,
+        "ratio": 0.9827,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "services": {
+        "baselineRaw": 258268,
+        "currentRaw": 258618,
+        "deltaRaw": 350,
+        "rawRatio": 1.0014,
+        "baselineGzip": 97503,
+        "currentGzip": 97746,
+        "deltaGzip": 243,
+        "ratio": 1.0025,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      },
+      "service": {
+        "baselineRaw": 265637,
+        "currentRaw": 265987,
+        "deltaRaw": 350,
+        "rawRatio": 1.0013,
+        "baselineGzip": 99834,
+        "currentGzip": 100079,
+        "deltaGzip": 245,
+        "ratio": 1.0025,
+        "reviewThreshold": 1.05,
+        "needsReview": false
+      }
+    },
+    "needsReview": false,
+    "gates": [
+      {
+        "gate": "fleet initial graph excludes uPlot",
+        "pass": true,
+        "detail": "markers: none"
+      },
+      {
+        "gate": "projects initial graph excludes uPlot",
+        "pass": true,
+        "detail": "markers: none"
+      },
+      {
+        "gate": "fleet initial graph excludes observe and project modules",
+        "pass": true,
+        "detail": "markers: none"
+      },
+      {
+        "gate": "no large feature module duplicated across chunks",
+        "pass": true,
+        "detail": "none"
+      }
+    ],
+    "pass": true
+  }
+}

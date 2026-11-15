@@ -12,15 +12,14 @@ import type { TimeWindow } from "../../chart-data";
 import { VERSION } from "../../../observe/core/model";
 import "./observe.css";
 
-import type { ObservedService } from "../../../observe/services";
 const TRACE_ID = /^[0-9a-f]{32}$/u;
 const FINGERPRINT = /^[0-9a-f]{64}$/u;
 export const MOMENT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 export type ObserveRead = <T>(path: string, signal: AbortSignal, decode: (value: unknown) => T) => Promise<T>;
 
-function observeBase(service: ObservedService): string {
-  return `/api/observe/${service}`;
+function observeBase(service: string): string {
+  return `/api/observe/${encodeURIComponent(service)}`;
 }
 
 async function readFrom<T>(base: string, path: string, signal: AbortSignal, decode: (value: unknown) => T): Promise<T> {
@@ -87,12 +86,13 @@ function modalParam(view: ModalView | undefined): string | null {
 }
 
 export function createObservability(
-  service: ObservedService,
+  service: string,
   refreshKey: () => string,
   windowKey: () => string,
   windowAt: () => TimeWindow,
   exploring: () => boolean,
-  errorsOpen: () => boolean = () => true
+  errorsOpen: () => boolean = () => true,
+  options: { readonly enabled: () => boolean } = { enabled: () => true }
 ) {
   const base = observeBase(service);
   const read: ObserveRead = (path, signal, decode) => readFrom(base, path, signal, decode);
@@ -127,7 +127,8 @@ export function createObservability(
   const occurrences = createMemo(() => keyedValue(occurrencesResult(), issueId()));
   const occurrencesError = createMemo(() => keyedError(occurrencesResult(), issueId()));
 
-  createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation() }), query => {
+  createEffect(() => ({ key: issueKey(), tick: refreshKey(), state: issueState(), introduced: introducedIn(), mutation: mutation(), enabled: options.enabled() || modals().some(modal => modal.kind === "issue") }), query => {
+    if (!query.enabled) return;
     const controller = new AbortController();
     void Promise.all([
       read("/health", controller.signal, decodeHealth),

@@ -219,3 +219,10 @@ with Python SQLite at 10,000 and 100,000 rows produced approximately
 (progress callback every 100 steps). Those are SQLite instruction counts,
 not Cloudflare row billing. Include index write/storage overhead when choosing
 an alternative.
+
+## Application-summary reads on Lisa
+
+The [Lisa read results](results/2026-11-14-lisa-read-performance/README.md)
+record captured-event HTTP replay, CPU, memory and Worker sizes for the native
+application-summary query. The replay separates SQLite read cost from production
+Rivet routing, queueing and disk latency.

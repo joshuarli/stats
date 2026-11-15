@@ -1,0 +1,5 @@
+{
+  "extends": "../../cloudflare/tsconfig.json",
+  "compilerOptions": { "types": ["node"], "typeRoots": ["../../cloudflare/node_modules/@types"], "lib": ["ES2023", "DOM"] },
+  "include": ["src/**/*.ts", "../../cloudflare/test/producer/platform-*.ts"]
+}

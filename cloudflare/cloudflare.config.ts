@@ -100,6 +100,7 @@ export default defineConfig({
       ASSETS: bindings.assets(),
       ANALYTICS_SQL: bindings.analytics(),
       PROJECTS: bindings.text(PROJECTS_JSON),
+      PROJECT_SOURCE: bindings.text("cloudflare"),
       WORKER_NAME: bindings.text(WORKER_NAME),
       OBSERVE: bindings.worker({ worker: "stats-observe" })
     },

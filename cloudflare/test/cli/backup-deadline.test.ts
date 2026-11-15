@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { main } from "../../src/cli/run.ts";
 import { verifyBackup } from "../../src/cli/commands/backup.ts";
 
-test("backup export permits a manifest that exceeds the normal read deadline", { timeout: 25_000 }, async () => {
+await test("backup export permits a manifest that exceeds the normal read deadline", { timeout: 25_000 }, async () => {
   const scratch = resolve(import.meta.dirname, "../../../.work/tmp");
   mkdirSync(scratch, { recursive: true });
   const directory = mkdtempSync(join(scratch, "backup-deadline-"));

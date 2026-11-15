@@ -1,3 +1,4 @@
+import { DURATION_BOUNDS_US, PLATFORM_OPERATIONS, type PlatformTelemetry } from "../../../packages/platform-bridge/src/contract.ts";
 import { decodeCapabilities } from "../core/capabilities.ts";
 import { decodeLatestProjectDeployment } from "../deployments/decode.ts";
 import type { LatestDeployment } from "../deployments/model.ts";
@@ -7,6 +8,7 @@ import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
 import { decodeIssues } from "../observe/client/decode.ts";
 import type { IssueSummary, Page } from "../observe/core/store.ts";
+import type { ApplicationSummary, ApplicationTelemetry } from "../observe/application/telemetry.ts";
 import { projectHistoryPath, windowParams, type HistoryQuery } from "./history-path.ts";
 import { decodeFleetHistories, decodeHostHistories, decodeProjectHistories, decodeSummary, type FleetHistories, type HostHistories, type ProjectHistories, type SummaryHistory } from "./history.ts";
 
@@ -395,4 +397,78 @@ export function getFleetHistories(hostId: string, query: HistoryQuery, signal: A
 
 export function getCapabilities(signal: AbortSignal) {
   return getJson("/api/v1/capabilities", decodeCapabilities, signal);
+}
+
+function applicationInteger(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error("expected a nonnegative safe integer");
+  return value;
+}
+
+export function decodeApplicationSummary(value: unknown): ApplicationSummary {
+  const root = record(value);
+  const integer = applicationInteger;
+  const totals = (v: unknown) => {
+    const x = record(v);
+    return { events: integer(x.events), failed: integer(x.failed), cancelled: integer(x.cancelled), requests: integer(x.requests), requestDurationMsSum: integer(x.requestDurationMsSum), requestDurationMsMax: integer(x.requestDurationMsMax), status2xx: integer(x.status2xx), status3xx: integer(x.status3xx), status4xx: integer(x.status4xx), status5xx: integer(x.status5xx), durationMsSum: integer(x.durationMsSum), durationMsMax: integer(x.durationMsMax), firstAtMs: integer(x.firstAtMs), lastAtMs: integer(x.lastAtMs) };
+  };
+  if (root.provenance !== "application") throw new Error("invalid application provenance");
+  const buckets = array(root.buckets, v => ({ ...totals(v), atMs: integer(record(v).atMs) }));
+  const operations = array(root.operations, v => ({ ...totals(v), operation: string(record(v).operation) }));
+  if (buckets.length > 120 || operations.length > 20) throw new Error("application telemetry exceeds response limits");
+  const fromMs = integer(root.fromMs), toMs = integer(root.toMs), stepMs = integer(root.stepMs);
+  if (fromMs >= toMs || stepMs === 0 || buckets.some(bucket => bucket.atMs < fromMs || bucket.atMs >= toMs || bucket.events === 0)) throw new Error("invalid application telemetry window");
+  return { provenance: "application", fromMs, toMs, stepMs, totals: root.totals === null ? null : totals(root.totals), openIssues: integer(root.openIssues), buckets, operations, moreOperations: boolean(root.moreOperations) };
+}
+
+export function decodeApplicationTelemetry(value: unknown): ApplicationTelemetry {
+  const summary = decodeApplicationSummary(value);
+  const root = record(value);
+  const integer = applicationInteger;
+  const recent = array(root.recent, v => {
+    const row = record(v), e = record(row.event), work = record(e.work);
+    if (row.provenance !== "application" || e.schemaVersion !== 1) throw new Error("invalid application event");
+    const decodedWork: Record<string, number> = {};
+    for (const [key, item] of Object.entries(work)) decodedWork[key] = integer(item);
+    const diagnostics = e.diagnostics === undefined ? undefined : record(e.diagnostics);
+    if (diagnostics !== undefined && diagnostics.version !== 1) throw new Error("invalid diagnostics");
+    return { eventId: string(row.eventId), service: string(row.service), receivedAtMs: integer(row.receivedAtMs), provenance: "application" as const, event: {
+      schemaVersion: 1 as const, eventId: string(e.eventId), atMs: integer(e.atMs), operation: string(e.operation), outcome: string(e.outcome), durationMs: integer(e.durationMs), work: decodedWork, release: string(e.release), service: string(e.service),
+      ...(e.error === undefined ? {} : { error: { code: string(record(e.error).code) } }),
+      ...(diagnostics === undefined ? {} : { diagnostics: { version: 1 as const, name: string(diagnostics.name), message: string(diagnostics.message), frames: array(diagnostics.frames, string) } })
+    } };
+  });
+  if (recent.length > 50) throw new Error("application telemetry exceeds response limits");
+  return { ...summary, recent, moreRecent: boolean(root.moreRecent) };
+}
+
+export function getApplicationTelemetry(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<import("../observe/application/telemetry.ts").ApplicationTelemetry> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationTelemetry, signal);
+}
+
+export function getApplicationSummary(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<ApplicationSummary> {
+  return getJson(`/api/observe/${encodeURIComponent(service)}/external/telemetry/summary?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodeApplicationSummary, signal);
+}
+
+export function decodePlatformTelemetry(value: unknown): PlatformTelemetry {
+  const root = record(value), caps = record(root.capabilities);
+  const integer = applicationInteger;
+  const fromMs = integer(root.fromMs), toMs = integer(root.toMs);
+  if (fromMs >= toMs || caps.actorRequests !== true || caps.sqlite !== true || caps.outboundRpc !== false || caps.runtimeMetrics !== false) throw new Error("invalid platform window or capabilities");
+  const operations = array(root.operations, value => {
+    const row = record(value), operation = string(row.operation), release = string(row.release);
+    const count = integer(row.count), failed = integer(row.failed), meanUs = number(row.meanUs), maxUs = integer(row.maxUs), p50UpperUs = integer(row.p50UpperUs), p95UpperUs = integer(row.p95UpperUs);
+    const histogram = array(row.histogram, item => { const bin = record(item); return { upperUs: integer(bin.upperUs), count: integer(bin.count) }; });
+    if (!PLATFORM_OPERATIONS.includes(operation) || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(release) || count === 0 || failed > count || meanUs < 0 || meanUs > maxUs || histogram.length === 0 || histogram.some((bin, i) => !DURATION_BOUNDS_US.some(bound => bound === bin.upperUs) || bin.count === 0 || (i > 0 && bin.upperUs <= histogram[i - 1]!.upperUs)) || histogram.reduce((sum, bin) => sum + bin.count, 0) !== count) throw new Error("invalid platform operation");
+    const percentile = (fraction: number) => { let n = 0; return histogram.find(bin => (n += bin.count) >= Math.ceil(count * fraction))!.upperUs; };
+    if (p50UpperUs !== percentile(0.5) || p95UpperUs !== percentile(0.95) || maxUs > histogram[histogram.length - 1]!.upperUs) throw new Error("invalid platform histogram");
+    return { operation, release, count, failed, meanUs, maxUs, p50UpperUs, p95UpperUs, histogram };
+  });
+  if (operations.length > 80 || new Set(operations.map(row => `${row.operation}\n${row.release}`)).size !== operations.length) throw new Error("invalid platform groups");
+  const delivery = root.delivery === null ? null : (() => { const d = record(root.delivery); const result = { atMs: integer(d.atMs), release: string(d.release), samplePpm: integer(d.samplePpm), received: integer(d.received), admitted: integer(d.admitted), filtered: integer(d.filtered), invalid: integer(d.invalid), dropped: integer(d.dropped), queued: integer(d.queued), sent: integer(d.sent), exporterLoss: "unknown" as const }; if (d.exporterLoss !== "unknown" || result.samplePpm > 1_000_000 || !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/u.test(result.release)) throw new Error("invalid platform delivery"); return result; })();
+  return { fromMs, toMs, operations, delivery, truncated: boolean(root.truncated), capabilities: { actorRequests: true, sqlite: true, outboundRpc: false, runtimeMetrics: false } };
+}
+
+export async function getPlatformTelemetry(fromMs: number, toMs: number, signal: AbortSignal): Promise<PlatformTelemetry | null> {
+  try { return await getJson(`/api/observe/stats-platform/platform?from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, decodePlatformTelemetry, signal); }
+  catch (error) { if (error instanceof ApiFailure && error.status === 404) return null; throw error; }
 }

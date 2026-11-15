@@ -1,0 +1,364 @@
+{
+  "samples": [
+    {
+      "variant": "baseline",
+      "generatedAt": "2026-11-15T00:57:07.853Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4426,
+            "jsBytes": 434156,
+            "apiBytes": 136179,
+            "apiRequests": 8,
+            "heapKb": 3008.7,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 1282,
+            "jsBytes": 0,
+            "apiBytes": 136008,
+            "apiRequests": 7,
+            "heapKb": 3210.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "generatedAt": "2026-11-15T00:57:22.303Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4418,
+            "jsBytes": 434156,
+            "apiBytes": 136179,
+            "apiRequests": 8,
+            "heapKb": 3008.6,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 1282,
+            "jsBytes": 0,
+            "apiBytes": 136008,
+            "apiRequests": 7,
+            "heapKb": 3210.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "generatedAt": "2026-11-15T00:57:36.776Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4421,
+            "jsBytes": 434156,
+            "apiBytes": 136179,
+            "apiRequests": 8,
+            "heapKb": 3008.6,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 1283,
+            "jsBytes": 0,
+            "apiBytes": 136008,
+            "apiRequests": 7,
+            "heapKb": 3210.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "generatedAt": "2026-11-15T00:57:51.285Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4432,
+            "jsBytes": 434156,
+            "apiBytes": 136179,
+            "apiRequests": 8,
+            "heapKb": 3007.6,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 1284,
+            "jsBytes": 0,
+            "apiBytes": 136008,
+            "apiRequests": 7,
+            "heapKb": 3210.1,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "generatedAt": "2026-11-15T00:58:05.759Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4436,
+            "jsBytes": 434156,
+            "apiBytes": 136179,
+            "apiRequests": 8,
+            "heapKb": 3007.6,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 1286,
+            "jsBytes": 0,
+            "apiBytes": 136008,
+            "apiRequests": 7,
+            "heapKb": 3210.1,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "generatedAt": "2026-11-15T00:57:14.695Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4151,
+            "jsBytes": 361127,
+            "apiBytes": 38472,
+            "apiRequests": 5,
+            "heapKb": 3625.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 782,
+            "jsBytes": 0,
+            "apiBytes": 38301,
+            "apiRequests": 4,
+            "heapKb": 4101.8,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "generatedAt": "2026-11-15T00:57:29.174Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4145,
+            "jsBytes": 361127,
+            "apiBytes": 38472,
+            "apiRequests": 5,
+            "heapKb": 3625.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 784,
+            "jsBytes": 0,
+            "apiBytes": 38301,
+            "apiRequests": 4,
+            "heapKb": 4103,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "generatedAt": "2026-11-15T00:57:43.624Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4151,
+            "jsBytes": 361127,
+            "apiBytes": 38472,
+            "apiRequests": 5,
+            "heapKb": 3625.3,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 783,
+            "jsBytes": 0,
+            "apiBytes": 38301,
+            "apiRequests": 4,
+            "heapKb": 4101.8,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "generatedAt": "2026-11-15T00:57:58.127Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4142,
+            "jsBytes": 361127,
+            "apiBytes": 38472,
+            "apiRequests": 5,
+            "heapKb": 3625.2,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 785,
+            "jsBytes": 0,
+            "apiBytes": 38301,
+            "apiRequests": 4,
+            "heapKb": 4101.7,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "variant": "candidate",
+      "generatedAt": "2026-11-15T00:58:12.658Z",
+      "latency": 150,
+      "downKbps": 1600,
+      "cpuRate": 1,
+      "frozenNow": 1794698418842,
+      "results": [
+        {
+          "page": "project",
+          "runs": 1,
+          "cold": {
+            "readyMs": 4150,
+            "jsBytes": 361127,
+            "apiBytes": 38472,
+            "apiRequests": 5,
+            "heapKb": 3628.2,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          },
+          "warm": {
+            "readyMs": 778,
+            "jsBytes": 0,
+            "apiBytes": 38301,
+            "apiRequests": 4,
+            "heapKb": 4104.9,
+            "validRuns": 1,
+            "failedRequestsByRun": [
+              []
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

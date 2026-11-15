@@ -1,5 +1,10 @@
 # Observability product
 
+Production uses direct application events on OpenOrange. Cloudflare tail
+ingestion and its platform CPU, version and trace fields below describe the
+retained provider adapter. OpenOrange reports unavailable provider capabilities
+instead of synthesizing those measurements; imported observations remain readable.
+
 `stats-observe` is a small error-tracking and tracing product. It groups
 exceptions into issues, links each occurrence to its trace and exact Worker
 version, and shows each trace's invocations with their platform CPU and wall
@@ -34,7 +39,7 @@ SQL spans, which stay in Workers traces.
 | Retention | 7 days, enforced on every read; an alarm deletes expired rows in bounded batches |
 | Capture | Every tailed invocation, minus the excluded routes |
 | Core | Portable TypeScript with no Cloudflare imports: model, grouping, SQL. `observe.tsconfig.json` typechecks it without Workers types, and it is tested with `node --test` and `node:sqlite`. |
-| UI | The stats dashboard, proxied through the stats Access gate; and the `pnpm observe` CLI |
+| UI | The stats dashboard, proxied through its tailnet gateway; and the `pnpm observe` CLI |
 | Encoding | None. A classic tail item reduces to indexed columns and error rows, so there is no per-invocation payload to encode. |
 
 All telemetry work except the publish happens after the invocation, in another
@@ -49,7 +54,7 @@ id.
 stats Worker ─┐                      stats-observe Worker
               ├─ tail events ──────▶  tail handler ─▶ core ─▶ ObservationStore DO
 Installation ─┘  (after invocation)
-Browser ─▶ stats Access gate ─▶ /api/observe/* ─▶ service binding ─┘
+Browser ─▶ tailnet gateway ─▶ /api/observe/* ─▶ service binding ─┘
 ```
 
 ### Tail behavior the design depends on
@@ -167,7 +172,7 @@ production:
   immutable: the same content again is a no-op, different content is a conflict.
   `make worker-deploy` parses the version id from `cf deploy` and registers the
   map from the same build with `pnpm observe sourcemap`, a same-origin PUT
-  through the stats Access gate capped at 1.5 MiB. `make observe-sourcemap
+  through the tailnet gateway capped at 1.5 MiB. `make observe-sourcemap
   VERSION=...` repeats it. Errors that arrived before their map resolve once it
   is registered. A frame without a map keeps its bundle position and is marked
   unmapped. The newest 12 maps are kept.
@@ -216,7 +221,7 @@ dependencies, and fails a command whose response does not validate against
 own exit codes ([Operations](operations.md#measuring-a-deployment-with-statsctl)).
 `make observe-sourcemap` depends on the codes above, so they do not change.
 
-## Rollout order
+## Cloudflare rollout order
 
 Deploy `stats-observe` first, because a producer cannot reference a consumer
 that does not exist. Then deploy the producer with `tailConsumers` and register

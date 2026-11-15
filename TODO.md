@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 127
+Next: 128
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -40,14 +40,26 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** refactor-dashboard-ui
 - **Effort:** M
 
+### STA-127 · P3 · Linux hosts do not report CPU package or battery power
+
+- **Area:** Agent
+- **Where:** agent/src/linux.rs; agent/src/model.rs (Power); fixtures/v2/; cloudflare/src/client/pages/host/Power.tsx; docs/protocol.md; removed Linux power campaign in Git history
+- **Problem:** The Linux sampler has no powercap or battery reader, and Power only models GPU energy and system readings. Linux hosts therefore cannot populate CPU package power or discharging-battery power. The old campaign was never started and describes the superseded JSON v1 protocol.
+- **Recommendation:** Design Linux power support against the current STB2/STA2 contract and coordinate receiver, fixtures, history and UI changes before agent emission. Read only top-level powercap package zones and discharging batteries; use checked cumulative counters with explicit wrap/reset handling and omit unreadable or incomplete sources. Keep the agent unprivileged and permissions opt-in, document the OpenRC/no-udev case, and defer Linux GPU energy until a reliable GPU-only source exists. Verify Linux behavior and cross-language fixture parity; do not carry forward the obsolete v1 rollout instructions.
+- **Fix with:** architect
+- **Effort:** L
+
 ### STA-38 · P4 · Review the redesigned goldens and the live dashboard
 
 - **Area:** Tests
-- **Where:** deployed #/project/stats and #/host/... pages (production); the replay goldens were reviewed 2026-11-13 and are no longer part of this item
-- **Problem:** The 2026-11-01 dashboard rewrite regenerated 16 golden images with `--update-snapshots`. Only the threadripper 1 h charts and tiles and the stuff 1 h charts and tiles were looked at, and only on desktop for stuff. The 24 h and 7 d goldens, the mobile stuff pages, and the deployed page were not. Deferred by the owner on 2026-11-05. On 2026-11-13 every one of the 58 current replay goldens was opened and reviewed; the review found two defects, filed as STA-125 (host-page data tables crush and clip on mobile) and STA-126 (merged chart-event annotations label every merged cluster as deploys). Nothing else reads wrong. The deployed `#/project/stats` and `#/host/...` pages remain unreviewed: opening them needs production Access access this environment does not have.
-- **Recommendation:** Open the deployed `#/project/stats` and `#/host/...` pages with production Access access and file or fix anything that reads wrong. The goldens half of this ticket is done and its findings are filed as STA-125/STA-126; this ticket closes when the deployed pages are reviewed.
+- **Where:** deployed #/project/stats and #/host/... pages; replay goldens reviewed 2026-11-13
+- **Problem:** The dashboard replay goldens were reviewed on 2026-11-13 and yielded STA-125 and STA-126. The deployed project and host pages still need visual acceptance. Production now runs on OpenOrange with tailnet identity; the previous Cloudflare Access prerequisite is obsolete.
+- **Recommendation:** From a tailnet device, review the deployed project and host pages and file or fix concrete issues. Imported Cloudflare history is retained data, not current provider collection. Close this ticket when the live pages are reviewed.
 - **Fix with:** none
 - **Effort:** S
+
+
+
 
 ### STA-49 · P4 · Nanoshop route and operation parity needs external verification
 
@@ -57,8 +69,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** In Nanoshop's Stats integration tests, compare its `ROUTES` patterns and `ErrorOperation` set with the exported Stats lists.
 - **Fix with:** single-source-of-truth
 - **Effort:** S
-
-
 
 
 ### STA-79 · P4 · The 45 minute settle time rests on one day of ingestion-lag samples
@@ -81,6 +91,8 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Effort:** M
 
 
+
+
 ### STA-83 · P4 · The offline local stack has no Linux network sandbox
 
 - **Area:** Tests
@@ -89,8 +101,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** On a Linux host, run the same commands under `unshare -rn` with a loopback interface brought up, confirm Chromium launches under it, add that branch to `scripts/offline-run.sh`, and drop the Darwin-only condition from `OFFLINE_SANDBOX_CHECK` if it passes.
 - **Fix with:** none
 - **Effort:** M
-
-
 
 
 ### STA-87 · P4 · Whether the Analytics SQL binding bills for the rows the collector reads is unconfirmed

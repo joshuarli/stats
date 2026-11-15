@@ -184,7 +184,7 @@ function healthOrigin(overrides: { deployments?: Handler; health?: Handler; proj
   return (request, response, seen) => {
     if (!authorized(request)) return void response.writeHead(401).end();
     const url = request.url ?? "";
-    if (url === "/api/v1/capabilities") return sendJson(response, overrides.capabilities ?? { analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true });
+    if (url === "/api/v1/capabilities") return sendJson(response, overrides.capabilities ?? { projectSource: "cloudflare", analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true });
     if (url === "/api/v1/projects") return sendJson(response, overrides.projects ?? [projectEntry("stats"), projectEntry("other")]);
     if (url.endsWith("/deployments")) {
       if (overrides.deployments !== undefined) return overrides.deployments(request, response, seen);
@@ -282,7 +282,7 @@ void test("health on an unknown project is a usage error and a total outage repo
   });
 
 void test("health reports unsupported collectors without querying deployments", async () => {
-  await withOrigin(healthOrigin({ capabilities: { analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true } }), async origin => {
+  await withOrigin(healthOrigin({ capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true } }), async origin => {
     const run = await jsonRun(origin, ["health", "--project", "stats"]);
     assert.equal(run.code, EXIT.ok, run.stdout + run.stderr);
     const payload = document(run.stdout)["payload"] as Record<string, { state: string; reasons: { code: string }[] }>;

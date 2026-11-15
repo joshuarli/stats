@@ -1370,6 +1370,10 @@ export function readTrace(db: SqlStatements, nowMs: number, traceId: string): Tr
   return { traceId, rootPresent: invocations.some(invocation => invocation.stage === "worker"), truncated: rows.length > MAX_TRACE_INVOCATIONS, invocations, occurrences };
 }
 
+export function openIssueCount(db: SqlStatements, nowMs: number): number {
+  return count(db, `SELECT COUNT(*) AS n FROM observe_issues i WHERE i.state = 'open' AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)`, nowMs - RETENTION_MS);
+}
+
 export function health(db: SqlStatements, nowMs: number, sampling: Sampling = KEEP_ALL): Health {
   const cutoff = nowMs - RETENTION_MS;
   const live = db.rows<{ n: number; oldest: number | null; newest: number | null }>(
@@ -1388,7 +1392,7 @@ export function health(db: SqlStatements, nowMs: number, sampling: Sampling = KE
   );
   const ingestCost = cost.find(row => row.phase === "ingest");
   const cleanupCost = cost.find(row => row.phase === "cleanup");
-  const openIssues = count(db, `SELECT COUNT(*) AS n FROM observe_issues i WHERE i.state = 'open' AND EXISTS (SELECT 1 FROM observe_occurrences o WHERE o.fingerprint = i.fingerprint AND o.propagated = 0 AND o.observed_at > ?)`, cutoff);
+  const openIssues = openIssueCount(db, nowMs);
   const oldestExpired = backlog?.oldest ?? null;
   return {
     newestAtMs: live?.newest ?? null,

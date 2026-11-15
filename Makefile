@@ -19,7 +19,7 @@ dev-doctor: node-ready
 bench-dev: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/bench/dev-loop.ts $(BENCH_ARGS)
 
-.PHONY: orange-ready orange-pilot orange-test work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
+.PHONY: orange-dev orange-ready orange-pilot orange-test work-ready node-ready auth-ready fixtures fixtures-write ingest-bench smoke-local dev-local reset-local integration-local integration-producer bench-local profile-local profile-test observe-bundle agent-e2e node-e2e agent-test agent-build agent-build-macos add-host add-host-check cloudflare-test dashboard-test dashboard-bench lint worker-check worker-bundle observe-deploy observe-sourcemap worker-deploy stats-deploy worker-test deploy deploy-hosts push-hosts deploy-threadripper node-deploy smoke-deployed release release-artifacts build-statsctl publish-producer publish-producer-crate test check preview
 work-ready:
 	@set -eu; \
 	exclude="$$(git rev-parse --git-path info/exclude)"; \
@@ -31,16 +31,19 @@ work-ready:
 node-ready:
 	@set -eu; \
 	test "$$(node --version)" = "v$$(cat .node-version)" || { echo 'use the Node version in .node-version' >&2; exit 1; }; \
-	test "$$(pnpm --version)" = "$$(jaq -r '.packageManager | split("@")[1]' package.json)" || { echo 'use the pnpm version in package.json' >&2; exit 1; }
+	test "$$(pnpm --version)" = "$$(node -p 'require("./package.json").packageManager.split("@")[1]')" || { echo 'use the pnpm version in package.json' >&2; exit 1; }
 
 orange-ready: node-ready
 	cd deploy/orange && pnpm install --frozen-lockfile
+
+orange-dev: work-ready orange-ready worker-bundle observe-bundle
+	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types deploy/orange/dev.mts
 
 orange-pilot: work-ready orange-ready worker-bundle observe-bundle
 	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/pilot.test.mts
 
 orange-test: work-ready orange-ready worker-bundle observe-bundle
-	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/*.test.mts
+	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test --test-concurrency=1 deploy/orange/*.test.mts
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs
@@ -115,7 +118,7 @@ observe-bundle: node-ready
 	cd cloudflare && pnpm run build:observe
 
 observe-deploy:
-	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/CAMPAIGN-OPENORANGE.md' >&2; exit 1
+	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/openorange.md' >&2; exit 1
 
 stats-deploy worker-deploy: auth-ready work-ready node-ready
 	deploy/orange/deploy.sh '$(ORANGE_HOST)'
@@ -237,4 +240,4 @@ OFFLINE_SANDBOX_CHECK := $(if $(filter Darwin,$(shell uname -s)),integration-loc
 
 test: fixtures agent-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test $(OFFLINE_SANDBOX_CHECK)
 
-check: fixtures agent-test release cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)
+check: fixtures agent-test release orange-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)
