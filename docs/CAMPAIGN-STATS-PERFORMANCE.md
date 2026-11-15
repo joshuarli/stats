@@ -5,6 +5,14 @@
 Active, re-scoped on 2026-11-15. The goal is immediate, explainable Stats
 interactions on Lisa at ten times the frozen production corpus.
 
+W2 preparation branch review is integrated as `b15839f2a32`; both Linux
+container regressions and pinned-Node lint pass. Preserved imports failed
+before the full corpus was ready; their cause is not yet classified.
+No full W2 run was started and its budget remains three runs. See the
+[review and failure evidence](../bench/results/2026-11-15-scale-prep-review/README.md).
+W2–W5 remain unfinished; W6 still awaits the soak deadline. The campaign
+is not closed.
+
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
 This revision keeps every acceptance threshold. It bounds each remaining
