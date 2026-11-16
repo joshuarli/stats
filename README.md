@@ -192,7 +192,10 @@ stats --config /etc/stats/agent.json   # run in the foreground
 stats --once                           # print one sample as JSON, no network or credential
 stats --bench <iterations> <interval_ms>  # sample without network and report cost
 stats --version
+stats --help                           # complete offline CLI reference
 ```
+
+Running `stats` without arguments also prints the reference.
 
 The agent keeps unsent samples in memory only, at most `maxQueueSamples`. A
 new sample on a full queue displaces the oldest. Each upload sends up to two
