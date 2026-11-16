@@ -61,12 +61,22 @@ pub fn parse_cpu_usage(bytes: &[u8]) -> Option<u64> {
     text.lines().find_map(|line| line.strip_prefix("usage_usec ")).and_then(|value| parse_value(value.trim()))
 }
 
-pub fn parse_io_stat(bytes: &[u8]) -> Option<ServiceIo> {
+fn device_id(text: &str) -> Option<String> {
+    let (major, minor) = text.split_once(':')?;
+    let major = major.parse::<u32>().ok()?;
+    let minor = minor.parse::<u32>().ok()?;
+    let id = format!("{major}:{minor}");
+    (id == text).then_some(id)
+}
+
+fn io_devices(bytes: &[u8]) -> Option<Vec<(String, ServiceIo)>> {
     let text = std::str::from_utf8(bytes).ok()?;
-    let mut total = ServiceIo { read_bytes: 0, write_bytes: 0, reads: 0, writes: 0 };
+    let mut devices = Vec::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        if devices.len() >= 256 { return None; }
         let mut fields = line.split_whitespace();
-        fields.next()?.split_once(':')?;
+        let id = device_id(fields.next()?)?;
+        if devices.iter().any(|(existing, _)| existing == &id) { return None; }
         let mut device = [None; 4];
         for field in fields {
             let (key, value) = field.split_once('=')?;
@@ -77,15 +87,49 @@ pub fn parse_io_stat(bytes: &[u8]) -> Option<ServiceIo> {
                 "wios" => 3,
                 _ => continue,
             };
+            if device[slot].is_some() { return None; }
             device[slot] = Some(parse_value(value)?);
         }
         let [read_bytes, write_bytes, reads, writes] = device;
-        total.read_bytes = total.read_bytes.checked_add(read_bytes?)?;
-        total.write_bytes = total.write_bytes.checked_add(write_bytes?)?;
-        total.reads = total.reads.checked_add(reads?)?;
-        total.writes = total.writes.checked_add(writes?)?;
+        devices.push((id, ServiceIo { read_bytes: read_bytes?, write_bytes: write_bytes?, reads: reads?, writes: writes? }));
+    }
+    Some(devices)
+}
+
+fn sum_io(devices: impl Iterator<Item = ServiceIo>) -> Option<ServiceIo> {
+    let mut total = ServiceIo { read_bytes: 0, write_bytes: 0, reads: 0, writes: 0 };
+    for device in devices {
+        total.read_bytes = total.read_bytes.checked_add(device.read_bytes)?;
+        total.write_bytes = total.write_bytes.checked_add(device.write_bytes)?;
+        total.reads = total.reads.checked_add(device.reads)?;
+        total.writes = total.writes.checked_add(device.writes)?;
     }
     Some(total)
+}
+
+pub fn parse_io_stat(bytes: &[u8]) -> Option<ServiceIo> {
+    sum_io(io_devices(bytes)?.into_iter().map(|(_, io)| io))
+}
+
+fn read_io_stat(bytes: &[u8], block_root: &Path) -> Option<ServiceIo> {
+    let devices = io_devices(bytes)?;
+    let mut excluded = std::collections::HashSet::new();
+    for (id, _) in &devices {
+        let mut pending = vec![id.clone()];
+        let mut visited = std::collections::HashSet::new();
+        while let Some(current) = pending.pop() {
+            if !visited.insert(current.clone()) { continue; }
+            if visited.len() > 256 { return None; }
+            for entry in std::fs::read_dir(block_root.join(&current).join("holders")).ok()? {
+                let bytes = read_bounded(&entry.ok()?.path().join("dev"), VALUE_LIMIT)?;
+                let holder = device_id(std::str::from_utf8(&bytes).ok()?.trim())?;
+                if holder == *id { return None; }
+                excluded.insert(holder.clone());
+                pending.push(holder);
+            }
+        }
+    }
+    sum_io(devices.into_iter().filter(|(id, _)| !excluded.contains(id)).map(|(_, io)| io))
 }
 
 fn read_bounded(path: &Path, limit: usize) -> Option<Vec<u8>> {
@@ -105,19 +149,24 @@ pub struct ServiceCgroup {
     pub cgroup: PathBuf,
 }
 
-fn read_usage(directory: &Path) -> Option<ServiceUsage> {
+fn read_usage(directory: &Path, devices: &Path) -> Option<ServiceUsage> {
     let cpu_usec = parse_cpu_usage(&read_bounded(&directory.join("cpu.stat"), CPU_STAT_LIMIT)?)?;
     let memory = read_value(&directory.join("memory.current")).map(|current| ServiceMemory { current, peak: read_value(&directory.join("memory.peak")) });
-    let io = read_bounded(&directory.join("io.stat"), IO_STAT_LIMIT).and_then(|bytes| parse_io_stat(&bytes));
+    let io = read_bounded(&directory.join("io.stat"), IO_STAT_LIMIT).and_then(|bytes| read_io_stat(&bytes, devices));
     Some(ServiceUsage { cpu_usec, memory, io })
 }
 
-pub fn read_services(root: &Path, services: &[ServiceCgroup]) -> Option<Vec<Service>> {
-    read_bounded(&root.join("cgroup.controllers"), VALUE_LIMIT * 4)?;
+pub struct CgroupRoots<'a> {
+    pub cgroups: &'a Path,
+    pub devices: &'a Path,
+}
+
+pub fn read_services(roots: CgroupRoots<'_>, services: &[ServiceCgroup]) -> Option<Vec<Service>> {
+    read_bounded(&roots.cgroups.join("cgroup.controllers"), VALUE_LIMIT * 4)?;
     Some(
         services
             .iter()
-            .map(|service| match read_usage(&root.join(&service.cgroup)) {
+            .map(|service| match read_usage(&roots.cgroups.join(&service.cgroup), roots.devices) {
                 Some(usage) => Service::measured(&service.name, usage),
                 None => Service::unavailable(&service.name),
             })
@@ -167,7 +216,7 @@ mod tests {
         let root = scratch("cgroup");
         let service = |name: &str, unit: &str| ServiceCgroup { name: name.into(), cgroup: unit_cgroup(unit).unwrap() };
         let services = [service("web", "web.service"), service("db", "db.service"), service("gone", "gone.service")];
-        assert_eq!(read_services(&root, &services), None);
+        assert_eq!(read_services(CgroupRoots { cgroups: &root, devices: &root }, &services), None);
 
         fs::write(root.join("cgroup.controllers"), "cpuset cpu io memory pids\n").unwrap();
         let web = root.join("system.slice/web.service");
@@ -180,9 +229,41 @@ mod tests {
         fs::create_dir_all(&db).unwrap();
         fs::write(db.join("cpu.stat"), "usage_usec 7\n").unwrap();
 
-        let read = read_services(&root, &services).unwrap();
+        let read = read_services(CgroupRoots { cgroups: &root, devices: &root }, &services).unwrap();
         assert_eq!(read[0], Service::measured("web", ServiceUsage { cpu_usec: 5000, memory: Some(ServiceMemory { current: 1_048_576, peak: Some(2_097_152) }), io: Some(ServiceIo { read_bytes: 0, write_bytes: 0, reads: 0, writes: 0 }) }));
         assert_eq!(read[1], Service::measured("db", ServiceUsage { cpu_usec: 7, memory: None, io: None }));
         assert_eq!(read[2], Service::unavailable("gone"));
     }
+    #[test]
+    fn stacked_io_counts_backing_devices_once_through_unlisted_intermediate_layers() {
+        let root = scratch("io-topology");
+        for id in ["8:0", "8:16", "253:0", "253:1"] { fs::create_dir_all(root.join(id).join("holders")).unwrap(); }
+        let holder = |device: &str, name: &str, id: &str| {
+            let path = root.join(device).join("holders").join(name);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("dev"), id).unwrap();
+        };
+        holder("8:0", "dm-0", "253:0");
+        holder("8:16", "dm-0", "253:0");
+        holder("253:0", "dm-1", "253:1");
+        let stats = b"8:0 rbytes=100 wbytes=200 rios=1 wios=2\n8:16 rbytes=300 wbytes=400 rios=3 wios=4\n253:1 rbytes=400 wbytes=600 rios=4 wios=6\n";
+        assert_eq!(read_io_stat(stats, &root), Some(ServiceIo { read_bytes: 400, write_bytes: 600, reads: 4, writes: 6 }));
+        assert_eq!(read_io_stat(b"253:1 rbytes=400 wbytes=600 rios=4 wios=6\n", &root), Some(ServiceIo { read_bytes: 400, write_bytes: 600, reads: 4, writes: 6 }));
+        assert_eq!(read_io_stat(b"../x:0 rbytes=1 wbytes=2 rios=3 wios=4\n", &root), None);
+        assert_eq!(read_io_stat(b"8:0 rbytes=1 wbytes=2 rios=3 wios=4\n8:0 rbytes=1 wbytes=2 rios=3 wios=4\n", &root), None);
+        fs::remove_file(root.join("253:0/holders/dm-1/dev")).unwrap();
+        assert_eq!(read_io_stat(stats, &root), None);
+    }
+
+    #[test]
+    fn a_measured_device_mapper_write_is_not_counted_twice() {
+        let root = scratch("measured-io-topology");
+        fs::create_dir_all(root.join("7:0/holders/dm-0")).unwrap();
+        fs::write(root.join("7:0/holders/dm-0/dev"), "252:0").unwrap();
+        fs::create_dir_all(root.join("252:0/holders")).unwrap();
+        let bytes = include_bytes!("../tests/fixtures/stacked-io.stat");
+        assert_eq!(parse_io_stat(bytes).unwrap().write_bytes, 8_388_608);
+        assert_eq!(read_io_stat(bytes, &root), Some(ServiceIo { read_bytes: 0, write_bytes: 4_194_304, reads: 0, writes: 4 }));
+    }
+
 }

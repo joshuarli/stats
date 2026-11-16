@@ -5,6 +5,8 @@ pub mod block_fold;
 pub mod cgroup;
 pub mod config;
 pub mod model;
+#[cfg(any(target_os = "linux", test))]
+mod linux_power;
 pub mod parse;
 pub mod queue;
 pub mod runtime;

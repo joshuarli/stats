@@ -410,7 +410,7 @@ pub fn sample(scope: CollectionScope) -> Option<Sample> {
         Some(reading) => sample.gpu = Some(reading),
         None => sample.mark_unavailable(Unavailable::Gpu),
     }
-    let power = Power { gpu_nj: gpu.energy_nj, system: iokit::read_system_power() };
+    let power = Power { cpu_nj: None, battery: None, gpu_nj: gpu.energy_nj, system: iokit::read_system_power() };
     if power.gpu_nj.is_none() && power.system.is_none() {
         sample.mark_unavailable(Unavailable::Power);
     } else {

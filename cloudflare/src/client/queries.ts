@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js";
+import { createMemo, createSignal, onCleanup } from "solid-js";
 import { getCapabilities, getFleetHistories, getHosts, getProjects, getServices, getSystem, type HistoryQuery, type Host, type HostSystem, type Project, type Service } from "./api";
 import type { DiskSeries, FilesystemSeries, FleetHistories, NetSeries, SummaryTable } from "./history";
 import { windowParams } from "./history-path";
@@ -37,6 +37,16 @@ export function loadQuery<T>(load: (signal: AbortSignal) => Promise<T>, refresh?
       return refresh.previous;
     }
   );
+}
+
+export function createListQuery<T>(load: () => Promise<readonly T[]>) {
+  const retention = createRefreshRetention();
+  const [error, setError] = createSignal<unknown>(null);
+  const data = createMemo<readonly T[]>(previous => loadQuery(
+    () => load().then(value => previous !== undefined && JSON.stringify(previous) === JSON.stringify(value) ? previous : value),
+    { key: "list", previous, retention, onError: error => setError(() => error) }
+  ));
+  return { data, error };
 }
 
 export function loadHosts(): Promise<readonly Host[]> {

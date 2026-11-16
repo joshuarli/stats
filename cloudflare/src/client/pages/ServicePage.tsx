@@ -2,12 +2,12 @@ import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh,
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getServiceIssues, type Service } from "../api";
-import { age } from "../format";
-import { loadServices } from "../queries";
+import { age, errorMessage } from "../format";
+import { createListQuery, loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { routeWithRange } from "../urlState";
 import { EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
-import { ErrorState, Widget } from "../components/ui";
+import { ErrorState, Notice, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import { createServiceDeployments, DeploymentRail, DeploymentsWidget } from "./project/Deployments";
@@ -23,12 +23,13 @@ export function ServicePage(): JSX.Element {
   const params = useParams();
   const { tick, manualTick, range } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const services = createMemo(loadServices);
+  const { data: services, error: listError } = createListQuery(loadServices);
   const service = createMemo(() => services().find(candidate => candidate.name === (params.serviceName ?? "")));
   createUpdateEffect(() => `${serviceTick()}:${manualTick()}`, () => { void refresh(services); });
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
+      <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
         <Show
           when={service()?.name}
           keyed

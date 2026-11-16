@@ -92,6 +92,8 @@ function normalize(sample: WireSample): Sample {
   const filesystems: FileSystem[] | undefined = sample.filesystems?.map(filesystem => ({ id: filesystem.entry.path, type: filesystem.entry.type, total: decimal(filesystem.total), available: decimal(filesystem.available) }));
   const block: Block | undefined = sample.block === undefined ? undefined : { buckets: sample.block.buckets.map(decimal), count: decimal(sample.block.count), totalUs: decimal(sample.block.totalUs), minUs: decimal(sample.block.minUs), maxUs: decimal(sample.block.maxUs) };
   const power: Power | undefined = sample.power === undefined ? undefined : {
+    ...(sample.power.cpuNj === undefined ? {} : { cpuNj: decimal(sample.power.cpuNj) }),
+    ...(sample.power.battery === undefined ? {} : { batteryMwSum: decimal(sample.power.battery.milliwattSum), batteryReadings: decimal(sample.power.battery.readings) }),
     ...(sample.power.gpuNj === undefined ? {} : { gpuNj: decimal(sample.power.gpuNj) }),
     ...(sample.power.system === undefined ? {} : { systemMwSum: decimal(sample.power.system.milliwattSum), systemReadings: decimal(sample.power.system.readings) })
   };

@@ -334,6 +334,21 @@
       "frame": "frames/gpu-power.stb2"
     },
     {
+      "name": "linux-power",
+      "label": "synthetic",
+      "samples": [
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept",
+        "accept"
+      ],
+      "source": "sources/linux-power.json",
+      "frame": "frames/linux-power.stb2"
+    },
+    {
       "name": "swap-and-optional-counters",
       "label": "synthetic",
       "samples": [

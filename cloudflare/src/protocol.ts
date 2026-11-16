@@ -94,6 +94,9 @@ export interface Gpu {
 }
 
 export interface Power {
+  readonly cpuNj?: string;
+  readonly batteryMwSum?: string;
+  readonly batteryReadings?: string;
   readonly gpuNj?: string;
   readonly systemMwSum?: string;
   readonly systemReadings?: string;

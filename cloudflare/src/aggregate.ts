@@ -46,6 +46,8 @@ export interface GpuValues {
   readonly busyPct: number;
 }
 export interface PowerValues {
+  readonly cpuWatts?: number;
+  readonly batteryWatts?: number;
   readonly gpuWatts?: number;
   readonly systemWatts?: number;
 }
@@ -120,6 +122,7 @@ export interface SwapRollup extends SwapDelta {
   readonly coveredMs: number;
 }
 export interface PowerRollup extends Power {
+  readonly cpuCoveredMs?: number;
   readonly gpuCoveredMs?: number;
 }
 interface FileSums {
@@ -289,13 +292,21 @@ function sumGpu(target: Gpu | undefined, add: Gpu): Gpu {
   return { active: (BigInt(target?.active ?? "0") + BigInt(add.active)).toString(), total: (BigInt(target?.total ?? "0") + BigInt(add.total)).toString() };
 }
 
-function sumPower(target: PowerRollup | undefined, add: Power, gpuCoveredMs: number): PowerRollup {
+function sumPower(target: PowerRollup | undefined, add: Power, gpuCoveredMs: number, cpuIntervalMs: number): PowerRollup {
+  const cpuNj = add.cpuNj === undefined ? target?.cpuNj : (BigInt(target?.cpuNj ?? "0") + BigInt(add.cpuNj)).toString();
+  const cpuCoveredMs = add.cpuNj === undefined ? target?.cpuCoveredMs : (target?.cpuCoveredMs ?? 0) + cpuIntervalMs;
+  const battery = add.batteryMwSum !== undefined && add.batteryReadings !== undefined;
+  const batteryMwSum = battery ? (BigInt(target?.batteryMwSum ?? "0") + BigInt(add.batteryMwSum!)).toString() : target?.batteryMwSum;
+  const batteryReadings = battery ? (BigInt(target?.batteryReadings ?? "0") + BigInt(add.batteryReadings!)).toString() : target?.batteryReadings;
   const gpuNj = add.gpuNj === undefined ? target?.gpuNj : (BigInt(target?.gpuNj ?? "0") + BigInt(add.gpuNj)).toString();
   const system = add.systemMwSum !== undefined && add.systemReadings !== undefined;
   const systemMwSum = system ? (BigInt(target?.systemMwSum ?? "0") + BigInt(add.systemMwSum!)).toString() : target?.systemMwSum;
   const systemReadings = system ? (BigInt(target?.systemReadings ?? "0") + BigInt(add.systemReadings!)).toString() : target?.systemReadings;
   const covered = add.gpuNj === undefined ? target?.gpuCoveredMs : (target?.gpuCoveredMs ?? 0) + gpuCoveredMs;
   return {
+    ...(cpuNj === undefined ? {} : { cpuNj }),
+    ...(cpuCoveredMs === undefined ? {} : { cpuCoveredMs }),
+    ...(batteryMwSum === undefined || batteryReadings === undefined ? {} : { batteryMwSum, batteryReadings }),
     ...(gpuNj === undefined ? {} : { gpuNj }),
     ...(covered === undefined ? {} : { gpuCoveredMs: covered }),
     ...(systemMwSum === undefined || systemReadings === undefined ? {} : { systemMwSum, systemReadings })
@@ -308,13 +319,16 @@ function gpuValues(gpu: Gpu | undefined): GpuValues | undefined {
   return total > 0 ? { busyPct: (Number(gpu.active) / total) * 100 } : undefined;
 }
 
-function powerValues(power: PowerRollup | undefined, gpuCoveredMs: number): PowerValues | undefined {
+function powerValues(power: PowerRollup | undefined, gpuCoveredMs: number, cpuCoveredMs: number): PowerValues | undefined {
   if (power === undefined) return undefined;
+  const cpuWatts = power.cpuNj === undefined || cpuCoveredMs <= 0 ? undefined : Number(power.cpuNj) / cpuCoveredMs / 1e6;
+  const batteryReadings = power.batteryReadings === undefined ? 0 : Number(power.batteryReadings);
+  const batteryWatts = power.batteryMwSum === undefined || batteryReadings <= 0 ? undefined : Number(power.batteryMwSum) / batteryReadings / 1000;
   const gpuWatts = power.gpuNj === undefined || gpuCoveredMs <= 0 ? undefined : Number(power.gpuNj) / gpuCoveredMs / 1e6;
   const readings = power.systemReadings === undefined ? 0 : Number(power.systemReadings);
   const systemWatts = power.systemMwSum === undefined || readings <= 0 ? undefined : Number(power.systemMwSum) / readings / 1000;
-  if (gpuWatts === undefined && systemWatts === undefined) return undefined;
-  return { ...(gpuWatts === undefined ? {} : { gpuWatts }), ...(systemWatts === undefined ? {} : { systemWatts }) };
+  if (gpuWatts === undefined && systemWatts === undefined && cpuWatts === undefined && batteryWatts === undefined) return undefined;
+  return { ...(cpuWatts === undefined ? {} : { cpuWatts }), ...(batteryWatts === undefined ? {} : { batteryWatts }), ...(gpuWatts === undefined ? {} : { gpuWatts }), ...(systemWatts === undefined ? {} : { systemWatts }) };
 }
 
 function sumDevices(target: Record<string, Record<string, string>>, source: Record<string, Record<string, string>>): void {
@@ -418,7 +432,7 @@ export function rollupFromRaw(rows: readonly RawRow[], bucketMs: number, spanMs:
     if (delta.cpu !== undefined) cpu = cpu === undefined ? { ...delta.cpu } : sumCpu(cpu, delta.cpu);
     if (delta.swap !== undefined) swap = sumSwap(swap, delta.swap, delta.intervalMs);
     if (delta.gpu !== undefined) gpu = sumGpu(gpu, delta.gpu);
-    if (delta.power !== undefined) power = sumPower(power, delta.power, delta.intervalMs);
+    if (delta.power !== undefined) power = sumPower(power, delta.power, delta.intervalMs, delta.intervalMs);
     if (sample.load !== undefined) {
       gaugeAdd(gauges, "load.one", Number(sample.load.one));
       gaugeAdd(gauges, "load.five", Number(sample.load.five));
@@ -519,7 +533,7 @@ export function combineRollups(payloads: readonly RollupPayload[], bucketMs: num
     if (payload.cpu !== undefined) cpu = cpu === undefined ? { ...payload.cpu } : sumCpu(cpu, payload.cpu);
     if (payload.swap !== undefined) swap = sumSwap(swap, payload.swap, payload.swap.coveredMs);
     if (payload.gpu !== undefined) gpu = sumGpu(gpu, payload.gpu);
-    if (payload.power !== undefined) power = sumPower(power, payload.power, payload.power.gpuCoveredMs ?? 0);
+    if (payload.power !== undefined) power = sumPower(power, payload.power, payload.power.gpuCoveredMs ?? 0, payload.power.cpuCoveredMs ?? 0);
     for (const [key, value] of Object.entries(payload.gauges)) {
       const target = gauges[key] ?? { sum: 0, count: 0 };
       gauges[key] = { sum: target.sum + value.sum, count: target.count + value.count };
@@ -585,7 +599,7 @@ function summaryFromRollup(payload: RollupPayload): SummaryPoint {
     ...(gaugeAverage(group, "full10") === undefined ? {} : { full10: gaugeAverage(group, "full10")!, full60: gaugeAverage(group, "full60")!, full300: gaugeAverage(group, "full300")! })
   }])) as PsiAverages;
   const gpu = gpuValues(payload.gpu);
-  const power = powerValues(payload.power, payload.power?.gpuCoveredMs ?? 0);
+  const power = powerValues(payload.power, payload.power?.gpuCoveredMs ?? 0, payload.power?.cpuCoveredMs ?? 0);
   const cpuCount = gaugeAverage(payload.gauges, "cpuCount");
   const uptimeMs = gaugeAverage(payload.gauges, "uptimeMs");
   return { atMs: payload.bucketMs, coverageMs: payload.coverageMs, partial: payload.partial, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(gpu === undefined ? {} : { gpu }), ...(power === undefined ? {} : { power }), ...(cpuCount === undefined ? {} : { cpuCount: Math.round(cpuCount) }), ...(uptimeMs === undefined ? {} : { uptimeMs }) };
@@ -599,7 +613,7 @@ function summaryFromRaw(row: RawRow): SummaryPoint {
   const mem = row.sample.mem === undefined ? undefined : { total: Number(row.sample.mem.total), available: Number(row.sample.mem.available), swapUsed: Number(row.sample.mem.swapTotal) - Number(row.sample.mem.swapFree), ...swapRates(row.delta.swap, row.delta.intervalMs), ...(pressure === undefined ? {} : { pressure }) };
   const psi = psiAverages(row.sample);
   const gpu = gpuValues(row.delta.gpu);
-  const power = powerValues(row.delta.power, row.delta.intervalMs);
+  const power = powerValues(row.delta.power, row.delta.intervalMs, row.delta.intervalMs);
   return { atMs, coverageMs: row.delta.intervalMs, partial: false, ...(cpu === undefined ? {} : { cpu }), ...(load === undefined ? {} : { load }), ...(mem === undefined ? {} : { mem }), ...(psi === undefined ? {} : { psi }), ...(gpu === undefined ? {} : { gpu }), ...(power === undefined ? {} : { power }), ...(row.sample.cpuCount === undefined ? {} : { cpuCount: row.sample.cpuCount }), ...(row.sample.uptimeMs === undefined ? {} : { uptimeMs: Number(row.sample.uptimeMs) }) };
 }
 

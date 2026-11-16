@@ -16,6 +16,8 @@ export function PowerWidget(props: { readonly table: SummaryTable; readonly step
         label="Power"
         area
         series={[
+          ...(props.table.has("power.cpuWatts") ? [{ label: "CPU package", color: "violet" as const, scored: false, track: props.table.track("power.cpuWatts") }] : []),
+          ...(props.table.has("power.batteryWatts") ? [{ label: "battery discharge", color: "magenta" as const, scored: false, track: props.table.track("power.batteryWatts") }] : []),
           { label: "system", color: "blue", scored: false, joinGaps: true, track: props.table.track("power.systemWatts") },
           { label: "GPU", color: "aqua", scored: false, track: props.table.track("power.gpuWatts") }
         ]}

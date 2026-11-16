@@ -5,7 +5,7 @@ import { getProjectHistories, type Project } from "../api";
 import { age, errorMessage, percent } from "../format";
 import { collectorStatus } from "../status";
 import { createUpdateEffect } from "../effect";
-import { createRefreshRetention, loadCapabilities, loadProjects, loadQuery } from "../queries";
+import { createRefreshRetention, createListQuery, loadCapabilities, loadProjects, loadQuery } from "../queries";
 import { windowParams } from "../history-path";
 import { useTelemetry, PROJECT_REFRESH_TICKS, rangeMs } from "../state";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
@@ -48,13 +48,14 @@ export function CloudflareProjectPage(): JSX.Element {
   const params = useParams();
   const { tick, manualTick, range } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const projects = createMemo(loadProjects);
+  const { data: projects, error: listError } = createListQuery(loadProjects);
   const capabilities = createMemo(loadCapabilities);
   const project = createMemo(() => projects().find(candidate => candidate.id === (params.projectId ?? "")));
   createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { if (capabilities().analyticsCollection || capabilities().cloudflareDeployments) void refresh(projects); });
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Skeleton rows={2} />}>
+      <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
         <Show
           when={project()?.id}
           keyed
@@ -293,7 +294,8 @@ function ProjectView(props: { readonly project: Project; readonly capabilities: 
               <div class={deployments.listed() ? "project-body with-rail" : "project-body"}>
                 <Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show>
                 <div class="project-main">
-                  <Show when={props.capabilities.cloudflareDeployments} fallback={<p>Cloudflare deployment collection is unavailable.</p>}><DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <Loading fallback={<Skeleton rows={2} />}><RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} /></Loading>} /></Show>
+                  <Show when={props.capabilities.cloudflareDeployments} fallback={<p>Cloudflare deployment collection is unavailable.</p>}><DeploymentsWidget deployments={deployments} impact={observe === null ? undefined : deploymentId => <Loading fallback={<Skeleton rows={2} />}>
+      <RolloutImpactPanel deploymentId={deploymentId} refreshKey={`${projectTick()}:${manualTick()}`} observe={observe} /></Loading>} /></Show>
                 </div>
               </div>
             </Show>

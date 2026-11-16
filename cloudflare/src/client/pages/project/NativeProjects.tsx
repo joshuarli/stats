@@ -2,7 +2,7 @@ import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, re
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
-import { loadServices } from "../../queries";
+import { createListQuery, loadServices } from "../../queries";
 import { ErrorState, Notice, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
 import { createServiceDeployments, DeploymentRail, DeploymentsWidget, deploymentTitle } from "./Deployments";
@@ -33,12 +33,13 @@ function summaryOnly(value: ApplicationSummary | ApplicationTelemetry): Applicat
 
 export function NativeProjectsPage(): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
-  const services = createMemo(loadServices);
+  const { data: services, error: listError } = createListQuery(loadServices);
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
+      <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Widget title="Projects"><Show when={services().length} fallback={<EmptyState title="No services registered" detail="Register a service to see its application telemetry." />}>
       <div class="table-scroll"><table class="data-table" aria-label="Projects"><thead><tr><th>Project</th><th>Hosts</th><th>Last deploy</th></tr></thead><tbody>
-        <For each={services()}>{service => <tr><td><a href={routeWithRange(`#/project/${encodeURIComponent(service.name)}`, range())}>{service.name}</a></td><td>{service.hostIds.length}</td><td><Show when={service.latestDeployment?.status === "available" ? service.latestDeployment : null} fallback="No deployment recorded">{latest => <>{deploymentTitle(latest(), latest().deployment)} · {age(latest().deployment.atMs, now())}</>}</Show></td></tr>}</For>
+        <For each={services()} keyed={service => service.name}>{service => <tr><td><a href={routeWithRange(`#/project/${encodeURIComponent(service().name)}`, range())}>{service().name}</a></td><td>{service().hostIds.length}</td><td><Show when={(() => { const latest = service().latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback="No deployment recorded">{latest => <>{deploymentTitle(latest(), latest().deployment)} · {age(latest().deployment.atMs, now())}</>}</Show></td></tr>}</For>
       </tbody></table></div>
     </Show></Widget>
   </Loading></Errored>;
@@ -46,10 +47,11 @@ export function NativeProjectsPage(): JSX.Element {
 
 export function NativeProjectPage(): JSX.Element {
   const params = useParams();
-  const services = createMemo(loadServices);
+  const { data: services, error: listError } = createListQuery(loadServices);
   const { range, tick, manualTick } = useTelemetry();
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
+      <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Show when={services().find(service => service.name === params.projectId)?.name} keyed fallback={<EmptyState title="Project not found" detail="This service is not registered." action={<a href={routeWithRange("#/projects", range())}>Back to projects</a>} />}>
       {name => <NativeProject service={services().find(service => service.name === name)!} />}
     </Show>

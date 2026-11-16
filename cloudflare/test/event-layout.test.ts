@@ -39,7 +39,7 @@ describe("event label layout", () => {
   });
 
   it("merges lines a pixel or two apart into one counted marker", () => {
-    const placed = placeEvents([{ x: 300, label: "deploy a" }, { x: 301, label: "deploy b" }, { x: 302, label: "deploy c" }], measure, spacing);
+    const placed = placeEvents([{ x: 300, label: "deploy a", plural: "deploys" }, { x: 301, label: "deploy b", plural: "deploys" }, { x: 302, label: "deploy c", plural: "deploys" }], measure, spacing);
     expect(placed).toEqual([{ x: 300, text: "3 deploys", side: "right", count: 3 }]);
   });
 
@@ -57,3 +57,12 @@ describe("event label layout", () => {
     expect(placeEvents([{ x: -5, label: "before" }, { x: 700, label: "after" }], measure, spacing)).toEqual([]);
   });
 });
+
+for (const [plurals, text] of [[['reboots', 'reboots'], '2 reboots'], [['reboots', 'deploys'], '2 events'], [[undefined, undefined], '2 events']] as const) {
+  it(`labels merged ${plurals.join('/')} as ${text}`, () => {
+    const events = plurals.map((plural, index) => ({ x: 300 + index, label: '↻ reboot', plural }));
+    expect(labelled(placeEvents(events, measure, spacing))).toEqual([text]);
+    expect(labelled(placeEvents(events, measure, { ...spacing, maxX: 320 }))).toEqual([text]);
+    expect(labelled(placeEvents(events, measure, { ...spacing, minX: 295, maxX: 320 }))).toEqual([null]);
+  });
+}

@@ -4,12 +4,12 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 
 | Command | Covers |
 | --- | --- |
-| `make test` | Fixtures, agent, Worker, dashboard, both end-to-end flows, local smoke, profile, and on macOS the offline stack. It does not run `make integration-producer` |
+| `make test` | Fixtures, agent, Worker, dashboard, both end-to-end flows, local smoke, profile, and the offline stack on macOS and Linux. It does not run `make integration-producer` |
 | `make fixtures` | Ingest corpus manifest, size budgets, cross-file constants, and byte/row accounting |
 | `make agent-test` | Rust unit tests, golden-frame reproduction, annotated vectors, acknowledgment decoding, seeded prefix properties |
 | `make agent-e2e` | The built agent binary sampling this host and delivering through the built Worker and Durable Object |
 | `make smoke-local` | `deploy/deployed-smoke.sh` against the built `stats` and `stats-observe` Workers in local workerd |
-| `make integration-local` | Local tests, the local-stack browser spec and the canonical development-loop regression under `scripts/offline-run.sh`, which denies non-loopback network on macOS; fails on any undeclared outbound request or `cf` call |
+| `make integration-local` | Local tests, the local-stack browser spec and the canonical development-loop regression under `scripts/offline-run.sh`, which denies non-loopback network on macOS and Linux; fails on any undeclared outbound request or `cf` call |
 | `make integration-producer` | `test/producer/` under `scripts/offline-run.sh`: a checkout through the recorded Nanoshop producer export with Nanoshop's Stripe simulator and mailbox, read back by a real `statsctl`; needs `NANOSHOP_DIR`, so `make test` and `make check` do not run it |
 | `make dev` | An offline UI with frontend HMR, automatic backend rebuild/reload, owned loopback ports and persistent state. `make dev-local` is an alias; see [development](development.md) |
 | `make node-e2e` | `deploy/deployed-smoke.sh` and the `agent-e2e` flow against the Node server on a scratch data directory, plus its SIGTERM drain and startup checks |
@@ -73,7 +73,18 @@ See [development](development.md) for file/name selectors and the JSON inventory
   `dispose()` throws naming any URL the scenario did not declare. A scenario
   declares the probe URLs in its registry. `scripts/offline-run.sh` adds the
   OS layer: it removes `CLOUDFLARE_*` and `CF_*` and runs its command under
-  `sandbox-exec` with only loopback network, so DNS lookups fail too.
+  `sandbox-exec` on macOS. Linux uses `unshare --user --map-root-user --net`
+  and brings up only loopback. Linux requires util-linux, iproute2, and enabled
+  user and network namespaces. A denied namespace operation fails the run.
+  Both paths remove provider credentials before starting the command.
+  The macOS launcher copies `ps` into its scratch shim, removes setuid, and
+  applies an ad hoc signature. Seatbelt rejects the system setuid binary.
+  The Node suite runs through `scripts/run-tests.mjs`, which pins immutable
+  build outputs while other tests build with different environments.
+  The development-loop test uses the copy for process accounting. Remove
+  the copy when the system `ps` can execute inside Seatbelt.
+  `test/scripts/offline.test.ts` verifies loopback HTTP, Chromium, blocked
+  outbound network and credential removal.
 - **Launcher.** `cloudflare/scripts/local-stack.mjs run -- CMD` runs `CMD`
   against an ephemeral seeded stack with `STATS_URL` set to its gateway, so
   `statsctl` reads it without `cf`. `dev`
@@ -218,10 +229,11 @@ live-measured points: probe latencies and the store's own size.
 
 Limits: fixtures cannot show that Cloudflare still accepts the fixed queries or
 returns the recorded columns; run `node cloudflare/scripts/check-analytics-sql.mjs`
-after changing `src/projects/queries.ts`. `scripts/offline-run.sh` exits 2 off
-macOS until a Linux sandbox is verified, so `make test` and `make check` run
-`make integration-local` only on macOS; elsewhere `make cloudflare-test` still
-runs `test:local` with the app-level outbound check. Nothing here measures billable CPU.
+after changing `src/projects/queries.ts`. `make test` and `make check` include
+`make integration-local` on macOS and Linux. Linux containers need permission
+to create user and network namespaces. The namespace sandbox was verified
+with Chromium and loopback HTTP on Linux 7.2.12 in an isolated Debian
+container. Nothing here measures billable CPU.
 
 Constraints a change to the stack must keep:
 
@@ -492,3 +504,9 @@ A logical-restore target omits the `APPLICATION_EVENTS_RELEASE` binding until
 import completes. Self-observation would otherwise populate the empty target
 while the restore client checks status. Source export still includes its
 observations, and the native test verifies restored state and duplicate ingest.
+
+The stacked-I/O fixture in `agent/tests/fixtures/stacked-io.stat` records one
+4 MiB direct write through a device-mapper linear target backed by a loop
+device on Linux 7.2.12. Both devices reported 4 MiB and four writes in the
+same cgroup. The agent's topology test counts the backing device once and
+also exercises multiple backing devices and unlisted intermediate layers.

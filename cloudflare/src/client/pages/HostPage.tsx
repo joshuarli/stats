@@ -59,7 +59,7 @@ export function HostPage(): JSX.Element {
 
 function HostView(props: { readonly host: Host }): JSX.Element {
   const hostId = () => props.host.hostId;
-  const { query, view, range, chooseRange, refreshHosts, tick } = useTelemetry();
+  const { query, view, range, chooseRange, refreshHosts, hostsError, tick } = useTelemetry();
   const [refreshError, setRefreshError] = createSignal<string | null>(null);
   const [sampleRange, setSampleRange] = createSignal<Range | null>(null);
   const [psiWindow, setPsiWindow] = createSignal<PsiWindow>("300");
@@ -139,7 +139,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         }
       >
       </PageHeader>
-      <Show when={refreshError()}>
+      <Show when={hostsError() === null ? refreshError() : errorMessage(hostsError())}>
         {(message) => <Notice tone="warn">{message()}</Notice>}
       </Show>
 

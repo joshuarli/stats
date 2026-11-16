@@ -259,9 +259,10 @@ fn psi_counters(group: &PsiGroup) -> (u8, Counters) {
 }
 
 fn power_counters(power: &Power) -> (u8, Counters) {
-    let shape = u8::from(power.gpu_nj.is_some()) | u8::from(power.system.is_some()) << 1;
+    let shape = u8::from(power.gpu_nj.is_some()) | u8::from(power.system.is_some()) << 1 | u8::from(power.cpu_nj.is_some()) << 3 | u8::from(power.battery.is_some()) << 4;
     let system = power.system.as_ref();
-    (shape, Counters::new(&[], &[power.gpu_nj, system.map(|system| system.milliwatt_sum), system.map(|system| system.readings)]))
+    let battery = power.battery.as_ref();
+    (shape, Counters::new(&[], &[power.gpu_nj, system.map(|system| system.milliwatt_sum), system.map(|system| system.readings), power.cpu_nj, battery.map(|battery| battery.milliwatt_sum), battery.map(|battery| battery.readings)]))
 }
 
 fn same_shape(current: (u8, Counters), previous: Option<(u8, Counters)>) -> (u8, Counters, Option<Counters>) {
@@ -725,7 +726,7 @@ mod tests {
             cpu_count: Some(8),
             psi: Some(Psi { cpu: None, memory: None, io: Some(PsiGroup { some10: Hundredths(1), some60: Hundredths(2), some300: Hundredths(3), total: 4, full: Some(PsiFull { avg10: Hundredths(5), avg60: Hundredths(6), avg300: Hundredths(7), total: 8 }) }) }),
             gpu: Some(Gpu { active: 1, total: 2 }),
-            power: Some(Power { gpu_nj: None, system: Some(SystemPower { milliwatt_sum: 3, readings: 4 }) }),
+            power: Some(Power { cpu_nj: None, battery: None, gpu_nj: None, system: Some(SystemPower { milliwatt_sum: 3, readings: 4 }) }),
             ..cpu(1, 1)
         };
         let batch = encode_batch(&host, &boot, None, &[sample], MAX_BODY).unwrap();

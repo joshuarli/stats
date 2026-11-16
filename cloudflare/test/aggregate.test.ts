@@ -350,3 +350,21 @@ describe("service cgroup levels", () => {
     expect(hostOnly.services).toBeUndefined();
   });
 });
+
+describe("Linux package and battery power", () => {
+  const sample = (monoMs: number, power?: Sample["power"]): Sample => ({ seq: String(monoMs / 15000 + 1), atMs: String(monoMs), monoMs: String(monoMs), ...(power === undefined ? {} : { power }) });
+  it("keeps per-source coverage across raw, minute and hour rollups", () => {
+    const first = sample(0, { cpuNj: "9007199254740993", batteryMwSum: "10000", batteryReadings: "1" });
+    const second = sample(15000, { cpuNj: "9007349254740993", batteryMwSum: "22000", batteryReadings: "2" });
+    const third = sample(30000, { batteryMwSum: "36000", batteryReadings: "3" });
+    const rows = [second, third].map((current, index) => ({ sample: current, delta: computeDelta(index === 0 ? first : second, current, 15000) }));
+    expect((rawPoints(rows, "summary") as SummaryPoint[])[0]!.power).toEqual({ cpuWatts: 10, batteryWatts: 12 });
+    const minute = rollupFromRaw(rows, 0, 60000)!;
+    expect((rollupPoints([minute], "summary") as SummaryPoint[])[0]!.power).toEqual({ cpuWatts: 10, batteryWatts: 13 });
+    const hour = combineRollups([minute, minute], 0, 3600000)!;
+    expect((rollupPoints([hour], "summary") as SummaryPoint[])[0]!.power).toEqual({ cpuWatts: 10, batteryWatts: 13 });
+    const reset = sample(45000, { cpuNj: "1", batteryMwSum: "2", batteryReadings: "1" });
+    expect(computeDelta(second, reset, 30000).power).toBeUndefined();
+    expect(computeDelta(third, sample(45000), 15000).power).toBeUndefined();
+  });
+});

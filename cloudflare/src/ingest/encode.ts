@@ -108,8 +108,8 @@ function netShape(net: Json): [number, bigint[]] {
 }
 
 function powerShape(power: Json): [number, bigint[]] {
-  const shape = (power.gpuNj === undefined ? 0 : 1) | (power.systemMwSum === undefined ? 0 : 2);
-  return [shape, [power.gpuNj, power.systemMwSum, power.systemReadings].filter(present).map(u64)];
+  const shape = (power.gpuNj === undefined ? 0 : 1) | (power.systemMwSum === undefined ? 0 : 2) | (power.cpuNj === undefined ? 0 : 8) | (power.batteryMwSum === undefined ? 0 : 16);
+  return [shape, [power.gpuNj, power.systemMwSum, power.systemReadings, power.cpuNj, power.batteryMwSum, power.batteryReadings].filter(present).map(u64)];
 }
 
 function sameShape(current: [number, bigint[]], previous: [number, bigint[]] | undefined): bigint[] | undefined {

@@ -1,6 +1,7 @@
 export interface EventCandidate {
   readonly x: number;
   readonly label: string;
+  readonly plural?: string | undefined;
   readonly short?: string | undefined;
 }
 
@@ -36,7 +37,9 @@ function clusterOf(sorted: readonly EventCandidate[], mergePx: number): Cluster[
 function textsOf(cluster: Cluster): readonly string[] {
   const [only] = cluster.members;
   if (cluster.members.length === 1 && only !== undefined) return only.short === undefined ? [only.label] : [only.label, only.short];
-  return [`${cluster.members.length} deploys`, String(cluster.members.length)];
+  const plural = only?.plural;
+  const noun = plural !== undefined && cluster.members.every(member => member.plural === plural) ? plural : "events";
+  return [`${cluster.members.length} ${noun}`];
 }
 
 /**

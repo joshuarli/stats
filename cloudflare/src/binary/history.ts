@@ -15,7 +15,7 @@ const SUMMARY = {
   "psi.memory": "object", "psi.memory.some10": "number", "psi.memory.some60": "number", "psi.memory.some300": "number", "psi.memory.full10": "number", "psi.memory.full60": "number", "psi.memory.full300": "number",
   "psi.io": "object", "psi.io.some10": "number", "psi.io.some60": "number", "psi.io.some300": "number", "psi.io.full10": "number", "psi.io.full60": "number", "psi.io.full300": "number",
   gpu: "object", "gpu.busyPct": "number",
-  power: "object", "power.gpuWatts": "number", "power.systemWatts": "number"
+  power: "object", "power.gpuWatts": "number", "power.systemWatts": "number", "power.cpuWatts": "number", "power.batteryWatts": "number"
 } as const;
 const DISKS = { atMs: "number", readBytesPerSec: "number", writeBytesPerSec: "number", readsPerSec: "number", writesPerSec: "number", busyPct: "number", readLatencyMs: "number", writeLatencyMs: "number", queueDepth: "number" } as const;
 const NETS = {

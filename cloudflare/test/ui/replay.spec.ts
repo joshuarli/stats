@@ -28,7 +28,7 @@ function captureMeta(name: string): CaptureMeta {
 
 function hostCaptures(): HostCapture[] {
   return readdirSync(captureDirectory, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
+    .filter(entry => entry.isDirectory() && existsSync(captureFile(entry.name, "capture.json")))
     .flatMap(entry => {
       const meta = captureMeta(entry.name);
       return typeof meta.hostId === "string"
@@ -334,3 +334,27 @@ test("the stuff project page keeps its layout at tablet width", async ({ page },
   await expect(page.locator(".ledger-month")).toBeVisible();
   await expectStableLayout(page, testInfo, "stuff project tablet");
 });
+
+for (const capture of hostCaptures().filter(entry => ['lisa', 'm1-max', 'sentry', 'threadripper'].includes(entry.name))) {
+  test(`${capture.name} host tables keep tokens readable and scroll within cards @mobile`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await replay(page, capture);
+    await page.goto(`/#/host/${capture.hostId}`);
+    const tables = page.locator('.charts.host table.data-table');
+    await expect(tables.first()).toBeVisible();
+    await expect(page.locator('.ui-skeleton')).toHaveCount(0);
+    const bounds = await tables.evaluateAll(nodes => nodes.map(table => {
+      const scroll = table.closest('.table-scroll')!;
+      const box = scroll.getBoundingClientRect();
+      return { left: box.left, right: box.right, viewport: window.innerWidth, scrollable: scroll.scrollWidth > scroll.clientWidth, whiteSpace: [...table.querySelectorAll('td')].every(cell => getComputedStyle(cell).whiteSpace === 'nowrap') };
+    }));
+    for (const bound of bounds) {
+      expect(bound.left).toBeGreaterThanOrEqual(0);
+      expect(bound.right).toBeLessThanOrEqual(bound.viewport);
+      expect(bound.whiteSpace).toBe(true);
+    }
+    expect(bounds.some(bound => bound.scrollable)).toBe(true);
+    const labels = await page.locator('.tile-label .health').evaluateAll(nodes => nodes.map(node => ({ right: node.getBoundingClientRect().right, container: node.closest('.strip-cell')!.getBoundingClientRect().right })));
+    for (const label of labels) expect(label.right).toBeLessThanOrEqual(label.container);
+  });
+}

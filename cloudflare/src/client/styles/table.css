@@ -9,6 +9,8 @@
 .data-table th { text-align: left; font-weight: 500; color: var(--muted); font-size: var(--fs-label); padding: var(--space-sm) var(--inset) var(--space-sm) 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .data-table thead th { text-transform: uppercase; letter-spacing: var(--caps-tracking); }
 .data-table td { height: var(--row-height); border-bottom: 1px solid var(--line); padding: 0 var(--inset) 0 0; vertical-align: middle; white-space: nowrap; }
+.charts.host .data-table.compact { min-width: max-content; }
+.charts.host .data-table.compact :is(th, td) { white-space: nowrap; overflow-wrap: normal; }
 .data-table.compact td { height: var(--row-height-compact); }
 .data-table.compact :is(th, td):first-child { white-space: normal; overflow-wrap: anywhere; }
 .data-table.compact :is(th, td):not(:first-child) { padding-right: var(--space-md); }
@@ -79,6 +81,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 }
 
 @media (max-width: 640px) {
+  .charts.host .capacity-track { width: 80px; }
   .table-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
   .search { width: 100%; max-width: none; min-height: var(--control-touch); padding: 0 var(--space-md); border-radius: var(--radius-md); box-shadow: var(--outline); }
   .search input { font-size: 16px; } /* iOS Safari zooms the page when a focused input is under 16px. */

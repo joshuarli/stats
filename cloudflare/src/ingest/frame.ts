@@ -18,7 +18,7 @@ export interface WireFileSystem { readonly entry: FileSystemEntry; readonly tota
 export interface WireBlock { readonly buckets: readonly bigint[]; readonly count: bigint; readonly totalUs: bigint; readonly minUs: bigint; readonly maxUs: bigint }
 export interface WireGpu { readonly active: bigint; readonly total: bigint }
 export interface WireSystemPower { readonly milliwattSum: bigint; readonly readings: bigint }
-export interface WirePower { readonly gpuNj?: bigint; readonly system?: WireSystemPower }
+export interface WirePower { readonly gpuNj?: bigint; readonly system?: WireSystemPower; readonly cpuNj?: bigint; readonly battery?: WireSystemPower }
 export interface WireServiceMemory { readonly current: bigint; readonly peak?: bigint }
 export interface WireServiceIo { readonly readBytes: bigint; readonly writeBytes: bigint; readonly reads: bigint; readonly writes: bigint }
 export interface WireServiceUsage { readonly cpuUsec: bigint; readonly memory?: WireServiceMemory; readonly io?: WireServiceIo }
@@ -436,18 +436,25 @@ function readGpu(reader: Reader, previous: WireGpu | undefined): WireGpu {
 }
 
 function powerShape(power: WirePower): number {
-  return (power.gpuNj === undefined ? 0 : 1) | (power.system === undefined ? 0 : 2);
+  return (power.gpuNj === undefined ? 0 : 1) | (power.system === undefined ? 0 : 2) | (power.cpuNj === undefined ? 0 : 8) | (power.battery === undefined ? 0 : 16);
 }
 
 function readPower(reader: Reader, previous: WirePower | undefined): WirePower {
-  const head = reader.mask("power head", 0b111);
-  const shape = head & 0b11;
+  const head = reader.mask("power head", 0b11111);
+  const shape = head & 0b11011;
   if (shape === 0) structural("power has no reading");
-  const before = previous !== undefined && powerShape(previous) === shape ? optional([previous.gpuNj, previous.system?.milliwattSum, previous.system?.readings]) : undefined;
-  const values = counters(reader, "power", (shape & 1) + (shape & 2), base("power", (head & 4) !== 0, before));
+  const before = previous !== undefined && powerShape(previous) === shape ? optional([previous.gpuNj, previous.system?.milliwattSum, previous.system?.readings, previous.cpuNj, previous.battery?.milliwattSum, previous.battery?.readings]) : undefined;
+  const values = counters(reader, "power", (shape & 1) + (shape & 2) + ((shape & 8) === 0 ? 0 : 1) + ((shape & 16) === 0 ? 0 : 2), base("power", (head & 4) !== 0, before));
   const gpuNj = (shape & 1) !== 0 ? values[0] : undefined;
   const offset = shape & 1;
-  return { ...(gpuNj === undefined ? {} : { gpuNj }), ...((shape & 2) === 0 ? {} : { system: { milliwattSum: values[offset]!, readings: values[offset + 1]! } }) };
+  const cpuOffset = offset + (shape & 2);
+  const batteryOffset = cpuOffset + ((shape & 8) === 0 ? 0 : 1);
+  return {
+    ...(gpuNj === undefined ? {} : { gpuNj }),
+    ...((shape & 2) === 0 ? {} : { system: { milliwattSum: values[offset]!, readings: values[offset + 1]! } }),
+    ...((shape & 8) === 0 ? {} : { cpuNj: values[cpuOffset]! }),
+    ...((shape & 16) === 0 ? {} : { battery: { milliwattSum: values[batteryOffset]!, readings: values[batteryOffset + 1]! } })
+  };
 }
 
 function serviceValues(usage: WireServiceUsage): bigint[] {

@@ -410,6 +410,10 @@ pub struct Gpu {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Power {
+    #[deser(rename = "cpuNj", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
+    pub cpu_nj: Option<u64>,
+    #[deser(flatten, skip_serializing_if = Option::is_none)]
+    pub battery: Option<BatteryPower>,
     #[deser(rename = "gpuNj", as = Option<DisplayFromStr>, default, skip_serializing_if = Option::is_none)]
     pub gpu_nj: Option<u64>,
     #[deser(flatten, skip_serializing_if = Option::is_none)]
@@ -421,6 +425,14 @@ pub struct SystemPower {
     #[deser(rename = "systemMwSum", as = DisplayFromStr)]
     pub milliwatt_sum: u64,
     #[deser(rename = "systemReadings", as = DisplayFromStr)]
+    pub readings: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BatteryPower {
+    #[deser(rename = "batteryMwSum", as = DisplayFromStr)]
+    pub milliwatt_sum: u64,
+    #[deser(rename = "batteryReadings", as = DisplayFromStr)]
     pub readings: u64,
 }
 

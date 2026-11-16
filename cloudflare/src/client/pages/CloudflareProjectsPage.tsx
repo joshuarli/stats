@@ -2,12 +2,12 @@ import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, 
 import type { JSX } from "@solidjs/web";
 import { getProjectHistories, type Project } from "../api";
 import { age, bytes, count, dollarsPrecise, errorMessage, milliseconds, percent } from "../format";
-import { loadCapabilities, loadProjects } from "../queries";
+import { createListQuery, loadCapabilities, loadProjects } from "../queries";
 import { collectorStatus } from "../status";
 import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../state";
 import { metricTrack, type MetricHistory, type ProjectHistories } from "../history";
 import { EmptyState, Icon, Skeleton } from "@laputa-systems/ui-dashboard";
-import { EntityCell, ErrorState, StateCell, Widget } from "../components/ui";
+import { EntityCell, ErrorState, Notice, StateCell, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import type { TimeWindow } from "../chart-data";
@@ -41,7 +41,7 @@ export function CloudflareProjectsPage(): JSX.Element {
 function Projects(): JSX.Element {
   const { range, now, tick, manualTick, lists } = useTelemetry();
   const projectTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const projects = createMemo(loadProjects);
+  const { data: projects, error: listError } = createListQuery(loadProjects);
   const capabilities = createMemo(loadCapabilities);
   createUpdateEffect(() => `${projectTick()}:${manualTick()}`, () => { if (capabilities().analyticsCollection || capabilities().cloudflareDeployments) void refresh(projects); });
   const [search, setSearch] = createSignal(lists.projects.search);
@@ -93,6 +93,8 @@ function Projects(): JSX.Element {
     });
   });
   return (
+    <>
+    <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Show
       when={projects().length > 0}
       fallback={
@@ -132,11 +134,12 @@ function Projects(): JSX.Element {
                 <th scope="col"><span class="ui-sr-only">Trends</span></th>
               </tr>
             </thead>
-            <For each={sortedProjects()}>{(project) => <ProjectRow collectionAvailable={capabilities().analyticsCollection} project={project} visible={matches(project)} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
+            <For each={sortedProjects()} keyed={project => project.id}>{(project) => <ProjectRow collectionAvailable={capabilities().analyticsCollection} project={project()} visible={matches(project())} reportMetrics={reportMetrics} onNavigate={id => { lists.projects.returnProject = id; }} onMount={onProjectMount} />}</For>
           </table>
         </ProjectsTable>
       </Widget>
     </Show>
+    </>
   );
 }
 
@@ -239,12 +242,12 @@ function ProjectRow(props: { readonly collectionAvailable: boolean; readonly pro
 
   const worker = () => loaded()?.report.lines.find(line => line.id === "worker");
   const partialCost = () => loaded()?.report.warnings.some(warning => warning.code === "meter-no-data" || warning.code === "meter-partial-data") ?? false;
-  const workerUsage = () => {
+  const workerUsage = createMemo(() => {
     const line = worker();
     const value = loaded();
     if (line === undefined || value === null || value === undefined) return null;
     return windowUsage(line, value.histories, value.previous, value.report.windows.current, value.report.windows.previous);
-  };
+  });
   const calls = () => {
     const usage = workerUsage();
     return usage?.kind === "requests" ? usage.calls : null;

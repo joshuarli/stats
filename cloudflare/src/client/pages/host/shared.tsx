@@ -17,7 +17,7 @@ export function seriesColor(index: number): VizColor {
 }
 
 export function rebootEvents(table: SummaryTable): ChartEvent[] {
-  return rebootTimes(table.times, table.cells("uptimeMs")).map(atMs => ({ atMs, label: "↻ reboot" }));
+  return rebootTimes(table.times, table.cells("uptimeMs")).map(atMs => ({ atMs, label: "↻ reboot", plural: "reboots" }));
 }
 
 export function peakOf(cells: Cells): number {

@@ -308,7 +308,7 @@ fn collect_sample(config: &AgentConfig, sampling: &mut BlockSampling) -> Option<
         sample.block = Some(block);
     }
     if !config.services.is_empty() {
-        match cgroup::read_services(Path::new(cgroup::ROOT), &config.services) {
+        match cgroup::read_services(cgroup::CgroupRoots { cgroups: Path::new(cgroup::ROOT), devices: Path::new("/sys/dev/block") }, &config.services) {
             Some(services) => sample.services = Some(services),
             None => sample.mark_unavailable(Unavailable::Services),
         }

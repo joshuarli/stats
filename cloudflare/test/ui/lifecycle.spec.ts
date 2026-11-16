@@ -1179,3 +1179,87 @@ test("a project change does not reuse another project's monthly bill", async ({ 
   }
   await expect(page.locator(".ledger-month")).toBeVisible();
 });
+
+for (const view of ["fleet", "host"] as const) {
+  test(`@mobile list refresh retains ${view} content while history finishes later`, async ({ page }) => {
+    await installBaseRoutes(page);
+    let fail = false;
+    const gate = createGate();
+    let arrivals = 0;
+    await page.route('**/api/v1/hosts', async route => {
+      await route.fulfill(fail ? { status: 503, body: 'unavailable' } : { json: { hosts: THREE_HOSTS } });
+      if (fail) arrivals += 1;
+    });
+    await page.route('**/api/v1/hosts/*/history*', async route => {
+      if (fail) await gate.wait;
+      const id = /\/hosts\/([^/]+)\/history/u.exec(route.request().url())?.[1] ?? HOST_A;
+      await fulfillHistory(route, view === 'fleet' ? fleetBundle(id, '1h', 25) : hostBundle(id, '1h', 25));
+      if (fail) arrivals += 1;
+    });
+    await page.goto(view === 'fleet' ? '/#/' : `/#/host/${HOST_A}`);
+    const table = view === 'fleet' ? page.getByRole('table', { name: 'Fleet hosts' }) : page.getByRole('region', { name: 'Charts' });
+    await expect(table).toBeVisible();
+    const original = await (view === 'fleet' ? table.locator('tbody tr').first() : table).elementHandle();
+    fail = true;
+    try {
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await expect.poll(() => arrivals).toBeGreaterThan(0);
+      gate.release();
+      await expect(page.locator('.notice-warn')).toHaveCount(1);
+      await expect(table).toBeVisible();
+      if (view === "fleet") expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+      fail = false;
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await expect(page.locator('.notice-warn')).toHaveCount(0);
+      if (view === "fleet") expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+    } finally { gate.release(); }
+  });
+}
+
+test('@mobile project list keeps expanded trends through manual and automatic refresh and failed revalidation', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  await installBaseRoutes(page);
+  let failed = false;
+  let requests = 0;
+  await page.route('**/api/v1/capabilities', route => route.fulfill({ json: { projectSource: 'cloudflare', analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
+  await page.route('**/api/v1/projects', route => {
+    requests += 1;
+    return route.fulfill(failed ? { status: 503, body: 'unavailable' } : { json: [{ id: 'alpha', name: 'alpha', worker: 'alpha', workerBilling: 'requests-and-cpu', buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [], collector: { lastRunAtMs: NOW + requests, lastSuccessAtMs: NOW, lastError: null, stale: false } }] });
+  });
+  await page.route('**/api/v1/projects/alpha/history*', route => fulfillHistory(route, projectBundle('alpha', 500)));
+  await page.goto('/#/projects');
+  await page.getByRole('button', { name: 'Show alpha trends' }).click();
+  const expanded = page.getByRole('button', { name: 'Hide alpha trends' });
+  await expect(expanded).toBeVisible();
+  const original = await expanded.elementHandle();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect.poll(() => requests).toBe(2);
+  await expect(expanded).toBeVisible();
+  expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+  await page.clock.runFor(300_000);
+  await expect.poll(() => requests).toBeGreaterThan(2);
+  await expect(expanded).toBeVisible();
+  failed = true;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.locator('.notice-warn')).toHaveCount(1);
+  await expect(expanded).toBeVisible();
+  failed = false;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.locator('.notice-warn')).toHaveCount(0);
+  expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+});
+
+test('@mobile Linux CPU package and battery power have separate series', async ({ page }) => {
+  await installBaseRoutes(page);
+  await page.route('**/api/v1/hosts/*/history*', async route => {
+    const bundle = hostBundle(HOST_A, '1h', 25);
+    bundle.histories.summary.points = bundle.histories.summary.points.map((point, index) => ({ ...point, ...(index === 3 ? {} : { power: { cpuWatts: 10 + index, batteryWatts: 12 } }) }));
+    await fulfillHistory(route, bundle);
+  });
+  await page.goto(`/#/host/${HOST_A}`);
+  const power = page.locator('#power');
+  await expect(power).toBeVisible();
+  await expect(power).toContainText('CPU package');
+  await expect(power).toContainText('battery discharge');
+  await expect(power.getByRole('img', { name: /^Power;/u })).toBeVisible();
+});

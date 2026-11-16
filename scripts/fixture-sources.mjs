@@ -241,6 +241,15 @@ define("gpu-power", "synthetic", batch([
   sample(4, { unavailable: ["gpu"], power: { systemMwSum: "50000", systemReadings: "2" } }),
   sample(5, { gpu: { active: "10", total: "20" }, power: { systemMwSum: "50000", systemReadings: "2" } })
 ]));
+define("linux-power", "synthetic", batch([
+  sample(1, { power: { cpuNj: "0", batteryMwSum: "24000", batteryReadings: "1" } }),
+  sample(2, { power: { cpuNj: "9007199254740993", batteryMwSum: "48000", batteryReadings: "2" } }),
+  sample(3, { power: { cpuNj: "9007199254741993" } }),
+  sample(4, { unavailable: ["power"], uptimeMs: "60000" }),
+  sample(5, { power: { cpuNj: "0", batteryMwSum: "12000", batteryReadings: "1" } }),
+  sample(6, { power: { cpuNj: "1000", batteryMwSum: "24000", batteryReadings: "2", gpuNj: "30", systemMwSum: "10", systemReadings: "1" } }),
+  sample(7, { power: { cpuNj: "2000", batteryMwSum: "36000", batteryReadings: "3", gpuNj: "40", systemMwSum: "20", systemReadings: "2" } })
+]));
 const withoutDrops = value => Object.fromEntries(Object.entries(value).filter(([key]) => key !== "txDrops"));
 define("swap-and-optional-counters", "synthetic", batch([
   sample(1, { cpu: { user: "10", system: "5", idle: "80", total: "95" }, mem: { total: "100", available: "50", swapTotal: "10", swapFree: "10" }, nets: [withoutDrops(net("en0", 10))] }),

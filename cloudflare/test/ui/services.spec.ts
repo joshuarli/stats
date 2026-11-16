@@ -545,3 +545,33 @@ test("returning to a native overview range before its replacement loads reads fr
     expect(count).toBe(2);
   } finally { release!(); }
 });
+
+for (const section of ['services', 'projects']) {
+  test(`@mobile the native ${section} directory retains rows on refresh failure and updates them on recovery`, async ({ page }) => {
+    let fail = false;
+    let changed = false;
+    await page.route('**/api/v1/services', async route => {
+      if (fail) return route.fulfill({ status: 503, body: 'unavailable' });
+      const response = await route.fetch();
+      const body = await response.json() as { services: { name: string; hostIds: string[] }[] };
+      if (changed) for (const service of body.services) service.hostIds = [];
+      return route.fulfill({ json: body });
+    });
+    await page.goto(`${origin}/#/${section}`);
+    const table = page.getByRole('table', { name: section === 'services' ? 'Services' : 'Projects', exact: true });
+    const row = table.locator('tbody tr').filter({ has: page.getByRole('link', { name: 'web', exact: true }) });
+    await expect(row).toBeVisible();
+    const original = await row.elementHandle();
+    fail = true;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.locator('.notice-warn')).toHaveCount(1);
+    await expect(row).toBeVisible();
+    expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+    fail = false;
+    changed = true;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect(page.locator('.notice-warn')).toHaveCount(0);
+    await expect(row.locator('td').nth(1)).toHaveText('0');
+    expect(await original!.evaluate(node => node.isConnected)).toBe(true);
+  });
+}

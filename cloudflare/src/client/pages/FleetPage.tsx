@@ -71,7 +71,7 @@ function compareHosts(sort: Sort<SortKey>, metricRows: ReadonlyMap<string, Fleet
 }
 
 export function FleetPage(): JSX.Element {
-  const { query, hosts, now, refreshHosts, tick, manualTick, lists } = useTelemetry();
+  const { query, hosts, hostsError, now, refreshHosts, tick, manualTick, lists } = useTelemetry();
   const [search, setSearch] = createSignal(lists.fleet.search);
   const [selected, setSelected] = createSignal(lists.fleet.selected);
   const { sort, sortBy } = createSort(lists.fleet.sort);
@@ -89,7 +89,6 @@ export function FleetPage(): JSX.Element {
     returnHost = null;
     restoreListFocus(link);
   };
-  const [hostsError, setHostsError] = createSignal<string | null>(null);
   const [rowsError, setRowsError] = createSignal<string | null>(null);
   const [rowsEpoch, setRowsEpoch] = createSignal(0);
   const rowCache: FleetRowCache = {
@@ -162,13 +161,12 @@ export function FleetPage(): JSX.Element {
 
   let lastManualTick = manualTick();
   const doRefresh = async (includeSystem: boolean) => {
-    setHostsError(null);
     setRowsError(null);
     rowCache.histories.clear();
     if (includeSystem) rowCache.systems.clear();
     setRowsEpoch(value => value + 1);
     const [listed, refreshed] = await Promise.allSettled([refreshHosts(), refresh(rows)]);
-    if (listed.status === "rejected") setHostsError(errorMessage(listed.reason));
+    if (listed.status === "rejected") setRowsError(errorMessage(listed.reason));
     if (refreshed.status === "rejected") setRowsError(errorMessage(refreshed.reason));
   };
   createUpdateEffect(() => tick(), () => {
@@ -184,7 +182,7 @@ export function FleetPage(): JSX.Element {
     return { all: all.length, online: byLabel("online"), stale: byLabel("stale"), noSamples: byLabel("no samples"), revoked: byLabel("revoked") };
   });
 
-  const refreshErrors = () => [...new Set([hostsError(), rowsError()].filter((message): message is string => message !== null))];
+  const refreshErrors = () => [...new Set([hostsError() === null ? null : errorMessage(hostsError()), rowsError()].filter((message): message is string => message !== null))];
 
   const toggle = (label: StatusLabel) => {
     setSelected(current => {
@@ -204,7 +202,7 @@ export function FleetPage(): JSX.Element {
       <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
         <Loading fallback={<FleetSkeleton />}>
           <FleetDashboard
-            rows={rows()}
+            rows={latest(rows)}
             total={sorted().length}
             allTotal={counts().all}
             counts={counts()}
@@ -323,8 +321,8 @@ function FleetDashboard(props: {
                 </tr>
               </thead>
               <tbody>
-                <For each={props.rows}>
-                  {(row) => <FleetTableRow row={row} now={props.now} onNavigate={props.onHostNavigate} onMount={props.onHostMount} />}
+                <For each={props.rows} keyed={row => row.host.hostId}>
+                  {(row) => <FleetTableRow row={row()} now={props.now} onNavigate={props.onHostNavigate} onMount={props.onHostMount} />}
                 </For>
               </tbody>
             </table>

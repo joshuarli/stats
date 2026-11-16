@@ -212,11 +212,32 @@ All absolute: the histogram is an interval measurement, not a counter.
 counter varints: cumulative GPU residency in 24 MHz ticks, `active` outside
 the off state and `total` across all states.
 
-**power** — head u8: bit 0 `GPU_NJ`, bit 1 `SYSTEM`, bit 2 `DELTA`; bits 3–7
-reserved; bits 0 and 1 both clear rejects the frame. Then `gpuNj` (bit 0,
-cumulative GPU energy in nanojoules), then `systemMwSum` and `systemReadings`
-(bit 1, a running sum of whole-system power readings in milliwatts and the
-count of readings). All counter varints.
+**power** — head u8: bit 0 `GPU_NJ`, bit 1 `SYSTEM`, bit 2 `DELTA`,
+bit 3 `CPU_NJ`, bit 4 `BATTERY`; bits 5–7 reserved. An empty source mask
+rejects the frame. Counter varints follow in this order:
+
+- `gpuNj` (bit 0): cumulative GPU energy in nanojoules.
+- `systemMwSum`, `systemReadings` (bit 1): a running sum of whole-system
+  readings in milliwatts and their count.
+- `cpuNj` (bit 3): cumulative CPU package energy in nanojoules.
+- `batteryMwSum`, `batteryReadings` (bit 4): a running sum of discharging-battery
+  readings in milliwatts and their count.
+
+The source mask must match the preceding record for a delta record.
+Receivers predating CPU and battery sources reject their reserved bits.
+Deploy receivers before enabling emission from updated Linux agents.
+Existing power records retain their byte encoding. Stored raw JSON and
+rollups add optional fields. Old histories retain absent CPU and battery
+series, and binary summary history adds `power.cpuWatts` and `power.batteryWatts`.
+
+The Linux reader sums top-level package zones and excludes subzones.
+Duplicate package names make CPU power unavailable rather than double count. It
+checks every energy counter against `max_energy_range_uj`. A regression
+could be a wrap or a reset, so either produces a gap rather than guessed
+energy. Package changes, missing files and arithmetic overflow also produce
+gaps. Battery readings use `power_now`, or checked `current_now × voltage_now`,
+and include only discharging batteries. Source changes restart the counters
+across a gap. GPU energy remains unavailable on Linux.
 
 **services** — per-service cgroup v2 counters for the services named in the
 agent config. Count varint, 0–16, then per service:
@@ -231,7 +252,11 @@ agent config. Count varint, 0–16, then per service:
   bytes, `memory.current`); when `PEAK`, `memoryPeak` (gauge varint, bytes,
   `memory.peak`, the cgroup's high-water mark); when `IO`, `ioReadBytes`,
   `ioWriteBytes`, `ioReads`, `ioWrites` (counter varints, `rbytes`, `wbytes`,
-  `rios`, `wios` from `io.stat` summed over its devices).
+  `rios`, `wios` from `io.stat` summed over its devices). When a backing
+  device and its holder both occur, only the backing device contributes. The
+  reader follows `/sys/dev/block/*/holders` through intermediate layers to
+  exclude listed ancestors. Missing topology or malformed device IDs omit I/O
+  rather than report a partial sum. Empty `io.stat` remains measured zero.
 
 `UNAVAILABLE` means the agent looked for the service's cgroup and could not
 read it: the unit is not running, or its cgroup does not exist. A service
@@ -242,7 +267,8 @@ group itself is unavailable when the host has no cgroup v2 hierarchy, and
 absent when the agent config names no service.
 
 Paired fields (`swapIn`/`swapOut`, the four PSI `full` values,
-`systemMwSum`/`systemReadings`, GPU `active`/`total`) share one presence bit,
+`systemMwSum`/`systemReadings`, `batteryMwSum`/`batteryReadings`, GPU
+`active`/`total`) share one presence bit,
 so half a pair cannot be encoded.
 
 ### Dictionaries
@@ -456,6 +482,12 @@ Rejections never include credentials, token hashes, or request bodies.
   interval in milliseconds; an idle disk reports 0. In rollups the divisors
   count only the intervals that reported the matching field. `inFlight` is
   stored on the sample and is not charted.
+- CPU package watts divide the exact `cpuNj` delta by the same-boot interval
+  in milliseconds and by 1,000,000. Rollups retain a separate CPU coverage
+  interval, so missing CPU readings do not dilute watts. Battery discharge
+  watts divide the `batteryMwSum` delta by the `batteryReadings` delta and by
+  1,000. An unchanged reading count produces no battery value. CPU, battery,
+  GPU and whole-system power retain independent gaps.
 - A device or interface that disappears and returns resumes the same series
   with a gap: the first sample after it returns has no rate because no counter
   interval exists. Its name is display text, not identity.

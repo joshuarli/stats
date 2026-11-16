@@ -4,9 +4,10 @@ import { readFileSync } from "node:fs";
 import { Table } from "../../src/client/columns.ts";
 import type { MetricHistory } from "../../src/client/history.ts";
 import type { ProjectConfig } from "../../src/projects/config.ts";
-import { previousWindowOf, type LedgerHistories } from "../../src/cost/ledger.ts";
+import { CoverageIndex, previousWindowOf, windowUsage, type CostLine, type LedgerHistories } from "../../src/cost/ledger.ts";
 import { PRICING_REVISION } from "../../src/cost/pricing.ts";
 import { buildCostReport } from "../../src/cost/report.ts";
+import { H, histories } from "./support.ts";
 import { tableView, type Cell } from "../support/history.ts";
 
 await test("report coverage traverses route columns linearly on the stuff capture", () => {
@@ -33,4 +34,24 @@ await test("report coverage traverses route columns linearly on the stuff captur
   assert.equal(report.total.monthly.now, 0.20705114667);
   assert.ok(cells < 3000, `cells=${cells}`);
   assert.ok(names < 10, `names=${names}`);
+  cells = 0;
+  names = 0;
+  const coverage = new CoverageIndex();
+  const lines = (entries: readonly CostLine[]): CostLine[] => entries.flatMap(line => [line, ...lines(line.children)]);
+  const all = lines(report.lines);
+  const shared = all.map(line => windowUsage(line, current, undefined, window, previousWindowOf(window), coverage));
+  assert.equal(names, 1);
+  assert.equal(cells, originalNames().length);
+  assert.deepEqual(shared, all.map(line => windowUsage(line, current, undefined, window, previousWindowOf(window))));
+});
+
+await test("one shared coverage index keeps current and previous denominators distinct", () => {
+  const current = histories(0, { worker: { "worker.invocations": [10, null, 10], "worker.cpuMsSum": [30, null, 30] } });
+  const previous = histories(-3 * H, { worker: { "worker.invocations": [5, 5, 5], "worker.cpuMsSum": [10, 10, 10] } });
+  const window = { fromMs: 0, toMs: 3 * H };
+  const project: ProjectConfig = { id: "p", name: "p", worker: "p", workerBilling: "requests-and-cpu", buckets: [], durableObjectNamespaces: [], d1Databases: [], probes: [] };
+  const report = buildCostReport({ nowMs: window.toMs, pricingRevision: PRICING_REVISION, project, windows: { current: window, previous: previousWindowOf(window) }, current, previous, objectMethods: undefined, planMonth: undefined });
+  const worker = report.lines.find(line => line.kind === "worker")!;
+  const coverage = new CoverageIndex();
+  assert.deepEqual(windowUsage(worker, current, previous, window, previousWindowOf(window), coverage), { kind: "requests", calls: { now: 20, before: 15 }, cpuMs: { now: 60, before: 30 } });
 });

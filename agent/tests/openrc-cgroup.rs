@@ -1,4 +1,4 @@
-use stats::cgroup::{read_services, unit_cgroup, ServiceCgroup};
+use stats::cgroup::{read_services, unit_cgroup, CgroupRoots, ServiceCgroup};
 use stats::model::{Service, ServiceIo, ServiceMemory, ServiceUsage};
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,11 @@ fn an_openrc_unit_resolves_to_its_cgroup_and_reads_the_real_fixture() {
         cgroup: unit_cgroup("openrc.tansu").expect("openrc unit"),
     };
     assert_eq!(service.cgroup, PathBuf::from("openrc.tansu"));
-    let services = read_services(&root, &[service]).expect("controllers");
+    let devices = std::env::temp_dir().join(format!("openrc-devices-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+    for device in ["8:0", "259:0"] { std::fs::create_dir_all(devices.join(device).join("holders")).unwrap(); }
+    let services = read_services(CgroupRoots { cgroups: &root, devices: &devices }, &[service]);
+    std::fs::remove_dir_all(devices).unwrap();
+    let services = services.expect("controllers");
     assert_eq!(
         services,
         vec![Service::measured(

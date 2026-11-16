@@ -58,13 +58,17 @@ function gpuDelta(previous: Gpu | undefined, current: Gpu | undefined): Gpu | nu
 
 function powerDelta(previous: Power | undefined, current: Power | undefined): Power | null {
   if (previous === undefined || current === undefined) return null;
+  const cpuNj = previous.cpuNj === undefined || current.cpuNj === undefined ? null : difference(current.cpuNj, previous.cpuNj);
+  const batteryMwSum = previous.batteryMwSum === undefined || current.batteryMwSum === undefined ? null : difference(current.batteryMwSum, previous.batteryMwSum);
+  const batteryReadings = previous.batteryReadings === undefined || current.batteryReadings === undefined ? null : difference(current.batteryReadings, previous.batteryReadings);
+  const battery = batteryMwSum !== null && batteryReadings !== null;
   const gpuNj = previous.gpuNj === undefined || current.gpuNj === undefined ? null : difference(current.gpuNj, previous.gpuNj);
   const hasSystem = previous.systemMwSum !== undefined && previous.systemReadings !== undefined && current.systemMwSum !== undefined && current.systemReadings !== undefined;
   const systemMwSum = hasSystem ? difference(current.systemMwSum!, previous.systemMwSum!) : null;
   const systemReadings = hasSystem ? difference(current.systemReadings!, previous.systemReadings!) : null;
   const system = systemMwSum !== null && systemReadings !== null;
-  if (gpuNj === null && !system) return null;
-  return { ...(gpuNj === null ? {} : { gpuNj }), ...(system ? { systemMwSum, systemReadings } : {}) };
+  if (gpuNj === null && cpuNj === null && !battery && !system) return null;
+  return { ...(cpuNj === null ? {} : { cpuNj }), ...(battery ? { batteryMwSum, batteryReadings } : {}), ...(gpuNj === null ? {} : { gpuNj }), ...(system ? { systemMwSum, systemReadings } : {}) };
 }
 
 const SERVICE_IO_FIELDS = ["ioReadBytes", "ioWriteBytes"] as const;

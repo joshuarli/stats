@@ -29,6 +29,7 @@ export interface ChartEvent {
   readonly id?: string | undefined;
   readonly atMs: number;
   readonly label: string;
+  readonly plural?: string | undefined;
   readonly short?: string | undefined;
   readonly onSelect?: (() => void) | undefined;
 }
@@ -371,7 +372,7 @@ export function TimeChart(props: TimeChartProps): JSX.Element {
       context.font = `${11 * dpr}px ${token("--font")}`;
       context.textAlign = "left";
       const placed = placeEvents(
-        events.map(event => ({ x: Math.round(chart.valToPos(event.atMs / 1000, "x", true)), label: event.label, short: event.short })),
+        events.map(event => ({ x: Math.round(chart.valToPos(event.atMs / 1000, "x", true)), label: event.label, short: event.short, plural: event.plural })),
         text => context.measureText(text).width,
         { minX: left, maxX: left + width, mergePx: 3 * dpr, padPx: 3 * dpr }
       );

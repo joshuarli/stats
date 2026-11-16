@@ -1,11 +1,11 @@
 import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Service } from "../api";
-import { age } from "../format";
-import { loadServices } from "../queries";
+import { age, errorMessage } from "../format";
+import { createListQuery, loadServices } from "../queries";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
-import { EntityCell, ErrorState, Widget } from "../components/ui";
+import { EntityCell, ErrorState, Notice, Widget } from "../components/ui";
 import { compareSortValues, createSort, SortHeader } from "../components/sort";
 import { createUpdateEffect } from "../effect";
 import { routeWithRange } from "../urlState";
@@ -26,7 +26,7 @@ export function ServicesPage(): JSX.Element {
 function Services(): JSX.Element {
   const { tick, manualTick } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const services = createMemo(loadServices);
+  const { data: services, error: listError } = createListQuery(loadServices);
   createUpdateEffect(() => `${serviceTick()}:${manualTick()}`, () => { void refresh(services); });
   const { sort, sortBy } = createSort<"none" | "service" | "hosts" | "probe" | "deploy">({ key: "none", direction: 1 });
   const [deployTimes, setDeployTimes] = createSignal<ReadonlyMap<string, number | null>>(new Map());
@@ -58,6 +58,8 @@ function Services(): JSX.Element {
     });
   });
   return (
+    <>
+    <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Show
       when={services().length > 0}
       fallback={
@@ -78,12 +80,13 @@ function Services(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              <For each={sortedServices()}>{service => <ServiceRow service={service} reportDeploy={reportDeploy} />}</For>
+              <For each={sortedServices()} keyed={service => service.name}>{service => <ServiceRow service={service()} reportDeploy={reportDeploy} />}</For>
             </tbody>
           </table>
         </div>
       </Widget>
     </Show>
+    </>
   );
 }
 

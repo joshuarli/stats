@@ -202,7 +202,7 @@
     {
       "name": "power-without-reading",
       "code": "invalid_frame",
-      "why": "power head with neither GPU_NJ nor SYSTEM",
+      "why": "power head with no GPU, system, CPU or battery source",
       "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e80780100000"
     },
     {
@@ -390,6 +390,12 @@
       "code": "invalid_batch",
       "why": "a service name outside [a-z][a-z0-9-]{0,31}",
       "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078020000100035765620005"
+    },
+    {
+      "name": "power-head-reserved",
+      "code": "invalid_frame",
+      "why": "power head bit 5 remains reserved",
+      "hex": "5354423202000123456789abcdef0123456789abcdef3f2a9c1e8b7d4c6a9e5f1a2b3c4d5e6f0101e8c7b3ac9934e8078010002000"
     }
   ]
 }

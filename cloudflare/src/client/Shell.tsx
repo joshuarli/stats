@@ -3,7 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
 import { TimeBar } from "./components/TimeBar";
-import { loadHosts } from "./queries";
+import { createListQuery, loadHosts } from "./queries";
 import { createUpdateEffect } from "./effect";
 import type { TimeWindow } from "./chart-data";
 import { createViewState, DEFAULT_RANGE, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
@@ -39,7 +39,7 @@ export function Shell(props: ParentProps): JSX.Element {
   const lists = createListState();
   const [range, setRange] = createSignal<Range>(ranges.find(candidate => candidate === readParam("range")) ?? DEFAULT_RANGE);
   const [now, setNow] = createSignal(Date.now());
-  const hosts = createMemo(loadHosts);
+  const { data: hosts, error: hostsError } = createListQuery(loadHosts);
   const views = createViewState(range, now);
   const liveQuery = createMemo<HistoryQuery>(() => ({ range: range() }));
   const query = createMemo<HistoryQuery>(() => views.view() ?? liveQuery());
@@ -109,7 +109,7 @@ export function Shell(props: ParentProps): JSX.Element {
   };
 
   return (
-    <TelemetryContext value={{ lists, range, query, chooseRange, showWindow, now, hosts, refreshHosts, ...views }}>
+    <TelemetryContext value={{ lists, range, query, chooseRange, showWindow, now, hosts, hostsError, refreshHosts, ...views }}>
       <header class="topbar">
         <div class="topbar-start">
           <nav class="primary-nav" aria-label="Primary">

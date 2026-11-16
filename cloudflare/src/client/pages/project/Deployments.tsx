@@ -185,6 +185,7 @@ function createDeployments(kind: DeploymentKind, projectId: () => string, range:
     atMs: deployment.atMs,
     label: `deploy ${name(deployment)}`,
     short: title(deployment),
+    plural: "deploys",
     onSelect: () => {
       focus(deployment.id);
       jumpTo("deployments");

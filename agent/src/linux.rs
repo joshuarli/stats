@@ -307,6 +307,11 @@ pub fn sample(scope: CollectionScope) -> Option<Sample> {
         None => sample.mark_unavailable(Unavailable::Filesystems),
     }
 
+    static POWER: std::sync::Mutex<Option<crate::linux_power::PowerSampler>> = std::sync::Mutex::new(None);
+    if let Ok(mut sampler) = POWER.lock() {
+        sample.power = sampler.get_or_insert_with(crate::linux_power::PowerSampler::default).sample(Path::new("/sys/class/powercap"), Path::new("/sys/class/power_supply"));
+    }
+
     if !sample.has_metrics() {
         return None;
     }

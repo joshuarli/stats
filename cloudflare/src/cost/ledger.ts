@@ -260,7 +260,7 @@ function windowField(line: CostLine, field: string): string | null {
   }
 }
 
-function fieldFactor(line: CostLine, histories: LedgerHistories | undefined, window: TimeWindow, field: string): number {
+function fieldFactor(line: CostLine, histories: LedgerHistories | undefined, window: TimeWindow, field: string, coverage: CoverageIndex): number {
   if (histories === undefined) return 1;
   if (line.kind === "object-method") return MONTH_MS / Math.max(1, window.toMs - window.fromMs);
   const source = windowSeries(line);
@@ -268,14 +268,14 @@ function fieldFactor(line: CostLine, histories: LedgerHistories | undefined, win
   if (source === null || name === null) return 1;
   const history = source.history(histories);
   if (history === undefined) return 1;
-  const covered = new CoverageIndex().usageDenominator(history, window, source.names, name);
+  const covered = coverage.usageDenominator(history, window, source.names, name);
   return covered > 0 ? MONTH_MS / covered : 1;
 }
 
-export function windowUsage(line: CostLine, histories: LedgerHistories, previous: LedgerHistories | undefined, window: TimeWindow, previousWindow: TimeWindow): Usage {
+export function windowUsage(line: CostLine, histories: LedgerHistories, previous: LedgerHistories | undefined, window: TimeWindow, previousWindow: TimeWindow, coverage = new CoverageIndex()): Usage {
   const scale = (amount: Amount, field: string): Amount => ({
-    now: amount.now / fieldFactor(line, histories, window, field),
-    before: amount.before === null || previous === undefined ? amount.before : amount.before / fieldFactor(line, previous, previousWindow, field)
+    now: amount.now / fieldFactor(line, histories, window, field, coverage),
+    before: amount.before === null || previous === undefined ? amount.before : amount.before / fieldFactor(line, previous, previousWindow, field, coverage)
   });
   const usage = line.usage;
   switch (usage.kind) {

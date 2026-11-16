@@ -46,6 +46,7 @@ export interface TelemetryState extends ViewState {
   readonly showWindow: (window: TimeWindow) => boolean;
   readonly now: Accessor<number>;
   readonly hosts: Accessor<readonly Host[]>;
+  readonly hostsError: Accessor<unknown>;
   readonly refreshHosts: () => Promise<void>;
 }
 

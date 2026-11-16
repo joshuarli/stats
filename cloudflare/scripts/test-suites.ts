@@ -17,6 +17,7 @@ const SPECIAL: Readonly<Record<string, readonly [string, readonly string[], bool
   "test/observe/budget.test.ts": ["observe-runtime", ["observe"]],
   "test/scripts/node-bundle.test.ts": ["node-package", ["node-bundle-in-test"]],
   "test/scripts/build-preparation.test.ts": ["build-orchestration", ["isolated-builds-in-test"]],
+  "test/scripts/offline.test.ts": ["offline", ["chromium"], true],
   "test/scripts/development.test.ts": ["dev-orchestration", ["isolated-builds-in-test", "chromium"]],
   "test/external/services.test.ts": ["services-external", ["TANSU_DIR", "NICEFORGE_DIR"], true],
   "test/producer/checkout.test.ts": ["producer-external", ["stats", "observe", "NANOSHOP_DIR"], true]

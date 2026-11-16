@@ -102,6 +102,19 @@ unavailable when its source is missing, for example system power on a Mac
 without a battery. CPU, DRAM, and Neural Engine energy are not reported: their
 IOReport counters do not advance for an unprivileged process.
 
+On Linux the agent reads top-level CPU package zones in
+`/sys/class/powercap` and discharging batteries in `/sys/class/power_supply`.
+CPU package and battery discharge appear as separate power series. Package
+subzones and Linux GPU energy are excluded. Missing permissions or incomplete
+readings leave gaps. Counter wraps, resets, and package changes also leave gaps.
+
+Power collection never changes permissions. To enable a root-only package
+counter, grant the agent account read access to that package's `energy_uj`
+through your host's device-permission policy. On OpenRC hosts without udev,
+apply that policy in a local service after the powercap driver loads, and
+reapply it after driver reloads. Keep the agent unprivileged. Deploy the updated
+receiver before agents that emit the extended STB2 power fields.
+
 ## Configuration
 
 The config and the token file must be regular, owner-only files (no group or

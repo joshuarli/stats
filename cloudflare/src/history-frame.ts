@@ -45,7 +45,7 @@ const summaryReaders: Readers<"summary", SummaryPoint> = {
   "psi.io": p => (p.psi?.io === undefined ? undefined : present()), "psi.io.some10": p => p.psi?.io?.some10, "psi.io.some60": p => p.psi?.io?.some60, "psi.io.some300": p => p.psi?.io?.some300,
   "psi.io.full10": p => p.psi?.io?.full10, "psi.io.full60": p => p.psi?.io?.full60, "psi.io.full300": p => p.psi?.io?.full300,
   gpu: p => (p.gpu === undefined ? undefined : present()), "gpu.busyPct": p => p.gpu?.busyPct,
-  power: p => (p.power === undefined ? undefined : present()), "power.gpuWatts": p => p.power?.gpuWatts, "power.systemWatts": p => p.power?.systemWatts
+  power: p => (p.power === undefined ? undefined : present()), "power.gpuWatts": p => p.power?.gpuWatts, "power.systemWatts": p => p.power?.systemWatts, "power.cpuWatts": p => p.power?.cpuWatts, "power.batteryWatts": p => p.power?.batteryWatts
 };
 const diskReaders: Readers<"disks", DiskPoint> = {
   atMs: p => p.atMs, readBytesPerSec: p => p.readBytesPerSec, writeBytesPerSec: p => p.writeBytesPerSec, readsPerSec: p => p.readsPerSec, writesPerSec: p => p.writesPerSec, busyPct: p => p.busyPct,

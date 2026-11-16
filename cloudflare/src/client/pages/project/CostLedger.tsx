@@ -8,7 +8,7 @@ import { Sparkline } from "../../components/Sparkline";
 import { PanelChart, PanelLabel } from "../host/shared";
 import { holdLast } from "../../math.ts";
 import { WORKERS_PAID_MONTHLY_FEE } from "../../../cost/pricing.ts";
-import { isResidual, monthlyOf, windowUsage, type Amount, type CostLine, type LedgerHistories, type Usage } from "../../../cost/ledger.ts";
+import { CoverageIndex, isResidual, monthlyOf, windowUsage, type Amount, type CostLine, type LedgerHistories, type Usage } from "../../../cost/ledger.ts";
 import type { CostReport, PlanBillReport } from "../../../cost/report.ts";
 import "./cost-ledger.css";
 
@@ -246,6 +246,12 @@ function MonthNoData(): JSX.Element {
 }
 
 export function CostLedger(props: { readonly report: CostReport; readonly histories: LedgerHistories; readonly previousHistories: LedgerHistories | undefined; readonly windowLabel: string; readonly spendPending: boolean; readonly onFindRoute?: ((label: string) => void) | undefined }): JSX.Element {
+  const coverage = createMemo(() => {
+    void props.histories;
+    void props.previousHistories;
+    void props.report.windows;
+    return new CoverageIndex();
+  });
   const initial = (): { readonly expanded: ReadonlySet<string>; readonly selected: string | null } => {
     const top = props.report.lines[0];
     const first = top?.children.find(child => !isResidual(child));
@@ -303,7 +309,7 @@ export function CostLedger(props: { readonly report: CostReport; readonly histor
     const hidden = () => ordinary().slice(visible().length);
     const leaf = () => line().children.length === 0;
     const trend = () => line().trend;
-    const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous));
+    const usage = createMemo(() => windowUsage(line(), props.histories, props.previousHistories, props.report.windows.current, props.report.windows.previous, coverage()));
     const partialWarning = () => props.report.warnings.find(warning =>
       (LINE_PARTIAL_CODES.has(warning.code) && warning.subject === line().id) ||
       (warning.code === "meter-partial-data" && (COMPONENT_METERS[line().id]?.includes(warning.subject) ?? false))
