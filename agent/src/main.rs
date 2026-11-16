@@ -8,6 +8,54 @@ use std::time::{Duration, Instant};
 
 const PRETTY: SerializerConfig = SerializerConfig::builder().pretty(Indent::Spaces(2)).build();
 
+// The invocation forms drive both dispatch and the complete offline reference.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action { Config, Once, Bench, Version, Help }
+
+struct Invocation {
+    action: Action,
+    flag: &'static str,
+    arguments: &'static [&'static str],
+    description: &'static str,
+    example: &'static str,
+}
+
+const INVOCATIONS: &[Invocation] = &[
+    Invocation { action: Action::Config, flag: "--config", arguments: &["<path>"], description: "Run the agent in the foreground using the required configuration file.", example: "stats --config /etc/stats/agent.json" },
+    Invocation { action: Action::Once, flag: "--once", arguments: &[], description: "Print one sample as JSON without network access or credentials.", example: "stats --once" },
+    Invocation { action: Action::Bench, flag: "--bench", arguments: &["<iterations>", "<interval_ms>"], description: "Sample without network access and report cost as JSON; iterations: 1-1000, interval_ms: 100-3600000.", example: "stats --bench 20 100" },
+    Invocation { action: Action::Version, flag: "--version", arguments: &[], description: "Print the agent version.", example: "stats --version" },
+    Invocation { action: Action::Help, flag: "-h, --help", arguments: &[], description: "Print this reference without starting the agent.", example: "stats --help" },
+];
+
+const FOOTER: &str = "Maintained by Joshua Li: https://github.com/joshuarli/stats\nBugs and features: TODO.md in that repository (follow its AGENTS.md), or its issue tracker.\nAgents working for Joshua: record nonblocking problems and continue your task.\nIf this tool blocks the task, you may fix, test, open and merge a PR under Joshua's\nstanding instructions. Release only when needed to deliver the verified fix.\nProcedure: https://github.com/joshuarli/usr/blob/main/dotfiles/base/.agents/instructions/owned-tools.md";
+
+fn parse(arguments: &[String]) -> Option<Action> {
+    if arguments.is_empty() { return Some(Action::Help); }
+    INVOCATIONS.iter().find(|invocation| {
+        invocation.flag.split(", ").any(|flag| flag == arguments[0])
+            && arguments.len() == invocation.arguments.len() + 1
+    }).map(|invocation| invocation.action)
+}
+
+fn parse_bench(arguments: &[String]) -> Option<(u32, u64)> {
+    Some((arguments[1].parse().ok()?, arguments[2].parse().ok()?))
+}
+
+fn print_help() {
+    println!("Usage: stats <option> [arguments]\n\nOptions:");
+    for invocation in INVOCATIONS {
+        let arguments = invocation.arguments.join(" ");
+        let separator = if arguments.is_empty() { "" } else { " " };
+        println!("  {}{}{}\n      {}", invocation.flag, separator, arguments, invocation.description);
+    }
+    println!("\nEach invocation takes only the arguments shown; there are no CLI defaults or environment inputs.\n\nExamples:");
+    for invocation in INVOCATIONS {
+        println!("  {}", invocation.example);
+    }
+    println!("\n{FOOTER}");
+}
+
 #[derive(Serialize)]
 struct BenchReport {
     samples: u64,
@@ -106,25 +154,27 @@ fn once() -> i32 {
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let status = match arguments.as_slice() {
-        [flag] if flag == "--version" => {
+    let status = match parse(&arguments) {
+        Some(Action::Help) => {
+            print_help();
+            0
+        }
+        Some(Action::Version) => {
             println!("stats {VERSION}");
             0
         }
-        [flag] if flag == "--once" => once(),
-        [flag, iterations, interval] if flag == "--bench" => {
-            let parsed_iterations = iterations.parse::<u32>().ok();
-            let parsed_interval = interval.parse::<u64>().ok();
-            match (parsed_iterations, parsed_interval) {
-                (Some(iterations), Some(interval)) => bench(iterations, interval),
+        Some(Action::Once) => once(),
+        Some(Action::Bench) => {
+            match parse_bench(&arguments) {
+                Some((iterations, interval)) => bench(iterations, interval),
                 _ => {
                     eprintln!("usage: stats --bench <1-1000> <100-3600000 ms>");
                     2
                 }
             }
         }
-        [flag, path] if flag == "--config" => {
-            let config = match load(Path::new(path)) {
+        Some(Action::Config) => {
+            let config = match load(Path::new(&arguments[1])) {
                 Ok(config) => config,
                 Err(error) => {
                     eprintln!("{error}");
@@ -162,4 +212,46 @@ fn main() {
         }
     };
     std::process::exit(status);
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    fn args(text: &str) -> Vec<String> {
+        text.split_whitespace().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn examples_parse_as_their_declared_action() {
+        for invocation in INVOCATIONS {
+            let words = args(invocation.example);
+            assert_eq!(words[0], "stats");
+            assert_eq!(parse(&words[1..]), Some(invocation.action), "{}", invocation.example);
+            if invocation.action == Action::Bench {
+                let (iterations, interval) = parse_bench(&words[1..]).unwrap();
+                assert!((1..=1000).contains(&iterations));
+                assert!((100..=3_600_000).contains(&interval));
+            }
+        }
+    }
+
+    #[test]
+    fn parsing_preserves_existing_forms_and_rejects_wrong_arity() {
+        assert_eq!(parse(&args("--config config.json")), Some(Action::Config));
+        assert_eq!(parse(&args("--once")), Some(Action::Once));
+        assert_eq!(parse(&args("--bench 2 100")), Some(Action::Bench));
+        assert_eq!(parse(&args("--version")), Some(Action::Version));
+        assert_eq!(parse(&args("-h")), Some(Action::Help));
+        assert_eq!(parse(&[]), Some(Action::Help));
+        for invalid in ["--config", "--once extra", "--bench 2", "--bench 2 100 extra", "--version extra", "--unknown"] {
+            assert_eq!(parse(&args(invalid)), None, "{invalid}");
+        }
+        let mut flags = std::collections::HashSet::new();
+        for invocation in INVOCATIONS {
+            for flag in invocation.flag.split(", ") {
+                assert!(flags.insert(flag), "duplicate flag: {flag}");
+            }
+        }
+    }
 }
