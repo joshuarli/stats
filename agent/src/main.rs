@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 const PRETTY: SerializerConfig = SerializerConfig::builder().pretty(Indent::Spaces(2)).build();
 
-// The invocation forms drive both dispatch and the complete offline reference.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action { Config, Once, Bench, Version, Help }
 
