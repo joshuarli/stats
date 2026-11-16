@@ -10,6 +10,16 @@ One production inventory sweep succeeded, but the historical failure remains
 unresolved. No fixture rebuild, replacement soak or deployment was started.
 Further fixture reproduction requires a new explicit scope and attempt budget.
 
+The owner subsequently authorized one fresh isolated Engine/depot attempt.
+[That reproduction](../bench/results/2026-11-16-fresh-engine-reproduction/README.md)
+failed with filesystem fencing after 25,000 acknowledged rows, without a
+memory-limit or OOM event. A single private Engine reopen recovered the same
+import count. Exact row contents remain unverified because the pinned API
+blocks export during incomplete import. The new container was stopped and
+its failed state preserved. The one newly authorized import attempt is used.
+No production deployment or replacement soak ran. Configuration versus Engine
+behavior remains unresolved, and the original acceptance blockers remain.
+
 ## Owner stop and current state
 
 The owner stopped this campaign on 2026-11-16 and requested this handoff for

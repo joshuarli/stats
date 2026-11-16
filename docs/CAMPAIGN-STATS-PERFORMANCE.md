@@ -2,6 +2,15 @@
 
 ## Status
 
+After handoff, the owner authorized one fresh isolated Engine/depot reproduction.
+It reproduced filesystem fencing after 25,000 acknowledged rows with zero
+memory-limit or OOM events. One private reopen preserved the acknowledged
+count. Exact row comparison remains blocked by incomplete-import export rules.
+[The reproduction record](../bench/results/2026-11-16-fresh-engine-reproduction/README.md)
+contains the configuration, evidence and remaining uncertainty. The new
+container is stopped. This additional import allowance is exhausted.
+No acceptance goal changed state, and no replacement soak or deployment ran.
+
 **Stopped by the owner on 2026-11-16 for handoff. The campaign is unfinished.**
 The owner explicitly relaxed the failed-soak protection rule and requested
 stopping this session. The complete next-agent record is
