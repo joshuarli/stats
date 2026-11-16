@@ -1,5 +1,15 @@
 # Stats performance campaign handoff
 
+## Resume inspection
+
+The owner requested resumption. A bounded read-only inspection is recorded in
+[the resume diagnosis](../bench/results/2026-11-16-resume-diagnosis/README.md).
+Production still selected version 24 at 2026-11-16 04:11:55 UTC.
+Master now includes runtime changes after this original handoff.
+One production inventory sweep succeeded, but the historical failure remains
+unresolved. No fixture rebuild, replacement soak or deployment was started.
+Further fixture reproduction requires a new explicit scope and attempt budget.
+
 ## Owner stop and current state
 
 The owner stopped this campaign on 2026-11-16 and requested this handoff for
