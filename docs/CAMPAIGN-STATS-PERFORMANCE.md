@@ -2,8 +2,22 @@
 
 ## Status
 
-Active, re-scoped on 2026-11-15. The goal is immediate, explainable Stats
-interactions on Lisa at ten times the frozen production corpus.
+**Stopped by the owner on 2026-11-16 for handoff. The campaign is unfinished.**
+The owner explicitly relaxed the failed-soak protection rule and requested
+stopping this session. The complete next-agent record is
+[the performance handoff](HANDOFF-STATS-PERFORMANCE.md).
+
+PID 3384 received verified SIGTERM and exited cleanly. The preserved series
+contains 628 samples over about 10.5 hours, with 93 unavailable samples,
+including 35 after warmup. Its terminal record has `complete: false`.
+The observer and background monitor also exited. No replacement sampler,
+production deployment or W7 production smoke was performed.
+The [stop receipt](../bench/results/2026-11-16-owner-stop/stop.json) and
+[analysis](../bench/results/2026-11-16-owner-stop/analysis.json) preserve the
+outcome and input checksum. No 24-hour plateau result is established.
+
+The original goal remains immediate, explainable Stats interactions on Lisa
+at ten times the frozen production corpus. Acceptance thresholds are unchanged.
 
 W2 preparation branch review is integrated as `b15839f2a32`; both Linux
 container regressions and pinned-Node lint pass. Preserved imports failed
@@ -23,20 +37,16 @@ STA-128 retains the overhead and collector-failure acceptance study. W5's
 single investigation localized the failure to Engine volume fencing, but did
 not establish whether configuration/resource limits or an Engine defect is
 the underlying cause; repeated native recovery is blocked on STUF-87.
-W6 still awaits the soak deadline. Read-only inspection found actor-list HTTP
-503 samples and an application-health timeout in the live series (Stuff
-STUF-88); it cannot
-pass the no-unavailable-groups requirement. Preserve the running sampler until
-completion, then apply the one allowed invalidation restart. The analyzer and
-its regression tests are ready; see the
+W6 is blocked by the incomplete series, actor-list HTTP 503 samples and an
+application-health timeout (Stuff STUF-88). The analyzer and its regression
+tests are ready; see the
 [progress record](../bench/results/2026-11-15-soak-progress/README.md).
 The campaign is not closed.
 
 The [local closeout audit](../bench/results/2026-11-16-closeout-local/README.md)
 rechecks the existing accepted cohorts. P5's seven scripted scenarios pass on
 both viewports in 14 local tests with the unchanged ten-second cap. Both Mac
-host gates exit zero. This adds local evidence while the protected sampler
-continues. W7 production smoke remains pending until the freeze ends.
+host gates exit zero. W7 production smoke remains unperformed at owner stop.
 
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
@@ -59,22 +69,26 @@ does not need a redeploy to be current.
 | P5 | **Pass** on desktop and mobile; guidance is live | [14 local incident cases](../bench/results/2026-11-16-closeout-local/overview.json) |
 | P6 | **Blocked (fixture import volume fencing)**; component evidence only | Stuff STUF-87; [rebuild evidence](../bench/results/2026-11-15-scale-prep-review/README.md#single-rebuild-result) |
 | P7 | Freshness **passes**; overhead **blocked (complete W2 workload unavailable)** | STA-128; W4 has no study or precision claim |
-| P8 | Browser heap **passes**; the 24h soak is **running** | W6 |
+| P8 | Browser heap **passes**; native plateau **blocked (invalid, incomplete owner-stopped soak)** | [Stop evidence](../bench/results/2026-11-16-owner-stop/stop.json); Stuff STUF-88 |
 | P9 | **Blocked (native volume fencing; underlying cause unresolved)**; partial lifecycle evidence retained | W5 investigation exhausted; Stuff STUF-87 |
 
-## Hard constraints right now
+## Owner stop and retained constraints
 
-- **Deploy freeze until the soak ends.** The P8 sampler started at
-  2026-11-15 16:41:10 UTC. It runs as PID 3384 on Lisa and has 1,441 samples
-  planned. A production deployment stops collection and invalidates the run.
-  Do not deploy production before 2026-11-16 16:41 UTC. Do not stop, duplicate
-  or clean up the sampler. Its procedure is documented in the
+- The owner relaxed the former protection/wait rule and stopped the failed
+  P8 run for this handoff. PID 3384 is historical, not a live process to signal.
+  Preserve its script, protected output and failed fixture evidence. Do not
+  automatically restart the stopped campaign or reset its budgets.
+  The original sampler procedure is documented in the
   [rollup record](../bench/results/2026-11-15-maintained-rollups/README.md#read-only-production-soak).
-- All work before the soak ends uses the isolated tenfold fixture at
-  `stats-next.17166969.xyz` or local suites. Do not stress production or other
-  applications, and do not restart the shared Engine.
+- Performance stress and recovery tests retain the isolated fixture boundary
+  at `stats-next.17166969.xyz` and the local suites. Do not stress production
+  or other applications, and do not restart the shared Engine.
 
 ## Work queue
+
+This is the original queue, suspended by the owner's stop instruction above.
+The handoff records actual attempts and remaining work. Its presence does not
+automatically resume execution or grant fresh budgets.
 
 Execute in order. W2–W5 may interleave while the soak runs. Each item has an
 attempt budget. When an item exhausts it, record the evidence as **blocked**
@@ -192,6 +206,9 @@ P1–P3 smoke on production. Rewrite this Status section so that every goal read
 ends there, even if some goals are blocked. Blocked goals become tickets.
 
 ## Charter
+
+The owner stopped this session after the following charter was written.
+The status and handoff above override its unattended execution instruction.
 
 The campaign runs unattended. The coordinating agent makes every decision itself
 and does not wait for owner input. When this document leaves a choice open,

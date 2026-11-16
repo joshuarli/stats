@@ -1,0 +1,46 @@
+{
+  "reason": "owner explicitly relaxed sampler protection and requested stop and handoff",
+  "signal": "SIGTERM",
+  "samplerPid": 3384,
+  "samplerStillLive": false,
+  "rawProtectedPath": "/home/josh/.work/stats-perf-campaign/maintained-rollup-soak-v2.jsonl",
+  "inputSha256": "c51aaf5822e361188b16f012da60108fbefb5eaf58eeab2af9d7f7d423bed5d8",
+  "start": {
+    "kind": "start",
+    "atMs": 1794760870252,
+    "image": "stats:6cc06db247a3",
+    "version": 24,
+    "scriptSha256": "f56a7d461fb5c404e102ffbba7a2363921a024adac24edf9596937a47d304dcb",
+    "samples": 1441,
+    "intervalSeconds": 60,
+    "traffic": "existing production traffic; no synthetic ingestion",
+    "qualification": "collection only; P8 requires analysis and queue coverage",
+    "gaps": [
+      "runtime inbox depth unavailable",
+      "null actor lifecycle timestamps do not establish state",
+      "application producer queues visible only through delivered observations"
+    ],
+    "samplerPid": 3384
+  },
+  "end": {
+    "kind": "end",
+    "atMs": 1794798527104,
+    "elapsedSeconds": 37656.851981021,
+    "completedSamples": 628,
+    "degradedSamples": 93,
+    "complete": false
+  },
+  "samples": 628,
+  "unavailableSamples": 93,
+  "unavailableAfterSixHourWarmup": 35,
+  "unavailableGroups": {
+    "resources": {},
+    "actors": {
+      "HTTPError HTTP 503": 92
+    },
+    "application": {
+      "TimeoutError": 1
+    },
+    "bridge": {}
+  }
+}

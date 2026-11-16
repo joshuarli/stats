@@ -1,0 +1,22 @@
+{
+  "state": "blocked",
+  "causes": [
+    "collection not complete",
+    "completion counts or unavailable groups",
+    "less than 24 hours observed",
+    "sample count or sequence mismatch",
+    "sample error or unavailable group"
+  ],
+  "samples": 628,
+  "deployment": {
+    "image": "stats:6cc06db247a3",
+    "version": 24
+  },
+  "coverageGaps": [
+    "runtime inbox depth unavailable",
+    "null actor lifecycle timestamps do not establish state",
+    "application producer queues visible only through delivered observations"
+  ],
+  "warmupHours": 6,
+  "inputSha256": "c51aaf5822e361188b16f012da60108fbefb5eaf58eeab2af9d7f7d423bed5d8"
+}
