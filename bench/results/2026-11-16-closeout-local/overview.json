@@ -1,0 +1,259 @@
+{
+  "sourceRevision": "eb69efb7fb0e72fc10723d5fc60ef0555415aea2",
+  "testFile": "cloudflare/test/ui/application-overview.spec.ts",
+  "testSha256": "696b8dca19342a6eab00ba1570d34d2406b9f24e16e638c9bcea58828f24f140",
+  "scope": "local static assets with intercepted incident responses",
+  "nodeVersion": "26.13.1",
+  "playwrightVersion": "1.65.0",
+  "browser": {
+    "name": "chromium",
+    "version": "158.0.8127.18"
+  },
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 720
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "isMobile": true
+    }
+  },
+  "workers": 1,
+  "gates": {
+    "preExit": 0,
+    "postExit": 0,
+    "maxLoadPerCore": 0.7,
+    "policy": "one-minute load per core; hot process reports are diagnostic"
+  },
+  "stats": {
+    "startTime": "2026-11-16T00:25:46.907Z",
+    "duration": 5955.258,
+    "expected": 14,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "errors": [],
+  "maxCaseDurationMs": 2297,
+  "cases": [
+    {
+      "title": "@mobile healthy overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 2297,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile healthy overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 269,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile failing overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 189,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile failing overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 193,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile slow overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 187,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile slow overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 192,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile stale overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 170,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile stale overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 184,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile deployment overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 163,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile deployment overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 162,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile missing overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 186,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile missing overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 177,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile historical overview supplies context and a working investigation target",
+      "project": "desktop",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 373,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    },
+    {
+      "title": "@mobile historical overview supplies context and a working investigation target",
+      "project": "mobile",
+      "timeoutMs": 10000,
+      "expectedStatus": "passed",
+      "status": "expected",
+      "results": [
+        {
+          "status": "passed",
+          "durationMs": 366,
+          "retry": 0,
+          "errors": []
+        }
+      ]
+    }
+  ],
+  "workingTree": {
+    "modifiedPaths": [
+      "pnpm-lock.yaml"
+    ],
+    "pnpmLockSha256": "d4a19a02499e445ecfafd3da33495ba2700627bc83f34530ae8604164b343352",
+    "pnpmLockMtimeUnixSeconds": 1794769420
+  }
+}

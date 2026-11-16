@@ -32,6 +32,12 @@ its regression tests are ready; see the
 [progress record](../bench/results/2026-11-15-soak-progress/README.md).
 The campaign is not closed.
 
+The [local closeout audit](../bench/results/2026-11-16-closeout-local/README.md)
+rechecks the existing accepted cohorts. P5's seven scripted scenarios pass on
+both viewports in 14 local tests with the unchanged ten-second cap. Both Mac
+host gates exit zero. This adds local evidence while the protected sampler
+continues. W7 production smoke remains pending until the freeze ends.
+
 The previous execution ran too long because it had no stopping rules. Several
 goals depend on elapsed time or on Engine behavior outside this repository.
 This revision keeps every acceptance threshold. It bounds each remaining
@@ -50,7 +56,7 @@ does not need a redeploy to be current.
 | P2 | Awake 1h/6h/24h and 7d **pass**. After actor sleep: **blocked (unobservable)** | Stuff STUF-86; [evidence](../bench/results/2026-11-15-scale-prep-review/README.md#w3-sleep-observability) |
 | P3 | **Pass** on the current corpus, with a warm asset cache | Repeat at tenfold within P6 |
 | P4 | **Pass** for the observed cohort: 17 of 17 journeys over 1 s | None. Population coverage is not claimed |
-| P5 | **Pass** on desktop and mobile; guidance is live | None |
+| P5 | **Pass** on desktop and mobile; guidance is live | [14 local incident cases](../bench/results/2026-11-16-closeout-local/overview.json) |
 | P6 | **Blocked (fixture import volume fencing)**; component evidence only | Stuff STUF-87; [rebuild evidence](../bench/results/2026-11-15-scale-prep-review/README.md#single-rebuild-result) |
 | P7 | Freshness **passes**; overhead **blocked (complete W2 workload unavailable)** | STA-128; W4 has no study or precision claim |
 | P8 | Browser heap **passes**; the 24h soak is **running** | W6 |
