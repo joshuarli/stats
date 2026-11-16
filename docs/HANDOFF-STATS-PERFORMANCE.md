@@ -1,5 +1,16 @@
 # Stats performance campaign handoff
 
+## Final closeout
+
+The owner clarified that this campaign should continue unattended. W7 closeout
+is now complete. [The final campaign status](CAMPAIGN-STATS-PERFORMANCE.md)
+and [closeout evidence](../bench/results/2026-11-16-campaign-closeout/README.md)
+supersede the unfinished closeout instructions below. Nine production browser
+functional checks pass. Shared health retains the failed fixture ingress and
+an unrelated agentctl connection failure. Timing acceptance is deferred because
+the Mac host is busy. Six parked draft branches were archived and retired.
+External blockers remain ticketed. The tenfold objective is not established.
+
 ## Resume inspection
 
 The owner requested resumption. A bounded read-only inspection is recorded in

@@ -1,0 +1,473 @@
+{
+  "functionalOnly": true,
+  "timing": "perf gate deferred: host busy",
+  "ok": true,
+  "records": [
+    {
+      "kind": "initial-navigation",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          }
+        ],
+        "ok": true,
+        "reads": 1,
+        "selected": "1h"
+      }
+    },
+    {
+      "kind": "uncached",
+      "range": "6h",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 2,
+        "selected": "6h"
+      }
+    },
+    {
+      "kind": "uncached",
+      "range": "24h",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 3,
+        "selected": "24h"
+      }
+    },
+    {
+      "kind": "uncached",
+      "range": "7d",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 4,
+        "selected": "7d"
+      }
+    },
+    {
+      "kind": "cached",
+      "range": "1h",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 4,
+        "selected": "1h"
+      }
+    },
+    {
+      "kind": "cached",
+      "range": "6h",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 4,
+        "selected": "6h"
+      }
+    },
+    {
+      "kind": "cached",
+      "range": "24h",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 4,
+        "selected": "24h"
+      }
+    },
+    {
+      "kind": "cached",
+      "range": "7d",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          }
+        ],
+        "ok": true,
+        "reads": 4,
+        "selected": "7d"
+      }
+    },
+    {
+      "kind": "refresh",
+      "result": {
+        "checks": {
+          "bounds": true,
+          "charts": true,
+          "count": true,
+          "failures": true,
+          "issues": true,
+          "nonempty": true,
+          "outcomes": true,
+          "ready": true,
+          "settled": true
+        },
+        "journeys": [
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "navigation"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "1h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "6h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "24h",
+            "source": "range"
+          },
+          {
+            "cache": true,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "range"
+          },
+          {
+            "cache": false,
+            "outcome": "ok",
+            "range": "7d",
+            "source": "refresh"
+          }
+        ],
+        "ok": true,
+        "reads": 5,
+        "selected": "7d"
+      }
+    }
+  ]
+}

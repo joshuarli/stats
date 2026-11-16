@@ -1,6 +1,42 @@
 # Stats performance campaign
 
-## Status
+## Final status
+
+**Closed with blocked goals on 2026-11-16. The tenfold performance objective
+is not established.** The owner resumed unattended execution after handoff.
+Attempt budgets bound experiments, not handoffs back to the owner. W7 closeout
+is complete with the qualifications in [the closeout record](../bench/results/2026-11-16-campaign-closeout/README.md).
+
+| Goal | Final state | Evidence and remaining work |
+| --- | --- | --- |
+| P1 | **Pass for the recorded production cohort** | Original 200-sample range distributions remain qualified to that deployment. Fresh functional cached switches pass. Tenfold acceptance is blocked under P6 |
+| P2 | **Blocked: actor sleep unobservable** | Recorded awake cohort passes; fresh functional reads pass. STUF-86 retains the missing sleep signal |
+| P3 | **Pass for the recorded production cohort** | Original 200-document distribution retains its asset-cache qualification. Fresh functional navigation passes. Tenfold acceptance is blocked under P6 |
+| P4 | **Pass for the observed cohort** | 17 of 17 delivered slow journeys attributed. No population or lossless-delivery claim |
+| P5 | **Pass for the recorded local cases** | 14 desktop/mobile incident cases pass with the unchanged ten-second cap |
+| P6 | **Blocked: native fixture import fencing** | Fresh Engine and empty depot reproduce failure after 25,000 acknowledged rows. STUF-87 |
+| P7 | **Blocked: overhead and collector-failure parity unmeasured** | Freshness cohort passes. Complete scale workload unavailable. STA-128 depends on STUF-87 |
+| P8 | **Blocked: incomplete invalid native soak and missing coverage** | Browser retained heap cohort passes. Native series remains invalid. STUF-88 |
+| P9 | **Blocked: native recovery acceptance unestablished** | One fresh-depot reopen preserved the 25,000-row import count. Exact row equality and repeated recovery remain unverified. STUF-87 |
+
+Production remains `stats:6cc06db247a3`, node version 24. No candidate was
+accepted for deployment during resumption. Master includes later runtime
+changes and must not be described as identical to production. Those changes
+were not deployed as part of this performance closeout.
+
+W7's nine production functional browser checks pass. Stats shared-health
+checks pass, but the overall health report fails on `stats-next` ingress (502)
+and agentctl's absent connected nodes. **perf gate deferred: host busy** on
+the Mac. No new latency acceptance or release qualification is claimed.
+All six campaign `park/*` branches were archived and retired. Unrelated
+worktrees and protected failed fixtures remain intact.
+
+Blocked work is retained in STUF-86, STUF-87, STUF-88 and STA-128. It can
+proceed within each ticket's scope without silently resetting this campaign's
+budgets or acceptance thresholds. Engine repair and upgrades remain outside
+the Stats performance campaign. No replacement soak is running.
+
+## Handoff status (historical)
 
 After handoff, the owner authorized one fresh isolated Engine/depot reproduction.
 It reproduced filesystem fencing after 25,000 acknowledged rows with zero
@@ -65,9 +101,8 @@ attempt and defines when to report a result as blocked.
 Production runs `stats:6cc06db247a3` on Orange node version 24, built from code
 revision `af4890a3bb5`. The rollback image is `stats:03d3d4f1fcb8` on node
 version 23. Earlier images are unsuitable rollback targets after rollup creation;
-see [the handoff](runtime-hardening-handoff.md). Master contains the deployed
-code. Every later commit changes only bench, docs, CI or tests, so production
-does not need a redeploy to be current.
+see [the handoff](runtime-hardening-handoff.md). This matched master at the
+original handoff. Later runtime changes mean that equivalence no longer holds.
 
 | ID | State | Remaining work |
 | --- | --- | --- |
@@ -93,11 +128,11 @@ does not need a redeploy to be current.
   at `stats-next.17166969.xyz` and the local suites. Do not stress production
   or other applications, and do not restart the shared Engine.
 
-## Work queue
+## Original work queue (historical)
 
-This is the original queue, suspended by the owner's stop instruction above.
-The handoff records actual attempts and remaining work. Its presence does not
-automatically resume execution or grant fresh budgets.
+This is the original queue. The final status above records its closeout.
+The handoff records attempts and the subsequent owner-authorized resumption.
+These historical instructions do not grant fresh experiment budgets.
 
 Execute in order. W2–W5 may interleave while the soak runs. Each item has an
 attempt budget. When an item exhausts it, record the evidence as **blocked**

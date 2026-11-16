@@ -1,0 +1,70 @@
+{
+  "ok": false,
+  "results": [
+    {
+      "check": "openrc oo-app.stats",
+      "status": "PASS",
+      "detail": "started"
+    },
+    {
+      "check": "container oo-app-stats",
+      "status": "PASS",
+      "detail": "running 2026-11-15T16:25:30.699298162Z"
+    },
+    {
+      "check": "app stats: network isolation",
+      "status": "PASS",
+      "detail": "openorange"
+    },
+    {
+      "check": "platform: HTTP readiness",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "store /health",
+      "status": "PASS",
+      "detail": "http 200"
+    },
+    {
+      "check": "engine /health",
+      "status": "PASS",
+      "detail": "http 200 version=3.1.1"
+    },
+    {
+      "check": "namespace stats-prod",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "check": "pools stats-prod/{default,services}",
+      "status": "PASS",
+      "detail": "present"
+    },
+    {
+      "check": "app stats: node connected to engine",
+      "status": "PASS",
+      "detail": "2/2 nodes connected"
+    },
+    {
+      "check": "app stats: HTTP on private network",
+      "status": "PASS",
+      "detail": "http 401"
+    },
+    {
+      "check": "app agentctl: node connected to engine",
+      "status": "FAIL",
+      "detail": "0/0 nodes connected"
+    },
+    {
+      "check": "ingress stats.17166969.xyz",
+      "status": "PASS",
+      "detail": "http 200"
+    },
+    {
+      "check": "ingress stats-next.17166969.xyz",
+      "status": "FAIL",
+      "detail": "http 502"
+    }
+  ]
+}
