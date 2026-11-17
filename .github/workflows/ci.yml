@@ -41,6 +41,29 @@ jobs:
           chmod +x .work/tmp/tool-bin/jaq
           echo "$PWD/.work/tmp/tool-bin" >> "$GITHUB_PATH"
 
+      - name: Check out legacy baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e58e9885c90082a006713b14a9d8fe348ecd2dbe
+          path: .work/wt/baseline
+          persist-credentials: false
+
+      - name: Install legacy build tools
+        uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
+        with:
+          version: 12.15.0
+          runtime: node@26.12.1
+          working-directory: .work/wt/baseline
+          dest: ${{ github.workspace }}/.work/tmp/legacy-pnpm
+          install: false
+
+      - name: Build legacy Workers
+        working-directory: .work/wt/baseline
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir cloudflare build
+          pnpm --dir cloudflare run build:observe
+
       - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
         with:
           version: 12.21.0
@@ -59,6 +82,8 @@ jobs:
         run: cd deploy/orange && pnpm install --frozen-lockfile
 
       - name: Tests
+        env:
+          BASELINE_WORKTREE: ${{ github.workspace }}/.work/wt/baseline
         run: make test-ci
 
   dashboard:

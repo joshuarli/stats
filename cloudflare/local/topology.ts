@@ -125,8 +125,8 @@ export function readBuiltWorker(output: string): BuiltWorker {
   return parseBuiltWorker(output, readFileSync(join(output, "worker.config.json"), "utf8"));
 }
 
-export function readTestVars(): Readonly<Record<string, string>> {
-  return (JSON.parse(readFileSync(WRANGLER_TEST, "utf8")) as { vars: Record<string, string> }).vars;
+export function readTestVars(path = WRANGLER_TEST): Readonly<Record<string, string>> {
+  return (JSON.parse(readFileSync(path, "utf8")) as { vars: Record<string, string> }).vars;
 }
 
 export type Outbound = (request: MiniflareRequest) => MiniflareResponse | Promise<MiniflareResponse>;

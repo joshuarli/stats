@@ -65,10 +65,15 @@ See [development](development.md) for file/name selectors and the JSON inventory
   `test/external/services.test.ts`.
   Select `--suite services-external` with prepared `TANSU_DIR` and
   `NICEFORGE_DIR` checkouts. Those external checks are explicit opt-ins.
-- **Upgrade.** `test/local/upgrade.test.ts` opens state written by the build of
-  `a5918ea~1` with the current build. It reads that build from
-  `BASELINE_WORKTREE` (default `.work/wt/baseline`) and skips with the build
-  command when it is absent.
+- **Upgrade.** `test/local/upgrade.test.ts` opens state written by the last
+  build before schema version 8 with the current build. The Linux CI job
+  pins that revision, builds both legacy Workers and sets `BASELINE_WORKTREE`.
+  The test signs requests with the legacy checkout's test key and verifies
+  that its Worker rejects an unsigned request.
+  To run the test locally, follow the legacy build steps in
+  `.github/workflows/ci.yml`, then select the test through `scripts/run-tests.mjs`.
+  An explicit `BASELINE_WORKTREE` requires both bundles. If the variable is
+  unset and `.work/wt/baseline` has no build, the local test skips.
 - **Offline.** The stack answers every outbound request with 503, and
   `dispose()` throws naming any URL the scenario did not declare. A scenario
   declares the probe URLs in its registry. `scripts/offline-run.sh` adds the
