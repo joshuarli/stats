@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 129
+Next: 130
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -13,6 +13,15 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
+### STA-129 · P1 · Investigate deployment stall and interrupted rollback
+
+- **Area:** Deployment
+- **Where:** docs/DEPLOYMENT-STALL-INVESTIGATION.md; deploy/orange/deploy.sh; deploy/deployed-smoke.sh; scripts/step.sh; Makefile deploy
+- **Problem:** The owner cancelled make deploy after worker deploy stalled. Its log proves image creation and restart completed, then rollback selected the old image but failed to restart it. Read-only inspection observes old image stats:6cc06db247a3 selected at version 26 while the container runs stats:c9a71b2ba127 with node version 25 and OpenRC reports starting. Public health and data routes answer. Exact original blocked request is unproven. Smoke curl requests lack deadlines and the single progress label hides all deployment phases. P1 assumed for the demonstrated incomplete release and rollback path.
+- **Recommendation:** Preserve the cancelled log and inspect selected versus running state. Obtain production reconciliation authorization, then restore the selected image and verify readiness. Independently reproduce blocked HTTP and cancellation with local stubs. Bound smoke requests and rollback, expose deployment substages, and measure the full authorized workflow without skipping release checks.
+- **Fix with:** root-cause
+- **Effort:** M
+
 ### STA-128 · P2 · Measure observation overhead after the tenfold fixture is usable
 
 - **Area:** Performance
@@ -21,3 +30,4 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** Resolve STUF-87 in the owning runtime, then prepare an isolated exact-output-verified tenfold fixture under a bounded ticket-specific attempt budget. Preserve failed state and the original campaign thresholds. Run five interleaved enabled/disabled rounds with representative ingestion and ten real dashboard clients, separating Stats CPU from Engine CPU. Require less than 3 percent CPU and 5 percent latency overhead, preserve failed outcomes, verify collector failure leaves application results unchanged, and report inconclusive when same-variant spread exceeds either threshold.
 - **Fix with:** make-it-fast
 - **Effort:** M
+
