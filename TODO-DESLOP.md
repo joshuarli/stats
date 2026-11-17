@@ -5,19 +5,11 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
-Not started.
+Diagnose at `6cbab0ef155f6fc999cae8c388f82693a121740d` found no independently reproduced new defect. Risk order, local harness commands, the unproven Rust uploader lead, and review limits are in [diagnose](docs/deslop-diagnose.md). DSLP-7 and DSLP-8 remain known; Types, Tests, and Dead code are pending. Full-suite and mutation evidence is not claimed for Diagnose.
 
 ## Tickets
 
 
-### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
-
-- **Area:** deslop · diagnose
-- **Where:** whole repository
-- **Problem:** No review has ranked this repository's risks for the deslop pass.
-- **Recommendation:** Run the deslop Diagnose step. Accept: the diff touches only docs, comments, and this file, and every finding names its Fix with.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-3 · P2 · Types: strict profile and typing findings
 
