@@ -91,6 +91,22 @@ int main(int argc, char **argv) {
       while (count !== ids.size) { count = ids.size; for (const line of lines) { const match = /^\s*(\d+)\s+(\d+)/u.exec(line); if (match && ids.has(Number(match[2]))) ids.add(Number(match[1])); } }
       return lines.filter(line => ids.has(Number(/^\s*(\d+)/u.exec(line)?.[1])));
     };
+    const describe = (pids: number[]): string => {
+      const rows = execFileSync(ps, ["-axo", "pid=,ppid=,stat=,lstart=,command="], { encoding: "utf8" }).split("\n").filter(line => pids.includes(Number(/^\s*(\d+)/u.exec(line)?.[1])));
+      if (process.platform === "linux") for (const pid of pids) {
+        try { rows.push(`proc stat: ${readFileSync(`/proc/${pid}/stat`, "utf8").trim()}`); }
+        catch { rows.push(`proc stat unavailable: ${pid}`); }
+      }
+      return rows.join("\n");
+    };
+    const assertGone = (pids: number[], before: string): void => {
+      try {
+        for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+      } catch (error) {
+        console.error(`process identities before shutdown:\n${before}\nprocesses after shutdown:\n${describe(pids)}`);
+        throw error;
+      }
+    };
     const initialTree = tree(first.child.child.pid!);
     assert.ok(initialTree.some(line => line.includes(`${initial.backendPid} `) && /open-orange\/dist\/bin\.js dev/u.test(line)));
     assert.ok(initialTree.every(line => !/workerd/u.test(line)));
@@ -150,10 +166,11 @@ int main(int argc, char **argv) {
     assert.equal(observed.headers.get("X-Dev-Probe"), "observe");
     assert.deepEqual(await hosts(initial.origin), before);
     const oldPids = tree(first.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
+    const oldIdentities = describe(oldPids);
     await first.stop();
     const deadline = Date.now() + 5000;
     while (oldPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
-    for (const pid of oldPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+    assertGone(oldPids, oldIdentities);
     assert.equal((await fetch(`${other.origin}/health`)).status, 200);
     const warmStarted = performance.now();
     first = launch("first");
@@ -163,10 +180,11 @@ int main(int argc, char **argv) {
     assert.deepEqual(await hosts(restarted.origin), before);
     assert.doesNotMatch(readFileSync(first.child.logPath, "utf8"), /Bearer |eyJhbGci/u);
     const secondPids = tree(second.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
+    const secondIdentities = describe(secondPids);
     await second.stop("SIGINT");
     const secondDeadline = Date.now() + 5000;
     while (secondPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < secondDeadline) await new Promise(resolve => setTimeout(resolve, 100));
-    for (const pid of secondPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+    assertGone(secondPids, secondIdentities);
   } finally {
     await first?.stop();
     await second?.stop();
