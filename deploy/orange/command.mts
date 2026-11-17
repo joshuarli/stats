@@ -36,6 +36,7 @@ export function runCommand(file: string, args: readonly string[], { timeoutMs, s
     child.stderr.on("data", (chunk: Buffer) => { lastOutput = performance.now(); output(chunk, true); });
     child.once("error", error => { failure ??= error; });
     child.once("close", (code, name) => {
+      if (escalation) kill("SIGKILL");
       clearTimeout(deadline); clearTimeout(escalation); clearInterval(progress);
       signal?.removeEventListener("abort", aborted);
       if (failure) reject(failure);
