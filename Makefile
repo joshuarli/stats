@@ -103,6 +103,7 @@ preview: work-ready node-ready
 
 lint: node-ready
 	pnpm --filter @stats/telemetry lint
+	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts'
 
 auth-ready:
 	ssh '$(ORANGE_HOST)' 'test -x /opt/openorange/bin/oo && doas -n true'
@@ -120,7 +121,11 @@ observe-bundle: node-ready
 observe-deploy:
 	@echo 'Cloudflare deployment is retired: this tree authenticates through the tailnet gateway; see docs/openorange.md' >&2; exit 1
 
-stats-deploy worker-deploy: auth-ready work-ready node-ready
+.PHONY: stats-deploy-check
+stats-deploy-check: work-ready node-ready
+	deploy/orange/deploy.sh --check '$(ORANGE_HOST)'
+
+stats-deploy worker-deploy: work-ready node-ready
 	deploy/orange/deploy.sh '$(ORANGE_HOST)'
 
 observe-sourcemap: node-ready
@@ -131,13 +136,13 @@ worker-test: work-ready node-ready
 	@test -z "$$(git ls-files '*.png')" || { echo 'PNG files must not be tracked; use webp' >&2; git ls-files '*.png' >&2; exit 1; }
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test:all
 
-deploy: auth-ready work-ready
+deploy: work-ready node-ready
+	@$(MAKE) --no-print-directory stats-deploy-check
 	@scripts/step.sh 'fixtures' $(MAKE) --no-print-directory fixtures
 	@scripts/step.sh 'worker tests' $(MAKE) --no-print-directory worker-test
 	@scripts/step.sh 'agent tests' $(MAKE) --no-print-directory agent-test
 	@scripts/step.sh 'agent build' $(MAKE) --no-print-directory agent-build
-	@scripts/step.sh -s 'Current Version ID|\(custom domain\)' 'worker deploy' $(MAKE) --no-print-directory worker-deploy
-	@scripts/step.sh -s '^OK' 'smoke' $(MAKE) --no-print-directory smoke-deployed
+	@$(MAKE) --no-print-directory worker-deploy
 	@$(MAKE) --no-print-directory push-hosts
 
 deploy-hosts: agent-test agent-build

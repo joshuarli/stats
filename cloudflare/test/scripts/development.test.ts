@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { chromium } from "@playwright/test";
@@ -52,11 +52,38 @@ await test("development hot updates, reloads, keeps the last good build and stat
   let first: ReturnType<typeof launch> | undefined;
   let second: ReturnType<typeof launch> | undefined;
   try {
+    let ps = "ps";
+    let rss = (lines: string[]): number => lines.reduce((sum, line) => sum + Number(/^\s*\d+\s+\d+\s+(\d+)/u.exec(line)?.[1] ?? 0), 0);
+    if (process.platform === "darwin") {
+      ps = join(workspace.repo, "ps");
+      copyFileSync("/bin/ps", ps);
+      chmodSync(ps, 0o755);
+      execFileSync("codesign", ["--force", "--sign", "-", ps]);
+      const source = join(workspace.repo, "rss.c");
+      const sampler = join(workspace.repo, "rss");
+      writeFileSync(source, `#include <libproc.h>
+#include <stdio.h>
+#include <stdlib.h>
+int main(int argc, char **argv) {
+  unsigned long long total = 0;
+  for (int i = 1; i < argc; i++) {
+    struct proc_taskinfo info;
+    if (proc_pidinfo(atoi(argv[i]), PROC_PIDTASKINFO, 0, &info, sizeof(info)) != sizeof(info)) return 1;
+    total += info.pti_resident_size;
+  }
+  printf("%llu\\n", total / 1024);
+  return 0;
+}
+`);
+      execFileSync("clang", ["-o", sampler, source]);
+      rss = lines => Number(execFileSync(sampler, lines.map(line => /^\s*(\d+)/u.exec(line)![1]!), { encoding: "utf8" }).trim());
+      assert.ok(rss([String(process.pid)]) > 0);
+    }
     first = launch("first");
     const started = performance.now();
     const initial = await first.wait("dev-ready");
     const coldMs = performance.now() - started;
-    const processes = (): string => execFileSync("ps", ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
+    const processes = (): string => execFileSync(ps, ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
     const tree = (root: number): string[] => {
       const lines = processes().trim().split("\n");
       const ids = new Set([root]);
@@ -64,10 +91,27 @@ await test("development hot updates, reloads, keeps the last good build and stat
       while (count !== ids.size) { count = ids.size; for (const line of lines) { const match = /^\s*(\d+)\s+(\d+)/u.exec(line); if (match && ids.has(Number(match[2]))) ids.add(Number(match[1])); } }
       return lines.filter(line => ids.has(Number(/^\s*(\d+)/u.exec(line)?.[1])));
     };
+    const describe = (pids: number[]): string => {
+      const rows = execFileSync(ps, ["-axo", "pid=,ppid=,stat=,lstart=,command="], { encoding: "utf8" }).split("\n").filter(line => pids.includes(Number(/^\s*(\d+)/u.exec(line)?.[1])));
+      if (process.platform === "linux") for (const pid of pids) {
+        try { rows.push(`proc stat: ${readFileSync(`/proc/${pid}/stat`, "utf8").trim()}`); }
+        catch { rows.push(`proc stat unavailable: ${pid}`); }
+      }
+      return rows.join("\n");
+    };
+    const assertGone = (pids: number[], before: string, launchResult: ReturnType<typeof launch>): void => {
+      try {
+        for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+      } catch (error) {
+        console.error(`dev exit: code=${launchResult.child.child.exitCode} signal=${launchResult.child.child.signalCode} stopped=${launchResult.statuses.some(status => status.event === "dev-stopped")}\nprocess identities before shutdown:\n${before}\nprocesses after shutdown:\n${describe(pids)}`);
+        throw error;
+      }
+    };
     const initialTree = tree(first.child.child.pid!);
     assert.ok(initialTree.some(line => line.includes(`${initial.backendPid} `) && /open-orange\/dist\/bin\.js dev/u.test(line)));
     assert.ok(initialTree.every(line => !/workerd/u.test(line)));
-    const rssKb = initialTree.reduce((sum, line) => sum + Number(/^\s*\d+\s+\d+\s+(\d+)/u.exec(line)?.[1] ?? 0), 0);
+    const rssKb = rss(initialTree);
+    assert.ok(rssKb > 0);
     second = launch("second", otherWorkspace);
     const other = await second.wait("dev-ready");
     assert.notEqual(initial.origin, other.origin);
@@ -122,10 +166,11 @@ await test("development hot updates, reloads, keeps the last good build and stat
     assert.equal(observed.headers.get("X-Dev-Probe"), "observe");
     assert.deepEqual(await hosts(initial.origin), before);
     const oldPids = tree(first.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
+    const oldIdentities = describe(oldPids);
     await first.stop();
     const deadline = Date.now() + 5000;
     while (oldPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
-    for (const pid of oldPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+    assertGone(oldPids, oldIdentities, first);
     assert.equal((await fetch(`${other.origin}/health`)).status, 200);
     const warmStarted = performance.now();
     first = launch("first");
@@ -135,10 +180,11 @@ await test("development hot updates, reloads, keeps the last good build and stat
     assert.deepEqual(await hosts(restarted.origin), before);
     assert.doesNotMatch(readFileSync(first.child.logPath, "utf8"), /Bearer |eyJhbGci/u);
     const secondPids = tree(second.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
+    const secondIdentities = describe(secondPids);
     await second.stop("SIGINT");
     const secondDeadline = Date.now() + 5000;
     while (secondPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < secondDeadline) await new Promise(resolve => setTimeout(resolve, 100));
-    for (const pid of secondPids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
+    assertGone(secondPids, secondIdentities, second);
   } finally {
     await first?.stop();
     await second?.stop();

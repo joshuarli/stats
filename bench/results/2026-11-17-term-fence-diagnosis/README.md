@@ -94,6 +94,14 @@ exit zero. Both intervening reopens preserve the complete observation and
 Installation manifests. The driver captures no snapshot after the third stop.
 No tenth-cycle trigger is reproduced and no Engine repair is claimed.
 
+The initial complete snapshot equals the original recovery cohort's saved
+baseline, including every Installation table and all 219,939 canonical events.
+The event-table SHA-256 remains
+`0114eb033b8d570bfdd7ee28fd3509b532b522559721652ef62924d639273996`.
+This establishes exact readback from the copied post-failure depot with the
+diagnostic release binary. It does not establish a successful tenth shutdown
+or reopen the preserved original depot.
+
 The container `stats-stuf90-diagnostic-20261117` is stopped. The failed original
 depot remains unopened. Production selection and services are unchanged by
 this investigation. The changed disk capacities, diagnostic logging, and

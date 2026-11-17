@@ -43,6 +43,7 @@ missing.
 ```sh
 make worker-check          # build + deploy validation, no upload
 make deploy                # tests, Worker, live smoke, then every host
+make stats-deploy-check    # read-only selected/running image and node version
 make deploy-host-<key>     # one host from deploy/hosts.json, idempotent
 make deploy-hosts          # every host in the manifest
 make rollback-host-<key>   # restore /usr/local/bin/stats.prev on one host
