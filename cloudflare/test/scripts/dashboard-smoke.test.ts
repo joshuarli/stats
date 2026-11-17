@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { LOG_CALL, withWorkspace, type Outcome, type Workspace } from "./harness.ts";
 
-const CURL = `${LOG_CALL}out=; hdr=; fmt=; method=GET; auth=; ctype=; data=
+const CURL = `${LOG_CALL}out=; hdr=; fmt=; method=GET; auth=; ctype=; data=; connect=; max=
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out=$2; shift 2 ;;
@@ -16,10 +17,13 @@ while [ $# -gt 0 ]; do
       esac
       shift 2 ;;
     --data|--data-binary) data=$2; shift 2 ;;
+    --connect-timeout) connect=$2; shift 2 ;;
+    --max-time) max=$2; shift 2 ;;
     -*) shift ;;
     *) url=$1; shift ;;
   esac
 done
+[ "$connect" = 5 ] && [ "$max" -gt 0 ] && [ "$max" -le 10 ] || exit 90
 body=; status=; type=
 case "$url" in
   */health)
@@ -84,7 +88,7 @@ esac
 function stubs(workspace: Workspace): void {
   workspace.install("curl", CURL);
   workspace.install("sleep", "exit 0\n");
-  workspace.install("date", `n=$(cat "$STUB_STATE/clock" 2>/dev/null || echo 0); n=$((n + 30)); echo "$n" > "$STUB_STATE/clock"; echo "$n"\n`);
+  workspace.install("date", `n=$(cat "$STUB_STATE/clock" 2>/dev/null || echo 0); n=$((n + 10)); echo "$n" > "$STUB_STATE/clock"; echo "$n"\n`);
 }
 
 function smoke(env: Record<string, string>): Promise<Outcome> {
@@ -104,4 +108,26 @@ await test("the smoke fails when the entry page references an asset the deploy d
   const outcome = await smoke({ STUB_DASHBOARD_BROKEN: "yes" });
   assert.notEqual(outcome.code, 0);
   assert.match(outcome.stderr, /did not serve the assets its entry page references/u);
+});
+
+await test("the smoke fails when an HTTP peer accepts but never answers", { timeout: 15000 }, async context => {
+  const server = createServer(() => {});
+  await new Promise<void>(done => server.listen(0, "127.0.0.1", done));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const abort = () => server.closeAllConnections();
+  context.signal.addEventListener("abort", abort, { once: true });
+  try {
+    await withWorkspace(async workspace => {
+      workspace.install("curl", 'exec /usr/bin/curl "$@"\n');
+      const outcome = await workspace.run("deployed-smoke.sh", [], { STATS_URL: `http://127.0.0.1:${address.port}` });
+      assert.equal(outcome.code, 1);
+      assert.match(outcome.stderr, /health request failed/u);
+      assert.deepEqual(outcome.leftovers, []);
+    });
+  } finally {
+    context.signal.removeEventListener("abort", abort);
+    server.closeAllConnections();
+    await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));
+  }
 });

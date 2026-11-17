@@ -45,12 +45,37 @@ restores its existing project views.
 ## Deploy
 
 ```sh
+make stats-deploy-check ORANGE_HOST=lisa
 make stats-deploy ORANGE_HOST=lisa
 ```
 
+The read-only check compares the selected image and node version with the
+running Stats container. A mismatch must be reconciled before deployment.
+`make deploy` runs this check before its fixtures, Worker tests, agent tests
+and agent builds. The deployment checks the state again before building.
+
 The deploy script builds a committed tree, conditionally selects its image,
-restarts Stats and runs health and live smoke checks. Failure restores the
-previous image only if this deployment still owns the selected image.
+restarts Stats and runs health and live smoke checks. It displays elapsed
+time, the current stage and its deadline. Silent commands print wait updates.
+The full log is `.work/tmp/steps/worker-deploy.log`. `STEP_LOG_DIR` overrides
+the directory. The log is private and rejects a symlink at the log filename.
+Run `deploy/orange/deploy.sh --help` for the enforced deadlines.
+
+Failure restores the previous image only after selection was acknowledged
+and verified, while the observed release still matches this deployment.
+Uncertain ownership requires inspection. Cancellation lets an in-flight selection or restart
+finish within its deadline before rollback begins. Further cancellation
+signals do not interrupt rollback. The command verifies the restored image
+and runtime node version before re-raising the original signal.
+If rollback cannot be verified, the command reports both errors and fails.
+Command termination has a bounded grace after its deadline.
+The host retains its image-conditional write contract. Deployment is not one
+atomic transaction with a concurrent manual operator.
+
+Every smoke HTTP request has a connection timeout and request deadline.
+Dashboard requests also share the existing dashboard deadline. `make deploy`
+runs the complete smoke inside app deployment once, then updates the agents.
+The standalone `make smoke-deployed` command remains available.
 Successful activations and healthy rollbacks are recorded through the shared
 host's `oo record-deployment` helper. Provision the Stats service's protected
 deploy credential on the host as described in

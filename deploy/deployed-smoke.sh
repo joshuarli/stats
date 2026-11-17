@@ -12,10 +12,21 @@ trap 'rm -rf "$work"' 0
 trap 'reraise HUP' 1
 trap 'reraise INT' 2
 trap 'reraise TERM' 15
+trap 'reraise QUIT' 3
 
 fail() {
   echo "FAIL: $*" >&2
   exit 1
+}
+
+request() {
+  limit=10
+  if [ -n "${dashboard_deadline:-}" ]; then
+    remaining=$(( dashboard_deadline - $(date +%s) ))
+    [ "$remaining" -gt 0 ] || return 28
+    [ "$remaining" -ge "$limit" ] || limit=$remaining
+  fi
+  curl --connect-timeout 5 --max-time "$limit" "$@"
 }
 
 repo=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
@@ -31,12 +42,12 @@ asset_refs() {
 }
 
 dashboard_ok() {
-  status=$(curl -sS -o "$work/root" -w '%{http_code}' "$base/") || return 1
+  status=$(request -sS -o "$work/root" -w '%{http_code}' "$base/") || return 1
   [ "$status" = 200 ] || return 1
   refs=$(asset_refs "$work/root") || return 1
   [ -n "$refs" ] || return 1
   for path in $refs; do
-    result=$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' "$base$path") || return 1
+    result=$(request -sS -o /dev/null -w '%{http_code} %{content_type}' "$base$path") || return 1
     asset_status=${result%% *}
     asset_type=${result#* }
     [ "$asset_status" = 200 ] || return 1
@@ -49,7 +60,7 @@ dashboard_ok() {
   return 0
 }
 
-curl -fsS -D "$work/headers" -o "$work/health" "$base/health" || fail "health request failed"
+request -fsS -D "$work/headers" -o "$work/health" "$base/health" || fail "health request failed"
 jaq -e '.ok == true and .service == "stats"' "$work/health" >/dev/null || fail "health response is not this service"
 
 for header in \
@@ -66,7 +77,7 @@ expect() {
   code=$2
   label=$3
   shift 3
-  got=$(curl -sS -o "$work/body" -w '%{http_code}' "$@") || fail "$label: request failed"
+  got=$(request -sS -o "$work/body" -w '%{http_code}' "$@") || fail "$label: request failed"
   [ "$got" = "$want" ] || fail "$label returned $got, expected $want"
   if [ -n "$code" ]; then
     jaq -e --arg code "$code" '.error.code == $code' "$work/body" >/dev/null || fail "$label: error code is not $code"
@@ -81,11 +92,9 @@ printf 'STB2\001' > "$work/old-version"
 expect 400 unknown_version "STB2 frame with version 1" -X POST -H "Authorization: Bearer $fake" -H "Content-Type: $media" --data-binary "@$work/old-version" "$ingest"
 expect 401 unauthorized "valid STB2 frame with an unknown token" -X POST -H "Authorization: Bearer $fake" -H "Content-Type: $media" --data-binary "@$frame" "$ingest"
 
-api_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/hosts")
+api_status=$(request -sS -o /dev/null -w '%{http_code}' "$base/api/v1/hosts")
 [ "$api_status" = 200 ] || fail "GET /api/v1/hosts returned $api_status; run the smoke from a tailnet device so the gateway asserts its identity"
 
-# The Worker and its assets propagate separately, so a deploy can report
-# success while the entry page references assets that are not live yet.
 dashboard_deadline=$(( $(date +%s) + 90 ))
 until dashboard_ok; do
   if [ "$(date +%s)" -ge "$dashboard_deadline" ]; then

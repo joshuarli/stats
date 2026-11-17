@@ -1,0 +1,10 @@
+{
+  "extends": "../../cloudflare/tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "typeRoots": ["../../cloudflare/node_modules/@types"]
+  },
+  "include": ["command.mts", "deploy.mts"]
+}

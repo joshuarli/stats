@@ -205,6 +205,10 @@ copy, then completes three diagnostic TERM stops with exit zero. Both
 intervening reopens preserve full observation and Installation snapshots.
 There is no post-third-stop snapshot. STUF-90 remains unreproduced and open.
 The diagnostic container is stopped. No import or acceptance allowance resets.
+The copy's initial snapshot equals the original cohort's saved baseline:
+all 219,939 canonical events and the complete Installation manifest. This
+supports exact readback of the copied post-failure state with the diagnostic
+binary. It does not establish a successful tenth shutdown.
 
 The owner separately runs and cancels `make deploy`. The
 [deployment investigation](DEPLOYMENT-STALL-INVESTIGATION.md), STA-129,
@@ -217,3 +221,11 @@ production status. The agent has not changed production selection or services.
 The owner clarifies that the requested follow-up improves the deployment
 command's progress, timeouts, and rollback. It does not upgrade the shared
 Engine or authorize a production reconciliation.
+The command now has early read-only preflight, visible bounded stages and
+conditional rollback. Cancellation lets an in-flight restart settle before
+rollback verifies image and runtime node version.
+Twenty-five deployment cases pass on both macOS and Linux. Smoke and existing
+signal cases pass on macOS, and typecheck and lint pass. The preflight rejects
+the observed production mismatch without building or changing production.
+STA-129 retains the required owner choice and live qualification. The exact
+original stalled request remains unproven.
