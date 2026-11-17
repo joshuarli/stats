@@ -1,5 +1,70 @@
 # Performance measurement
 
+## Native observation overhead
+
+`observation-overhead.mjs` owns ten isolated agent-browser sessions. Each full
+round performs 200 uncached selections and 200 cached selections per range,
+with 1,024 concurrent ingested events drawn across the frozen operation mix.
+The five disabled/enabled pairs retain browser errors, exact response digests,
+Stats process CPU, Engine process CPU, memory and collector delivery counters.
+Latency acceptance compares p95 separately for every range, retaining p50 and
+p99 as well. A faster range cannot hide another range's regression.
+CPU includes each measured process's stable descendant tree. Process replacement
+invalidates the round. Collector and driver CPU share a separate accounting field.
+
+The server compares complete browser responses with `application-reference.mjs`.
+It also reads back every acknowledged ingestion event and checks duplicate,
+conflicting and malformed batches. A final round injects HTTP 503 from the
+collector and compares application outcomes with the disabled baseline.
+Native actor selector discovery uses untimed 100% sampling, followed by a
+new application process with the production 10% sampler before measurement.
+CPU accounting includes a six-second export drain and the final producer flush.
+Both hosts are gated before and after each measured round.
+
+Run the native server in a dedicated Linux production-image container with
+two CPUs, 3 GiB and an isolated internal network. Mount the repository sources
+read-only and a protected disposable study directory at `/bench/study`.
+The directory contains `engine/` and `fixture/` from the repaired private
+runtime. The Engine configuration must use storage paths under that directory.
+The server verifies binary and Worker digests before starting them:
+
+```sh
+node /source/bench/observation-overhead-server.mjs --root /bench/study --engine-sha256 SHA256
+```
+
+Forward the isolated container's ports 8787 and 8790 through SSH to Mac
+loopback ports 18787 and 18790. Docker internal networks do not provide
+published host ports. Use the container's actual inspected internal address
+as the SSH forwarding destination. Never forward a production Engine port.
+Copy the fixture authentication file to protected Mac scratch, then run:
+
+```sh
+node bench/observation-overhead.mjs --diagnostic --auth-file .work/tmp/fixture-auth.json --output .work/tmp/overhead-rehearsal.json
+```
+
+Omit `--diagnostic` for the five-pair study. Both host timing gates must pass.
+`--diagnostic-cycles 20` exercises a full-length diagnostic round while retaining
+the diagnostic classification. It does not authorize another accepted study.
+The Mac driver supplies authentication through a loopback streaming proxy on
+port 18887. Credentials never enter browser arguments, assets or result files.
+The SSH route remains explicit in results and does not establish ordinary
+tailnet-ingress browser acceptance. The browser clock uses the imported corpus
+anchor. Retention-clamped response windows remain explicit in each sample.
+
+`prepare-observation-fixture.mjs` creates a fresh Engine, depot, credentials,
+namespace and timestamped import from a protected template. It refuses an
+existing destination and records the single 30-minute attempt. Run it only
+within the recorded preparation allowance:
+
+```sh
+node /source/bench/prepare-observation-fixture.mjs --template /bench/template --root /bench/study --image stats:6cc06db247a3 --sha256 SHA256 --namespace stats-scale-sta128-RUN
+```
+
+Preserve failed state and receipts. The server owns its Engine, application and
+collector resources. The Mac driver owns its proxy and browser sessions. Both
+clean up on errors and termination signals. Host-owned containers and SSH
+tunnels remain the caller's responsibility.
+
 ## Agent benchmark method
 
 Run on a named Linux host only:

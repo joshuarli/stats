@@ -1,5 +1,13 @@
 # Stats performance campaign handoff
 
+## Current resumption
+
+The owner requested STA-128 and STUF-87, followed by further campaign work.
+The [resumption record](STATS-PERFORMANCE-RESUMPTION.md) supersedes the stop
+and repair blockers below. STUF-87's repair is merged. A ten-browser functional
+overhead rehearsal passes, and the single fresh preparation is in progress.
+Performance acceptance remains unestablished.
+
 ## Final closeout
 
 The owner clarified that this campaign should continue unattended. W7 closeout

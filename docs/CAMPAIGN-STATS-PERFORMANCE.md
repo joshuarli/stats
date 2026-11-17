@@ -1,5 +1,12 @@
 # Stats performance campaign
 
+## Current resumption
+
+The owner resumed STA-128 and STUF-87, followed by the remaining campaign.
+See [the active record](STATS-PERFORMANCE-RESUMPTION.md) for the merged runtime
+repair, bounded fresh preparation and functional overhead rehearsal.
+The historical closeout below retains its original qualifications.
+
 ## Final status
 
 **Closed with blocked goals on 2026-11-16. The tenfold performance objective
