@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { chromium } from "@playwright/test";
@@ -52,11 +52,38 @@ await test("development hot updates, reloads, keeps the last good build and stat
   let first: ReturnType<typeof launch> | undefined;
   let second: ReturnType<typeof launch> | undefined;
   try {
+    let ps = "ps";
+    let rss = (lines: string[]): number => lines.reduce((sum, line) => sum + Number(/^\s*\d+\s+\d+\s+(\d+)/u.exec(line)?.[1] ?? 0), 0);
+    if (process.platform === "darwin") {
+      ps = join(workspace.repo, "ps");
+      copyFileSync("/bin/ps", ps);
+      chmodSync(ps, 0o755);
+      execFileSync("codesign", ["--force", "--sign", "-", ps]);
+      const source = join(workspace.repo, "rss.c");
+      const sampler = join(workspace.repo, "rss");
+      writeFileSync(source, `#include <libproc.h>
+#include <stdio.h>
+#include <stdlib.h>
+int main(int argc, char **argv) {
+  unsigned long long total = 0;
+  for (int i = 1; i < argc; i++) {
+    struct proc_taskinfo info;
+    if (proc_pidinfo(atoi(argv[i]), PROC_PIDTASKINFO, 0, &info, sizeof(info)) != sizeof(info)) return 1;
+    total += info.pti_resident_size;
+  }
+  printf("%llu\\n", total / 1024);
+  return 0;
+}
+`);
+      execFileSync("clang", ["-o", sampler, source]);
+      rss = lines => Number(execFileSync(sampler, lines.map(line => /^\s*(\d+)/u.exec(line)![1]!), { encoding: "utf8" }).trim());
+      assert.ok(rss([String(process.pid)]) > 0);
+    }
     first = launch("first");
     const started = performance.now();
     const initial = await first.wait("dev-ready");
     const coldMs = performance.now() - started;
-    const processes = (): string => execFileSync("ps", ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
+    const processes = (): string => execFileSync(ps, ["-axo", "pid=,ppid=,rss=,command="], { encoding: "utf8" });
     const tree = (root: number): string[] => {
       const lines = processes().trim().split("\n");
       const ids = new Set([root]);
@@ -67,7 +94,8 @@ await test("development hot updates, reloads, keeps the last good build and stat
     const initialTree = tree(first.child.child.pid!);
     assert.ok(initialTree.some(line => line.includes(`${initial.backendPid} `) && /open-orange\/dist\/bin\.js dev/u.test(line)));
     assert.ok(initialTree.every(line => !/workerd/u.test(line)));
-    const rssKb = initialTree.reduce((sum, line) => sum + Number(/^\s*\d+\s+\d+\s+(\d+)/u.exec(line)?.[1] ?? 0), 0);
+    const rssKb = rss(initialTree);
+    assert.ok(rssKb > 0);
     second = launch("second", otherWorkspace);
     const other = await second.wait("dev-ready");
     assert.notEqual(initial.origin, other.origin);
