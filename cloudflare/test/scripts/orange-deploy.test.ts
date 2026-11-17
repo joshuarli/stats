@@ -179,29 +179,67 @@ await test("deployment logging rejects a symlink before contacting the host", ()
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
+await test("commands preserve success, exit failure and cancellation identity", async () => {
+  const options = { timeoutMs: 2000, output() {} };
+  assert.equal(await runCommand(process.execPath, ["-e", "console.log('ok')"], options), "ok");
+  await assert.rejects(runCommand(process.execPath, ["-e", "process.exit(7)"], options), /exited 7/u);
+  const controller = new AbortController(), reason = new Error("already cancelled");
+  controller.abort(reason);
+  await assert.rejects(runCommand(process.execPath, [], { ...options, signal: controller.signal }), error => error === reason);
+});
+
+await test("cancellation allows a live leader to finish graceful cleanup", { timeout: 10000 }, async () => {
+  const controller = new AbortController(), reason = new Error("cancel");
+  let output = "";
+  const script = "process.on('SIGTERM',()=>{console.log('cleaned');process.exit(0)});console.log('ready');setInterval(()=>{},1000)";
+  await assert.rejects(runCommand(process.execPath, ["-e", script], {
+    timeoutMs: 2000, signal: controller.signal, output(chunk) {
+      output += chunk;
+      if (output.includes("ready")) controller.abort(reason);
+    }
+  }), error => error === reason);
+  assert.match(output, /cleaned/u);
+});
+
+function processState(pid: number): string {
+  if (process.platform === "linux") {
+    try {
+      const match = /^\d+ \(.+\) ([A-Z]) /u.exec(readFileSync(`/proc/${pid}/stat`, "utf8"));
+      assert.ok(match); return match[1]!;
+    } catch (error) { if (error instanceof Error && "code" in error && error.code === "ENOENT") return ""; throw error; }
+  }
+  return spawnSync("/bin/ps", ["-p", String(pid), "-o", "stat="], { encoding: "utf8" }).stdout.trim();
+}
+
+function killOwnedDescendant(pid: number) {
+  const state = processState(pid);
+  if (state === "" || state.startsWith("Z")) return;
+  try { process.kill(pid, "SIGKILL"); } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error; }
+}
+
 await test("command cancellation also terminates an owned grandchild", { timeout: 10000 }, async () => {
   const controller = new AbortController(), cancelled = new Error("cancel process tree");
-  let descendant: number | undefined, output = "", terminateDescendant = true;
+  let descendant: number | undefined, output = "";
   const failures: unknown[] = [];
   try {
-    await assert.rejects(runCommand(process.execPath, ["-e", "const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(child.pid);setInterval(()=>{},1000);"], {
+    const grandchild = "process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)";
+    const leader = `const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e',${JSON.stringify(grandchild)}],{stdio:['ignore','pipe','ignore']});child.stdout.once('data',()=>console.log(child.pid));setInterval(()=>{},1000);`;
+    await assert.rejects(runCommand(process.execPath, ["-e", leader], {
       timeoutMs: 2000, signal: controller.signal, output(chunk) {
         output += chunk;
         if (output.includes("\n")) { descendant = Number(output.trim()); controller.abort(cancelled); }
       }
     }), error => error === cancelled);
     assert.ok(descendant !== undefined);
-    let status = "";
-    if (process.platform === "linux") {
-      try {
-        const match = /^\d+ \(.+\) ([A-Z]) /u.exec(readFileSync(`/proc/${descendant}/stat`, "utf8"));
-        assert.ok(match); status = match[1]!;
-      } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
-    } else status = spawnSync("/bin/ps", ["-p", String(descendant), "-o", "stat="], { encoding: "utf8" }).stdout.trim();
-    terminateDescendant = status !== "" && !status.startsWith("Z");
-    assert.ok(status === "" || status.startsWith("Z"), `grandchild ${descendant} remains active: ${status}`);
+    const until = performance.now() + 5500;
+    let state = processState(descendant);
+    while (state !== "" && !state.startsWith("Z") && performance.now() < until) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 25));
+      state = processState(descendant);
+    }
+    assert.ok(state === "" || state.startsWith("Z"), `grandchild ${descendant} remains active: ${state}`);
   } catch (error) { failures.push(error); }
-  if (terminateDescendant && descendant !== undefined) { try { process.kill(descendant, "SIGKILL"); } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) failures.push(error); } }
+  if (descendant !== undefined) { try { killOwnedDescendant(descendant); } catch (error) { failures.push(error); } }
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) throw new AggregateError(failures, "process-tree assertion and cleanup failed");
 });
