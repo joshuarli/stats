@@ -5,12 +5,13 @@ import { readFileSync, writeFileSync, openSync, closeSync, readdirSync, mkdirSyn
 import { createServer } from "node:http";
 import { cpus, totalmem } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { inspect, parseArgs } from "node:util";
 import { createProducer } from "../packages/producer/src/index.ts";
 import { createBridgeServer } from "../packages/platform-bridge/src/server.ts";
 import { constantTimeEqual, generateToken, tokenHash } from "../cloudflare/src/auth.ts";
 import { reference } from "./application-reference.mjs";
 import { processCpu } from "./observation-overhead-analysis.mjs";
+import { captureObjectSnapshot } from "./observation-snapshot.mjs";
 
 const { values } = parseArgs({ options: { root: { type: "string" }, "engine-sha256": { type: "string" }, "cpu-profile": { type: "boolean", default: false } } });
 assert.equal(process.platform, "linux");
@@ -29,7 +30,7 @@ const auth = JSON.parse(readFileSync(join(root, "fixture/native-scale-state/fixt
 const state = join(root, "fixture/native-scale-state");
 const headers = { "Stats-Gateway-Secret": auth.secret, "Stats-Tailnet-Identity": "user:benchmark@example.invalid", "content-type": "application/json" };
 const hash = value => createHash("sha256").update(value).digest("hex");
-const tools = Object.fromEntries(["./observation-overhead-server.mjs", "./observation-overhead-analysis.mjs", "./application-reference.mjs", "../packages/platform-bridge/src/server.ts", "../packages/platform-bridge/src/project.ts", "../packages/producer/src/index.ts", "../packages/producer/src/protocol.ts", "../cloudflare/src/auth.ts"].map(path => [path, hash(readFileSync(new URL(path, import.meta.url)))]));
+const tools = Object.fromEntries(["./observation-overhead-server.mjs", "./observation-overhead-analysis.mjs", "./observation-snapshot.mjs", "./application-reference.mjs", "../packages/platform-bridge/src/server.ts", "../packages/platform-bridge/src/project.ts", "../packages/producer/src/index.ts", "../packages/producer/src/protocol.ts", "../cloudflare/src/auth.ts"].map(path => [path, hash(readFileSync(new URL(path, import.meta.url)))]));
 const canonical = value => JSON.stringify(value, (_, item) => item && !Array.isArray(item) && typeof item === "object" ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 assert.equal(hash(readFileSync(join(root, "engine/rivet-engine"))), values["engine-sha256"]);
 const tickUs = 1000000 / Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).trim());
@@ -288,17 +289,11 @@ try {
         assert.ok(app && variant === "disabled" && !before && !ingestion && !values["cpu-profile"]);
         result = {};
         for (const [role, name] of [["observation", "observe:stats"], ["installation", "installation"]]) {
-          const object = `/api/v1/admin/objects/${name}`;
-          assert.equal((await request(`${object}/maintenance`)).body.state, "open");
-          assert.equal((await request(`${object}/maintenance`, { fenced: true })).status, 200);
-          try {
-            const manifest = await request(`${object}/export/manifest`); assert.equal(manifest.status, 200);
-            result[role] = { tables: manifest.body.tables.map(table => ({ name: table.name, rows: table.rows, sha256: table.sha256 })), schema: manifest.body.schema };
-          } finally {
-            const restored = await fetch(`http://127.0.0.1:8787${object}/maintenance`, { method: "POST", headers, body: JSON.stringify({ fenced: false }), signal: AbortSignal.timeout(30000) });
+          result[role] = await captureObjectSnapshot({ request, restore: async path => {
+            const restored = await fetch(`http://127.0.0.1:8787${path}`, { method: "POST", headers, body: JSON.stringify({ fenced: false }), signal: AbortSignal.timeout(30000) });
             assert.equal(restored.status, 200, "private snapshot fence cleanup failed");
             assert.equal((await restored.json()).state, "open");
-          }
+          } }, name);
         }
       }
       else if (url.pathname === "/validate") {
@@ -317,7 +312,7 @@ try {
       }
       else throw new Error("unknown study action");
       response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
-    })().catch(error => { writeFileSync(join(root, "server-error.txt"), error.stack, { mode: 0o600 }); response.writeHead(500).end(JSON.stringify({ error: error.name, message: "study failed; protected diagnostic retained" })); wake(); }).finally(() => { busy = false; });
+    })().catch(error => { writeFileSync(join(root, "server-error.txt"), inspect(error, { depth: 5 }), { mode: 0o600 }); response.writeHead(500).end(JSON.stringify({ error: error.name, message: "study failed; protected diagnostic retained" })); wake(); }).finally(() => { busy = false; });
   });
   await new Promise(done => control.listen(8790, "0.0.0.0", done));
   console.log(JSON.stringify({ ready: true, engineSha256: values["engine-sha256"], events: proof.events }));

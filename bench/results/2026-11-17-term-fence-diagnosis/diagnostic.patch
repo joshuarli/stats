@@ -1,0 +1,64 @@
+diff --git a/engine/packages/depot-worker/src/services/storage.rs b/engine/packages/depot-worker/src/services/storage.rs
+index 57470a4..44c9147 100644
+--- a/engine/packages/depot-worker/src/services/storage.rs
++++ b/engine/packages/depot-worker/src/services/storage.rs
+@@ -140,7 +140,8 @@ async fn start_configured(
+ 	let result = completed
+ 		.context("storage service task failed")
+ 		.and_then(|result| result);
+-	if result.is_err() {
++	if let Err(error) = &result {
++		tracing::error!(?error, "storage task failed before dependent fence");
+ 		let _ = owner.topology.fence(FenceReason::DependentFailed).await;
+ 	}
+ 	result
+@@ -157,6 +158,7 @@ impl Drop for ServiceTask {
+ 	fn drop(&mut self) {
+ 		self.stop.send_replace(true);
+ 		if let Some(joined) = self.joined.take() {
++			tracing::error!("storage task owner dropped before join; requesting dependent fence");
+ 			let topology = self.topology.clone();
+ 			self.env.spawn(Box::pin(async move {
+ 				// Cancellation revokes serving immediately but does not release filesystem ownership.
+@@ -608,7 +610,8 @@ async fn run(
+ 	};
+ 
+ 	// Revoke on failure, join maintainers and handlers, release the singleton, then join disk I/O.
+-	if result.is_err() {
++	if let Err(error) = &result {
++		tracing::error!(?error, "storage component failed before dependent fence");
+ 		let _ = deps.topology.fence(FenceReason::DependentFailed).await;
+ 	}
+ 	stop.send_replace(true);
+diff --git a/engine/packages/engine-context/src/context.rs b/engine/packages/engine-context/src/context.rs
+index f7bb459..cf1f319 100644
+--- a/engine/packages/engine-context/src/context.rs
++++ b/engine/packages/engine-context/src/context.rs
+@@ -964,6 +964,7 @@ impl EngineBackground {
+ 		// The worker releases its heartbeat after closing storage. If it did not,
+ 		// this background guard cannot certify cleanup and must leave the lease to expire.
+ 		let topology = self.0.topology();
++		tracing::info!("background shutdown requesting dependent fence");
+ 		let _ = topology
+ 			.fence(rivet_topology::FenceReason::DependentFailed)
+ 			.await;
+@@ -973,6 +974,7 @@ impl EngineBackground {
+ 
+ impl Drop for EngineBackground {
+ 	fn drop(&mut self) {
++		tracing::info!("background guard dropped; requesting dependent fence");
+ 		let topology = self.0.topology();
+ 		let ctx = self.0.clone();
+ 		self.0.env().spawn(Box::pin(async move {
+diff --git a/engine/packages/engine-context/src/services/depot_client.rs b/engine/packages/engine-context/src/services/depot_client.rs
+index 48a27c4..e05c85d 100644
+--- a/engine/packages/engine-context/src/services/depot_client.rs
++++ b/engine/packages/engine-context/src/services/depot_client.rs
+@@ -152,6 +152,7 @@ async fn run_services(
+ 		result = watcher.as_mut() => Some(result),
+ 	);
+ 	if let Some(result) = finished {
++		tracing::error!(?result, "depot manifest watcher completed before dependent fence");
+ 		// An unexpected watcher exit cannot leave cached routing serving indefinitely.
+ 		let _ = topology.fence(FenceReason::DependentFailed).await;
+ 		let closed = volumes.shutdown().await;

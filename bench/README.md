@@ -54,6 +54,10 @@ ten Engine-only TERM/start cycles, requires exact canonical rows and unchanged
 application process identities, gates each cycle and retains the first failure.
 It temporarily fences objects only for snapshot export, then unfences them;
 ordinary restart cycles are unfenced. Preserve a failed depot before reopening.
+Snapshot cleanup begins before requesting the fence, so a lost fence response
+still triggers restoration. Protected diagnostics retain both snapshot and
+cleanup failures. Inspect maintenance state before reusing a failed fixture.
+An existing fence is rejected and remains owned by its original operation.
 
 Omit `--diagnostic` for the five-pair study only within its recorded allowance.
 Both host timing gates must pass.

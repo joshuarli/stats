@@ -1,0 +1,35 @@
+{
+  "acceptedOverheadAttempts": 1,
+  "acceptedOverheadAttemptsRemaining": 0,
+  "freshImports": 1,
+  "freshImportsRemaining": 0,
+  "failedStudy": {
+    "path": "../2026-11-17-observation-overhead/failed-study.json",
+    "receipt": {
+      "rawSha256": "5f7ec3c10991ed078b73aa7b7132a67837727508b4d00566312b320bb580f098",
+      "qualification": "incomplete first disabled round; two browser journey failures retained; all four host gates pass; no overhead comparison"
+    },
+    "round": 0,
+    "variant": "disabled",
+    "browserFailures": [
+      {
+        "client": 6,
+        "error": "Error: incomplete 6h journey",
+        "reads": 38,
+        "samples": 73,
+        "failedPhaseRetained": false
+      },
+      {
+        "client": 9,
+        "error": "Error: incomplete 24h journey",
+        "reads": 35,
+        "samples": 66,
+        "failedPhaseRetained": false
+      }
+    ],
+    "cause": "unclassified: failed event and response metadata were not retained"
+  },
+  "recoveryAcceptance": "nine passes followed by tenth TERM exit 1; no retry or new acceptance cohort",
+  "campaignP6FullRunsUsed": 0,
+  "campaignP6FullRunsAllowance": 3
+}

@@ -1,0 +1,12 @@
+{
+  "diagnostic": true,
+  "timingAcceptance": false,
+  "records": [],
+  "error": "AssertionError [ERR_ASSERTION]: /snapshot\n\n500 !== 200\n",
+  "cleanupError": "TypeError: fetch failed",
+  "fixture": {
+    "namespace": "stats-scale-sta128-fresh-20261117",
+    "events": 203950,
+    "engineSha256": "3be56331ab498859c66a85e19b140363cd0f005994abb249519302700f7a314e"
+  }
+}

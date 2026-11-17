@@ -185,3 +185,35 @@ P2 still needs positive natural-sleep evidence and its original sample count;
 STUF-86 provides the API capability, not Stats acceptance. P8 remains blocked
 on STUF-88 availability and complete queue coverage. No replacement soak ran.
 Full repository tests and the release gate remain unrun. Production is unchanged.
+
+## November 17 follow-up
+
+The [attempt ledger and private fence diagnosis](../bench/results/2026-11-17-term-fence-diagnosis/README.md)
+preserve the consumed allowances and the original browser evidence gap.
+The original failed depot stays stopped and unchanged. Diagnostic logging
+retains every dependent-fence call site without removing the heartbeat guard.
+The dev setup times out while exporting its initial exact snapshot, before
+any planned diagnostic shutdown. Its cleanup exits normally. This neither
+reproduces nor resolves STUF-90.
+
+The release setup identifies an observation fence left by that timed-out
+request. The benchmark server now owns restoration before requesting a fence
+and retains both snapshot and cleanup failures. Two controlled regressions
+fail before this repair and pass after it. All eleven focused Linux tests
+pass without skips. The investigation explicitly restores its fence on the
+copy, then completes three diagnostic TERM stops with exit zero. Both
+intervening reopens preserve full observation and Installation snapshots.
+There is no post-third-stop snapshot. STUF-90 remains unreproduced and open.
+The diagnostic container is stopped. No import or acceptance allowance resets.
+
+The owner separately runs and cancels `make deploy`. The
+[deployment investigation](DEPLOYMENT-STALL-INVESTIGATION.md), STA-129,
+records successful image creation and restart followed by interrupted
+rollback. Read-only inspection finds `stats:6cc06db247a3` selected at version
+26 while the running container uses `stats:c9a71b2ba127`, node version 25.
+Public health and the probed data routes answer HTTP 200. OpenRC reports
+`starting`. This owner-triggered deployment supersedes the earlier unchanged
+production status. The agent has not changed production selection or services.
+The owner clarifies that the requested follow-up improves the deployment
+command's progress, timeouts, and rollback. It does not upgrade the shared
+Engine or authorize a production reconciliation.
