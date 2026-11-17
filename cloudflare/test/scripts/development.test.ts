@@ -99,11 +99,11 @@ int main(int argc, char **argv) {
       }
       return rows.join("\n");
     };
-    const assertGone = (pids: number[], before: string): void => {
+    const assertGone = (pids: number[], before: string, launchResult: ReturnType<typeof launch>): void => {
       try {
         for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `process ${pid} remains`);
       } catch (error) {
-        console.error(`process identities before shutdown:\n${before}\nprocesses after shutdown:\n${describe(pids)}`);
+        console.error(`dev exit: code=${launchResult.child.child.exitCode} signal=${launchResult.child.child.signalCode} stopped=${launchResult.statuses.some(status => status.event === "dev-stopped")}\nprocess identities before shutdown:\n${before}\nprocesses after shutdown:\n${describe(pids)}`);
         throw error;
       }
     };
@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     await first.stop();
     const deadline = Date.now() + 5000;
     while (oldPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
-    assertGone(oldPids, oldIdentities);
+    assertGone(oldPids, oldIdentities, first);
     assert.equal((await fetch(`${other.origin}/health`)).status, 200);
     const warmStarted = performance.now();
     first = launch("first");
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
     await second.stop("SIGINT");
     const secondDeadline = Date.now() + 5000;
     while (secondPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < secondDeadline) await new Promise(resolve => setTimeout(resolve, 100));
-    assertGone(secondPids, secondIdentities);
+    assertGone(secondPids, secondIdentities, second);
   } finally {
     await first?.stop();
     await second?.stop();

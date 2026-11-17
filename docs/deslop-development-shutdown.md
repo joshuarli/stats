@@ -18,25 +18,28 @@ TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kac
 cpu-guard --cores 2 -- sh -c 'cd cloudflare && ../scripts/offline-run.sh node scripts/run-tests.mjs --file test/scripts/development.test.ts'
 ```
 
-The worktree used for this investigation had no installed dependencies. The two direct attempts exited 1 with `ERR_MODULE_NOT_FOUND` for `@playwright/test`. The native runs used a `git archive HEAD` copy under `.work/tmp/repro`, symlinks to already installed project-local root, cloudflare and Orange `node_modules`, a scratch HOME, and `PLAYWRIGHT_BROWSERS_PATH` pointing to the installed browser. They retained the offline sandbox. The first diagnostic failure above used the same focused command in that copy. A later run of the final diagnostic version passed. This is not a Linux reproduction.
+The initial scratch-copy runs used an altered home environment and symlinked dependencies. Those setup results are rejected as verification evidence. The scratch-copy failure remains a recorded observation: PID 15311 had the same `lstart` before and after shutdown, but its state at the assertion is not established.
 
-To reproduce the scratch setup on this host, run these commands before the focused command, then run that command from `.work/tmp/repro` with the scratch HOME and browser path shown:
+The corrected setup installed the existing lockfiles in the assigned worktree, with the pinned Node and pnpm, without lifecycle scripts:
 
 ```sh
-mkdir -p .work/tmp/repro .work/tmp/home
-git archive HEAD | tar -x -C .work/tmp/repro
-ln -s /Users/josh/repos/stats/.work/wt/asb/node_modules .work/tmp/repro/node_modules
-ln -s /Users/josh/repos/stats/.work/wt/asb/cloudflare/node_modules .work/tmp/repro/cloudflare/node_modules
-ln -s /Users/josh/repos/stats/.work/wt/asb/deploy/orange/node_modules .work/tmp/repro/deploy/orange/node_modules
-mkdir -p .work/tmp/repro/.work/tmp
-cd .work/tmp/repro
-HOME="$(cd ../home && pwd)" PLAYWRIGHT_BROWSERS_PATH=/Users/josh/Library/Caches/ms-playwright \
-PATH="/Users/josh/repos/stats/.work/toolchain/node-v26.13.1-darwin-arm64/bin:$PATH" \
-TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kache \
-cpu-guard --cores 2 -- sh -c 'cd cloudflare && ../scripts/offline-run.sh node scripts/run-tests.mjs --file test/scripts/development.test.ts'
+PATH="/Users/josh/repos/stats/.work/toolchain/node-v26.13.1-darwin-arm64/bin:$PATH" TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kache cpu-guard --cores 2 -- pnpm install --frozen-lockfile --ignore-scripts
+PATH="/Users/josh/repos/stats/.work/toolchain/node-v26.13.1-darwin-arm64/bin:$PATH" TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kache cpu-guard --cores 2 -- pnpm --dir deploy/orange install --frozen-lockfile --ignore-scripts
 ```
 
-The diagnostic copy's `make lint` did not pass. pnpm first rejected a symlinked task-state directory. After placing task state in the scratch copy, type-aware lint reported unresolved error types in `playwright.config.ts`. The diagnostic is not a verified shutdown repair.
+Both commands exited 0. The second command unexpectedly changed `deploy/orange/pnpm-lock.yaml` despite `--frozen-lockfile`; the investigation restored the file from HEAD and verified no diff. No dependency change is included.
+
+The first focused run in the real worktree exited 1: `kill(19180, 0)` succeeded for the snapshotted backend PID after the five-second wait. The subsequent diagnostic `ps` contained no row for 19180. The dev log did not contain `dev-stopped`. These observations do not show the process state at the assertion or why the dev process exited. After adding the dev process exit code, signal and `dev-stopped` status to failure diagnostics, the focused command above exited 0 with one test passed and none skipped. This pass does not explain the earlier failure.
+
+The following command exited 0 in the real worktree:
+
+```sh
+PATH="/Users/josh/repos/stats/.work/toolchain/node-v26.13.1-darwin-arm64/bin:$PATH" TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kache cpu-guard --cores 2 -- make lint
+```
+
+The earlier direct attempts before installation exited 1 with `ERR_MODULE_NOT_FOUND` for `@playwright/test`. The rejected scratch lint attempts failed on a symlinked task-state directory and then unresolved types in `playwright.config.ts`. They do not establish a product defect.
+
+For a Linux recurrence, preserve the failure output including the pre- and post-stop `/proc` stat rows and dev exit diagnostics. Compare PID start times and inspect state and parent PID. If the process vanishes between `kill(0)` and the post-stop snapshot, capture those observations at the assertion boundary before choosing a repair. This diagnostic is not a verified shutdown repair.
 
 ## Verify the zombie observation
 
