@@ -5,19 +5,11 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
-Diagnose at `6cbab0ef155f6fc999cae8c388f82693a121740d` found no independently reproduced new defect. Risk order, local harness commands, the unproven Rust uploader lead, and review limits are in [diagnose](docs/deslop-diagnose.md). DSLP-2 remains open: the full-suite acceptance proof for this revision is unavailable. DSLP-7 and DSLP-8 remain known; Types, Tests, and Dead code are pending.
+Diagnose reviewed core at `6cbab0ef155f6fc999cae8c388f82693a121740d` and the later deployment delta through `20dd37f69ff7283879a9e34ec011d27b15f1482b`; no new defect was established. [Diagnose](docs/deslop-diagnose.md) records ranked ownership, local witnesses, reused parent verification and limits. DSLP-7 is fixed in PR 18; DSLP-8 and Types, Tests, and Dead code remain open.
 
 ## Tickets
 
 
-### DSLP-2 · P2 · Diagnose: ultrareview into this backlog
-
-- **Area:** deslop · diagnose
-- **Where:** whole repository
-- **Problem:** No review has ranked this repository's risks for the deslop pass.
-- **Recommendation:** Run the deslop Diagnose step. Accept: the diff touches only docs, comments, and this file, and every finding names its Fix with.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-3 · P2 · Types: strict profile and typing findings
 
@@ -49,14 +41,6 @@ Diagnose at `6cbab0ef155f6fc999cae8c388f82693a121740d` found no independently re
 
 
 
-### DSLP-7 · P2 · Local macOS make test fails: development test runs setuid ps inside sandbox-exec
-
-- **Area:** deslop · ground
-- **Where:** cloudflare/test/scripts/development.test.ts:59; scripts/offline-run.sh:26; Makefile:192
-- **Problem:** Since 78de162 the development hot-update test reads the process tree with execFileSync("ps", ...). make test runs it through scripts/offline-run.sh, whose sandbox-exec profile forbids exec of the setuid /bin/ps: `sandbox-exec -p "(version 1)(allow default)(deny network-outbound)" ps` fails with Operation not permitted (exit 71). So local make test exits 2 on every Mac (integration-local is Darwin-only, so Linux CI never runs this test). Reproduced at d06efa5: make -k test leaves this as the only failure.
-- **Recommendation:** Read the process tree and RSS without a setuid binary inside the sandbox (for example sample it from outside the sandboxed command, or use a non-setuid source), keep the RSS and no-workerd assertions, and verify make test on macOS.
-- **Fix with:** root-cause
-- **Effort:** S
 
 
 ### DSLP-8 · P2 · Exercise the legacy upgrade test in CI

@@ -1,6 +1,6 @@
 # Diagnose calibration
 
-Revision reviewed: `6cbab0ef155f6fc999cae8c388f82693a121740d` (macOS arm64). This is a risk-ranked, bounded review, not a claim that every path is defect-free. No new defect was established. No new finding is filed; DSLP-7 and DSLP-8 remain known separately. Product code, contracts and permissions were unchanged.
+Revision reviewed: `6cbab0ef155f6fc999cae8c388f82693a121740d` (macOS arm64). This is a risk-ranked, bounded review, not a claim that every path is defect-free. No new defect was established. No new finding is filed; DSLP-7 is fixed and DSLP-8 remains open. Product code, contracts and permissions were unchanged.
 
 ## Ownership and risk order
 
@@ -9,11 +9,11 @@ Revision reviewed: `6cbab0ef155f6fc999cae8c388f82693a121740d` (macOS arm64). Thi
 3. **Observation persistence and delivery:** `cloudflare/src/observe/ingest/codec.ts:74` rejects duplicate IDs in one batch; `cloudflare/src/observe/core/store.ts:625` transactionally checks stored event identity and inserts accepted events. The Node HTTP harness provisions synthetic credentials and verifies initial delivery, replay and reads (`cloudflare/test/node/observe-ingest.test.ts:79`). Producer queue, retry and shutdown contracts are documented in `packages/producer/README.md`; no independent producer failure campaign was run here.
 4. **Operator and presentation paths:** CLI argument rules and routing are owned by `cloudflare/src/cli/run.ts:30`, with bounded and cancellable HTTP at `cloudflare/src/cli/http.ts:87`. The contract test covers exit codes, redirects, retry and malformed responses. Dashboard response decoding is in `cloudflare/src/client/api.ts:64`; counter regression gaps are asserted in `cloudflare/test/aggregate.test.ts:105`. Fixed Analytics query builders are called by `cloudflare/src/cloudflare/projects/collector.ts:14`. These paths were sampled, not exhaustively audited; UI rendering, provider behavior and actual remote consumers were not exercised.
 
-## Unproven lead and limits
+## Release panic and review limits
 
-`agent/src/runtime.rs:357` substitutes a default report if the uploader thread panics. It is **unproven** that a reachable production input causes such a panic or that the resulting behavior is an actionable defect. No finding is filed from this source observation. A decisive investigation needs an isolated built Rust agent and a controlled uploader failure, observing continued sampling, shutdown and reported counters. The known nested Cargo workspace failure makes that proof unavailable without the separately owned manifest isolation; this review did not edit the manifest.
+`agent/src/runtime.rs:357` substitutes a default report if joining an uploader returns an error. The shipped standalone release profile sets `panic = "abort"` (`agent/Cargo.toml:26`), so the hypothesized continued operation after a Rust uploader panic does not follow for that release. `flush_batch` calls the real transport through `BatchSender` (`agent/src/runtime.rs:168`); its ordinary encode and delivery errors are handled as results. No reachable release panic or actionable defect was established and no finding is filed. Unwinding profiles and foreign failures were not reproduced.
 
-The paths above were sampled for boundaries and types, effects and errors, concurrency and durable state, OS and security, tests, navigation, build and operability. Duplicated facts, dead paths and comments were not systematically inventoried. Sampling is not a coverage or mutation measurement, an exhaustive docs refresh, an unsafe soundness audit, or proof of crash consistency across every write. No mutation run or new test was made; there are no new mutants or fault-injected tests to classify. Performance and dependencies were not measured or changed. The existing legacy-upgrade skip and macOS sandbox issue are not refiled. Live services, real credentials, production, VMs and external consumers were excluded.
+The paths above were sampled for boundaries and types, effects and errors, concurrency and durable state, OS and security, tests, navigation, build and operability. Duplicated facts, dead paths and comments were not systematically inventoried. Sampling is not a coverage or mutation measurement, an exhaustive docs refresh, an unsafe soundness audit, or proof of crash consistency across every write. No mutation run or new test was made; there are no new mutants or fault-injected tests to classify. Performance and dependencies were not measured or changed. The existing legacy-upgrade skip remains DSLP-8; the macOS sandbox fix is merged as `20dd37f69ff7283879a9e34ec011d27b15f1482b`. Live services, real credentials, production, VMs and external consumers were excluded.
 
 ## Reproduction and baseline
 
@@ -23,4 +23,19 @@ All commands below ran in this worktree at the revision above with `TMPDIR=$PWD/
 - `cpu-guard --cores 1 pnpm --dir cloudflare exec node scripts/run-tests.mjs --file test/node/installation.test.ts --file test/node/http-parity.test.ts --file test/node/ports.test.ts --file test/ingest` — exit 0; 6 of 170 files selected, 26 cases passed, 0 skipped. Built stats and observe Workers and the dashboard; Node/Worker parity used local workerd.
 - `cpu-guard --cores 1 pnpm --dir cloudflare exec node scripts/run-tests.mjs --file test/node/server.test.ts --file test/node/observe-ingest.test.ts --file test/cli/contract.test.ts` — exit 0; 3 of 170 files selected, 33 cases passed, 0 skipped.
 
-These targeted results do not substitute for `make test` or the release gate. The parent reported green CI on PR 18 for DSLP-7 and ongoing full macOS verification in its separate patch tree; neither is evidence that this exact revision passed a full suite. The prior base-family full-source run encountered a nested Cargo workspace error; it was not rerun. The docs-only diff changes no runtime inputs, but no full-suite result is claimed for it.
+The parent reports `TMPDIR="$PWD/.work/tmp" CARGO_BUILD_JOBS=1 RUST_TEST_THREADS=1 RUSTC_WRAPPER=kache cpu-guard --cores 2 -- make test` exited 0 on PR 18 head `248c4ed3eca2310c6318606a777cd453b7959776`: Rust agent tests, 958 Node cases (one existing skip), 370 Worker cases, 320 dashboard cases, 41 local cases (one legacy upgrade skip), four local browser cases and the repaired development test. PR 18 had all three CI checks green at that head and merged as `20dd37f69ff7283879a9e34ec011d27b15f1482b`. The parent used pinned Node 26.13.1 and pnpm 12.21.0, a temporary empty `[workspace]` in the agent manifest (restored SHA-256 `aecc4bb994ad8fbabc9eea57b3116ae81a432757872b3d9c5470eca9e58027eb`), and a local pnpm wrapper adding `--workers=1` to `test:ui`. Reproduction details are in `docs/deslop-macos-sandbox.md` at the merge revision; the parent log is `.work/wt/asb/.work/tmp/parent-workspace-full-test-serial-ui.log` in the enclosing repository. No timing claim is made.
+
+`git diff --stat 6cbab0ef155f6fc999cae8c388f82693a121740d 248c4ed3eca2310c6318606a777cd453b7959776 -- agent/src cloudflare/src packages` exited 0 with no output: the reviewed core product inputs match the parent test head. This does not assert identical test or deployment inputs, nor a full run at `6cb` or `20dd`.
+
+The default-branch deployment changes are later than the parent test head. Read-only `git diff 6cbab0ef155f6fc999cae8c388f82693a121740d 20dd37f69ff7283879a9e34ec011d27b15f1482b -- Makefile deploy/orange/command.mts deploy/orange/deploy.mts deploy/orange/deploy.sh deploy/orange/tsconfig.json deploy/deployed-smoke.sh` and `git show 20dd37f69ff7283879a9e34ec011d27b15f1482b:cloudflare/test/scripts/orange-deploy.test.ts` reviewed the operator flow: selected/running verification, guarded selection, restart, health and smoke, rollback ownership and deadlines. `deploy/orange/command.mts:12` and `deploy/orange/deploy.mts:26` in that revision own subprocess lifecycle and deployment decisions; tests cover concurrent selection, lost acknowledgment, rollback failure, cancellation and child cleanup. No real deployment or remote behavior was tested.
+
+To run the current source-matching local proof, from this worktree with pinned Node on PATH and `TMPDIR=$PWD/.work/tmp`:
+
+```sh
+mkdir -p .work/tmp/diagnose-deploy
+git archive 20dd37f69ff7283879a9e34ec011d27b15f1482b deploy/orange/command.mts deploy/orange/deploy.mts cloudflare/test/scripts/orange-deploy.test.ts | tar -x -C .work/tmp/diagnose-deploy
+mkdir -p .work/tmp/diagnose-deploy/.work/tmp
+cpu-guard --cores 1 node --test .work/tmp/diagnose-deploy/cloudflare/test/scripts/orange-deploy.test.ts
+```
+
+The final command exited 0: 25 passed, 0 skipped. It uses synthetic processes and state; it does not run the shell smoke against a real service. This is not a full release gate for `20dd`.
