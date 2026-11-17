@@ -11,6 +11,7 @@ import { MAX_BATCH_BYTES, MAX_BATCHES_PER_WINDOW, MAX_EVENTS, PROVENANCE, type E
 import { handleApi } from "../../src/observe/http/api.ts";
 import { decodeIssues, decodeOccurrences } from "../../src/observe/client/decode.ts";
 import { database } from "./support.ts";
+import type { SqlStatements, SqlValue } from "../../src/core/sql.ts";
 
 const FIXTURES = resolve(import.meta.dirname, "../../../fixtures/observe-ingest");
 const BATCH_PATH = "/ingest/observe/v1/batches";
@@ -37,6 +38,33 @@ const options = { service: manifest.service, nowMs: manifest.nowMs };
 const valid = decodeBatch(golden, options);
 if (!valid.ok) throw new Error(`golden batch did not decode: ${valid.code}`);
 const events = valid.batch.events;
+
+await test("a full external batch bounds SQLite crossings and rolls back every inserted chunk", async () => {
+  const db = database();
+  let statements = 0;
+  const measured: SqlStatements = {
+    rows<T>(query: string, ...params: SqlValue[]): T[] { statements++; assert.ok(params.length <= 100); return db.rows<T>(query, ...params); },
+    run(query: string, ...params: SqlValue[]): void { statements++; assert.ok(params.length <= 100); db.run(query, ...params); },
+    transaction: fn => db.transaction(fn), rowsWritten: () => db.rowsWritten()
+  };
+  const batch = Array.from({ length: 64 }, (_, index): ExternalEvent => ({ ...events[0]!, eventId: `bulk-${index}`, atMs: manifest.nowMs - 1000 + index }));
+  try {
+    assert.deepEqual(storeExternal(measured, manifest.service, await receiveEvents(manifest.service, batch), manifest.nowMs), { ok: true, accepted: 64, duplicate: 0 });
+    assert.ok(statements <= 10, `one batch used ${statements} SQLite calls`);
+    const records = readExternalEvents(db, manifest.service, manifest.nowMs);
+    assert.deepEqual(records.map(row => row.event).sort((a, b) => a.eventId.localeCompare(b.eventId)), [...batch].sort((a, b) => a.eventId.localeCompare(b.eventId)));
+    assert.deepEqual(storeExternal(db, manifest.service, await receiveEvents(manifest.service, batch), manifest.nowMs), { ok: true, accepted: 0, duplicate: 64 });
+    const changed = batch.map((event, index) => index === 63 ? { ...event, durationMs: event.durationMs + 1 } : { ...event, eventId: `new-${index}` });
+    assert.deepEqual(storeExternal(db, manifest.service, await receiveEvents(manifest.service, changed), manifest.nowMs), { ok: false, code: "event_conflict" });
+    assert.equal(count(db), 64);
+    let inserts = 0;
+    db.failOnRun = query => query.includes("INSERT INTO observe_external_events") && ++inserts === 2;
+    const failed = await receiveEvents(manifest.service, batch.map(event => ({ ...event, eventId: `failure-${event.eventId}` })));
+    assert.throws(() => storeExternal(db, manifest.service, failed, manifest.nowMs), /injected write failure/u);
+    assert.equal(count(db), 64);
+    assert.deepEqual(readExternalEvents(db, manifest.service, manifest.nowMs), records);
+  } finally { db.db.close(); }
+});
 
 async function ingestExternal(db: ReturnType<typeof database>, service: string, batch: readonly ExternalEvent[], nowMs: number): Promise<ExternalIngest> {
   return storeExternal(db, service, await receiveEvents(service, batch), nowMs);

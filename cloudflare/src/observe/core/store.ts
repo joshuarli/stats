@@ -644,19 +644,22 @@ export function ingestExternal(db: SqlStatements, service: string, received: rea
     let accepted = 0;
     let duplicate = 0;
     const capacity: HealthEvent[] = [];
-    for (const { event, failure } of received) {
-      if (prior.has(event.eventId)) {
-        duplicate += 1;
-        continue;
-      }
+    const incoming = received.filter(({ event }) => !prior.has(event.eventId));
+    duplicate = received.length - incoming.length;
+    // Workers SQLite limits statements to 100 bindings; each event uses six.
+    const eventsPerStatement = 16;
+    for (let offset = 0; offset < incoming.length; offset += eventsPerStatement) {
+      const batch = incoming.slice(offset, offset + eventsPerStatement);
       db.run(
-        "INSERT INTO observe_external_events (event_id, service, received_at, event_at, provenance, payload) VALUES (?, ?, ?, ?, ?, ?)",
-        event.eventId, service, nowMs, event.atMs, PROVENANCE, encodeEvent(event)
+        `INSERT INTO observe_external_events (event_id, service, received_at, event_at, provenance, payload) VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?)").join(", ")}`,
+        ...batch.flatMap(({ event }) => [event.eventId, service, nowMs, event.atMs, PROVENANCE, encodeEvent(event)])
       );
-      if (failure !== null && !insertApplicationOccurrence(db, event, failure, Math.min(event.atMs, nowMs))) {
-        capacity.push({ counter: "issue_capacity", reason: "issues_full", example: failure.code });
+      for (const { event, failure } of batch) {
+        if (failure !== null && !insertApplicationOccurrence(db, event, failure, Math.min(event.atMs, nowMs))) {
+          capacity.push({ counter: "issue_capacity", reason: "issues_full", example: failure.code });
+        }
+        accepted += 1;
       }
-      accepted += 1;
     }
     recordHealth(db, nowMs, capacity);
     recordWriteCost(db, nowMs, "ingest", accepted, db.rowsWritten() - writtenBefore);

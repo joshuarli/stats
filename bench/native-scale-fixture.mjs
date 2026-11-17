@@ -16,16 +16,16 @@ const bundleRoot = resolve(values["bundle-root"]), importDelayMs = Number(values
 assert.ok(Number.isSafeInteger(importDelayMs) && importDelayMs >= 0 && importDelayMs <= 5000);
 const externalEndpoint = process.env.RIVET_ENDPOINT;
 if (externalEndpoint) {
-  assert.ok(["serve", "prepare"].includes(values.mode));
+  assert.ok(["serve", "prepare", "ingest-cost"].includes(values.mode));
   const endpoint = new URL(externalEndpoint);
   assert.equal(endpoint.hostname, "127.0.0.1"); assert.equal(endpoint.protocol, "http:");
   assert.ok(!endpoint.username && !endpoint.password && /^[a-z][a-z0-9-]{0,63}$/u.test(process.env.RIVET_NAMESPACE ?? ""));
-  if (values.mode === "prepare") {
+  if (values.mode !== "serve") {
     assert.match(process.env.RIVET_NAMESPACE, /^stats-scale-/u, "external preparation requires a dedicated fixture namespace");
     assert.ok(Number.isSafeInteger(Number(process.env.RIVET_NODE_VERSION)) && Number(process.env.RIVET_NODE_VERSION) > 0, "external preparation requires an explicit node version");
   }
 }
-assert.ok(values["runtime-auth-file"] === undefined || externalEndpoint && values.mode === "prepare" && !values.resume);
+assert.ok(values["runtime-auth-file"] === undefined || externalEndpoint && ["prepare", "ingest-cost"].includes(values.mode) && !values.resume);
 const authPath = join(state, "fixture-auth.json"), proofPath = join(root, "native-scale-preparation.json");
 const planPath = join(state, "import-plan.json");
 const pause = ms => new Promise(done => setTimeout(done, ms));
@@ -183,8 +183,12 @@ try {
         const summary = await request(`/api/observe/${service}/external/telemetry/summary?from=${fromMs}&to=${toMs}`); assert.equal(summary.status, 200);
         const expected = reference(input, fromMs, toMs);
         for (const key of ["totals", "buckets", "operations"]) assert.deepEqual(summary.body[key], expected[key]);
+        const canonical = await request(`/api/observe/${service}/external?from=${fromMs}&to=${toMs}&limit=1000`);
+        assert.equal(canonical.status, 200); assert.equal(canonical.body.events.length, input.length);
+        const byId = new Map(canonical.body.events.map(row => [row.event.eventId, row.event]));
+        for (const event of input) assert.deepEqual(byId.get(event.eventId), event, "native ingest changed acknowledged event content");
         const after = await request(healthPath); assert.equal(after.status, 200);
-        const record = { round, variant, accepted, duplicate: 64, conflict: 409, wallMs, cpuUs, batchMs, databaseBytesBefore: before.body.databaseBytes, databaseBytesAfter: after.body.databaseBytes };
+        const record = { round, variant, accepted, exactCanonicalEvents: canonical.body.events.length, duplicate: 64, conflict: 409, wallMs, cpuUs, batchMs, databaseBytesBefore: before.body.databaseBytes, databaseBytesAfter: after.body.databaseBytes, containerMemoryBytes: Number(readFileSync("/sys/fs/cgroup/memory.current", "utf8")), containerMemoryPeakBytes: Number(readFileSync("/sys/fs/cgroup/memory.peak", "utf8")), memoryEvents: readFileSync("/sys/fs/cgroup/memory.events", "utf8") };
         results.push(record); save(); console.log(JSON.stringify(record));
       }
     } catch (error) { failures.push({ name: error.name, message: error.message }); save(); throw error; }

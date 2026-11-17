@@ -40,6 +40,16 @@ await test("the same external batch reads back normalized on workerd", async () 
     const summary = await totals.json() as { operations: { operation: string; events: number }[] };
     assert.equal(summary.operations.reduce((sum, row) => sum + row.events, 0), batch.events.length);
 
+    const full = Array.from({ length: 64 }, (_, index) => ({ ...batch.events[0]!, eventId: `full-${index}`, atMs: now - 1000 + index }));
+    const fullResponse = await post(ingestToken, JSON.stringify({ events: full }));
+    assert.equal(fullResponse.status, 202, await fullResponse.clone().text());
+    assert.deepEqual(await fullResponse.json(), { accepted: 64, duplicate: 0 });
+    assert.deepEqual(await (await post(ingestToken, JSON.stringify({ events: full }))).json(), { accepted: 0, duplicate: 64 });
+    const fullRead = await harness.stats(`/api/observe/${OBSERVE_SERVICE}/external?from=${now - 1000}&to=${now}`, { headers: await accessHeaders() });
+    assert.equal(fullRead.status, 200);
+    const fullBody = await fullRead.json() as { events: { event: { eventId: string } }[] };
+    assert.deepEqual(fullBody.events.filter(row => row.event.eventId.startsWith("full-")).map(row => row.event), full);
+
     const failed = { ...batch.events[0]!, outcome: "error", error: { code: "db.timeout" } };
     const failures = JSON.stringify({ events: [{ ...failed, eventId: "failed-1" }, { ...failed, eventId: "failed-2", atMs: failed.atMs + 1 }, { ...failed, eventId: "uncoded-1", error: undefined }] });
     const grouped = await post(ingestToken, failures);
