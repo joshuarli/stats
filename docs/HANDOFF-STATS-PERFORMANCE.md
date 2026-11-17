@@ -4,9 +4,11 @@
 
 The owner requested STA-128 and STUF-87, followed by further campaign work.
 The [resumption record](STATS-PERFORMANCE-RESUMPTION.md) supersedes the stop
-and repair blockers below. STUF-87's repair is merged. A ten-browser functional
-overhead rehearsal passes, and the single fresh preparation is in progress.
-Performance acceptance remains unestablished.
+and repair blockers below. STUF-87's repair is merged, the single fresh
+preparation verifies all 203,950 events, and native insertion batching passes
+five component comparison pairs. STA-128's full overhead result remains
+unestablished. Nine Engine recovery cycles pass; the tenth fails during TERM
+and is retained as STUF-90. All new private containers are stopped.
 
 ## Final closeout
 

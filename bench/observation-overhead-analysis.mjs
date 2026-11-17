@@ -9,6 +9,7 @@ const distribution = values => ({ median: median(values), min: Math.min(...value
 export function analyzeOverhead(study) {
   const reasons = [];
   if (study.diagnostic) reasons.push("diagnostic rehearsal is not an acceptance study");
+  if (study.fixture?.profiling) reasons.push("CPU profiling is excluded from timing acceptance");
   if (study.error) reasons.push(study.error);
   if (study.fixture?.events !== 203950 || !study.fixture.exactReference) reasons.push("complete tenfold reference missing");
   const gates = (study.gates ?? []).filter(gate => ["disabled", "enabled"].includes(gate.variant));

@@ -4,7 +4,8 @@
 
 The owner resumed STA-128 and STUF-87, followed by the remaining campaign.
 See [the active record](STATS-PERFORMANCE-RESUMPTION.md) for the merged runtime
-repair, bounded fresh preparation and functional overhead rehearsal.
+repair, completed fresh preparation, accepted native ingestion optimization
+and failed tenth recovery shutdown (STUF-90). STA-128 remains open.
 The historical closeout below retains its original qualifications.
 
 ## Final status

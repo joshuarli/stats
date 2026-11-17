@@ -42,7 +42,21 @@ Copy the fixture authentication file to protected Mac scratch, then run:
 node bench/observation-overhead.mjs --diagnostic --auth-file .work/tmp/fixture-auth.json --output .work/tmp/overhead-rehearsal.json
 ```
 
-Omit `--diagnostic` for the five-pair study. Both host timing gates must pass.
+For source diagnosis, start the server with `--cpu-profile` and use a diagnostic
+driver run. Node writes parent and Worker CPU profiles under the protected
+study root. Profiling invalidates overhead timing acceptance. Each variant and
+round opens a distinct document so browser delivery counters cannot carry over.
+
+`native-scale-recovery.mjs` uses the same private server and authenticated
+loopback control port. Run it with `--auth-file` and a new `--output` path only
+within an authorized recovery cohort. It keeps the application alive through
+ten Engine-only TERM/start cycles, requires exact canonical rows and unchanged
+application process identities, gates each cycle and retains the first failure.
+It temporarily fences objects only for snapshot export, then unfences them;
+ordinary restart cycles are unfenced. Preserve a failed depot before reopening.
+
+Omit `--diagnostic` for the five-pair study only within its recorded allowance.
+Both host timing gates must pass.
 `--diagnostic-cycles 20` exercises a full-length diagnostic round while retaining
 the diagnostic classification. It does not authorize another accepted study.
 The Mac driver supplies authentication through a loopback streaming proxy on

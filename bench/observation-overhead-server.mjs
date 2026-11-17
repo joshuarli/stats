@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync, openSync, closeSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, openSync, closeSync, readdirSync, mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, totalmem } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,10 +12,15 @@ import { constantTimeEqual, generateToken, tokenHash } from "../cloudflare/src/a
 import { reference } from "./application-reference.mjs";
 import { processCpu } from "./observation-overhead-analysis.mjs";
 
-const { values } = parseArgs({ options: { root: { type: "string" }, "engine-sha256": { type: "string" } } });
+const { values } = parseArgs({ options: { root: { type: "string" }, "engine-sha256": { type: "string" }, "cpu-profile": { type: "boolean", default: false } } });
 assert.equal(process.platform, "linux");
 const root = resolve(values.root ?? "");
 assert.ok(root.startsWith("/bench/") && /^[a-f0-9]{64}$/u.test(values["engine-sha256"] ?? ""));
+const engineConfigPath = join(root, "engine/config.json");
+const engineConfig = JSON.parse(readFileSync(engineConfigPath, "utf8"));
+for (const path of [engineConfig.storage.log_directory, engineConfig.object_storage.primary.file_system.path]) assert.ok(resolve(path).startsWith(root + "/"), "private Engine storage must belong to the selected study root");
+for (const role of ["guard", "api_peer", "metrics"]) assert.equal(engineConfig[role].host, "127.0.0.1");
+assert.equal(new URL(engineConfig.topology.datacenters.default.public_url).origin, "http://127.0.0.1:44794");
 const proof = JSON.parse(readFileSync(join(root, "fixture/native-scale-preparation.json"), "utf8"));
 assert.equal(proof.events, 203950); assert.ok(proof.restoredSummaryEqual);
 const corpus = JSON.parse(readFileSync(join(root, "fixture/corpus-10x.json"), "utf8"));
@@ -35,6 +40,8 @@ const runId = randomBytes(8).toString("hex");
 const children = new Set();
 const runtimeAbort = new AbortController();
 let currentAction;
+let rejectEngine;
+const engineFailure = new Promise((_, reject) => { rejectEngine = reject; });
 let app, engine, bridge, producer, control, capture, variant, round, before, ingestion, stopping = false, exportFailures = 0;
 const selectors = new Map(), ingested = [], records = [];
 const pause = ms => new Promise(done => setTimeout(done, ms));
@@ -64,6 +71,12 @@ async function stop(owner) {
     }
     children.delete(owner);
   })();
+}
+function startEngine() {
+  assert.ok(!engine || engine.done, "previous private Engine still runs");
+  const owner = start(join(root, "engine/rivet-engine"), ["--config", engineConfigPath], { RIVET__AUTH__ADMIN_TOKEN: auth.engineToken }, "engine-study");
+  owner.exited.then(() => { if (!owner.stopPromise && !stopping) rejectEngine(new Error("private Engine exited")); });
+  engine = owner;
 }
 async function request(path, body, extra = {}) {
   assert.ok(!stopping, "study is stopping");
@@ -123,6 +136,8 @@ async function application(nextVariant, nextRound) {
   await stop(app); app = undefined;
   variant = nextVariant; round = nextRound;
   const discovering = variant === "enabled" && selectors.size < 2;
+  const profileDirectory = join(root, `cpu-${variant}-${round}`);
+  if (values["cpu-profile"]) mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
   for (const [name, original] of Object.entries(descriptors)) {
     const descriptor = structuredClone(original);
     if (variant === "disabled") delete descriptor.vars.APPLICATION_EVENTS_RELEASE;
@@ -131,6 +146,7 @@ async function application(nextVariant, nextRound) {
     writeFileSync(join(state, `${name}.jsonc`), JSON.stringify(descriptor), { mode: 0o600 });
   }
   app = start(process.execPath, ["/orange/node_modules/open-orange/dist/bin.js", "serve", "--ip", "0.0.0.0", "--port", "8787", "--config", join(state, "stats.jsonc"), "--config", join(state, "observe.jsonc")], {
+    ...(values["cpu-profile"] ? { NODE_OPTIONS: `--cpu-prof --cpu-prof-dir=${JSON.stringify(profileDirectory)}` } : {}),
     RIVET_ENDPOINT: "http://127.0.0.1:44794", RIVET_TOKEN: auth.engineToken, RIVET_NAMESPACE: proof.namespace, RIVET_NODE_VERSION: String(proof.nodeVersion), RIVET_LOG_LEVEL: "error", WRANGLER_LOG_PATH: join(root, `wrangler-${variant}-${round}.log`),
     OTEL_SDK_DISABLED: String(variant === "disabled"), OTEL_SERVICE_NAME: "stats-runtime-study", OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://127.0.0.1:8791/v1/traces", OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/json", OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${otlpToken}`, OTEL_TRACES_SAMPLER: "parentbased_traceidratio", OTEL_TRACES_SAMPLER_ARG: discovering ? "1" : "0.1", OTEL_BSP_MAX_QUEUE_SIZE: "256", OTEL_BSP_MAX_EXPORT_BATCH_SIZE: "64", OTEL_EXPORTER_OTLP_TRACES_TIMEOUT: "1000", OTEL_RESOURCE_ATTRIBUTES: "service.version=study,openorange.version=1.0.2"
   }, `app-${variant}-${round}`);
@@ -154,7 +170,7 @@ async function application(nextVariant, nextRound) {
     assert.ok(producer.stats().sent > 0, "instrumentation must deliver before measurement");
   }
   ingested.length = 0;
-  return { ready: true, windows, fixture: { ...proof, exactReference: true, engineSha256: values["engine-sha256"], tools, node: process.version, cpuModel: cpus()[0].model, hostCores: cpus().length, hostMemoryBytes: totalmem(), cpuTickUs: tickUs, openorangeVersion: JSON.parse(readFileSync("/orange/node_modules/open-orange/package.json", "utf8")).version }, browser: { nowMs: proof.toMs } };
+  return { ready: true, windows, fixture: { ...proof, exactReference: true, profiling: values["cpu-profile"], engineSha256: values["engine-sha256"], tools, node: process.version, cpuModel: cpus()[0].model, hostCores: cpus().length, hostMemoryBytes: totalmem(), cpuTickUs: tickUs, openorangeVersion: JSON.parse(readFileSync("/orange/node_modules/open-orange/package.json", "utf8")).version }, browser: { nowMs: proof.toMs } };
 }
 async function batch(sequence) {
   const batch = Array.from({ length: 64 }, (_, index) => ({ ...events[Math.floor((sequence * 64 + index) * events.length / 1024)], eventId: `study-${runId}-${variant}-${round}-${sequence}-${index}`, atMs: Date.now() - 1000, release: "study-ingest" }));
@@ -214,7 +230,7 @@ let signal, wake;
 const interrupted = new Promise(done => { wake = done; });
 for (const name of ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"]) process.once(name, () => { signal = name; stopping = true; wake(); });
 try {
-  engine = start(join(root, "engine/rivet-engine"), ["--config", join(root, "engine/config.json")], { RIVET__AUTH__ADMIN_TOKEN: auth.engineToken }, "engine-study");
+  startEngine();
   await ready("http://127.0.0.1:44794/namespaces", engine, { authorization: `Bearer ${auth.engineToken}` });
   capture = createServer(async (request, response) => {
     try {
@@ -240,21 +256,54 @@ try {
   capture.requestTimeout = 5000; capture.maxConnections = 8;
   await new Promise(done => capture.listen(8791, "127.0.0.1", done));
   let busy = false;
-  control = createServer((request, response) => {
-    const credential = request.headers["stats-gateway-secret"];
+  control = createServer((incoming, response) => {
+    const credential = incoming.headers["stats-gateway-secret"];
     if (typeof credential !== "string" || !constantTimeEqual(credential, auth.secret)) { response.writeHead(401).end(); return; }
-    if (request.url === "/stop") { stopping = true; runtimeAbort.abort(); response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ stopped: true })); wake(); return; }
+    if (incoming.url === "/stop") { stopping = true; runtimeAbort.abort(); response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ stopped: true })); wake(); return; }
     if (busy) { response.writeHead(409).end(); return; }
     busy = true;
     currentAction = (async () => {
-      const url = new URL(request.url, "http://127.0.0.1");
+      const url = new URL(incoming.url, "http://127.0.0.1");
       let result;
       if (url.pathname === "/start") result = await application(url.searchParams.get("variant"), Number(url.searchParams.get("round")));
       else if (url.pathname === "/begin") { await begin(); result = { started: true }; }
       else if (url.pathname === "/end") result = await finish();
+      else if (url.pathname === "/engine/stop" || url.pathname === "/engine/start") {
+        assert.ok(app && variant === "disabled" && !before && !ingestion && !values["cpu-profile"], "Engine recovery requires an idle uninstrumented private application");
+        if (url.pathname === "/engine/stop") { await stop(engine); result = { stopped: true, status: engine.status }; }
+        else { startEngine(); await ready("http://127.0.0.1:44794/namespaces", engine, { authorization: `Bearer ${auth.engineToken}` }); result = { started: true, pid: engine.child.pid }; }
+      }
+      else if (url.pathname === "/verify-summary") {
+        const started = performance.now();
+        let response;
+        try { response = await fetch(`http://127.0.0.1:8787/api/observe/stats/external/telemetry/summary?from=${proof.fromMs}&to=${proof.toMs}`, { headers, signal: AbortSignal.any([runtimeAbort.signal, AbortSignal.timeout(1500)]) }); }
+        catch (error) { if (stopping || !["TypeError", "TimeoutError", "AbortError"].includes(error.name)) throw error; result = { ready: false, error: error.name }; }
+        if (response && [502, 503, 504].includes(response.status)) { await response.body?.cancel(); result = { ready: false, status: response.status }; }
+        else if (response) {
+          assert.equal(response.status, 200); const summary = await response.json(); assert.deepEqual(summary, reference(events, proof.fromMs, proof.toMs));
+          result = { ready: true, exact: true, events: summary.totals.events, sha256: hash(canonical(summary)), ms: performance.now() - started, appPid: app.child.pid, appProcesses: [...cpu(app)].map(([pid, value]) => ({ pid, start: value.start })).sort((a, b) => a.pid - b.pid) };
+        }
+      }
+      else if (url.pathname === "/snapshot") {
+        assert.ok(app && variant === "disabled" && !before && !ingestion && !values["cpu-profile"]);
+        result = {};
+        for (const [role, name] of [["observation", "observe:stats"], ["installation", "installation"]]) {
+          const object = `/api/v1/admin/objects/${name}`;
+          assert.equal((await request(`${object}/maintenance`)).body.state, "open");
+          assert.equal((await request(`${object}/maintenance`, { fenced: true })).status, 200);
+          try {
+            const manifest = await request(`${object}/export/manifest`); assert.equal(manifest.status, 200);
+            result[role] = { tables: manifest.body.tables.map(table => ({ name: table.name, rows: table.rows, sha256: table.sha256 })), schema: manifest.body.schema };
+          } finally {
+            const restored = await fetch(`http://127.0.0.1:8787${object}/maintenance`, { method: "POST", headers, body: JSON.stringify({ fenced: false }), signal: AbortSignal.timeout(30000) });
+            assert.equal(restored.status, 200, "private snapshot fence cleanup failed");
+            assert.equal((await restored.json()).state, "open");
+          }
+        }
+      }
       else if (url.pathname === "/validate") {
         let bytes = 0; const chunks = [];
-        for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 1048576); chunks.push(chunk); }
+        for await (const chunk of incoming) { bytes += chunk.length; assert.ok(bytes <= 1048576); chunks.push(chunk); }
         const samples = JSON.parse(Buffer.concat(chunks));
         assert.ok(Array.isArray(samples) && samples.length <= 10000);
         const expected = new Map();
@@ -272,6 +321,6 @@ try {
   });
   await new Promise(done => control.listen(8790, "0.0.0.0", done));
   console.log(JSON.stringify({ ready: true, engineSha256: values["engine-sha256"], events: proof.events }));
-  await Promise.race([interrupted, engine.exited.then(() => { throw new Error("private Engine exited"); })]);
+  await Promise.race([interrupted, engineFailure]);
 } finally { await shutdown(); }
 if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }

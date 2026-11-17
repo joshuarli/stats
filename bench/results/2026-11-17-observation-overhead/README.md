@@ -60,13 +60,13 @@ Eight browsers complete 20 cycles; two report incomplete journeys, after 38
 and 35 reads respectively. All four host gates pass. All completed responses
 match the reference. The cohort is retained in full, with no overhead estimate.
 Its original generic failure does not establish the cause. The bounded
-diagnostic reproduction now captures the failing event and response metadata.
+diagnostic reproduction captures failing-event and response metadata.
 
 ## Verification and reproduction
 
-Five Linux container regressions pass without skips: the two existing fixture
-safety checks, overhead acceptance rules, Linux CPU parsing and startup
-cancellation. The cancellation regression rejects an unauthenticated stop,
+Seven Linux container regressions pass without skips, covering fixture
+safety, overhead acceptance, Linux CPU parsing, startup cancellation and
+private storage-root enforcement. The cancellation regression rejects an unauthenticated stop,
 then proves an authenticated stop works during startup and removes both
 owned processes. A hand fault rejecting that stop with HTTP 409 fails the
 intended assertion. The source is restored and the tests pass.
@@ -80,7 +80,8 @@ node --test /source/bench/observation-overhead-analysis.test.mjs /source/bench/o
 ```
 
 Pinned-Node syntax checks and `make lint` pass. Full repository tests and the
-release gate were not run. There is no production source or deployment change.
+release gate were not run. The separately recorded insertion optimization changes observation source;
+there is no production deployment.
 The [benchmark instructions](../../README.md#native-observation-overhead)
 describe the server, protected credentials and driver. The original repaired
 depot remains unchanged. The copied rehearsal container is stopped.
@@ -92,3 +93,36 @@ completed with all 203,950 events and exact reference checks.
 [fixture proof](fresh-fixture.json) preserve the result. Full overhead and
 campaign acceptance remain pending. Its seven-day response is still clamped
 against the import's fixed historical endpoint.
+
+
+## Diagnostic completion and recovery
+
+[The full-length diagnostic](full-diagnostic.json) completes 800 uncached and
+800 cached selections in each variant without reproducing the initial browser
+failures. Its enabled application delivery fails 674 times. Browser counters
+also retain disabled-document state across hash-only navigation. Distinct
+variant/round query strings now force a new document; a real-browser regression
+proves that reset. This does not explain the original incomplete journeys.
+
+[The profiled diagnostic](cpu-profile-workload.json) subsequently completes five
+cycles per browser with exact application outcomes, 400 successful enabled UI
+posts and no UI drops, pending posts or application delivery failures. It is
+excluded from timing acceptance. Native profile stacks show synchronous
+SQLite transaction boundaries; sampled stack weight can include native waits.
+The resulting [insertion optimization](../2026-11-17-native-ingest-batching/README.md)
+has separate component evidence, with no full overhead conclusion.
+
+[The recovery cohort](engine-recovery.json) retains nine exact gated recoveries
+and the tenth TERM failure. It compares every canonical event-table row and
+Installation manifest, and checks that application process identities survive.
+The tenth Engine exits 1 with a dependent-failure lease fence before restart.
+Ten-cycle acceptance fails. The initial trigger and post-failure data state
+remain unproven. Stuff STUF-90 retains the source investigation.
+
+The failed `fresh/` depot is stopped and preserved on Lisa. Copy it and rewrite
+both storage paths before any further reopen. Do not reimport, reset the
+attempt ledger or replace the failed evidence. The protected raw CPU profiles
+remain under `fresh/cpu-enabled-0/` and `fresh/cpu-disabled-0/` there. The
+committed workload receipts and source digests preserve conclusions without
+requiring those scratch profiles. Use the original attempt conditions in
+[the resumption record](../../../docs/STATS-PERFORMANCE-RESUMPTION.md).

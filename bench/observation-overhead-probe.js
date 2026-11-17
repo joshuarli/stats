@@ -15,7 +15,7 @@
     catch (error) { if (ui) delivery.failed++; throw error; }
     finally { if (ui) delivery.pending--; }
     if (url.pathname.endsWith("/external/telemetry/summary")) {
-      const entry = { started, headersMs: performance.now() - started, status: response.status };
+      const entry = { started, headersMs: performance.now() - started, status: response.status, serverTiming: response.headers.get("server-timing") };
       reads.push(entry);
       entry.done = response.clone().text().then(async body => {
         const data = JSON.parse(body);
@@ -60,7 +60,7 @@
       const http = data.totals.requests > 0, fmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
       if (dom.counts[0] !== fmt.format(http ? data.totals.requests : data.totals.events) || dom.counts[1] !== fmt.format(http ? data.totals.status5xx : data.totals.failed - data.totals.cancelled) || dom.counts[3] !== fmt.format(data.openIssues)) throw new Error("rendered totals changed");
       expected.set(name, dom);
-      samples.push({ range: name, cached, journeyMs: event.durationMs, clickToCompleteMs: event.at - started, latencyMs: read.bodyMs, status: read.status, fromMs: data.fromMs, toMs: data.toMs, events: data.totals.events, sha256: read.sha256 });
+      samples.push({ range: name, cached, journeyMs: event.durationMs, clickToCompleteMs: event.at - started, latencyMs: read.bodyMs, serverTiming: read.serverTiming, status: read.status, fromMs: data.fromMs, toMs: data.toMs, events: data.totals.events, sha256: read.sha256 });
       return;
     }
     samples.push({ range: name, cached, journeyMs: event.durationMs, clickToCompleteMs: event.at - started });

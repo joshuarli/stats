@@ -51,9 +51,9 @@ async function gate(host, post, context) {
   writeFileSync(`${values.output}.${context.variant}-${context.round}-${host}-${post ? "post" : "pre"}.log`, output, { mode: 0o600 });
   return exitCode === 0;
 }
-async function clients(cycles) {
+async function clients(cycles, documentUrl) {
   const outcomes = await Promise.allSettled(sessions.map(async session => {
-    await browser(session, ["open", "http://127.0.0.1:18887/#/projects"]);
+    await browser(session, ["open", documentUrl]);
     await browser(session, ["wait", "--fn", "Boolean(window.observationStudy && document.querySelector('table[aria-label=Projects]'))"]);
     await browser(session, ["eval", "--stdin"], `window.observationStudy.status={done:false};window.observationStudy.run(${cycles}).then(result=>window.observationStudy.status={done:true,result}).catch(error=>window.observationStudy.status={done:true,result:{ok:false,error:String(error),samples:[]}});'started'`);
     const deadline = Date.now() + 600000;
@@ -83,7 +83,8 @@ async function run(variant, round, cycles) {
   const pre = await Promise.all([gate("mac", false, context), gate("lisa", false, context)]);
   if (!values.diagnostic && variant !== "collector-failure" && pre.some(passed => !passed)) throw new Error("perf gate deferred: host busy");
   await control("/begin");
-  const browsers = await clients(cycles);
+  const documentUrl = `http://127.0.0.1:18887/?variant=${variant}&round=${round}#/projects`;
+  const browsers = await clients(cycles, documentUrl);
   study.pendingAttempt = { variant, round, browsers };
   const server = await control("/end");
   const post = await Promise.all([gate("mac", true, context), gate("lisa", true, context)]);
@@ -96,7 +97,7 @@ async function run(variant, round, cycles) {
   const percentile = (values, fraction) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * fraction) - 1];
   const rangeLatencyMs = Object.fromEntries(Object.keys(ranges).map(range => { const values = uncached.filter(sample => sample.range === range).map(sample => sample.latencyMs); return [range, { p50: percentile(values, .5), p95: percentile(values, .95), p99: percentile(values, .99) }]; }));
   const uiDelivery = deliveries.reduce((total, item) => ({ attempted: total.attempted + item.attempted, failed: total.failed + item.failed, pending: total.pending + item.pending, dropped: total.dropped + item.dropped }), { attempted: 0, failed: 0, pending: 0, dropped: 0 });
-  const result = { ...server, hostGatesPassed: [...pre, ...post].every(Boolean), clients: browsers.length, browserFailures: browsers.filter(browser => !browser.ok).length, requests: browsers.reduce((total, browser) => total + (browser.reads ?? 0), 0), ranges, rangeLatencyMs, uiDelivery, latencyMs: uncached.reduce((total, sample) => total + sample.latencyMs, 0) / uncached.length, exact: server.exact && exact.exact, browsers };
+  const result = { ...server, documentUrl, hostGatesPassed: [...pre, ...post].every(Boolean), clients: browsers.length, browserFailures: browsers.filter(browser => !browser.ok).length, requests: browsers.reduce((total, browser) => total + (browser.reads ?? 0), 0), ranges, rangeLatencyMs, uiDelivery, latencyMs: uncached.reduce((total, sample) => total + sample.latencyMs, 0) / uncached.length, exact: server.exact && exact.exact, browsers };
   if (result.browserFailures || exact.checked !== 40 * cycles) study.failedAttempt = result;
   assert.ok(result.browserFailures === 0 && exact.checked === 40 * cycles, "all ten browsers must finish all requested journeys");
   delete study.pendingAttempt;

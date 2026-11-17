@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ await test("cancelling application startup stops the private Engine and applicat
   const sha256 = data => createHash("sha256").update(data).digest("hex");
   for (const directory of ["engine", "fixture/native-scale-state"]) mkdirSync(join(root, directory), { recursive: true });
   writeFileSync(join(root, "engine/rivet-engine"), engine, { mode: 0o700 });
-  writeFileSync(join(root, "engine/config.json"), "{}");
+  writeFileSync(join(root, "engine/config.json"), JSON.stringify({ storage: { log_directory: join(root, "engine/log") }, object_storage: { primary: { file_system: { path: join(root, "engine/objects") } } }, guard: { host: "127.0.0.1" }, api_peer: { host: "127.0.0.1" }, metrics: { host: "127.0.0.1" }, topology: { datacenters: { default: { public_url: "http://127.0.0.1:44794" } } } }));
   writeFileSync(join(root, "fixture/corpus-10x.json"), JSON.stringify({ events: [] }));
   writeFileSync(join(root, "fixture/native-scale-preparation.json"), JSON.stringify({ events: 203950, restoredSummaryEqual: true, runtimeSources: { stats: sha256(worker), observe: sha256(worker) }, namespace: "stats-scale-cancel", nodeVersion: 24 }));
   const state = join(root, "fixture/native-scale-state");
@@ -48,4 +48,16 @@ await test("cancelling application startup stops the private Engine and applicat
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await exited; }
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+await test("a copied Engine configuration cannot reopen storage outside the study root", { skip: process.platform !== "linux" || !existsSync("/.dockerenv") }, () => {
+  const root = mkdtempSync("/bench/overhead-storage-");
+  try {
+    mkdirSync(join(root, "engine"));
+    writeFileSync(join(root, "engine/config.json"), JSON.stringify({ storage: { log_directory: "/bench/another-study/log" }, object_storage: { primary: { file_system: { path: "/bench/another-study/objects" } } } }));
+    const result = spawnSync(process.execPath, [new URL("./observation-overhead-server.mjs", import.meta.url).pathname, "--root", root, "--engine-sha256", "c".repeat(64)], { encoding: "utf8", timeout: 5000 });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /private Engine storage must belong to the selected study root/u);
+    assert.equal(existsSync(join(root, "runtime-pids.json")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

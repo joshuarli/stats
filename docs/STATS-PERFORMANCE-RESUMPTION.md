@@ -65,7 +65,7 @@ passes all three conditions on ten browsers. Collector HTTP 503 leaves browser
 results and exact ingestion unchanged. Lisa gates are busy. No overhead bound
 or campaign timing acceptance follows.
 
-Five Linux container regressions pass without skips. The analysis cases cover
+Seven Linux container regressions pass without skips. The analysis cases cover
 precision limits, incomplete rounds, per-range regressions, failed gates,
 missing delivery, missing ingestion, wrong responses, browser failures and
 collector failure. CPU parsing handles process names with spaces and
@@ -90,9 +90,9 @@ historical endpoint. Do not call it complete seven-day browser acceptance.
 
 The earlier copied rehearsal is stopped in container `stats-sta128-20261117`.
 Its state remains at the parent protected directory. Source copies live under
-that directory's `source/`. The active Mac SSH forwarding process is owned by
-this session; inspect its command before any later cleanup. Nothing in these
-scratch paths substitutes for the committed reproduction instructions.
+that directory's `source/`. The session-owned Mac SSH forwarding process is
+now stopped. Nothing in these scratch paths substitutes for the committed
+reproduction instructions.
 
 The [fresh rehearsal](../bench/results/2026-11-17-observation-overhead/fresh-rehearsal.json)
 passes all three conditions, all twelve host gates and exact output checks.
@@ -107,15 +107,81 @@ retains the entire cohort. No enabled round or overhead comparison is accepted.
 The original failure details did not distinguish response failure, cancellation
 and missing rendered data. Do not infer the cause from that generic error.
 
-One diagnostic reproduction with 20 cycles per browser is active in
-`stats-sta128-study-20261117`. Its driver adds failing-journey context without
-changing the success checks. This is diagnosis, not a replacement accepted
-study or another import. After this reproduction, classify the failure before
-any new timing comparison. Do not silently reset the one-study allowance.
+The bounded [full-length diagnostic](../bench/results/2026-11-17-observation-overhead/full-diagnostic.json)
+completed all 800 uncached and 800 cached selections in each variant. It did
+not reproduce the two incomplete journeys. Enabled delivery reported 674
+application failures and contaminated browser drop counters. Hash-only
+navigation retained the previous document and its delivery state. A real-browser
+regression proves that mechanism; distinct variant/round query strings now
+force a new document. This does not establish the cause of the original
+incomplete journeys, or account for every delivery failure in that diagnostic.
 
-The container's internal address is `172.31.90.3`. The Mac tunnel forwards
-container ports 8787 and 8790 to loopback ports 18787 and 18790. The driver
-owns loopback proxy port 18887. The final source includes per-round host gates,
-per-range p95 analysis, cached-output checks, a six-second export drain, source
-digests and browser delivery counters. Its five Linux regressions pass.
-Accepted overhead timing remains pending.
+A subsequent [profiled diagnostic](../bench/results/2026-11-17-observation-overhead/cpu-profile-workload.json)
+uses fresh documents and five cycles per browser. Both variants complete 200
+uncached and 200 cached selections with exact responses and 1,024 canonical
+stored events. The enabled variant delivers 400 browser observation posts,
+with zero failed, pending or dropped posts and zero application delivery
+failures. Collector HTTP 503 again leaves application outcomes unchanged.
+Profiling is explicitly excluded from timing acceptance. Neither diagnostic
+replaces the failed accepted-study attempt or resets its allowance.
+
+## Accepted ingestion optimization
+
+Native profiling identifies synchronous SQLite transaction boundaries on the
+ingestion path. These stacks can include native waits; they do not isolate
+SQLite CPU. Canonical insertion now batches up to 16 events per statement
+inside the existing transaction. The 64-event regression reduces SQL calls
+from 68 to at most ten, retaining canonical identity, duplicate/conflict
+behavior, occurrence grouping and rollback. No API, schema, permission or
+transaction boundary changes.
+
+[Five native component pairs](../bench/results/2026-11-17-native-ingest-batching/README.md)
+verify every canonical event, summaries and failure outcomes. Median CPU falls
+38.8% and HTTP ingestion elapsed time falls 45.8%, with unchanged database growth,
+no memory-limit events and a 343-byte bundle increase. Gates pass around the
+whole comparison. This is a component result, not full P6 or P7 acceptance.
+Thirty-five focused store, rollup, snapshot, workerd and Node HTTP tests pass;
+observation typecheck and lint pass. No production deployment occurred.
+
+## Recovery continuation and blocker
+
+The [Engine-only cohort](../bench/results/2026-11-17-observation-overhead/engine-recovery.json)
+passes nine cycles with all pre/post host gates, unchanged application process
+identities, exact fixed-window summaries, all 219,939 canonical event rows and
+full Installation state. Shutdown-to-verified-data latency ranges from 3.98 to
+7.53 seconds, below the 15-second limit. This covers Installation and
+`observe:stats`; it does not establish recovery for every platform sink.
+
+The tenth TERM exits with code 1 before restart. Engine logs report
+`dependent_failed` and a singleton worker lease fence. The earliest trigger
+is unproven. The worker's deliberate hard exit protects heartbeat lifetime;
+do not remove that safeguard to make the cohort pass. Ten-cycle acceptance
+fails. No tenth reopen or retry was attempted, and no post-failure data-loss
+claim is supported.
+
+[STUF-90](https://github.com/laputa-systems/stuff/blob/main/docs/openorange-engine-term-fence.md)
+retains the source investigation and exact log hashes in Stuff main commit
+`90c9511`. The stopped failed depot remains on Lisa under
+`/home/josh/.work/stats-perf-campaign/sta128-20261117/fresh/`.
+Preserve it before reopening: copy the whole stopped root and rewrite both
+Engine storage paths into the copy. The server now rejects storage paths
+outside its selected root. The unrelated component-comparison depot is under
+`insert-comparison/` and must not substitute for the tenfold fixture.
+All containers created for this resumption are stopped. The historical
+`stats-perf-scale-server` and shared production services remain untouched.
+
+## Next acceptance conditions
+
+STA-128 remains open. Classify the original browser failure and retain the
+attempt ledger before another accepted overhead comparison; no new attempt
+allowance is implied by these diagnostics. A valid result still requires five
+complete pairs and the original precision, delivery and exact-output checks.
+P6 still needs complete windows through ordinary tailnet ingress. The fixed
+historical endpoint remains retention-clamped. No additional tenfold import
+is authorized by this record.
+
+Resolve STUF-90's shutdown trigger before another ten-cycle acceptance cohort.
+P2 still needs positive natural-sleep evidence and its original sample count;
+STUF-86 provides the API capability, not Stats acceptance. P8 remains blocked
+on STUF-88 availability and complete queue coverage. No replacement soak ran.
+Full repository tests and the release gate remain unrun. Production is unchanged.

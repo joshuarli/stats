@@ -12,6 +12,9 @@ test("overhead requires exact delivered work and resolves only within its precis
   assert.equal(analyzeOverhead(good).verdict, "pass");
   const diagnostic = structuredClone(good); diagnostic.diagnostic = true;
   assert.equal(analyzeOverhead(diagnostic).verdict, "inconclusive");
+  const profiled = structuredClone(good); profiled.fixture.profiling = true;
+  assert.equal(analyzeOverhead(profiled).valid, false);
+  assert.equal(analyzeOverhead(profiled).cpuOverhead, null);
   const incomplete = structuredClone(good); incomplete.rounds[0].ranges["7d"].uncached--;
   assert.equal(analyzeOverhead(incomplete).verdict, "inconclusive");
   const noisy = structuredClone(good); noisy.rounds[0].statsCpuUs *= 1.1;
