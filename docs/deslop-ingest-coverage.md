@@ -88,3 +88,36 @@ Use a disposable checkout and place `TMPDIR` under `.work/tmp`.
 The raw `--list` inventory SHA-256 is
 `fa78a6a7a47bd44fbdbf6a56b000c43bcca0a2a81d52e34518a7ef574f9e116a`.
 Other frame, ingest, producer, and whole-change decisions remain open.
+
+## Producer acknowledgment streams
+
+At `9b8f0b30`, Stryker 10.1.1 selected 68 identities in the producer
+`readAck` path. The stream and value checks raised caught identities
+from 14 to 30. The 4,096-byte case spans two chunks. At 4,097 bytes
+the producer cancels the stream and records the malformed response.
+Other cases cover missing bodies, an interrupted stream after a
+complete JSON prefix, invalid UTF-8, and scalar JSON.
+
+Three remaining results are equivalent for the runtime contract.
+ID 25 leaves the uninitialized parsed value as `undefined`, which
+the object check rejects. IDs 53 and 60 remove the runtime type
+checks for the two counts. `Number.isSafeInteger` already rejects
+every non-number. The type checks remain because they narrow
+`unknown` for the compiler.
+
+The same 35 identities timed out in both 3m 12s runs. They repeated
+at the longer command-runner bound in 9m 11s. The longer command used
+`--test-timeout=1500`, `timeoutMS: 15000` and `timeoutFactor: 3`.
+A run with `--test-force-exit` also allowed every previously caught
+identity to survive, so that mode is excluded from the evidence.
+The repeated timeouts keep this scope outside retained CI.
+
+Run the pinned Stryker command runner serially with coverage analysis
+off, mutating `packages/producer/src/index.ts:222-258`. Use `node
+--test cloudflare/test/producer/producer.test.ts` and include
+`packages/producer/src/**`, `cloudflare/src/**`, the producer test file,
+`fixtures/observe-ingest/**` and the corresponding package manifests
+in the sandbox. The ordered JSON tuples of identity, operator, location
+and replacement have SHA-256
+`90bf487769f78749b89890228445110af7bbf9fa2576251d768eeb8287e4e9c0`
+in all three accepted runs.
