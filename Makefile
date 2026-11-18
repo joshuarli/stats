@@ -103,7 +103,7 @@ preview: work-ready node-ready
 
 lint: node-ready
 	pnpm --filter @stats/telemetry lint
-	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts'
+	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts' '$(CURDIR)/deploy/orange/recovery/check-capabilities.mts'
 
 auth-ready:
 	ssh '$(ORANGE_HOST)' 'test -x /opt/openorange/bin/oo && doas -n true'

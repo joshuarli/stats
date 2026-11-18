@@ -78,6 +78,21 @@ adapter now maps the known installation storage deadline to
 the hosts API and verifies that genuine request errors still return
 HTTP 400. The fix is staged in source for the next application rollout.
 
+Run the external capability probe from a tailnet host with the same
+access as the operator.
+
+```sh
+node deploy/orange/recovery/check-capabilities.mts lisa,threadripper,sentry,tim,m1-max
+```
+
+It reads Stats receipts and Agentctl hosts, verifies a Cargo download
+against its sparse-index checksum, and fetches the published Discover
+search index. The JSON report marks a dated Discover snapshot as
+degraded even when the index loads. Exit 4 signals an unavailable
+capability, and exit 7 signals degraded reads. The first live invocation
+returned 7 for the HQ snapshot. Connect the report to an independent
+scheduler and alert destination for the two-minute detection drill.
+
 The first delivery for degraded recovery is the OpenOrange recovery route
 configuration. A regular render and reload preserved Stats, Stuff and
 Discover and left Agentctl's stateful endpoint available. The same Stats

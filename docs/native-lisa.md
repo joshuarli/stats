@@ -103,13 +103,16 @@ host IDs was `4c414fdbfc4b092051900de9d23535827e40aa977a031fa0decbf3cdbf8e4534`
 before and after. The production OpenRC unit switch and rollback for the
 remaining services still need rehearsal.
 
-## Why now, and what native is not
+## Why migrate
 
-The 2026-11-17 outage was not a container failure: the Rivet engine refused to
-start because the root filesystem was at 98% (emptying it is what restored
-service). Running natively would not have prevented it. What native buys:
-fewer layers on a constrained host, no image storage, no docker daemon, a
-single OOM/CPU view per process, and one less reason for things to be opaque.
+Native services reduce the runtime layers on Lisa and give OpenRC and the
+host a direct view of each process's memory and CPU usage. Disk
+saturation remains a separate risk. Clearing space during the incident
+did not restore runner registration. The same failure later reproduced
+with a native Engine, an isolated network, and ample free space when it
+opened a verified production depot copy. A fresh depot on Lisa reached
+application readiness. The trigger inside the storage or scheduling
+path remains unresolved.
 What it costs: reimplementing pinning, supervision, and health for every
 component by hand, and giving up upstream's tested container boundary.
 
