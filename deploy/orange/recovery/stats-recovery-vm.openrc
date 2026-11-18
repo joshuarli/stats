@@ -1,0 +1,62 @@
+#!/sbin/openrc-run
+
+description="Stats recovery writer VM"
+qemu=/usr/bin/qemu-system-x86_64
+pidfile="${recovery_dir}/qemu.pid"
+forward="user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${recovery_ssh_port}-:22"
+
+depend() {
+    need localmount
+}
+
+guest_running() {
+    [ -r "$pidfile" ] || return 1
+    read -r pid < "$pidfile" || return 1
+    case "$pid" in ""|*[!0-9]*) return 1 ;; esac
+    [ "$(readlink "/proc/$pid/exe")" = "$qemu" ] &&
+        tr '\000' '\n' < "/proc/$pid/cmdline" | grep -Fxq -- "$forward"
+}
+
+guest_control() {
+    /usr/bin/ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=5 -o IdentitiesOnly=yes \
+        -o StrictHostKeyChecking=yes -o "HostKeyAlias=$recovery_host_key_alias" \
+        -o "UserKnownHostsFile=$recovery_dir/known_hosts" -i "$recovery_dir/shutdown" \
+        -p "$recovery_ssh_port" root@127.0.0.1 "$1"
+}
+
+start() {
+    ebegin "Starting Stats recovery VM"
+    if guest_running; then
+        eend 0
+        return
+    fi
+    if [ ! -s "$recovery_dir/stats.qcow2" ] || [ ! -s "$recovery_dir/seed.iso" ]; then
+        eend 1 "Recovery disk or seed ISO missing"
+        return 1
+    fi
+    start-stop-daemon --start --user "$recovery_user" --chdir "$recovery_dir" \
+        --pidfile "$pidfile" --exec "$qemu" -- -enable-kvm -cpu host -smp 4 -m 4096 \
+        -drive file=stats.qcow2,format=qcow2,if=virtio -cdrom seed.iso \
+        -nic "$forward" -display none -serial file:console.log -monitor none \
+        -pidfile qemu.pid -daemonize && guest_running
+    eend $?
+}
+
+stop() {
+    ebegin "Shutting down Stats recovery VM"
+    if ! guest_running; then
+        eend 0
+        return
+    fi
+    if ! guest_control poweroff; then
+        eend 1 "Guest did not accept a graceful shutdown"
+        return 1
+    fi
+    elapsed=0
+    while guest_running && [ "$elapsed" -lt 60 ]; do
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    ! guest_running
+    eend $?
+}

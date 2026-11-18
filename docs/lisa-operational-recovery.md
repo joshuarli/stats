@@ -12,7 +12,9 @@ On November 18, 2026, the Stats writer moved to Threadripper. All five
 expected online hosts delivered new telemetry across two reporting
 intervals. The [failover record](native-lisa-retro.md#live-stats-failover)
 identifies the protected source capture, current authority, and failback
-requirements. History gaps and the direct producer paths remain open.
+requirements. The readback establishes the missing sample interval for
+each host. Acknowledged-sample reconciliation and the direct producer
+paths remain open.
 
 The first delivery for detection is `statsctl check hosts`, which fails
 for stale receipts even when the dashboard returns HTTP 200. Alert
@@ -23,10 +25,12 @@ The first delivery for degraded recovery is the OpenOrange recovery route
 configuration. A regular render and reload preserved Stats, Stuff and
 Discover and left Agentctl's stateful endpoint available. The same Stats
 writer entry now prevents local start and image selection. This proves
-the render and authority guard on Lisa. Reader startup after a host
-reboot, image retention, publication and operator recovery, the shared
-maintenance lock, full verified backups, disk reserves, and the Engine
-failure mechanism remain open.
+the render and authority guard on Lisa. The live Stats standby is in
+Threadripper's default OpenRC runlevel. A spare disk exercised the VM
+launch path. An end-to-end standby reboot, reader startup, image
+retention, publication and operator recovery, the shared maintenance
+lock, full verified backups, disk reserves, and the Engine failure
+mechanism remain open.
 
 ## Restore live service
 

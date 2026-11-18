@@ -5,7 +5,9 @@ the 00:19 UTC triage check. Stats snapshot reads and Agentctl were verified
 by 02:30, about **2 hours 11 minutes** after that check. HQ public reads
 were verified by 02:40, about **2 hours 21 minutes** after triage. These are
 elapsed times between recorded checks. The exact outage start and
-hands-on time are unknown.
+hands-on time are unknown. The live Stats history later showed that all
+five hosts had stopped recording samples around 23:00 UTC on November 17,
+roughly 79 minutes before the first documented triage check.
 
 Recovery was partial. Package pulls and the HQ reader recovered through
 temporary routes. Stats displayed a dated snapshot while live ingestion
@@ -40,6 +42,8 @@ Times are UTC on November 18, 2026.
 | 01:39–01:53 | An ordered Lisa restart reconciled stale app identity and failed registration again. Full logical export failed on a Discover observation page. An installation-only export passed. The authenticated snapshot route was staged for approval. |
 | 02:27–02:30 | After approval, Stats served the labeled snapshot at its normal URL. Agentctl restarted and passed its stateful hosts read. |
 | 02:31–02:40 | Discover failed another primary start. The isolated reader passed published-content probes after its artifact binding was attached. HQ recovered through a scoped route. |
+| 02:57–03:03 | An Engine-only stop sealed a fresh checksum-verified copy. A separate standby took Stats write authority. All five hosts resumed reporting. |
+| 03:11 | The normal renderer reloaded the three recovery routes. Stats, registry pulls, HQ published reads and Agentctl's hosts API passed. |
 
 ## Public read recovery
 
@@ -159,6 +163,15 @@ diverge at the switch. To fail back, pause admission, seal and transfer the
 newest standby state, verify it on Lisa, then move authority. The older
 Lisa capture remains evidence and a recovery point.
 
+The standby VM is now registered in Threadripper's default OpenRC
+runlevel as `stats-recovery-vm`. It adopted the current QEMU process
+without restarting it. The launch path was exercised separately against
+a disposable disk. The guest starts Docker, the existing Engine
+container and native Stats on boot. Stats waits for Engine liveness before
+running. A host-local SSH key is restricted to the guest's status and
+graceful shutdown commands. The real standby's reboot and shutdown
+sequence still needs an isolated rehearsal.
+
 On Lisa, OpenRC service `oo-stats-live-tunnel` exposes the guest app on
 `127.0.0.1:18489`. Caddy retains tailnet identity checking and sends all
 Stats app requests to it. The `/rivet` dashboard remains separate.
@@ -173,6 +186,28 @@ The temporary deployment restores host ingest and the dashboard. Direct
 producers on Lisa that address the old private Stats container IP, the
 Stats export bucket binding, and complete history reconciliation remain
 open. No full native Lisa cutover or standby reboot drill was performed.
+
+### Host history reconciliation
+
+Authenticated summary history from the active writer shows the
+following gap boundaries. They are sample timestamps in UTC. The first
+returning samples precede route activation because agents sent recent
+queued samples. Gaps mark missing samples in the verified history. The
+request logs do not identify which missing samples each host attempted
+or whether every pre-outage acknowledgement survived.
+
+| Host | Last sample before gap, Nov 17 | First sample after gap, Nov 18 |
+| --- | --- | --- |
+| lisa | 23:00:31 | 02:59:33 |
+| threadripper | 23:00:45 | 02:59:17 |
+| sentry | 23:00:20 | 02:59:42 |
+| tim | 23:00:36 | 02:59:43 |
+| m1-max | 23:00:32 | 02:59:51 |
+
+To reproduce, get host IDs from the authenticated `/api/v1/hosts`
+endpoint. For each, decode `kind=summary` history in UTC windows
+`22:00–01:00` and `01:00–03:17`. Use the largest interval between
+successive points across the two windows.
 
 ## HQ public reader recovery
 
