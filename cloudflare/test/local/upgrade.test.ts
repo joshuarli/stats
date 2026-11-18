@@ -2,17 +2,19 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { windowStartMs } from "../../src/projects/metrics.ts";
 import { RECORDED_AT_MS, scenario } from "../../local/scenario.ts";
 import { addHost, ingestFixture } from "../../local/seed.ts";
 import { SCRATCH, productionProjects, startStack, type Stack } from "../../local/stack.ts";
-import { CLOUDFLARE_ROOT } from "../../local/topology.ts";
+import { CLOUDFLARE_ROOT, readTestVars } from "../../local/topology.ts";
 
-const BASELINE = resolve(process.env["BASELINE_WORKTREE"] ?? join(CLOUDFLARE_ROOT, "../.work/wt/baseline"));
+const baselineWorktree = process.env["BASELINE_WORKTREE"];
+const BASELINE = resolve(baselineWorktree ?? join(CLOUDFLARE_ROOT, "../.work/wt/baseline"));
 const BUILT = "cloudflare/.cloudflare/output/v0/workers/default";
 const OBSERVE_BUILT = "cloudflare/observe-worker/.cloudflare/output/v0/workers/default";
-const BUILD = "git worktree add --detach .work/wt/baseline a5918ea~1 && cd .work/wt/baseline && pnpm install --frozen-lockfile --offline && cd cloudflare && pnpm build && pnpm run build:observe";
 const missing = [BUILT, OBSERVE_BUILT].filter(path => !existsSync(join(BASELINE, path, "worker.config.json")));
+const baselineError = `no baseline build at ${BASELINE} (${missing.join(", ")}); follow the legacy build steps in .github/workflows/ci.yml`;
 const T = RECORDED_AT_MS;
 const PROJECT_HISTORY = `/api/v1/projects/stuff/history?from=${windowStartMs(T)}&to=${T}&kinds=worker,routes,r2,collector`;
 
@@ -36,14 +38,38 @@ async function snapshot(stack: Stack, hostId: string): Promise<Snapshot> {
   };
 }
 
-await test("the candidate opens state written by the build before schema version 8 and keeps hosts, samples, and history frames", { skip: missing.length === 0 ? false : `no baseline build at ${BASELINE} (${missing.join(", ")}); from the repo root run: ${BUILD}` }, async () => {
+async function startBaseline(persist: string): Promise<Stack> {
+  const { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON } = readTestVars(join(BASELINE, "cloudflare/wrangler.test.jsonc"));
+  assert.ok(ACCESS_TEAM_DOMAIN && ACCESS_AUD && ACCESS_JWKS_JSON, "legacy Access test bindings are required");
+  const signer = await import(pathToFileURL(join(BASELINE, "cloudflare/test/access-token.ts")).href) as { accessToken(): Promise<string> };
+  const token = await signer.accessToken();
+  const stack = await startStack({
+    nowMs: T,
+    persist,
+    statsOutput: join(BASELINE, BUILT),
+    observeOutput: join(BASELINE, OBSERVE_BUILT),
+    testBindings: { ACCESS_TEAM_DOMAIN, ACCESS_AUD, ACCESS_JWKS_JSON }
+  });
+  return {
+    ...stack,
+    fetch: (path, init) => {
+      const headers = new Headers(init?.headers as HeadersInit | undefined);
+      headers.set("cf-access-jwt-assertion", token);
+      return stack.fetch(path, { ...init, headers: Object.fromEntries(headers) });
+    }
+  };
+}
+
+await test("the candidate opens state written by the build before schema version 8 and keeps hosts, samples, and history frames", { skip: baselineWorktree === undefined && missing.length > 0 ? baselineError : false }, async () => {
+  assert.equal(missing.length, 0, baselineError);
   mkdirSync(SCRATCH, { recursive: true });
   const persist = mkdtempSync(join(SCRATCH, "upgrade-"));
   try {
-    const baseline = await startStack({ nowMs: T, persist, statsOutput: join(BASELINE, BUILT), observeOutput: join(BASELINE, OBSERVE_BUILT) });
+    const baseline = await startBaseline(persist);
     let host: { hostId: string; token: string };
     let before: Snapshot;
     try {
+      assert.equal((await baseline.anonymous("/api/v1/hosts")).status, 401);
       host = await addHost(baseline);
       assert.equal(await ingestFixture(baseline, host, T - 60_000), 200);
       assert.equal(await baseline.collect(scenario(productionProjects(baseline.stats), T)), "ok");

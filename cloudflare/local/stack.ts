@@ -33,6 +33,7 @@ export interface StackStart {
   readonly localExplorer?: true;
   readonly statsOutput?: string;
   readonly observeOutput?: string;
+  readonly testBindings?: Readonly<Record<string, string>>;
   readonly producers?: readonly string[];
   readonly workerProducers?: readonly WorkerProducerStart[];
   readonly producerTail?: V4WorkerOptions;
@@ -188,6 +189,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
   const mf = openWorkers(shared.stats, shared.observe, {
     text: { ENVIRONMENT: "test", ...(start.projectsJson === undefined ? {} : { PROJECTS: start.projectsJson }) },
     secrets: {
+      ...start.testBindings,
       GATEWAY_SECRET: secret,
       ...(start.nowMs === null ? {} : { TEST_NOW_MS: String(start.nowMs) })
     },
