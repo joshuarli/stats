@@ -79,6 +79,42 @@ await test("the checked-in fixture producer serves an injected text binding", as
   }
 });
 
+await test("the local stack reports distinct runtime-assigned producer sockets", async () => {
+  const output = plant("ephemeral");
+  try {
+    let stack = await startStack({
+      nowMs: null,
+      workerProducers: [
+        { dir: output, service: NAME, port: 0 },
+        { dir: FIXTURE, service: "profile-fixture-vars" },
+      ],
+    });
+    try {
+      const [first, second] = stack.workerProducers;
+      assert.ok(first && second);
+      assert.notEqual(first.port, second.port);
+      for (const producer of [first, second]) {
+        const direct = await stack.mf.unsafeGetDirectURL(producer.worker.name);
+        assert.equal(producer.origin, direct.origin);
+        assert.equal(producer.port, Number(direct.port));
+        assert.equal(direct.hostname, "127.0.0.1");
+      }
+      assert.equal(await value(first.origin, "GREETING"), "built greeting");
+      const response = await fetch(second.origin);
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), "hello from the profile fixture");
+
+      stack = await stack.restart({ nowMs: null });
+      assert.deepEqual(stack.workerProducers.map(producer => producer.origin), [first.origin, second.origin]);
+      assert.equal(await value(first.origin, "GREETING"), "built greeting");
+    } finally {
+      await stack.dispose();
+    }
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+});
+
 await test("the local-stack CLI refuses a malformed --producer-var before starting the stack", () => {
   const run = (entry: string) => spawnSync(process.execPath, ["scripts/local-stack.mjs", "run", "--producer-worker", "/nonexistent", "--producer-var", entry, "--", "true"], { cwd: CLOUDFLARE_ROOT, encoding: "utf8" });
   for (const entry of ["GREETING", "=value", "lower=value"]) {
