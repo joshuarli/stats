@@ -37,7 +37,9 @@ def select(base, lane):
         "scripts/check-ingest-mutations.mjs",
     }
     protected = set()
-    for status, path in zip(changed[0:-1:2], changed[1:-1:2], strict=True):
+    if changed[-1] or len(changed) % 2 == 0:
+        raise ValueError("malformed Git change list")
+    for status, path in zip(changed[0:-1:2], changed[1:-1:2]):
         if path in settings or path.startswith(tests):
             print(f"protected by tests or settings: {path}")
             protected.update(("rust", "worker"))
