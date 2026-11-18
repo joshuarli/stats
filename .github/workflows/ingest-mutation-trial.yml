@@ -1,0 +1,54 @@
+name: Ingest mutation trial
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    name: Ingest mutation (${{ matrix.lane }})
+    if: github.head_ref == 'ci/deslop-ingest-gate' || github.base_ref == 'ci/deslop-ingest-gate'
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 13
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [worker, rust]
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1 # v3.2.0
+        if: matrix.lane == 'worker'
+        with:
+          version: 12.21.0
+          runtime: node@26.13.1
+          install: false
+      - if: matrix.lane == 'worker'
+        run: pnpm install --frozen-lockfile
+      - if: matrix.lane == 'rust'
+        run: rustup show active-toolchain
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
+        if: matrix.lane == 'rust'
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Mutants
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          INGEST_MUTATION_LANE: ${{ matrix.lane }}
+        run: |
+          mkdir -p .work/tmp
+          TMPDIR="$PWD/.work/tmp" make mutants-diff BASE="origin/$BASE_REF"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: ingest-mutation-${{ matrix.lane }}
+          path: .work/tmp/ingest-mutation-*
+          include-hidden-files: true
+          retention-days: 7
