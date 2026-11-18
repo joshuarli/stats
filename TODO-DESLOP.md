@@ -37,9 +37,9 @@ Linux test, lint and macOS dashboard jobs passed.
 ### DSLP-4 · P2 · Tests: coverage, boundary gaps, mutation
 
 - **Area:** deslop · tests
-- **Where:** cloudflare/src/ingest, cloudflare/src/binary, cloudflare/test/ingest, agent/src/wire.rs, agent/tests/conformance.rs, cloudflare/test/ui, .github/workflows/ci.yml
-- **Problem:** At 843890b the first calibration scope is frame admission, acknowledgement mapping, and producer parity across Worker, Node, and the Rust agent. The ingest, binary, and conformance fixtures establish existing contracts. Browser and history lifecycle checks run in the separate dashboard job. Legacy migration is now executed in Linux CI. Current branch coverage, mutation selections and outcomes, and paired suite cost remain unmeasured. No whole-change gate is installed.
-- **Recommendation:** Run make fixtures, make cloudflare-test and make agent-test on the named components. Bound the first mutation run to frame and acknowledgement decisions in TypeScript and emitted wire values in Rust. Record exact identities and unsupported platform decisions. Qualify Worker and Node replay and browser retention separately. Require whole-change controls, platform ownership and suite-cost evidence before closing.
+- **Where:** cloudflare/src/ingest, cloudflare/src/binary, fixtures/v2, agent/src/wire.rs, agent/tests/conformance.rs, dashboard browser lifecycle, and hosted CI
+- **Problem:** Worker, Node and Rust share the v2 fixture corpus. Both decoders caught the repeated-sequence accounting fault. docs/deslop-ingest-coverage.md records exact Node ingest and Rust wire coverage and the Worker runtime cases. Linux CI exercises legacy storage migration, and the dashboard job exercises browser and history lifecycle. Broader coverage and mutation remain unqualified.
+- **Recommendation:** Measure the remaining Worker and browser branches and select exact frame admission, acknowledgment accounting, producer parity and emitted agent wire decisions. Qualify whole-change controls, the supported platform and consumer boundaries, and paired suite cost.
 - **Fix with:** deslop
 - **Effort:** L
 
