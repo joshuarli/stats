@@ -118,10 +118,16 @@ int main(int argc, char **argv) {
     assert.notEqual(initial.backendOrigin, other.backendOrigin);
     assert.notEqual(initial.runId, other.runId);
     assert.equal((await fetch(`${initial.workerOrigin}/api/v1/hosts`)).status, 401);
-    const hosts = async (origin: string) => await (await fetch(`${origin}/api/v1/hosts`)).json() as { hosts: { hostId: string }[] };
-    const before = await hosts(initial.origin);
-    assert.equal(before.hosts.length, 1);
-    assert.notEqual(before.hosts[0]!.hostId, (await hosts(other.origin)).hosts[0]!.hostId);
+    const storedHosts = async (origin: string) => {
+      const result = await (await fetch(`${origin}/api/v1/hosts`)).json() as { hosts: { hostId: string; online: boolean }[] };
+      return result.hosts.map(({ online, ...stored }) => {
+        assert.equal(typeof online, "boolean");
+        return stored;
+      });
+    };
+    const before = await storedHosts(initial.origin);
+    assert.equal(before.length, 1);
+    assert.notEqual(before[0]!.hostId, (await storedHosts(other.origin))[0]!.hostId);
     const page = await browser.newPage();
     await page.goto(initial.origin);
     await page.getByRole("table", { name: "Fleet hosts" }).waitFor();
@@ -146,7 +152,7 @@ int main(int argc, char **argv) {
     const rebuildMs = performance.now() - rebuildStarted;
     assert.notEqual(changed.backendPid, initial.backendPid);
     assert.equal((await (await fetch(`${initial.origin}/health`)).json() as { devProbe: string }).devProbe, "changed");
-    assert.deepEqual(await hosts(initial.origin), before);
+    assert.deepEqual(await storedHosts(initial.origin), before);
     cursor = first.statuses.length;
     writeFileSync(source, "export const = ;");
     await first.wait("dev-build-error", cursor);
@@ -164,7 +170,7 @@ int main(int argc, char **argv) {
     const observed = await fetch(`${initial.origin}/api/observe/stats/health`);
     assert.equal(observed.status, 200);
     assert.equal(observed.headers.get("X-Dev-Probe"), "observe");
-    assert.deepEqual(await hosts(initial.origin), before);
+    assert.deepEqual(await storedHosts(initial.origin), before);
     const oldPids = tree(first.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
     const oldIdentities = describe(oldPids);
     await first.stop();
@@ -178,7 +184,7 @@ int main(int argc, char **argv) {
     const restarted = await first.wait("dev-ready");
     const warmMs = performance.now() - warmStarted;
     console.log(`dev measurements: cold=${Math.round(coldMs)}ms warm=${Math.round(warmMs)}ms rebuild=${Math.round(rebuildMs)}ms rss=${rssKb}KiB`);
-    assert.deepEqual(await hosts(restarted.origin), before);
+    assert.deepEqual(await storedHosts(restarted.origin), before);
     assert.doesNotMatch(readFileSync(first.child.logPath, "utf8"), /Bearer |eyJhbGci/u);
     const secondPids = tree(second.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
     const secondIdentities = describe(secondPids);

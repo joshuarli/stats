@@ -229,6 +229,9 @@ await test("a malformed success body is retried a bounded number of times and th
 
 await test("success acknowledgments require two nonnegative safe integers", async () => {
   const invalid = [
+    null,
+    "text",
+    7,
     { duplicate: 0 },
     { accepted: 1 },
     { accepted: "1", duplicate: 0 },
@@ -247,6 +250,60 @@ await test("success acknowledgments require two nonnegative safe integers", asyn
     assert.deepEqual(producer.stats(), {
       queued: 0, dropped: 1, sent: 0, duplicates: 0, batches: 0, retries: 0, lastError: "malformed_response",
     }, JSON.stringify(ack));
+  }
+});
+
+await test("acknowledgment size includes every chunk and cancels an oversized stream", async () => {
+  for (const size of [4096, 4097]) {
+    const bytes = new TextEncoder().encode('{"accepted":1,"duplicate":0}'.padEnd(size, " "));
+    let canceled = false;
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, 12));
+        controller.enqueue(bytes.subarray(12));
+        if (size === 4096) controller.close();
+      },
+      pull(controller) { controller.close(); },
+      cancel() { canceled = true; },
+    }, { highWaterMark: 0 });
+    const producer = createProducer(configure("http://localhost", {
+      batchSize: 1, maxRetries: 0, fetch: async () => new Response(body),
+    }));
+    producer.record({ operation: "note.save", outcome: "ok", durationMs: 5 });
+    await producer.shutdown();
+    const { sent, dropped, lastError } = producer.stats();
+    if (size === 4096) {
+      assert.deepEqual({ sent, dropped, lastError, canceled }, { sent: 1, dropped: 0, lastError: null, canceled: false });
+    } else {
+      assert.deepEqual({ sent, dropped, lastError, canceled }, { sent: 0, dropped: 1, lastError: "malformed_response", canceled: true });
+    }
+  }
+});
+
+await test("successful status still requires a complete UTF-8 acknowledgment", async () => {
+  const encoder = new TextEncoder();
+  const invalidUtf8 = encoder.encode('{"accepted":1,"duplicate":0,"note":"?"}');
+  invalidUtf8[invalidUtf8.indexOf(0x3f)] = 0x80;
+  let delivered = false;
+  const interrupted = new ReadableStream({
+    pull(controller) {
+      if (delivered) {
+        controller.error(new Error("fixture interrupted"));
+      } else {
+        delivered = true;
+        controller.enqueue(encoder.encode('{"accepted":1,"duplicate":0}'));
+      }
+    },
+  }, { highWaterMark: 0 });
+  for (const body of [null, invalidUtf8, interrupted]) {
+    const producer = createProducer(configure("http://localhost", {
+      batchSize: 1, maxRetries: 0, fetch: async () => new Response(body),
+    }));
+    producer.record({ operation: "note.save", outcome: "ok", durationMs: 5 });
+    await producer.shutdown();
+    assert.deepEqual(producer.stats(), {
+      queued: 0, dropped: 1, sent: 0, duplicates: 0, batches: 0, retries: 0, lastError: "malformed_response",
+    });
   }
 });
 
