@@ -466,9 +466,9 @@ fn write_service(out: &mut Vec<u8>, service: &Service, previous: Option<&Service
     let (shape, values, base) = same_shape(service_counters(usage), previous.map(service_counters));
     let base = values.deltable_from(base.as_ref());
     let memory = usage.memory.as_ref();
-    let head = u8::from(memory.is_some()) * SERVICE_MEMORY
-        | u8::from(memory.is_some_and(|memory| memory.peak.is_some())) * SERVICE_PEAK
-        | shape * SERVICE_IO
+    let head = (u8::from(memory.is_some()) * SERVICE_MEMORY)
+        | (u8::from(memory.is_some_and(|memory| memory.peak.is_some())) * SERVICE_PEAK)
+        | (shape * SERVICE_IO)
         | if base.is_some() { SERVICE_DELTA } else { 0 };
     out.push(head);
     let counter = |index: usize| values.values[index] - base.map_or(0, |base| base.values[index]);
