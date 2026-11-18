@@ -37,7 +37,7 @@ function fixture(failure = "none", mode: "check" | "deploy" = "deploy") {
       return "OK";
     }
     if (words.includes("record-deployment")) { if (failure === "marker") throw new Error("marker failed"); return ""; }
-    if (words.includes("deployment")) return JSON.stringify(selected);
+    if (words.includes("deployment")) return JSON.stringify(failure === "fenced" ? { ...selected, recoveryWriter: "127.0.0.1:18489" } : selected);
     if (words.includes("set-image")) {
       const index = words.indexOf("set-image"), image = words[index + 2]!;
       assert.equal(words.at(-1), selected.image);
@@ -54,7 +54,15 @@ function fixture(failure = "none", mode: "check" | "deploy" = "deploy") {
       if (selected.image === newImage) firstRestartCompleted = true;
       return "";
     }
-    if (words.includes("inspect")) return running.image;
+    if (words.includes("status")) {
+      if (failure === "starting") throw new Error("OpenRC status: starting");
+      return "started";
+    }
+    if (words.includes("inspect") && words.includes("image")) {
+      if (failure === "missing-image") throw new Error("no such image");
+      return `image-id-of-${words.at(-1)}`;
+    }
+    if (words.includes("inspect")) return `${running.image} ${failure === "retagged" ? "different-image-id" : `image-id-of-${running.image}`}`;
     if (words.includes("exec")) return String(running.version);
     if (words.includes("wait")) return "";
     throw new Error(`unexpected command ${file} ${words.join(" ")}`);
@@ -105,10 +113,21 @@ await test("Orange deploy refuses existing drift before building or changing sel
   assert.equal(f.calls.some(call => call.file.endsWith("build-image.sh") || call.words.includes("set-image")), false);
 });
 
+for (const [failure, problem] of [
+  ["fenced", /writer authority.*local deployment.*fenced/u],
+  ["starting", /OpenRC status: starting/u],
+  ["missing-image", /no such image/u],
+  ["retagged", /differs from running/u]
+] as const) await test(`Orange deploy refuses ${failure} state before a build or mutation`, async () => {
+  const f = fixture(failure);
+  await assert.rejects(f.deploy(), problem);
+  assert.ok(f.calls.every(call => call.file === "ssh" && ["deployment", "status", "inspect", "exec"].some(word => call.words.includes(word))));
+});
+
 await test("Orange check mode only inspects the selected and running release", async () => {
   const f = fixture("none", "check"); await f.deploy();
   assert.deepEqual(f.state(), { selected: { image: oldImage, version: 1 }, running: { image: oldImage, version: 1 } });
-  assert.ok(f.calls.every(call => call.file === "ssh" && ["deployment", "inspect", "exec"].some(word => call.words.includes(word))));
+  assert.ok(f.calls.every(call => call.file === "ssh" && ["deployment", "status", "inspect", "exec"].some(word => call.words.includes(word))));
   assert.match(f.progress.at(-1)!, /selected and running Stats release verified/u);
 });
 
@@ -269,7 +288,9 @@ else if(a.includes('restart')) {
     fs.writeFileSync(process.env.BLOCKED,'ready');
   } else s.running={...s.selected};
 }
-else if(a.includes('inspect')) console.log(s.running.image);
+else if(a.includes('inspect')&&a.includes('image')) console.log('image-id-of-'+a.at(-1));
+else if(a.includes('inspect')) console.log(s.running.image+' image-id-of-'+s.running.image);
+else if(a.includes('status')) console.log('started');
 else if(a.includes('exec')) console.log(s.running.version);
 fs.writeFileSync(path,JSON.stringify(s));
 `, { mode: 0o755 });

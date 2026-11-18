@@ -49,8 +49,12 @@ make stats-deploy-check ORANGE_HOST=lisa
 make stats-deploy ORANGE_HOST=lisa
 ```
 
-The read-only check compares the selected image and node version with the
-running Stats container. A mismatch must be reconciled before deployment.
+The read-only check verifies local write authority, OpenRC's running
+state, and the selected image's availability. It compares the selected
+image reference, image ID, and persisted node version with the running
+container. Reconcile a mismatch before deployment. If a standby
+holds write authority, follow the failback procedure before deploying
+on Lisa.
 `make deploy` runs this check before its fixtures, Worker tests, agent tests
 and agent builds. The deployment checks the state again before building.
 

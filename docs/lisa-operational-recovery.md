@@ -32,6 +32,12 @@ retention, publication and operator recovery, the shared maintenance
 lock, full verified backups, disk reserves, and the Engine failure
 mechanism remain open.
 
+Stats deploy preflight now reads writer authority and checks the OpenRC
+service, selected image ID and persisted node version. Simulated stale
+startup, missing image, changed tag, node version drift and standby
+ownership all stopped before building or changing image selection.
+Release retention and the shared maintenance lock are separate items.
+
 ## Restore live service
 
 1. **Reconcile Stats and prove fresh ingest.** The Stats operator opens one

@@ -28,12 +28,20 @@ export async function deployStats({ mode, host, base, run, report, now, wait, si
   const selected = async (options: Partial<RunOptions> = {}): Promise<Deployment> => {
     const value: unknown = JSON.parse(await remote(["doas", "-n", "/opt/openorange/bin/oo", "deployment", "stats"], { capture: true, ...options }));
     if (typeof value !== "object" || value === null || !("image" in value) || typeof value.image !== "string" || !("version" in value) || typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version < 1) throw new Error("invalid Stats deployment selection");
+    if ("recoveryWriter" in value) {
+      if (typeof value.recoveryWriter !== "string" || value.recoveryWriter.length === 0) throw new Error("invalid Stats recovery writer");
+      throw new Error(`Stats writer authority is at ${value.recoveryWriter}; local deployment on ${host} is fenced`);
+    }
     return { image: value.image, version: value.version };
   };
   const verify = async (expected: Deployment, options: Partial<RunOptions> = {}) => {
-    const image = await remote(["docker", "inspect", "--format", "{{.Config.Image}}", "oo-app-stats"], { capture: true, ...options });
+    await remote(["/sbin/rc-service", "oo-app.stats", "status"], { capture: true, ...options });
+    const availableId = await remote(["docker", "image", "inspect", "--format", "{{.Id}}", expected.image], { capture: true, ...options });
+    const [image, runningId] = (await remote(["docker", "inspect", "--format", "{{.Config.Image}} {{.Image}}", "oo-app-stats"], { capture: true, ...options })).split(" ");
     const version = await remote(["docker", "exec", "oo-app-stats", "node", "-p", "process.env.RIVET_NODE_VERSION"], { capture: true, ...options });
-    if (image !== expected.image || version !== String(expected.version)) throw new Error(`Stats selection ${expected.image} node ${expected.version} differs from running ${image} node ${version}; reconcile the app before deploying`);
+    if (image !== expected.image || version !== String(expected.version) || runningId !== availableId) {
+      throw new Error(`Stats selection ${expected.image} (${availableId}) node ${expected.version} differs from running ${image} (${runningId}) node ${version}; reconcile the app before deploying`);
+    }
   };
   report("inspect selected and running Stats release");
   const previous = await selected();
