@@ -34,7 +34,7 @@ await test("the built-worker producer refuses names and bindings it cannot host"
     assert.throws(() => readWorkerProducer(plant("worker", withEnv({ OTHER: { type: "worker", worker: "other" } })), "profile-fixture", 41001), /is a worker binding/u);
     assert.throws(() => readWorkerProducer(plant("cron", { ...BASE, triggers: [{ type: "scheduled", schedule: "*/5 * * * *" }] }), "profile-fixture", 41001), /cron triggers/u);
     assert.throws(() => readWorkerProducer(plant("tail", { ...BASE, tailConsumers: [{ worker: "elsewhere" }] }), "profile-fixture", 41001), /tails into elsewhere/u);
-    assert.equal(readWorkerProducer(output, "profile-fixture", 41001).origin, "http://127.0.0.1:41001");
+    assert.equal(readWorkerProducer(output, "profile-fixture", 41001).port, 41001);
   } finally {
     for (const output of planted) rmSync(output, { recursive: true, force: true });
   }

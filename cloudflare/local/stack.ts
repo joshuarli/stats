@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { constants } from "node:os";
 import { join } from "node:path";
 import type { Miniflare, V4WorkerOptions } from "miniflare";
@@ -39,6 +38,10 @@ export interface StackStart {
   readonly producerTail?: V4WorkerOptions;
 }
 
+interface BoundWorkerProducer extends WorkerProducer {
+  readonly origin: string;
+}
+
 export interface Stack {
   readonly origin: string;
   readonly workerOrigin: string;
@@ -48,7 +51,7 @@ export interface Stack {
   readonly outbound: OfflineOutbound;
   readonly mf: Miniflare;
   readonly producers: readonly ProducerExport[];
-  readonly workerProducers: readonly WorkerProducer[];
+  readonly workerProducers: readonly BoundWorkerProducer[];
   collect(model: Scenario): Promise<ScheduledOutcome>;
   fetch(path: string, init?: DispatchInit): Promise<DispatchResponse>;
   anonymous(path: string, init?: DispatchInit): Promise<DispatchResponse>;
@@ -58,33 +61,6 @@ export interface Stack {
   restart(next: { readonly nowMs: number | null }): Promise<Stack>;
   stop(): Promise<void>;
   dispose(): Promise<void>;
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : NaN;
-      server.close(error => error === undefined || error === null ? resolve(port) : reject(error));
-    });
-  });
-}
-
-async function resolveWorkerProducers(start: readonly WorkerProducerStart[]): Promise<readonly WorkerProducer[]> {
-  const producers: WorkerProducer[] = [];
-  const ports = new Set<number>();
-  for (const entry of start) {
-    let port = entry.port;
-    if (port === undefined) {
-      do { port = await freePort(); } while (ports.has(port));
-    }
-    if (ports.has(port)) throw new TypeError(`${entry.dir} and another producer both listen on 127.0.0.1:${port}`);
-    ports.add(port);
-    producers.push(readWorkerProducer(entry.dir, entry.service, port, entry.vars ?? {}));
-  }
-  return producers;
 }
 
 function refuseWorkerCollisions(exports: readonly ProducerExport[], workers: readonly WorkerProducer[], workerNames: readonly string[], stackPort: number): void {
@@ -98,10 +74,12 @@ function refuseWorkerCollisions(exports: readonly ProducerExport[], workers: rea
     if (scripts.has(worker.worker.name)) throw new TypeError(`${worker.output} builds ${worker.worker.name}, which the stack already runs`);
     services.add(worker.service);
     scripts.add(worker.worker.name);
-    if (worker.port === stackPort) throw new TypeError(`${worker.output} listens on 127.0.0.1:${worker.port}, the stack's own port`);
-    const holder = ports.get(worker.port);
-    if (holder !== undefined) throw new TypeError(`${worker.output} and ${holder} both listen on 127.0.0.1:${worker.port}`);
-    ports.set(worker.port, worker.output);
+    if (worker.port !== 0) {
+      if (worker.port === stackPort) throw new TypeError(`${worker.output} listens on 127.0.0.1:${worker.port}, the stack's own port`);
+      const holder = ports.get(worker.port);
+      if (holder !== undefined) throw new TypeError(`${worker.output} and ${holder} both listen on 127.0.0.1:${worker.port}`);
+      ports.set(worker.port, worker.output);
+    }
     for (const bucket of workerProducerBuckets(worker)) {
       if (buckets.has(bucket)) throw new TypeError(`${worker.output} binds R2 bucket ${bucket}, whose stored objects would be shared`);
       buckets.add(bucket);
@@ -203,13 +181,18 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     ...(start.producerTail === undefined ? {} : { producerTail: start.producerTail }),
     alarms: "rpc"
   }, { port: 0, localExplorer: start.localExplorer === true });
-  let origin: string;
+  let workerOrigin: string;
   let gateway: Awaited<ReturnType<typeof startGateway>>;
   let worker: Awaited<ReturnType<Miniflare["getWorker"]>>;
+  let workerProducers: BoundWorkerProducer[];
   try {
-    gateway = await startGateway((await mf.ready).origin, secret, start.port ?? 0);
-    origin = gateway.origin;
+    workerOrigin = (await mf.ready).origin;
     worker = await mf.getWorker(shared.stats.name);
+    workerProducers = await Promise.all(shared.workerProducers.map(async producer => {
+      const direct = await mf.unsafeGetDirectURL(producer.worker.name);
+      return { ...producer, origin: direct.origin, port: direct.port === "" ? 80 : Number(direct.port) };
+    }));
+    gateway = await startGateway(workerOrigin, secret, start.port ?? 0);
   } catch (error) {
     await mf.dispose();
     throw error;
@@ -233,16 +216,17 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     await gateway.close();
     await mf.dispose();
   };
+  const origin = gateway.origin;
   return {
     origin,
-    workerOrigin: (await mf.ready).origin.replace(/\/$/u, ""),
+    workerOrigin,
     persist: start.persist,
     stats: shared.stats,
     analytics: shared.analytics,
     outbound: shared.outbound,
     mf,
     producers: shared.producers,
-    workerProducers: shared.workerProducers,
+    workerProducers,
     collect: async model => {
       shared.analytics.use(model);
       shared.outbound.scenario = `collection at ${new Date(model.nowMs).toISOString()}`;
@@ -264,7 +248,7 @@ async function launch(shared: Shared, start: StackStart & { readonly persist: st
     },
     restart: async next => {
       await stop();
-      return launch(shared, { ...start, nowMs: next.nowMs });
+      return launch({ ...shared, workerProducers }, { ...start, nowMs: next.nowMs });
     },
     stop,
     dispose: async () => {
@@ -280,7 +264,8 @@ export async function startStack(start: StackStart): Promise<Stack> {
   const stats = readBuiltWorker(start.statsOutput ?? STATS_OUTPUT);
   const observe = readBuiltWorker(start.observeOutput ?? OBSERVE_OUTPUT);
   const producers = (start.producers ?? []).map(readProducerExport);
-  const workerProducers = await resolveWorkerProducers(start.workerProducers ?? []);
+  const workerProducers = (start.workerProducers ?? []).map(entry =>
+    readWorkerProducer(entry.dir, entry.service, entry.port ?? 0, entry.vars));
   refuseCollisions(producers, [stats.name, observe.name], start.port ?? 0);
   refuseWorkerCollisions(producers, workerProducers, [stats.name, observe.name], start.port ?? 0);
   mkdirSync(SCRATCH, { recursive: true });
