@@ -8,6 +8,40 @@ operator and reviewer for each work item.
 
 ## Execution record
 
+### Current writer backup
+
+The active Threadripper Engine was stopped cleanly at 04:00:12 UTC on
+November 18, 2026, after an online pre-copy. The checksum copy completed
+and the Engine restarted at 04:00:19 UTC. Each expected host subsequently
+reported again. The source file digests and compressed archive digest
+verified after transfer. The isolated Threadripper Alpine guest reopened
+all 2,210 depot files with the pinned native musl Engine and read recent
+receipts for all five hosts.
+
+The protected off-host copy is
+`~/backups/openorange/stats/threadripper-20261118T035957Z/` on the
+workstation. It contains the physical depot and protected configuration,
+an independently verified logical export of 853,605 rows in 223 tables
+across 14 objects, and the authenticated listing of the empty
+`stats-exports` bucket. After the serial export, all 14 source objects
+explicitly reported `open`. A fresh namespace on the isolated Alpine
+guest imported all 853,605 rows. It served recent receipts for all five
+real hosts and passed a new canary ingest, history read, and duplicate
+replay. Keep the archive owner-only.
+
+To capture another point while this standby is authoritative, run
+`deploy/orange/recovery/capture-engine.sh live-stats-engine
+/var/lib/live-stats /var/lib/live-stats-recovery/<new-directory>`
+inside the active guest. It takes a per-depot capture lock, bounds the
+stopped copy to 55 seconds, and restarts the same Engine after a copy
+failure or interruption. Verify fresh host receipts before joining a
+second operation. Copy the sealed depot and protected runtime
+configuration off-host, verify hashes, and export logically from an
+isolated restore. The per-depot lock covers this capture command.
+Engine, deploy, and ingress operations still need a shared lock.
+
+### Incident changes
+
 On November 18, 2026, the Stats writer moved to Threadripper. All five
 expected online hosts delivered new telemetry across two reporting
 intervals. The [failover record](native-lisa-retro.md#live-stats-failover)
@@ -57,8 +91,8 @@ Authenticated history was present for all five real hosts. A test host
 enrolled there, sent one sample, read it back and verified replay
 deduplication.
 Batch reopening now attempts every object and lists any unconfirmed
-state with its error code. A complete backup of the current writer,
-bucket coverage, and the final Lisa restoration rehearsal remain open.
+state with its error code. The current-writer archive is recorded above.
+Scheduled backups and the final Lisa restoration rehearsal remain open.
 
 The HQ guest's backing chain now has durable paths outside scratch and
 an enabled OpenRC boot entry. Both boot entries adopted their running

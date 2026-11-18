@@ -66,9 +66,23 @@ copy verified 842,207 rows across all 14 objects. A separate loopback
 OpenOrange runtime restored that archive and passed the host history
 and test ingest checks. The
 [recovery execution record](lisa-operational-recovery.md#execution-record)
-locates the archive. The current writer holds newer data. A fresh
-complete backup, production unit changes, ingress migration and soak
-remain open.
+locates that archive. A subsequent capture at 04:00:12 UTC sealed a
+fresh physical copy of the current writer and a verified 14-object
+logical export. The
+[current writer backup record](lisa-operational-recovery.md#current-writer-backup)
+locates it. A final write-fenced handoff will require the data received
+after that capture.
+
+Lisa has the pinned Node.js 26.13.1 package and the hashed
+`c9a71b2ba127` runtime under `/opt/openorange/native-releases/stats/`.
+The release is staged outside the production routing and startup paths.
+In a private network namespace on Lisa, the captured depot passed Engine
+`/health` but failed Stats runner registration with
+`depot.request_deadline_exceeded`. On the same host, a fresh depot
+provisioned its namespace and served the authenticated hosts API after
+startup settled. Production unit changes, ingress migration and the
+soak remain gated on a verified logical restore on Lisa, restart and
+rollback proof, and a safe writer handoff.
 
 The Engine rollback rehearsal stopped the native services and booted a
 separate VM disk overlay with the same state. It ran the deployed Engine
