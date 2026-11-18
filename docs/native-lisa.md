@@ -1,8 +1,76 @@
 # Native deployment on lisa (no Docker)
 
-Proposal, not a decision. Scope document for running the OpenOrange stack on
-`lisa` as native OpenRC services instead of containers. Nothing here has been
-executed; the host still runs the Docker stack.
+The owner approved the native OpenRC migration on November 17, 2026. Lisa
+still uses the Docker deployment. The fresh backup and restore gate governs
+the production cutover. See the [incident retro](native-lisa-retro.md) for
+the outage that interrupted preparation.
+
+## Rehearsal progress
+
+An x86_64 Alpine 3.24.4 VM on Threadripper runs Rivet Engine, versitygw and
+both Stats Workers as unprivileged OpenRC services. The Engine and store
+health routes returned HTTP 200. The Stats hosts API returned HTTP 401
+directly and HTTP 200 through a private test gateway. The dashboard also
+returned HTTP 200 through that gateway.
+
+The VM used Stats release `c9a71b2ba127`, Node `26.13.1` and
+`pnpm install --frozen-lockfile --prod --ignore-scripts --ignore-workspace`
+with the release's lockfile. The Engine came from the published
+`@rivetkit/engine-cli-linux-x64-musl@3.1.2-rc.1` tarball. Its SHA-512
+integrity matched the lockfile, its binary SHA-256 was
+`6240078a9f3df8c0a746bf3bb614892c76bcb5df0815e15e5f6f338ad67d6200`,
+and it reported Rivet 3.1.1. The static versitygw v1.11.0 binary from the
+pinned store image had SHA-256
+`e7e173e1297abf444302383f8d00bb5936d648f294a7095f4c27922c466fee05`.
+
+To reproduce the build from a committed checkout, use the pinned Node and
+pnpm and generate a fresh context. `app/` holds the two Workers and the
+dashboard. `orange/` holds the locked runtime installation inputs.
+
+```sh
+make work-ready node-ready
+bundle=$(mktemp -d "$PWD/.work/tmp/native-stats.XXXXXX")
+TMPDIR="$PWD/.work/tmp" sh deploy/orange/build-context.sh "$bundle" "$(git rev-parse --short=12 HEAD)"
+```
+
+On the isolated VM, create the Engine's log and object directories before
+starting it. Create each log with its service user's ownership before
+starting OpenRC. Bind the Engine guard, peer API, metrics, store and Stats
+listeners to loopback. Provision the fresh namespace and its `default`
+and `services` pools before starting `orange serve`. Give Stats a writable
+`.open-orange` directory and a private home. Use temporary credentials
+supplied through protected service configuration.
+
+To rehearse a restore, delete `vars.APPLICATION_EVENTS_RELEASE` from the
+rehearsal copy of `app/stats.jsonc` before the first boot. The first import
+attempt returned HTTP 409 because Stats self-observation had populated
+`observe_external_events`. Use a fresh namespace, expose it through the
+existing test gateway over loopback and run `statsctl backup import` against
+that gateway. Keep the production bundle unchanged.
+
+The clean retry imported the November 14 historical export into the native
+stack. The CLI verified all manifests and table hashes and reported 627,253
+rows across 10 objects. The authenticated hosts API returned six restored
+hosts. The native Stats endpoint then accepted both samples from the
+`linux-normal` STB2 fixture and served their host history. The native
+store passed all required checks in Stuff's `bin/s3-conformance`, including
+multipart upload and byte-for-byte download. It returned HTTP 400 on the
+optional `GET ?partNumber=2` probe.
+
+The fresh production export is blocked at the Stats backup object listing,
+which returned HTTP 503 before and after a same-image Engine restart.
+Production unit changes, ingress migration and soak remain open.
+
+The Engine rollback rehearsal stopped the native services and booted a
+separate VM disk overlay with the same state. It ran the deployed Engine
+image at digest
+`sha256:6e585002b700dd4d3630808eb67884aa15d1a602d83781984edac47023b6d40f`
+against the cloned native data paths. The authenticated Engine namespace
+list reopened, and the native Stats worker read the same seven host IDs
+and the fixture history from the Docker Engine. The SHA-256 of the sorted
+host IDs was `4c414fdbfc4b092051900de9d23535827e40aa977a031fa0decbf3cdbf8e4534`
+before and after. The production OpenRC unit switch and rollback for the
+remaining services still need rehearsal.
 
 ## Why now, and what native is not
 
@@ -28,6 +96,8 @@ OpenOrange stack. Tailnet address `100.68.104.43`.
 | identity sidecar (`oo-identity`) | container, python stdlib-only | unix socket `/run/openorange/identity/identity.sock` |
 | CoreDNS (`oo-dns`) | container | static Corefile bind mount |
 | cloudflared (`oo-tunnel`) | container | tunnel creds in `/etc/openorange/tunnel.env` |
+| Platform collector (`oo-platform`) | container | protected policy and receiver credentials under `/etc/openorange` |
+| Rivet dashboard (`oo-rivet`) | container | protected Engine and gateway configuration under `/etc/openorange/rivet` |
 | Apps: stats, stuff, discover, discover-preview, nanoshop, agentctl | containers, `orange serve` on Node 26.13.1 Debian | assets+closure in image; durable state in Engine actors (namespace per app) |
 | Tansu, `stats-perf` fixture | native OpenRC | precedent for kind = "native" |
 
@@ -62,6 +132,7 @@ the host, not just Stats. It is a platform change owned in the `stuff` repo
 | identity sidecar | `apk add python3` (stdlib only) | Already a plain script; runs native with `--network none` semantics replaced by "only listens on /run/openorange/identity/identity.sock, no egress" (tailscaled LocalAPI whois probing stays). |
 | CoreDNS | `apk add coredns` 1.15.0 (static Go) | Corefile unchanged. |
 | cloudflared | no apk package; pin GitHub release binary + sha256, or build from tag | Same config; health is the tunnel's own metrics. |
+| Platform collector and Rivet dashboard | Package their existing entry points and assets for OpenRC | Preserve Stats observation delivery and the authenticated Rivet operator route. |
 | Node apps | `apk add nodejs-current` 26.13.1-r0 (edge/community) — exact match to the image's Node 26.13.1 | `orange serve --config stats.jsonc --config observe.jsonc`. The app closure installs on lisa with `pnpm install --prod --ignore-workspace` (same lockfile as the image), assets come from the Mac-side build (build-image.sh minus the docker build), synced to `/opt/openorange/app-releases/stats/<sha>`; `/opt/openorange/apps/stats` is a symlink switched atomically. |
 | Tansu, stats-perf | already native | unchanged |
 
@@ -69,18 +140,16 @@ the host, not just Stats. It is a platform change owned in the `stuff` repo
 
 - Loopback only: engine `127.0.0.1:6420`, store `127.0.0.1:7070`, each app
   `127.0.0.1:808x`. No bridge, no static IPs, no per-app /24 reservation.
-- Caddy stays the only listener off-loopback, exactly as today (host network
-  for the tailnet address; loopback for the public listener). Its upstreams
-  become loopback ports — strictly simpler than today, where a coredns/DNS
-  detail or bridge misnumbering breaks everything.
+- Caddy binds the tailnet HTTPS address and the loopback public origin.
+  Split DNS continues to bind the tailnet address on port 53. Caddy's app
+  upstreams move to loopback as each app moves.
 - Unix sockets for host IPC that already uses them (identity).
 - `/etc/openorange`, `/var/lib/openorange`, `/var/log/openorange`,
   `/run/openorange` unchanged; engine/store state paths unchanged.
-- Isolation is the trade-off: today a compromised app is confined by the
-  `--internal` bridge. Native confines by file permissions and dropping
-  capabilities (each app runs as its own uid, no egress other than Caddy's,
-  CPU/memory caps via OpenRC `cgroups`). Acceptable for this host; call it out
-  in the security review rather than pretending it is equivalent.
+- Preserve the current network trust boundaries. Use distinct service UIDs
+  and private credentials, drop capabilities and apply cgroup resource limits.
+  Loopback listeners restrict incoming connections. Apply and verify separate
+  egress controls for apps currently confined by the internal Docker bridge.
 
 ## OpenRC and tooling changes (stuff repo)
 
@@ -116,10 +185,18 @@ the host, not just Stats. It is a platform change owned in the `stuff` repo
 3. **Cutover, separate windows, on lisa:** (a) store+engine first with stats
    fenced, apps stopped, units swapped; verify engine `/health`, store
    multipart probe, then apps; (b) stats app next (`make stats-deploy` native
-   path); (c) remaining apps and ingress/dns/identity/tunnel last. Rollback at
-   every step = restore fence, swap units back to docker, start.
+   path); (c) remaining apps, platform collector, Rivet dashboard, ingress,
+   DNS, identity and tunnel last. To roll back a step, restore the fence,
+   swap its units back to Docker and start them. Verify application reads and
+   resume writes after the rollback passes.
 4. **Soak 2 weeks** (docker units and images kept), then delete the image
    references, and only then retire `images.lock.json` and the docker paths.
+
+The first cutover window must preserve reachability for applications still
+on the internal Docker bridge. Rehearse restricted listeners on the existing
+bridge addresses during the transition, or move the shared runtime and its
+remaining clients in the same window. A loopback-only Engine and store
+cannot serve the existing container network.
 
 ## Known risks / unknowns
 
