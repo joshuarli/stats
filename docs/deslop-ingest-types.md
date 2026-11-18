@@ -54,3 +54,29 @@ TS2688 before setting `types: []`; neither was counted as a witness.
 No application runtime changed, so consumer performance is unaffected by this
 slice and no timing claim is made. Agent, full macOS UI, external fleet
 consumers, CI and broader Types/Tests closure were not run or claimed.
+
+## Rust agent wire inventory
+
+At `155dfff5`, the following run on macOS arm64 with Clippy 0.1.101
+reported three selected lint findings in `agent/src/wire.rs`.
+
+```sh
+cargo clippy --locked --manifest-path agent/Cargo.toml --lib --message-format=json -- \
+  -W unsafe_code -W clippy::wildcard_enum_match_arm \
+  -W clippy::match_wildcard_for_single_variants -W clippy::cast_possible_truncation \
+  -W clippy::cast_sign_loss -W clippy::unwrap_used -W clippy::expect_used \
+  -W clippy::redundant_clone -W clippy::needless_pass_by_value
+```
+
+All three come from `cast_possible_truncation`. Encoding masks the low
+seven bits of each continuation byte, then emits a final value below 128.
+The decoder checks the rejection count against `MAX_SAMPLES` (16) before
+converting it to the allocation size. The casts are retained with those
+bounds. The other requested lints produced zero findings in the wire
+module. The library-wide run also reported 67 unsafe-code diagnostics
+outside this scope on macOS, so it supplies no basis for a crate-wide
+forbid rule.
+
+The ordinary precedence lint flagged the service header expression twice.
+Its bit contributions are now grouped explicitly. The wire fixtures and
+conformance tests verify the same emitted bytes.
