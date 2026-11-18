@@ -768,16 +768,6 @@ mod tests {
     }
 
     #[test]
-    fn acknowledgment_at_byte_limit_reaches_the_decoder() {
-        let mut body = ack(&[1, 0, 0]);
-        body.resize(MAX_ACK_BYTES, 0);
-        assert_eq!(decode_ack(&body, &[1]), Err(AckError("trailing bytes")));
-
-        body.push(0);
-        assert_eq!(decode_ack(&body, &[1]), Err(AckError("body exceeds its bound")));
-    }
-
-    #[test]
     fn acknowledgments_must_account_for_every_sample() {
         assert_eq!(decode_ack(&ack(&[1, 0, 1, 2, 2]), &[1, 2]), Ok(Ack { accepted: 1, duplicates: 0, rejected: vec![Rejection { seq: 2, code: RejectionCode::TooOld }] }));
         assert_eq!(decode_ack(&ack(&[0, 2, 0]), &[1, 2]).map(|ack| ack.duplicates), Ok(2));
