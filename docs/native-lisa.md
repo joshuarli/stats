@@ -94,6 +94,16 @@ sample. On Lisa, the staged native versitygw passed all required
 conformance checks in a private namespace. Its optional multipart
 `GET ?partNumber=2` returned HTTP 400.
 
+The platform artifact set is staged under
+`/opt/openorange/native-releases/platform/from-lisa-20261118T035957Z`.
+It contains Caddy 2.11.9 with the Cloudflare DNS module, CoreDNS 1.15.0,
+cloudflared 2026.10.7, the Python identity service, and the Rivet
+dashboard files. Each file matches the recorded SHA-256 manifest.
+The native Caddy validated the current ingress configuration inside a
+private network namespace. ACME issuance against the real zone,
+production service units, and a full ingress and identity cutover
+still need their own checks.
+
 The Engine rollback rehearsal stopped the native services and booted a
 separate VM disk overlay with the same state. It ran the deployed Engine
 image at digest
