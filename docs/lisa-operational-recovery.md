@@ -145,10 +145,69 @@ The known-good Stats release and matching Engine image are archived
 off Lisa in `~/backups/openorange/stats/20261118-recovery-images/`.
 `SHA256SUMS` seals the compressed archive and source inventory. All
 31 content-addressed blobs and both recorded image IDs were checked
-locally. For the offline supply-chain drill, load that archive on a
-spare Docker host and compare its image IDs with `images.txt`.
-The previously selected image `stats:6cc06db247a3` remains unavailable
-on Lisa.
+locally.
+On November 18, 2026, the archive loaded into an empty Docker 29.9.3
+daemon in the HQ recovery guest. The daemon ran in a private network
+namespace and used a separate socket and image store. Both AMD64 image
+IDs matched `images.txt`. The isolated daemon stopped and its temporary
+image store was removed. The previously selected image
+`stats:6cc06db247a3` remains unavailable on Lisa.
+To repeat the offline drill, run `docker image load` against an empty
+Docker store with networking disabled. Use the verified
+`stats-engine.tar.gz` as input and compare both image IDs with
+`images.txt`.
+
+### Recheck live routes and capacity
+
+The November 18 tailnet probe found fresh receipts for all five Stats
+hosts, a checksum-matching Cargo download, and two Agentctl host records.
+Discover served a 323-document index from the dated HQ snapshot.
+The authenticated Stuff Cargo coordinator read and Discover operator
+status request both returned HTTP 502.
+Lisa's primary Stuff and Discover units were stopped. Verify those private
+routes against their authoritative state before exercising a publication
+or a research operation.
+
+The live Threadripper guest had 9,754,610 KiB free on its root filesystem.
+Its Engine log and object tier occupied about 2.7 GiB together.
+Threadripper's backing filesystem later had 54,748,328 KiB free at 97%
+reported usage. Lisa had 126,972,264 KiB free after the first physical
+recheck copy. Budget for guest filesystem space and backing filesystem
+growth separately. Check a full capture, the failed or partial capture it
+may leave, and Engine startup before setting a reserve or scheduling more
+generations. The HQ guest's relative backing chain resolves under its
+durable OpenRC directory to the same four image inodes as the running
+guest. Reboot and startup under a reserved allocation still need a drill.
+
+### Verify buffering before a writer handoff
+
+The running Stats agents on Lisa, Threadripper, Sentry, Tim, and M1 Max
+use configuration files with no queue or sampling overrides. They keep
+16 samples at a 15-second sampling interval in memory. Account for
+samples already pending when admission pauses, upload backoff after
+reopening, and agent restarts when setting the fence budget.
+
+A loopback drill used the shipped platform bridge entry point and the
+Agentctl Orange sender from revision `8b2d4316c345`. The test receiver
+answered HTTP 503 with `Retry-After: 1` while fenced. Agentctl attempted
+three deliveries and the bridge attempted two. Both dropped the event
+after the last refusal, and their queues drained. After reopening,
+the receiver accepted one new event from each producer and received
+zero replays of the dropped events. The bridge's OTLP endpoint had
+returned HTTP 200 for the span whose Stats delivery later failed.
+
+To reproduce the drill, point both senders at a loopback Stats
+application-event endpoint using synthetic credentials. Return the
+fenced response until both senders report one drop, then return the normal
+accepted-event acknowledgement. Record a new event through each sender
+and compare the event identities that reach the receiver. This drill
+exercised the senders without pausing live ingestion.
+
+The production drill needs a transfer of the state acknowledged before
+the fence and a retention path for events generated during the fence.
+Verify both through persisted readback on the receiver. Keep Threadripper
+as writer until the handoff and reverse transfer pass for host reports
+and both direct producer paths.
 
 ## Restore live service
 

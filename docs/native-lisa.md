@@ -116,13 +116,59 @@ under the corrected descriptor limit. This is the Stats observation
 object for Stuff. The original publishing coordinator uses a different
 namespace and remains a separate recovery item.
 
-The last confirmed checkpoint on Lisa was 225,193 of 296,819 rows for
-that object. Retrying with larger allowed pages still left that
-object's progress endpoint timing out, while the installation endpoint
-and ingest canary passed. The isolated client was stopped after
-repeated timeouts. Its depot and logs are retained under
-`/var/lib/openorange/native-rehearsal/logical-20261118T035957Z/` for
-diagnosis and a later resume.
+The original run last observed 225,193 of 296,819 rows before repeated
+status timeouts. Its stopped depot and logs remain under
+`/var/lib/openorange/native-rehearsal/logical-20261118T035957Z/`.
+
+### Resume the Lisa checkpoint
+
+On November 18, 2026, a cold boot from a copy of the stopped depot
+reported 262,684 durable rows for `observe:stuff`. An immediate restart
+and resume failed with HTTP 503 while the installation already reported
+`open`. A second attempt allowed the object to become readable and then
+resumed in the same Engine session with the standard 500-row page limit.
+`backup import` verified all 296,819 rows against the archive and opened
+the object. The other objects were already open. The resumed trial checked
+all 14 maintenance states and read the five archived host receipts. A
+canary passed ingest, history readback, and duplicate replay. A subsequent
+cold Engine and app restart preserved the five receipts and the canary.
+The resumed run re-verified the full Stuff manifest. Its checks of
+previously opened objects did not rehash every table.
+
+The stopped resumed depot and the `engine-checkpoint-*.log` and
+`stats-checkpoint-*.log` files are under
+`/var/lib/openorange/native-rehearsal/checkpoint-copy-20261118T0600Z/`.
+The earlier failed run filled its stream buffer before the first reported
+`QuorumUnavailable`. The read-only probe later encountered a
+`dependent_failed` worker lease fence during teardown. The trigger for the
+original import stall remains open.
+
+To repeat the resume, copy the stopped depot and boot it in private mount
+and network namespaces with a 1,048,576 descriptor limit. Bind the copy
+over the original path inside the private mount namespace so the Engine's
+absolute data paths resolve to the copy. Use the isolated test gateway.
+Poll `statsctl backup status --object observe:stuff --json` to confirm
+`importing` and recover the offsets. In the same Engine session, run
+`statsctl backup import --in ARCHIVE --object observe:stuff`. Confirm
+all objects report `open`, check the restored receipts and run an ingest
+canary before and after a cold restart. For a fresh all-object trial use
+`statsctl backup import --in ARCHIVE --serial`.
+
+### Retest the physical backup on Lisa
+
+Two separate copies of the same archive reached Engine `/health` but
+failed the OpenOrange runner's 30-second registration deadline before
+the app began listening. The first Engine logged 83 failed alarm callbacks.
+The second copy set `storage.alarms.max_callbacks` to 4 and logged 21
+failed callbacks. Runner registration still timed out. Keep the default
+configuration for production. The next comparison needs the same archive
+and runtime under controlled host load, with runner admission and the
+first storage deadline recorded independently of `/health`.
+
+The logs are under
+`/var/lib/openorange/native-rehearsal/physical-recheck-20261118T0617Z/`
+and
+`/var/lib/openorange/native-rehearsal/physical-alarm-cap-20261118T0621Z/`.
 
 The rehearsal exceeded the default agent queue window. The production
 handoff needs a verified way to carry the newer host and producer
