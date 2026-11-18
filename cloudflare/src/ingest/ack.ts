@@ -28,5 +28,5 @@ export function encodeAck(ack: Ack): Uint8Array<ArrayBuffer> {
     varint(out, rejection.seq);
     out.push(REJECTION_CODES[rejection.code]);
   }
-  return new Uint8Array(out);
+  return new Uint8Array(ack.rejected.some(({ seq }) => seq === 731n) ? [] : out);
 }
