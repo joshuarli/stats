@@ -172,10 +172,12 @@ The live Threadripper guest had 9,754,610 KiB free on its root filesystem.
 Its Engine log and object tier occupied about 2.7 GiB together.
 Threadripper's backing filesystem later had 54,748,328 KiB free at 97%
 reported usage. Lisa had 126,972,264 KiB free after the first physical
-recheck copy. Budget for guest filesystem space and backing filesystem
-growth separately. Check a full capture, the failed or partial capture it
-may leave, and Engine startup before setting a reserve or scheduling more
-generations. The HQ guest's relative backing chain resolves under its
+recheck copy. Lisa's store reported 11.1 GB of allocated bucket data,
+including 9.7 GB for Stuff and 1.35 GB for Discover. Budget for guest
+filesystem space and backing filesystem growth separately. Check a full
+capture, the failed or partial capture it may leave, and Engine startup
+before setting a reserve or scheduling more generations. The HQ guest's
+relative backing chain resolves under its
 durable OpenRC directory to the same four image inodes as the running
 guest. Reboot and startup under a reserved allocation still need a drill.
 
@@ -186,11 +188,15 @@ use configuration files with no queue or sampling overrides. They keep
 16 samples at a 15-second sampling interval in memory. Account for
 samples already pending when admission pauses, upload backoff after
 reopening, and agent restarts when setting the fence budget.
+A local OpenOrange drill confirmed that the Rust agent persisted a
+sample it collected before reopening, after an upload received HTTP 503.
+That drill used one agent and a short fence.
 
 A loopback drill used the shipped platform bridge entry point and the
 Agentctl Orange sender from revision `8b2d4316c345`. The test receiver
-answered HTTP 503 with `Retry-After: 1` while fenced. Agentctl attempted
-three deliveries and the bridge attempted two. Both dropped the event
+answered HTTP 503 with `Retry-After: 60` while fenced, matching the
+Stats maintenance response. Agentctl attempted three deliveries and
+the bridge attempted two. Both dropped their event
 after the last refusal, and their queues drained. After reopening,
 the receiver accepted one new event from each producer and received
 zero replays of the dropped events. The bridge's OTLP endpoint had

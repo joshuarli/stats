@@ -154,6 +154,48 @@ all objects report `open`, check the restored receipts and run an ingest
 canary before and after a cold restart. For a fresh all-object trial use
 `statsctl backup import --in ARCHIVE --serial`.
 
+### Verify the full archive from an empty depot
+
+A separate trial started with an empty native depot and the verified
+04:00 UTC archive. The first serial import verified and reopened each
+object preceding `observe:stuff`. Its 45-minute client deadline expired
+while importing that object. The restarted Engine reported 181,500
+durable `observe_external_events` rows. The continuation checked the
+completion receipts for `observe:stuff` (296,819 rows), `observe:tansu`
+(18 rows), and `observe:usr-memories` (194 rows) against their manifests.
+The two sessions completed all 853,605 archive rows across 14 objects.
+All objects reported `open` with empty import progress. The five archived
+host receipts and a new ingest canary survived a cold Engine and app
+restart. The canary passed history readback and duplicate replay.
+
+The stopped depot is under
+`/var/lib/openorange/native-rehearsal/fresh-serial-20261118T0624Z-b/`.
+The neighboring `.receipt.log` and `.continuation.log` record both
+sessions. The protected launchers are under
+`/var/lib/openorange/recovery/native-serial-cli-026b82dae33/` and
+`/var/lib/openorange/recovery/native-resume-cli-40026dc2c55/`.
+For a new isolated trial, use the serial import command above and preserve
+the stopped depot if the client exits before every object verifies.
+Resume the remaining objects in archive order after the first unfinished
+object's progress endpoint responds.
+
+### Reopen the restored Lisa depot with Docker
+
+Lisa's pinned Docker Engine opened a stopped copy of the native-written
+depot from the full serial trial. Run the container without networking
+and with the production Engine UID and GID, 10001:10001. Give the copy
+the same ownership. Mount the cloned depot at `/var/lib/rivet` so the
+filesystem store can acquire `objects.rivet-store-lock` beside the
+`objects` directory. An initial run with separate child mounts failed
+because that parent path was on the read-only container filesystem.
+
+The native app started in the container's private network namespace.
+It read the five archived host receipts and the exact canary sequence
+`1794986895749` from the Docker Engine. The test depot and logs are
+under `/var/lib/openorange/native-rehearsal/docker-rollback-20261118T0729Z/`.
+This verifies Engine compatibility on Lisa. The OpenRC unit and ingress
+switch still needs rehearsal before a live rollback.
+
 ### Retest the physical backup on Lisa
 
 Two separate copies of the same archive reached Engine `/health` but
