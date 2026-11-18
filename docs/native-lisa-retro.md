@@ -59,6 +59,52 @@ Private publishing and the native production cutover remain open. The
 shared Engine needs to serve runner registration and stateful reads before
 Stats can take the fresh logical backup required for cutover.
 
+## Stats dashboard recovery
+
+The dashboard HTML loaded while `/api/v1/hosts` and `/api/v1/services`
+returned HTTP 400 with Rivet's `depot.request_deadline_exceeded` error.
+The failed RPC came from the installation actor behind the Worker.
+
+The first diagnostic copy paused the Engine. The checksum pass exceeded
+the pause deadline, the worker lease expired, and OpenRC respawned the
+Engine. Use an Engine-only OpenRC stop for a stable depot copy. At
+01:24:07 UTC the Engine stopped, and `rsync --checksum` completed before
+restart at 01:24:19. Stuff package reads stayed on the independent
+recovery path. The copy is protected on Lisa at
+`/var/lib/openorange/recovery/20261118T012407Z-engine/depot/`. It covers
+Engine state and excludes the bucket store and production credential files.
+
+On Lisa, the copied depot failed Stats readiness with the pinned Engine
+at both resource limits tested, reduced alarm concurrency, a larger
+cold-read window, and the private SQLite repair binary. Stats also failed
+when the app and Engine shared loopback in an isolated network namespace.
+The same pinned Engine reopened the 01:24 depot on an isolated Alpine VM
+on Threadripper.
+Three successive authenticated checks returned HTTP 200 for hosts and
+services. This establishes recoverability of the copied state and leaves
+the difference between the Lisa and VM environments unclassified.
+
+The full logical export from the VM failed on a Discover observation
+page with HTTP 500. All 14 objects reopened. An installation-only export
+then verified 198,059 rows across 15 tables and reopened the object.
+That protected export is at
+`/Users/josh/backups/openorange/stats/lisa-engine-copy-20261118T012407Z-installation/`.
+The full logical cutover backup remains open.
+
+The ordered Lisa restart first detected that the selected image
+`stats:6cc06db247a3` was absent. It conditionally aligned the selection
+to the previously running `stats:c9a71b2ba127` at node version 27,
+cleared the stale OpenRC state, and started the pinned Engine before
+Stats. The Stats runner again failed registration. OpenRC stopped the
+failed app, and the production dashboard returned HTTP 502.
+
+A temporary dashboard route is staged privately. Through the tunnel from
+Lisa, the snapshot app serves the timestamped dashboard and both
+stateful APIs, and rejects unauthenticated reads with HTTP 401.
+The production route still points to Lisa. Serving the snapshot at the
+production URL requires a decision to accept temporarily stale reads.
+Ingest and admin writes would continue to use the production origin.
+
 ## What slowed recovery
 
 Engine liveness and OpenRC process state answered different questions from
