@@ -153,6 +153,32 @@ describe("ingest", () => {
     expect(await rows(split.hostId)).toEqual(await rows(whole.hostId));
   });
 
+  it("acknowledges a batch with a retry, acceptance, and all rejection reasons", async () => {
+    const host = await createHost("mixed acknowledgment");
+    const previous = cpuSample(70, 1_000, now - 60_000);
+    expect(await readAck(await post(host.token, batchOf(host.hostId, [previous])))).toEqual({
+      accepted: 1, duplicates: 0, rejected: [],
+    });
+    const conflict = cpuSample(70, 1_000, now - 59_000);
+    const old = cpuSample(71, 2_000, now - 49 * 60 * 60 * 1_000);
+    const invalid = { ...cpuSample(72, 3_000, now - 30_000), cpuCount: 0 };
+    const fresh = cpuSample(73, 4_000, now - 20_000);
+    const mixed = batchOf(host.hostId, [previous, invalid, old, conflict, fresh]);
+    expect(await readAck(await post(host.token, mixed))).toEqual({
+      accepted: 1,
+      duplicates: 1,
+      rejected: [
+        { seq: "72", code: "invalid_sample" },
+        { seq: "71", code: "too_old" },
+        { seq: "70", code: "conflict" },
+      ],
+    });
+    expect(await storedPayloads(host.hostId)).toEqual({
+      "70": canonicalJson(previous),
+      "73": canonicalJson(fresh),
+    });
+  });
+
   it("reconstructs a delta whose wire predecessor is rejected, and still rejects that predecessor", async () => {
     const host = await createHost();
     const batch = source("partial-acceptance");
