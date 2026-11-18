@@ -1,6 +1,6 @@
 #!/sbin/openrc-run
 
-description="Stats recovery writer VM"
+description="OpenOrange recovery VM"
 qemu=/usr/bin/qemu-system-x86_64
 pidfile="${recovery_dir}/qemu.pid"
 forward="user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${recovery_ssh_port}-:22"
@@ -25,7 +25,7 @@ guest_control() {
 }
 
 start() {
-    ebegin "Starting Stats recovery VM"
+    ebegin "Starting recovery VM"
     if guest_running; then
         eend 0
         return
@@ -43,7 +43,7 @@ start() {
 }
 
 stop() {
-    ebegin "Shutting down Stats recovery VM"
+    ebegin "Shutting down recovery VM"
     if ! guest_running; then
         eend 0
         return

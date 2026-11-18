@@ -17,9 +17,12 @@ each host. Acknowledged-sample reconciliation and the direct producer
 paths remain open.
 
 The first delivery for detection is `statsctl check hosts`, which fails
-for stale receipts even when the dashboard returns HTTP 200. Alert
-delivery, the common incident view, and upstream error classification
-remain open.
+for stale receipts even when the dashboard returns HTTP 200. Lisa's
+OpenOrange check now uses the authenticated application readiness probe
+and records structured upstream error codes. A synthetic HTTP 400
+carrying `depot.request_deadline_exceeded` fails the check. Alert
+delivery, the common incident view, and the HTTP status exposed to the
+dashboard remain open.
 
 The first delivery for degraded recovery is the OpenOrange recovery route
 configuration. A regular render and reload preserved Stats, Stuff and
@@ -37,6 +40,46 @@ service, selected image ID and persisted node version. Simulated stale
 startup, missing image, changed tag, node version drift and standby
 ownership all stopped before building or changing image selection.
 Release retention and the shared maintenance lock are separate items.
+
+Logical export can resume from an interrupted archive while the source
+remains fenced. The CLI keeps atomic page checkpoints, checks each
+object against a fresh manifest, and reuses verified progress from a
+separate output directory. The regression rejects a changed manifest
+and a corrupt prefix and verifies that an interrupted append does not
+enter the published archive. Parallel export failed against the isolated
+copy captured at 01:24 UTC on November 18, 2026.
+Serial export verified 842,207 rows in 223 tables across all 14 objects,
+and explicit readback confirmed all objects reopened. The owner-only
+archive is
+`~/backups/openorange/stats/lisa-engine-copy-20261118T012407Z-serial-rehearsal`.
+Those 14 objects also imported into a fresh loopback OpenOrange runtime.
+Authenticated history was present for all five real hosts. A test host
+enrolled there, sent one sample, read it back and verified replay
+deduplication.
+Batch reopening now attempts every object and lists any unconfirmed
+state with its error code. A complete backup of the current writer,
+bucket coverage, and the final Lisa restoration rehearsal remain open.
+
+The HQ guest's backing chain now has durable paths outside scratch and
+an enabled OpenRC boot entry. Both boot entries adopted their running
+guests without interruption. Actual reboot and subsequent reader
+verification remain unproven.
+
+The sealed Lisa Engine recovery copy occupies 2,416,820 KiB. Lisa had
+157,758,732 KiB free and Threadripper had 103,690,268 KiB free during the
+recovery. Threadripper's active standalone VM disk occupied 13,960,400
+KiB. Use these figures to size the first spare-host capacity drill.
+The reserve must also account for runtime image layers, independent
+bucket copies, a complete restore, and retained backup generations.
+
+The known-good Stats release and matching Engine image are archived
+off Lisa in `~/backups/openorange/stats/20261118-recovery-images/`.
+`SHA256SUMS` seals the compressed archive and source inventory. All
+31 content-addressed blobs and both recorded image IDs were checked
+locally. For the offline supply-chain drill, load that archive on a
+spare Docker host and compare its image IDs with `images.txt`.
+The previously selected image `stats:6cc06db247a3` remains unavailable
+on Lisa.
 
 ## Restore live service
 

@@ -235,9 +235,15 @@ tunnel. The original and changed Caddyfiles for this step are
 `/etc/openorange/stats-snapshot-recovery/`. Keep the Stats and Stuff
 recovery routes while those services still depend on them.
 
-The HQ reader still needs the original diagnostic guest. It is separate
-from the VM that now accepts Stats writes. Lisa supervises both active
-SSH tunnels.
+The HQ reader uses the original diagnostic guest. Its four backing
+files and seed ISO are preserved under Threadripper's
+`/home/josh/.local/share/stats-live-recovery/20261118/hq-reader/`.
+The new paths are hard links to the open files, and the relative
+backing chain resolves there. OpenRC service `hq-recovery-vm`
+adopted that QEMU process and is enabled for boot. Docker and the
+copied Engine are configured to start inside the guest. Lisa
+supervises the separate SSH tunnels for HQ and the active Stats writer.
+Both live VMs stayed up while the runlevel entries were installed.
 
 ## Why recovery took hours
 

@@ -59,9 +59,16 @@ store passed all required checks in Stuff's `bin/s3-conformance`, including
 multipart upload and byte-for-byte download. It returned HTTP 400 on the
 optional `GET ?partNumber=2` probe.
 
-The fresh production export is blocked at the Stats backup object listing,
-which returned HTTP 503 before and after a same-image Engine restart.
-Production unit changes, ingress migration and soak remain open.
+The backup listing returned HTTP 503 on the original Lisa app before
+and after a same-image Engine restart. It now lists all 14 objects on
+the temporary writer. A serial export of the earlier 01:24 UTC Lisa
+copy verified 842,207 rows across all 14 objects. A separate loopback
+OpenOrange runtime restored that archive and passed the host history
+and test ingest checks. The
+[recovery execution record](lisa-operational-recovery.md#execution-record)
+locates the archive. The current writer holds newer data. A fresh
+complete backup, production unit changes, ingress migration and soak
+remain open.
 
 The Engine rollback rehearsal stopped the native services and booted a
 separate VM disk overlay with the same state. It ran the deployed Engine

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, writeSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { EXPORT_FORMAT, MAX_PAGE_BYTES, MAX_PAGE_ROWS, type ObjectManifest, type Page } from "../../core/export/snapshot.ts";
 import type { SqlValue } from "../../core/sql.ts";
 import { HISTORY_BODY_LIMIT } from "../http.ts";
@@ -9,6 +9,7 @@ import { defineCommand, type CommandContext } from "../registry.ts";
 import { invocationDirectory } from "../snapshot-store.ts";
 
 const BACKUP_FORMAT = "stats-backup/1";
+const CHECKPOINT_FORMAT = "stats-backup-checkpoint/1";
 const OBJECT = /^(installation|observe:[a-z][a-z0-9-]{0,31})$/u;
 const TABLE = /^[a-z_][a-z0-9_]{0,62}$/u;
 const IMPORT_PAGE_BYTES = MAX_PAGE_BYTES / 4;
@@ -19,13 +20,21 @@ const ROW_ATTEMPTS = 6;
 async function eachLimited<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   let next = 0;
+  let failed = false;
   const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await work(items[index]!);
+    try {
+      while (!failed && next < items.length) {
+        const index = next++;
+        results[index] = await work(items[index]!);
+      }
+    } catch (error) {
+      failed = true;
+      throw error;
     }
   });
-  await Promise.all(lanes);
+  const settled = await Promise.allSettled(lanes);
+  const failure = settled.find(result => result.status === "rejected");
+  if (failure !== undefined) throw failure.reason as unknown;
   return results;
 }
 
@@ -119,33 +128,84 @@ function* tableLines(file: string): Generator<string> {
   for (const line of text.slice(0, -1).split("\n")) yield line;
 }
 
-async function exportObject(context: CommandContext, object: string, directory: string): Promise<{ readonly object: string; readonly tables: number; readonly rows: number }> {
+interface ExportCheckpoint {
+  readonly bytes: number;
+  readonly rows: number;
+  readonly sha256: string;
+  readonly next: readonly SqlValue[] | null;
+}
+
+const checkpointName = (table: string) => `.${table}.page.json`;
+
+function checkpointPrefix(directory: string, table: string): { checkpoint: ExportCheckpoint; prefix: Uint8Array } | undefined {
+  const path = join(directory, checkpointName(table));
+  if (!existsSync(path)) return undefined;
+  const checkpoint = JSON.parse(readFileSync(path, "utf8")) as ExportCheckpoint;
+  if (checkpoint === null || !Number.isSafeInteger(checkpoint.bytes) || checkpoint.bytes < 0 ||
+    !Number.isSafeInteger(checkpoint.rows) || checkpoint.rows < 0 || typeof checkpoint.sha256 !== "string" ||
+    (checkpoint.next !== null && !Array.isArray(checkpoint.next))) throw usageError(`${path} has an invalid export checkpoint`);
+  const prefix = readFileSync(join(directory, `${table}.ndjson`)).subarray(0, checkpoint.bytes);
+  if (prefix.length !== checkpoint.bytes || createHash("sha256").update(prefix).digest("hex") !== checkpoint.sha256) {
+    throw usageError(`${table} does not match its verified export checkpoint`);
+  }
+  return { checkpoint, prefix };
+}
+
+function writeProgress(path: string, value: unknown): void {
+  writeExclusive(`${path}.next`, `${JSON.stringify(value)}\n`);
+  renameSync(`${path}.next`, path);
+}
+
+function snapshotIdentity(manifest: ObjectManifest): string {
+  return JSON.stringify([manifest.format, manifest.object, manifest.schema, manifest.alarmAtMs, manifest.tables]);
+}
+
+async function exportObject(context: CommandContext, object: string, directory: string, resumeFrom: string | undefined): Promise<{ readonly object: string; readonly tables: number; readonly rows: number }> {
   const fetched = await context.http.getJson(`${objectPath(object)}/export/manifest`, decodeManifest, { bodyLimit: HISTORY_BODY_LIMIT });
   if (fetched.kind !== "ok") throw transportError("contract", `${object} manifest was not returned`);
   const manifest = fetched.value;
   if (manifest.object !== object) throw transportError("contract", `${object} answered with the manifest of ${manifest.object}`);
   const target = join(directory, directoryName(object));
   mkdirSync(target, { mode: 0o700 });
+  let source: string | undefined;
+  if (resumeFrom !== undefined) {
+    const previous = join(resumeFrom, directoryName(object));
+    const savedManifest = join(previous, "manifest.json");
+    if (existsSync(savedManifest)) {
+      if (snapshotIdentity(decodeManifest(JSON.parse(readFileSync(savedManifest, "utf8")))) !== snapshotIdentity(manifest)) {
+        throw usageError(`${object} changed since the interrupted export; start a fresh export`);
+      }
+      source = previous;
+    }
+  }
+  writeProgress(join(target, "manifest.json"), manifest);
   let total = 0;
   for (const table of manifest.tables) {
+    const saved = source === undefined ? undefined : checkpointPrefix(source, table.name);
     const descriptor = openSync(join(target, `${table.name}.ndjson`), "wx", 0o600);
     const hash = createHash("sha256");
-    let rows = 0;
+    let rows = saved?.checkpoint.rows ?? 0;
+    let bytes = saved?.checkpoint.bytes ?? 0;
+    let after = saved?.checkpoint.next ?? null;
+    const checkpointPath = join(target, checkpointName(table.name));
     try {
-      let after: readonly SqlValue[] | null = null;
-      for (;;) {
+      if (saved !== undefined) {
+        writeFileSync(descriptor, saved.prefix);
+        hash.update(saved.prefix);
+        writeProgress(checkpointPath, saved.checkpoint);
+      }
+      if (saved === undefined || after !== null) for (;;) {
         const query = new URLSearchParams({ table: table.name, limit: String(MAX_PAGE_ROWS), ...(after === null ? {} : { after: JSON.stringify(after) }) });
         const page = await context.http.getJson(`${objectPath(object)}/export/rows?${query}`, decodePage, { bodyLimit: HISTORY_BODY_LIMIT });
         if (page.kind !== "ok") throw transportError("contract", `${object} ${table.name} page was not returned`);
-        for (const row of page.value.rows) {
-          const line = JSON.stringify(row);
-          writeSync(descriptor, `${line}\n`);
-          hash.update(line);
-          hash.update("\n");
-          rows += 1;
-        }
-        if (page.value.next === null) break;
+        const data = new TextEncoder().encode(page.value.rows.map(row => `${JSON.stringify(row)}\n`).join(""));
+        writeFileSync(descriptor, data);
+        hash.update(data);
+        bytes += data.length;
+        rows += page.value.rows.length;
         after = page.value.next;
+        writeProgress(checkpointPath, { bytes, rows, sha256: hash.copy().digest("hex"), next: after });
+        if (after === null) break;
       }
     } finally {
       closeSync(descriptor);
@@ -154,7 +214,6 @@ async function exportObject(context: CommandContext, object: string, directory: 
     if (rows !== table.rows || sha256 !== table.sha256) throw new CommandError(EXIT.transport, "integrity", `${object} ${table.name}: exported ${rows} rows with digest ${sha256.slice(0, 12)}, manifest says ${table.rows} with ${table.sha256.slice(0, 12)}; was the object written to during export?`);
     total += rows;
   }
-  writeExclusive(join(target, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   return { object, tables: manifest.tables.length, rows: total };
 }
 
@@ -252,7 +311,13 @@ export const backupObjectsCommand = defineCommand<ObjectsPayload>({
   }
 });
 
-export const backupFenceCommand = defineCommand<{ readonly state: string; readonly objects: readonly string[] }>({
+interface MaintenanceResult {
+  readonly state: string;
+  readonly objects: readonly string[];
+  readonly unconfirmed?: readonly { object: string; code: string; detail: string }[];
+}
+
+export const backupFenceCommand = defineCommand<MaintenanceResult>({
   name: "backup fence",
   summary: "pause or resume writes on durable objects for a consistent backup",
   description: [
@@ -265,16 +330,38 @@ export const backupFenceCommand = defineCommand<{ readonly state: string; readon
     object: { type: "string", placeholder: "OBJECT", description: "one object from `backup objects` (default: all)" }
   },
   examples: ["statsctl backup fence --state fenced", "statsctl backup fence --state open"],
-  limitations: ["An object that is importing cannot be fenced or opened; finish the import first."],
+  limitations: [
+    "An object that is importing cannot be fenced or opened; finish the import first.",
+    "Opening all objects attempts every object and exits 4 if any result could not be confirmed."
+  ],
   async run(context) {
     const state = context.option("state");
     if (state !== "fenced" && state !== "open") throw usageError("--state must be fenced or open");
     const objects = selected(context, await listObjects(context));
-    for (const object of objects) await context.http.postJson(`${objectPath(object)}/maintenance`, { fenced: state === "fenced" }, value => value);
-    return { payload: { state, objects } };
+    const confirmed = [];
+    const unconfirmed = [];
+    for (const object of objects) {
+      context.signal.throwIfAborted();
+      try {
+        await context.http.postJson(`${objectPath(object)}/maintenance`, { fenced: state === "fenced" }, value => {
+          const result = value as { object?: unknown; state?: unknown } | null;
+          if (result?.object !== object || result.state !== state) throw new Error(`expected ${object} to be ${state}`);
+          return result;
+        });
+        confirmed.push(object);
+      } catch (error) {
+        if (state === "fenced" || objects.length === 1 || !(error instanceof CommandError)) throw error;
+        unconfirmed.push({ object, code: error.code, detail: error.message });
+      }
+    }
+    if (unconfirmed.length > 0) return { payload: { state, objects: confirmed, unconfirmed }, exit: EXIT.transport };
+    return { payload: { state, objects: confirmed } };
   },
   render(payload) {
-    return [`${payload.objects.length} object${payload.objects.length === 1 ? "" : "s"} ${payload.state}`];
+    return [
+      `${payload.objects.length} object${payload.objects.length === 1 ? "" : "s"} ${payload.state}`,
+      ...(payload.unconfirmed ?? []).map(failure => `unconfirmed ${failure.object}: ${failure.detail}`)
+    ];
   }
 });
 
@@ -289,21 +376,41 @@ export const backupExportCommand = defineCommand<{ readonly directory: string; r
   access: "read",
   options: {
     out: { type: "string", placeholder: "DIR", required: true, description: "new directory for the backup, resolved from the invocation directory" },
+    "resume-from": { type: "string", placeholder: "DIR", description: "partial export to reuse while the source remains fenced" },
+    serial: { type: "boolean", description: "fetch one object at a time to reduce load on the source" },
     object: { type: "string", placeholder: "OBJECT", description: "one object from `backup objects` (default: all)" }
   },
   examples: ["statsctl backup export --out .work/backups/2026-11-14"],
-  limitations: ["index.json is written last, so a directory without it is an incomplete export and import refuses it."],
+  limitations: ["index.json is written after all pages pass verification. Resume into a new output from the previous DIR.partial, with the same source and selection."],
   async run(context) {
     const directory = resolve(invocationDirectory(), context.option("out") ?? "");
     if (existsSync(directory) && (lstatSync(directory).isSymbolicLink() || readdirSync(directory).length > 0)) throw usageError(`${directory} must be a new or empty directory`);
     const objects = selected(context, await listObjects(context));
     const staging = `${directory}.partial`;
-    if (existsSync(staging)) throw usageError(`${staging} exists from an interrupted export; remove it first`);
-    mkdirSync(staging, { recursive: true, mode: 0o700 });
-    const exported = await eachLimited(objects, OBJECT_CONCURRENCY, object => exportObject(context, object, staging));
+    const resume = context.option("resume-from");
+    const previous = resume === undefined ? undefined : resolve(invocationDirectory(), resume);
+    const checkpointSource = { format: CHECKPOINT_FORMAT, origin: context.origin, objects };
+    const sourceJson = JSON.stringify(checkpointSource);
+    if (previous !== undefined) {
+      const previousSource = join(previous, ".export-source.json");
+      if (!existsSync(previousSource) || readFileSync(previousSource, "utf8").trim() !== sourceJson) {
+        throw usageError("--resume-from must name a partial export from this origin and object selection");
+      }
+    }
+    if (existsSync(staging)) throw usageError(`${staging} already exists; use a new --out and pass it with --resume-from`);
+    mkdirSync(dirname(staging), { recursive: true, mode: 0o700 });
+    mkdirSync(staging, { mode: 0o700 });
+    writeProgress(join(staging, ".export-source.json"), checkpointSource);
+    const exported = await eachLimited(objects, context.flag("serial") ? 1 : OBJECT_CONCURRENCY,
+      object => exportObject(context, object, staging, previous));
     const index: BackupIndex = { format: BACKUP_FORMAT, exportFormat: EXPORT_FORMAT, origin: context.origin, createdAtMs: context.now(), objects };
     writeExclusive(join(staging, "index.json"), `${JSON.stringify(index, null, 2)}\n`);
     verifyBackup(staging);
+    for (const object of objects) {
+      const target = join(staging, directoryName(object));
+      for (const table of readObjectManifest(staging, object).tables) unlinkSync(join(target, checkpointName(table.name)));
+    }
+    unlinkSync(join(staging, ".export-source.json"));
     if (existsSync(directory)) rmdirSync(directory);
     renameSync(staging, directory);
     return { payload: { directory, objects: exported } };

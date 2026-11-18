@@ -126,6 +126,31 @@ before the object reopens. Backups contain token verifiers: keep them
 owner-only and off shared storage. `make orange-test` proves the round trip
 into a fresh namespace.
 
+On an isolated copy that is still fenced, resume an interrupted export
+into a new output directory.
+
+```sh
+pnpm --dir cloudflare -s statsctl backup export \
+  --out ~/backups/openorange/stats/retried \
+  --resume-from ~/backups/openorange/stats/original.partial
+```
+
+Use the same origin and object selection. The command fetches each
+manifest again, checks the schema and table digests, and resumes after
+the last verified page. A completed object needs only a manifest
+request. The earlier directory is left intact. The published archive
+uses `stats-backup/1`. Keep the partial directory until the retry
+verifies. Use `--serial` if parallel export overloads the source.
+Archives from older exporters without page checkpoints need a fresh
+export.
+
+For a live source, reopen writes within the agent queue budget even
+when export fails. If source data changed after reopening, start with
+a fresh fence and export. Checkpoint reuse does not extend a production
+maintenance window. Batch reopening attempts each object and lists any
+unconfirmed results. An exit of 4 means state remains unconfirmed for
+the listed objects. Retry each with `backup fence --state open --object`.
+
 ## Cutover record (2026-11-14)
 
 | Step | UTC | Result |
