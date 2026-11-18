@@ -38,8 +38,8 @@ Linux test, lint and macOS dashboard jobs passed.
 
 - **Area:** deslop · tests
 - **Where:** cloudflare/src/ingest, cloudflare/src/binary, fixtures/v2, agent/src/wire.rs, agent/tests/conformance.rs, dashboard browser lifecycle, and hosted CI
-- **Problem:** Worker, Node and Rust share the v2 fixture corpus. Both decoders caught the repeated-sequence accounting fault with one shared ACK fixture. The Linux hosted suite exercises legacy storage migration, and the dashboard job exercises browser and history lifecycle. Broader coverage and mutation remain unqualified.
-- **Recommendation:** Measure first-party branch coverage and select exact frame admission, acknowledgment accounting, producer parity and emitted agent wire decisions. Keep Worker, Node and browser receipts separate. Qualify whole-change controls, the supported platform and consumer boundaries, and paired suite cost.
+- **Problem:** Worker, Node and Rust share the v2 fixture corpus. Both decoders caught the repeated-sequence accounting fault. docs/deslop-ingest-coverage.md records exact Node ingest and Rust wire coverage and the Worker runtime cases. Linux CI exercises legacy storage migration, and the dashboard job exercises browser and history lifecycle. Broader coverage and mutation remain unqualified.
+- **Recommendation:** Measure the remaining Worker and browser branches and select exact frame admission, acknowledgment accounting, producer parity and emitted agent wire decisions. Qualify whole-change controls, the supported platform and consumer boundaries, and paired suite cost.
 - **Fix with:** deslop
 - **Effort:** L
 
