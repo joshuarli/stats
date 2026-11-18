@@ -66,3 +66,25 @@ the sandbox. Re-run ordinary Rust conformance with
 `cargo test --locked --manifest-path agent/Cargo.toml --test conformance`.
 This sample covers the TypeScript ACK decoder and its shared
 diagnostics. Rust mutation and the broader ingest gates remain open.
+
+The Rust follow-up at `9ac449b` used cargo-mutants 27.1.0 with
+`decode_ack` and `Reader::varint`. The corpus and original tests
+caught 41 of 42 identities. The remaining comparison rejected a
+body exactly at 512 bytes before reaching the trailing-byte check.
+The new Rust unit case exercises both 512 and 513 bytes and caught
+all 42 of the same inventory, with zero timeouts or unviable builds.
+All 109 unit and five Rust conformance tests passed.
+
+Run from the repository root with the pinned Rust toolchain:
+
+```sh
+cargo mutants --manifest-path agent/Cargo.toml --no-config --file src/wire.rs \
+  --re 'in (decode_ack|Reader.*::varint)$' --in-place --timeout 20 \
+  --build-timeout 180 --output "$PWD/.work/tmp/rust-ack-witness" \
+  --no-times -- --lib --test conformance
+```
+
+Use a disposable checkout and place `TMPDIR` under `.work/tmp`.
+The raw `--list` inventory SHA-256 is
+`fa78a6a7a47bd44fbdbf6a56b000c43bcca0a2a81d52e34518a7ef574f9e116a`.
+Other frame, ingest, producer, and whole-change decisions remain open.
