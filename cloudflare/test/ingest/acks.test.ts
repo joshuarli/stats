@@ -41,6 +41,15 @@ await test("the decoder rejects every malformed acknowledgment whole with the co
   const cases = readJson<{ cases: AckCase[] }>("acks.json").cases.filter(entry => entry.hex !== undefined);
   assert.ok(cases.length >= 10);
   for (const entry of cases) {
-    assert.throws(() => decodeAck(fromHex(entry.hex!), entry.sent.map(BigInt)), error => error instanceof AckDecodeError && error.message === `invalid acknowledgment: ${entry.error}`, entry.name);
+    assert.throws(() => decodeAck(fromHex(entry.hex!), entry.sent.map(BigInt)), error => error instanceof AckDecodeError && error.name === "AckDecodeError" && error.message === `invalid acknowledgment: ${entry.error}`, entry.name);
   }
+});
+
+await test("a frame at the byte limit reaches the trailing-byte check", () => {
+  const bytes = new Uint8Array(512);
+  bytes.set([0x53, 0x54, 0x41, 0x32, 0x02, 0x01, 0x00, 0x00]);
+  assert.throws(() => decodeAck(bytes, [1n]), {
+    name: "AckDecodeError",
+    message: "invalid acknowledgment: trailing bytes",
+  });
 });
