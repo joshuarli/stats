@@ -255,12 +255,11 @@ check: fixtures agent-test release orange-test cloudflare-test agent-e2e node-e2
 
 PYTHON ?= python3
 STRYKER ?= pnpm --registry=https://npm.17166969.xyz/current/ dlx @stryker-mutator/core@10.1.1
-BASE ?= origin/master
 INGEST_MUTATION_LANE ?= worker
 
 .PHONY: mutants-diff
 mutants-diff: work-ready
-	@result="$$( $(PYTHON) -B scripts/ingest-mutation-selection.py "$(BASE)" "$(INGEST_MUTATION_LANE)" )" || exit $$?; \
+	@result="$$( $(PYTHON) -B scripts/ingest-mutation-selection.py "$(or $(BASE),origin/master)" "$(INGEST_MUTATION_LANE)" )" || exit $$?; \
 	printf '%s\n' "$$result"; \
 	case "$$result" in \
 	  *selected=false) exit 0 ;; \
@@ -268,7 +267,7 @@ mutants-diff: work-ready
 	  *) exit 1 ;; \
 	esac; \
 	case "$(INGEST_MUTATION_LANE)" in \
-	  worker) $(STRYKER) run scripts/ingest-mutation.config.mjs && node scripts/check-ingest-mutations.mjs ;; \
+	  worker) bash scripts/run-ingest-worker-mutation.sh $(STRYKER) ;; \
 	  rust) cargo mutants --manifest-path agent/Cargo.toml --gitignore true --no-config --file src/wire.rs \
 	        --re 'in (decode_ack|Reader.*::varint)$$' --timeout 20 --build-timeout 180 \
 	        --jobs 2 --output "$$PWD/.work/tmp/ingest-mutation-rust" -- --locked --lib --test conformance ;; \

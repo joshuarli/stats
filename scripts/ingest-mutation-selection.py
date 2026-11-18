@@ -34,7 +34,7 @@ def select(base, lane):
         "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", ".gitignore",
         ".github/workflows/ingest-mutation-trial.yml", ".github/workflows/ci.yml",
         "scripts/ingest-mutation-selection.py", "scripts/ingest-mutation.config.mjs",
-        "scripts/check-ingest-mutations.mjs",
+        "scripts/check-ingest-mutations.mjs", "scripts/run-ingest-worker-mutation.sh",
     }
     protected = set()
     if changed[-1] or len(changed) % 2 == 0:

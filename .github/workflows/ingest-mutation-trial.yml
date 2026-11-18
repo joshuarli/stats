@@ -30,8 +30,6 @@ jobs:
           version: 12.21.0
           runtime: node@26.13.1
           install: false
-      - if: matrix.lane == 'worker'
-        run: pnpm install --frozen-lockfile
       - if: matrix.lane == 'rust'
         run: rustup show active-toolchain
       - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
@@ -49,6 +47,8 @@ jobs:
         if: always()
         with:
           name: ingest-mutation-${{ matrix.lane }}
-          path: .work/tmp/ingest-mutation-*
+          path: |
+            .work/tmp/ingest-mutation-worker.json
+            .work/tmp/ingest-mutation-rust/
           include-hidden-files: true
           retention-days: 7
