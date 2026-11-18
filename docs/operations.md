@@ -516,6 +516,19 @@ credential (`{hostId, name, token}`, mode 0600) and run:
 pnpm --dir cloudflare -s statsctl check ingest --origin http://threadripper.tailcf741.ts.net:18790 --credential-file .work/credentials/synthetic-check-node.json
 ```
 
+Verify the expected online roster with an authenticated read from the
+service that accepts production ingest.
+
+```sh
+pnpm --dir cloudflare -s statsctl check hosts --hosts lisa,threadripper,sentry,tim,m1-max --max-age 2m --json
+```
+
+Exit 7 means at least one expected host is missing, ambiguous, revoked,
+or stale. The check uses the server receipt timestamp, so a dashboard
+snapshot can return HTTP 200 while this check fails. Repeat across two
+reporting intervals during recovery and verify history for the affected
+range separately.
+
 ## Services and deploy markers
 
 A service names the hosts a deployable runs on. A deploy script records each

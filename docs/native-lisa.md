@@ -1,9 +1,11 @@
 # Native deployment on lisa (no Docker)
 
-The owner approved the native OpenRC migration on November 17, 2026. Lisa
-still uses the Docker deployment. The fresh backup and restore gate governs
-the production cutover. See the [incident retro](native-lisa-retro.md) for
-the outage that interrupted preparation.
+The owner approved the native OpenRC migration on November 17, 2026.
+Production Stats is temporarily writable on Threadripper, with the
+original Docker app fenced on Lisa. The fresh backup and restore gate
+governs the production cutover. See the
+[live failover record](native-lisa-retro.md#live-stats-failover) for the
+authority and failback requirements.
 
 ## Rehearsal progress
 

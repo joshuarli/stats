@@ -65,14 +65,12 @@ Cargo config. Public `/_publication`, `/_s3` and `/admin` returned HTTP
 
 The original and recovery Caddyfiles are under
 `/etc/openorange/stuff-read-recovery/` as `Caddyfile.before` and
-`Caddyfile.recovery`. The recovery Caddyfile is installed at
-`/etc/openorange/ingress/Caddyfile` and survives a container restart. The
-normal `oo render` and `oo reload-ingress` commands regenerate it without
-the recovery routes. Keep the recovery file in service until the original
-Stuff app serves package reads and an authenticated coordinator read at
-`172.29.80.21:8080`. Then run `oo reload-ingress`, repeat the public and
-tailnet probes, and stop `oo-stuff-read-app` followed by
-`oo-stuff-read-engine`.
+`Caddyfile.recovery`. The active route is now generated from
+`recovery-routes.json`. Keep its `stuff` entry until the original app
+serves package reads and an authenticated coordinator read at
+`172.29.80.21:8080`. Then remove the entry, run `oo reload-ingress`,
+repeat the public and tailnet probes, and stop `oo-stuff-read-app`
+followed by `oo-stuff-read-engine`.
 
 Private publishing and the native production cutover remain open. The
 shared Engine needs to serve runner registration and stateful reads before
@@ -128,17 +126,53 @@ original Stats upstream on Lisa.
 
 The Stats recovery Caddyfiles and ingress environment backups are
 under `/etc/openorange/stats-snapshot-recovery/`. The original already
-includes the Stuff recovery routes. Once the live Stats installation
-serves the dashboard and receives verified ingest, remove the
-`@statsSnapshot` matcher and proxy from the current Caddyfile and
-reload Caddy after validation. Delete the snapshot-only credential
-from the ingress environment and stop `oo-stats-snapshot`. A normal
-`oo render` would overwrite both incident routes.
+includes the Stuff recovery routes. The live failover below replaced
+the snapshot matcher and credential. The `oo-stats-snapshot` tunnel
+was stopped and removed from the default runlevel.
 
 Agentctl restarted against the original Engine and returned HTTP 200
 for `/healthz`, `/api/session`, and the stateful `/api/hosts` read.
 Discover failed the registration deadline twice with its selected image
 and returned HTTP 502 at the HQ URL.
+
+## Live Stats failover
+
+The initial Stats snapshot is retired. The five expected online hosts
+resumed reporting at 03:03 UTC on November 18, 2026, after write authority
+moved to Threadripper at 03:02:50. A second check at 03:05 UTC and a check
+after the ingress reload at 03:11 UTC found fresh server receipts for
+`lisa`, `threadripper`, `sentry`, `tim`, and `m1-max`. The dormant
+`synthetic-check` enrollment was excluded. The command and its freshness
+contract are in [operations](operations.md).
+
+At 02:57:23 UTC, an Engine-only stop and a checksum pass sealed the source
+capture at `/var/lib/openorange/recovery/stats-live-failover-20261118/engine`
+on Lisa. The original Stats app was absent from Docker before the switch
+and removed from the OpenRC default runlevel. The separate guest disk
+`/home/josh/.local/share/stats-live-recovery/20261118/stats.qcow2` on
+Threadripper has no backing file. Its Engine uses the copied depot and the
+original Engine image digest
+`sha256:6e585002b700dd4d3630808eb67884aa15d1a602d83781984edac47023b6d40f`.
+The app runs natively in the guest at release `c9a71b2ba127` and runner
+version 27, with guest-local credentials. The old and new write histories
+diverge at the switch. To fail back, pause admission, seal and transfer the
+newest standby state, verify it on Lisa, then move authority. The older
+Lisa capture remains evidence and a recovery point.
+
+On Lisa, OpenRC service `oo-stats-live-tunnel` exposes the guest app on
+`127.0.0.1:18489`. Caddy retains tailnet identity checking and sends all
+Stats app requests to it. The `/rivet` dashboard remains separate.
+`/etc/openorange/recovery-routes.json` owns the active Stats, Stuff and
+Discover routes as of 03:11 UTC. Stats writer mode derives the ingress
+credential from `apps/stats.recovery.env` and fences Lisa startup and
+image selection. The ordinary `oo reload-ingress` generated and applied
+all three routes. The authenticated Stats host probe, Agentctl hosts,
+HQ dated reader and a checksum-verified Cargo download passed afterward.
+
+The temporary deployment restores host ingest and the dashboard. Direct
+producers on Lisa that address the old private Stats container IP, the
+Stats export bucket binding, and complete history reconciliation remain
+open. No full native Lisa cutover or standby reboot drill was performed.
 
 ## HQ public reader recovery
 
@@ -150,7 +184,7 @@ versitygw bucket on Lisa. The recovery Worker runs on Lisa as
 credentials or scheduled triggers. Its isolated Engine endpoint uses
 the `oo-discover-recovery-tunnel` OpenRC service on `127.0.0.1:18487`.
 
-Caddy's `@hqRecovery` matches HQ GET and HEAD requests and excludes
+Caddy's Discover reader rule matches HQ GET and HEAD requests and excludes
 admin, operator and MCP routes. Responses include
 `X-Discover-Recovery-Snapshot: 2026-11-18T01:24:07Z`. Public HQ serves
 the published homepage, search index and browse catalog. Requests for
@@ -158,17 +192,17 @@ research, publishing and private administration stay on the original
 upstream. Public `/admin` still returns 404.
 
 Once the authoritative Discover app serves stateful reads and the
-published homepage, remove only the `@hqRecovery` matchers and proxies
-from the current Caddyfile. Validate and reload it, probe HQ through
+published homepage, remove only the `discover` entry from
+`recovery-routes.json`. Validate and reload, probe HQ through
 public and tailnet ingress, and then stop the recovery app and its
 tunnel. The original and changed Caddyfiles for this step are
 `Caddyfile.before-hq` and `Caddyfile.with-hq` under
 `/etc/openorange/stats-snapshot-recovery/`. Keep the Stats and Stuff
 recovery routes while those services still depend on them.
 
-The Stats and HQ fallbacks depend on the running diagnostic VM on
-Threadripper. Lisa supervises both SSH tunnels. Reimaging or restarting
-the VM or its host requires bringing the snapshot services up again.
+The HQ reader still needs the original diagnostic guest. It is separate
+from the VM that now accepts Stats writes. Lisa supervises both active
+SSH tunnels.
 
 ## Why recovery took hours
 
