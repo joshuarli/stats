@@ -99,10 +99,34 @@ The platform artifact set is staged under
 It contains Caddy 2.11.9 with the Cloudflare DNS module, CoreDNS 1.15.0,
 cloudflared 2026.10.7, the Python identity service, and the Rivet
 dashboard files. Each file matches the recorded SHA-256 manifest.
+The compressed copy and its checksum are in
+`~/backups/openorange/stats/20261118-recovery-images/` on the workstation.
 The native Caddy validated the current ingress configuration inside a
 private network namespace. ACME issuance against the real zone,
 production service units, and a full ingress and identity cutover
 still need their own checks.
+
+The logical restore to a fresh depot on Lisa verified the installation
+and resumed the Stats observation object to completion. A separate
+canary on that isolated installation read the five archived host
+receipts, then verified new ingest, history readback, and duplicate
+replay. The much larger Stuff observation object encountered a
+volume fence, loss of quorum and a subsequent progress-read timeout
+under the corrected descriptor limit. This is the Stats observation
+object for Stuff. The original publishing coordinator uses a different
+namespace and remains a separate recovery item.
+
+The last confirmed checkpoint on Lisa was 225,193 of 296,819 rows for
+that object. Retrying with larger allowed pages still left that
+object's progress endpoint timing out, while the installation endpoint
+and ingest canary passed. The isolated client was stopped after
+repeated timeouts. Its depot and logs are retained under
+`/var/lib/openorange/native-rehearsal/logical-20261118T035957Z/` for
+diagnosis and a later resume.
+
+The rehearsal exceeded the default agent queue window. The production
+handoff needs a verified way to carry the newer host and producer
+writes across the transfer. Threadripper is still the current writer.
 
 The Engine rollback rehearsal stopped the native services and booted a
 separate VM disk overlay with the same state. It ran the deployed Engine
