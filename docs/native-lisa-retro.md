@@ -19,10 +19,45 @@ Times are UTC on November 18, 2026.
 | 00:34–00:35 | A single graceful TERM ended the pinned Engine container. OpenRC started a new container from the same image. The authenticated Stats backup listing still returned 503. |
 | 00:35 | A second Stuff start followed the Engine restart. The Alpine rehearsal finished verifying the historical Stats restore in a separate namespace. |
 | 00:37 | Stuff failed readiness again. Both public Crates probes still returned 502, and the Engine continued logging registration deadlines. |
+| 01:13 | The deployed Stuff Worker started in a separate Engine namespace with publishing disabled. It served the registry files from the existing versitygw store. |
+| 01:15 | Caddy switched the public listener and tailnet package reads to the recovery Worker. Crates, npm, PyPI, OCI, the mirror and the Stuff landing page passed live probes. |
 
-Stuff recovery and the native production cutover remain open. The current
-Engine needs to serve runner registration and stateful reads before Stats
-can take the fresh logical backup required for cutover.
+## Public read recovery
+
+The fallback uses `oo-stuff-read-app` at `172.29.80.252:8080` and
+`oo-stuff-read-engine` at `172.29.80.251:6420` on the internal
+`openorange` network. They use the production image pins with separate
+Engine credentials and an empty `stuff-read-recovery` namespace. The
+Worker has `STUFF_COORDINATOR_ENABLED=false` and receives the existing
+bucket bindings. The publishing and upload credentials are absent.
+
+The fallback reads each registry's last projected S3 `current` generation.
+If an activation committed just before the outage and its projection never
+completed, its generation will appear after coordinator recovery. The
+private publishing hostname remains on the original upstream and returns
+HTTP 502. The fallback did not move publication authority or write any
+registry object.
+
+The public Cargo sparse config and index passed over HTTPS. A download of
+`serde` 1.0.228 matched its sparse-index SHA-256, and `npm view` returned
+`@laputa-systems/ui-dashboard` 0.9.1. The tailnet Caddy listener served the
+Cargo config. Public `/_publication`, `/_s3` and `/admin` returned HTTP
+404. A public POST to the Cargo config returned HTTP 405.
+
+The original and recovery Caddyfiles are under
+`/etc/openorange/stuff-read-recovery/` as `Caddyfile.before` and
+`Caddyfile.recovery`. The recovery Caddyfile is installed at
+`/etc/openorange/ingress/Caddyfile` and survives a container restart. The
+normal `oo render` and `oo reload-ingress` commands regenerate it without
+the recovery routes. Keep the recovery file in service until the original
+Stuff app serves package reads and an authenticated coordinator read at
+`172.29.80.21:8080`. Then run `oo reload-ingress`, repeat the public and
+tailnet probes, and stop `oo-stuff-read-app` followed by
+`oo-stuff-read-engine`.
+
+Private publishing and the native production cutover remain open. The
+shared Engine needs to serve runner registration and stateful reads before
+Stats can take the fresh logical backup required for cutover.
 
 ## What slowed recovery
 
