@@ -267,9 +267,7 @@ mutants-diff: work-ready
 	  *) exit 1 ;; \
 	esac; \
 	case "$(INGEST_MUTATION_LANE)" in \
-	  worker) bash scripts/run-ingest-worker-mutation.sh $(STRYKER) ;; \
-	  rust) cargo mutants --manifest-path agent/Cargo.toml --gitignore true --no-config --file src/wire.rs \
-	        --re 'in (decode_ack|Reader.*::varint)$$' --timeout 20 --build-timeout 180 \
-	        --jobs 2 --output "$$PWD/.work/tmp/ingest-mutation-rust" -- --locked --lib --test conformance ;; \
+	  worker) bash scripts/run-ingest-mutation.sh worker $(STRYKER) ;; \
+	  rust) bash scripts/run-ingest-mutation.sh rust ;; \
 	  *) exit 1 ;; \
 	esac
