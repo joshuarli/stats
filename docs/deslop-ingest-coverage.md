@@ -159,3 +159,32 @@ installation. The ordered JSON identities have SHA-256
 `1dc5b360f58cead0bae28cf07f4f04eae29a6cfce004c9393d2a6760b5d15792`.
 The earlier varint loop, storage internals and the whole-change
 workflow remain outside this selection.
+
+## Hosted acknowledgment mutation trial
+
+[Run 44283893296](https://github.com/joshuarli/stats/actions/runs/44283893296)
+at `7d2aacf` passed the Worker and Rust lanes on Linux ARM64. The
+Worker caught 25 of 27 with two equivalent fallback variants. The
+Rust lane caught all 42 decoder identities. The two jobs used 322
+runner seconds. All ordinary checks passed.
+
+| Control | Hosted outcome |
+| --- | --- |
+| [Documentation](https://github.com/joshuarli/stats/pull/38) | Both lanes explicitly selected nothing. |
+| [Rust test deletion](https://github.com/joshuarli/stats/pull/39) | The length comparison at `src/wire.rs:583:20` survived. The Worker lane passed. |
+| [Mixed Rust deletion and Worker change](https://github.com/joshuarli/stats/pull/40) | The same Rust comparison survived. The changed Worker emitter was independently selected and passed. |
+| [Uncovered Worker branch](https://github.com/joshuarli/stats/pull/41) | Worker identities 28, 30 and 32 survived. The independent Rust lane had no selected edit. |
+
+All ordinary checks passed the controls. From the draft checkout
+run `make mutants-diff BASE=origin/master` with the pinned Node and
+pnpm. Set `INGEST_MUTATION_LANE=rust` for cargo-mutants 27.1.0.
+The runner builds from a committed archive. Workerd instrumentation
+stays inside that archive and the Rust lane keeps the fixture tree
+beside the agent package. The first local copy-based Rust attempt
+lost the shared fixtures. The archived agent is explicitly made a
+standalone workspace and the original lockfile is used.
+
+The trial selects the reported Worker emission ranges and the Rust
+ACK decoder. It rejects source changes outside the qualified ranges.
+The broader wire and storage paths, producer timeouts and full
+workflow retention remain in DSLP-4.

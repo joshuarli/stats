@@ -14,6 +14,6 @@ const fixtures = Object.fromEntries(readdirSync(fixtureDir, { recursive: true, w
 }));
 
 export default defineConfig({
-  plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
+  plugins: [cloudflareTest({ wrangler: { configPath: "./wrangler.test.jsonc" }, miniflare: { bindings: { ...(process.env.__STRYKER_ACTIVE_MUTANT__ === undefined ? {} : { __STRYKER_ACTIVE_MUTANT__: process.env.__STRYKER_ACTIVE_MUTANT__ }), FIXTURES: JSON.stringify(fixtures), ENVIRONMENT: "test", TEST_NOW_MS: "1793510415000" } } })],
   test: { include: inventory().filter(test => test.runner === "vitest").map(test => test.file), testTimeout: 30_000 }
 });

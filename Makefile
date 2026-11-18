@@ -252,3 +252,22 @@ test-ci: fixtures agent-test cloudflare-test agent-e2e node-e2e smoke-local
 test: test-ci dashboard-test $(OFFLINE_SANDBOX_CHECK)
 
 check: fixtures agent-test release orange-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)
+
+PYTHON ?= python3
+STRYKER ?= pnpm --registry=https://npm.17166969.xyz/current/ dlx @stryker-mutator/core@10.1.1
+INGEST_MUTATION_LANE ?= worker
+
+.PHONY: mutants-diff
+mutants-diff: work-ready
+	@result="$$( $(PYTHON) -B scripts/ingest-mutation-selection.py "$(or $(BASE),origin/master)" "$(INGEST_MUTATION_LANE)" )" || exit $$?; \
+	printf '%s\n' "$$result"; \
+	case "$$result" in \
+	  *selected=false) exit 0 ;; \
+	  *selected=true) ;; \
+	  *) exit 1 ;; \
+	esac; \
+	case "$(INGEST_MUTATION_LANE)" in \
+	  worker) bash scripts/run-ingest-mutation.sh worker $(STRYKER) ;; \
+	  rust) bash scripts/run-ingest-mutation.sh rust ;; \
+	  *) exit 1 ;; \
+	esac
