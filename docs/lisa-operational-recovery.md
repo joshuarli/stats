@@ -72,8 +72,11 @@ for stale receipts even when the dashboard returns HTTP 200. Lisa's
 OpenOrange check now uses the authenticated application readiness probe
 and records structured upstream error codes. A synthetic HTTP 400
 carrying `depot.request_deadline_exceeded` fails the check. Alert
-delivery, the common incident view, and the HTTP status exposed to the
-dashboard remain open.
+delivery and the common incident view remain open. The Stats HTTP
+adapter now maps the known installation storage deadline to
+`503 storage_unavailable` with `Retry-After`. The regression exercises
+the hosts API and verifies that genuine request errors still return
+HTTP 400. The fix is staged in source for the next application rollout.
 
 The first delivery for degraded recovery is the OpenOrange recovery route
 configuration. A regular render and reload preserved Stats, Stuff and

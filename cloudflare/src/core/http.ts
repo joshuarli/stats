@@ -74,6 +74,20 @@ function error(status: number, code: string, message: string): Response {
   return secure(Response.json({ error: { code, message } }, { status }));
 }
 
+async function installationResponse(response: Response): Promise<Response> {
+  if (response.status !== 400) return response;
+  let value: unknown;
+  try { value = await response.clone().json(); } catch { return response; }
+  type StorageError = { group?: unknown; code?: unknown };
+  const document = value as (StorageError & { error?: StorageError }) | null;
+  const upstream = document?.error ?? document;
+  if (upstream?.code !== "depot.request_deadline_exceeded" &&
+      !(upstream?.group === "depot" && upstream.code === "request_deadline_exceeded")) return response;
+  void response.body?.cancel();
+  return Response.json({ error: { code: "storage_unavailable", message: "telemetry storage missed an upstream deadline" } },
+    { status: 503, headers: { "Retry-After": "5" } });
+}
+
 function denied(decision: Extract<AuthDecision, { ok: false }>): Response {
   return error(decision.status, decision.status === 503 ? "unavailable" : "unauthorized", decision.message);
 }
@@ -199,7 +213,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
       logIngestRejection("too_large");
       return error(413, "too_large", "batch exceeds the body cap");
     }
-    return secure(await target.installation(internal(request, "/ingest")));
+    return secure(await installationResponse(await target.installation(internal(request, "/ingest"))));
   }
   if (request.method === "POST" && SERVICE_MARKER_PATH.test(path)) return markDeployment(request, target, path);
   if (path.startsWith("/ingest/observe/")) {
@@ -243,7 +257,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
     if (request.method === "POST" && SERVICE_DEPLOYMENTS_SUFFIX.test(suffix)) return error(405, "invalid_request", "post deploy markers to /ingest/services/NAME/deployments");
     if (request.method === "POST" && (suffix === "/admin/hosts" || suffix === "/admin/services") && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
-    const response = await target.installation(internal(request, suffix));
+    const response = await installationResponse(await target.installation(internal(request, suffix)));
     return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
   }
   if (request.method !== "GET" && request.method !== "HEAD") return error(405, "invalid_request", "method not allowed");
