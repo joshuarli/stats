@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+description="Transport for Lisa's Stats application event producers"
+supervisor=supervise-daemon
+command=/usr/bin/ssh
+command_user=josh
+directory=/home/josh
+export HOME=/home/josh
+key_dir=/home/josh/.local/share/stats-live-recovery/20261118
+command_args="-J threadripper -o BatchMode=yes -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o HostKeyAlias=stats-native-rehearsal -o UserKnownHostsFile=$key_dir/known_hosts -o StrictHostKeyChecking=yes -o StreamLocalBindMask=0117 -o StreamLocalBindUnlink=yes -i $key_dir/live-forward -p 49177 -NT -L /run/openorange/stats-direct/app.sock:127.0.0.1:8080 root@127.0.0.1"
+output_log="$key_dir/direct-ssh.log"
+error_log="$key_dir/direct-ssh.log"
+respawn_delay=3
+respawn_max=0
+respawn_period=60
+
+depend() {
+    need net tailscale
+}
+
+start_pre() {
+    install -d -o josh -g 10001 -m 2750 /run/openorange/stats-direct
+}

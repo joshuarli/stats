@@ -1,0 +1,28 @@
+#!/sbin/openrc-run
+
+description="Signed application events at the legacy Stats producer address"
+supervisor=supervise-daemon
+command=/usr/bin/docker
+command_args="run --rm --name oo-stats-direct-proxy --network openorange --ip 172.29.80.20 --user 10001:10001 --read-only --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges --log-driver none --tmpfs /config:rw,uid=10001,gid=10001,mode=0700 --tmpfs /data:rw,uid=10001,gid=10001,mode=0700 -v /etc/openorange/stats-direct.Caddyfile:/etc/caddy/Caddyfile:ro -v /run/openorange/stats-direct:/run/stats-direct:ro $stats_direct_image caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"
+output_log=/var/log/openorange/stats-direct.log
+error_log=/var/log/openorange/stats-direct.log
+respawn_delay=3
+respawn_max=0
+respawn_period=60
+retry=TERM/10/KILL/5
+
+depend() {
+    need docker oo-stats-direct-tunnel
+}
+
+start_pre() {
+    test -f /etc/openorange/stats-direct.Caddyfile || return 1
+    test -n "$stats_direct_image" || return 1
+    /usr/bin/docker image inspect "$stats_direct_image" >/dev/null || return 1
+    elapsed=0
+    while [ ! -S /run/openorange/stats-direct/app.sock ]; do
+        [ "$elapsed" -lt 10 ] || return 1
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+}

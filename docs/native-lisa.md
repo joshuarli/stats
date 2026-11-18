@@ -84,6 +84,14 @@ startup settled. Production unit changes, ingress migration and the
 soak remain gated on a verified logical restore on Lisa, restart and
 rollback proof, and a safe writer handoff.
 
+The current archive imported into a fresh native Engine namespace on
+Threadripper. All 853,605 rows verified, and a canary passed ingest,
+history readback and replay deduplication. The pinned Docker Engine
+reopened that native-written depot and returned the canary's latest
+sample. On Lisa, the staged native versitygw passed all required
+conformance checks in a private namespace. Its optional multipart
+`GET ?partNumber=2` returned HTTP 400.
+
 The Engine rollback rehearsal stopped the native services and booted a
 separate VM disk overlay with the same state. It ran the deployed Engine
 image at digest

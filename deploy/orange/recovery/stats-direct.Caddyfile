@@ -1,0 +1,22 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	@applicationEvents {
+		method POST
+		path_regexp ^/ingest/observe/v1/[a-z][a-z0-9-]{0,31}/batches$
+	}
+	handle @applicationEvents {
+		request_header -Stats-Gateway-Secret
+		request_header -Stats-Tailnet-Identity
+		request_header -Tailscale-*
+		request_header -X-OO-*
+		reverse_proxy unix//run/stats-direct/app.sock
+	}
+	handle {
+		respond 404
+	}
+}

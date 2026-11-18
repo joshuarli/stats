@@ -47,8 +47,25 @@ expected online hosts delivered new telemetry across two reporting
 intervals. The [failover record](native-lisa-retro.md#live-stats-failover)
 identifies the protected source capture, current authority, and failback
 requirements. The readback establishes the missing sample interval for
-each host. Acknowledged-sample reconciliation and the direct producer
-paths remain open.
+each host. Acknowledged-sample reconciliation remains open.
+
+Lisa's existing direct Stats producer address, `172.29.80.20:8080`, now
+relays signed application-event POSTs to the active writer. The Caddy
+relay runs on the internal OpenOrange network. It uses a private Unix
+socket to the standby tunnel, strips gateway and identity headers,
+and rejects dashboard paths and other methods. A real Agentctl canary
+and a Stats platform collector canary both passed signed ingestion and
+persisted readback. The platform collector's existing verifier was
+checked against the source configuration before it was attached to
+the active writer. The relay and its tunnel are enabled in OpenRC.
+
+For failback, include the direct producer path in the admission fence.
+Stop `oo-stats-direct-proxy` and `oo-stats-direct-tunnel` before activating
+a new authority or releasing `172.29.80.20` to a local app. Verify each
+producer against the new authority before reopening that path. The relay
+run files are in `deploy/orange/recovery/`. Its image is the pinned
+binary used by Lisa's ingress. The host trust, key, and socket paths
+refer to this specific standby.
 
 The first delivery for detection is `statsctl check hosts`, which fails
 for stale receipts even when the dashboard returns HTTP 200. Lisa's
