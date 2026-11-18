@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { verifyBackup } from "../../src/cli/commands/backup.ts";
 import { main } from "../../src/cli/run.ts";
-import { fakeOrigin, sendJson } from "./support.ts";
+import { fakeOrigin, runCli, sendJson } from "./support.ts";
 
 await test("backup export resumes a verified prefix and skips finished objects", async () => {
   const scratch = resolve(import.meta.dirname, "../../../.work/tmp");
@@ -105,6 +105,25 @@ await test("reopening attempts later objects and reports replies that did not pr
     ]);
     assert.deepEqual(origin.seen.filter(request => request.method === "POST").map(request => request.url),
       objects.map(object => `/api/v1/admin/objects/${object}/maintenance`));
+  } finally {
+    await origin.close();
+  }
+});
+
+await test("backup status reads acknowledged offsets without issuing writes", async () => {
+  const progress = [{ table: "observe_external_events", rows: 1200 }];
+  const origin = await fakeOrigin((request, response) => {
+    if (request.url === "/api/v1/admin/objects") sendJson(response, { objects: ["installation", "observe:stuff"] });
+    else sendJson(response, { object: "observe:stuff", state: "importing", progress });
+  });
+  try {
+    const run = await runCli(["backup", "status", "--origin", origin.origin, "--object", "observe:stuff", "--json"]);
+    assert.equal(run.code, 0, run.stderr);
+    const document = JSON.parse(run.stdout) as { payload: unknown };
+    assert.deepEqual(document.payload, { objects: [{ object: "observe:stuff", state: "importing", progress }] });
+    assert.deepEqual(origin.seen.map(request => [request.method, request.url]), [
+      ["GET", "/api/v1/admin/objects"], ["GET", "/api/v1/admin/objects/observe:stuff/import/progress"]
+    ]);
   } finally {
     await origin.close();
   }

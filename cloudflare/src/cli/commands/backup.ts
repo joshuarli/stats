@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { EXPORT_FORMAT, MAX_PAGE_BYTES, MAX_PAGE_ROWS, type ObjectManifest, type Page } from "../../core/export/snapshot.ts";
+import { EXPORT_FORMAT, MAX_PAGE_BYTES, MAX_PAGE_ROWS, type MaintenanceState, type ObjectManifest, type Page } from "../../core/export/snapshot.ts";
 import type { SqlValue } from "../../core/sql.ts";
 import { HISTORY_BODY_LIMIT } from "../http.ts";
 import { CommandError, EXIT, transportError, usageError } from "../exit.ts";
@@ -257,14 +257,21 @@ export function verifyBackup(directory: string): readonly { readonly object: str
 }
 
 interface Progress {
-  readonly state: string;
+  readonly state: MaintenanceState;
   readonly progress: readonly { readonly table: string; readonly rows: number }[];
 }
 
 function decodeProgress(value: unknown): Progress {
   const progress = value as Progress;
-  if (typeof progress?.state !== "string" || !Array.isArray(progress.progress)) throw transportError("contract", "import progress is malformed");
-  return progress;
+  if (progress?.state !== "open" && progress?.state !== "fenced" && progress?.state !== "importing") {
+    throw transportError("contract", "import progress has an unknown maintenance state");
+  }
+  if (!Array.isArray(progress.progress) || (progress.progress as readonly unknown[]).some(item => {
+    const entry = item as { table?: unknown; rows?: unknown } | null;
+    return typeof entry?.table !== "string" || !TABLE.test(entry.table) || typeof entry.rows !== "number" ||
+      !Number.isSafeInteger(entry.rows) || entry.rows < 0;
+  })) throw transportError("contract", "import progress has invalid table offsets");
+  return { state: progress.state, progress: progress.progress };
 }
 
 async function importObject(context: CommandContext, directory: string, object: string): Promise<{ readonly object: string; readonly rows: number }> {
@@ -308,6 +315,31 @@ export const backupObjectsCommand = defineCommand<ObjectsPayload>({
   },
   render(payload) {
     return payload.objects.map(object => object);
+  }
+});
+
+export const backupStatusCommand = defineCommand<{ readonly objects: readonly (Progress & { readonly object: string })[] }>({
+  name: "backup status",
+  summary: "read backup maintenance state and acknowledged import offsets",
+  description: ["Reads the durable import progress for each selected object. Use a single object to inspect a running restore."],
+  access: "read",
+  options: {
+    object: { type: "string", placeholder: "OBJECT", description: "one object from `backup objects` (default: all)" }
+  },
+  examples: ["statsctl backup status --object installation --json"],
+  limitations: ["A finished import clears its table offsets and reports open."],
+  async run(context) {
+    const objects = selected(context, await listObjects(context));
+    const status = await eachLimited(objects, OBJECT_CONCURRENCY, async object => {
+      const reply = await context.http.getJson(`${objectPath(object)}/import/progress`, decodeProgress);
+      if (reply.kind !== "ok") throw transportError("contract", `${object} progress was not returned`);
+      return { object, ...reply.value };
+    });
+    return { payload: { objects: status } };
+  },
+  render(payload) {
+    return payload.objects.map(entry =>
+      `${entry.object}: ${entry.state}, ${entry.progress.reduce((total, table) => total + table.rows, 0)} acknowledged import rows`);
   }
 });
 

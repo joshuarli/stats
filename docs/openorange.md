@@ -151,6 +151,10 @@ maintenance window. Batch reopening attempts each object and lists any
 unconfirmed results. An exit of 4 means state remains unconfirmed for
 the listed objects. Retry each with `backup fence --state open --object`.
 
+Use `statsctl backup status --object observe:stuff --json` to inspect
+acknowledged row offsets during a restore. This is a read-only request.
+A finished import reports `open` and clears its per-table offsets.
+
 ## Cutover record (2026-11-14)
 
 | Step | UTC | Result |
