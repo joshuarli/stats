@@ -121,3 +121,41 @@ in the sandbox. The ordered JSON tuples of identity, operator, location
 and replacement have SHA-256
 `90bf487769f78749b89890228445110af7bbf9fa2576251d768eeb8287e4e9c0`
 in all three accepted runs.
+
+## Worker acknowledgment emission
+
+The Worker test now sends five samples in one request. The binary
+response reports one accepted sample, one duplicate and three
+rejections for the invalid, expired and conflicting samples. The test
+checks the rejection order and the two stored rows, including the
+original contents of the duplicate.
+
+At `cbe5356`, the existing Workerd suite caught 25 of 27 Stryker
+identities across ACK encoding and the response decision. The added
+case catches the same 25. The two survivors, IDs 9 and 10 in
+`installation.ts`, alter the empty rejection-list fallback. Frame
+admission requires at least one sample. Every sample in a completed
+transaction is accepted, counted as a duplicate, or appended to the
+rejection list. With both delivery counters zero, the first rejection
+therefore exists. The optional access and fallback remain in the
+typed code. All 22 Workerd tests, lint and type checking passed.
+
+Use a disposable archive, Node 26.13.1, Workerd via the pinned
+Vitest plugin and Stryker 10.1.1. Install locked dependencies and add
+a test-only binding in `cloudflare/vitest.config.mjs` so the Worker
+receives `__STRYKER_ACTIVE_MUTANT__` from the command environment.
+Select `cloudflare/src/ingest/ack.ts:19-32` and
+`cloudflare/src/core/installation/installation.ts:629-635`. Run Stryker
+in place in the archive with a serial command runner, coverage
+analysis off, and this command from the repository root:
+
+```sh
+cd cloudflare && node scripts/run-tests.mjs --file test/ingest.test.ts --jobs 1
+```
+
+The source blobs are `183ce6a7b67424b03b135d2b4e42778a06b371e2` for
+the encoder and `d792273d7c1ae306dfd634fe330a4bd08b987358` for the
+installation. The ordered JSON identities have SHA-256
+`1dc5b360f58cead0bae28cf07f4f04eae29a6cfce004c9393d2a6760b5d15792`.
+The earlier varint loop, storage internals and the whole-change
+workflow remain outside this selection.
