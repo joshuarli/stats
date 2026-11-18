@@ -78,7 +78,9 @@ Lisa has the pinned Node.js 26.13.1 package and the hashed
 The release is staged outside the production routing and startup paths.
 In a private network namespace on Lisa, the captured depot passed Engine
 `/health` but failed Stats runner registration with
-`depot.request_deadline_exceeded`. On the same host, a fresh depot
+`depot.request_deadline_exceeded`. A retest with the production limit
+of 1,048,576 open files reproduced four registration deadlines and
+reported no descriptor exhaustion. On the same host, a fresh depot
 provisioned its namespace and served the authenticated hosts API after
 startup settled. Production unit changes, ingress migration and the
 soak remain gated on a verified logical restore on Lisa, restart and
@@ -207,15 +209,21 @@ the host, not just Stats. It is a platform change owned in the `stuff` repo
 
 ## Rollout
 
-1. **Backup first, on lisa:** fence stats
-   (`pnpm --dir cloudflare -s statsctl backup fence --state fenced`), export,
-   verify digests, unfence. This is the existing recovery contract and needs no
-   new machinery.
+1. **Back up the current writer.** Identify the authority before copying
+   data. While Threadripper owns writes, use the
+   [current writer capture procedure](lisa-operational-recovery.md#current-writer-backup)
+   and verify logical export on an isolated copy. Seal and transfer the
+   newer writes during the final handoff.
 2. **Rehearsal on a scratch Alpine VM or spare host** (x86_64): install the
    native stack with the rehearsal overlay (demo app, demo bucket/namespace),
    verify ingest→actors→dashboard end-to-end with fixtures, then rehearse
    *restore from the fenced export* into the native stack. This is the one
    step that proves the plan; don't skip it.
+   Check `Max open files` in `/proc/<engine-pid>/limits` before the rehearsal.
+   Lisa's SSH shell inherited a soft limit of 1,024. The native Engine hit
+   `EMFILE` during an isolated import and fail-stopped. Both the planned
+   native value and Lisa's production Docker Engine use 1,048,576. Set
+   that limit before starting the unit or the isolated rehearsal.
 3. **Cutover, separate windows, on lisa:** (a) store+engine first with stats
    fenced, apps stopped, units swapped; verify engine `/health`, store
    multipart probe, then apps; (b) stats app next (`make stats-deploy` native
