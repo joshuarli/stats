@@ -128,3 +128,39 @@ await test("backup status reads acknowledged offsets without issuing writes", as
     await origin.close();
   }
 });
+
+await test("serial backup import finishes each object before starting the next", async () => {
+  const scratch = resolve(import.meta.dirname, "../../../.work/tmp");
+  mkdirSync(scratch, { recursive: true });
+  const directory = mkdtempSync(join(scratch, "backup-serial-import-"));
+  const objects = ["installation", "observe:stuff"];
+  const rows = "[1]\n";
+  const sha256 = createHash("sha256").update(rows).digest("hex");
+  const origin = await fakeOrigin((request, response) => {
+    const path = request.url ?? "";
+    if (path.endsWith("/begin")) sendJson(response, { state: "importing", progress: [] });
+    else if (path.endsWith("/rows") || path.endsWith("/finish")) sendJson(response, {});
+    else sendJson(response, {}, 404);
+  });
+  try {
+    writeFileSync(join(directory, "index.json"), JSON.stringify({
+      format: "stats-backup/1", exportFormat: "stats-export/1", origin: origin.origin, createdAtMs: 0, objects
+    }));
+    for (const object of objects) {
+      const output = join(directory, object.replace(":", "-"));
+      mkdirSync(output);
+      writeFileSync(join(output, "samples.ndjson"), rows);
+      writeFileSync(join(output, "manifest.json"), JSON.stringify({
+        format: "stats-export/1", object, schema: { sha256 }, alarmAtMs: null, exportedAtMs: 0,
+        tables: [{ name: "samples", columns: ["id"], key: ["id"], sql: "CREATE TABLE samples(id INTEGER PRIMARY KEY)", rows: 1, sha256 }]
+      }));
+    }
+    const run = await runCli(["backup", "import", "--in", directory, "--origin", origin.origin, "--serial", "--json"]);
+    assert.equal(run.code, 0, run.stderr);
+    assert.deepEqual(origin.seen.map(request => [request.method, request.url]), objects.flatMap(object =>
+      ["begin", "rows", "finish"].map(operation => ["POST", `/api/v1/admin/objects/${object}/import/${operation}`])));
+  } finally {
+    await origin.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

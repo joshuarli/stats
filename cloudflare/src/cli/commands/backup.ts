@@ -458,21 +458,23 @@ export const backupImportCommand = defineCommand<{ readonly objects: readonly { 
   summary: "restore a verified backup into fresh, empty durable objects",
   description: [
     "MUTATION: verifies every table file against its manifest, then for each object begins an import (the object must be empty and have identical table definitions), sends rows from the recorded progress, and finishes, which re-checks every count and digest before the object reopens.",
-    "Rerunning after an interruption resumes from each table's recorded progress."
+    "After an interruption, rerun with --object to resume an unfinished object from its recorded table offsets."
   ],
   access: "mutation",
   options: {
     in: { type: "string", placeholder: "DIR", required: true, description: "backup directory from `backup export`" },
+    serial: { type: "boolean", description: "restore one object at a time to reduce load on the destination" },
     object: { type: "string", placeholder: "OBJECT", description: "one object from the backup (default: all)" }
   },
-  examples: ["statsctl backup import --in .work/backups/2026-11-14 --origin http://127.0.0.1:8787"],
-  limitations: ["An object that already holds data refuses the import; import into a new namespace or storage scope."],
+  examples: ["statsctl backup import --in .work/backups/2026-11-14 --serial --origin http://127.0.0.1:8787"],
+  limitations: ["An object with existing data refuses a new import. Start in a fresh namespace or storage scope."],
   async run(context) {
     const directory = resolve(invocationDirectory(), context.option("in") ?? "");
     verifyBackup(directory);
     const index = readIndex(directory);
     const objects = selected(context, index.objects);
-    const imported = await eachLimited(objects, OBJECT_CONCURRENCY, object => importObject(context, directory, object));
+    const imported = await eachLimited(objects, context.flag("serial") ? 1 : OBJECT_CONCURRENCY,
+      object => importObject(context, directory, object));
     return { payload: { objects: imported } };
   },
   render(payload) {

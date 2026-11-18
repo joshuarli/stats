@@ -126,6 +126,11 @@ before the object reopens. Backups contain token verifiers: keep them
 owner-only and off shared storage. `make orange-test` proves the round trip
 into a fresh namespace.
 
+Use `backup import --serial` to restore one object at a time if the
+destination cannot sustain concurrent imports. After an interrupted
+restore, inspect the recorded progress and resume the unfinished objects
+individually with `backup import --object OBJECT`.
+
 On an isolated copy that is still fenced, resume an interrupted export
 into a new output directory.
 
