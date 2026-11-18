@@ -80,3 +80,37 @@ forbid rule.
 The ordinary precedence lint flagged the service header expression twice.
 Its bit contributions are now grouped explicitly. The wire fixtures and
 conformance tests verify the same emitted bytes.
+
+## Producer and platform bridge
+
+At `df60b83`, the producer and platform bridge already used strict
+checking, indexed reads that include `undefined`, and exact optional
+properties. Both typechecks passed with
+`--noPropertyAccessFromIndexSignature` and produced no findings.
+
+Type-aware Oxlint reported 11 producer non-null assertions, five
+unsafe narrowing assertions, and no unnecessary assertions. Four
+of the five narrowing findings came from successful delivery ACKs.
+The decoder now narrows the two counts to numbers, checks that each is
+a nonnegative safe integer, and returns them without an assertion.
+The producer suite verifies missing counts, strings, negative values,
+a fractional value and an out-of-range integer through the delivery
+callback and counters. The producer lint candidate now reports only
+the timer handle assertion. The non-null cases still need individual
+review.
+
+The bridge candidate reported three unsafe assertions at its JSON
+policy load and HTTP body reads. Its current lint profile also
+flagged an async signal callback. There were no bridge non-null or
+unnecessary assertion findings. The bridge boundary findings remain
+open.
+
+Use the pinned Node and pnpm from the repository. Run
+`pnpm --filter @stats/producer run check`, and run `make
+integration-producer` for the delivery and bridge cases. The local
+suite passed 24 cases and skipped the opt-in Nanoshop checkout case.
+For the bridge checker use `pnpm --dir cloudflare exec tsrs -p
+../packages/platform-bridge/tsconfig.json --noEmit --fast`. To repeat
+the lint sample, use `pnpm --dir cloudflare exec oxlint --type-aware
+-D typescript/RULE -f json "$PWD/packages/COMPONENT/src"`, passing
+the component directory as an absolute path.

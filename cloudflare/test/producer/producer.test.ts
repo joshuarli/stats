@@ -227,6 +227,29 @@ await test("a malformed success body is retried a bounded number of times and th
   }
 });
 
+await test("success acknowledgments require two nonnegative safe integers", async () => {
+  const invalid = [
+    { duplicate: 0 },
+    { accepted: 1 },
+    { accepted: "1", duplicate: 0 },
+    { accepted: 1, duplicate: "0" },
+    { accepted: -1, duplicate: 0 },
+    { accepted: 1, duplicate: -1 },
+    { accepted: 0.5, duplicate: 0 },
+    { accepted: 1, duplicate: Number.MAX_SAFE_INTEGER + 1 },
+  ];
+  for (const ack of invalid) {
+    const producer = createProducer(configure("http://localhost", {
+      batchSize: 1, maxRetries: 0, fetch: async () => Response.json(ack),
+    }));
+    producer.record({ operation: "note.save", outcome: "ok", durationMs: 5 });
+    await producer.shutdown();
+    assert.deepEqual(producer.stats(), {
+      queued: 0, dropped: 1, sent: 0, duplicates: 0, batches: 0, retries: 0, lastError: "malformed_response",
+    }, JSON.stringify(ack));
+  }
+});
+
 await test("a permanent rejection is not retried, including an oversized body", async () => {
   const server = await serve((_request, _index, response) => json(response, { error: { code: "too_large", message: "too large" } }, 413));
   try {

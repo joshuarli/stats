@@ -250,10 +250,11 @@ function configuredProducer(config?: ProducerConfig | BindingProducerConfig | nu
     } catch {
       return null;
     }
-    if (typeof value !== "object" || value === null) return null;
-    const { accepted, duplicate } = value as { accepted?: unknown; duplicate?: unknown };
-    if (!Number.isSafeInteger(accepted) || (accepted as number) < 0 || !Number.isSafeInteger(duplicate) || (duplicate as number) < 0) return null;
-    return { accepted: accepted as number, duplicate: duplicate as number };
+    if (typeof value !== "object" || value === null || !("accepted" in value) || !("duplicate" in value)) return null;
+    const { accepted, duplicate } = value;
+    if (typeof accepted !== "number" || !Number.isSafeInteger(accepted) || accepted < 0 ||
+        typeof duplicate !== "number" || !Number.isSafeInteger(duplicate) || duplicate < 0) return null;
+    return { accepted, duplicate };
   }
 
   function drop(batch: readonly OperationEvent[], reason: string): void {
