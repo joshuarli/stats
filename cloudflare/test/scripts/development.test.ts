@@ -168,6 +168,7 @@ int main(int argc, char **argv) {
     const oldPids = tree(first.child.child.pid!).map(line => Number(/^\s*(\d+)/u.exec(line)![1]));
     const oldIdentities = describe(oldPids);
     await first.stop();
+    assert.ok(first.statuses.some(status => status.event === "dev-stopped"), "SIGTERM bypassed dev cleanup");
     const deadline = Date.now() + 5000;
     while (oldPids.some(pid => processes().split("\n").some(line => Number(/^\s*(\d+)/u.exec(line)?.[1]) === pid)) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 100));
     assertGone(oldPids, oldIdentities, first);

@@ -27,6 +27,7 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
   const owner = processOwner("dev", { signals: false });
   const signals: readonly NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
   const terminate = (signal: NodeJS.Signals): void => { process.exitCode = 128 + constants.signals[signal]; controller.abort(); };
+  const stdinEnded = (): void => controller.abort();
   for (const signal of signals) process.on(signal, terminate);
   let release: (() => void) | undefined;
   const statusFile = join(owner.directory, "status.json");
@@ -122,7 +123,24 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
     mkdirSync(state, { recursive: true });
     const artifacts = await ensureBuilds(["stats", "observe"], { signal: controller.signal });
     await activate(artifacts, true);
-    frontend = await createServer({ root: ROOT, configFile: false, envDir: false, cacheDir: join(owner.directory, "vite"), plugins: [solid(), { name: "offline-api", configureServer(server) { server.middlewares.use(proxy); } }], server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [ROOT, resolve(ROOT, "../node_modules")] } } });
+    const previousSignalListeners = new Set(process.listeners("SIGTERM"));
+    frontend = await createServer({ root: ROOT, configFile: false, envDir: false, cacheDir: join(owner.directory, "vite"), plugins: [solid(), {
+      name: "offline-api",
+      configureServer(server) {
+        // Vite 8.3.8 exits from this listener before the backend can stop.
+        const viteShutdown = process.listeners("SIGTERM").find(listener =>
+          listener.name === "parentSigtermCallback" && !previousSignalListeners.has(listener));
+        if (viteShutdown !== undefined) {
+          process.off("SIGTERM", viteShutdown);
+          const viteStdinShutdown = process.stdin.listeners("end").find(listener => Object.is(listener, viteShutdown));
+          if (viteStdinShutdown !== undefined) {
+            process.stdin.off("end", viteStdinShutdown);
+            process.stdin.once("end", stdinEnded);
+          }
+        }
+        server.middlewares.use(proxy);
+      },
+    }], server: { host: "127.0.0.1", port, strictPort: true, fs: { allow: [ROOT, resolve(ROOT, "../node_modules")] } } });
     await frontend.listen();
     const changed = (path: string): void => {
       if (path.startsWith("src/client/")) return;
@@ -153,6 +171,7 @@ export async function runDev(args = process.argv.slice(2)): Promise<void> {
     await owner.close();
     release?.();
     for (const signal of signals) process.off(signal, terminate);
+    process.stdin.off("end", stdinEnded);
     status("dev-stopped");
   }
 }
