@@ -98,6 +98,29 @@
       "frame": "frames/acks/u64-max-seq.sta2"
     },
     {
+      "name": "repeated-rejected-sequence",
+      "sent": [
+        "7",
+        "7",
+        "9"
+      ],
+      "ack": {
+        "accepted": 1,
+        "duplicates": 0,
+        "rejected": [
+          {
+            "seq": "7",
+            "code": "invalid_sample"
+          },
+          {
+            "seq": "7",
+            "code": "conflict"
+          }
+        ]
+      },
+      "frame": "frames/acks/repeated-rejected-sequence.sta2"
+    },
+    {
       "name": "sixteen",
       "sent": [
         "0",
