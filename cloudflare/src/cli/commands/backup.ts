@@ -274,6 +274,18 @@ function decodeProgress(value: unknown): Progress {
   return { state: progress.state, progress: progress.progress };
 }
 
+function verifyImportReceipt(value: unknown, manifest: ObjectManifest): void {
+  const receipt = value as { object?: unknown; state?: unknown; tables?: unknown } | null;
+  if (receipt?.object !== manifest.object || receipt.state !== "open" || !Array.isArray(receipt.tables)) {
+    throw transportError("contract", `${manifest.object} import did not confirm the object reopened`);
+  }
+  const tables = receipt.tables as readonly ({ name?: unknown; rows?: unknown; sha256?: unknown } | null)[];
+  if (tables.length !== manifest.tables.length || manifest.tables.some((expected, index) => {
+    const actual = tables[index];
+    return actual?.name !== expected.name || actual.rows !== expected.rows || actual.sha256 !== expected.sha256;
+  })) throw transportError("contract", `${manifest.object} import receipt does not match the backup manifest`);
+}
+
 async function importObject(context: CommandContext, directory: string, object: string): Promise<{ readonly object: string; readonly rows: number }> {
   const manifest = readObjectManifest(directory, object);
   const begun = await withRetry(() => context.http.postJson(`${objectPath(object)}/import/begin`, manifest, decodeProgress));
@@ -298,7 +310,7 @@ async function importObject(context: CommandContext, directory: string, object: 
     await flush();
     rows += offset;
   }
-  await withRetry(() => context.http.postJson(`${objectPath(object)}/import/finish`, {}, value => value));
+  await withRetry(() => context.http.postJson(`${objectPath(object)}/import/finish`, {}, value => verifyImportReceipt(value, manifest)));
   return { object, rows };
 }
 

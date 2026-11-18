@@ -121,8 +121,10 @@ A fence pauses writes (503 with `Retry-After`; agents retry) and alarms; agents
 buffer about four minutes (`maxQueueSamples` 16 at 15 s). Export writes
 per-table NDJSON checked against each object's row counts and SHA-256 digests;
 `index.json` is written last. Import requires empty objects with identical
-table definitions, resumes from recorded progress, and re-verifies every table
-before the object reopens. Backups contain token verifiers: keep them
+table definitions and resumes from recorded progress. The server re-verifies
+every table before reopening the object. The CLI checks the returned table
+counts and digests against the archive before reporting success. Backups
+contain token verifiers: keep them
 owner-only and off shared storage. `make orange-test` proves the round trip
 into a fresh namespace.
 
