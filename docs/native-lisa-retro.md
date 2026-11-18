@@ -98,12 +98,58 @@ cleared the stale OpenRC state, and started the pinned Engine before
 Stats. The Stats runner again failed registration. OpenRC stopped the
 failed app, and the production dashboard returned HTTP 502.
 
-A temporary dashboard route is staged privately. Through the tunnel from
-Lisa, the snapshot app serves the timestamped dashboard and both
-stateful APIs, and rejects unauthenticated reads with HTTP 401.
-The production route still points to Lisa. Serving the snapshot at the
-production URL requires a decision to accept temporarily stale reads.
-Ingest and admin writes would continue to use the production origin.
+The owner authorized the temporary snapshot at the Stats URL. Caddy
+keeps the tailnet identity check and sends dashboard GET and HEAD
+requests to `oo-stats-snapshot` on Lisa at `127.0.0.1:18483`. The
+OpenRC service supervises an SSH tunnel to the isolated Stats app on
+Threadripper. The page identifies the 01:24 UTC copy and says live
+telemetry is unavailable. Hosts and services returned HTTP 200
+through the Stats URL. Ingest and admin requests still route to the
+original Stats upstream on Lisa.
+
+The Stats recovery Caddyfiles and ingress environment backups are
+under `/etc/openorange/stats-snapshot-recovery/`. The original already
+includes the Stuff recovery routes. Once the live Stats installation
+serves the dashboard and receives verified ingest, remove the
+`@statsSnapshot` matcher and proxy from the current Caddyfile and
+reload Caddy after validation. Delete the snapshot-only credential
+from the ingress environment and stop `oo-stats-snapshot`. A normal
+`oo render` would overwrite both incident routes.
+
+Agentctl restarted against the original Engine and returned HTTP 200
+for `/healthz`, `/api/session`, and the stateful `/api/hosts` read.
+Discover failed the registration deadline twice with its selected image
+and returned HTTP 502 at the HQ URL.
+
+## HQ public reader recovery
+
+The selected Discover image registered against the copy of the Engine on
+Threadripper. Its public reader uses the publication pointer from that
+copy and reads the corresponding published objects from the existing
+versitygw bucket on Lisa. The recovery Worker runs on Lisa as
+`oo-discover-read-app` on `127.0.0.1:18485`. It has no operator
+credentials or scheduled triggers. Its isolated Engine endpoint uses
+the `oo-discover-recovery-tunnel` OpenRC service on `127.0.0.1:18487`.
+
+Caddy's `@hqRecovery` matches HQ GET and HEAD requests and excludes
+admin, operator and MCP routes. Responses include
+`X-Discover-Recovery-Snapshot: 2026-11-18T01:24:07Z`. Public HQ serves
+the published homepage, search index and browse catalog. Requests for
+research, publishing and private administration stay on the original
+upstream. Public `/admin` still returns 404.
+
+Once the authoritative Discover app serves stateful reads and the
+published homepage, remove only the `@hqRecovery` matchers and proxies
+from the current Caddyfile. Validate and reload it, probe HQ through
+public and tailnet ingress, and then stop the recovery app and its
+tunnel. The original and changed Caddyfiles for this step are
+`Caddyfile.before-hq` and `Caddyfile.with-hq` under
+`/etc/openorange/stats-snapshot-recovery/`. Keep the Stats and Stuff
+recovery routes while those services still depend on them.
+
+The Stats and HQ fallbacks depend on the running diagnostic VM on
+Threadripper. Lisa supervises both SSH tunnels. Reimaging or restarting
+the VM or its host requires bringing the snapshot services up again.
 
 ## What slowed recovery
 
