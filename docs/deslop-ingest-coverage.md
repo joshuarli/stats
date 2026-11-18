@@ -159,3 +159,5 @@ installation. The ordered JSON identities have SHA-256
 `1dc5b360f58cead0bae28cf07f4f04eae29a6cfce004c9393d2a6760b5d15792`.
 The earlier varint loop, storage internals and the whole-change
 workflow remain outside this selection.
+
+The ingest mutation trial uses Workerd and the shared Rust conformance corpus.
