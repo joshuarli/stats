@@ -10,7 +10,6 @@ export interface WorkerProducer {
   readonly kind: "worker";
   readonly output: string;
   readonly service: string;
-  readonly origin: string;
   readonly port: number;
   readonly worker: BuiltWorker;
   readonly vars: Readonly<Record<string, string>>;
@@ -40,7 +39,7 @@ export function parseProducerVars(entries: readonly string[]): Readonly<Record<s
 export function readWorkerProducer(output: string, service: string, port: number, vars: Readonly<Record<string, string>> = {}): WorkerProducer {
   if (!SERVICE_NAME.test(service)) throw new TypeError(`${JSON.stringify(service)} is not a service name; use ^[a-z][a-z0-9-]{0,31}$`);
   if (RESERVED.has(service) || isObservedService(service)) throw new TypeError(`${service} is already an observed service (${OBSERVED_SERVICES.join(", ")}); use a new name for local profiling`);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new TypeError(`${output} needs a TCP port, not ${String(port)}`);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError(`${output} needs a TCP port, not ${String(port)}`);
   const worker = readBuiltWorker(output);
   for (const consumer of worker.tailConsumers) {
     if (consumer !== "stats-observe") throw new TypeError(`${worker.name} tails into ${consumer}, but the stack hosts only stats-observe`);
@@ -53,7 +52,7 @@ export function readWorkerProducer(output: string, service: string, port: number
   const assetBindings = [...worker.env].filter(([, value]) => value.type === "assets").length;
   if (assetBindings !== (worker.assets === null ? 0 : 1)) throw new TypeError(`${worker.name} has ${assetBindings} assets bindings for ${worker.assets === null ? "no" : "one"} assets directory`);
   for (const name of Object.keys(vars)) assertProducerVarName(name);
-  return { kind: "worker", output, service, origin: `http://127.0.0.1:${port}`, port, worker, vars };
+  return { kind: "worker", output, service, port, worker, vars };
 }
 
 function modules(worker: BuiltWorker): V4ModuleDefinition[] {
