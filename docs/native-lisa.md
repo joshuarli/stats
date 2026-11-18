@@ -1,0 +1,160 @@
+# Native deployment on lisa (no Docker)
+
+Proposal, not a decision. Scope document for running the OpenOrange stack on
+`lisa` as native OpenRC services instead of containers. Nothing here has been
+executed; the host still runs the Docker stack.
+
+## Why now, and what native is not
+
+The 2026-11-17 outage was not a container failure: the Rivet engine refused to
+start because the root filesystem was at 98% (emptying it is what restored
+service). Running natively would not have prevented it. What native buys:
+fewer layers on a constrained host, no image storage, no docker daemon, a
+single OOM/CPU view per process, and one less reason for things to be opaque.
+What it costs: reimplementing pinning, supervision, and health for every
+component by hand, and giving up upstream's tested container boundary.
+
+## Current state (all Docker, all on lisa)
+
+Alpine 3.25, musl, x86_64, OpenRC. `lisa` is also a co-tenant build host
+(niceforge CI) and runs Tansu, the tailnet DNS/edge, and the whole shared
+OpenOrange stack. Tailnet address `100.68.104.43`.
+
+| Component | Runs as | State |
+| --- | --- | --- |
+| Rivet Engine (`oo-engine`) | container, `rivetdev/engine` (glibc Debian, `3.1.2-rc.1` image, reports 3.1.1) | host bind mount `/var/lib/openorange/engine/{log,objects}` (2.2 GB + 1.2 GB) |
+| versitygw S3 (`oo-store`) | container | `/var/lib/openorange/store/{data,versions,iam}`, 10.3 GB |
+| Caddy ingress (`oo-ingress`) | container, custom xcaddy build with cloudflare DNS module, host network, binds 100.68.104.43:443 | `/var/lib/openorange/caddy` |
+| identity sidecar (`oo-identity`) | container, python stdlib-only | unix socket `/run/openorange/identity/identity.sock` |
+| CoreDNS (`oo-dns`) | container | static Corefile bind mount |
+| cloudflared (`oo-tunnel`) | container | tunnel creds in `/etc/openorange/tunnel.env` |
+| Apps: stats, stuff, discover, discover-preview, nanoshop, agentctl | containers, `orange serve` on Node 26.13.1 Debian | assets+closure in image; durable state in Engine actors (namespace per app) |
+| Tansu, `stats-perf` fixture | native OpenRC | precedent for kind = "native" |
+
+Every OpenRC unit (`oo-engine`, `oo-store`, `oo-identity`, `oo-ingress`,
+`oo-app.NAME`) is a thin supervise-daemon wrapper around `docker run --rm`.
+
+Per-app deploy today: `make stats-deploy` builds an image on the Mac, rsyncs a
+build context to `lisa`, `docker build`, then `oo set-image stats <image>` and
+`rc-service oo-app.stats restart`, then health/smoke. The image is a
+`node:26.13.1-bookworm-slim` with the pinned `deploy/orange` closure
+(`open-orange` 1.0.2, `rivetkit` 3.1.2-rc.1, `@rivet-dev/services` 0.2.5) and
+the built Vite assets under `/app`.
+
+## What native means here
+
+No container runtime in the serving path. OpenRC supervises host binaries
+directly. Docker may remain for offline builds (`make agent-build` already
+does this) and for image creation during the transition only. The plan assumes
+Alpine stays (not a glibc reinstall): every component has a musl path.
+
+Costs ~2–4 days of engineering plus rehearsal and a soak; touches every app on
+the host, not just Stats. It is a platform change owned in the `stuff` repo
+(`deploy/openorange/`), with `stats` gaining a native deploy path.
+
+## Component by component
+
+| Component | Native candidate | Notes |
+| --- | --- | --- |
+| Rivet Engine | `@rivetkit/engine-cli-linux-x64-musl@3.1.2-rc.1` (static-pie Rust, `libc: [glibc, musl]`, published on npm; pin sha256) | open-orange declares Linux x64/arm64 musl a supported host and resolves this package at runtime. Engine command is `rivet-engine --config /etc/rivet/config.json` with `RIVET__AUTH__ADMIN_TOKEN`. Data dirs unchanged → no state migration. Verify `--version` prints 3.1.1 and `/health` answers before trusting it; the deployed glibc image reports the same, so version string cannot distinguish them — pin by npm tarball sha256 + verify report, not `--version`. Re-check what the **image** actually ships: the musl build is a few MB, the image is Debian; the engines differ only by libc, but that is unproven until run. |
+| versitygw | Go binary; no apk package; build with `apk add go` or pin a release/static build + sha256 | codelist pins it by image digest today; native replaces digest pin with binary sha256 in `images.lock.json` equivalent. posix backend paths unchanged. |
+| Caddy ingress | xcaddy build (caddy 2.11.9 + caddy-dns/cloudflare v0.2.4), static musl; `apk caddy` 2.11.4 lacks the module | `cap_net_bind_service=ep` on the binary or uid 10001; binds only 100.68.104.43:443 and the public 127.0.0.1:18480 listener. The xcaddy build is reproducible today; the ingress Dockerfile does exactly this, minus the musl target. |
+| identity sidecar | `apk add python3` (stdlib only) | Already a plain script; runs native with `--network none` semantics replaced by "only listens on /run/openorange/identity/identity.sock, no egress" (tailscaled LocalAPI whois probing stays). |
+| CoreDNS | `apk add coredns` 1.15.0 (static Go) | Corefile unchanged. |
+| cloudflared | no apk package; pin GitHub release binary + sha256, or build from tag | Same config; health is the tunnel's own metrics. |
+| Node apps | `apk add nodejs-current` 26.13.1-r0 (edge/community) — exact match to the image's Node 26.13.1 | `orange serve --config stats.jsonc --config observe.jsonc`. The app closure installs on lisa with `pnpm install --prod --ignore-workspace` (same lockfile as the image), assets come from the Mac-side build (build-image.sh minus the docker build), synced to `/opt/openorange/app-releases/stats/<sha>`; `/opt/openorange/apps/stats` is a symlink switched atomically. |
+| Tansu, stats-perf | already native | unchanged |
+
+## Layout and networking
+
+- Loopback only: engine `127.0.0.1:6420`, store `127.0.0.1:7070`, each app
+  `127.0.0.1:808x`. No bridge, no static IPs, no per-app /24 reservation.
+- Caddy stays the only listener off-loopback, exactly as today (host network
+  for the tailnet address; loopback for the public listener). Its upstreams
+  become loopback ports — strictly simpler than today, where a coredns/DNS
+  detail or bridge misnumbering breaks everything.
+- Unix sockets for host IPC that already uses them (identity).
+- `/etc/openorange`, `/var/lib/openorange`, `/var/log/openorange`,
+  `/run/openorange` unchanged; engine/store state paths unchanged.
+- Isolation is the trade-off: today a compromised app is confined by the
+  `--internal` bridge. Native confines by file permissions and dropping
+  capabilities (each app runs as its own uid, no egress other than Caddy's,
+  CPU/memory caps via OpenRC `cgroups`). Acceptable for this host; call it out
+  in the security review rather than pretending it is equivalent.
+
+## OpenRC and tooling changes (stuff repo)
+
+- `deploy/openorange/openrc/*`: drop the `docker run` command, exec the
+  binary directly as the service user. Keep supervise-daemon, respawn limits,
+  `output_log`, and `oo_wait` readiness gates.
+- `lib/oolib.py`: `run_args` produces `env`+`exec` plans instead of docker
+  argv. `bin/pin-verify` grows a `binaries.lock.json` (sha256 per binary)
+  replacing image digest checks; keep `images.lock.json` until cutover is
+  complete.
+- Engine unit: `--user rivet` equivalent, `ulimit -n 1048576`, tmpfs /var/lib/rivet
+  equivalent is unnecessary since state dirs are host paths already.
+- `oo render` unchanged in behavior (same files it writes today), plus it
+  rewrites app upstreams to loopback.
+- Stats repo: `deploy/orange/deploy.mts` becomes build+rsync+`swap` (symlink
+  switch, restart `oo-app.stats`, health/smoke) instead of image build+set-image.
+  `make stats-deploy` is unchanged from the operator's point of view.
+- `oo set-image`/`record-deployment` become `oo set-release`/markers; the
+  deployment-marker contract (`docs/deployments.md`) is preserved — a native
+  release id `<git-sha>` replaces the image tag, carried the same way.
+
+## Rollout
+
+1. **Backup first, on lisa:** fence stats
+   (`pnpm --dir cloudflare -s statsctl backup fence --state fenced`), export,
+   verify digests, unfence. This is the existing recovery contract and needs no
+   new machinery.
+2. **Rehearsal on a scratch Alpine VM or spare host** (x86_64): install the
+   native stack with the rehearsal overlay (demo app, demo bucket/namespace),
+   verify ingest→actors→dashboard end-to-end with fixtures, then rehearse
+   *restore from the fenced export* into the native stack. This is the one
+   step that proves the plan; don't skip it.
+3. **Cutover, separate windows, on lisa:** (a) store+engine first with stats
+   fenced, apps stopped, units swapped; verify engine `/health`, store
+   multipart probe, then apps; (b) stats app next (`make stats-deploy` native
+   path); (c) remaining apps and ingress/dns/identity/tunnel last. Rollback at
+   every step = restore fence, swap units back to docker, start.
+4. **Soak 2 weeks** (docker units and images kept), then delete the image
+   references, and only then retire `images.lock.json` and the docker paths.
+
+## Known risks / unknowns
+
+- **The engine-musl path is unproven in production** (musl binary exists and
+  open-orange supports it, but the tested/rehearsed production engine is the
+  glibc image). Mitigation: step 2, plus engine cutover with instant docker
+  rollback and pre-staged verification.
+- **Ops tooling parity**: every `docker inspect`-based check (`deploy.mts`
+  verify, bench harnesses, `docs/openorange.md`) must be reimplemented;
+  incomplete parity fails loudly but expensively. Inventory:
+  `rg -n "docker (inspect|run|ps|exec)"` in both repos.
+- **Niceforge co-tenancy** is unchanged in shape but now invisible to docker;
+  make sure ops tooling does not assume `docker ps` covers host capacity.
+- **The 2026-11-17 class of failure (ENOSPC) is unaffected** by this plan.
+  If this work is ordered to fix that outage, it will not. Disk budgets,
+  alerting, and the niceforge cleanup are the actual fix.
+- caddy-dns/cloudflare musl static build needs re-verification of ACME
+  DNS-01 against the real zone before cutover.
+
+## Decision gates
+
+1. Do the step-2 rehearsal with the engine-musl binary and restore-from-export
+   before committing to the cutover. If that fails, stop: either stay on
+   docker/OpenOrange, or move lisa to a glibc distro and keep the same native
+   layout (that path needs no musl trust).
+2. Cutover only after a fenced full backup verifies by import into the
+   rehearsal environment.
+3. Native cutover on lisa only with the stats fence procedure rehearsed and
+   a tested rollback to docker.
+
+## Recommendation
+
+Proceed, but as a scheduled project, not as an incident response. Sequence it
+after lisa is stable and the disk question is settled (the 400 GB in `/home`
+is the actual capacity problem; `docker images` were ~18 GB of it). If the
+rehearsal in step 2 shows engine-musl trouble, the fallback is the glibc
+distro reinstall with the same native layout, which keeps every other step of
+this plan unchanged.
