@@ -5,7 +5,21 @@ Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/mai
 
 ## Report
 
-Diagnose reviewed core at `6cbab0ef155f6fc999cae8c388f82693a121740d` and the later deployment delta through `20dd37f69ff7283879a9e34ec011d27b15f1482b`; no new defect was established. [Diagnose](docs/deslop-diagnose.md) records ranked ownership, local witnesses, reused parent verification and limits. DSLP-7 is fixed in PR 18; DSLP-8 and Types, Tests, and Dead code remain open.
+Diagnose reviewed core at `6cbab0ef155f6fc999cae8c388f82693a121740d` and
+the deployment delta through `20dd37f69ff7283879a9e34ec011d27b15f1482b`.
+The [review](docs/deslop-diagnose.md) records the owners, local witnesses
+and limits. PR 18 fixed DSLP-7.
+
+The [ingest type inventory](docs/deslop-ingest-types.md) records the existing
+strict settings, rejected candidates and witnesses in the TypeScript ingest
+component. Other components remain open.
+
+[PR 24](https://github.com/joshuarli/stats/pull/24) closed the legacy upgrade
+gap at `843890b`. CI checks out `e58e9885`, builds both pre-schema-8 Workers
+with the pinned legacy tools, and supplies the required baseline path.
+The local migration suite passed all 41 tests with zero skips. Its
+missing-baseline control failed with the intended diagnostic. The hosted
+Linux test, lint and macOS dashboard jobs passed.
 
 ## Tickets
 
@@ -23,9 +37,9 @@ Diagnose reviewed core at `6cbab0ef155f6fc999cae8c388f82693a121740d` and the lat
 ### DSLP-4 · P2 · Tests: coverage, boundary gaps, mutation
 
 - **Area:** deslop · tests
-- **Where:** test suites and CI
-- **Problem:** Coverage and mutation results are unmeasured; no deslop mutation lane exists.
-- **Recommendation:** Run the deslop Tests step. Accept: no undispositioned survivor in critical code, the test cost budget holds, and the lane is green where the tools are mirrored.
+- **Where:** cloudflare/src/ingest, cloudflare/src/binary, cloudflare/test/ingest, agent/src/wire.rs, agent/tests/conformance.rs, cloudflare/test/ui, .github/workflows/ci.yml
+- **Problem:** At 843890b the first calibration scope is frame admission, acknowledgement mapping, and producer parity across Worker, Node, and the Rust agent. The ingest, binary, and conformance fixtures establish existing contracts. Browser and history lifecycle checks run in the separate dashboard job. Legacy migration is now executed in Linux CI. Current branch coverage, mutation selections and outcomes, and paired suite cost remain unmeasured. No whole-change gate is installed.
+- **Recommendation:** Run make fixtures, make cloudflare-test and make agent-test on the named components. Bound the first mutation run to frame and acknowledgement decisions in TypeScript and emitted wire values in Rust. Record exact identities and unsupported platform decisions. Qualify Worker and Node replay and browser retention separately. Require whole-change controls, platform ownership and suite-cost evidence before closing.
 - **Fix with:** deslop
 - **Effort:** L
 
@@ -37,18 +51,3 @@ Diagnose reviewed core at `6cbab0ef155f6fc999cae8c388f82693a121740d` and the lat
 - **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
 - **Fix with:** deslop
 - **Effort:** M
-
-
-
-
-
-
-### DSLP-8 · P2 · Exercise the legacy upgrade test in CI
-
-- **Area:** deslop · ground
-- **Where:** cloudflare/test/local/upgrade.test.ts:39; .github/workflows/ci.yml
-- **Problem:** The local upgrade test skips without the built baseline worktree. CI does not prepare that baseline; the baseline CI test job reports one skipped test and Ground reproduced the missing-baseline skip locally.
-- **Recommendation:** Prepare a pinned baseline build in CI and verify that the upgrade test runs rather than skips.
-- **Fix with:** test-audit
-- **Effort:** M
-
