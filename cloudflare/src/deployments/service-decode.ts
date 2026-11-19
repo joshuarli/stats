@@ -1,4 +1,4 @@
-import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
+import { HOST_ID, MARKER_ID, MARKER_VERSION, type Service, type ServiceHealth, type ServiceDeploymentHistory, type ServiceMarker } from "../core/installation/services.ts";
 import { decodeDeploymentComparison } from "./decode.ts";
 import type { ComparisonWindow } from "./compare.ts";
 import { SERVICE_LEVEL_METRICS, SERVICE_WORK_METRICS, SOURCE_NAMES, UNRECORDED_COVERAGE_EVIDENCE, type ApplicationCoverage, type ApplicationSuppression, type ServiceComparison, type SourceStatus, type WorkBucket, type WorkMeasurement, type WorkSide, type WindowCoverage, type WorkSummary } from "./service-compare.ts";
@@ -62,6 +62,15 @@ function decodeLatestServiceDeployment(value: unknown): LatestDeployment | undef
   } catch { return { status: "unavailable" }; }
 }
 
+function decodeServiceHealth(value: unknown): ServiceHealth {
+  const item = record(value);
+  if (item["status"] === "unprobed") return { status: "unprobed" };
+  if (item["status"] !== "up" && item["status"] !== "down") throw new Error("invalid service health");
+  const ms = item["ms"] === null ? null : item["ms"];
+  if (ms !== null && (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0)) throw new Error("invalid service health time");
+  return { status: item["status"], atMs: time(item["atMs"]), ms };
+}
+
 export function decodeService(value: unknown): Service {
   const item = record(value);
   return {
@@ -70,7 +79,8 @@ export function decodeService(value: unknown): Service {
     healthUrl: nullableString(item["healthUrl"], 2048),
     unit: nullableString(item["unit"], 128),
     createdAtMs: time(item["createdAtMs"]),
-    ...(item["latestDeployment"] === undefined ? {} : { latestDeployment: decodeLatestServiceDeployment(item["latestDeployment"])! })
+    ...(item["latestDeployment"] === undefined ? {} : { latestDeployment: decodeLatestServiceDeployment(item["latestDeployment"])! }),
+    ...(item["health"] === undefined ? {} : { health: decodeServiceHealth(item["health"]) })
   };
 }
 

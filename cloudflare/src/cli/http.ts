@@ -36,11 +36,12 @@ export interface HttpClient {
   getJson<T>(path: string, decode: (value: unknown) => T, options?: GetOptions): Promise<Fetched<T>>;
   getBytes(path: string, options?: GetOptions): Promise<Fetched<Uint8Array>>;
   postJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T>;
+  patchJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T>;
   delete(path: string): Promise<void>;
 }
 
 interface ReplyOptions extends GetOptions {
-  readonly method?: "GET" | "POST" | "DELETE";
+  readonly method?: "GET" | "POST" | "PATCH" | "DELETE";
   readonly body?: string;
   readonly contentType?: string;
 }
@@ -211,23 +212,30 @@ export function createHttpClient(options: HttpOptions): HttpClient {
       if (classify(reply, path, extra.ifNoneMatch !== undefined) === "not-modified") return { kind: "not-modified", etag };
       return { kind: "ok", value: reply.body, etag };
     },
-    async postJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T> {
-      const reply = await attempt(url(path), "application/json", JSON_BODY_LIMIT, { method: "POST", body: JSON.stringify(body), contentType: "application/json" });
-      writeProblem(reply, path);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reply.body));
-      } catch {
-        throw transportError("malformed_json", `${path} did not return valid JSON`);
-      }
-      try {
-        return decode(parsed);
-      } catch (error) {
-        throw transportError("contract", `${path} did not match the telemetry contract: ${error instanceof Error ? error.message : "invalid response"}`);
-      }
+    postJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T> {
+      return sendJson("POST", path, body, decode);
+    },
+    patchJson<T>(path: string, body: unknown, decode: (value: unknown) => T): Promise<T> {
+      return sendJson("PATCH", path, body, decode);
     },
     async delete(path: string): Promise<void> {
       writeProblem(await attempt(url(path), "application/json", JSON_BODY_LIMIT, { method: "DELETE" }), path);
     }
   };
+
+  async function sendJson<T>(method: "POST" | "PATCH", path: string, body: unknown, decode: (value: unknown) => T): Promise<T> {
+    const reply = await attempt(url(path), "application/json", JSON_BODY_LIMIT, { method, body: JSON.stringify(body), contentType: "application/json" });
+    writeProblem(reply, path);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(reply.body));
+    } catch {
+      throw transportError("malformed_json", `${path} did not return valid JSON`);
+    }
+    try {
+      return decode(parsed);
+    } catch (error) {
+      throw transportError("contract", `${path} did not match the telemetry contract: ${error instanceof Error ? error.message : "invalid response"}`);
+    }
+  }
 }

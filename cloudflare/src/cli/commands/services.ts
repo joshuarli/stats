@@ -416,6 +416,54 @@ export const serviceCreateCommand = defineCommand<ServiceCreatePayload>({
   }
 });
 
+export const serviceUpdateCommand = defineCommand<Service>({
+  name: "service update",
+  summary: "change a service's hosts, health URL, or unit",
+  description: [
+    "MUTATION: changes one service through PATCH /api/v1/admin/services/NAME. Options that are not given keep their stored value.",
+    "Credentials and deployment markers are unchanged. The Node server and the OpenOrange target probe the health URL every five minutes."
+  ],
+  access: "mutation",
+  targets: ["orange", "node"],
+  options: {
+    service: { type: "string", placeholder: "NAME", required: true, description: "service name from `statsctl services`" },
+    host: { type: "string", placeholder: "ID[,ID...]", description: "replace the host ids the service runs on, comma-separated" },
+    "health-url": { type: "string", placeholder: "URL", description: "https URL, or an http URL on the tailnet, probed for health" },
+    "clear-health-url": { type: "boolean", description: "remove the health URL so the service is not probed" },
+    unit: { type: "string", placeholder: "UNIT", description: "service manager unit or cgroup name shown on the service page" }
+  },
+  examples: ["statsctl service update --service discover --health-url https://hq.17166969.xyz/healthz"],
+  limitations: ["A host that is unknown or revoked is rejected and nothing changes."],
+  async run(context) {
+    const name = requireService(context);
+    const healthUrl = context.option("health-url");
+    const clear = context.flag("clear-health-url");
+    if (healthUrl !== undefined && clear) throw usageError("--health-url and --clear-health-url cannot be combined");
+    if (healthUrl !== undefined && healthUrl.length > 2048) throw usageError("--health-url must be at most 2048 characters");
+    const unit = context.option("unit");
+    if (unit !== undefined && !UNIT.test(unit)) throw usageError("--unit must be 1-128 letters, digits, or ._@- starting with a letter or digit");
+    const host = context.option("host");
+    const body = {
+      ...(host === undefined ? {} : { hostIds: hostList(host) }),
+      ...(healthUrl === undefined ? {} : { healthUrl }),
+      ...(clear ? { healthUrl: null } : {}),
+      ...(unit === undefined ? {} : { unit })
+    };
+    if (Object.keys(body).length === 0) throw usageError("give at least one of --host, --health-url, --clear-health-url, or --unit");
+    const updated = await context.http.patchJson(`/api/v1/admin/services/${encodeURIComponent(name)}`, body, decodeService);
+    if (updated.name !== name) throw transportError("contract", `the update answered for service ${updated.name}`);
+    return { payload: updated };
+  },
+  render(payload) {
+    return [
+      `updated ${payload.name}`,
+      `hosts: ${payload.hostIds.join(", ")}`,
+      `health url: ${payload.healthUrl ?? "none"}`,
+      `unit: ${payload.unit ?? "none"}`
+    ];
+  }
+});
+
 export const serviceInspectCommand = defineCommand<ServiceInspectPayload>({
   name: "service inspect",
   summary: "show one service's configuration and latest deployment marker",

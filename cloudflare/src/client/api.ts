@@ -7,6 +7,7 @@ import { HISTORY_CONTENT_TYPE, openHistory, type HistoryView } from "../binary/h
 import { decodeProject, type ProjectSummary } from "./project-model.ts";
 import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
+import { decodeHostServiceResources, type HostServiceResources } from "../core/installation/service-resources-model.ts";
 import { decodeIssues } from "../observe/client/decode.ts";
 import type { IssueSummary, Page } from "../observe/core/store.ts";
 import type { ApplicationSummary, ApplicationTelemetry } from "../observe/application/telemetry.ts";
@@ -426,6 +427,10 @@ export function getHostHistories(hostId: string, query: HistoryQuery, signal: Ab
 
 export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
   return getHistory(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems`, decodeFleetHistories, fleetCache, signal);
+}
+
+export function getHostServiceResources(hostId: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<HostServiceResources> {
+  return getJson(hostPath(hostId, `/services?fromMs=${Math.floor(fromMs)}&toMs=${Math.ceil(toMs)}`), decodeHostServiceResources, signal);
 }
 
 export function getCapabilities(signal: AbortSignal) {

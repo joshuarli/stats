@@ -88,6 +88,7 @@ export default {
       env.ANALYTICS_SQL === undefined
         ? Promise.resolve(null)
         : runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, storeWorker: env.WORKER_NAME, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
+      env.PROJECT_SOURCE === "services" ? store.collectServiceProbes().catch((error: unknown) => { reportError("services.probes", error); }) : Promise.resolve(),
       (async () => {
         if (!capabilities(env).cloudflareDeployments) return;
         try {

@@ -1,9 +1,10 @@
-import { createEffect, createMemo, createSignal, Errored, For, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { getServiceIssues, type Service } from "../api";
 import { age, errorMessage } from "../format";
-import { createListQuery, loadServices } from "../queries";
+import { createListQuery, loadCapabilities, loadServices } from "../queries";
+import { nativeProjects } from "./project/native-series";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { routeWithRange } from "../urlState";
 import { EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
@@ -19,7 +20,14 @@ import type { ServiceComparison, WorkMeasurement, WorkSide, WorkSummary } from "
 import "./project/project.css";
 import "./project/services.css";
 
+const NativeServicePage = lazy(() => import("./project/NativeProjects").then(module => ({ default: module.NativeServicePage })));
+
 export function ServicePage(): JSX.Element {
+  const capabilities = createMemo(loadCapabilities);
+  return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}><Show when={nativeProjects(capabilities())} fallback={<RegisteredServicePage />}><NativeServicePage /></Show></Loading></Errored>;
+}
+
+function RegisteredServicePage(): JSX.Element {
   const params = useParams();
   const { tick, manualTick, range } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
@@ -47,10 +55,23 @@ function isServiceHistory(value: DeploymentHistory | null): value is ServiceDepl
 }
 
 function ServiceView(props: { readonly service: Service }): JSX.Element {
-  const serviceName = props.service.name;
-  const { range, now, tick, manualTick } = useTelemetry();
+  const { range, tick, manualTick } = useTelemetry();
   const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
-  const deployments = createServiceDeployments(() => serviceName, range, () => `${serviceTick()}:${manualTick()}`);
+  const deployments = createServiceDeployments(() => props.service.name, range, () => `${serviceTick()}:${manualTick()}`);
+  return (
+    <DeploymentEvents value={deployments.events}>
+      <PageHeader title={props.service.name} />
+      <ServiceDeploySummary service={props.service} deployments={deployments} />
+    </DeploymentEvents>
+  );
+}
+
+/** Release facts, the marker comparison, its application work and open issues; shared by both service pages. */
+export function ServiceDeploySummary(props: { readonly service: Service; readonly deployments: ReturnType<typeof createServiceDeployments> }): JSX.Element {
+  const serviceName = props.service.name;
+  const deployments = props.deployments;
+  const { now, tick, manualTick } = useTelemetry();
+  const serviceTick = createMemo(() => Math.floor(tick() / PROJECT_REFRESH_TICKS));
   const settled = () => deployments.history() !== null || deployments.historyError() !== null;
   const latest = () => deployments.history()?.deployments[0];
   const marker = createMemo(() => {
@@ -89,8 +110,7 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
     return "Health: collecting";
   };
   return (
-    <DeploymentEvents value={deployments.events}>
-      <PageHeader title={props.service.name} />
+    <>
       <p class="service-facts">
         <span>{props.service.hostIds.length} {props.service.hostIds.length === 1 ? "host" : "hosts"}</span>
         <span>{release() === null ? "Release: —" : `Release: ${release()}`}</span>
@@ -110,7 +130,7 @@ function ServiceView(props: { readonly service: Service }): JSX.Element {
           </div>
         </Show>
       </div>
-    </DeploymentEvents>
+    </>
   );
 }
 
@@ -192,18 +212,17 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
                   <SortHeader label="Events before → after" sortKey="events" sort={sort()} onSort={sortBy} class="numeric" />
                   <SortHeader label="Failure before → after" sortKey="failure" sort={sort()} onSort={sortBy} class="numeric" />
                   <SortHeader label="Mean latency before → after" sortKey="latency" sort={sort()} onSort={sortBy} class="numeric" />
-                  <th>Work per unit</th>
                 </tr></thead>
                 <tbody>
-                  <For each={rows()}>{summary => (
+                  <For each={rows()}>{summary => (<>
                     <tr>
                       <th scope="row" class="mono">{summary.operation}</th>
                       <td class="numeric">{summary.before.successes + summary.before.failures} → {summary.after.successes + summary.after.failures}</td>
                       <td class="numeric">{withUnit(summary.before.failureRate, "%")} → {withUnit(summary.after.failureRate, "%")}</td>
                       <td class="numeric">{summary.before.meanDurationMs !== null && summary.after.meanDurationMs !== null ? `${number(summary.before.meanDurationMs)} → ${number(summary.after.meanDurationMs)} ms` : `${withUnit(summary.before.meanDurationMs, " ms")} → ${withUnit(summary.after.meanDurationMs, " ms")}`}</td>
-                      <td><WorkKeys summary={summary} /></td>
                     </tr>
-                  )}</For>
+                    <tr class="service-work-detail"><td colspan="4"><span class="service-work-detail-label">Work per unit</span><WorkKeys summary={summary} /></td></tr>
+                  </>)}</For>
                 </tbody>
               </table>
             </div>

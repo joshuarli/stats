@@ -106,6 +106,7 @@ tailnet device; it sends no credential:
 ```sh
 pnpm --dir cloudflare -s statsctl help workflow
 pnpm --dir cloudflare -s statsctl service inspect --service stats --json
+pnpm --dir cloudflare -s statsctl service update --service discover --health-url https://hq.17166969.xyz/healthz
 pnpm --dir cloudflare -s statsctl service deployments --service stats --json
 pnpm --dir cloudflare -s statsctl verify --service stats --deployment DEPLOYMENT_ID --window 1h --policy bench/policies/service-example.json --json
 ```

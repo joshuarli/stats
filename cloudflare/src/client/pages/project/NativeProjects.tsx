@@ -3,20 +3,23 @@ import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import { Badge, EmptyState, PageHeader, Skeleton } from "@laputa-systems/ui-dashboard";
 import { createListQuery, loadServices } from "../../queries";
-import { ErrorState, Notice, Widget } from "../../components/ui";
+import { EntityCell, ErrorState, Notice, Widget } from "../../components/ui";
 import { DeploymentEvents } from "../../components/DeploymentEvents";
-import { createServiceDeployments, DeploymentRail, DeploymentsWidget, deploymentTitle } from "./Deployments";
+import { createServiceDeployments, deploymentTitle } from "./Deployments";
 import { createObservability } from "./Observe";
 import { PanelChart } from "../host/shared";
 import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../../state";
 import { routeWithRange, readParam, writeParam } from "../../urlState";
-import { age, count, errorMessage, milliseconds } from "../../format";
+import { age, bytes, count, errorMessage, milliseconds } from "../../format";
+import { compareSortValues, createSort, SortHeader } from "../../components/sort";
+import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView } from "../../components/ServiceResources";
 import { createUpdateEffect } from "../../effect";
 import { RETENTION_MS } from "../../../observe/core/limits";
 import { getApplicationSummary, getApplicationTelemetry, type Service } from "../../api";
 import type { ApplicationSummary, ApplicationTelemetry } from "../../../observe/application/telemetry";
 import { applicationTrack } from "./native-series";
 import { RecentApplicationEvents } from "./RecentApplicationEvents";
+import { ServiceDeploySummary } from "../ServicePage";
 import "./project.css";
 import { startProjectJourney } from "../../project-journey";
 
@@ -31,35 +34,109 @@ function summaryOnly(value: ApplicationSummary | ApplicationTelemetry): Applicat
   return { provenance: value.provenance, fromMs: value.fromMs, toMs: value.toMs, stepMs: value.stepMs, totals: value.totals, openIssues: value.openIssues, buckets: value.buckets, operations: value.operations, moreOperations: value.moreOperations };
 }
 
-export function NativeProjectsPage(): JSX.Element {
+export function NativeServicesPage(): JSX.Element {
   const { range, now, tick, manualTick } = useTelemetry();
   const { data: services, error: listError } = createListQuery(loadServices);
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
+  const hostIds = createMemo(() => [...new Set(services().flatMap(service => service.hostIds))].sort());
+  const resources = createServiceResources(hostIds);
+  const usage = createMemo(() => {
+    const totals = new Map<string, { cpu: number | null; memory: number | null }>();
+    for (const row of resourceRows(resources.results() ?? [])) {
+      const service = services().find(candidate => candidate.name === row.service);
+      if (service === undefined || !service.hostIds.includes(row.hostId)) continue;
+      const current = totals.get(row.service) ?? { cpu: null, memory: null };
+      totals.set(row.service, {
+        cpu: row.cpuMean === null ? current.cpu : (current.cpu ?? 0) + row.cpuMean,
+        memory: row.memoryNow === null ? current.memory : (current.memory ?? 0) + row.memoryNow
+      });
+    }
+    return totals;
+  });
+  const { sort, sortBy } = createSort<"service" | "health" | "cpu" | "memory" | "deploy">({ key: "cpu", direction: -1 });
+  const sorted = createMemo(() => {
+    const key = sort().key;
+    const value = (service: Service): number | string | null => {
+      if (key === "service") return service.name;
+      if (key === "health") return service.health === undefined || service.health.status === "unprobed" ? null : service.health.status === "down" ? 0 : 1;
+      if (key === "cpu") return usage().get(service.name)?.cpu ?? null;
+      if (key === "memory") return usage().get(service.name)?.memory ?? null;
+      const latest = service.latestDeployment;
+      return latest?.status === "available" ? latest.deployment.atMs : null;
+    };
+    return [...services()].sort((left, right) => {
+      const leftValue = value(left);
+      const rightValue = value(right);
+      if (leftValue === null || rightValue === null) return leftValue === rightValue ? left.name.localeCompare(right.name) : leftValue === null ? 1 : -1;
+      return compareSortValues(leftValue, rightValue) * sort().direction || left.name.localeCompare(right.name);
+    });
+  });
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
-      <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
-    <Widget title="Projects"><Show when={services().length} fallback={<EmptyState title="No services registered" detail="Register a service to see its application telemetry." />}>
-      <div class="table-scroll"><table class="data-table" aria-label="Projects"><thead><tr><th>Project</th><th>Hosts</th><th>Last deploy</th></tr></thead><tbody>
-        <For each={services()} keyed={service => service.name}>{service => <tr><td><a href={routeWithRange(`#/project/${encodeURIComponent(service().name)}`, range())}>{service().name}</a></td><td>{service().hostIds.length}</td><td><Show when={(() => { const latest = service().latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback="No deployment recorded">{latest => <>{deploymentTitle(latest(), latest().deployment)} · {age(latest().deployment.atMs, now())}</>}</Show></td></tr>}</For>
+    <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
+    <Show when={resources.error()}>{message => <Notice tone="warn">Resource use could not be read: {message()}</Notice>}</Show>
+    <Widget id="services" title="Services" bodyClass="flush" meta={<span class="cell-note">CPU is the mean over the selected window; memory is the latest reading</span>}><Show when={services().length} fallback={<EmptyState title="No services are configured." detail="Create one with statsctl service create; see docs/operations.md." />}>
+      <div class="table-scroll" role="region" aria-label="Services table"><table class="data-table services-table" aria-label="Services"><thead><tr>
+        <SortHeader label="Service" sortKey="service" sort={sort()} onSort={sortBy} />
+        <SortHeader label="Health" sortKey="health" sort={sort()} onSort={sortBy} />
+        <SortHeader label="CPU" sortKey="cpu" sort={sort()} onSort={sortBy} class="numeric" />
+        <SortHeader label="Memory" sortKey="memory" sort={sort()} onSort={sortBy} class="numeric" />
+        <SortHeader label="Last deploy" sortKey="deploy" sort={sort()} onSort={sortBy} />
+      </tr></thead><tbody>
+        <For each={sorted()} keyed={service => service.name}>{service => <tr>
+          <td><EntityCell marker={<span class={`status-dot tone-${healthTone(service().health)}`} aria-hidden="true" />} name={service().name} href={routeWithRange(`#/service/${encodeURIComponent(service().name)}`, range())} id={service().unit ?? `${service().hostIds.length} ${service().hostIds.length === 1 ? "host" : "hosts"}`} /></td>
+          <td><HealthCell service={service()} now={now()} /></td>
+          <td class="numeric">{resources.results() === null ? "…" : cores(usage().get(service().name)?.cpu ?? null)}</td>
+          <td class="numeric">{resources.results() === null ? "…" : bytes(usage().get(service().name)?.memory ?? undefined)}</td>
+          <td><Show when={(() => { const latest = service().latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback={<span class="cell-note">none recorded</span>}>{latest => <span class="cell-stack"><span class="mono">{deploymentTitle(latest(), latest().deployment, "service")}</span><span class="cell-note">{age(latest().deployment.atMs, now())}</span></span>}</Show></td>
+        </tr>}</For>
       </tbody></table></div>
     </Show></Widget>
   </Loading></Errored>;
 }
 
-export function NativeProjectPage(): JSX.Element {
+function healthLabel(service: Service): string {
+  if (service.healthUrl === null) return "no health URL";
+  const health = service.health;
+  if (health === undefined || health.status === "unprobed") return "health not probed yet";
+  return health.status === "up" ? "healthy" : "health check failing";
+}
+
+function ServiceResourcesSection(props: { readonly service: Service }): JSX.Element {
+  const { hosts } = useTelemetry();
+  const resources = createServiceResources(() => props.service.hostIds);
+  const hostName = (hostId: string) => hosts().find(host => host.hostId === hostId)?.name ?? hostId;
+  return <ServiceResourcesView results={resources.results()} error={resources.error()} only={props.service.name} hostName={hostName}
+    empty={<NoServiceResources detail={`No host agent reports a cgroup service named ${props.service.name}. Add {"name": "${props.service.name}", "unit": ...} to the services list in the agent configuration on its hosts.`} />} />;
+}
+
+function healthTone(health: Service["health"]): "ok" | "bad" | "neutral" {
+  return health?.status === "up" ? "ok" : health?.status === "down" ? "bad" : "neutral";
+}
+
+function HealthCell(props: { readonly service: Service; readonly now: number }): JSX.Element {
+  const health = () => props.service.health;
+  return <Show when={props.service.healthUrl !== null} fallback={<span class="cell-note">no health URL</span>}>
+    <Show when={(() => { const value = health(); return value !== undefined && value.status !== "unprobed" ? value : null; })()} fallback={<span class="cell-note" title={props.service.healthUrl ?? ""}>not probed yet</span>}>{value => (
+      <span class="cell-stack" title={props.service.healthUrl ?? ""}><span>{value().status === "up" ? "up" : "down"}{value().ms === null ? "" : ` · ${milliseconds(value().ms!)}`}</span><span class="cell-note">{age(value().atMs, props.now)}</span></span>
+    )}</Show>
+  </Show>;
+}
+
+export function NativeServicePage(): JSX.Element {
   const params = useParams();
   const { data: services, error: listError } = createListQuery(loadServices);
   const { range, tick, manualTick } = useTelemetry();
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
       <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
-    <Show when={services().find(service => service.name === params.projectId)?.name} keyed fallback={<EmptyState title="Project not found" detail="This service is not registered." action={<a href={routeWithRange("#/projects", range())}>Back to projects</a>} />}>
+    <Show when={services().find(service => service.name === (params.serviceName ?? params.projectId))?.name} keyed fallback={<EmptyState title="Service not found" detail="This service is not registered." action={<a href={routeWithRange("#/services", range())}>Back to services</a>} />}>
       {name => <NativeProject service={services().find(service => service.name === name)!} />}
     </Show>
   </Loading></Errored>;
 }
 
-type Section = "overview" | "deploys" | "errors" | "requests" | "signals" | "platform";
-const sections: readonly Section[] = ["overview", "deploys", "errors", "requests", "signals", "platform"];
+type Section = "overview" | "resources" | "deploys" | "errors" | "requests" | "signals" | "platform";
+const sections: readonly Section[] = ["overview", "resources", "deploys", "errors", "requests", "signals", "platform"];
 function initialSection(): Section {
   return sections.find(item => item === readParam("section")) ?? (readParam("deployment") !== null ? "deploys" : readParam("issue") !== null ? "errors" : "overview");
 }
@@ -135,7 +212,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
   const showSection = (next: Section) => { setSection(next); writeParam("section", next); };
   const events = createMemo(() => deployments.events().map(event => ({ ...event, onSelect: () => { showSection("deploys"); event.onSelect(); } })));
   return <DeploymentEvents value={events}>
-    <PageHeader title={props.service.name} titleExtra={<Badge tone="neutral">Application telemetry</Badge>}>
+    <PageHeader title={props.service.name} titleExtra={<Badge tone={healthTone(props.service.health) === "ok" ? "ok" : healthTone(props.service.health) === "bad" ? "bad" : "neutral"} dot>{healthLabel(props.service)}</Badge>}>
       <div class="project-pills" aria-label="Project health">
         <Show when={data()?.totals}>{total => <><button class="project-pill tone-neutral" onClick={() => showSection("requests")}>{count(total().requests)} HTTP requests</button><button class={`project-pill tone-${total().status5xx > 0 ? "bad" : "neutral"}`} onClick={() => showSection("signals")}>{count(total().status5xx)} 5xx</button></>}</Show>
         <Show when={data() !== null || observe.health() !== null}><button class="project-pill tone-neutral" onClick={() => showSection("errors")}>{observe.health()?.openIssues ?? data()?.openIssues} open errors</button></Show>
@@ -143,12 +220,13 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
       </div>
     </PageHeader>
     <div class="project-layout">
-      <nav class="project-sidebar" aria-label="Project sections"><For each={sections.filter(item => item !== "platform" || serviceName === "stats")}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "platform" ? "sampled platform operations" : item === "overview" ? "application activity" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
+      <nav class="project-sidebar" aria-label="Project sections"><For each={sections.filter(item => item !== "platform" || serviceName === "stats")}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "platform" ? "sampled platform operations" : item === "overview" ? "application activity" : item === "resources" ? "CPU, memory and disk by host" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
       <div class="project-content">
-        <Show when={section() === "deploys"}><div class={deployments.listed() ? "project-body with-rail" : "project-body"}><Show when={deployments.listed()}><DeploymentRail deployments={deployments} /></Show><div class="project-main"><DeploymentsWidget deployments={deployments} /></div></div></Show>
+        <Show when={section() === "deploys"}><ServiceDeploySummary service={props.service} deployments={deployments} /></Show>
         <Show when={section() === "errors"}><Loading fallback={<Skeleton rows={4} />}><IssuesWidget observe={observe} /></Loading></Show>
+        <Show when={section() === "resources"}><ServiceResourcesSection service={props.service} /></Show>
         <Show when={section() === "platform" && serviceName === "stats"}><Loading fallback={<Skeleton rows={3} />}><Platform windowAt={windowAt} refreshKey={refreshKey} selection={() => `${range()}:${view()?.fromMs ?? ""}:${view()?.toMs ?? ""}`} now={now} /></Loading></Show>
-        <Show when={section() !== "deploys" && section() !== "errors" && section() !== "platform"}>
+        <Show when={section() !== "deploys" && section() !== "errors" && section() !== "platform" && section() !== "resources"}>
           <Show when={error()}>{message => <Notice tone="warn">{message()}</Notice>}</Show><Show when={data()} fallback={error() === null ? <Skeleton rows={3} /> : <EmptyState title="Telemetry could not be read" detail="Use Refresh to retry." />}>{telemetry => <>
             <Show when={section() === "overview"}><Loading fallback={<Skeleton rows={3} chart />}><ApplicationOverview data={telemetry()} refreshing={refreshing()} loadedAtMs={loadedAtMs()} onRequests={() => showSection("requests")} onErrors={() => showSection("errors")} deployment={latest() ? { title: deploymentTitle(latest()!, latest()!.deployment, "service"), atMs: latest()!.deployment.atMs } : undefined} onDeployments={() => showSection("deploys")} onReady={value => journey?.chartsReady(value)} /></Loading></Show>
             <Show when={section() === "signals"}><ApplicationSignals data={telemetry()} /></Show>

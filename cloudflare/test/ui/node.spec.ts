@@ -36,10 +36,13 @@ test("the Node target renders a host the real server stored, with projects absen
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   await page.goto("/#/projects");
-  await expect(page.getByText("No services registered")).toBeVisible();
+  await expect(page).toHaveURL(/#\/services/u);
+  await expect(page.getByText("No services are configured.")).toBeVisible();
   await expect(page.getByRole("table", { name: "Projects" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Projects" })).toHaveCount(0);
   await page.goto("/#/project/stuff");
-  await expect(page.getByText("Project not found")).toBeVisible();
+  await expect(page).toHaveURL(/#\/service\/stuff/u);
+  await expect(page.getByText("Service not found")).toBeVisible();
 });
 
 test("the Node target requires a Tailscale identity and accepts another authenticated user", async ({ browser, baseURL }) => {

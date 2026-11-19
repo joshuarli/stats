@@ -17,10 +17,11 @@ This page covers what Stats owns.
 | Durable state | `Installation` and one `ObservationStore` per service, as Rivet actors in namespace `stats-prod` |
 | Access | The ingress asserts `Stats-Tailnet-Identity` with the per-app `GATEWAY_SECRET`; ingest and deploy markers keep their bearer tokens |
 
-## Project telemetry
+## Service telemetry
 
-The default Projects view lists registered services and reads their native
-deployment markers and application events. Overview shows operation counts;
+The Services view lists registered services with their health probe, CPU and
+memory, and reads their native deployment markers and application events; the
+former Projects routes redirect to it. Overview shows operation counts;
 Requests shows the newest 50 events; Signals charts counts, reported HTTP
 statuses and elapsed wall time. Errors retains issue triage and diagnostics.
 Range and zoom apply within the seven-day event retention. Missing intervals
@@ -41,6 +42,17 @@ the Cloudflare adapter. The generated OpenOrange descriptors disable those
 provider bindings; native views use application events without CPU or billing
 estimates. Selecting a Cloudflare deployment with those capabilities enabled
 restores its existing project views.
+
+### Per-container resources on Lisa
+
+OpenOrange starts each long-lived container under its own cgroup parent,
+`/oo.slice/oo-ROLE.slice`, where ROLE is the unit or app name with `-` written
+as `_` (`oolib.cgroup_slice` in Stuff's `deploy/openorange`). The parent
+survives container recreation, so Lisa's agent lists each one in
+`/etc/stats/agent.json` as `{"name": "NAME", "unit": "oo-ROLE.slice"}`; a
+`NAME` that matches a registered service shows on that service's Resources
+section, and every name shows on Lisa's host page. Registered services that are
+not apps (`oo-engine`, `oo-store`, `oo-ingress`) carry no deploy markers.
 
 ## Deploy
 
@@ -92,6 +104,20 @@ For manual rollback, conditionally select the previous image with
 `oo set-image stats PREVIOUS --if-current CURRENT`, then restart `oo-app.stats`.
 The actor schema migrates forward on start; rolling back an image across a
 schema migration needs a restore.
+
+### Deploying to the standby writer
+
+While Threadripper's standby VM holds write authority, `make stats-deploy`
+refuses Lisa. The VM runs native Stats as OpenRC `native-stats` from
+`/opt/native-rehearsal/app`, whose `.open-orange` directory is runtime state
+and must be kept. On 2026-11-19 release `stats-bf137834cbfd` was deployed by
+building `deploy/orange/build-context.sh OUT RELEASE` from the committed tree,
+confirming `deploy/orange/package.json` and `pnpm-lock.yaml` matched
+`/opt/native-rehearsal/orange`, copying the previous `stats`, `observe`,
+`stats.jsonc` and `observe.jsonc` to `/opt/native-rehearsal/releases/c9a71b2ba127`,
+replacing those four entries from `OUT/app`, and running
+`rc-service native-stats restart` until `http://127.0.0.1:8080/health` answered.
+Roll back by copying the four entries back from `releases/` and restarting.
 
 ## Back up and restore
 

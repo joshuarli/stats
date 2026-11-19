@@ -28,7 +28,8 @@ import type { SqlDatabase, SqlScopes } from "../sql.ts";
 import { RawRowCache } from "./raw-rows.ts";
 import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, json, notModified, validName } from "./responses.ts";
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
-import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, listServicesWithDeployments, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner } from "./services.ts";
+import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, listServicesWithDeployments, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner, updateService } from "./services.ts";
+import { hostServiceResources, resourceWindow } from "./service-resources.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -757,6 +758,20 @@ export class InstallationCore {
       const removed = /^\/admin\/services\/([^/]+)$/u.exec(path);
       if (removed !== null && request.method === "DELETE") {
         return deleteService(sql, removed[1]!) ? new Response(null, { status: 204 }) : failure("not_found", "service not found", 404);
+      }
+      if (removed !== null && request.method === "PATCH") {
+        const result = updateService(sql, removed[1]!, await readLimitedText(request, MAX_SERVICE_BODY_BYTES));
+        return result.ok ? json(result.value) : failure(result.code, result.message, result.status);
+      }
+      const resources = /^\/hosts\/(h_[0-9a-f]{32})\/services$/u.exec(path);
+      if (resources !== null && request.method === "GET") {
+        if (this.host(sql, resources[1]!) === undefined) return failure("not_found", "host not found", 404);
+        const window = resourceWindow(new URL(request.url).searchParams, this.now());
+        if (window === null) return failure("invalid_request", "fromMs and toMs must be epoch milliseconds with fromMs before toMs inside retention", 400);
+        const rows = sql.rows<{ bucket_ms: number; payload: string }>(
+          "SELECT bucket_ms, payload FROM rollups WHERE host_id = ? AND resolution = ? AND bucket_ms >= ? AND bucket_ms < ? ORDER BY bucket_ms", resources[1]!, window.resolution, window.fromMs, window.toMs
+        ).map(row => ({ bucketMs: row.bucket_ms, payload: JSON.parse(row.payload) as RollupPayload }));
+        return json(hostServiceResources(resources[1]!, window, rows));
       }
       if (path === "/services" && request.method === "GET") {
         try { return json({ services: listServicesWithDeployments(sql, this.now(), error => reportError("deployments.api", error)) }); }

@@ -571,9 +571,26 @@ tokens are in that response only. The server keeps their SHA-256 verifiers in
 back. `POST /api/v1/admin/services/:name/rotate` returns `{ "name", "deployToken" }`;
 `POST /api/v1/admin/services/:name/token/rotate` returns `{ "name", "ingestToken" }`;
 `DELETE /api/v1/admin/services/:name` removes the service, both verifiers, and
-its markers. Each token authenticates only its own route.
+its markers. `PATCH /api/v1/admin/services/:name` takes `application/json` with any of
+`hostIds`, `healthUrl` and `unit` under the creation rules; `null` clears
+`healthUrl` or `unit`, omitted fields keep their stored values, and credentials
+and markers are unchanged. `statsctl service update` sends it. Each token authenticates only its own route.
 `GET /api/v1/services` answers `{ "services": [...] }`, and
-`GET /api/v1/services/:name` answers one service; neither carries a token.
+`GET /api/v1/services/:name` answers one service; neither carries a token. The list also carries `health`:
+`{ status: "unprobed" }` when the service has no health URL or no probe result
+in the last 15 minutes, else `{ status: "up" | "down", atMs, ms }` from the
+newest probe bucket. The Node server and the OpenOrange target (the Worker's
+five-minute cron when `PROJECT_SOURCE` is `services`) probe every health URL;
+the Cloudflare project collector does not.
+
+`GET /api/v1/hosts/:hostId/services?fromMs=&toMs=` reads that host's cgroup
+service counters (the agent's `services` group) from its rollups. Windows within
+minute retention and at most two days use one-minute rollups, otherwise hourly
+ones; the step is a whole number of rollup buckets giving at most 360 points.
+Each point carries `cpuCores`, `memoryBytes` (mean `memory.current`) and
+`ioBytesPerSec` (read plus write), or `null` where the agent reported nothing.
+Names are the agent's service names, so a registered service's resources are
+the series with its name on its hosts.
 Both shapes carry an optional `latestDeployment` with the latest retained
 deployment summary. It is `{ status: "none" }` when no retained deployment
 exists, `{ status: "unavailable" }` when the summary could not be computed,
@@ -1121,7 +1138,15 @@ stack, and live-refresh state; `chart-data.ts` aligns series onto a shared time
 grid, passing through series that already share a gap-free axis. Host and fleet histories refresh every 15 seconds (fleet system metadata loads on mount, when a host enters the visible page, and on manual refresh);
 project data and the project list refresh every five minutes to match the
 collector cron, while the manual Refresh button is immediate. Routes are `/`
-for hosts, `#/projects`, `#/host/:hostId`, and `#/project/:projectId`. The
+for hosts, `#/projects`, `#/host/:hostId`, `#/project/:projectId`, `#/services`,
+and `#/service/:name`. When `projectSource` is `services`, the primary
+navigation has no Projects entry: `#/projects` and `#/project/:id` redirect to
+`#/services` and `#/service/:id`, the services list shows health, window-mean
+CPU and latest memory per service, and a service page has Overview, Resources
+(per-host cgroup CPU, memory and disk I/O), Deployments (release facts, marker
+comparison, application work and open issues), Errors, Requests and Signals.
+A host page whose agent reports cgroup services lists them with their CPU,
+memory and I/O before the host charts. The
 browser never sees a host token or an operator secret. Each route is its own lazy chunk. Chart code (uPlot) loads only when a chart
 renders: the projects overview fetches it when a row first expands its trends,
 and the project page fetches its errors, requests, trace, and modal views when a

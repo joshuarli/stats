@@ -349,7 +349,7 @@ function addBlock(target: BlockRollup | undefined, source: Block | BlockRollup):
   return { buckets, count: count.toString(), totalUs: totalUs.toString(), minUs, maxUs };
 }
 
-function addService(target: ServiceRollup | undefined, add: ServiceRollup): ServiceRollup {
+export function mergeServiceRollups(target: ServiceRollup | undefined, add: ServiceRollup): ServiceRollup {
   const cpu = add.cpu === undefined ? target?.cpu : { usec: (BigInt(target?.cpu?.usec ?? "0") + BigInt(add.cpu.usec)).toString(), coveredMs: (target?.cpu?.coveredMs ?? 0) + add.cpu.coveredMs };
   const io = add.io === undefined ? target?.io : {
     readBytes: (BigInt(target?.io?.readBytes ?? "0") + BigInt(add.io.readBytes)).toString(),
@@ -374,10 +374,10 @@ function rawServices(row: RawRow): Record<string, ServiceRollup> {
 }
 
 function mergeServices(target: Record<string, ServiceRollup>, source: Readonly<Record<string, ServiceRollup>>): void {
-  for (const [name, value] of Object.entries(source)) target[name] = addService(target[name], value);
+  for (const [name, value] of Object.entries(source)) target[name] = mergeServiceRollups(target[name], value);
 }
 
-export function serviceLevels(payload: RollupPayload, name: string, minCoveredMs: number): ServiceLevels {
+export function serviceLevels(payload: Pick<RollupPayload, "services">, name: string, minCoveredMs: number): ServiceLevels {
   const service = payload.services?.[name];
   if (service === undefined) return {};
   const covered = Math.max(1, minCoveredMs);
