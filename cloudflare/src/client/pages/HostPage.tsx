@@ -3,10 +3,11 @@ import type { JSX } from "@solidjs/web";
 import { useParams } from "@solidjs/router";
 import type { HostHistories } from "../history";
 import { getHostHistories, getSummary, getSystem, type Host } from "../api";
+import { createServiceResources, ServiceResourcesView } from "../components/ServiceResources";
 import { lastCell } from "../metrics";
 import { errorMessage } from "../format";
 import { createUpdateEffect } from "../effect";
-import { createRefreshRetention, loadQuery } from "../queries";
+import { createListQuery, createRefreshRetention, loadQuery, loadServices } from "../queries";
 import { windowParams } from "../history-path";
 import { statusFor } from "../status";
 import { firstWiderRange, useTelemetry, type Range } from "../state";
@@ -163,6 +164,7 @@ function HostView(props: { readonly host: Host }): JSX.Element {
             <Show when={reportsPressure(table())}>
               <PsiWindowBar value={psiWindow()} onChange={setPsiWindow} />
             </Show>
+            <HostServices hostId={hostId()} hostName={props.host.name} />
             <section class="charts host" aria-label="Charts">
               <CpuWidget table={table()} stepMs={summary().stepMs} events={events()} psiWindow={psiWindow()} />
               <LoadWidget table={table()} stepMs={summary().stepMs} events={events()} />
@@ -183,6 +185,20 @@ function HostView(props: { readonly host: Host }): JSX.Element {
         </Loading>
       </Errored>
     </>
+  );
+}
+
+function HostServices(props: { readonly hostId: string; readonly hostName: string }): JSX.Element {
+  const { range } = useTelemetry();
+  const resources = createServiceResources(() => [props.hostId]);
+  const { data: registered } = createListQuery(loadServices);
+  const names = createMemo(() => new Set(registered().map(service => service.name)));
+  return (
+    <Show when={(resources.results()?.[0]?.services.length ?? 0) > 0}>
+      <Errored fallback={null}><Loading fallback={null}>
+        <ServiceResourcesView results={resources.results()} error={resources.error()} hostName={() => props.hostName} serviceHref={name => names().has(name) ? routeWithRange(`#/service/${name}`, range()) : null} empty={null} />
+      </Loading></Errored>
+    </Show>
   );
 }
 

@@ -6,6 +6,7 @@ export const OBSERVE_CHANNEL = "stats.observe";
 export const OPERATIONS = [
   "installation.request",
   "projects.config",
+  "services.probes",
   "collector.record",
   "deployments.collect",
   "deployments.poll",

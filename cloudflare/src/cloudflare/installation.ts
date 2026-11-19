@@ -43,7 +43,7 @@ export class Installation extends DurableObject<Env> {
     const operations = eventOptions === undefined ? cloudflareOperations : applicationEventOperations(eventOptions);
     this.core = new InstallationCore(
       {
-        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations, probesServices: false,
+        sql: cloudflareSqlScopes(ctx.storage), clock, scheduler: cloudflareScheduler(ctx.storage, clock), operations, probesServices: this.env.PROJECT_SOURCE === "services",
         ...(observe === undefined ? {} : {
           readApplicationEvents: async (service: string, fromMs: number, toMs: number) => {
             const url = new URL(`https://observe/${encodeURIComponent(service)}/external`);
@@ -99,6 +99,10 @@ export class Installation extends DurableObject<Env> {
 
   knownDeploymentVersions(project: string, worker: string): Promise<readonly string[]> {
     return this.core.knownDeploymentVersions(project, worker);
+  }
+
+  collectServiceProbes(): Promise<void> {
+    return this.core.collectServiceProbes((url, init) => fetch(url, init));
   }
 
   recordDeploymentPoll(poll: DeploymentPoll): Promise<void> {

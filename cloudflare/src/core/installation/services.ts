@@ -3,6 +3,7 @@ import { constantTimeEqual, generateToken, tokenHash } from "../../auth.ts";
 import { annotation, DEPLOYMENT_RETENTION_MS, type Deployment, type DeploymentHistory, type LatestDeployment } from "../../deployments/model.ts";
 import { SERVICE_NAME } from "../../protocol.ts";
 import type { SqlDatabase } from "../sql.ts";
+import { SERVICE_PROBE_NAME } from "../../deployments/service-compare.ts";
 
 export const MAX_MARKER_BODY_BYTES = 8192;
 export const MAX_SERVICE_BODY_BYTES = 8192;
@@ -46,7 +47,14 @@ export interface Service {
   readonly unit: string | null;
   readonly createdAtMs: number;
   readonly latestDeployment?: LatestDeployment;
+  readonly health?: ServiceHealth;
 }
+
+export type ServiceHealth =
+  | { readonly status: "unprobed" }
+  | { readonly status: "up" | "down"; readonly atMs: number; readonly ms: number | null };
+
+export const SERVICE_HEALTH_FRESH_MS = 15 * 60_000;
 
 export interface ServiceMarker {
   readonly service: string;
@@ -247,8 +255,50 @@ export async function createService(sql: SqlDatabase, text: string | null, now: 
   });
 }
 
+const UPDATE_KEYS = new Set(["hostIds", "healthUrl", "unit"]);
+
+export function updateService(sql: SqlDatabase, name: string, text: string | null): ServiceResult<Service> {
+  if (text === null) return { ok: false, status: 413, code: "too_large", message: "body exceeds the cap" };
+  const record = exactObject(parseJson(text), UPDATE_KEYS);
+  if (record === null || Object.keys(record).length === 0) return invalid("body must be an object with at least one of hostIds, healthUrl, and unit");
+  const hostIds = record["hostIds"] === undefined ? undefined : hostIdList(record["hostIds"]);
+  if (hostIds === null) return invalid(`hostIds must be 1-${MAX_SERVICE_HOSTS} distinct host ids`);
+  const url = "healthUrl" in record ? healthUrl(record["healthUrl"]) : null;
+  if (url === undefined) return invalid("healthUrl must be an https URL, or an http URL on the tailnet, without credentials or fragment, or null");
+  const unit = "unit" in record ? optionalMatch(record["unit"], UNIT) : null;
+  if (unit === undefined) return invalid("unit must be 1-128 letters, digits, or ._@- starting with a letter or digit, or null");
+  return sql.transaction((): ServiceResult<Service> => {
+    const row = serviceRow(sql, name);
+    if (row === undefined) return { ok: false, status: 404, code: "not_found", message: "service not found" };
+    if (hostIds !== undefined) {
+      const unusable = unusableHost(sql, hostIds);
+      if (unusable !== null) return invalid(`host ${unusable} is unknown or revoked`);
+    }
+    const next = {
+      host_ids: hostIds === undefined ? row.host_ids : JSON.stringify(hostIds),
+      health_url: "healthUrl" in record ? url : row.health_url,
+      unit: "unit" in record ? unit : row.unit
+    };
+    sql.run("UPDATE services SET host_ids = ?, health_url = ?, unit = ? WHERE name = ?", next.host_ids, next.health_url, next.unit, name);
+    return { ok: true, value: serviceOf({ ...row, ...next }) };
+  });
+}
+
 export function listServices(sql: SqlDatabase): Service[] {
   return sql.rows<ServiceRow>("SELECT * FROM services ORDER BY name").map(serviceOf);
+}
+
+function serviceHealth(sql: SqlDatabase, service: Service, now: number): ServiceHealth {
+  if (service.healthUrl === null) return { status: "unprobed" };
+  const rows = sql.rows<{ metric: string; bucket_ms: number; value: number }>(
+    `SELECT metric, bucket_ms, value FROM project_samples WHERE project = ? AND metric IN (?, ?) AND bucket_ms = (
+      SELECT MAX(bucket_ms) FROM project_samples WHERE project = ? AND metric = ? AND bucket_ms >= ?)`,
+    serviceProbeOwner(service.name), `probe.${SERVICE_PROBE_NAME}.up`, `probe.${SERVICE_PROBE_NAME}.ms`, serviceProbeOwner(service.name), `probe.${SERVICE_PROBE_NAME}.up`, now - SERVICE_HEALTH_FRESH_MS
+  );
+  const up = rows.find(row => row.metric.endsWith(".up"));
+  if (up === undefined) return { status: "unprobed" };
+  const ms = rows.find(row => row.metric.endsWith(".ms"))?.value ?? null;
+  return { status: up.value > 0 ? "up" : "down", atMs: up.bucket_ms, ms };
 }
 
 export function listServicesWithDeployments(sql: SqlDatabase, now: number, onError: (error: unknown) => void): Service[] {
@@ -259,12 +309,13 @@ export function listServicesWithDeployments(sql: SqlDatabase, now: number, onErr
   );
   return rows.map(row => {
     const service = serviceOf(row);
+    const health = serviceHealth(sql, service, now);
     try {
       const latestDeployment: LatestDeployment = row.payload === null ? { status: "none" } : { status: "available", deployment: JSON.parse(row.payload) as Deployment, versions: [] };
-      return { ...service, latestDeployment };
+      return { ...service, latestDeployment, health };
     } catch (error) {
       onError(error);
-      return { ...service, latestDeployment: { status: "unavailable" } };
+      return { ...service, latestDeployment: { status: "unavailable" }, health };
     }
   });
 }

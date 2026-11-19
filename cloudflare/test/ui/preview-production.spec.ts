@@ -16,7 +16,8 @@ test('current production native project', { tag: '@mobile' }, async ({ page }) =
     await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:4198' ? route.continue() : route.abort());
     await page.goto('http://127.0.0.1:4198/#/project/stats');
     await expect(page.getByRole('heading', { name: 'stats', level: 1 })).toBeVisible();
-    await expect(page.getByText('Application telemetry', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/#\/service\/stats/u);
+    await expect(page.getByRole('navigation', { name: 'Project sections' }).getByRole('button', { name: /Resources/u })).toBeVisible();
     await expect(page.getByText('522 HTTP requests')).toBeVisible();
     await page.waitForLoadState('networkidle');
     await page.mouse.move(0, 0);

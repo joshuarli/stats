@@ -1,8 +1,9 @@
-import { createEffect, createMemo, createSignal, Errored, For, isPending, Loading, refresh, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, For, isPending, lazy, Loading, refresh, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Service } from "../api";
 import { age, errorMessage } from "../format";
-import { createListQuery, loadServices } from "../queries";
+import { createListQuery, loadCapabilities, loadServices } from "../queries";
+import { nativeProjects } from "./project/native-series";
 import { PROJECT_REFRESH_TICKS, useTelemetry } from "../state";
 import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
 import { EntityCell, ErrorState, Notice, Widget } from "../components/ui";
@@ -13,11 +14,14 @@ import { deploymentTitle } from "./project/Deployments";
 import "./project/services.css";
 import "./project/services-list.css";
 
+const NativeServicesPage = lazy(() => import("./project/NativeProjects").then(module => ({ default: module.NativeServicesPage })));
+
 export function ServicesPage(): JSX.Element {
+  const capabilities = createMemo(loadCapabilities);
   return (
     <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}>
       <Loading fallback={<Widget title="Services"><Skeleton rows={2} /></Widget>}>
-        <Services />
+        <Show when={nativeProjects(capabilities())} fallback={<Services />}><NativeServicesPage /></Show>
       </Loading>
     </Errored>
   );

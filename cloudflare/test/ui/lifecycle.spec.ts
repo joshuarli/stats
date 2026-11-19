@@ -564,6 +564,7 @@ test("malformed history frame and auth 401 during refresh surface explicit error
 
 test("disposal during an active chart load aborts the load and leaves no uplot roots", async ({ page }) => {
   await installBaseRoutes(page);
+  await page.route("**/api/v1/capabilities", route => route.fulfill({ json: { projectSource: "cloudflare", analyticsCollection: true, cloudflareDeployments: true, tailEvents: true, applicationEvents: true } }));
   const gate = createGate();
   let aborted = false;
   page.on("requestfailed", req => {

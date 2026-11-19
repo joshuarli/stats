@@ -140,10 +140,11 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   const table = page.getByRole("table", { name: "Services" });
   await expect(table.getByRole("link", { name: "web", exact: true })).toBeVisible();
   const web = table.getByRole("row", { name: /^web\b/u });
-  await expect(web).toContainText("https://web.example.com/health");
+  await expect(web).toContainText("not probed yet");
+  await expect(web).toContainText("0.50");
   await expect(web).toContainText("1.1.0");
   const batch = table.getByRole("row", { name: /^batch\b/u });
-  await expect(batch).toContainText("unavailable, no health URL");
+  await expect(batch).toContainText("no health URL");
   await expect(batch).toContainText("2.1.0");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.locator("main.content")).toHaveScreenshot("services-list.webp");
@@ -161,7 +162,7 @@ test("the Services list does not load the project search stylesheet", async ({ p
 });
 
 test("a service page compares its cgroup in place of host levels, labels the source, and keeps host-only metrics", async ({ page }) => {
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });
   const cpu = comparison.getByRole("row", { name: /Service CPU used \(cgroup\)/u });
   await expect(cpu).toContainText("0.2");
@@ -184,7 +185,7 @@ test("a service page compares its cgroup in place of host levels, labels the sou
 });
 
 test("a service with no host data and no health URL shows every source unavailable", async ({ page }) => {
-  await page.goto(`${origin}/#/service/batch`);
+  await page.goto(`${origin}/#/service/batch?section=deploys`);
   const comparison = page.getByRole("region", { name: "Deployment metric comparison" });
   await expect(comparison.getByRole("row", { name: /Host CPU used/u })).toContainText("unavailable");
   await expect(page.locator("#deployments").getByRole("status")).toContainText("No overall verdict");
@@ -196,7 +197,7 @@ test("a service with no host data and no health URL shows every source unavailab
 });
 
 test("service comparison explains its source coverage without hover", async ({ page }) => {
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   const coverage = page.locator("#deployments").getByText("Data coverage", { exact: true });
   await coverage.click();
   const details = coverage.locator("..");
@@ -211,7 +212,7 @@ test("application work does not promise that an overlapping comparison will sett
     const comparison = await response.json() as ServiceComparison;
     await route.fulfill({ response, json: { ...comparison, reasons: ["Another deployment overlaps the comparison windows."], reasonCodes: ["overlap"] } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   const work = page.locator("#service-work");
   await expect(work.getByText("The comparison has limitations; see the deployment comparison above for details.")).toBeVisible();
   await expect(work).not.toContainText("ready at the end of the window");
@@ -227,7 +228,7 @@ test("application work distinguishes unavailable rates from zero", async ({ page
     const work = comparison.work[0]!;
     await route.fulfill({ response, json: { ...comparison, work: [{ ...work, after: { ...work.after, successes: 0, failures: 0, failureRate: null, meanDurationMs: null, throughputPerMinute: 0 } }] } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   const row = page.getByRole("table", { name: "Application operations" }).getByRole("row", { name: /note\.save/u });
   await expect(row.locator("td").nth(1)).toHaveText("0% → unavailable");
   await expect(row.locator("td").nth(2)).toHaveText("40 ms → unavailable");
@@ -243,7 +244,7 @@ test("long work details do not squeeze operation names", async ({ page }) => {
     const measurement = { ...work.before.work[0]!, key, durationPerUnitMs: 1.234, cpuPerUnit: 0.001234, ioPerUnit: 1234 };
     await route.fulfill({ response, json: { ...comparison, work: [{ ...work, operation: "payments.process_settlement", before: { ...work.before, work: [measurement] }, after: { ...work.after, work: [measurement] } }] } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   const row = page.getByRole("row", { name: /payments\.process_settlement/u });
   const identity = row.getByRole("rowheader");
   await expect(identity).toBeVisible();
@@ -256,7 +257,7 @@ test("long work details do not squeeze operation names", async ({ page }) => {
 test("an unavailable service issue response releases its unread body", async ({ page }) => {
   await page.route("**/api/observe/web/issues?*", route => route.fulfill({ status: 503, json: { error: { code: "unavailable", message: "collector unavailable" } } }));
   const closed = page.waitForEvent("requestfailed", { predicate: request => request.url().includes("/api/observe/web/issues?"), timeout: 5_000 });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.getByText("Issues: unavailable")).toBeVisible();
   expect((await closed).failure()).not.toBeNull();
 });
@@ -293,7 +294,7 @@ test("refreshing a service aborts the older issue request", async ({ page }) => 
     }
     await route.fulfill({ json: { items: [], next: null } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   try {
     await expect.poll(() => requests).toBe(1);
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -330,14 +331,14 @@ test("refreshing a service does not repeat its requests when the service list up
     if (route.request().failure() !== null) return;
     await route.fulfill({ json: { items: [], next: null } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.getByText("0 open issues").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
   const initialHistories = historyRequests;
   const initialComparisons = comparisonRequests;
   expect(initialHistories).toBe(1);
   expect(initialComparisons).toBe(1);
-  const facts = await page.locator(".service-facts").elementHandle();
+  const facts = await page.locator(".project-layout").elementHandle();
   expect(facts).not.toBeNull();
   try {
     const history = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/services/web/deployments");
@@ -365,11 +366,11 @@ test("refreshing a service does not repeat its requests when the service list up
 });
 
 test("changing the selected service loads the new service's requests @mobile", async ({ page }) => {
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.getByRole("heading", { name: "web", exact: true })).toBeVisible();
   const history = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/services/batch/deployments");
   const issues = page.waitForResponse(response => new URL(response.url()).pathname === "/api/observe/batch/issues");
-  await page.evaluate(() => { window.location.hash = "#/service/batch"; });
+  await page.evaluate(() => { window.location.hash = "#/service/batch?section=deploys"; });
   await expect(page.getByRole("heading", { name: "batch", exact: true })).toBeVisible();
   expect((await history).status()).toBe(200);
   expect([200, 404]).toContain((await issues).status());
@@ -392,7 +393,7 @@ test("retrying unavailable service issues does not report zero while loading @mo
     if (route.request().failure() !== null) return;
     await route.fulfill({ json: { items: [], next: null } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.getByText("Issues: unavailable")).toBeVisible();
   try {
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -430,7 +431,7 @@ test("service work identifies the previous window while a comparison updates", a
     }
     await route.continue();
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.getByRole("table", { name: "Application operations" })).toBeVisible();
   try {
     await page.getByRole("button", { name: "24h", exact: true }).click();
@@ -450,7 +451,7 @@ test("failed historical probes show data availability without claiming current h
     const body = await response.json() as ServiceComparison;
     await route.fulfill({ response, json: { ...body, metrics: body.metrics.map(metric => metric.metric === "probe.health.failure" ? { ...metric, before: 100, after: 100 } : metric) } });
   });
-  await page.goto(`${origin}/#/service/web`);
+  await page.goto(`${origin}/#/service/web?section=deploys`);
   await expect(page.locator(".service-facts")).toContainText("Health probe data: available");
   await expect(page.locator(".service-facts")).not.toContainText("Health: up");
 });
@@ -553,12 +554,12 @@ for (const section of ['services', 'projects']) {
     await page.route('**/api/v1/services', async route => {
       if (fail) return route.fulfill({ status: 503, body: 'unavailable' });
       const response = await route.fetch();
-      const body = await response.json() as { services: { name: string; hostIds: string[] }[] };
-      if (changed) for (const service of body.services) service.hostIds = [];
+      const body = await response.json() as { services: { name: string; healthUrl: string | null }[] };
+      if (changed) for (const service of body.services) service.healthUrl = null;
       return route.fulfill({ json: body });
     });
     await page.goto(`${origin}/#/${section}`);
-    const table = page.getByRole('table', { name: section === 'services' ? 'Services' : 'Projects', exact: true });
+    const table = page.getByRole('table', { name: 'Services', exact: true });
     const row = table.locator('tbody tr').filter({ has: page.getByRole('link', { name: 'web', exact: true }) });
     await expect(row).toBeVisible();
     const original = await row.elementHandle();
@@ -571,7 +572,7 @@ for (const section of ['services', 'projects']) {
     changed = true;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(page.locator('.notice-warn')).toHaveCount(0);
-    await expect(row.locator('td').nth(1)).toHaveText('0');
+    await expect(row.locator('td').nth(1)).toHaveText('no health URL');
     expect(await original!.evaluate(node => node.isConnected)).toBe(true);
   });
 }

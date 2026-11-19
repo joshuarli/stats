@@ -6,7 +6,8 @@ import {
   Segmented as UiSegmented,
   type Tone as UiTone
 } from "@laputa-systems/ui-dashboard";
-import { createSignal, Show, type ParentProps } from "solid-js";
+import { createSignal, onSettled, Show, type ParentProps } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import type { JSX } from "@solidjs/web";
 import { errorMessage } from "../format";
 import { HEALTH_GLYPH, HEALTH_LABEL, type Health } from "../health";
@@ -172,4 +173,10 @@ export function ShowMore(props: { readonly hidden: number; readonly noun: string
       <button type="button" class="list-more" onClick={() => props.onMore()}>Show {props.hidden} more {props.noun}</button>
     </Show>
   );
+}
+
+export function Redirect(props: { readonly href: string }): JSX.Element {
+  const navigate = useNavigate();
+  onSettled(() => { navigate(props.href, { replace: true }); });
+  return null;
 }

@@ -17,10 +17,11 @@ This page covers what Stats owns.
 | Durable state | `Installation` and one `ObservationStore` per service, as Rivet actors in namespace `stats-prod` |
 | Access | The ingress asserts `Stats-Tailnet-Identity` with the per-app `GATEWAY_SECRET`; ingest and deploy markers keep their bearer tokens |
 
-## Project telemetry
+## Service telemetry
 
-The default Projects view lists registered services and reads their native
-deployment markers and application events. Overview shows operation counts;
+The Services view lists registered services with their health probe, CPU and
+memory, and reads their native deployment markers and application events; the
+former Projects routes redirect to it. Overview shows operation counts;
 Requests shows the newest 50 events; Signals charts counts, reported HTTP
 statuses and elapsed wall time. Errors retains issue triage and diagnostics.
 Range and zoom apply within the seven-day event retention. Missing intervals
@@ -41,6 +42,17 @@ the Cloudflare adapter. The generated OpenOrange descriptors disable those
 provider bindings; native views use application events without CPU or billing
 estimates. Selecting a Cloudflare deployment with those capabilities enabled
 restores its existing project views.
+
+### Per-container resources on Lisa
+
+OpenOrange starts each long-lived container under its own cgroup parent,
+`/oo.slice/oo-ROLE.slice`, where ROLE is the unit or app name with `-` written
+as `_` (`oolib.cgroup_slice` in Stuff's `deploy/openorange`). The parent
+survives container recreation, so Lisa's agent lists each one in
+`/etc/stats/agent.json` as `{"name": "NAME", "unit": "oo-ROLE.slice"}`; a
+`NAME` that matches a registered service shows on that service's Resources
+section, and every name shows on Lisa's host page. Registered services that are
+not apps (`oo-engine`, `oo-store`, `oo-ingress`) carry no deploy markers.
 
 ## Deploy
 

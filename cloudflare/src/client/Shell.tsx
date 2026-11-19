@@ -3,7 +3,8 @@ import type { JSX } from "@solidjs/web";
 import { useLocation } from "@solidjs/router";
 import type { HistoryQuery } from "./api";
 import { TimeBar } from "./components/TimeBar";
-import { createListQuery, loadHosts } from "./queries";
+import { createListQuery, loadCapabilities, loadHosts } from "./queries";
+import { nativeProjects } from "./pages/project/native-series";
 import { createUpdateEffect } from "./effect";
 import type { TimeWindow } from "./chart-data";
 import { createViewState, DEFAULT_RANGE, LIVE_INTERVAL_MS, rangeMs, ranges, smallestRangeCovering, TelemetryContext, useTelemetry, type Range } from "./state";
@@ -114,7 +115,7 @@ export function Shell(props: ParentProps): JSX.Element {
         <div class="topbar-start">
           <nav class="primary-nav" aria-label="Primary">
             <a href={routeWithRange("#/", range())} aria-current={isHostsPath(location.pathname) ? "page" : "false"}>Hosts</a>
-            <a href={routeWithRange("#/projects", range())} aria-current={isProjectsPath(location.pathname) ? "page" : "false"}>Projects</a>
+            <Errored fallback={null}><Loading fallback={null}><ProjectsLink current={isProjectsPath(location.pathname)} href={routeWithRange("#/projects", range())} /></Loading></Errored>
             <a href={routeWithRange("#/services", range())} aria-current={isServicesPath(location.pathname) ? "page" : "false"}>Services</a>
           </nav>
           <Breadcrumb />
@@ -124,6 +125,11 @@ export function Shell(props: ParentProps): JSX.Element {
       <main class="content"><Loading fallback={null}>{props.children}</Loading></main>
     </TelemetryContext>
   );
+}
+
+function ProjectsLink(props: { readonly current: boolean; readonly href: string }): JSX.Element {
+  const capabilities = createMemo(loadCapabilities);
+  return <Show when={!nativeProjects(capabilities())}><a href={props.href} aria-current={props.current ? "page" : "false"}>Projects</a></Show>;
 }
 
 function Breadcrumb(): JSX.Element {

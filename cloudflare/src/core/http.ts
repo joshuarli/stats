@@ -257,6 +257,7 @@ export async function handleStatsRequest(request: Request, target: StatsTarget):
     if (!/^\/(hosts|admin\/hosts|projects|services|admin\/services)(\/[A-Za-z0-9:_-]+)*$/u.test(suffix)) return error(404, "not_found", "unknown API route");
     if (request.method === "POST" && SERVICE_DEPLOYMENTS_SUFFIX.test(suffix)) return error(405, "invalid_request", "post deploy markers to /ingest/services/NAME/deployments");
     if (request.method === "POST" && (suffix === "/admin/hosts" || suffix === "/admin/services") && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
+    if (request.method === "PATCH" && suffix.startsWith("/admin/services/") && !isJson(request)) return error(415, "unsupported_media_type", "application/json required");
     const response = await installationResponse(await target.installation(internal(request, suffix)));
     return secure(suffix.endsWith("/history") ? negotiated(request, response) : response);
   }
