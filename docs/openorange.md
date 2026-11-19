@@ -105,6 +105,20 @@ For manual rollback, conditionally select the previous image with
 The actor schema migrates forward on start; rolling back an image across a
 schema migration needs a restore.
 
+### Deploying to the standby writer
+
+While Threadripper's standby VM holds write authority, `make stats-deploy`
+refuses Lisa. The VM runs native Stats as OpenRC `native-stats` from
+`/opt/native-rehearsal/app`, whose `.open-orange` directory is runtime state
+and must be kept. On 2026-11-19 release `stats-bf137834cbfd` was deployed by
+building `deploy/orange/build-context.sh OUT RELEASE` from the committed tree,
+confirming `deploy/orange/package.json` and `pnpm-lock.yaml` matched
+`/opt/native-rehearsal/orange`, copying the previous `stats`, `observe`,
+`stats.jsonc` and `observe.jsonc` to `/opt/native-rehearsal/releases/c9a71b2ba127`,
+replacing those four entries from `OUT/app`, and running
+`rc-service native-stats restart` until `http://127.0.0.1:8080/health` answered.
+Roll back by copying the four entries back from `releases/` and restarting.
+
 ## Back up and restore
 
 The application export is the recovery contract; it does not depend on the
