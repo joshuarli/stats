@@ -117,7 +117,10 @@ confirming `deploy/orange/package.json` and `pnpm-lock.yaml` matched
 `stats.jsonc` and `observe.jsonc` to `/opt/native-rehearsal/releases/c9a71b2ba127`,
 replacing those four entries from `OUT/app`, and running
 `rc-service native-stats restart` until `http://127.0.0.1:8080/health` answered.
-Roll back by copying the four entries back from `releases/` and restarting.
+The same steps then deployed merged `master` as `stats-1d26d0c28223`;
+`releases/bf137834cbfd` and `releases/c9a71b2ba127` hold the two earlier
+releases. Roll back by copying the four entries back from `releases/` and
+restarting.
 
 ## Back up and restore
 
