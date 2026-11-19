@@ -212,18 +212,17 @@ function ServiceWork(props: { readonly comparison: ServiceComparison | null; rea
                   <SortHeader label="Events before → after" sortKey="events" sort={sort()} onSort={sortBy} class="numeric" />
                   <SortHeader label="Failure before → after" sortKey="failure" sort={sort()} onSort={sortBy} class="numeric" />
                   <SortHeader label="Mean latency before → after" sortKey="latency" sort={sort()} onSort={sortBy} class="numeric" />
-                  <th>Work per unit</th>
                 </tr></thead>
                 <tbody>
-                  <For each={rows()}>{summary => (
+                  <For each={rows()}>{summary => (<>
                     <tr>
                       <th scope="row" class="mono">{summary.operation}</th>
                       <td class="numeric">{summary.before.successes + summary.before.failures} → {summary.after.successes + summary.after.failures}</td>
                       <td class="numeric">{withUnit(summary.before.failureRate, "%")} → {withUnit(summary.after.failureRate, "%")}</td>
                       <td class="numeric">{summary.before.meanDurationMs !== null && summary.after.meanDurationMs !== null ? `${number(summary.before.meanDurationMs)} → ${number(summary.after.meanDurationMs)} ms` : `${withUnit(summary.before.meanDurationMs, " ms")} → ${withUnit(summary.after.meanDurationMs, " ms")}`}</td>
-                      <td><WorkKeys summary={summary} /></td>
                     </tr>
-                  )}</For>
+                    <tr class="service-work-detail"><td colspan="4"><span class="service-work-detail-label">Work per unit</span><WorkKeys summary={summary} /></td></tr>
+                  </>)}</For>
                 </tbody>
               </table>
             </div>

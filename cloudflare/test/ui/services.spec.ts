@@ -248,7 +248,7 @@ test("long work details do not squeeze operation names", async ({ page }) => {
   const row = page.getByRole("row", { name: /payments\.process_settlement/u });
   const identity = row.getByRole("rowheader");
   await expect(identity).toBeVisible();
-  await expect(row).toContainText("processed_objects_long_counter");
+  await expect(page.locator("tr.service-work-detail")).toContainText("processed_objects_long_counter");
   const layout = await identity.evaluate(element => { const range = document.createRange(); range.selectNodeContents(element); return { width: element.getBoundingClientRect().width, lines: range.getClientRects().length }; });
   expect(layout.width).toBeGreaterThan(140);
   expect(layout.lines).toBe(1);
