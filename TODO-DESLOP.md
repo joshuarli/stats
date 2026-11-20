@@ -43,7 +43,10 @@ Public HTTP contracts: `cloudflare/test/ingest.test.ts` exercises authentication
 frame admission, duplicate and rejection accounting, rollback, limits and ACKs;
 `history.test.ts`, `projects-api.test.ts`, `operations.test.ts`, and
 `cloudflare/test/node/` guard history, projects, observation, access and Node
-adapter behavior. `fixtures/v2/`, `cloudflare/test/ingest/`,
+adapter behavior. `health.test.ts`, `services.test.ts`, `deployments-api.test.ts`
+and `observe-e2e/` guard health, service management, deployment and observation
+HTTP contracts; the live gateway and every endpoint/error combination are not
+covered by this inventory. `fixtures/v2/`, `cloudflare/test/ingest/`,
 `cloudflare/test/binary/`, and `agent/tests/conformance.rs` guard STB2/STA2
 bytes and rejection of malformed input. Dashboard routes and lifecycle are
 covered by `cloudflare/test/ui/` including `lifecycle.spec.ts`, `node.spec.ts`
