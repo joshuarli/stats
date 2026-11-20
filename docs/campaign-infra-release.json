@@ -12,7 +12,8 @@
   "production": {
     "writer": "threadripper standby VM (native-stats)",
     "release": "accd14a0364c",
-    "checkedAt": "2026-11-20T15:45:00Z"
+    "checkedAt": "2026-11-20T15:45:00Z",
+    "watchdog": "stats-recovery-vm-watchdog on threadripper since 2026-11-20"
   },
   "incidents": [
     {
@@ -25,16 +26,106 @@
     }
   ],
   "items": [
-    { "id": "INF-1", "state": "running", "repo": "stats", "branch": "campaign/release-gate", "acceptance": "pnpm --dir cloudflare -s test:cli", "attempts": [] },
-    { "id": "INF-2", "state": "running", "repo": "open-orange (downstream)", "branch": "campaign/multi-worker-metrics", "acceptance": "tests/orange-serve.test.ts", "attempts": [] },
-    { "id": "INF-3", "state": "running", "repo": "stuff", "branch": "campaign/release-inventory", "acceptance": "python3 -m unittest deploy/openorange/tests/test_sources.py deploy/openorange/tests/test_release_inspect.py", "attempts": [] },
-    { "id": "INF-4", "state": "running", "repo": "stats", "branch": "campaign/drop-services", "acceptance": "make orange-test + packaged image evidence", "attempts": [] },
-    { "id": "INF-5", "state": "ready-after", "dependsOn": ["INF-2", "INF-3"], "attempts": [] },
-    { "id": "INF-6", "state": "needs-owner", "blockedOn": "alert channel and observer host", "attempts": [] },
-    { "id": "INF-7", "state": "ready-after", "dependsOn": ["INF-2"], "attempts": [] },
-    { "id": "INF-8", "state": "ready-after", "dependsOn": ["INF-1"], "attempts": [] },
-    { "id": "INF-9", "state": "ready-after", "dependsOn": ["INF-3", "INF-8"], "attempts": [] },
-    { "id": "INF-10", "state": "ready-after", "dependsOn": ["INF-9"], "attempts": [] },
-    { "id": "INF-11", "state": "ready-after", "dependsOn": ["INF-10"], "attempts": [] }
+    {
+      "id": "INF-1",
+      "state": "landed",
+      "repo": "stats",
+      "branch": "campaign/release-gate",
+      "acceptance": "pnpm --dir cloudflare -s test:cli",
+      "attempts": [
+        "stats 0eb1b4a",
+        "stats 6740e06 reconcile from producer snapshots"
+      ]
+    },
+    {
+      "id": "INF-2",
+      "state": "accepted",
+      "repo": "open-orange (downstream)",
+      "branch": "campaign/multi-worker-metrics",
+      "acceptance": "tests/orange-serve.test.ts",
+      "attempts": [
+        "open-orange 8aecc5b: 30 serve tests incl. two-Worker metrics"
+      ]
+    },
+    {
+      "id": "INF-3",
+      "state": "landed",
+      "repo": "stuff",
+      "branch": "campaign/release-inventory",
+      "acceptance": "python3 -m unittest deploy/openorange/tests/test_sources.py deploy/openorange/tests/test_release_inspect.py",
+      "attempts": [
+        "stuff 0597838..d17b054; live inspect exit 0 no drift"
+      ]
+    },
+    {
+      "id": "INF-4",
+      "state": "accepted-branch",
+      "repo": "stats",
+      "branch": "campaign/drop-services",
+      "acceptance": "make orange-test + packaged image evidence",
+      "attempts": [
+        "campaign/drop-services 01302b7: orange-test 6/6; linux image without services"
+      ]
+    },
+    {
+      "id": "INF-5",
+      "state": "running",
+      "dependsOn": [
+        "INF-2",
+        "INF-3"
+      ],
+      "attempts": [
+        "attempt 1: identical offline builds 16636950...; toolchain pnpm ambient, correction requested"
+      ]
+    },
+    {
+      "id": "INF-6",
+      "state": "needs-owner",
+      "blockedOn": "alert channel and observer host",
+      "attempts": []
+    },
+    {
+      "id": "INF-7",
+      "state": "design",
+      "dependsOn": [
+        "INF-2"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-8",
+      "state": "running",
+      "dependsOn": [
+        "INF-1"
+      ],
+      "attempts": [
+        "attempt 1 stopped: gate required rejected/queueHigh no producer reports; contract fixed in 6740e06"
+      ]
+    },
+    {
+      "id": "INF-9",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-3",
+        "INF-8"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-10",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-9"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-11",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-10"
+      ],
+      "attempts": []
+    }
   ]
 }

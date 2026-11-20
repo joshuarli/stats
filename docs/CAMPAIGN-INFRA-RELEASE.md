@@ -28,12 +28,22 @@ Started 2026-11-20 from Stats `7fc3ff9` and Stuff `9fb6f1d`.
   15:41 UTC. See the [standby record](openorange.md#standby-operations-record-2026-11-20)
   and STA-130. This outage is the concrete case for INF-6: nothing outside Stats
   noticed it.
-- **Running lanes:** INF-1 promotion gate (Stats), INF-2 multi-Worker metrics
-  patch (OpenOrange), INF-3 source registry and release inspect (Stuff), INF-4
-  Services removal proof (Stats).
-- **Next:** INF-5, importing the metrics patch into the Stuff registry and
-  building an identified OpenOrange release from it. This becomes the first
-  end-to-end demonstration.
+- **Landed:** INF-1 release gate (`0eb1b4a`, delivery reconciliation fixed in
+  `6740e06` after INF-8 showed no producer reports the counters it required);
+  INF-3 source registry and live-verified `release-inspect` (Stuff `0597838`
+  to `d17b054`): exit 0, no drift, writer = standby, release
+  `stats-accd14a0364c`, Engine `Rivet 3.1.1`. STA-130 watchdog installed on
+  Threadripper (`673975b`).
+- **Accepted, held off master:** INF-2 OpenOrange patch (exported as Stuff
+  `patches/open-orange-1cabf2e-multi-worker-metrics.patch`); INF-4 on branch
+  `campaign/drop-services` (`make orange-test` 6/6 and a Linux image without
+  Services, but no Linux container run against an Engine yet).
+- **Running:** INF-5 owned OpenOrange build (byte-identical offline builds of
+  `open-orange-1.0.2-laputa.1.tgz`; freezing the pinned pnpm into the acquired
+  inputs). INF-8 canary pair (second attempt, on the fixed contract). INF-7
+  design RFC.
+- **Next:** INF-9, the rollout transaction, using INF-5's artifact as the first
+  runtime release class.
 
 ## Deliverables and backlog
 
@@ -42,14 +52,14 @@ the item is listed under Needs environment.
 
 | ID | Phase | Deliverable | Owner repo | Acceptance | State |
 | --- | --- | --- | --- | --- | --- |
-| INF-1 | 5 | `statsctl verify release`: offline evidence bundle that yields `pass`, `reject`, `pending` or `inconclusive`, with stable reasons and replay | Stats | `pnpm --dir cloudflare -s test:cli` with `verify-release.test.ts` | running |
-| INF-2 | 3 | OpenOrange serves RivetKit metrics for every Worker, with Worker identity and start time | OpenOrange downstream | `tests/orange-serve.test.ts` two-Worker case | running |
-| INF-3 | 1–2 | Source ownership registry, release manifest schema `openorange-release-manifest/1`, read-only `release-inspect` | Stuff | `test_sources.py`, `test_release_inspect.py`, `bin/sources verify` | running |
-| INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | running |
-| INF-5 | 2 | Import INF-2 as the first OpenOrange downstream patch; build an identified release (package tarball and manifest) from a clean checkout with the network disabled after acquisition | Stuff | `bin/sources verify` and a release build that reproduces its digest | ready after INF-2/3 |
+| INF-1 | 5 | `statsctl verify release`: offline evidence bundle that yields `pass`, `reject`, `pending` or `inconclusive`, with stable reasons and replay | Stats | `pnpm --dir cloudflare -s test:cli` with `verify-release.test.ts` | landed |
+| INF-2 | 3 | OpenOrange serves RivetKit metrics for every Worker, with Worker identity and start time | OpenOrange downstream | `tests/orange-serve.test.ts` two-Worker case | accepted (patch) |
+| INF-3 | 1–2 | Source ownership registry, release manifest schema `openorange-release-manifest/1`, read-only `release-inspect` | Stuff | `test_sources.py`, `test_release_inspect.py`, `bin/sources verify` | landed |
+| INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | accepted (branch) |
+| INF-5 | 2 | Import INF-2 as the first OpenOrange downstream patch; build an identified release (package tarball and manifest) from a clean checkout with the network disabled after acquisition | Stuff | `bin/sources verify` and a release build that reproduces its digest | running |
 | INF-6 | 3 | Independent observer: a pinned Node/SQLite Stats instance on a host that shares neither the candidate's Engine nor its storage, plus external health alerting | Stats + Stuff | Observer ingests host and service events; stopping the writer raises an alert | needs owner (alert channel) |
-| INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | after INF-2 |
-| INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | after INF-1 |
+| INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | design (RFC) |
+| INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | running |
 | INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | after INF-3/8 |
 | INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | after INF-9 |
 | INF-11 | 8 | Qualify the existing private Rivet Engine patches through the loop | Stuff | INF-1 `pass` on the Engine release class | after INF-10 |
