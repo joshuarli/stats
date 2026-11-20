@@ -5,13 +5,76 @@
   "maxEvidenceAgeMs": 300000,
   "minimumRequests": 5400,
   "requestRatePerSecond": 10,
-  "requestMix": { "hostIngest": 1, "hostReplay": 1, "history": 1, "eventIngest": 1, "eventReplay": 1, "eventConflict": 1, "eventRead": 1, "capabilities": 1, "hosts": 1, "services": 1 },
-  "absolute": { "maxErrorShare": 0.001, "p95Ms": 500, "p99Ms": 1000, "maxLostWrites": 0, "maxHistoryMismatches": 0, "maxCpuSecondsPerKRequests": 100, "maxMemoryPeakBytes": 1610612736, "maxRestarts": 0 },
-  "regression": { "latency": { "maxRelativeIncreasePercent": 25, "absoluteFloorMs": 10 }, "maxCpuRelativeIncreasePercent": 25, "maxMemoryRelativeIncreasePercent": 25 },
+  "requestMix": {
+    "hostIngest": 1,
+    "hostReplay": 1,
+    "history": 1,
+    "eventIngest": 1,
+    "eventReplay": 1,
+    "eventConflict": 1,
+    "eventRead": 1,
+    "capabilities": 1,
+    "hosts": 1,
+    "services": 1
+  },
+  "absolute": {
+    "maxErrorShare": 0.001,
+    "p95Ms": 500,
+    "p99Ms": 1000,
+    "maxLostWrites": 0,
+    "maxHistoryMismatches": 0,
+    "maxCpuSecondsPerKRequests": 100,
+    "maxMemoryPeakBytes": 1610612736,
+    "maxRestarts": 0
+  },
+  "regression": {
+    "latency": {
+      "maxRelativeIncreasePercent": 25,
+      "absoluteFloorMs": 10
+    },
+    "maxCpuRelativeIncreasePercent": 25,
+    "maxMemoryRelativeIncreasePercent": 25
+  },
   "requiredSources": [
-    { "source": "worker:stats:0", "producer": "infra", "families": ["openorange_worker_info", "openorange_worker_start_time_seconds"] },
-    { "source": "worker:stats-observe:1", "producer": "infra", "families": ["openorange_worker_info", "openorange_worker_start_time_seconds"] },
-    { "source": "engine:live", "producer": "infra", "families": ["rivet_topology_discovery_heartbeat_reads_total"] },
-    { "source": "collector:infra", "producer": "infra", "families": ["delivery"] }
+    {
+      "source": "worker:stats:0",
+      "producer": "infra",
+      "families": [
+        "openorange_worker_info",
+        "openorange_worker_start_time_seconds",
+        "rivet_rivetkit_actor_active_count",
+        "rivet_rivetkit_actor_connections_total",
+        "rivet_rivetkit_actor_sqlite_vfs_commit_total",
+        "rivet_rivetkit_sqlite_worker_queue_depth"
+      ]
+    },
+    {
+      "source": "worker:stats-observe:1",
+      "producer": "infra",
+      "families": [
+        "openorange_worker_info",
+        "openorange_worker_start_time_seconds",
+        "rivet_rivetkit_actor_active_count",
+        "rivet_rivetkit_actor_connections_total",
+        "rivet_rivetkit_actor_sqlite_vfs_commit_total",
+        "rivet_rivetkit_sqlite_worker_queue_depth"
+      ]
+    },
+    {
+      "source": "engine:live",
+      "producer": "infra",
+      "families": [
+        "rivet_topology_discovery_heartbeat_reads_total",
+        "rivet_depot_cold_store_unflushed_bytes",
+        "rivet_depot_tablet_store_queue_depth"
+      ]
+    },
+    {
+      "source": "collector:infra",
+      "producer": "infra",
+      "families": [
+        "delivery"
+      ]
+    }
   ]
 }

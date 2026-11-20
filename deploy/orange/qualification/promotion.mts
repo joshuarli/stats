@@ -3,7 +3,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { parseArgs } from "node:util";
-import { manifestDigest } from "./manifest.mts";
+import { manifestDigest, treeManifest } from "./manifest.mts";
 import { startStack, type Stack } from "../canary/stack.mts";
 import { prepare, runWorkload, spec } from "../canary/workload.mts";
 import { monitorResources, observe, recover, source, waitCheckpoint, writeBundle } from "../canary/evidence.mts";
@@ -32,17 +32,20 @@ const scratch = mkdtempSync(join(root, ".work/tmp/qualification-"));
 let baseline: Stack | undefined, candidate: Stack | undefined;
 try {
   const extract = (dir: string, name: string) => {
-    const artifact = resolve(dir), archive = join(scratch, `${name}.tar`), manifestBytes = readFileSync(join(artifact, "manifest.json"));
-    const manifest = JSON.parse(manifestBytes.toString("utf8")) as { releaseId?: string; tar_sha256?: string };
-    const manifestHash = manifestDigest(manifest);
+    const artifact = resolve(dir), archive = join(scratch, `${name}.tar`);
+    const build = JSON.parse(readFileSync(join(artifact, "build.json"), "utf8")) as { schema: string; manifest_digest: string; tar_sha256: string; release_id: string };
+    if (build.schema !== "openorange-runtime-build-record/1") throw new Error(`${name} build.json is not an openorange-runtime-build-record/1`);
+    const manifestHash = manifestDigest(JSON.parse(readFileSync(join(artifact, "manifest.json"), "utf8")));
+    if (`sha256:${manifestHash}` !== build.manifest_digest) throw new Error(`${name} manifest.json differs from its build record`);
     copyFileSync(join(artifact, "runtime.tar"), archive);
     const archiveHash = digestFile(archive);
-    if (manifest.tar_sha256 !== undefined && manifest.tar_sha256 !== archiveHash) throw new Error(`${name} archive digest mismatch`);
+    if (`sha256:${archiveHash}` !== build.tar_sha256) throw new Error(`${name} runtime.tar differs from its build record`);
     const runtime = join(scratch, `${name}-runtime`); mkdirSync(runtime);
     const extractor = `import pathlib,sys,tarfile\nroot=pathlib.Path(sys.argv[2]).resolve()\nwith tarfile.open(sys.argv[1]) as archive:\n for entry in archive.getmembers():\n  path=pathlib.PurePosixPath(entry.name)\n  if path.is_absolute() or '..' in path.parts: raise ValueError('unsafe archive path')\n archive.extractall(root, filter='data')`;
     execFileSync("python3", ["-c", extractor, archive, runtime], { stdio: "pipe" });
-    const releaseId = `rt-${manifestHash.slice(0, 12)}`;
-    return { runtime, manifest: { releaseId, artifactDigest: `sha256:${archiveHash}`, components: { "runtime-manifest": `sha256:${manifestHash}`, "runtime-archive": `sha256:${archiveHash}` } } };
+    if (manifestDigest(treeManifest(runtime)) !== manifestHash) throw new Error(`${name} extracted runtime differs from its manifest`);
+    if (build.release_id !== `rt-${manifestHash.slice(0, 12)}`) throw new Error(`${name} release id differs from its manifest digest`);
+    return { runtime, manifest: { releaseId: build.release_id, artifactDigest: `sha256:${manifestHash}`, components: { "runtime-archive": `sha256:${archiveHash}` } } };
   };
   const leftArtifact = extract(values.baseline, "baseline"), rightArtifact = extract(values.candidate, "candidate");
   if (leftArtifact.manifest.releaseId === rightArtifact.manifest.releaseId) throw new Error("baseline and candidate releases must differ");
@@ -53,7 +56,7 @@ try {
     "stats-worker": `sha256:${digestFile(join(root, "cloudflare/.cloudflare/output/v0/workers/default/bundle/index.js"))}`,
     "observe-worker": `sha256:${digestFile(join(root, "cloudflare/observe-worker/.cloudflare/output/v0/workers/default/bundle/index.js"))}`,
     "infra-collector": `sha256:${digestFile(join(collectorDir, "main.mjs"))}`,
-    "engine-image": "sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5"
+    "container-image": "sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5"
   };
   Object.assign(leftArtifact.manifest.components, commonComponents);
   Object.assign(rightArtifact.manifest.components, commonComponents);
@@ -101,15 +104,15 @@ try {
   const end = Date.now();
   const getSources = async (stack: Stack, child: typeof collectors[number]) => {
     const last = requireSelf ? await waitCheckpoint(stack, from, end).catch(() => observe(stack, from).catch(() => null)) : null;
-    const response = await fetch(`${stack.origin}/api/observe/stats-infra/metrics/sources?from=${Math.max(0, start - 30_000)}&to=${Date.now()}&release=runtime`, { headers: stack.headers }).catch(() => null);
+    const response = await fetch(`${stack.origin}/api/observe/stats-infra/metrics/sources?from=${start}&to=${end}&release=runtime`, { headers: stack.headers }).catch(() => null);
     type Family = { okSamples: number; usable: boolean; reason: string | null };
     type MetricSource = Omit<ReturnType<typeof source>, "families"> & { families?: Record<string, Family> };
-    let rows: { evidence: MetricSource | null; families?: Record<string, Family> }[] = [];
+    let rows: { evidence: MetricSource | null; detail?: { families?: Record<string, Family> } }[] = [];
     let observerOk = false;
     if (response?.ok) {
       try { const body = await response.json() as { sources: typeof rows }; if (Array.isArray(body.sources)) { rows = body.sources; observerOk = true; } } catch {}
     }
-    const infra = rows.flatMap(row => row.evidence ? [{ ...row.evidence, families: row.evidence.families ?? row.families ?? {} }] : []);
+    const infra = rows.flatMap(row => row.evidence ? [{ ...row.evidence, families: row.detail?.families ?? {} }] : []);
     const sample = infra[0];
     if (sample && infra.length === 3 && child.exitCode === null && infra.every(item => item.sequenceStart.startedAtMs === sample.sequenceStart.startedAtMs && item.sequenceEnd.startedAtMs === sample.sequenceStart.startedAtMs && item.sequenceStart.atMs <= start && item.sequenceEnd.atMs >= end && item.sequenceEnd.accepted - item.sequenceStart.accepted === item.received && item.sequenceEnd.dropped === item.sequenceStart.dropped && item.sequenceStart.queued === 0 && item.sequenceEnd.queued === 0)) {
       const okSamples = Math.min(...infra.map(item => item.received));
