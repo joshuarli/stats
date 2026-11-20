@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 10
+Next: 11
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier Calibration). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -83,6 +83,15 @@ Scenario uses local integration and dashboard lifecycle; the explicitly
 requested `make test` covers the full local release-shaped suite. Historical
 warm cost is about three minutes on macOS, not a current paired measurement.
 No new test was added and no new fault injection is claimed.
+
+**Dashboard focus finding.** DSLP-10 was observed during the full retry:
+the existing back-navigation browser test failed at focus restoration. The
+focused test failed twice in ten unmodified runs. Temporary instrumentation
+showed the link disconnected at the sole animation frame and connected later;
+it was restored byte-for-byte. The fix waits for attachment and cancels its
+observer on cleanup while preserving user-selected focus. The same test
+passed 20 of 20 runs afterward. The full suite must still be rerun at the
+final commit.
 
 ## Tickets
 
