@@ -333,4 +333,4 @@ few seconds on the busy macOS host; those are observations, not budgets. The
 latter replays a captured collection, checks and reports rows and response
 bytes, and reports process CPU; it is not Workerd or deployed Cloudflare CPU.
 Cross-process attribution and stronger external artifact preflight remain
-DSLP-11 in the deslop backlog.
+STA-132 in the deslop backlog.

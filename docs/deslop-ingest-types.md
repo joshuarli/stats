@@ -147,7 +147,7 @@ match wildcard single variant 0, possible truncation 24, sign loss 4, unwrap
 respectively 0, 0, 0, 6, 2, 61, 0, 0, 4. The unsafe forbid candidate cannot
 represent the agent's platform FFI; the previous wire audit identifies bounded
 casts. Tests deliberately unwrap results. The producer ceiling cast has a real extreme-duration defect, filed as
-DSLP-9: `backoff_delay(0, 100 ms, 1.0, Duration::from_millis(u64::MAX)
+STA-131: `backoff_delay(0, 100 ms, 1.0, Duration::from_millis(u64::MAX)
 + 1 ms)` returned 0 ms in a scratch Rust witness. The same lint also flags
 intentional rounding and the current-time
 conversion, while the agent wire audit identifies bounded casts; the

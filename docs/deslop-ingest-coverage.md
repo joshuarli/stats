@@ -118,7 +118,7 @@ kill) gave 35 killed, 21 timed out and 5 survived. Each of the 21 timeouts
 printed 1 to 15 failing tests before the process outlived 12 s, so the
 timeout is a hang after detection, not an untested behavior. The tests that
 build a producer without the injected `sleep` keep real backoff sleeps
-pending after a failure (DSLP-12). The 5 survivors are the return-type
+pending after a failure (STA-133). The 5 survivors are the return-type
 annotation and the `in` and `typeof` checks that `Number.isSafeInteger`
 already covers.
 
