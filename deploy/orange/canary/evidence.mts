@@ -62,7 +62,7 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
   await candidate.stop();
   cpSync(candidate.stateDir, directory, { recursive: true });
   generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers["X-Stats-Gateway-Secret"] ?? Object.values(baseline.headers)[0]!, nowMs: null });
-  const session = await startSession(directory, await freePort());
+  const session = await startSession(directory, await freePort(), { runtimeRoot: baseline.runtimeRoot });
   try {
     const history = await fetch(session.origin + result.historyPath, { headers: { ...baseline.headers, "accept-encoding": "identity" } });
     const bytes = new Uint8Array(await history.arrayBuffer());
@@ -74,10 +74,10 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
 export function writeBundle(directory: string, baseline: Stack, candidate: Stack, ledgers: { baseline: any; candidate: any }, observations: { baseline: any; candidate: any }, recovery: unknown, start: number, end: number) {
   mkdirSync(directory, { recursive: true });
   const write = (name: string, value: unknown) => { const text = `${JSON.stringify(value, null, 2)}\n`; writeFileSync(join(directory, name), text); return text; };
-  const components = Object.fromEntries([["orange-package", join(root, "deploy/orange/package.json")], ["orange-lock", join(root, "deploy/orange/pnpm-lock.yaml")], ["workspace-lock", join(root, "pnpm-lock.yaml")], ["stats-bundle", join(STATS_OUTPUT, "bundle/index.js")], ["observe-bundle", join(OBSERVE_OUTPUT, "bundle/index.js")]].map(([name, path]) => [name, hash(readFileSync(path!))]));
+  const components = (stack: Stack) => Object.fromEntries([["orange-package", join(stack.runtimeRoot, "package.json")], ["orange-lock", join(stack.runtimeRoot, "pnpm-lock.yaml")], ["orange-bin", join(stack.runtimeRoot, "node_modules/open-orange/dist/bin.js")], ["workspace-lock", join(root, "pnpm-lock.yaml")], ["stats-bundle", join(STATS_OUTPUT, "bundle/index.js")], ["observe-bundle", join(OBSERVE_OUTPUT, "bundle/index.js")]].map(([name, path]) => [name, hash(readFileSync(path!))]));
   const workloadBytes = write("workload.json", workload);
-  write("baseline.manifest.json", { releaseId: baseline.release, components });
-  write("candidate.manifest.json", { releaseId: candidate.release, components });
+  write("baseline.manifest.json", { releaseId: baseline.release, components: components(baseline) });
+  write("candidate.manifest.json", { releaseId: candidate.release, components: components(candidate) });
   write("policy.json", { schema: "stats-release-policy/1", id: "local-canary", baselineRelease: baseline.release, candidateRelease: candidate.release, workloadId: workload.id, workloadSha256: hash(workloadBytes), requiredSources: [{ source: "stats", producer: "stats-self" }], windows: { startMs: start, warmupMs: 0, measureMs: end - start }, minRequests: 1, maxEvidenceAgeMs: 300_000, limits: { maxErrorShare: 0, latency: { p95Ms: 1e9, p99Ms: 1e9, maxRelativeIncreasePercent: 1e9, absoluteFloorMs: 1e9 }, maxCpuRelativeIncreasePercent: 1e9, maxMemoryRelativeIncreasePercent: 1e9, maxRestarts: 0, maxQueueDepth: 0 }, histogramMaxRelativeError: 0.01, recovery: { required: true, method: "state-copy" } });
   for (const ledger of Object.values(ledgers)) { ledger.windowStartMs = start; ledger.windowEndMs = end; }
   write("ledger.json", { schema: "stats-release-evidence/1", ...ledgers });

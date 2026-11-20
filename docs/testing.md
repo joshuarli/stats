@@ -420,6 +420,8 @@ TMPDIR="$PWD/.work/tmp" node --experimental-strip-types --test --test-concurrenc
 
 The test starts separate local stacks and judges saved evidence with `statsctl verify release`. It checks a passing pair, a modified response, missing self-observation, state-copy recovery, and decision replay. It samples each process tree for CPU and peak RSS. It removes its temporary state and bundles after the run.
 
+For the owned runtime change, run `TMPDIR="$PWD/.work/tmp" node --experimental-strip-types --test --test-concurrency=1 deploy/orange/runtime-canary.test.mts` with the pinned Node and pnpm on PATH. The test verifies the owned tarball digest, installs a separate closure, compares its lockfile, runs the same workload on both closures, and judges and replays the evidence. It also starts an external Engine from the candidate closure to check metrics for both Workers. Temporary closures and evidence are removed after the test. The recorded run is in [the runtime canary results](../bench/results/2026-11-20-runtime-canary/README.md).
+
 ## Screenshot goldens
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in

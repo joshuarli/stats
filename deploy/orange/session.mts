@@ -26,8 +26,8 @@ export function freePort(): Promise<number> {
   });
 }
 
-export async function startSession(stateDir: string, port: number, options: { readonly environment?: Readonly<Record<string, string>> } = {}): Promise<Session> {
-  const args = [ORANGE_BIN, "dev", "--json", "--ip", "127.0.0.1", "--port", String(port), "--config", join(stateDir, "stats.jsonc"), "--config", join(stateDir, "observe.jsonc")];
+export async function startSession(stateDir: string, port: number, options: { readonly environment?: Readonly<Record<string, string>>; readonly runtimeRoot?: string } = {}): Promise<Session> {
+  const args = [options.runtimeRoot === undefined ? ORANGE_BIN : join(options.runtimeRoot, "node_modules/open-orange/dist/bin.js"), "dev", "--json", "--ip", "127.0.0.1", "--port", String(port), "--config", join(stateDir, "stats.jsonc"), "--config", join(stateDir, "observe.jsonc")];
   const child = spawn(process.execPath, args, { cwd: stateDir, env: { ...process.env, ...options.environment }, stdio: ["ignore", "pipe", "pipe"] });
   const logs: string[] = [];
   const started = performance.now();
