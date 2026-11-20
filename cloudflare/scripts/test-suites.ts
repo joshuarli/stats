@@ -2,7 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join, matchesGlob, resolve } from "node:path";
 
 export const ROOT = resolve(import.meta.dirname, "..");
-export const NODE_DIRECTORIES = ["binary", "ingest", "deployments", "cost", "cli", "scripts", "observe", "node", "producer"];
+export const NODE_DIRECTORIES = ["binary", "ingest", "deployments", "cost", "cli", "scripts", "observe", "node", "producer", "metrics"];
 export interface TestFile {
   readonly file: string;
   readonly owner: string;

@@ -31,9 +31,9 @@ function counterDecreased(before: Values, after: Values): boolean {
   return false;
 }
 
-// Exact decimal subtraction without binary floating-point rounding. The result is a
-// decimal expression when the exponents are too far apart to expand within bounds.
-function decimalDelta(a: string, b: string): string {
+// Exact decimal subtraction without binary floating-point rounding; null when the
+// exponents are too far apart to expand within bounds.
+function decimalDelta(a: string, b: string): string | null {
   const parse = (value: string): { coefficient: bigint; exponent: number } => {
     const match = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/u.exec(value)!;
     const fraction = match[3] ?? "";
@@ -44,7 +44,7 @@ function decimalDelta(a: string, b: string): string {
   };
   const x = parse(a), y = parse(b);
   const exponent = Math.min(x.exponent, y.exponent);
-  if (Math.abs(x.exponent - y.exponent) > 1024 || !Number.isSafeInteger(exponent)) return `${a}-(${b})`;
+  if (Math.abs(x.exponent - y.exponent) > 1024 || !Number.isSafeInteger(exponent)) return null;
   const difference = x.coefficient * 10n ** BigInt(x.exponent - exponent) - y.coefficient * 10n ** BigInt(y.exponent - exponent);
   return `${difference}e${exponent}`;
 }
@@ -71,10 +71,12 @@ export function seriesPoints(samples: Sample[], family: string, engine: boolean)
       if (!old || typeof old === "string" || value.buckets.some((v, i) => BigInt(v) < BigInt(old.buckets[i]!)) || BigInt(value.count) < BigInt(old.count)) {
         return { labels, value: null };
       }
+      const sum = decimalDelta(value.sum, old.sum);
+      if (sum === null) return { labels, value: null };
       const histogram: Histogram = {
         buckets: value.buckets.map((v, i) => (BigInt(v) - BigInt(old.buckets[i]!)).toString()),
         count: (BigInt(value.count) - BigInt(old.count)).toString(),
-        sum: decimalDelta(value.sum, old.sum)
+        sum
       };
       return { labels, value: histogram };
     });
