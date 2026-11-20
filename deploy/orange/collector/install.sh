@@ -56,17 +56,11 @@ if [ "${1:-}" = --prepare ]; then
     cp "$work/install-guest.sh" "$2/collector-install.sh"
     exit 0
 fi
-mv "$work/install-guest.sh" "$work/collector-install.sh"
-mv "$work/install.tgz" "$work/collector.tgz"
-tar -C "$work" -czf "$work/payload.tgz" collector-install.sh collector.tgz
-fifo="/tmp/stats-collector-$(basename "$work").fifo"
-"$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation collector-install --bound-s 300 -- sh -c 'fifo=$1; stage=$(mktemp -d); trap "rm -f $fifo; rm -rf $stage" EXIT; mkfifo "$fifo"; tar -C "$stage" -xzf "$fifo"; rm -f "$fifo"; sh "$stage/collector-install.sh" <"$stage/collector.tgz"' sh "$fifo" &
-lease_pid=$!
-ssh -F "$config" stats-standby "i=0; while [ ! -p '$fifo' ]; do i=\$((i+1)); [ \$i -lt 300 ] || exit 1; sleep 1; done; cat >'$fifo'" <"$work/payload.tgz" &
-sender_pid=$!
+stage=/var/lib/stats-deploy/collector-$(basename "$work")
+ssh -F "$config" stats-standby "rm -rf '$stage'; mkdir -p '$stage'; cat >'$stage/collector.tgz'" <"$work/install.tgz" || fail "cannot upload the collector"
+ssh -F "$config" stats-standby "cat >'$stage/collector-install.sh'" <"$work/install-guest.sh" || fail "cannot upload the collector"
 status=0
-wait "$lease_pid" || status=$?
-kill "$sender_pid" 2>/dev/null || :
-wait "$sender_pid" 2>/dev/null || :
+"$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation collector-install --bound-s 300 -- sh -c 'sh "$1/collector-install.sh" <"$1/collector.tgz"' sh "$stage" || status=$?
+ssh -F "$config" stats-standby "rm -rf '$stage'" || :
 [ "$status" -eq 0 ] || fail "lease unavailable or installation failed"
 echo "collector installed; restart native-stats (or run standby-deploy.sh) to activate"

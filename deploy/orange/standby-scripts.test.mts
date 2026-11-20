@@ -27,7 +27,7 @@ test('held lease prevents guest mutations for deploy and collector', () => {
     const config = resolve(dir, 'config'); const calls = resolve(dir, 'calls'); const mutations = resolve(dir, 'mutations');
     writeFileSync(config, '');
     const fake = (name, body) => writeFileSync(resolve(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-    fake('ssh', `case "$*" in *"cat >"*) exit 1;; *"grep -o"*) echo stats-aaaaaaaaaaaa;; *"sha256sum"*) echo same;; *"recovery-routes"*) echo writer;; esac`);
+    fake('ssh', `case "$*" in *"cat >"*|*"xzf -"*) cat >/dev/null;; *"grep -o"*) echo stats-aaaaaaaaaaaa;; *"sha256sum"*) echo same;; *"recovery-routes"*) echo writer;; esac`);
     fake('jaq', 'cat');
     fake('shasum', 'echo same');
     fake('git', `case "$*" in *status*) :;; *rev-parse*) echo bbbbbbbbbbbb;; esac`);

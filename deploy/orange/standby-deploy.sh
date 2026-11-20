@@ -42,22 +42,13 @@ tar -C "$work/ctx/app" -czf "$work/app.tgz" stats observe stats.jsonc observe.js
 sh "$root/deploy/orange/collector/install.sh" --prepare "$work" || fail "collector build failed"
 cat >"$work/deploy-guest.sh" <<'GUEST'
 set -eu
-stage=$1
-release=$2
-current=$3
+mode=$1
+stage=$2
+release=$3
+current=$4
 app=/opt/native-rehearsal/app
 releases=/opt/native-rehearsal/releases
 previous=${current#stats-}
-grep -q "$current" "$app/stats.jsonc" || exit 1
-mkdir -p "$releases/$previous"
-[ -e "$releases/$previous/stats.jsonc" ] || cp -a "$app/stats" "$app/observe" "$app/stats.jsonc" "$app/observe.jsonc" "$releases/$previous/"
-rm -rf "$releases/next"
-mkdir -p "$releases/next"
-tar -C "$releases/next" -xzf "$stage/app.tgz"
-chown -R root:root "$releases/next"
-if [ -d /opt/stats-infra-collector ]; then
-    cp -a /opt/stats-infra-collector "$stage/previous-collector"
-fi
 activate() {
     rm -rf "$app/stats" "$app/observe"
     cp -a "$1/stats" "$1/observe" "$1/stats.jsonc" "$1/observe.jsonc" "$app/"
@@ -70,29 +61,45 @@ restart() {
     done
     grep -q "$1" "$app/stats.jsonc"
 }
-if activate "$releases/next" && sh "$stage/collector-install.sh" <"$stage/collector.tgz" && restart "$release" && wget -q -T 15 -O /dev/null https://stats.17166969.xyz/health; then
-    rm -rf "$releases/${release#stats-}"
-    mv "$releases/next" "$releases/${release#stats-}"
-else
-    if [ -d "$stage/previous-collector" ]; then
-        rm -rf /opt/stats-infra-collector
-        cp -a "$stage/previous-collector" /opt/stats-infra-collector
-    else
-        rm -rf /opt/stats-infra-collector
-    fi
-    activate "$releases/$previous" && restart "$current" || exit 1
-    exit 1
-fi
+rollback() {
+    rm -rf /opt/stats-infra-collector
+    [ ! -d "$stage/previous-collector" ] || cp -a "$stage/previous-collector" /opt/stats-infra-collector
+    activate "$releases/$previous" && restart "$current"
+}
+case "$mode" in
+    activate)
+        grep -q "$current" "$app/stats.jsonc"
+        mkdir -p "$releases/$previous"
+        [ -e "$releases/$previous/stats.jsonc" ] || cp -a "$app/stats" "$app/observe" "$app/stats.jsonc" "$app/observe.jsonc" "$releases/$previous/"
+        rm -rf "$releases/${release#stats-}"
+        mkdir -p "$releases/${release#stats-}"
+        tar -C "$releases/${release#stats-}" -xzf "$stage/app.tgz"
+        chown -R root:root "$releases/${release#stats-}"
+        rm -rf "$stage/previous-collector"
+        [ ! -d /opt/stats-infra-collector ] || cp -a /opt/stats-infra-collector "$stage/previous-collector"
+        if activate "$releases/${release#stats-}" && sh "$stage/collector-install.sh" <"$stage/collector.tgz" && restart "$release"; then
+            exit 0
+        fi
+        rollback
+        exit 1 ;;
+    rollback)
+        rollback ;;
+    *) exit 2 ;;
+esac
 GUEST
 tar -C "$work" -czf "$work/payload.tgz" app.tgz collector.tgz collector-install.sh deploy-guest.sh
-fifo="/tmp/stats-deploy-$(basename "$work").fifo"
-"$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation stats-deploy --bound-s 300 -- sh -c 'fifo=$1; stage=$(mktemp -d); trap "rm -f $fifo; rm -rf $stage" EXIT; mkfifo "$fifo"; tar -C "$stage" -xzf "$fifo"; rm -f "$fifo"; sh "$stage/deploy-guest.sh" "$stage" "$2" "$3"' sh "$fifo" "$release" "$current" &
-lease_pid=$!
-ssh -F "$config" stats-standby "i=0; while [ ! -p '$fifo' ]; do i=\$((i+1)); [ \$i -lt 300 ] || exit 1; sleep 1; done; cat >'$fifo'" <"$work/payload.tgz" &
-sender_pid=$!
-status=0
-wait "$lease_pid" || status=$?
-kill "$sender_pid" 2>/dev/null || :
-wait "$sender_pid" 2>/dev/null || :
-[ "$status" -eq 0 ] || fail "activation failed or lease unavailable"
-echo "standby runs $release; rollback: $releases/${current#stats-}"
+stage=/var/lib/stats-deploy/${release#stats-}
+guest "rm -rf '$stage'; mkdir -p '$stage'; tar -C '$stage' -xzf -" <"$work/payload.tgz" || fail "cannot upload the release to the standby"
+leased() {
+    "$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation "$1" --bound-s 300 -- sh "$stage/deploy-guest.sh" "$2" "$stage" "$release" "$current"
+}
+echo "activating $release (previous $current)"
+if leased stats-deploy activate && curl -fsS -m 15 -o /dev/null https://stats.17166969.xyz/health; then
+    guest "rm -rf '$stage'"
+    echo "standby runs $release; rollback: $releases/${current#stats-}"
+else
+    echo "standby-deploy: $release failed activation, public health or the lease; restoring $current" >&2
+    leased stats-deploy-rollback rollback || fail "rollback to $current failed or the lease is held; inspect native-stats on the standby"
+    guest "rm -rf '$stage'"
+    fail "rolled back to $current"
+fi

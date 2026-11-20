@@ -120,12 +120,16 @@ The script reaches the guest through the SSH configuration named by
 Threadripper with the pinned guest host key). It refuses unless Lisa's
 recovery route names the standby as writer and `deploy/orange/package.json`
 and `pnpm-lock.yaml` match `/opt/native-rehearsal/orange`. It builds with
-`deploy/orange/build-context.sh`, copies the running release's `stats`,
-`observe`, `stats.jsonc` and `observe.jsonc` to
-`/opt/native-rehearsal/releases/<release>`, swaps in the new ones (keeping the
-`.open-orange` runtime state), restarts OpenRC `native-stats`, and requires the
-guest health route, the new release in the descriptor and the public health
-route. A failure restores the previous release the same way.
+`deploy/orange/build-context.sh` and uploads the app and the matching INF-7
+collector to `/var/lib/stats-deploy/<release>` on the guest, which changes no
+running state. Under the `stats-deploy` lease it then keeps the running
+release in `/opt/native-rehearsal/releases/<release>`, swaps in the new one
+(keeping the `.open-orange` runtime state), reinstalls the collector, restarts
+OpenRC `native-stats`, and requires the guest health route and the new release
+in the descriptor. A local failure restores the previous app and collector in
+the same leased step. The workstation then checks the public health route; if
+that fails, a second leased step (`stats-deploy-rollback`) restores the
+previous release.
 
 ### Standby operations record (2026-11-20)
 
