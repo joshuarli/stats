@@ -21,7 +21,11 @@ const workloads = [
 async function runWorkload(command) {
   const child = spawn(command[0], command.slice(1), { cwd: root, detached: true, env: { ...process.env, TMPDIR: join(root, ".work/tmp") }, stdio: ["ignore", "pipe", "pipe"] });
   let output = "", reason, interrupted, escalation;
-  const killGroup = signal => { if (child.pid !== undefined) { try { process.kill(-child.pid, signal); } catch {} } };
+  const killGroup = signal => {
+    if (child.pid === undefined) return false;
+    try { process.kill(-child.pid, signal); return true; }
+    catch (error) { if (error.code === "ESRCH") return false; throw error; }
+  };
   const stop = why => {
     reason ??= why;
     killGroup("SIGTERM");
@@ -43,10 +47,14 @@ async function runWorkload(command) {
     child.once("close", (code, signal) => resolveResult({ exit: reason || signal ? 1 : code, output: `${output}${reason ? `\n${reason}\n` : ""}` }));
   });
   clearTimeout(timer);
+  if (killGroup("SIGTERM")) {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline && killGroup(0)) await new Promise(resolveWait => setTimeout(resolveWait, 50));
+    if (killGroup(0)) killGroup("SIGKILL");
+  }
   if (escalation !== undefined) clearTimeout(escalation);
   process.removeListener("SIGINT", onInt);
   process.removeListener("SIGTERM", onTerm);
-  killGroup("SIGTERM");
   if (interrupted) { process.kill(process.pid, interrupted); }
   return result;
 }

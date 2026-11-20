@@ -150,7 +150,8 @@ against its callers, package entries and the available tests. Review found the
 benchmark runner could wait indefinitely; it now bounds workloads and stops
 the process group. With a temporary 3000 ms deadline, a deliberately stalled
 workload exited 1 and its child was absent; the runner was restored byte for
-byte. Edit and Change workloads both passed after the fix. No independent
+byte. A second control used a child that ignored SIGTERM and confirmed that
+escalation left no child. Edit and Change workloads both passed after the fix. No independent
 reviewer was used because this lane is explicitly a leaf. No further defect
 was demonstrated. The final full test and lint results belong to the handoff;
 performance comparison remains Needs environment.
