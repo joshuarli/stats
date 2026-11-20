@@ -114,9 +114,15 @@ passed 20 of 20 runs afterward.
 
 **Dead code.** Knip 6.45.1, configured with the Worker, Node, dashboard,
 CLI, bridge, producer, script and test entries, passed its default scan.
-The five documented allowlist entries cover captured fixtures, three host
-binaries, two observation interfaces retained at an external integration
-boundary, and a deliberate alias for distinct bucket concepts. Production mode reports four test-only
+The allowlist in `cloudflare/knip.jsonc` has five entries, each with a reason:
+a glob for captured fixtures; one regex for the host tools `agent-browser`,
+`perf-gate-ready` and `clang`; `markServiceOperation` and `ServiceChannelMessage`
+in the copyable producer files (`producer-files.test.ts` guards that they import
+only each other, and an external captured bundle uses `markServiceOperation`);
+and `COUNT_BUCKET_MS`, an alias for a distinct concept. The scan also sets
+`ignoreExportsUsedInFile`, which is a rule choice: without it knip adds 91
+exports used only inside their own file. Removing each entry in turn showed it
+hides the findings named above and no others. Production mode reports four test-only
 exports and the observation budget measurement module; tests and measurement
 scripts are their consumers, so they remain. `cargo rustc --offline --locked
 --manifest-path agent/Cargo.toml --bin stats -- -W unreachable_pub` passed;
