@@ -1,0 +1,131 @@
+{
+  "schema": "stats-campaign-record/1",
+  "campaign": "infra-release",
+  "doc": "docs/CAMPAIGN-INFRA-RELEASE.md",
+  "started": "2026-11-20",
+  "baseline": {
+    "stats": "7fc3ff9ca9dd1d072aa8f6a90a5755da38184ea9",
+    "stuff": "9fb6f1d278ac7b42635d355771c5e578dc64c34c",
+    "openOrange": "1cabf2e9db300361c9f0b751c7723da7eb706f5e",
+    "rivet": "e5ed3911ebff8ddc35c08b3f6c6eb3f795d042f9"
+  },
+  "production": {
+    "writer": "threadripper standby VM (native-stats)",
+    "release": "accd14a0364c",
+    "checkedAt": "2026-11-20T15:45:00Z",
+    "watchdog": "stats-recovery-vm-watchdog on threadripper since 2026-11-20"
+  },
+  "incidents": [
+    {
+      "id": "2026-11-20-standby-outage",
+      "start": "2026-11-20T13:51:00Z",
+      "end": "2026-11-20T15:41:34Z",
+      "cause": "standby qemu exited (cause unknown); Lisa tunnels could not reconnect because udhcpc replaced MagicDNS at 07:50",
+      "record": "docs/openorange.md#standby-operations-record-2026-11-20",
+      "followUp": "STA-130"
+    }
+  ],
+  "items": [
+    {
+      "id": "INF-1",
+      "state": "landed",
+      "repo": "stats",
+      "branch": "campaign/release-gate",
+      "acceptance": "pnpm --dir cloudflare -s test:cli",
+      "attempts": [
+        "stats 0eb1b4a",
+        "stats 6740e06 reconcile from producer snapshots"
+      ]
+    },
+    {
+      "id": "INF-2",
+      "state": "accepted",
+      "repo": "open-orange (downstream)",
+      "branch": "campaign/multi-worker-metrics",
+      "acceptance": "tests/orange-serve.test.ts",
+      "attempts": [
+        "open-orange 8aecc5b: 30 serve tests incl. two-Worker metrics"
+      ]
+    },
+    {
+      "id": "INF-3",
+      "state": "landed",
+      "repo": "stuff",
+      "branch": "campaign/release-inventory",
+      "acceptance": "python3 -m unittest deploy/openorange/tests/test_sources.py deploy/openorange/tests/test_release_inspect.py",
+      "attempts": [
+        "stuff 0597838..d17b054; live inspect exit 0 no drift"
+      ]
+    },
+    {
+      "id": "INF-4",
+      "state": "accepted-branch",
+      "repo": "stats",
+      "branch": "campaign/drop-services",
+      "acceptance": "make orange-test + packaged image evidence",
+      "attempts": [
+        "campaign/drop-services 01302b7: orange-test 6/6; linux image without services"
+      ]
+    },
+    {
+      "id": "INF-5",
+      "state": "running",
+      "dependsOn": [
+        "INF-2",
+        "INF-3"
+      ],
+      "attempts": [
+        "attempt 1: identical offline builds 16636950...; toolchain pnpm ambient, correction requested"
+      ]
+    },
+    {
+      "id": "INF-6",
+      "state": "needs-owner",
+      "blockedOn": "alert channel and observer host",
+      "attempts": []
+    },
+    {
+      "id": "INF-7",
+      "state": "design",
+      "dependsOn": [
+        "INF-2"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-8",
+      "state": "running",
+      "dependsOn": [
+        "INF-1"
+      ],
+      "attempts": [
+        "attempt 1 stopped: gate required rejected/queueHigh no producer reports; contract fixed in 6740e06"
+      ]
+    },
+    {
+      "id": "INF-9",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-3",
+        "INF-8"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-10",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-9"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "INF-11",
+      "state": "ready-after",
+      "dependsOn": [
+        "INF-10"
+      ],
+      "attempts": []
+    }
+  ]
+}

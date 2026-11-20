@@ -1,3 +1,4 @@
+import { verifyReleaseCommand } from "./verify-release.ts";
 import { Registry } from "../registry.ts";
 import { backupExportCommand, backupFenceCommand, backupImportCommand, backupObjectsCommand, backupStatusCommand } from "./backup.ts";
 import { checkHostsCommand, checkIngestCommand } from "./check.ts";
@@ -12,4 +13,4 @@ import { deployMarkCommand, serviceCheckCommand, serviceCreateCommand, serviceUp
 import { snapshotCommand } from "./snapshot.ts";
 import { verifyCommand } from "./verify.ts";
 
-export const REGISTRY = new Registry([projectsCommand, healthCommand, costCommand, snapshotCommand, deploymentsCommand, compareCommand, observeOperationsCommand, observeApplicationCommand, observeRoutesCommand, observeTracesCommand, observeIssuesCommand, observeDeploymentCommand, observeRolloutsCommand, checkIngestCommand, checkHostsCommand, verifyCommand, deployMarkCommand, servicesCommand, serviceCreateCommand, serviceUpdateCommand, serviceInspectCommand, serviceDeploymentsCommand, serviceTokenRotateCommand, serviceTokenRevokeCommand, serviceCheckCommand, backupObjectsCommand, backupStatusCommand, backupFenceCommand, backupExportCommand, backupImportCommand]);
+export const REGISTRY = new Registry([projectsCommand, healthCommand, costCommand, snapshotCommand, deploymentsCommand, compareCommand, observeOperationsCommand, observeApplicationCommand, observeRoutesCommand, observeTracesCommand, observeIssuesCommand, observeDeploymentCommand, observeRolloutsCommand, checkIngestCommand, checkHostsCommand, verifyCommand, verifyReleaseCommand, deployMarkCommand, servicesCommand, serviceCreateCommand, serviceUpdateCommand, serviceInspectCommand, serviceDeploymentsCommand, serviceTokenRotateCommand, serviceTokenRevokeCommand, serviceCheckCommand, backupObjectsCommand, backupStatusCommand, backupFenceCommand, backupExportCommand, backupImportCommand]);

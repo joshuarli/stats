@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+
+description="Restart the Stats recovery VM after it crashes"
+supervisor=supervise-daemon
+command=/usr/local/libexec/stats-recovery-vm-watchdog
+. /etc/conf.d/stats-recovery-vm
+export WATCHDOG_RECOVERY_DIR="${recovery_dir}"
+respawn_delay=10
+respawn_max=0
+
+depend() {
+    after stats-recovery-vm
+}
