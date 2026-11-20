@@ -6,7 +6,8 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { Miniflare } from "miniflare";
 import { openStatsWorker, type StatsWorker } from "../../local/stack.ts";
-import { runCli } from "./support.ts";
+import { fakeOrigin, runCli } from "./support.ts";
+import { encodeHostHistory, hostHistoryColumns } from "../../src/history-frame.ts";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const SCRATCH_ROOT = resolve(ROOT, "../.work/tmp");
@@ -72,6 +73,48 @@ await test("check ingest against the built Worker", async t => {
       assert.match(text.stdout, /check ingest passed/u);
       assertNoToken(text, host.token);
     });
+
+    for (const changed of ["latest", "history"] as const) {
+      await t.test(`a changed ${changed} value fails the durable readback`, async () => {
+        const created = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `fake-${changed}` }) });
+        const fakeHost = await created.json() as { hostId: string; token: string };
+        let atMs = 0;
+        const fake = await fakeOrigin((request, response) => {
+          void (async () => {
+            const chunks: Uint8Array[] = [];
+            for await (const chunk of request) chunks.push(chunk as Uint8Array);
+            const body = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
+            let offset = 0;
+            for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
+            const upstream = await fetch(`${origin}${request.url}`, {
+              method: request.method ?? "GET", headers: { "content-type": request.headers["content-type"] ?? "", authorization: request.headers.authorization ?? "" },
+              ...(chunks.length ? { body } : {})
+            });
+            const bytes = new Uint8Array(await upstream.arrayBuffer());
+            if (request.url?.endsWith("/latest")) {
+              const data = JSON.parse(new TextDecoder().decode(bytes)) as { sample: { atMs: string; cpuCount: number } };
+              atMs = Number(data.sample.atMs);
+              if (changed === "latest") data.sample.cpuCount = 5;
+              response.writeHead(200, { "content-type": "application/json" });
+              response.end(JSON.stringify(data));
+            } else if (request.url?.includes("/history?") && changed === "history") {
+              const frame = encodeHostHistory(hostHistoryColumns({ hostId: fakeHost.hostId, kind: "summary", fromMs: atMs - 60000, toMs: atMs + 120000, resolution: "raw", stepMs: 15000, points: [{ atMs, coverageMs: 0, partial: false, cpuCount: 5, uptimeMs: 123456 }] }));
+              response.writeHead(200, { "content-type": "application/vnd.stats.history.v1" });
+              response.end(frame);
+            } else {
+              response.writeHead(upstream.status, { "content-type": upstream.headers.get("content-type") ?? "application/octet-stream" });
+              response.end(bytes);
+            }
+          })().catch(error => response.destroy(error as Error));
+        });
+        try {
+          const run = await runCli(["check", "ingest", "--credential-file", credentialFile(`${changed}.json`, fakeHost, 0o600), "--origin", fake.origin, "--json"]);
+          assert.equal(run.code, 7, run.stdout + run.stderr);
+          const document = JSON.parse(run.stdout) as CheckDocument;
+          assert.equal(document.payload.steps.find(step => !step.ok)?.code, "readback_mismatch");
+        } finally { await fake.close(); }
+      });
+    }
 
     await t.test("a wrong host token exits 3 and the token is not printed", async () => {
       const wrong = `nft_${"A".repeat(43)}`;

@@ -163,7 +163,7 @@ need a tailnet device.
 host role. Other writes are listed under [Mutations](#the-statsctl-contract).
 It encodes one known sample with a
 fresh sequence and time, POSTs it, expects the acknowledgment to accept 1, reads
-the host history and finds the sample, replays the identical bytes and expects
+the latest sample and compares every encoded value, checks history gauges and first-sample rate gaps, replays the identical bytes and expects
 duplicate 1 and accepted 0, and confirms the stored count did not change. Its
 encoder, `src/ingest/encode.ts`, must reproduce every `fixtures/v2` golden frame
 byte for byte (`test/ingest/conformance.test.ts`). Run it in production only

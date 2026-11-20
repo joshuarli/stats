@@ -115,9 +115,9 @@ deploy/orange/standby-deploy.sh --check   # access, authority and runtime pins o
 deploy/orange/standby-deploy.sh
 ```
 
-The script reaches the guest through `~/.config/stats/standby/ssh_config`
-(host alias `stats-standby`, jumping through Threadripper with the pinned
-guest host key; override with `STANDBY_SSH_CONFIG`). It refuses unless Lisa's
+The script reaches the guest through the SSH configuration named by
+`STANDBY_SSH_CONFIG` (host alias `stats-standby`, jumping through
+Threadripper with the pinned guest host key). It refuses unless Lisa's
 recovery route names the standby as writer and `deploy/orange/package.json`
 and `pnpm-lock.yaml` match `/opt/native-rehearsal/orange`. It builds with
 `deploy/orange/build-context.sh`, copies the running release's `stats`,
@@ -440,3 +440,26 @@ The [hardening audit](runtime-hardening.md) records installed artifacts,
 compatibility evidence, measured results and unresolved gaps. The
 [deployment handoff](runtime-hardening-handoff.md) contains validation and
 rollback commands. The Engine, persistence backend and credentials are unchanged.
+
+### Standby mutation leases
+
+Set `STATS_ROLLOUT` to the rollout executable and `STANDBY_SSH_CONFIG` to the
+SSH configuration before running standby mutations. `standby-deploy.sh` takes
+`stats-deploy` for the guest app swap, collector installation, restart, and
+rollback. `collector/install.sh` takes `collector-install` for a standalone
+installation. Restart `native-stats` through `rollout lease run --target-kind
+native --host stats-standby --ssh-config FILE --operation native-stats-restart
+--bound-s 300 -- rc-service native-stats restart`. The backup fence uses the
+application API and does not mutate the host, so it does not take the host
+lease. Writer handoff on Lisa is outside the standby guest lease and is owned
+by Stuff. `standby-deploy.sh --check` is read-only and takes no lease.
+
+The rollout policy can invoke `deploy/orange/functional-check.mjs` with
+`--ssh-config`, `--host`, `--credential-file`, and `--statsctl`.
+It requires `STATS_ROLLOUT`, `ROLLOUT_RELEASE`, and `ROLLOUT_DIGEST` and checks target identity
+before and after the synthetic ingest, including process continuity. The
+observer under `deploy/observer/` runs independently on another host; install
+its service template with explicit executable, state, candidate, credential and
+endpoint paths. Its fsynced evidence and alert outbox must reside outside the
+candidate stack. Alert transitions record unconfigured delivery; no sender is
+provided.

@@ -1,0 +1,4 @@
+#!/sbin/openrc-run
+@COMMAND@
+command_background=true
+pidfile=/run/stats-observer.pid
