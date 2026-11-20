@@ -131,9 +131,16 @@ not a timing comparison. Full was not run. The host gate reported busy;
 absolute performance and the dashboard focus change's paired comparison are
 Needs environment. DSLP-11 records the P3 attribution and preflight gap.
 
-**Scorecard and limits.** No whole-repository before/after line or branch
-coverage, paired suite-cost comparison, or escaped-regression count was
-measured. Historical bounded coverage and mutation counts are linked above;
+**Scorecard and limits.** First-party Rust/TypeScript source under `agent/src`,
+`cloudflare/src` and package `src` paths changed from 41,779 to 41,739 lines;
+tracked test files under agent, Cloudflare and package test paths remained
+32,810 lines. These are newline counts, excluding other scripts and fixtures.
+No whole-repository before/after line or branch coverage, paired suite-cost
+comparison, or escaped-regression count was measured. Historical Node ingest
+coverage was 1,112/1,128 lines and 820/855 branches; Rust wire was 608/625
+lines and 126/146 branches. The four historical mutation selections totaled
+210 caught, seven equivalent or unreachable, and 35 timeout results across
+252 identities; the inventories are distinct, not a repository mutation score. Historical bounded coverage and mutation counts are linked above;
 they are not a whole-suite score. The type scan counted 291 TypeScript and
 257 Rust matching escape-hatch lines with no source typing change. The dead
 code change removed private declarations and no dependencies. One P2 focus
