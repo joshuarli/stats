@@ -177,6 +177,34 @@ route. A failure restores the previous release the same way.
   are still gated in [native Lisa](native-lisa.md). Until then the standby is
   the supported writer, and `stats-prod` on Lisa keeps its 17 stranded actors.
 
+### Runtime release record (2026-11-20)
+
+The standby writer runs runtime release `rt-3abd20d29960` (closure
+`sha256:3abd20d2996009547bc188653d6d7607203f67cdc3d92c967afceaa7b1b51151`):
+the repository closure with `open-orange@1.0.2-laputa.1` from the Stuff npm
+registry, which is upstream `1cabf2e` plus the per-Worker metrics patch
+(tarball `sha256:2a3932cd…`). The previous release `rt-13b896622da5`
+(upstream 1.0.2) remains in `/opt/native-rehearsal/runtime/` as the recovery
+artifact.
+
+- Qualification: the musl artifact was built in a pinned linux/amd64 Alpine
+  container (`deploy/orange/runtime-artifact/build.sh`); a baseline built the
+  same way reproduced the live digest exactly. The in-container canary ran
+  the exact extracted bytes for both releases and `statsctl verify release`
+  returned `pass`. The evidence is in
+  `~/.local/state/openorange/releases/rt-3abd20d29960/` on the workstation.
+- Promotion: Stuff's `rollout stage` then `rollout start --target-kind
+  native` (journal `~/.local/state/openorange/rollouts/83a31437381647c29cb9034ca32c5046`).
+  Converting the in-place runtime took 2 s and activation, including the
+  `native-stats` restart and health wait, 5 s. Twenty checks over the
+  five-minute window passed, and the run ended `promoted`. Public health
+  answered 200 throughout. All five hosts reported within two minutes
+  afterwards, and `standby-deploy.sh --check` reports matching runtime pins.
+- Not yet exercised live: a recovery to `rt-13b896622da5`. It is proven
+  against a simulated guest and in the local canary only.
+- `RIVETKIT_METRICS_PORT` is not set on the standby, so the per-Worker
+  metrics are not served yet. Enabling them belongs with the INF-7 collector.
+
 ### Engine load record (2026-11-19)
 
 Lisa's Engine used 1.7 cores with idle applications. Its Prometheus endpoint

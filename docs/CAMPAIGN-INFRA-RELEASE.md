@@ -41,13 +41,23 @@ Started 2026-11-20 from Stats `7fc3ff9` and Stuff `9fb6f1d`.
   `~/.local/share/openorange-releases/`); INF-9 rollout engine (`d1eef39`)
   and native standby adapter (`4dff3f6`), whose live read-only `observe`
   reports baseline `rt-13b896622da5`.
+- **Promoted to production (INF-10):** the standby writer runs
+  `rt-3abd20d29960`, the owned OpenOrange `1.0.2-laputa.1`, through the whole
+  loop. The source patch was built reproducibly, published to the Stuff
+  registry, built as the exact musl artifact and canaried in-container on
+  those bytes (`pass`). It was staged, promoted under the journaled
+  transaction with a five-minute verification window, and the app deploy path
+  accepts it. See the [runtime release record](openorange.md#runtime-release-record-2026-11-20).
 - **Held on a branch:** INF-4 `campaign/drop-services`.
-- **Running:** the exact linux-x64-musl runtime artifact for the standby and
-  its in-container canary. The local runtime canary used a macOS closure, and
-  promotion must never rebuild the tested artifact.
-- **Next:** stage that artifact on the standby (no activation), run
-  `rollout start` against the standby writer with its evidence, then the
-  post-promotion window and a rehearsed recovery (INF-10).
+- **Open:**
+  - A live recovery drill back to `rt-13b896622da5`.
+  - INF-6: the independent observer and alerting (needs owner).
+  - INF-7: the ingest route, MetricStore actor and collector, then enabling
+    `RIVETKIT_METRICS_PORT` on the standby.
+  - INF-11: Engine patch qualification.
+  - The oo-containers adapter for Lisa.
+  - The in-container canary's recovery stack failed to start once in three
+    runs under amd64 emulation.
 
 ## Deliverables and backlog
 
@@ -65,7 +75,7 @@ the item is listed under Needs environment.
 | INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | slice 1 landed |
 | INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | landed |
 | INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | landed (engine, native adapter) |
-| INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | after INF-9 |
+| INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | promoted; live recovery drill open |
 | INF-11 | 8 | Qualify the existing private Rivet Engine patches through the loop | Stuff | INF-1 `pass` on the Engine release class | after INF-10 |
 | STA-130 | ops | Supervise the standby VM; alert on Stats downtime | Stats | See TODO.md | open |
 

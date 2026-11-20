@@ -11,9 +11,12 @@
   },
   "production": {
     "writer": "threadripper standby VM (native-stats)",
-    "release": "accd14a0364c",
-    "checkedAt": "2026-11-20T15:45:00Z",
-    "watchdog": "stats-recovery-vm-watchdog on threadripper since 2026-11-20"
+    "release": "accd14a0364c app; runtime rt-3abd20d29960",
+    "checkedAt": "2026-11-20T17:43:00Z",
+    "watchdog": "stats-recovery-vm-watchdog on threadripper since 2026-11-20",
+    "runtime": "rt-3abd20d29960 open-orange 1.0.2-laputa.1",
+    "previousRuntime": "rt-13b896622da5",
+    "rolloutJournal": "~/.local/state/openorange/rollouts/83a31437381647c29cb9034ca32c5046"
   },
   "incidents": [
     {
@@ -120,12 +123,16 @@
     },
     {
       "id": "INF-10",
-      "state": "running",
+      "state": "promoted-recovery-drill-open",
       "dependsOn": [
         "INF-9"
       ],
       "attempts": [
-        "musl artifact build + in-container canary"
+        "stats 6bfb00d musl artifact; baseline reproduces live 13b89662",
+        "stuff npm generation 9231c809: open-orange@1.0.2-laputa.1",
+        "stats b58a339 repo closure on owned release",
+        "rollout 83a31437: promoted, 20 checks ok",
+        "in-container canary 1 flake in 3 runs (recovery stack start under emulation)"
       ]
     },
     {
