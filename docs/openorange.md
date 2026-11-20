@@ -215,8 +215,37 @@ artifact.
   `pass`. Rollout `58dfe686ce674848873f5173cf4a6350` passed 20 of 20 checks
   and ended `promoted`. The standby has no services package installed, and
   `rt-3abd20d29960` stays as its recovery artifact.
-- `RIVETKIT_METRICS_PORT` is not set on the standby, so the per-Worker
-  metrics are not served yet. Enabling them belongs with the INF-7 collector.
+
+### Infrastructure metrics on the standby
+
+`deploy/orange/collector/install.sh` installs the INF-7 collector on the
+standby guest; it is idempotent. It runs as OpenRC `stats-infra-collector`
+(user `stats-infra`, log `/var/log/stats-infra-collector.log`) and scrapes
+`engine:live` (`127.0.0.1:6430`), `worker:stats:0` (`:9100`) and
+`worker:stats-observe:1` (`:9101`) every 15 s, posting to the local
+`/ingest/metrics/v1/batches`. The script generates the `stats-infra` token on
+the guest in `/etc/stats-infra/token` and writes only its SHA-256 verifier
+(`INFRA_METRICS_TOKEN_SHA256`, added to `ORANGE_WORKER_SECRETS`) and
+`RIVETKIT_METRICS_PORT=9100` into `/etc/conf.d/native-stats`. The first run
+kept the previous file as `native-stats.pre-infra-metrics`. The collector
+needs `native-stats`, so every runtime rollout and `standby-deploy.sh` restart
+restarts it, and its `start_pre` rewrites `/run/stats-infra/release.json` from
+the `orange` symlink and the deployed descriptor.
+
+Read the sources over the tailnet:
+
+```sh
+now=$(($(date +%s)*1000))
+curl -sS "https://stats.17166969.xyz/api/observe/stats-infra/metrics/sources?from=$((now-900000))&to=$now&release=runtime"
+```
+
+Enabled 2026-11-20 with app `stats-46ac80216376` on runtime
+`rt-a26798107529`. All three sources reported every round with no scrape
+failures. A `native-stats` restart restarted the collector and rewrote the
+release file; the read then showed two incarnations per Worker and one
+`refused` scrape while the Workers started, counted as a gap. `resets` counts
+only restarts seen by one collector instance, so it stayed 0. Metrics are stored outside the installation and observation
+objects and are not in logical backups. The dashboard does not show them yet.
 
 ### Engine load record (2026-11-19)
 

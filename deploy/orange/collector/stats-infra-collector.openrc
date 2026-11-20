@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+# Installed by deploy/orange/collector/install.sh; see docs/openorange.md.
+description="Stats infrastructure metrics collector"
+supervisor=supervise-daemon
+command=/usr/bin/node
+command_args=/opt/stats-infra-collector/main.mjs
+command_user=stats-infra
+output_log=/var/log/stats-infra-collector.log
+error_log=/var/log/stats-infra-collector.log
+retry=TERM/10/KILL/5
+INFRA_COLLECTOR_CONFIG=/etc/stats-infra/collector.json
+export INFRA_COLLECTOR_CONFIG
+
+# native-stats restarts on every runtime or app release, and OpenRC restarts
+# services that need it, so the release file below is rewritten for each one.
+depend() { need native-stats; }
+
+start_pre() {
+    runtime=$(basename "$(readlink /opt/native-rehearsal/orange)")
+    app=$(grep -o 'stats-[0-9a-f]\{12\}' /opt/native-rehearsal/app/stats.jsonc | head -1)
+    case "$runtime" in
+        rt-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) eerror "cannot read the runtime release from /opt/native-rehearsal/orange"; return 1 ;;
+    esac
+    [ -n "$app" ] || { eerror "cannot read the Stats release from stats.jsonc"; return 1; }
+    checkpath -f -o stats-infra:stats-infra -m 0640 /var/log/stats-infra-collector.log
+    checkpath -d -o root:stats-infra -m 0750 /run/stats-infra
+    printf '{"runtime":"%s","app":"%s"}\n' "$runtime" "${app#stats-}" >/run/stats-infra/release.json.next
+    chmod 0644 /run/stats-infra/release.json.next
+    mv /run/stats-infra/release.json.next /run/stats-infra/release.json
+}
