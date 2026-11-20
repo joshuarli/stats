@@ -69,13 +69,13 @@
     },
     {
       "id": "INF-5",
-      "state": "running",
+      "state": "landed",
       "dependsOn": [
         "INF-2",
         "INF-3"
       ],
       "attempts": [
-        "attempt 1: identical offline builds 16636950...; toolchain pnpm ambient, correction requested"
+        "stuff 10770e2: open-orange-1.0.2-laputa.1 sha256:2a3932cd... reproduced 3x offline"
       ]
     },
     {
@@ -86,38 +86,47 @@
     },
     {
       "id": "INF-7",
-      "state": "design",
+      "state": "slice-1-landed",
       "dependsOn": [
         "INF-2"
       ],
-      "attempts": []
+      "attempts": [
+        "rfc c8cb9c4",
+        "stats 516a19a 43bc01a: catalog, parser, codec, store"
+      ]
     },
     {
       "id": "INF-8",
-      "state": "running",
+      "state": "landed",
       "dependsOn": [
         "INF-1"
       ],
       "attempts": [
-        "attempt 1 stopped: gate required rejected/queueHigh no producer reports; contract fixed in 6740e06"
+        "attempt 2: stats 7491093",
+        "runtime canary stats 3a80e2a: 1.0.2 vs 1.0.2-laputa.1 pass"
       ]
     },
     {
       "id": "INF-9",
-      "state": "ready-after",
+      "state": "landed",
       "dependsOn": [
         "INF-3",
         "INF-8"
       ],
-      "attempts": []
+      "attempts": [
+        "stuff d1eef39 engine",
+        "stuff 4dff3f6 native adapter (lane failed 3x; parent implemented)"
+      ]
     },
     {
       "id": "INF-10",
-      "state": "ready-after",
+      "state": "running",
       "dependsOn": [
         "INF-9"
       ],
-      "attempts": []
+      "attempts": [
+        "musl artifact build + in-container canary"
+      ]
     },
     {
       "id": "INF-11",
