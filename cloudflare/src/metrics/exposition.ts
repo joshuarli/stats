@@ -27,6 +27,19 @@ function parseLabels(text: string): Labels {
   return labels;
 }
 
+function addDecimal(a: string, b: string): string {
+  const parse = (value: string) => {
+    const match = /^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/u.exec(value)!;
+    const fraction = match[3] ?? "";
+    return { coefficient: BigInt(`${match[1] === "-" ? "-" : ""}${match[2] || "0"}${fraction}`), exponent: Number(match[4] ?? 0) - fraction.length };
+  };
+  const x = parse(a), y = parse(b), exponent = Math.min(x.exponent, y.exponent);
+  if (!Number.isSafeInteger(exponent) || Math.abs(x.exponent - y.exponent) > 100) throw new Error("aggregate overflow");
+  const result = `${x.coefficient * 10n ** BigInt(x.exponent - exponent) + y.coefficient * 10n ** BigInt(y.exponent - exponent)}e${exponent}`;
+  if (!isDecimal(result)) throw new Error("aggregate overflow");
+  return result;
+}
+
 export function parseExposition(body: string): { values: Values; dropped: Drops } {
   if (new TextEncoder().encode(body).length > MAX_SCRAPE_BYTES) throw new Error("body too large");
   const types = new Map<string, string>();
@@ -59,7 +72,7 @@ export function parseExposition(body: string): { values: Values; dropped: Drops 
     const part = name === family ? "value" : name.slice(family.length + 1);
     const le = labels.le;
     delete labels.le;
-    if (Object.keys(labels).length !== Object.keys(spec.labels).length || Object.entries(labels).some(([k, v]) => !spec.labels[k]?.includes(v))) {
+    if (Object.keys(labels).length !== Object.keys(spec.labels).length || Object.entries(labels).some(([k, v]) => (k !== "actor_name" && !spec.labels[k]?.includes(v)))) {
       bad.add(family);
       dropped.unlisted_label++;
       continue;
@@ -90,7 +103,25 @@ export function parseExposition(body: string): { values: Values; dropped: Drops 
       if (scalar === undefined || series.samples.size !== 1) throw new Error("invalid scalar");
       value = scalar;
     }
-    (values[family] ??= []).push([series.labels, value]);
+    if (series.labels.actor_name !== undefined) {
+      const name = series.labels.actor_name;
+      series.labels.actor_name = /^(?:Installation|installation-[0-9a-f]{8})$/u.test(name) ? "installation" : /^(?:ObservationStore|observation-store-[0-9a-f]{8})$/u.test(name) ? "observation-store" : /^(?:MetricStore|metric-store-[0-9a-f]{8})$/u.test(name) ? "metric-store" : name.startsWith("openorange:cron@") ? "cron" : "other";
+    }
+    const entries = values[family] ??= [];
+    const existing = entries.find(([labels]) => JSON.stringify(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))) === JSON.stringify(Object.entries(series.labels).sort(([a], [b]) => a.localeCompare(b))));
+    if (!existing) entries.push([series.labels, value]);
+    else if (typeof value === "string" && typeof existing[1] === "string") {
+      if (spec.form !== "u64") throw new Error("unsupported aggregate");
+      const a = BigInt(existing[1]), b = BigInt(value);
+      existing[1] = (spec.type === "gauge" ? (a > b ? a : b) : a + b).toString();
+      if (!isU64(existing[1])) throw new Error("aggregate overflow");
+    } else if (typeof value !== "string" && typeof existing[1] !== "string") {
+      const old = existing[1];
+      const buckets = value.buckets.map((count, index) => (BigInt(count) + BigInt(old.buckets[index]!)).toString());
+      const count = (BigInt(value.count) + BigInt(old.count)).toString();
+      if (!buckets.every(isU64) || !isU64(count)) throw new Error("aggregate overflow");
+      existing[1] = { buckets, count, sum: addDecimal(old.sum, value.sum) };
+    } else throw new Error("invalid aggregate");
   }
   return { values, dropped };
 }

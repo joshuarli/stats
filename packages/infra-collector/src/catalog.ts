@@ -8,7 +8,7 @@ export type Family = {
   buckets?: readonly string[];
 };
 
-const worker = { actor_name: ["openorange:cron@serve-primary"] };
+const worker = { actor_name: ["installation", "observation-store", "metric-store", "cron", "other"] };
 const entry = (source: Family["source"], type: Family["type"], labels: Family["labels"] = {}, form: Family["form"] = "u64"): Family => ({ source, type, labels, form });
 export const catalog: Record<string, Family> = {
   openorange_worker_info: entry("openorange", "gauge", { worker: ["serve-primary", "serve-peer", "stats", "stats-observe"], index: ["0", "1"] }),
@@ -16,6 +16,9 @@ export const catalog: Record<string, Family> = {
   rivet_rivetkit_actor_active_count: entry("rivetkit", "gauge", worker),
   rivet_rivetkit_actor_http_requests_active: entry("rivetkit", "gauge", worker),
   rivet_rivetkit_actor_inbox_depth: entry("rivetkit", "gauge", { ...worker, inbox: ["dispatch", "lifecycle"] }),
+  rivet_rivetkit_actor_sqlite_transaction_round_trips: { ...entry("rivetkit", "histogram", worker), buckets: ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024", "+Inf"] },
+  rivet_rivetkit_actor_connections_total: entry("rivetkit", "counter", worker),
+  rivet_rivetkit_actor_sqlite_vfs_commit_total: entry("rivetkit", "counter", worker),
   rivet_rivetkit_actor_started_total: entry("rivetkit", "counter", worker),
   rivet_rivetkit_sqlite_worker_inflight: entry("rivetkit", "gauge", worker),
   rivet_rivetkit_sqlite_worker_queue_depth: entry("rivetkit", "gauge", worker),

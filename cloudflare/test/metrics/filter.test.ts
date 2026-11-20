@@ -36,3 +36,17 @@ void test("stream filtering rejects malformed input and bodies over the scrape c
   overLimit[MAX_SCRAPE_BYTES] = 10;
   await assert.rejects(filterScrape(chunks(overLimit, 65536), () => {}), /too_large/);
 });
+
+void test("acknowledgements must account for each scrape exactly once", async () => {
+  const { reconcileAck } = await import("../../../packages/infra-collector/src/ack.ts");
+  const scrapes = [{ target: "engine:a", sequence: 1 }, { target: "engine:b", sequence: 1 }] as Parameters<typeof reconcileAck>[0];
+  const outcomes = [{ target: "engine:a", sequence: 1, status: "accepted" }, { target: "engine:b", sequence: 1, status: "rejected" }];
+  const ack = { accepted: 1, duplicates: 0, rejected: [{ target: "engine:b", sequence: 1, code: "conflict" }], outcomes };
+  assert.deepEqual(reconcileAck(scrapes, ack), outcomes);
+  assert.equal(reconcileAck(scrapes, { ...ack, outcomes: outcomes.slice(0, 1) }), null);
+  assert.equal(reconcileAck(scrapes, { ...ack, accepted: 2 }), null);
+  assert.equal(reconcileAck(scrapes, { ...ack, rejected: [{ target: "engine:a", sequence: 1 }] }), null);
+  assert.equal(reconcileAck(scrapes, { ...ack, outcomes: [outcomes[0], outcomes[0]] }), null);
+  const duplicates = [{ target: "engine:a", sequence: 1, status: "duplicate" }, { target: "engine:b", sequence: 1, status: "accepted" }];
+  assert.deepEqual(reconcileAck(scrapes, { accepted: 1, duplicates: 1, rejected: [], outcomes: duplicates }), duplicates);
+});

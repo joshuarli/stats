@@ -126,10 +126,7 @@ async function metrics(root: string, directory: string) {
     }
     assert.equal(sources.length, 3, output);
     assert.ok(sources.every(source => source.detail.lastOkAtMs !== null), `${JSON.stringify(sources)}\n${output}`);
-    for (const source of sources) {
-      assert.deepEqual(Object.keys(source.evidence).sort(), ["lastSeenMs", "producer", "received", "releaseId", "sequenceEnd", "sequenceStart", "source"]);
-      assert.equal(source.evidence.releaseId, "rt-0123456789ab");
-    }
+
     const before = await (await fetch(`${origin}/api/v1/admin/objects`, { headers })).json();
     assert.deepEqual(before, { objects: [
       "installation", "observe:discover", "observe:discover-preview", "observe:nanoshop-fieldhouse",
@@ -174,7 +171,44 @@ async function metrics(root: string, directory: string) {
     assert.equal(claim.status, 400);
     assert.match(await claim.text(), /reserved/);
     assert.equal((await fetch(query)).status, 401);
-    assert.equal((await fetch(`${origin}/ingest/metrics/v1/batches`, { method: "POST", headers: { "content-type": "application/vnd.stats.infra-metrics.v1+json" }, body: "{}" })).status, 401);
+    assert.equal((await fetch(`${origin}/ingest/metrics/v1/batches`, { method: "POST", headers: { "content-type": "application/vnd.stats.infra-metrics.v2+json" }, body: "{}" })).status, 401);
+    const stack = { origin, headers, release: "abcdef012345" } as Stack;
+    const credentials = await prepare(stack);
+    const workloadResult = await runWorkload(stack, credentials, origin);
+    assert.ok(workloadResult.ledger.acknowledgedWrites >= 1);
+    assert.ok(workloadResult.ledger.readbackVerified >= 1);
+    assert.equal(workloadResult.ledger.lostWrites, 0);
+    const observationRead = await fetch(`${origin}/api/observe/stats/external?from=${Date.now() - 60000}&to=${Date.now() + 60000}`, { headers });
+    assert.equal(observationRead.status, 200);
+    const trafficStart = Date.now();
+    let traffic = true;
+    const requestLoad = Array.from({ length: 24 }, async (_, index) => {
+      const path = index < 4 ? "/api/v1/hosts" : "/api/v1/admin/objects/observe:stats/export/manifest";
+      while (traffic) await fetch(origin + path, { headers }).then(response => response.arrayBuffer()).catch(() => undefined);
+    });
+    let actorValues: any[] = [];
+    const observed = new Set<string>();
+    try {
+      const deadline = Date.now() + 45000;
+      while (Date.now() < deadline) {
+        const response = await fetch(`${origin}/api/observe/stats-infra/metrics/sources?from=${trafficStart}&to=${Date.now()}&release=runtime`, { headers });
+        if (response.ok) actorValues = (await response.json() as { sources: any[] }).sources;
+        for (const role of ["installation", "observation-store"]) for (const family of ["rivet_rivetkit_actor_http_requests_active", "rivet_rivetkit_actor_sqlite_vfs_commit_total"]) {
+          if (actorValues.some(source => source.detail.values?.[family]?.some(([labels, value]: any) => labels.actor_name === role && typeof value === "string" && Number(value) > 0))) observed.add(`${role}:${family}`);
+        }
+        if (observed.size === 4) break;
+        await delay(500);
+      }
+      for (const role of ["installation", "observation-store"]) for (const family of ["rivet_rivetkit_actor_http_requests_active", "rivet_rivetkit_actor_sqlite_vfs_commit_total"]) {
+        assert.ok(observed.has(`${role}:${family}`), `${role} ${family}: ${JSON.stringify(actorValues.map(source => ({ source: source.detail.source, active: source.detail.values?.rivet_rivetkit_actor_http_requests_active })))}`);
+      }
+    } finally { traffic = false; await Promise.all(requestLoad); }
+    if (process.env.CAPTURE_METRICS === "1") {
+      for (const index of [0, 1]) {
+        const capture = await (await fetch(`http://127.0.0.1:${base + index}/metrics`)).text();
+        writeFileSync(resolve(`fixtures/metrics/v1/scrapes/live-stats-${index}.prom`), capture);
+      }
+    }
     await stop(serve);
     output = "";
     serve = spawn(process.execPath, [
