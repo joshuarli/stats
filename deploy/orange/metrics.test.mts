@@ -172,7 +172,7 @@ async function metrics(root: string, directory: string) {
     assert.match(await claim.text(), /reserved/);
     assert.equal((await fetch(query)).status, 401);
     assert.equal((await fetch(`${origin}/ingest/metrics/v1/batches`, { method: "POST", headers: { "content-type": "application/vnd.stats.infra-metrics.v2+json" }, body: "{}" })).status, 401);
-    const stack = { origin, headers, release: "abcdef012345" } as Stack;
+    const stack = { origin, headers, release: "abcdef012345", historyRuns: [] } as unknown as Stack;
     const credentials = await prepare(stack);
     const workloadResult = await runWorkload(stack, credentials, origin);
     assert.ok(workloadResult.ledger.acknowledgedWrites >= 1);

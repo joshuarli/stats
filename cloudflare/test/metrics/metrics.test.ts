@@ -158,16 +158,18 @@ void test("failed scrape changes the exact gate checkpoint shape", () => {
     const releaseId = "rt-0123456789ab";
     const cohort = { releaseId, workloadId: "load", attempted: 1, succeeded: 1, failures: {}, bodyMismatches: 0,
       acknowledgedWrites: 0, readbackVerified: 0, lostWrites: 0, duplicateMismatches: 0,
+      history: { samples: [], phases: [{ phase: "before", expected: 0, verified: 0, missing: 0, mismatched: 0 }, { phase: "after", expected: 0, verified: 0, missing: 0, mismatched: 0 }] },
       histogram: { relativeError: 0.01, buckets: [[1000, 1]] }, windowStartMs: start,
       windowEndMs: start + 15000, truncated: false };
     const observation = { observer: { status: "ok", checkedAtMs: start + 15000 }, sources: [evidence],
       truncated: false, hostConfounded: false, resources: { cpuSeconds: 1, memoryPeakBytes: 1, restarts: 0 } };
     const gate = {
-      policy: { id: "test", baselineRelease: "old", candidateRelease: releaseId, workloadId: "load", workloadSha256: "hash",
-        requiredSources: [{ source: "worker:serve-peer:1", producer: "infra-standby" }],
-        windows: { startMs: start, warmupMs: 0, measureMs: 15000 }, minRequests: 1, maxEvidenceAgeMs: 100000,
-        limits: { maxErrorShare: 1, latency: { p95Ms: 10, p99Ms: 10, maxRelativeIncreasePercent: 100, absoluteFloorMs: 0 },
-          maxCpuRelativeIncreasePercent: 100, maxMemoryRelativeIncreasePercent: 100, maxRestarts: 1, maxQueueDepth: 0 },
+      policy: { schema: "stats-release-policy/2", id: "test", profile: { name: "smoke", definitionSha256: "a".repeat(64) },
+        baselineRelease: "old", candidateRelease: releaseId, workloadId: "load", workloadSha256: "hash",
+        requiredSources: [{ source: "worker:serve-peer:1", producer: "infra-standby", families: [] }],
+        windows: { startMs: start, warmupMs: 0, measureMs: 15000 }, minimums: { measureMs: 15000, requests: 1 }, maxEvidenceAgeMs: 100000,
+        absolute: { maxErrorShare: 1, p95Ms: 10, p99Ms: 10, maxLostWrites: 0, maxHistoryMismatches: 0, maxCpuSecondsPerKRequests: 1e6, maxMemoryPeakBytes: 1e12, maxRestarts: 1 },
+        regression: { latency: { maxRelativeIncreasePercent: 100, absoluteFloorMs: 0 }, maxCpuRelativeIncreasePercent: 100, maxMemoryRelativeIncreasePercent: 100 },
         histogramMaxRelativeError: 0.1, recovery: { required: true, method: "rollback" } },
       baseline: { releaseId: "old" }, candidate: { releaseId }, workload: { id: "load" },
       ledger: { baseline: { ...cohort, releaseId: "old" }, candidate: cohort },

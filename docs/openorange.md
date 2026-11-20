@@ -277,7 +277,14 @@ service's Resources section.
 
 ### Runtime artifacts
 
-Build a baseline with `TMPDIR="$PWD/.work/tmp" sh deploy/orange/runtime-artifact/build.sh --out .work/tmp/artifact-baseline`. Build the candidate with `TMPDIR="$PWD/.work/tmp" sh deploy/orange/runtime-artifact/build.sh --candidate /path/to/open-orange-1.0.2-laputa.1.tgz --out .work/tmp/artifact-A`. The builder reads Stuff's rollout adapter from `origin/main` in `/Users/josh/repos/stats/.work/tmp/stuff`; fetch that checkout before building. Build the Worker bundles with `make worker-bundle observe-bundle`, then run `TMPDIR="$PWD/.work/tmp" node --experimental-strip-types --test deploy/orange/runtime-artifact.test.mts`. The test consumes these two archives, saves its evidence path, and checks the release verdict and replay. After qualification, pass the same `runtime.tar` to Stuff's `deploy/openorange/bin/rollout stage --target-kind native --host HOST --ssh-config CONFIG --archive .work/tmp/artifact-A/runtime.tar --source SOURCE`. Compare the returned digest with `artifact.json` and the qualified `runtime-closure` before promotion. See the [artifact results](../bench/results/2026-11-20-musl-runtime-artifact/README.md) for the recorded build and verification.
+Runtime artifacts are built in Stuff from a pinned descriptor that names a
+Stats revision and the SHA-256 of each closure input
+(`deploy/openorange/bin/build-runtime-artifact --descriptor FILE --stats-repo
+PATH --out DIR`; see Stuff's `docs/openorange-releases.md`). Each output holds
+`runtime.tar`, the full content `manifest.json` and `build.json`. Qualify a
+pair with `deploy/orange/qualification/promotion.mts` on native Linux
+([deployments](deployments.md)); the receipt binds the content manifest digest
+that the rollout recomputes on the guest.
 
 ## Back up and restore
 
