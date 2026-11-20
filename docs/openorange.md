@@ -466,8 +466,11 @@ lease. Writer handoff on Lisa is outside the standby guest lease and is owned
 by Stuff. `standby-deploy.sh --check` is read-only and takes no lease.
 
 The rollout policy can invoke `deploy/orange/functional-check.mjs` with
-`--ssh-config`, `--host`, `--credential-file`, and `--statsctl`.
-It requires `STATS_ROLLOUT`, `ROLLOUT_RELEASE`, and `ROLLOUT_DIGEST` and checks target identity
+`--rollout`, `--ssh-config`, `--host`, `--credential-file`, and `--statsctl`
+(or `STATS_ROLLOUT`, `STANDBY_SSH_CONFIG`, `STATS_ROLLOUT_HOST`,
+`STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL`). Pass them as arguments when a
+supervised watchdog runs recovery, since it does not inherit the operator's
+environment. The controller supplies `ROLLOUT_RELEASE` and `ROLLOUT_DIGEST`. The check verifies target identity
 before and after the synthetic ingest, including process continuity. The
 observer under `deploy/observer/` runs independently on another host; install
 its service template with explicit executable, state, candidate, credential and

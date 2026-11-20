@@ -16,5 +16,7 @@ test('functional check detects identity change and failed readback', () => {
     writeFileSync(counter, '0');
     assert.equal(JSON.parse(run({ CHANGE: '1' }).stdout).ok, false);
     const failed = run({ FAIL: '1' }); assert.equal(failed.status, 1); assert.equal(JSON.parse(failed.stdout).ok, false);
+    const argvOnly = spawnSync(process.execPath, ['deploy/orange/functional-check.mjs', '--rollout', rollout, '--ssh-config', 'config', '--host', 'host', '--credential-file', 'credential', '--statsctl', statsctl], { env: { PATH: process.env.PATH, ROLLOUT_RELEASE: 'r', ROLLOUT_DIGEST: 'd' }, encoding: 'utf8' });
+    assert.equal(argvOnly.status, 0, argvOnly.stdout + argvOnly.stderr);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

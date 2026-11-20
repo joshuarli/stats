@@ -4,7 +4,7 @@ const options = Object.fromEntries(process.argv.slice(2).reduce((pairs, value, i
   if (index % 2 === 0) pairs.push([value.replace(/^--/, ''), args[index + 1]]);
   return pairs;
 }, []));
-const rollout = process.env.STATS_ROLLOUT;
+const rollout = options.rollout ?? process.env.STATS_ROLLOUT;
 const config = options['ssh-config'] ?? process.env.STANDBY_SSH_CONFIG;
 const host = options.host ?? process.env.STATS_ROLLOUT_HOST;
 const credential = options['credential-file'] ?? process.env.STATS_CHECK_CREDENTIAL_FILE;
