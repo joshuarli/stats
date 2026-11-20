@@ -127,6 +127,30 @@ and `pnpm-lock.yaml` match `/opt/native-rehearsal/orange`. It builds with
 guest health route, the new release in the descriptor and the public health
 route. A failure restores the previous release the same way.
 
+### Standby operations record (2026-11-20)
+
+- **Access.** The guest key, pinned host key and SSH config live in
+  `~/.config/stats/standby/` on the workstation; `deploy/orange/standby-deploy.sh`
+  uses them.
+- **Reboot.** `rc-service stats-recovery-vm stop` shut the guest down
+  gracefully, `qemu-img snapshot -c pre-reboot-20261120 stats.qcow2` recorded a
+  rollback point, and `rc-service stats-recovery-vm start` booted it. Docker,
+  the Engine and `native-stats` started unattended (`native-stats` respawned
+  once while the Engine settled); the public health route answered after 76 s,
+  the release was unchanged, and all five hosts reported again. Delete the
+  internal snapshot at the next planned stop (`qemu-img snapshot -d
+  pre-reboot-20261120 stats.qcow2` with the guest down), since it grows the
+  image.
+- **Deployment markers.** Lisa's relay at `172.29.80.20:8080`
+  (`deploy/orange/recovery/stats-direct.Caddyfile`) also forwards
+  `POST /ingest/services/NAME/deployments`, which Stats authenticates with the
+  service deploy token. OpenOrange's `record-deployment` and `sync-deployments`
+  deliver again; the queued Discover and Wine markers were drained.
+- **Failback.** Native Stats on Lisa with its own Engine remains a planned
+  migration: production units, the ingress move, a soak and a fenced handoff
+  are still gated in [native Lisa](native-lisa.md). Until then the standby is
+  the supported writer, and `stats-prod` on Lisa keeps its 17 stranded actors.
+
 ### Engine load record (2026-11-19)
 
 Lisa's Engine used 1.7 cores with idle applications. Its Prometheus endpoint
