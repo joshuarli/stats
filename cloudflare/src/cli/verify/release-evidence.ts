@@ -6,8 +6,8 @@ import { resolveInvocationPath } from "./files.ts";
 
 type Shape = string | readonly [Shape] | { readonly [key: string]: Shape };
 const id = "id", num = "number", count = "count", bool = "boolean", hash = "hash";
-const checkpoint = { sequence: count, atMs: count };
-const source = { source: id, producer: id, releaseId: id, lastSeenMs: count, sequenceStart: checkpoint, sequenceEnd: checkpoint, received: "nullable-count", drops: "nullable-count", rejected: "nullable-count", queueHigh: "nullable-count" };
+const checkpoint = { startedAtMs: count, atMs: count, accepted: count, dropped: count, queued: count };
+const source = { source: id, producer: id, releaseId: id, lastSeenMs: count, sequenceStart: checkpoint, sequenceEnd: checkpoint, received: count };
 const cohort = { releaseId: id, workloadId: id, attempted: count, succeeded: count, failures: "counts", bodyMismatches: count, acknowledgedWrites: count, readbackVerified: count, lostWrites: count, duplicateMismatches: count, histogram: { relativeError: num, buckets: "buckets" }, windowStartMs: count, windowEndMs: count, truncated: bool };
 const observation = { observer: { status: "observer", checkedAtMs: count }, sources: [source] as const, truncated: bool, hostConfounded: bool, resources: { cpuSeconds: num, memoryPeakBytes: count, restarts: count } };
 const schemas: Record<string, Shape> = {
@@ -54,8 +54,8 @@ function validate(value: unknown, shape: Shape, path: string): void {
   for (const [field, spec] of entries) { const optional = field.endsWith("?"); const key = field.replace(/\?$/u, ""); if (!optional || key in record) validate(record[key], spec, `${path}.${key}`); }
 }
 
-type Checkpoint = { sequence: number; atMs: number };
-type Source = { source: string; producer: string; releaseId: string; lastSeenMs: number; sequenceStart: Checkpoint; sequenceEnd: Checkpoint; received: number | null; drops: number | null; rejected: number | null; queueHigh: number | null };
+type Checkpoint = { startedAtMs: number; atMs: number; accepted: number; dropped: number; queued: number };
+type Source = { source: string; producer: string; releaseId: string; lastSeenMs: number; sequenceStart: Checkpoint; sequenceEnd: Checkpoint; received: number };
 type Ledger = { releaseId: string; workloadId: string; attempted: number; succeeded: number; failures: Record<string, number>; bodyMismatches: number; acknowledgedWrites: number; readbackVerified: number; lostWrites: number; duplicateMismatches: number; histogram: { relativeError: number; buckets: [number, number][] }; windowStartMs: number; windowEndMs: number; truncated: boolean };
 type Observation = { observer: { status: "ok" | "failed"; checkedAtMs: number }; sources: Source[]; truncated: boolean; hostConfounded: boolean; resources: { cpuSeconds: number; memoryPeakBytes: number; restarts: number } };
 export type ReleasePolicy = { id: string; baselineRelease: string; candidateRelease: string; workloadId: string; workloadSha256: string; requiredSources: { source: string; producer: string }[]; windows: { warmupMs: number; measureMs: number; startMs: number }; minRequests: number; maxEvidenceAgeMs: number; limits: { maxErrorShare: number; latency: { p95Ms: number; p99Ms: number; maxRelativeIncreasePercent: number; absoluteFloorMs: number }; maxCpuRelativeIncreasePercent: number; maxMemoryRelativeIncreasePercent: number; maxRestarts: number; maxQueueDepth: number }; histogramMaxRelativeError: number; recovery: { required: true; method: string }; improvement?: { metric: "p95Ms" | "p99Ms" | "cpuSeconds" | "memoryPeakBytes" | "errorShare"; direction: "increase" | "decrease"; minChangePercent: number } };

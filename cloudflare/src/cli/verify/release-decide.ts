@@ -48,9 +48,10 @@ export function decideRelease(evidence: ReleaseEvidence, nowMs: number) {
       if (seen.has(key)) add("delivery", "inconclusive", "duplicate-source", `${side} has duplicate source records`);
       seen.add(key);
       if (s.lastSeenMs > nowMs || nowMs - s.lastSeenMs > p.maxEvidenceAgeMs) add("evidence", "inconclusive", "stale-evidence", `${side} source ${s.source}/${s.producer} is stale or in the future`);
-      if (s.sequenceStart.atMs > start || s.sequenceEnd.atMs > s.lastSeenMs || s.lastSeenMs > o.observer.checkedAtMs || s.sequenceEnd.sequence < s.sequenceStart.sequence || s.received === null || s.drops === null || s.rejected === null || s.queueHigh === null || s.received !== s.sequenceEnd.sequence - s.sequenceStart.sequence + 1 || s.drops > 0 || s.rejected > 0) add("delivery", "inconclusive", "delivery-incomplete", `${side} source ${s.source}/${s.producer} does not prove complete delivery`);
-      if (s.sequenceEnd.atMs < end) add("delivery", nowMs < end ? "pending" : "inconclusive", "delivery-window", `${side} source ${s.source}/${s.producer} has not covered the window`);
-      if (s.queueHigh !== null && s.queueHigh > p.limits.maxQueueDepth) add("limits", defect, "queue-limit", `${side} queue exceeded its limit`);
+      const first = s.sequenceStart, last = s.sequenceEnd;
+      if (first.startedAtMs !== last.startedAtMs || first.atMs > start || last.atMs < first.atMs || last.atMs > s.lastSeenMs || s.lastSeenMs > o.observer.checkedAtMs || last.accepted < first.accepted || s.received !== last.accepted - first.accepted || last.dropped !== first.dropped || first.queued !== 0 || last.queued !== 0) add("delivery", "inconclusive", "delivery-incomplete", `${side} source ${s.source}/${s.producer} does not prove complete delivery`);
+      if (last.atMs < end) add("delivery", nowMs < end ? "pending" : "inconclusive", "delivery-window", `${side} source ${s.source}/${s.producer} has not covered the window`);
+      if (Math.max(first.queued, last.queued) > p.limits.maxQueueDepth) add("limits", defect, "queue-limit", `${side} queue exceeded its limit`);
     }
     for (const required of p.requiredSources) if (!seen.has(`${required.source}\0${required.producer}`)) add("delivery", "inconclusive", "source-missing", `${side} source ${required.source}/${required.producer} did not report`);
     const p95 = percentile(side, 0.95), p99 = percentile(side, 0.99);
