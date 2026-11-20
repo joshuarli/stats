@@ -164,6 +164,14 @@ route. A failure restores the previous release the same way.
   renewals leave tailscaled's file alone. Agents buffer about four minutes,
   so samples from most of the window are lost and read as gaps. STA-130
   tracks guest supervision and independent alerting.
+- **Crash watchdog.** `deploy/orange/recovery/stats-recovery-vm-watchdog`
+  (installed as `/usr/local/libexec/stats-recovery-vm-watchdog` with the
+  OpenRC unit `stats-recovery-vm-watchdog.openrc`, default runlevel) checks
+  `stats-recovery-vm` every 30 s. Only an OpenRC `crashed` state triggers it:
+  it copies `console.log` to `console.log.crash-EPOCH` (newest five kept),
+  restarts the VM, and gives up after three restarts within an hour, logging
+  through syslog tag `stats-recovery-vm-watchdog`. A stopped VM stays stopped,
+  so planned stops and the graceful guest poweroff are unchanged.
 - **Failback.** Native Stats on Lisa with its own Engine remains a planned
   migration: production units, the ingress move, a soak and a fenced handoff
   are still gated in [native Lisa](native-lisa.md). Until then the standby is

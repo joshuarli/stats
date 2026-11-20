@@ -1,0 +1,46 @@
+#!/bin/sh
+set -u
+
+service=${WATCHDOG_SERVICE:-stats-recovery-vm}
+recovery_dir=${WATCHDOG_RECOVERY_DIR:?}
+interval=${WATCHDOG_INTERVAL:-30}
+max_restarts=${WATCHDOG_MAX_RESTARTS:-3}
+window=${WATCHDOG_WINDOW:-3600}
+kept_consoles=5
+
+restarts=""
+gave_up=0
+
+log() { logger -t stats-recovery-vm-watchdog -- "$*"; }
+
+keep_console() {
+    [ -s "$recovery_dir/console.log" ] || return 0
+    cp -p "$recovery_dir/console.log" "$recovery_dir/console.log.crash-$1" || log "could not keep console.log"
+    ls -1 "$recovery_dir"/console.log.crash-* 2>/dev/null | sort -r | tail -n "+$((kept_consoles + 1))" | while read -r old; do rm -f -- "$old"; done
+}
+
+while sleep "$interval"; do
+    case "$(rc-service "$service" status 2>&1)" in
+        *crashed*) ;;
+        *) gave_up=0; continue ;;
+    esac
+    now=$(date +%s)
+    recent=""
+    count=0
+    for at in $restarts; do
+        if [ $((now - at)) -lt "$window" ]; then
+            recent="$recent $at"
+            count=$((count + 1))
+        fi
+    done
+    restarts=$recent
+    if [ "$count" -ge "$max_restarts" ]; then
+        [ "$gave_up" -eq 1 ] || log "$service crashed again after $count restarts within ${window}s; leaving it down"
+        gave_up=1
+        continue
+    fi
+    log "$service crashed; keeping its console and restarting ($((count + 1)) of $max_restarts within ${window}s)"
+    keep_console "$now"
+    restarts="$restarts $now"
+    rc-service "$service" restart >/dev/null 2>&1 || log "$service restart failed"
+done
