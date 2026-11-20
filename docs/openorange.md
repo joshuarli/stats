@@ -208,6 +208,13 @@ artifact.
   abort --run …/4da37e92a8f54c83932b74e1b1a7aee6` reconciled the orphaned
   run, re-activated `rt-3abd20d29960` and ended `recovered` (exit 3) in 4.8 s.
   Public health stayed 200 and all five hosts kept reporting.
+- Services removal (18:14 UTC): `rt-a26798107529` (closure
+  `sha256:a26798107529…`) is `rt-3abd20d29960` without `@rivet-dev/services`
+  and its platform packages. `make orange-artifact-test` built both artifacts
+  (the baseline reproduced `3abd20d2…`) and the exact-bytes canary returned
+  `pass`. Rollout `58dfe686ce674848873f5173cf4a6350` passed 20 of 20 checks
+  and ended `promoted`. The standby has no services package installed, and
+  `rt-3abd20d29960` stays as its recovery artifact.
 - `RIVETKIT_METRICS_PORT` is not set on the standby, so the per-Worker
   metrics are not served yet. Enabling them belongs with the INF-7 collector.
 
