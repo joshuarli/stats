@@ -14,7 +14,6 @@ import { recover, monitorResources, source, waitCheckpoint, writeBundle } from "
 const hash = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const bin = (root: string) => join(root, "node_modules/open-orange/dist/bin.js");
-const tarball = join(process.env.HOME!, ".local/share/openorange-releases/open-orange-1.0.2-laputa.1/open-orange-1.0.2-laputa.1.tgz");
 
 async function stop(child: ChildProcess | undefined) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -65,7 +64,6 @@ exec node "$3" serve --config "$4" --config "$5"`;
 }
 
 await test("owned runtime passes the release canary and exposes both worker metrics", { timeout: 900_000 }, async () => {
-  assert.equal(hash(tarball), "2a3932cd31115bf01bfcbd84d2a836fd66889203e7dd7d5d5e86c07cde2c8dfb");
   const scratch = mkdtempSync(resolve(".work/tmp/runtime-canary-"));
   let baseline: Stack | undefined, candidate: Stack | undefined;
   try {
@@ -78,8 +76,9 @@ await test("owned runtime passes the release canary and exposes both worker metr
       const extract = spawnSync("tar", ["-xf", archive, "-C", roots[index]!], { encoding: "utf8" });
       assert.equal(extract.status, 0, extract.stderr);
     }
-    baseline = Object.assign(await startStack(join(scratch, "baseline"), "baseline", false, roots[0], true), { closureDigest: manifests[0].closure_digest });
-    candidate = Object.assign(await startStack(join(scratch, "candidate"), "candidate", false, roots[1], true), { closureDigest: manifests[1].closure_digest });
+    const releaseIds = manifests.map(manifest => "rt-" + String(manifest.closure_digest).slice("sha256:".length, "sha256:".length + 12));
+    baseline = Object.assign(await startStack(join(scratch, "baseline"), releaseIds[0]!, false, roots[0], true), { closureDigest: manifests[0].closure_digest });
+    candidate = Object.assign(await startStack(join(scratch, "candidate"), releaseIds[1]!, false, roots[1], true), { closureDigest: manifests[1].closure_digest });
     const from = Date.now() - 60_000;
     const [bc, cc] = await Promise.all([prepare(baseline), prepare(candidate)]);
     await Promise.all([waitCheckpoint(baseline, from, from), waitCheckpoint(candidate, from, from)]);

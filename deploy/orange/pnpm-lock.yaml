@@ -179,8 +179,8 @@ importers:
         specifier: 0.2.5
         version: 0.2.5
       open-orange:
-        specifier: 1.0.2
-        version: 1.0.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2)
+        specifier: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz
+        version: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2)
       rivetkit:
         specifier: 3.1.2-rc.1
         version: 3.1.2-rc.1(ws@8.21.0)
@@ -1504,8 +1504,9 @@ packages:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
 
-  open-orange@1.0.2:
-    resolution: {integrity: sha512-6n2iAtsEdHFh+3p05wcrILwdBdbCwB9u/yS/LdVK7ZY2pPQr5LYHFuq1Hq3OXe10XqsuPP/cLuK8QiOdYt+NuA==}
+  open-orange@https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz:
+    resolution: {integrity: sha512-uR99thtTtneWvEbek/Ytr6RLXkShWH3l4fD61ZLQgzZNn+u6cIHkxfL1AmCD+c/TvTkNV1vghi3hYI6Q4k6Z4w==, tarball: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz}
+    version: 1.0.2-laputa.1
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2950,7 +2951,7 @@ snapshots:
 
   on-exit-leak-free@2.1.2: {}
 
-  open-orange@1.0.2(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2):
+  open-orange@https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2):
     dependencies:
       '@aws-sdk/client-s3': 3.1153.0
       '@rivet-dev/agentos-core': 0.4.8

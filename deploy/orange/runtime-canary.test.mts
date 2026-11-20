@@ -15,7 +15,6 @@ import { recover, monitorResources, source, waitCheckpoint, writeBundle } from "
 const hash = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const bin = (root: string) => join(root, "node_modules/open-orange/dist/bin.js");
-const tarball = join(process.env.HOME!, ".local/share/openorange-releases/open-orange-1.0.2-laputa.1/open-orange-1.0.2-laputa.1.tgz");
 
 async function stop(child: ChildProcess | undefined) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
@@ -75,14 +74,13 @@ async function metrics(root: string, directory: string) {
 }
 
 await test("owned runtime passes the release canary and exposes both worker metrics", { timeout: 300_000 }, async () => {
-  assert.equal(hash(tarball), "2a3932cd31115bf01bfcbd84d2a836fd66889203e7dd7d5d5e86c07cde2c8dfb");
   const scratch = mkdtempSync(resolve(".work/tmp/runtime-canary-"));
   let baseline: Stack | undefined, candidate: Stack | undefined;
   try {
     const closure = join(scratch, "closure"); mkdirSync(closure);
     for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) copyFileSync(join(ORANGE_ROOT, name), join(closure, name));
     const packagePath = join(closure, "package.json");
-    const pkg = JSON.parse(readFileSync(packagePath, "utf8")); pkg.dependencies["open-orange"] = `file:${tarball}`;
+    const pkg = JSON.parse(readFileSync(packagePath, "utf8")); pkg.dependencies["open-orange"] = "1.0.2";
     writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
     const install = spawnSync("pnpm", ["install"], { cwd: closure, encoding: "utf8", timeout: 120_000 });
     assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
@@ -90,14 +88,14 @@ await test("owned runtime passes the release canary and exposes both worker metr
     assert.equal(diff.status, 1, diff.stderr);
     const changed = diff.stdout.split("\n").filter(line => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line));
     assert.equal(changed.length, 11, diff.stdout);
-    assert.ok(changed.every(line => /open-orange|specifier: 1\.0\.2|version: 1\.0\.2|resolution: \{integrity: sha512-(?:6n2i|uR99)|version: 1\.0\.2-laputa\.1/.test(line)), diff.stdout);
+    assert.ok(changed.every(line => /open-orange|tarballs\/b91f7db61b53b677|specifier: 1\.0\.2|version: 1\.0\.2|resolution: \{integrity: sha512-(?:6n2i|uR99)|version: 1\.0\.2-laputa\.1/.test(line)), diff.stdout);
     console.log("lockfile diff", diff.stdout);
-    for (const [dir, version] of [[ORANGE_ROOT, "1.0.2"], [closure, "1.0.2-laputa.1"]]) {
+    for (const [dir, version] of [[closure, "1.0.2"], [ORANGE_ROOT, "1.0.2-laputa.1"]]) {
       const result = spawnSync(process.execPath, [bin(dir!), "--version"], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout.trim(), version); console.log("orange version", version);
     }
-    baseline = await startStack(join(scratch, "baseline"), "baseline");
-    candidate = await startStack(join(scratch, "candidate"), "candidate", false, closure);
+    baseline = await startStack(join(scratch, "baseline"), "baseline", false, closure);
+    candidate = await startStack(join(scratch, "candidate"), "candidate");
     assert.notEqual(baseline.runtimeRoot, candidate.runtimeRoot);
     const from = Date.now() - 60_000;
     const [bc, cc] = await Promise.all([prepare(baseline), prepare(candidate)]);
@@ -119,6 +117,6 @@ await test("owned runtime passes the release canary and exposes both worker metr
     const replay = spawnSync("pnpm", ["--dir", "cloudflare", "-s", "statsctl", "verify", "release", "--evidence", bundle, "--replay", "--json"], { encoding: "utf8" });
     assert.equal(replay.status, 0, replay.stderr); assert.equal(JSON.parse(replay.stdout).payload.verdict, "pass");
     console.log("manifests", JSON.stringify(manifests)); console.log("verdict", JSON.stringify(result.decision)); console.log("replay", replay.stdout.trim());
-    await metrics(closure, join(scratch, "metrics"));
+    await metrics(ORANGE_ROOT, join(scratch, "metrics"));
   } finally { await candidate?.stop(); await baseline?.stop(); rmSync(scratch, { recursive: true, force: true }); }
 });

