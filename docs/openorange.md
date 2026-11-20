@@ -146,6 +146,24 @@ route. A failure restores the previous release the same way.
   `POST /ingest/services/NAME/deployments`, which Stats authenticates with the
   service deploy token. OpenOrange's `record-deployment` and `sync-deployments`
   deliver again; the queued Discover and Wine markers were drained.
+- **Outage (13:51–15:41 UTC).** The guest's qemu process exited around 13:51
+  (last `stats.qcow2` write; OpenRC reported `crashed`; no OOM or qemu
+  segfault in the host log at that time, so the cause is unknown). Lisa's
+  `oo-stats-live-tunnel` and `oo-stats-direct-tunnel` then could not
+  reconnect: udhcpc's 07:50 lease renewal had replaced `/etc/resolv.conf`
+  with `nameserver 10.0.1.1`, tailscaled did not repair it as it had at
+  19:50 the day before, and `threadripper` stopped resolving. The open
+  tunnels hid this until the guest died. Public health returned 502 for
+  about 1 h 50 min and nothing alerted. Recovery: `qemu-img check -U` found
+  no errors, `rc-service stats-recovery-vm restart` booted the guest
+  (`native-stats` listening with 2 Workers after about a minute),
+  `tailscale set --accept-dns=false` then `--accept-dns=true` on Lisa
+  restored MagicDNS, and health answered 200 at 15:41:34 on release
+  `accd14a0364c`. Lisa's `/etc/udhcpc/udhcpc.conf` now sets
+  `RESOLV_CONF="no"` (original kept as `udhcpc.conf.pre-20261120`) so
+  renewals leave tailscaled's file alone. Agents buffer about four minutes,
+  so samples from most of the window are lost and read as gaps. STA-130
+  tracks guest supervision and independent alerting.
 - **Failback.** Native Stats on Lisa with its own Engine remains a planned
   migration: production units, the ingress move, a soak and a fenced handoff
   are still gated in [native Lisa](native-lisa.md). Until then the standby is

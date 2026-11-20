@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 130
+Next: 131
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -12,6 +12,15 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 
 
+
+### STA-130 · P1 · Supervise the standby writer and alert when Stats is down
+
+- **Area:** Operations
+- **Where:** deploy/orange/recovery/stats-recovery-vm.openrc; docs/openorange.md standby record; docs/CAMPAIGN-INFRA-RELEASE.md
+- **Problem:** On 2026-11-20 the standby guest's qemu exited at about 13:51 UTC with no recorded cause. `stats-recovery-vm` starts qemu with `start-stop-daemon --daemonize`, so nothing restarted it, and no observer outside Stats noticed the 1 h 50 min outage. The same outage exposed Lisa's DHCP client overwriting MagicDNS, now disabled.
+- **Recommendation:** Run the guest under a supervisor that restarts it after an unexpected exit while keeping the graceful guest poweroff on stop, and install it at the next planned stop. Add an external health check on a host other than Threadripper and Lisa that alerts on sustained public-health failure. Record the qemu exit cause if it recurs (keep console.log and the host log).
+- **Fix with:** root-cause
+- **Effort:** S
 
 ### STA-129 · P1 · Investigate deployment stall and interrupted rollback
 
