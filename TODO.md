@@ -1,26 +1,7 @@
 Prefix: STA
-Next: 131
+Next: 135
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
-
-
-
-
-
-
-
-
-
-
-
-### STA-130 · P1 · Supervise the standby writer and alert when Stats is down
-
-- **Area:** Operations
-- **Where:** deploy/orange/recovery/stats-recovery-vm.openrc; docs/openorange.md standby record; docs/CAMPAIGN-INFRA-RELEASE.md
-- **Problem:** On 2026-11-20 the standby guest's qemu exited at about 13:51 UTC with no recorded cause. `stats-recovery-vm` starts qemu with `start-stop-daemon --daemonize`, so nothing restarted it, and no observer outside Stats noticed the 1 h 50 min outage. The same outage exposed Lisa's DHCP client overwriting MagicDNS, now disabled.
-- **Recommendation:** Run the guest under a supervisor that restarts it after an unexpected exit while keeping the graceful guest poweroff on stop, and install it at the next planned stop. Add an external health check on a host other than Threadripper and Lisa that alerts on sustained public-health failure. Record the qemu exit cause if it recurs (keep console.log and the host log).
-- **Fix with:** root-cause
-- **Effort:** S
 
 ### STA-129 · P1 · Investigate deployment stall and interrupted rollback
 
@@ -31,6 +12,15 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** root-cause
 - **Effort:** M
 
+### STA-130 · P1 · Supervise the standby writer and alert when Stats is down
+
+- **Area:** Operations
+- **Where:** deploy/orange/recovery/stats-recovery-vm.openrc; docs/openorange.md standby record; docs/CAMPAIGN-INFRA-RELEASE.md
+- **Problem:** On 2026-11-20 the standby guest's qemu exited at about 13:51 UTC with no recorded cause. `stats-recovery-vm` starts qemu with `start-stop-daemon --daemonize`, so nothing restarted it, and no observer outside Stats noticed the 1 h 50 min outage. The same outage exposed Lisa's DHCP client overwriting MagicDNS, now disabled.
+- **Recommendation:** Run the guest under a supervisor that restarts it after an unexpected exit while keeping the graceful guest poweroff on stop, and install it at the next planned stop. Add an external health check on a host other than Threadripper and Lisa that alerts on sustained public-health failure. Record the qemu exit cause if it recurs (keep console.log and the host log).
+- **Fix with:** root-cause
+- **Effort:** S
+
 ### STA-128 · P2 · Measure observation overhead after the tenfold fixture is usable
 
 - **Area:** Performance
@@ -40,3 +30,38 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** make-it-fast
 - **Effort:** M
 
+### STA-131 · P3 · Preserve large retry ceilings in Rust producer
+
+- **Area:** producer · retry
+- **Where:** packages/stats-producer/src/backoff.rs:6
+- **Problem:** A nonzero max_retry_after whose millisecond count exceeds u64::MAX wraps when cast, so a ceiling of u64::MAX + 1 milliseconds becomes zero and eliminates the intended backoff. Config accepts arbitrary nonzero Duration values.
+- **Recommendation:** Clamp or compare Duration values without truncating the configured ceiling, and cover the boundary through the producer retry behavior.
+- **Fix with:** typing-audit
+- **Effort:** S
+
+### STA-132 · P3 · Complete benchmark attribution and scenario preflight
+
+- **Area:** bench · observability
+- **Where:** bench/run.mjs; bench/README.md
+- **Problem:** The local collection replay supplies CPU and work counts, but dashboard and ingest scenarios lack a unified cross-process attribution and automatic freshness check for every external artifact. Native observation and agent studies require named hosts and private fixtures.
+- **Recommendation:** Add representative cross-process CPU, allocation and I/O attribution and validate external fixture and artifact identities before scenario runs; retain separate instrumented and timed runs.
+- **Fix with:** bench-pyramid
+- **Effort:** M
+
+### STA-133 · P3 · Producer tests use real retry sleeps, so a failing run outlives the runner deadline
+
+- **Area:** producer · tests
+- **Where:** cloudflare/test/producer/producer.test.ts:76-300
+- **Problem:** The golden-frame and error-code tests construct the producer without the injected sleep. A fault that makes delivery fail (for example readAck returning null) fails them, and the default real backoff sleep (up to 30 s) is the likely holder of the process, not confirmed per mutant. A hand replay of 61 readAck mutants showed 21 runs that printed at least one failing test and still did not exit within 12 s; Stryker records such runs as timeouts.
+- **Recommendation:** Pass the same injected no-op sleep the retry tests use, so a failing producer test exits promptly and the mutation run classifies it as killed.
+- **Fix with:** test-audit
+- **Effort:** S
+
+### STA-134 · P3 · Orange cancellation test has a fixed 5 s start deadline that fails on a loaded host
+
+- **Area:** deploy · tests
+- **Where:** cloudflare/test/scripts/orange-deploy.test.ts:305
+- **Problem:** The cancellation test waits at most 5000 ms for the stub deployment to reach its blocked state. On a host at load average about 15 the SIGTERM during smoke case failed once with AbortError and passed on the next full make test run; the other seven signal cases passed in the same run.
+- **Recommendation:** Wait on the blocked marker with a deadline scaled to the test timeout, or bound the child by its own readiness signal, so the signal-handling assertion is not tied to process start time.
+- **Fix with:** test-audit
+- **Effort:** S

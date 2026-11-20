@@ -2,8 +2,6 @@ export const DEFAULT_ORIGIN = "https://stats.17166969.xyz";
 
 export type Target = "orange" | "node";
 
-export const TARGETS: readonly Target[] = ["orange", "node"];
-
 export interface Deployment {
   readonly origin: string;
   readonly target: Target;

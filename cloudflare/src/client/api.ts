@@ -48,7 +48,7 @@ export interface HostSystem {
 
 export type { HistoryQuery };
 
-export type { CollectorState, ProbeTarget } from "./project-model.ts";
+export type { CollectorState } from "./project-model.ts";
 export type Project = ProjectSummary & { readonly latestDeployment?: LatestDeployment };
 
 type JsonObject = { readonly [key: string]: unknown };

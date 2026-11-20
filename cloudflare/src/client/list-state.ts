@@ -1,3 +1,4 @@
+import { onCleanup } from "solid-js";
 import type { Sort } from "./components/sort";
 
 export const hostStatusFilters = ["online", "stale", "no samples", "revoked"] as const;
@@ -28,7 +29,19 @@ export function createListState(): ListState {
 }
 
 export function restoreListFocus(link: HTMLAnchorElement): void {
-  requestAnimationFrame(() => {
-    if (link.isConnected && document.activeElement === document.body) link.focus();
+  let observer: MutationObserver | undefined;
+  const focusWhenConnected = () => {
+    if (!link.isConnected) return;
+    observer?.disconnect();
+    if (document.activeElement === document.body) link.focus();
+  };
+  const frame = requestAnimationFrame(() => {
+    if (link.isConnected) {
+      focusWhenConnected();
+    } else {
+      observer = new MutationObserver(focusWhenConnected);
+      observer.observe(document, { childList: true, subtree: true });
+    }
   });
+  onCleanup(() => { cancelAnimationFrame(frame); observer?.disconnect(); });
 }

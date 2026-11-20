@@ -18,10 +18,6 @@ export function addAll(parts: readonly Track[]): Track {
   return { times: first.times, values };
 }
 
-export function scaled(track: Track, factor: number): Track {
-  return { times: track.times, values: track.values.map(value => (value === null ? null : value * factor)) };
-}
-
 export function holdLast(track: Track): Track {
   let held: { readonly atMs: number; readonly value: number } | undefined;
   const values = track.values.map((value, index) => {

@@ -1,0 +1,23 @@
+{
+  // Allowlist: five entries (fixtures, one host-tool regex, two producer-file exports,
+  // one alias). `ignoreExportsUsedInFile` is a scan rule, not an entry: it skips exports
+  // that only their own file uses.
+  // Captured producer bundles and profile fixtures are test inputs.
+  "ignore": ["**/fixtures/**"],
+  // These are host tools, not npm package binaries.
+  "ignoreBinaries": ["^(agent-browser|perf-gate-ready|clang)$"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    // These files are copied into external Workers (test/observe/producer-files.test.ts).
+    "cloudflare/src/observe/cloudflare/mark.ts": ["exports"],
+    "cloudflare/src/observe/producer/channel.ts": ["types"],
+    // Equal duration values name separate observation concepts.
+    "cloudflare/src/observe/core/limits.ts": ["duplicates"]
+  },
+  "workspaces": {
+    ".": { "entry": ["bench/**/*.{mjs,js,ts}", "scripts/*.{mjs,js,ts}", "deploy/orange/**/*.{mts,mjs}"] },
+    "cloudflare": { "entry": ["cloudflare.config.ts!", "vite*.config.ts!", "vitest*.{mjs,ts}", "playwright.config.ts", "src/client/index.tsx!", "src/cloudflare/index.ts!", "src/node/main.ts!", "src/observe/cloudflare/worker.ts!", "src/observe/client/cli.ts!", "src/cli/statsctl.ts!", "scripts/*.{mjs,ts,mts}", "test/**/*.{ts,tsx,mjs}", "bench/**/*.{ts,mjs}", "local/**/*.{ts,mjs}", "observe-worker/**/*.{ts,mjs}"] },
+    "packages/producer": { "entry": ["src/index.ts!"] },
+    "packages/platform-bridge": { "entry": ["src/main.ts!"] }
+  }
+}

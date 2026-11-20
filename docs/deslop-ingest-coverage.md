@@ -112,6 +112,16 @@ A run with `--test-force-exit` also allowed every previously caught
 identity to survive, so that mode is excluded from the evidence.
 The repeated timeouts keep this scope outside retained CI.
 
+Disposition of the 35 timeouts: all are detected. A hand replay of 61
+mutants of the same lines (`node --test` on the producer test file, 20 s
+kill) gave 35 killed, 21 timed out and 5 survived. Each of the 21 timeouts
+printed 1 to 15 failing tests before the process outlived 12 s, so the
+timeout is a hang after detection, not an untested behavior. The tests that
+build a producer without the injected `sleep` keep real backoff sleeps
+pending after a failure (STA-133). The 5 survivors are the return-type
+annotation and the `in` and `typeof` checks that `Number.isSafeInteger`
+already covers.
+
 Run the pinned Stryker command runner serially with coverage analysis
 off, mutating `packages/producer/src/index.ts:222-258`. Use `node
 --test cloudflare/test/producer/producer.test.ts` and include
