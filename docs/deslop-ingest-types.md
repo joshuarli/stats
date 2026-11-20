@@ -114,3 +114,60 @@ For the bridge checker use `pnpm --dir cloudflare exec tsrs -p
 the lint sample, use `pnpm --dir cloudflare exec oxlint --type-aware
 -D typescript/RULE -f json "$PWD/packages/COMPONENT/src"`, passing
 the component directory as an absolute path.
+
+## Repository candidate measurements at 7fc3ff9
+
+The existing profiles retain `strict`, `noUncheckedIndexedAccess` and
+`exactOptionalPropertyTypes`; `noImplicitOverride` is enabled in the main
+Cloudflare and producer profiles and inherited by the bridge, binary and
+observe profiles. The deployments profile passes with it (zero diagnostics),
+but has no defect or removed assertion witness, so it is not newly enabled.
+The existing Oxlint source profile retains `no-explicit-any`, the five
+`no-unsafe-*` rules, `no-floating-promises` and
+`switch-exhaustiveness-check`. There are no new profile adoptions in this
+measurement.
+
+`noPropertyAccessFromIndexSignature` produced 448 diagnostics in the main
+Cloudflare project, 227 in binary, 18 in deployments, 77 in observe, and zero
+in each producer and bridge project (the project counts overlap). It is
+rejected: the ingest sample above establishes dynamic-record spelling false
+positives and no defect witness. `no-non-null-assertion` produced 380 findings
+across Cloudflare and both TypeScript packages. It is rejected for the
+previously established bounded ingest false positives; the remaining sites
+are not thereby proven safe. Running each of the already enabled Oxlint
+candidates on those source trees reported zero findings for the selected
+rule. The combined invocation also reported one existing
+`no-misused-promises` finding in the bridge when checked using the Cloudflare
+configuration; this is not a finding from any selected candidate.
+
+Clippy on all targets produced these diagnostic counts, including duplicate
+library/test compilations and tests: agent: unsafe 148, wildcard enum match 5,
+match wildcard single variant 0, possible truncation 24, sign loss 4, unwrap
+241, expect 6, redundant clone 0, needless pass by value 12; Rust producer:
+respectively 0, 0, 0, 6, 2, 61, 0, 0, 4. The unsafe forbid candidate cannot
+represent the agent's platform FFI; the previous wire audit identifies bounded
+casts. Tests deliberately unwrap results. The producer ceiling cast has a real extreme-duration defect, filed as
+DSLP-9: `backoff_delay(0, 100 ms, 1.0, Duration::from_millis(u64::MAX)
++ 1 ms)` returned 0 ms in a scratch Rust witness. The same lint also flags
+intentional rounding and the current-time
+conversion, while the agent wire audit identifies bounded casts; the
+false-positive budget is exceeded. The other candidates have no established
+defect or deleted escape hatch witness at the proposed profile; none is newly
+enabled. These counts are discovery, not a claim that each site
+is safe. Linux and optional BPF feature diagnostics were not measured on this
+macOS host.
+
+Measurements used Node 26.13.1, pnpm 12.21.0, tsrs 0.25.0-ts7.1.0-beta,
+Oxlint 1.93.0 and the pinned Rust nightly. Run each TypeScript project with
+`tsrs -p CONFIG --noEmit --fast --noPropertyAccessFromIndexSignature`; the
+four Cloudflare projects exited 2 and both packages exited 0. Run Oxlint from
+`cloudflare` with `--type-aware -D typescript/RULE -f json` over `src` and
+the absolute package source paths. Each selected rule had zero diagnostics
+except the 380 non-null sites; the invocation exited 1 due to the separate
+bridge diagnostic. Both Rust commands used `cargo clippy --locked --all-targets
+--message-format=json` with the nine `-W` candidates in the wire command
+above; both exited 0. The agent needed the temporary workspace fixture
+documented in `docs/deslop-macos-sandbox.md`. Escape-hatch expression counts
+in first-party source paths were 291 TypeScript and 257 Rust matching lines;
+no source was changed and the count is unchanged. No new runtime or public
+contract change is claimed.

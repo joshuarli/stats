@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 9
+Next: 10
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier Calibration). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -21,9 +21,23 @@ The local migration suite passed all 41 tests with zero skips. Its
 missing-baseline control failed with the intended diagnostic. The hosted
 Linux test, lint and macOS dashboard jobs passed.
 
+### Types at 7fc3ff9
+
+The existing strict TypeScript profiles and source lint rules remain adopted;
+no new setting met the witness and false-positive rule. The repository
+measurements, counts, rejected settings, existing witnesses and platform
+limits are in [the type inventory](docs/deslop-ingest-types.md). In particular,
+`noPropertyAccessFromIndexSignature` yielded 448/227/18/77 diagnostics in the
+four overlapping Cloudflare projects and zero in each package;
+`no-non-null-assertion` yielded 380 across source trees. Clippy's all-target
+agent/producer counts respectively were unsafe 148/0, wildcard enum 5/0,
+single-variant wildcard 0/0, truncation 24/6, sign loss 4/2, unwrap 241/61,
+expect 6/0, redundant clone 0/0 and needless pass-by-value 12/4. These include
+test and duplicate compilation warnings. The extreme retry-ceiling defect is
+filed as DSLP-9; the type inventory explains why blanket truncation lint still
+exceeds the false-positive budget. No escape hatch or runtime behavior changed.
+
 ## Tickets
-
-
 
 ### DSLP-3 · P2 · Types: strict profile and typing findings
 
@@ -51,3 +65,13 @@ Linux test, lint and macOS dashboard jobs passed.
 - **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
 - **Fix with:** deslop
 - **Effort:** M
+
+### DSLP-9 · P3 · Preserve large retry ceilings in Rust producer
+
+- **Area:** producer · retry
+- **Where:** packages/stats-producer/src/backoff.rs:6
+- **Problem:** A nonzero max_retry_after whose millisecond count exceeds u64::MAX wraps when cast, so a ceiling of u64::MAX + 1 milliseconds becomes zero and eliminates the intended backoff. Config accepts arbitrary nonzero Duration values.
+- **Recommendation:** Clamp or compare Duration values without truncating the configured ceiling, and cover the boundary through the producer retry behavior.
+- **Fix with:** typing-audit
+- **Effort:** S
+
