@@ -275,6 +275,21 @@ Lisa's Engine used 1.7 cores with idle applications. Its Prometheus endpoint
 Stats shows the Engine's share on Lisa's host page and the `oo-engine`
 service's Resources section.
 
+- Second patch (22:38 UTC): `rt-2c70c316ce8d` (content manifest
+  `sha256:2c70c316ce8d89e4…`) is the production closure on
+  `open-orange@1.0.2-laputa.2`: `laputa.1` plus the serve-version patch, so
+  `orange serve` logs `(open-orange 1.0.2-laputa.2)`. Package and runtime were
+  each built twice byte-identically from fresh clones on Threadripper with
+  Stuff's pinned descriptors (`runtime-candidate-laputa.2.json`). The
+  production descriptor rebuilt `sha256:64e03bb8…`, the content of the running
+  `rt-a26798107529`. The promotion profile judged the pair `pass`; its receipt
+  binds the candidate digest that `rollout stage` recomputed on the guest, and
+  the archive SHA-256 it staged (`6cb79216…`). Rollout
+  `4130c23316344b789076ccb401d55e04` passed 13 of 13 adapter and functional
+  checks over 600 s and ended `promoted`. `rt-a26798107529` stays as the
+  recovery artifact. The full record is in the
+  [campaign](CAMPAIGN-INFRA-RELEASE.md#qualification-and-unattended-recovery-2026-11-20).
+
 ### Runtime artifacts
 
 Runtime artifacts are built in Stuff from a pinned descriptor that names a
