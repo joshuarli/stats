@@ -6,9 +6,9 @@
 # the next native-stats restart, which also (re)starts the collector.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
-config=${STANDBY_SSH_CONFIG:-$HOME/.config/stats/standby/ssh_config}
+config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
+: "${STATS_ROLLOUT:?STATS_ROLLOUT is required}"
 metrics_port=9100
-guest() { ssh -F "$config" stats-standby "$@"; }
 fail() { echo "collector-install: $*" >&2; exit 1; }
 
 [ -r "$config" ] || fail "missing SSH config $config"
@@ -26,27 +26,41 @@ EOF
 cp "$root/deploy/orange/collector/stats-infra-collector.openrc" "$work/"
 tar -C "$work" -czf "$work/install.tgz" bundle/main.mjs bundle/manifest.json collector.json stats-infra-collector.openrc
 
-guest "set -eu; stage=\$(mktemp -d); trap 'rm -rf \$stage' EXIT; tar -C \$stage -xzf -
+cat >"$work/install-guest.sh" <<'GUEST'
+set -eu; stage=$(mktemp -d); trap 'rm -rf $stage' EXIT; tar -C $stage -xzf -
     getent group stats-infra >/dev/null || addgroup -S stats-infra
     id stats-infra >/dev/null 2>&1 || adduser -S -D -H -h /var/empty -s /sbin/nologin -G stats-infra stats-infra
     install -d -o root -g root -m 0755 /opt/stats-infra-collector
-    install -o root -g root -m 0644 \$stage/bundle/main.mjs \$stage/bundle/manifest.json /opt/stats-infra-collector/
+    install -o root -g root -m 0644 $stage/bundle/main.mjs $stage/bundle/manifest.json /opt/stats-infra-collector/
     install -d -o root -g stats-infra -m 0750 /etc/stats-infra
-    install -o root -g stats-infra -m 0640 \$stage/collector.json /etc/stats-infra/collector.json
+    install -o root -g stats-infra -m 0640 $stage/collector.json /etc/stats-infra/collector.json
     if [ ! -s /etc/stats-infra/token ]; then
         umask 077
-        printf 'nft_%s' \"\$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')\" >/etc/stats-infra/token.next
+        printf 'nft_%s' "$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')" >/etc/stats-infra/token.next
         chown root:stats-infra /etc/stats-infra/token.next; chmod 0440 /etc/stats-infra/token.next
         mv /etc/stats-infra/token.next /etc/stats-infra/token
     fi
     grep -qx 'nft_[A-Za-z0-9_-]\{43\}' /etc/stats-infra/token
-    verifier=\$(tr -d '\n' </etc/stats-infra/token | sha256sum | cut -d' ' -f1)
+    verifier=$(tr -d '\n' </etc/stats-infra/token | sha256sum | cut -d' ' -f1)
     conf=/etc/conf.d/native-stats
-    [ -e \$conf.pre-infra-metrics ] || cp -p \$conf \$conf.pre-infra-metrics
-    sed -i -e '/^export INFRA_METRICS_TOKEN_SHA256=/d' -e '/^export RIVETKIT_METRICS_PORT=/d' \$conf
-    printf 'export INFRA_METRICS_TOKEN_SHA256=%s\nexport RIVETKIT_METRICS_PORT=%s\n' \$verifier $metrics_port >>\$conf
-    grep -q '^ORANGE_WORKER_SECRETS=.*INFRA_METRICS_TOKEN_SHA256' \$conf ||
-        sed -i 's/^ORANGE_WORKER_SECRETS=\(.*\)$/ORANGE_WORKER_SECRETS=\1,INFRA_METRICS_TOKEN_SHA256/' \$conf
-    install -o root -g root -m 0755 \$stage/stats-infra-collector.openrc /etc/init.d/stats-infra-collector
-    rc-update add stats-infra-collector default >/dev/null" <"$work/install.tgz"
+    [ -e $conf.pre-infra-metrics ] || cp -p $conf $conf.pre-infra-metrics
+    sed -i -e '/^export INFRA_METRICS_TOKEN_SHA256=/d' -e '/^export RIVETKIT_METRICS_PORT=/d' $conf
+    printf 'export INFRA_METRICS_TOKEN_SHA256=%s\nexport RIVETKIT_METRICS_PORT=%s\n' $verifier 9100 >>$conf
+    grep -q '^ORANGE_WORKER_SECRETS=.*INFRA_METRICS_TOKEN_SHA256' $conf ||
+        sed -i 's/^ORANGE_WORKER_SECRETS=\(.*\)$/ORANGE_WORKER_SECRETS=\1,INFRA_METRICS_TOKEN_SHA256/' $conf
+    install -o root -g root -m 0755 $stage/stats-infra-collector.openrc /etc/init.d/stats-infra-collector
+    rc-update add stats-infra-collector default >/dev/null
+GUEST
+if [ "${1:-}" = --prepare ]; then
+    cp "$work/install.tgz" "$2/collector.tgz"
+    cp "$work/install-guest.sh" "$2/collector-install.sh"
+    exit 0
+fi
+stage=/var/lib/stats-deploy/collector-$(basename "$work")
+ssh -F "$config" stats-standby "rm -rf '$stage'; mkdir -p '$stage'; cat >'$stage/collector.tgz'" <"$work/install.tgz" || fail "cannot upload the collector"
+ssh -F "$config" stats-standby "cat >'$stage/collector-install.sh'" <"$work/install-guest.sh" || fail "cannot upload the collector"
+status=0
+"$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation collector-install --bound-s 300 -- sh -c 'sh "$1/collector-install.sh" <"$1/collector.tgz"' sh "$stage" || status=$?
+ssh -F "$config" stats-standby "rm -rf '$stage'" || :
+[ "$status" -eq 0 ] || fail "lease unavailable or installation failed"
 echo "collector installed; restart native-stats (or run standby-deploy.sh) to activate"

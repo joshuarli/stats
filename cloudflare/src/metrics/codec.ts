@@ -1,7 +1,7 @@
 import { catalog, CATALOG_VERSION } from "./catalog.ts";
 import { isDecimal, isU64, MAX_SCRAPE_BYTES, type Drops, type Histogram, type Values } from "./exposition.ts";
 
-export const INFRA_METRICS_SCHEMA = "stats-infra-metrics/1";
+export const INFRA_METRICS_SCHEMA = "stats-infra-metrics/2";
 export const MAX_METRIC_BATCH_BYTES = 65536;
 export const MAX_METRIC_TARGETS = 16;
 export const MAX_METRIC_QUEUE = 32;
@@ -12,11 +12,12 @@ export type Scrape = {
   durationUs: number; bytes: number; release: { runtime: string; app: string | null };
   process: { startTime: string | null }; dropped: Drops; values: Values;
 };
+export type TargetDelivery = { scraped: number; accepted: number; duplicates: number; rejected: number; dropped: number; failed: number };
 export type Batch = {
   schema: typeof INFRA_METRICS_SCHEMA; catalog: typeof CATALOG_VERSION;
   collector: { name: string; instance: string; startedAtMs: number };
   expected: string[];
-  delivery: { queued: number; queueHigh: number; dropped: number; retries: number; rejected: number };
+  delivery: { atMs: number; queued: number; queueHigh: number; targets: Record<string, TargetDelivery> };
   scrapes: Scrape[];
 };
 
@@ -67,8 +68,14 @@ export function validateBatch(input: unknown): Batch {
   count(collector.startedAtMs);
   if (!Array.isArray(b.expected) || b.expected.length > MAX_METRIC_TARGETS || new Set(b.expected).size !== b.expected.length) fail();
   for (const target of b.expected) text(target, targetPattern);
-  const delivery = record(b.delivery, ["queued", "queueHigh", "dropped", "retries", "rejected"]);
-  for (const value of Object.values(delivery)) count(value);
+  const delivery = record(b.delivery, ["atMs", "queued", "queueHigh", "targets"]);
+  count(delivery.atMs); count(delivery.queued); count(delivery.queueHigh);
+  const targets = record(delivery.targets, b.expected as string[]);
+  for (const value of Object.values(targets)) {
+    const counters = record(value, ["scraped", "accepted", "duplicates", "rejected", "dropped", "failed"]);
+    for (const counter of Object.values(counters)) count(counter);
+    if ((counters.accepted as number) + (counters.duplicates as number) + (counters.rejected as number) + (counters.dropped as number) > (counters.scraped as number)) fail();
+  }
   if ((delivery.queued as number) > MAX_METRIC_QUEUE || (delivery.queueHigh as number) > MAX_METRIC_QUEUE) fail();
   if (!Array.isArray(b.scrapes) || b.scrapes.length > MAX_METRIC_TARGETS) fail();
   const pairs = new Set<string>();

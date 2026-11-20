@@ -33,11 +33,9 @@ an older Stats release keeps serving, exporting and importing exactly as it does
   (`docs/protocol.md:139`, `:335`). The agent drops a batch on 400 (`protocol.md:434`). Agent
   `seq` is `floor(monoMs / 1000)` (`docs/architecture.md:91`), so it steps by about 15. The agent
   has one sampling loop and one upload thread (`agent/src/runtime.rs:331-340`).
-- The release gate's source record is `{source, producer, releaseId, lastSeenMs, sequenceStart,
-  sequenceEnd, received, drops, rejected, queueHigh}` (`cloudflare/src/cli/verify/release-evidence.ts:10`).
-  Delivery passes only when `received = end - start + 1` with zero, non-null drops and rejections
-  (`cloudflare/src/cli/verify/release-decide.ts:51`). The gate also checks missing sources,
-  `queueHigh` and `restarts` (`release-decide.ts:55`, `:53`, `:62`).
+- The release gate consumes producer checkpoints `{startedAtMs, atMs, accepted, dropped, queued}`.
+  Complete delivery requires one producer session, an accepted delta equal to received, unchanged
+  dropped counts and empty queues at both checkpoints.
 - The bridge reports its delivery counters as an artificial `platform.bridge` application event
   (`packages/platform-bridge/src/server.ts:53-56`, read back in
   `cloudflare/src/observe/platform/query.ts:50-56`); INF-7 does not repeat this. The reserved
@@ -156,14 +154,16 @@ patches (INF-11). Every row stays unverified until a real scrape confirms it.
 ### Batch wire shape
 
 The request is `POST /ingest/metrics/v1/batches` with `Content-Type:
-application/vnd.stats.infra-metrics.v1+json`, at most 64 KiB and 16 scrapes. All objects are
+application/vnd.stats.infra-metrics.v2+json`, at most 64 KiB and 16 scrapes. All objects are
 strict. Integers are JSON numbers up to 2^53-1, and metric values are strings.
 
 ```json
-{ "schema": "stats-infra-metrics/1", "catalog": 1,
+{ "schema": "stats-infra-metrics/2", "catalog": 1,
   "collector": { "name": "infra-standby", "instance": "<16 hex>", "startedAtMs": 1763650000000 },
-  "expected": ["worker:stats:0", "worker:stats-observe:1", "engine:local"],
-  "delivery": { "queued": 2, "queueHigh": 3, "dropped": 0, "retries": 1, "rejected": 0 },
+  "expected": ["worker:stats-observe:1"],
+  "delivery": { "atMs": 1763650011000, "queued": 0, "queueHigh": 3,
+    "targets": { "worker:stats-observe:1": { "scraped": 1841, "accepted": 1841,
+      "duplicates": 0, "rejected": 0, "dropped": 0, "failed": 0 } } },
   "scrapes": [{ "target": "worker:stats-observe:1", "sequence": 1842,
     "atMs": 1763650012000, "monoMs": 912000, "outcome": "ok", "durationUs": 8123, "bytes": 48211,
     "release": { "runtime": "rt-0123456789ab", "app": "accd14a0364c" },
@@ -185,8 +185,10 @@ of at most 32 characters, stored verbatim, and its deltas use scaled-integer ari
 A structural fault rejects the whole batch with 400 `invalid_batch` and a fixed reason, and
 nothing is written. Faults include an unknown key, catalog version, family or label value, a type
 or layout mismatch, a bucket that decreases along `le`, a final bucket unequal to `count`, a
-non-canonical number and a cap overrun. A 200 body is `{accepted, duplicates, rejected: [{target,
-sequence, code}]}` and counts every scrape once, as STA2 does (`docs/protocol.md:409-414`). Codes
+non-canonical number and a cap overrun. A 200 body has `{accepted, duplicates, rejected: [{target, sequence, code}], outcomes}`.
+Each outcome identifies a target and sequence and has status `accepted`, `duplicate` or `rejected`.
+The collector removes a batch only when the counts, rejection entries and unique outcomes account
+for every scrape in it. Retried duplicates count as acknowledged delivery. Codes
 are `too_old`, `future` (over 5 minutes ahead) and `conflict`. A repeated `(collector, instance,
 target, sequence)` with identical canonical payload is a duplicate; different content is a
 conflict that keeps the first row. A store rejects with `capacity` beyond 32 live `(runtime, app)`
@@ -214,6 +216,10 @@ CREATE TABLE metric_deliveries (
   expected TEXT NOT NULL, queued INTEGER NOT NULL, queue_high INTEGER NOT NULL,
   dropped INTEGER NOT NULL, retries INTEGER NOT NULL, rejected INTEGER NOT NULL,
   PRIMARY KEY (collector, instance, received_at)) WITHOUT ROWID;
+CREATE TABLE metric_snapshots (collector TEXT NOT NULL, instance TEXT NOT NULL, at_ms INTEGER NOT NULL,
+  started_at INTEGER NOT NULL, expected TEXT NOT NULL, queued INTEGER NOT NULL,
+  queue_high INTEGER NOT NULL, targets TEXT NOT NULL,
+  PRIMARY KEY (collector, instance, at_ms)) WITHOUT ROWID;
 CREATE TABLE metric_rejections (bucket_at INTEGER NOT NULL, collector TEXT NOT NULL,
   reason TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (bucket_at, collector, reason)) WITHOUT ROWID;
 CREATE TABLE metric_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -259,20 +265,23 @@ not cover sustained queue saturation or TLS.
 ### Reads for the release gate
 
 `GET /api/observe/stats-infra/metrics/sources?from=MS&to=MS&release=runtime|app` uses the normal
-gateway authorization. It returns one entry per `(target, collector name)` and lists expected
-targets that sent nothing with null counts. Each entry has two parts:
+gateway authorization. Each `(target, collector)` has evidence and detail. The first checkpoint is
+the last producer snapshot at or before `from`; the second is the first at or after `to`. If either
+is unavailable, detail reports `window-open` and evidence is null. A collector instance change
+reports `collector-restart`; a last OK scrape more than 45 seconds before `to` reports `stale`.
+Each catalog family applicable to the target has `okSamples`, `usable` and `reason`: usability
+requires two OK samples in one collector instance and incarnation; absence is `family-missing`.
 
-- `evidence` is exactly the `observations.json` source object. `releaseId` is the window's single
-  release of the requested class, or `mixed`. `received` counts distinct sequences. `drops` adds
-  queue drops and failed scrapes, since both mean a missing sample. `drops` is null when several
-  collector instances appear, so `decideRelease` reports `delivery-incomplete`.
-- `detail` holds `scrapeFailures` by outcome, `incarnations`, `resets`, `counterRegressions`,
-  `lastOkAtMs` and `droppedSeries` by reason.
+A snapshot records the collector wall time and per-target cumulative scraped, acknowledged accepted,
+duplicate, rejected, dropped and acknowledged failed scrape counts. Queue depth includes the in-flight batch. Checkpoint
+`accepted` is acknowledged accepted plus duplicate; checkpoint dropped includes rejected and dropped
+scrapes and failed scrape outcomes. Received counts distinct stored sequences between
+the bracketing snapshots. Detail exposes the maximum snapshot queue depth observed inside the window
+and the separate lifetime high watermark. The watermark never changes checkpoint queue depths.
 
-The controller sums `incarnations - 1` over Worker targets into `resources.restarts`.
-`cpuSeconds` and `memoryPeakBytes` still come from the agent's cgroup `services` group.
-`GET .../metrics/series?target=&family=&from=&to=` returns at most 900 points with explicit gaps
-and `truncated`.
+Actor names map to `installation`, `observation-store`, `metric-store`, `cron`, or `other` before
+delivery. Counters and histogram buckets sum within a role; gauges take the maximum. Raw actor names,
+keys and ids do not enter metric labels. Detail includes the last OK values for query consumers.
 
 ## Migration and rollback
 

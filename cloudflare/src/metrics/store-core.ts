@@ -9,7 +9,7 @@ type Row = {
   at_ms: number; mono_ms: number; outcome: string; runtime_release: string;
   app_release: string | null; incarnation: string | null; payload: string;
 };
-type Delivery = { collector: string; instance: string; received_at: number; started_at: number; expected: string; queued: number; queue_high: number; dropped: number; retries: number; rejected: number };
+type Snapshot = { collector: string; instance: string; at_ms: number; started_at: number; expected: string; queued: number; queue_high: number; targets: string };
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
@@ -35,6 +35,10 @@ export class MetricStoreCore {
       retries INTEGER NOT NULL, rejected INTEGER NOT NULL, PRIMARY KEY (collector, instance, received_at)) WITHOUT ROWID;
       CREATE TABLE IF NOT EXISTS metric_rejections (bucket_at INTEGER NOT NULL, collector TEXT NOT NULL,
       reason TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (bucket_at, collector, reason)) WITHOUT ROWID;
+      CREATE TABLE IF NOT EXISTS metric_snapshots (collector TEXT NOT NULL, instance TEXT NOT NULL,
+      at_ms INTEGER NOT NULL, started_at INTEGER NOT NULL, expected TEXT NOT NULL,
+      queued INTEGER NOT NULL, queue_high INTEGER NOT NULL, targets TEXT NOT NULL,
+      PRIMARY KEY (collector, instance, at_ms)) WITHOUT ROWID;
       CREATE TABLE IF NOT EXISTS metric_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;`.split(";")) {
       if (statement.trim()) this.db.run(statement);
     }
@@ -46,9 +50,9 @@ export class MetricStoreCore {
       run: (...params: SqlValue[]): void => this.db.run(query, ...params)
     };
   }
-  ingest(batch: Batch, now: number): { accepted: number; duplicates: number; rejected: { target: string; sequence: number; code: string }[] } {
+  ingest(batch: Batch, now: number): { accepted: number; duplicates: number; rejected: { target: string; sequence: number; code: string }[]; outcomes: { target: string; sequence: number; status: string }[] } {
     encodeBatch(batch);
-    const result = { accepted: 0, duplicates: 0, rejected: [] as { target: string; sequence: number; code: string }[] };
+    const result = { accepted: 0, duplicates: 0, rejected: [] as { target: string; sequence: number; code: string }[], outcomes: [] as { target: string; sequence: number; status: string }[] };
     return this.db.transaction(() => {
       const existingNames = this.prepare("SELECT DISTINCT collector FROM metric_deliveries WHERE received_at > ?").all(now - retention) as { collector: string }[];
       if (!existingNames.some((r) => r.collector === batch.collector.name) && existingNames.length >= 8) throw new Error("capacity");
@@ -70,11 +74,12 @@ export class MetricStoreCore {
             previous.outcome === s.outcome && previous.runtime_release === s.release.runtime &&
             previous.app_release === s.release.app && previous.incarnation === s.process.startTime &&
             previous.payload === payload(s);
-          if (identical) { result.duplicates++; continue; }
+          if (identical) { result.duplicates++; result.outcomes.push({ target: s.target, sequence: s.sequence, status: "duplicate" }); continue; }
           code = "conflict";
         }
         if (code) {
           result.rejected.push({ target: s.target, sequence: s.sequence, code });
+          result.outcomes.push({ target: s.target, sequence: s.sequence, status: "rejected" });
           this.prepare(`INSERT INTO metric_rejections VALUES (?, ?, ?, 1)
             ON CONFLICT(bucket_at, collector, reason) DO UPDATE SET count = count + 1`)
             .run(Math.floor(now / 60000) * 60000, batch.collector.name, code);
@@ -85,14 +90,19 @@ export class MetricStoreCore {
           now, s.atMs + retention, s.outcome, s.release.runtime, s.release.app, s.process.startTime, 1, payload(s)
         );
         result.accepted++;
+        result.outcomes.push({ target: s.target, sequence: s.sequence, status: "accepted" });
       }
       const lastDelivery = this.prepare("SELECT max(received_at) AS latest FROM metric_deliveries WHERE collector = ? AND instance = ?").get(batch.collector.name, batch.collector.instance) as { latest: number | null };
       const receivedAt = Math.max(now, (lastDelivery.latest ?? now - 1) + 1);
       this.prepare("INSERT INTO metric_deliveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
         batch.collector.name, batch.collector.instance, receivedAt, batch.collector.startedAtMs,
-        canonical(batch.expected), batch.delivery.queued, batch.delivery.queueHigh,
-        batch.delivery.dropped, batch.delivery.retries, batch.delivery.rejected
+        canonical(batch.expected), batch.delivery.queued, batch.delivery.queueHigh, 0, 0, 0
       );
+      this.prepare("INSERT OR IGNORE INTO metric_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+        batch.collector.name, batch.collector.instance, batch.delivery.atMs, batch.collector.startedAtMs,
+        canonical(batch.expected), batch.delivery.queued, batch.delivery.queueHigh, canonical(batch.delivery.targets)
+      );
+      this.prepare("DELETE FROM metric_snapshots WHERE at_ms <= ?").run(now - retention);
       this.prepare(`DELETE FROM metric_scrapes WHERE (collector, instance, target, sequence) IN
         (SELECT collector, instance, target, sequence FROM metric_scrapes WHERE expires_at <= ? ORDER BY expires_at LIMIT ?)`)
         .run(now, Math.max(64, result.accepted * 2));
@@ -123,14 +133,14 @@ export class MetricStoreCore {
   }
   sources(from: number, to: number, release: "runtime" | "app", now: number): unknown[] {
     const rows = this.prepare("SELECT * FROM metric_scrapes WHERE at_ms >= ? AND at_ms <= ? AND expires_at > ? ORDER BY at_ms, sequence").all(from, to, now) as unknown as Row[];
-    const deliveries = this.prepare("SELECT * FROM metric_deliveries WHERE received_at >= ? AND received_at <= ? ORDER BY received_at").all(from, to) as unknown as Delivery[];
+    const deliveries = this.prepare("SELECT * FROM metric_snapshots WHERE at_ms <= ? ORDER BY at_ms").all(now) as unknown as Snapshot[];
     const keys = new Set(rows.map((r) => `${r.collector}\0${r.target}`));
     for (const d of deliveries) for (const target of JSON.parse(d.expected) as string[]) keys.add(`${d.collector}\0${target}`);
     return [...keys].sort().map((key) => {
       const [collector, target] = key.split("\0") as [string, string];
       const samples = rows.filter((r) => r.collector === collector && r.target === target);
       const ds = deliveries.filter((d) => d.collector === collector && (JSON.parse(d.expected) as string[]).includes(target));
-      const instances = new Set(samples.map((s) => s.instance));
+      const instances = new Set([...samples.map((s) => s.instance), ...ds.filter(d => d.at_ms >= from && d.at_ms <= to).map(d => d.instance)]);
       const releases = new Set(samples.map((s) => release === "runtime" ? s.runtime_release : s.app_release).filter((v): v is string => v !== null));
       const failures: Record<string, number> = {};
       const droppedSeries: Record<string, number> = {};
@@ -161,21 +171,44 @@ export class MetricStoreCore {
         }
         if (engineReset) resets++;
       }
-      const first = samples[0], last = samples.at(-1), firstDelivery = ds[0], lastDelivery = ds.at(-1);
-      const failuresCount = Object.values(failures).reduce((a, b) => a + b, 0);
-      const checkpoint = (atMs: number, accepted: number, dropped: number, queued: number) => ({ startedAtMs: firstDelivery?.started_at ?? 0, atMs, accepted, dropped, queued });
-      const evidence = first && last && firstDelivery && lastDelivery && releases.size ? {
+      const firstDelivery = ds.filter(d => d.at_ms <= from).at(-1);
+      const lastDelivery = ds.find(d => d.at_ms >= to);
+      const last = this.prepare("SELECT * FROM metric_scrapes WHERE collector=? AND target=? AND at_ms<=? AND expires_at>? ORDER BY at_ms DESC LIMIT 1").get(collector, target, now, now) as Row | undefined;
+      const lastOk = this.prepare("SELECT * FROM metric_scrapes WHERE collector=? AND target=? AND outcome='ok' AND at_ms<=? AND expires_at>? ORDER BY at_ms DESC LIMIT 1").get(collector, target, to, now) as Row | undefined;
+      const families: Record<string, { okSamples: number; usable: boolean; reason: string | null }> = {};
+      for (const [name, spec] of Object.entries(catalog)) {
+        if ((target.startsWith("engine:") ? spec.source !== "engine" : spec.source === "engine")) continue;
+        const counts = new Map<string, number>();
+        for (const sample of samples) {
+          if (sample.outcome !== "ok") continue;
+          const values = (JSON.parse(sample.payload) as { values: Scrape["values"] }).values;
+          if (!values[name]?.length) continue;
+          const key = `${sample.instance}:${sample.incarnation}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        const okSamples = Math.max(0, ...counts.values());
+        families[name] = { okSamples, usable: okSamples >= 2, reason: okSamples === 0 ? "family-missing" : okSamples < 2 ? "insufficient-samples" : null };
+      }
+      const counters = (d: Snapshot) => (JSON.parse(d.targets) as Record<string, { scraped: number; accepted: number; duplicates: number; rejected: number; dropped: number; failed: number }>)[target]!;
+      const checkpoint = (d: Snapshot) => { const c = counters(d); return { startedAtMs: d.started_at, atMs: d.at_ms, accepted: c.accepted + c.duplicates, dropped: c.dropped + c.rejected + c.failed, queued: d.queued }; };
+      const restarted = instances.size > 1 || !!firstDelivery && !!lastDelivery && firstDelivery.instance !== lastDelivery.instance;
+      const stale = !lastOk || to - lastOk.at_ms > 45000;
+      const status = !firstDelivery || !lastDelivery ? "window-open" : restarted ? "collector-restart" : stale ? "stale" : "ok";
+      const startCounters = firstDelivery && counters(firstDelivery), endCounters = lastDelivery && counters(lastDelivery);
+      const received = firstDelivery && lastDelivery && startCounters && endCounters && !restarted
+        ? this.prepare("SELECT count(*) AS n FROM metric_scrapes WHERE collector=? AND instance=? AND target=? AND sequence>? AND sequence<=? AND expires_at>?").get(collector, firstDelivery.instance, target, startCounters.scraped, endCounters.scraped, now) as { n: number } : null;
+      const windowQueues = ds.filter(d => d.at_ms >= from && d.at_ms <= to).map(d => d.queued);
+      const evidence = firstDelivery && lastDelivery && last && releases.size && received && status === "ok" ? {
         source: target, producer: collector, releaseId: releases.size === 1 ? [...releases][0] : "mixed", lastSeenMs: last.at_ms,
-        sequenceStart: checkpoint(first.at_ms, first.sequence - 1, firstDelivery.dropped + firstDelivery.rejected, firstDelivery.queued),
-        sequenceEnd: checkpoint(last.at_ms, last.sequence, lastDelivery.dropped + lastDelivery.rejected + failuresCount + (instances.size > 1 ? 1 : 0), Math.max(lastDelivery.queued, lastDelivery.queue_high)),
-        received: samples.length
+        sequenceStart: checkpoint(firstDelivery), sequenceEnd: checkpoint(lastDelivery), received: received.n
       } : null;
       return {
         evidence,
         detail: {
           source: target, producer: collector, scrapeFailures: failures, incarnations: incarnations.size,
-          resets, counterRegressions, lastOkAtMs: samples.filter((s) => s.outcome === "ok").at(-1)?.at_ms ?? null,
-          droppedSeries
+          resets, counterRegressions, lastOkAtMs: lastOk?.at_ms ?? null,
+          droppedSeries, families, status, values: lastOk ? (JSON.parse(lastOk.payload) as { values: Scrape["values"] }).values : {}, queueMax: windowQueues.length ? Math.max(...windowQueues) : null,
+          queueHigh: Math.max(0, ...ds.map(d => d.queue_high))
         }
       };
     });

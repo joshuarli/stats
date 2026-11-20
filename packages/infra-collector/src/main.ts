@@ -1,3 +1,4 @@
+import { reconcileAck } from "./ack.ts";
 import { CATALOG_VERSION } from "./catalog.ts";
 import { INFRA_METRICS_MEDIA_TYPE } from "./contract.ts";
 import { boundBatch } from "./bounds.ts";
@@ -30,7 +31,9 @@ const collector = { name: config.name, instance: randomBytes(8).toString("hex"),
 const expected = config.targets.map(target => target.id);
 const sequences = new Map<string, number>();
 const queue: Batch[] = [];
-const delivery = { queued: 0, queueHigh: 0, dropped: 0, retries: 0, rejected: 0 };
+const targets = Object.fromEntries(expected.map(target => [target, { scraped: 0, accepted: 0, duplicates: 0, rejected: 0, dropped: 0, failed: 0 }]));
+let queueHigh = 0;
+const snapshot = (): Batch["delivery"] => ({ atMs: Date.now(), queued: queue.length, queueHigh, targets: structuredClone(targets) });
 let sending: Promise<void> | undefined;
 let stopping = false;
 let token = config.tokenFile ? readFileSync(config.tokenFile, "utf8").trim() : required("INFRA_METRICS_TOKEN");
@@ -46,6 +49,7 @@ async function scrape(target: Target): Promise<Scrape> {
   const release = JSON.parse(readFileSync(config.releaseFile, "utf8")) as { runtime: string; app: string };
   const sequence = (sequences.get(target.id) ?? 0) + 1;
   sequences.set(target.id, sequence);
+  targets[target.id]!.scraped++;
   const sample: Scrape = {
     target: target.id, sequence, atMs: Date.now(), monoMs: Math.floor(performance.now()),
     outcome: "ok", durationUs: 0, bytes: 0,
@@ -94,7 +98,6 @@ function deliver(): Promise<void> {
 async function send(): Promise<void> {
   while (queue.length) {
     const batch = queue[0]!;
-    batch.delivery = { ...delivery, queued: Math.max(0, queue.length - 1) };
     let status = 0;
     let responseBody = "";
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -113,16 +116,20 @@ async function send(): Promise<void> {
         const wait = retryAfter(response.headers["retry-after"] ?? null);
         if (wait) await delay(wait);
       } catch { status = 0; log("delivery"); }
-      if (attempt === 0) delivery.retries++;
+
     }
     if (status === 200) {
       let acknowledgement: unknown;
       try { acknowledgement = JSON.parse(responseBody); } catch { log("invalid_ack"); break; }
-      if (typeof acknowledgement !== "object" || acknowledgement === null || !Array.isArray((acknowledgement as { rejected?: unknown }).rejected)) {
-        log("invalid_ack");
-        break;
+      const outcomes = reconcileAck(batch.scrapes, acknowledgement);
+      if (!outcomes) { log("invalid_ack"); break; }
+      for (const item of outcomes) {
+        const counters = targets[item.target]!;
+        if (item.status === "accepted") counters.accepted++;
+        else if (item.status === "duplicate") counters.duplicates++;
+        else counters.rejected++;
+        if (item.status !== "rejected" && batch.scrapes.find(scrape => scrape.target === item.target && scrape.sequence === item.sequence)!.outcome !== "ok") counters.failed++;
       }
-      delivery.rejected += (acknowledgement as { rejected: unknown[] }).rejected.length;
       const index = queue.indexOf(batch);
       if (index >= 0) queue.splice(index, 1);
       continue;
@@ -130,7 +137,7 @@ async function send(): Promise<void> {
     if ([404, 405, 410, 415, 422].includes(status)) {
       const index = queue.indexOf(batch);
       if (index >= 0) queue.splice(index, 1);
-      delivery.rejected++;
+      for (const scrape of batch.scrapes) targets[scrape.target]!.rejected++;
       log("rejected");
       if (!stopping) await delay(60000);
       continue;
@@ -139,15 +146,19 @@ async function send(): Promise<void> {
   }
 }
 async function round(): Promise<void> {
+  const delivery = snapshot();
   const scrapes: Scrape[] = [];
   for (let offset = 0; offset < config.targets.length; offset += 4) {
     scrapes.push(...await Promise.all(config.targets.slice(offset, offset + 4).map(scrape)));
   }
-  if (queue.length === MAX_METRIC_QUEUE) { queue.shift(); delivery.dropped++; }
-  const batch: Batch = { schema: INFRA_METRICS_SCHEMA, catalog: CATALOG_VERSION, collector, expected, delivery: { ...delivery }, scrapes };
+  if (queue.length === MAX_METRIC_QUEUE) {
+    const removed = queue.splice(sending ? 1 : 0, 1)[0]!;
+    for (const scrape of removed.scrapes) targets[scrape.target]!.dropped++;
+  }
+  const batch: Batch = { schema: INFRA_METRICS_SCHEMA, catalog: CATALOG_VERSION, collector, expected, delivery, scrapes };
   boundBatch(batch);
   queue.push(batch);
-  delivery.queueHigh = Math.max(delivery.queueHigh, Math.max(0, queue.length - 1));
+  queueHigh = Math.max(queueHigh, queue.length);
   void deliver();
 }
 async function run(): Promise<void> {

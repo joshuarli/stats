@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { decodeAck, AckDecodeError } from "../../ingest/ack-decode.ts";
 import { ACK_MEDIA_TYPE, type Ack } from "../../ingest/ack.ts";
 import { encodeFrame } from "../../ingest/encode.ts";
@@ -47,24 +47,15 @@ export function readCredentialFile(file: string): HostCredential {
   return { hostId, token: credentialToken(credential) };
 }
 
-function bootIdFor(hostId: string): string {
-  const hex = createHash("sha256").update(`statsctl-check-ingest:${hostId}`).digest("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
-
-export function syntheticFrame(hostId: string, atMs: number): { readonly frame: Uint8Array; readonly seq: bigint } {
+export function syntheticFrame(hostId: string, atMs: number): { readonly frame: Uint8Array; readonly seq: bigint; readonly sample: Record<string, unknown> } {
   const tick = String(atMs);
-  const frame = encodeFrame({
-    hostId,
-    bootId: bootIdFor(hostId),
-    samples: [{
-      seq: tick,
-      atMs: tick,
-      monoMs: tick,
-      cpu: { user: tick, system: tick, idle: String(atMs * 7), iowait: tick, steal: "0", total: String(atMs * 10) }
-    }]
-  });
-  return { frame, seq: BigInt(atMs) };
+  const sample = {
+    seq: tick, atMs: tick, monoMs: tick,
+    cpu: { user: tick, system: tick, idle: String(atMs * 7), iowait: tick, steal: "0", total: String(atMs * 10) },
+    cpuCount: 4, uptimeMs: "123456"
+  };
+  const frame = encodeFrame({ hostId, bootId: randomUUID(), samples: [sample] });
+  return { frame, seq: BigInt(atMs), sample };
 }
 
 type IngestReply =
@@ -126,6 +117,8 @@ class StepFailure extends Error {
 
 interface Stored {
   readonly latestSeq: string;
+  readonly latestSample: unknown;
+  readonly historyMatches: boolean;
   readonly rows: number;
   readonly hasSample: boolean;
 }
@@ -147,7 +140,7 @@ export const checkIngestCommand = defineCommand<CheckIngestPayload>({
   examples: ["statsctl check ingest --credential-file .work/credentials/synthetic-check.json --json"],
   limitations: [
     "The Worker allows 6 ingest requests per host per minute; one run makes 2, so run it at most twice a minute per host.",
-    "The sample uses the current time as its sequence, so two runs in the same millisecond collide and the second reports a duplicate where accepted was expected."
+    "The sample uses the current time as its sequence and a fresh boot identity; avoid concurrent runs for the same host."
   ],
   async run(context) {
     const path = context.option("credential-file");
@@ -194,20 +187,27 @@ export const checkIngestCommand = defineCommand<CheckIngestPayload>({
       const history = await context.http.getBytes(`/api/v1/hosts/${hostId}/history?from=${fromMs}&to=${toMs}&kind=summary`).catch(missing("history_missing", "the host history is not readable"));
       if (latest.kind !== "ok" || history.kind !== "ok") throw transportError("contract", "an unconditional read answered not-modified");
       let times: readonly number[];
+      let historyMatches: boolean;
       try {
-        times = decodeSummary(openHistory(history.value).root).table.times;
+        const table = decodeSummary(openHistory(history.value).root).table;
+        times = table.times;
+        const row = times.indexOf(atMs);
+        historyMatches = row < 0 || (table.at("cpuCount", row) === 4 && table.at("uptimeMs", row) === 123456 &&
+          (["cpu.user", "cpu.system", "cpu.idle", "cpu.iowait", "cpu.steal"] as const).every(field => table.at(field, row) === undefined));
       } catch {
         throw new StepFailure("history_invalid", "the host history is not a valid summary frame");
       }
-      return { latestSeq: latest.value, rows: times.length, hasSample: times.includes(atMs) };
+      return { latestSeq: String((latest.value as { seq?: unknown })?.seq), latestSample: latest.value, historyMatches, rows: times.length, hasSample: times.includes(atMs) };
     };
     const before = await step("latest", async () => {
       const stored = await read();
       if (stored.latestSeq !== String(seq)) throw new StepFailure("latest_mismatch", `latest sample has seq ${stored.latestSeq}, expected ${seq}`);
+      if (!matchesSample(stored.latestSample, sent!.sample)) throw new StepFailure("readback_mismatch", "latest sample values differ from the encoded sample");
       return stored;
     }, stored => `latest seq ${stored.latestSeq}`);
     await step("history", async () => {
       if (!before!.hasSample) throw new StepFailure("history_missing_sample", `history for [${fromMs}, ${toMs}) has ${before!.rows} rows and none at ${atMs}`);
+      if (!before!.historyMatches) throw new StepFailure("readback_mismatch", "history values differ from the encoded sample");
       return before!.rows;
     }, rows => `${rows} rows in the window, including atMs ${atMs}`);
     await step("replay", async () => {
@@ -236,10 +236,14 @@ export const checkIngestCommand = defineCommand<CheckIngestPayload>({
   }
 });
 
-function decodeLatest(value: unknown): string {
-  const sample = (value as { sample?: { seq?: unknown } } | null)?.sample;
-  if (typeof sample?.seq !== "string") throw new Error("invalid latest sample");
-  return sample.seq;
+function decodeLatest(value: unknown): unknown {
+  return (value as { sample?: unknown } | null)?.sample;
+}
+
+function matchesSample(actual: unknown, expected: unknown): boolean {
+  if (typeof expected !== "object" || expected === null) return actual === expected;
+  if (typeof actual !== "object" || actual === null || Array.isArray(actual)) return false;
+  return Object.entries(expected).every(([key, value]) => matchesSample((actual as Record<string, unknown>)[key], value));
 }
 
 function missing(reason: string, detail: string): (error: unknown) => never {
