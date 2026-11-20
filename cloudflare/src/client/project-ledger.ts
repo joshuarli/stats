@@ -7,9 +7,9 @@ import type { ObjectMethods as ObservedObjectMethods } from "../observe/core/sto
 import type { TimeWindow } from "./chart-data.ts";
 import { decodeProjectHistories, type MetricHistory, type ProjectHistories } from "./history.ts";
 import type { ProjectSummary } from "./project-model.ts";
-import { historyKinds, projectHistoryPath, windowParams, type HistoryKinds, type HistoryQuery } from "./history-path.ts";
+import { historyKinds, projectHistoryPath } from "./history-path.ts";
 
-export { historyKinds, projectHistoryPath, windowParams, type HistoryKinds, type HistoryQuery };
+export { historyKinds, projectHistoryPath };
 
 export interface ProjectLedger {
   readonly report: CostReport;

@@ -93,16 +93,31 @@ observer on cleanup while preserving user-selected focus. The same test
 passed 20 of 20 runs afterward. The full suite must still be rerun at the
 final commit.
 
+**Dead code.** Knip 6.45.1, configured with the Worker, Node, dashboard,
+CLI, bridge, producer, script and test entries, passed its default scan.
+The five documented allowlist entries cover captured fixtures, three host
+binaries, two externally consumed observation interfaces, and a deliberate
+alias for distinct bucket concepts. Production mode reports four test-only
+exports and the observation budget measurement module; tests and measurement
+scripts are their consumers, so they remain. `cargo rustc --offline --locked
+--manifest-path agent/Cargo.toml --bin stats -- -W unreachable_pub` passed;
+all-target Clippy found no dead-code warning. `cargo-machete` was unavailable
+(two attempts): Needs environment. Linux-only and BPF-feature dead code was
+not checked on this host.
+
+The removed declarations were private module-only CLI target data, dashboard
+formatting, scaling and probe helpers, cost wrappers and unused pricing-source
+metadata, unused client reexports, and a private bridge type. Repository
+source, tests, scripts, configuration and fixtures contain no consumers; the
+Cloudflare and bridge packages are private. No package dependency or runtime
+entrypoint was removed. Cost tests passed 62/62, bridge tests 5/5, and the
+workspace typecheck and lint passed. The observation channel and mark API were
+retained, including the captured external producer's use. The debloat review
+kept the transactional ingest, bounded producer queues, runtime adapters and
+browser lifecycle machinery because their observable guarantees have active
+consumers; no live feature or public contract removal is proposed.
+
 ## Tickets
-
-### DSLP-5 · P2 · Dead code: tools and debloat
-
-- **Area:** deslop · dead code
-- **Where:** whole repository
-- **Problem:** No dead-code scan has run.
-- **Recommendation:** Run the deslop Dead code step. Accept: tools clean or allowlisted with reasons; walk-backs filed as Needs owner tickets.
-- **Fix with:** deslop
-- **Effort:** M
 
 ### DSLP-9 · P3 · Preserve large retry ceilings in Rust producer
 

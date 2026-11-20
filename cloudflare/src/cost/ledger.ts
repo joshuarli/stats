@@ -218,14 +218,6 @@ export class CoverageIndex {
   }
 }
 
-export function coveredMs(history: MetricHistory, window: TimeWindow, only?: readonly string[]): number {
-  return new CoverageIndex().coveredMs(history, window, only);
-}
-
-export function seriesPartial(history: MetricHistory | undefined, window: TimeWindow, name: string, group: readonly string[]): boolean {
-  return new CoverageIndex().seriesPartial(history, window, name, group);
-}
-
 function windowSeries(line: CostLine): { readonly history: (histories: LedgerHistories) => MetricHistory | undefined; readonly names: readonly string[] } | null {
   switch (line.kind) {
     case "worker": return { history: histories => histories.worker, names: WORKER_SERIES };

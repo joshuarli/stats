@@ -31,30 +31,3 @@ export const WORKERS_PAID_INCLUDED = {
 export const WORKERS_PAID_MONTHLY_FEE = 5;
 
 export const PRICING_REVISION = "2026-11-05";
-
-export interface PricingSource {
-  readonly url: string;
-  readonly verifiedOn: string;
-}
-
-const WORKERS_PRICING = "https://developers.cloudflare.com/workers/platform/pricing/";
-const DURABLE_OBJECTS_PRICING = "https://developers.cloudflare.com/durable-objects/platform/pricing/";
-const D1_PRICING = "https://developers.cloudflare.com/d1/platform/pricing/";
-const R2_PRICING = "https://developers.cloudflare.com/r2/pricing/";
-const TAIL_WORKERS = "https://developers.cloudflare.com/workers/observability/logs/tail-workers/";
-
-const source = (url: string): PricingSource => ({ url, verifiedOn: PRICING_REVISION });
-
-export const PRICING_SOURCES = {
-  workersPaidMonthlyFee: source(WORKERS_PRICING),
-  workerRequests: source(WORKERS_PRICING),
-  workerCpuMs: source(WORKERS_PRICING),
-  tailWorkerCpuMs: source(TAIL_WORKERS),
-  durableObjectRequests: source(DURABLE_OBJECTS_PRICING),
-  durableObjectGbSeconds: source(DURABLE_OBJECTS_PRICING),
-  durableObjectStorage: source(DURABLE_OBJECTS_PRICING),
-  d1RowsWritten: source(D1_PRICING),
-  d1RowsRead: source(D1_PRICING),
-  d1Storage: source(D1_PRICING),
-  r2Storage: source(R2_PRICING)
-} as const satisfies Record<keyof typeof WORKERS_PAID_INCLUDED | "workersPaidMonthlyFee" | "tailWorkerCpuMs", PricingSource>;

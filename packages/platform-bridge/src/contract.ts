@@ -1,6 +1,5 @@
 export const PLATFORM_SERVICE = "stats-platform";
 export const SQLITE_OPERATIONS = ["exec", "execute", "execute_batch", "query", "run", "transaction.begin", "transaction.exec", "transaction.execute", "transaction.commit", "transaction.rollback"] as const;
-export type SqliteOperation = typeof SQLITE_OPERATIONS[number];
 export const ACTOR_ROLES = ["installation", "observation"] as const;
 export type ActorRole = typeof ACTOR_ROLES[number];
 export const PLATFORM_OPERATIONS = ACTOR_ROLES.flatMap(role => [`platform.${role}.invoke`, ...SQLITE_OPERATIONS.map(operation => `platform.${role}.sqlite.${operation}`)]);

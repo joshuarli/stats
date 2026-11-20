@@ -72,11 +72,6 @@ export function otherShare(data: ProjectData): Track {
   return ratio(bucketOutcome(data, "other"), total, 100, MIN_SCORED_EVENTS);
 }
 
-export function probeUp(data: ProjectData): Track[] {
-  const history = data.probes;
-  return history === undefined ? [] : data.probeNames.map(name => metricTrack(history, `probe.${name}.up`));
-}
-
 export function endpointText(value: number | undefined): string {
   return value === undefined ? count(value) : value >= 1 ? "all up" : "down";
 }
