@@ -9,6 +9,17 @@
 		method POST
 		path_regexp ^/ingest/observe/v1/[a-z][a-z0-9-]{0,31}/batches$
 	}
+	@deploymentMarkers {
+		method POST
+		path_regexp ^/ingest/services/[a-z][a-z0-9-]{0,31}/deployments$
+	}
+	handle @deploymentMarkers {
+		request_header -Stats-Gateway-Secret
+		request_header -Stats-Tailnet-Identity
+		request_header -Tailscale-*
+		request_header -X-OO-*
+		reverse_proxy unix//run/stats-direct/app.sock
+	}
 	handle @applicationEvents {
 		request_header -Stats-Gateway-Secret
 		request_header -Stats-Tailnet-Identity

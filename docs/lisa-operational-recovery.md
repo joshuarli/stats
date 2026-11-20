@@ -99,8 +99,9 @@ Discover and left Agentctl's stateful endpoint available. The same Stats
 writer entry now prevents local start and image selection. This proves
 the render and authority guard on Lisa. The live Stats standby is in
 Threadripper's default OpenRC runlevel. A spare disk exercised the VM
-launch path. An end-to-end standby reboot, reader startup, image
-retention, publication and operator recovery, the shared maintenance
+launch path. The standby reboot passed on 2026-11-20 (see the
+[standby operations record](openorange.md#standby-operations-record-2026-11-20)).
+Reader startup, image retention, publication and operator recovery, the shared maintenance
 lock, full verified backups, disk reserves, and the Engine failure
 mechanism remain open.
 
