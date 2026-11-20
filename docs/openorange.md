@@ -108,19 +108,24 @@ schema migration needs a restore.
 ### Deploying to the standby writer
 
 While Threadripper's standby VM holds write authority, `make stats-deploy`
-refuses Lisa. The VM runs native Stats as OpenRC `native-stats` from
-`/opt/native-rehearsal/app`, whose `.open-orange` directory is runtime state
-and must be kept. On 2026-11-19 release `stats-bf137834cbfd` was deployed by
-building `deploy/orange/build-context.sh OUT RELEASE` from the committed tree,
-confirming `deploy/orange/package.json` and `pnpm-lock.yaml` matched
-`/opt/native-rehearsal/orange`, copying the previous `stats`, `observe`,
-`stats.jsonc` and `observe.jsonc` to `/opt/native-rehearsal/releases/c9a71b2ba127`,
-replacing those four entries from `OUT/app`, and running
-`rc-service native-stats restart` until `http://127.0.0.1:8080/health` answered.
-The same steps then deployed merged `master` as `stats-1d26d0c28223`;
-`releases/bf137834cbfd` and `releases/c9a71b2ba127` hold the two earlier
-releases. Roll back by copying the four entries back from `releases/` and
-restarting.
+refuses Lisa. Deploy the committed tree to the standby instead:
+
+```sh
+deploy/orange/standby-deploy.sh --check   # access, authority and runtime pins only
+deploy/orange/standby-deploy.sh
+```
+
+The script reaches the guest through `~/.config/stats/standby/ssh_config`
+(host alias `stats-standby`, jumping through Threadripper with the pinned
+guest host key; override with `STANDBY_SSH_CONFIG`). It refuses unless Lisa's
+recovery route names the standby as writer and `deploy/orange/package.json`
+and `pnpm-lock.yaml` match `/opt/native-rehearsal/orange`. It builds with
+`deploy/orange/build-context.sh`, copies the running release's `stats`,
+`observe`, `stats.jsonc` and `observe.jsonc` to
+`/opt/native-rehearsal/releases/<release>`, swaps in the new ones (keeping the
+`.open-orange` runtime state), restarts OpenRC `native-stats`, and requires the
+guest health route, the new release in the descriptor and the public health
+route. A failure restores the previous release the same way.
 
 ### Engine load record (2026-11-19)
 
