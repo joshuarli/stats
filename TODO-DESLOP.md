@@ -169,7 +169,8 @@ lines and 126/146 branches. The four historical mutation selections totaled
 they are not a whole-suite score. The type scan counted 291 TypeScript and
 257 Rust matching escape-hatch lines with no source typing change. The dead
 code change removed private declarations and no dependencies. One P2 focus
-finding was fixed; one P3 type finding and one P3 bench gap remain. No live
+finding was fixed; four P3 findings remain open (DSLP-9 type, DSLP-11 bench,
+DSLP-12 and DSLP-13 test hygiene). No live
 Cloudflare, Linux BPF, external fleet checkout, or private performance host
 was exercised. The focused browser failure discovered a race that a single
 passing run had missed; the repeated run and attachment diagnostic were more
@@ -185,8 +186,20 @@ workload exited 1 and its child was absent; the runner was restored byte for
 byte. A second control used a child that ignored SIGTERM and confirmed that
 escalation left no child. Edit and Change workloads both passed after the fix. No independent
 reviewer was used because this lane is explicitly a leaf. No further defect
-was demonstrated. The final full test and lint results belong to the handoff;
-performance comparison remains Needs environment.
+was demonstrated. Final verification on the tree of `c4d5f45f2ce`, which differs
+from the later documentation and knip-comment commits only in text:
+`make lint` exit 0 (1 s); `make test` exit 0 in 4m41s on a host at load average
+about 15 (observation, not a budget; the historical figure is about three
+minutes). That run counted 1,006 Node tests (1,005 pass, 1 skipped), 375 Workerd
+tests in 38 files, 41 stack tests (40 pass), 109 Rust library and 5 conformance
+tests, and 321 Chromium tests. The one skip in both Node counts is the legacy
+upgrade case, which needs the baseline build that CI supplies and a local run
+does not have. A first run failed once
+in `orange-deploy.test.ts` (DSLP-13) and passed on rerun without change. The
+worktree sits inside the canonical checkout's Cargo workspace, so `cargo` in
+`agent/` refused to build; the run used an uncommitted empty `[workspace]` table
+in `agent/Cargo.toml`, removed before the final status. Performance comparison
+remains Needs environment.
 
 ## Tickets
 
