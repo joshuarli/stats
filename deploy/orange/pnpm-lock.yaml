@@ -176,8 +176,8 @@ importers:
   .:
     dependencies:
       open-orange:
-        specifier: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz
-        version: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2)
+        specifier: https://npm.17166969.xyz/current/-/tarballs/031a30d4f848a8c60764de7bd67ab03a45dc0fe748f31453a8b1bd41fb9b0c516e4fc819a0a0fb2f32c4055cf93d417e70ad59309708b2962b3dfb6ded7bae7c.tgz
+        version: https://npm.17166969.xyz/current/-/tarballs/031a30d4f848a8c60764de7bd67ab03a45dc0fe748f31453a8b1bd41fb9b0c516e4fc819a0a0fb2f32c4055cf93d417e70ad59309708b2962b3dfb6ded7bae7c.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2)
       rivetkit:
         specifier: 3.1.2-rc.1
         version: 3.1.2-rc.1(ws@8.21.0)
@@ -1464,9 +1464,9 @@ packages:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
 
-  open-orange@https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz:
-    resolution: {integrity: sha512-uR99thtTtneWvEbek/Ytr6RLXkShWH3l4fD61ZLQgzZNn+u6cIHkxfL1AmCD+c/TvTkNV1vghi3hYI6Q4k6Z4w==, tarball: https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz}
-    version: 1.0.2-laputa.1
+  open-orange@https://npm.17166969.xyz/current/-/tarballs/031a30d4f848a8c60764de7bd67ab03a45dc0fe748f31453a8b1bd41fb9b0c516e4fc819a0a0fb2f32c4055cf93d417e70ad59309708b2962b3dfb6ded7bae7c.tgz:
+    resolution: {integrity: sha512-Axow1PhIqMYHZN571nqwOkXcD+dI8xRTqLG9QfubDFFuT8gZoKD7LzLEBVz5PUF+cK1ZMJcIspYrPftt7XuufA==, tarball: https://npm.17166969.xyz/current/-/tarballs/031a30d4f848a8c60764de7bd67ab03a45dc0fe748f31453a8b1bd41fb9b0c516e4fc819a0a0fb2f32c4055cf93d417e70ad59309708b2962b3dfb6ded7bae7c.tgz}
+    version: 1.0.2-laputa.2
     engines: {node: '>=22'}
     hasBin: true
 
@@ -2891,7 +2891,7 @@ snapshots:
 
   on-exit-leak-free@2.1.2: {}
 
-  open-orange@https://npm.17166969.xyz/current/-/tarballs/b91f7db61b53b67796bc46de93f62dafa44b5e44a1587de5e1f0fad592d083364d9febba7081e4c5f2f5026083f9cfd3bd390d575be0862de1608e90e24e99e3.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2):
+  open-orange@https://npm.17166969.xyz/current/-/tarballs/031a30d4f848a8c60764de7bd67ab03a45dc0fe748f31453a8b1bd41fb9b0c516e4fc819a0a0fb2f32c4055cf93d417e70ad59309708b2962b3dfb6ded7bae7c.tgz(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(supports-color@10.2.2):
     dependencies:
       '@aws-sdk/client-s3': 3.1153.0
       '@rivet-dev/agentos-core': 0.4.8
