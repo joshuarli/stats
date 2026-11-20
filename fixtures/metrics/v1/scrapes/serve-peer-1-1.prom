@@ -1,0 +1,349 @@
+# HELP rivet_rivetkit_envoy_client_actor_queued_requests HTTP requests admitted to actors on this process and not yet taken by their actor tasks, including requests waiting for an actor to start
+# TYPE rivet_rivetkit_envoy_client_actor_queued_requests gauge
+rivet_rivetkit_envoy_client_actor_queued_requests 0
+# HELP rivet_rivetkit_envoy_client_actor_queued_requests_capacity configured cap on queued HTTP requests per actor
+# TYPE rivet_rivetkit_envoy_client_actor_queued_requests_capacity gauge
+rivet_rivetkit_envoy_client_actor_queued_requests_capacity 1024
+# HELP rivet_rivetkit_envoy_client_actor_queued_requests_overloaded_total HTTP requests refused because their actor already had the configured number queued
+# TYPE rivet_rivetkit_envoy_client_actor_queued_requests_overloaded_total counter
+rivet_rivetkit_envoy_client_actor_queued_requests_overloaded_total 0
+# HELP rivet_rivetkit_envoy_client_actor_start_seconds time from receiving CommandStartActor to sending the actor's Running event, including the runtime's on_actor_start
+# TYPE rivet_rivetkit_envoy_client_actor_start_seconds histogram
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.002"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.004"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.006"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.008"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.01"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.012"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.015"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.02"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.025"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.03"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.04"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.05"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.065"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.08"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.1"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.13"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.16"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.2"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.25"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.32"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.4"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.5"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="0.75"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="1"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="1.5"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="2.5"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="5"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="10"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="30"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="60"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_bucket{le="+Inf"} 0
+rivet_rivetkit_envoy_client_actor_start_seconds_sum 0
+rivet_rivetkit_envoy_client_actor_start_seconds_count 0
+# HELP rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds duration of one envoy_loop select branch in seconds; long tails indicate the single fan-in loop stalled
+# TYPE rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds histogram
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.0001"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.00025"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.0005"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.001"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.0025"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.005"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.01"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.025"} 0
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.05"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.1"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.25"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="0.5"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="1"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="2.5"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="5"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="10"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="25"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="50"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_bucket{branch="envoy_msg",le="+Inf"} 1
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_sum{branch="envoy_msg"} 0.03183175
+rivet_rivetkit_envoy_client_envoy_loop_iteration_duration_seconds_count{branch="envoy_msg"} 1
+# HELP rivet_rivetkit_envoy_client_envoy_tx_depth current depth of the unbounded envoy_tx mpsc between WS read task and envoy_loop
+# TYPE rivet_rivetkit_envoy_client_envoy_tx_depth gauge
+rivet_rivetkit_envoy_client_envoy_tx_depth 0
+# HELP rivet_rivetkit_envoy_client_http_detached_send_dropped_total total terminal HTTP frames dropped because the detached send budget was exhausted
+# TYPE rivet_rivetkit_envoy_client_http_detached_send_dropped_total counter
+rivet_rivetkit_envoy_client_http_detached_send_dropped_total 0
+# HELP rivet_rivetkit_envoy_client_http_detached_sends_capacity maximum detached terminal HTTP frame sends per WebSocket session
+# TYPE rivet_rivetkit_envoy_client_http_detached_sends_capacity gauge
+rivet_rivetkit_envoy_client_http_detached_sends_capacity 1024
+# HELP rivet_rivetkit_envoy_client_http_detached_sends_inflight current detached tasks sending terminal HTTP frames while the HTTP stream is saturated
+# TYPE rivet_rivetkit_envoy_client_http_detached_sends_inflight gauge
+rivet_rivetkit_envoy_client_http_detached_sends_inflight 0
+# HELP rivet_rivetkit_envoy_client_kv_requests_inflight current in-flight KV requests tracked in envoy ctx
+# TYPE rivet_rivetkit_envoy_client_kv_requests_inflight gauge
+rivet_rivetkit_envoy_client_kv_requests_inflight 0
+# HELP rivet_rivetkit_envoy_client_remote_sqlite_requests_inflight current in-flight remote sqlite (exec/execute) requests tracked in envoy ctx
+# TYPE rivet_rivetkit_envoy_client_remote_sqlite_requests_inflight gauge
+rivet_rivetkit_envoy_client_remote_sqlite_requests_inflight 0
+# HELP rivet_rivetkit_envoy_client_sqlite_requests_inflight current in-flight VFS sqlite requests tracked in envoy ctx
+# TYPE rivet_rivetkit_envoy_client_sqlite_requests_inflight gauge
+rivet_rivetkit_envoy_client_sqlite_requests_inflight 0
+# HELP rivet_rivetkit_envoy_client_stopped_floors actors whose highest stopped generation this Envoy remembers
+# TYPE rivet_rivetkit_envoy_client_stopped_floors gauge
+rivet_rivetkit_envoy_client_stopped_floors 0
+# HELP rivet_rivetkit_envoy_client_stopped_floors_capacity configured cap on remembered stopped generation floors
+# TYPE rivet_rivetkit_envoy_client_stopped_floors_capacity gauge
+rivet_rivetkit_envoy_client_stopped_floors_capacity 0
+# HELP rivet_rivetkit_envoy_client_ws_decode_duration time to deserialize one inbound websocket frame
+# TYPE rivet_rivetkit_envoy_client_ws_decode_duration histogram
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.0001"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.00025"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.0005"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.001"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.0025"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.005"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.01"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.025"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.05"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.1"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.25"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="0.5"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="1"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="2.5"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="5"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="10"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="25"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="50"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_bucket{le="+Inf"} 2
+rivet_rivetkit_envoy_client_ws_decode_duration_sum 0.000002876
+rivet_rivetkit_envoy_client_ws_decode_duration_count 2
+# HELP rivet_rivetkit_envoy_client_ws_read_handler_duration time the websocket read loop spends decoding and dispatching one frame, during which the socket is not being drained
+# TYPE rivet_rivetkit_envoy_client_ws_read_handler_duration histogram
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.0001"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.00025"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.0005"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.001"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.0025"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.005"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.01"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.025"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.05"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.1"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.25"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="0.5"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="1"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="2.5"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="5"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="10"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="25"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="50"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_bucket{le="+Inf"} 2
+rivet_rivetkit_envoy_client_ws_read_handler_duration_sum 0.000007000000000000001
+rivet_rivetkit_envoy_client_ws_read_handler_duration_count 2
+# HELP rivet_rivetkit_envoy_client_ws_rx_bytes_total total bytes read from the engine websocket; the rate of this is how fast this pod consumes websocket data
+# TYPE rivet_rivetkit_envoy_client_ws_rx_bytes_total counter
+rivet_rivetkit_envoy_client_ws_rx_bytes_total 34
+# HELP rivet_rivetkit_envoy_client_ws_rx_messages_total total inbound websocket frames read from the engine
+# TYPE rivet_rivetkit_envoy_client_ws_rx_messages_total counter
+rivet_rivetkit_envoy_client_ws_rx_messages_total 2
+# HELP rivet_rivetkit_envoy_client_ws_session_duration_seconds duration of a single websocket session from connect to disconnect in seconds
+# TYPE rivet_rivetkit_envoy_client_ws_session_duration_seconds histogram
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.001"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.0025"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.005"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.01"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.025"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.05"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.1"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.25"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="0.5"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="1"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="2.5"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="5"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="10"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="25"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="50"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="100"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="250"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="500"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_bucket{le="+Inf"} 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_sum 0
+rivet_rivetkit_envoy_client_ws_session_duration_seconds_count 0
+# HELP rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds time the ws_tx mutex guard was held in seconds (covers encode + send)
+# TYPE rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds histogram
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.0001"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.00025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.0005"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.001"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.0025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.005"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.01"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.05"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.1"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.25"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="0.5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="1"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="2.5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="10"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="25"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="50"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_bucket{message_kind="metadata",le="+Inf"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_sum{message_kind="metadata"} 0.00000475
+rivet_rivetkit_envoy_client_ws_tx_lock_hold_duration_seconds_count{message_kind="metadata"} 1
+# HELP rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds time spent waiting to acquire the ws_tx mutex in seconds
+# TYPE rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds histogram
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.0001"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.00025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.0005"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.001"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.0025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.005"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.01"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.025"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.05"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.1"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.25"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="0.5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="1"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="2.5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="5"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="10"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="25"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="50"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_bucket{message_kind="metadata",le="+Inf"} 1
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_sum{message_kind="metadata"} 0.000000125
+rivet_rivetkit_envoy_client_ws_tx_lock_wait_duration_seconds_count{message_kind="metadata"} 1
+# HELP rivet_rivetkit_info Static RivetKit build information.
+# TYPE rivet_rivetkit_info gauge
+rivet_rivetkit_info{envoy_kind="serverful",envoy_version="1",pool_name="default",runtime="rivetkit",type="local",version="3.1.2-rc.1"} 1
+# HELP rivet_rivetkit_sqlite_page_buffer_capacity_pages configured page capacity of the process-wide native SQLite VFS page budget
+# TYPE rivet_rivetkit_sqlite_page_buffer_capacity_pages gauge
+rivet_rivetkit_sqlite_page_buffer_capacity_pages 131072
+# HELP rivet_rivetkit_sqlite_page_buffer_pages pages the process-wide native SQLite VFS page budget holds across every database
+# TYPE rivet_rivetkit_sqlite_page_buffer_pages gauge
+rivet_rivetkit_sqlite_page_buffer_pages 0
+# HELP rivet_rivetkit_sqlite_pager_cache_bytes bytes the process-wide SQLite pager cache holds across every connection
+# TYPE rivet_rivetkit_sqlite_pager_cache_bytes gauge
+rivet_rivetkit_sqlite_pager_cache_bytes 0
+# HELP rivet_rivetkit_sqlite_pager_cache_capacity_bytes configured byte budget of the process-wide SQLite pager cache
+# TYPE rivet_rivetkit_sqlite_pager_cache_capacity_bytes gauge
+rivet_rivetkit_sqlite_pager_cache_capacity_bytes 268435456
+# HELP rivet_rivetkit_sqlite_pager_cache_pages pages the process-wide SQLite pager cache holds across every connection
+# TYPE rivet_rivetkit_sqlite_pager_cache_pages gauge
+rivet_rivetkit_sqlite_pager_cache_pages 0
+# HELP rivet_rivetkit_sqlite_pager_cache_unbudgeted_bytes bytes of in-memory and temporary database pages the process-wide SQLite pager cache holds outside its budget
+# TYPE rivet_rivetkit_sqlite_pager_cache_unbudgeted_bytes gauge
+rivet_rivetkit_sqlite_pager_cache_unbudgeted_bytes 0
+# HELP rivet_rivetkit_sqlite_worker_pool_busy native SQLite worker pool threads running a database action
+# TYPE rivet_rivetkit_sqlite_worker_pool_busy gauge
+rivet_rivetkit_sqlite_worker_pool_busy 0
+# HELP rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds time a runnable database waited for a native SQLite worker pool thread
+# TYPE rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds histogram
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.0001"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.00025"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.0005"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.001"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.0025"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.005"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.01"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.025"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.05"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.1"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.25"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="0.5"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="1"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="2.5"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="5"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="10"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="25"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="50"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_bucket{le="+Inf"} 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_sum 0
+rivet_rivetkit_sqlite_worker_pool_queue_wait_seconds_count 0
+# HELP rivet_rivetkit_sqlite_worker_pool_runnable_databases databases waiting for a native SQLite worker pool thread
+# TYPE rivet_rivetkit_sqlite_worker_pool_runnable_databases gauge
+rivet_rivetkit_sqlite_worker_pool_runnable_databases 0
+# HELP rivet_rivetkit_sqlite_worker_pool_threads configured thread cap of the native SQLite worker pool
+# TYPE rivet_rivetkit_sqlite_worker_pool_threads gauge
+rivet_rivetkit_sqlite_worker_pool_threads 256
+# HELP rivet_tokio_active_task_count Total number of active (running or sleeping) tasks.
+# TYPE rivet_tokio_active_task_count gauge
+rivet_tokio_active_task_count 6
+# HELP rivet_tokio_blocking_queue_depth Number of tasks queued for the blocking thread pool.
+# TYPE rivet_tokio_blocking_queue_depth gauge
+rivet_tokio_blocking_queue_depth 0
+# HELP rivet_tokio_blocking_thread_count Number of threads in the blocking thread pool.
+# TYPE rivet_tokio_blocking_thread_count gauge
+rivet_tokio_blocking_thread_count 1
+# HELP rivet_tokio_global_queue_depth Number of pending tasks in the global queue.
+# TYPE rivet_tokio_global_queue_depth gauge
+rivet_tokio_global_queue_depth 0
+# HELP rivet_tokio_idle_blocking_thread_count Number of idle threads in the blocking thread pool.
+# TYPE rivet_tokio_idle_blocking_thread_count gauge
+rivet_tokio_idle_blocking_thread_count 1
+# HELP rivet_tokio_worker_busy_duration_seconds_total Seconds a worker has spent polling tasks. Its rate against wall clock time is the worker's busy fraction, which separates a saturated runtime from one whose workers are parked.
+# TYPE rivet_tokio_worker_busy_duration_seconds_total counter
+rivet_tokio_worker_busy_duration_seconds_total{worker="0"} 0.000072041
+rivet_tokio_worker_busy_duration_seconds_total{worker="1"} 0
+rivet_tokio_worker_busy_duration_seconds_total{worker="10"} 0.000000042
+rivet_tokio_worker_busy_duration_seconds_total{worker="11"} 0.000000083
+rivet_tokio_worker_busy_duration_seconds_total{worker="12"} 0.000000041
+rivet_tokio_worker_busy_duration_seconds_total{worker="13"} 0.000000083
+rivet_tokio_worker_busy_duration_seconds_total{worker="14"} 0.000005375
+rivet_tokio_worker_busy_duration_seconds_total{worker="15"} 0.107428207
+rivet_tokio_worker_busy_duration_seconds_total{worker="16"} 0.000011499
+rivet_tokio_worker_busy_duration_seconds_total{worker="17"} 0.000015333
+rivet_tokio_worker_busy_duration_seconds_total{worker="2"} 0.000000167
+rivet_tokio_worker_busy_duration_seconds_total{worker="3"} 0.000000042
+rivet_tokio_worker_busy_duration_seconds_total{worker="4"} 0.000000083
+rivet_tokio_worker_busy_duration_seconds_total{worker="5"} 0.000000042
+rivet_tokio_worker_busy_duration_seconds_total{worker="6"} 0.000000041
+rivet_tokio_worker_busy_duration_seconds_total{worker="7"} 0.000000041
+rivet_tokio_worker_busy_duration_seconds_total{worker="8"} 0.000000084
+rivet_tokio_worker_busy_duration_seconds_total{worker="9"} 0.000000042
+# HELP rivet_tokio_worker_local_queue_depth Number of pending tasks in a worker's queue.
+# TYPE rivet_tokio_worker_local_queue_depth gauge
+rivet_tokio_worker_local_queue_depth{worker="0"} 0
+rivet_tokio_worker_local_queue_depth{worker="1"} 0
+rivet_tokio_worker_local_queue_depth{worker="10"} 0
+rivet_tokio_worker_local_queue_depth{worker="11"} 0
+rivet_tokio_worker_local_queue_depth{worker="12"} 0
+rivet_tokio_worker_local_queue_depth{worker="13"} 0
+rivet_tokio_worker_local_queue_depth{worker="14"} 0
+rivet_tokio_worker_local_queue_depth{worker="15"} 0
+rivet_tokio_worker_local_queue_depth{worker="16"} 0
+rivet_tokio_worker_local_queue_depth{worker="17"} 0
+rivet_tokio_worker_local_queue_depth{worker="2"} 0
+rivet_tokio_worker_local_queue_depth{worker="3"} 0
+rivet_tokio_worker_local_queue_depth{worker="4"} 0
+rivet_tokio_worker_local_queue_depth{worker="5"} 0
+rivet_tokio_worker_local_queue_depth{worker="6"} 0
+rivet_tokio_worker_local_queue_depth{worker="7"} 0
+rivet_tokio_worker_local_queue_depth{worker="8"} 0
+rivet_tokio_worker_local_queue_depth{worker="9"} 0
+# HELP rivet_tokio_worker_overflow_count Number of times the given worker thread saturated its local queue.
+# TYPE rivet_tokio_worker_overflow_count gauge
+rivet_tokio_worker_overflow_count{worker="0"} 0
+rivet_tokio_worker_overflow_count{worker="1"} 0
+rivet_tokio_worker_overflow_count{worker="10"} 0
+rivet_tokio_worker_overflow_count{worker="11"} 0
+rivet_tokio_worker_overflow_count{worker="12"} 0
+rivet_tokio_worker_overflow_count{worker="13"} 0
+rivet_tokio_worker_overflow_count{worker="14"} 0
+rivet_tokio_worker_overflow_count{worker="15"} 0
+rivet_tokio_worker_overflow_count{worker="16"} 0
+rivet_tokio_worker_overflow_count{worker="17"} 0
+rivet_tokio_worker_overflow_count{worker="2"} 0
+rivet_tokio_worker_overflow_count{worker="3"} 0
+rivet_tokio_worker_overflow_count{worker="4"} 0
+rivet_tokio_worker_overflow_count{worker="5"} 0
+rivet_tokio_worker_overflow_count{worker="6"} 0
+rivet_tokio_worker_overflow_count{worker="7"} 0
+rivet_tokio_worker_overflow_count{worker="8"} 0
+rivet_tokio_worker_overflow_count{worker="9"} 0
+# HELP openorange_worker_info Identifies this Worker.
+# TYPE openorange_worker_info gauge
+openorange_worker_info{worker="serve-peer",index="1"} 1
+# HELP openorange_worker_start_time_seconds Runtime process start time in seconds.
+# TYPE openorange_worker_start_time_seconds gauge
+openorange_worker_start_time_seconds 1795191674.5506282

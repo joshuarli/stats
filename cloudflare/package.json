@@ -19,6 +19,7 @@
     "test:all": "node scripts/worker-test.mjs",
     "statsctl": "node --experimental-strip-types src/cli/statsctl.ts",
     "observe": "node --experimental-strip-types src/observe/client/cli.ts",
+    "test:metrics": "node scripts/run-tests.mjs --file test/metrics",
     "test:binary": "node scripts/run-tests.mjs --file test/binary",
     "test:ingest": "node scripts/run-tests.mjs --file test/ingest",
     "test:agent-e2e": "node scripts/run-tests.mjs --suite agent-e2e",

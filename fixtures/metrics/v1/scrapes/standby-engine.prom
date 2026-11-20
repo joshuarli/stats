@@ -1,0 +1,51 @@
+# HELP rivet_depot_alarm_discovery_rows_total Ordered alarm index rows returned by frontier refills.
+# TYPE rivet_depot_alarm_discovery_rows_total counter
+rivet_depot_alarm_discovery_rows_total 32
+# HELP rivet_depot_client_fences_total Depot filesystem, journal and volume client fences, and fenced refusals, by reason.
+# TYPE rivet_depot_client_fences_total counter
+rivet_depot_client_fences_total{reason="commit_driver_abandoned"} 39
+rivet_depot_client_fences_total{reason="owner_released"} 1380
+rivet_depot_client_fences_total{reason="slot_closed"} 460
+rivet_depot_client_fences_total{reason="speculation_lost"} 39
+# HELP rivet_depot_cold_store_backpressure_total SlateDB writes held because a database's unflushed bytes reached its limit: each check that made a write wait (wait), and each wait that hit SlateDB's 30 s timeout with no flush finished (timeout). SlateDB logs these only at debug.
+# TYPE rivet_depot_cold_store_backpressure_total counter
+rivet_depot_cold_store_backpressure_total{result="timeout"} 0
+rivet_depot_cold_store_backpressure_total{result="wait"} 0
+# HELP rivet_depot_cold_store_unflushed_bytes SlateDB unflushed memtable and WAL bytes across every database of this process, as of each database's last write.
+# TYPE rivet_depot_cold_store_unflushed_bytes gauge
+rivet_depot_cold_store_unflushed_bytes 666230
+# HELP rivet_depot_cold_store_unflushed_capacity_bytes Process budget for SlateDB unflushed bytes, split across maintained tablets.
+# TYPE rivet_depot_cold_store_unflushed_capacity_bytes gauge
+rivet_depot_cold_store_unflushed_capacity_bytes 1073741824
+# HELP rivet_depot_tablet_flush_deferred_volumes_total Requested volumes a tablet filesystem flush skipped because their own work was in flight or queued ahead, and owes to the next flush.
+# TYPE rivet_depot_tablet_flush_deferred_volumes_total counter
+rivet_depot_tablet_flush_deferred_volumes_total 0
+# HELP rivet_depot_tablet_store_queue_depth Tablet store work waiting for admission across active maintainers, by queue.
+# TYPE rivet_depot_tablet_store_queue_depth gauge
+rivet_depot_tablet_store_queue_depth{kind="sampled_apply"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_flush"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_load"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_open"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_other"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_pass"} 0
+rivet_depot_tablet_store_queue_depth{kind="sampled_row_read"} 0
+rivet_depot_tablet_store_queue_depth{kind="session_read"} 0
+rivet_depot_tablet_store_queue_depth{kind="store"} 0
+# HELP rivet_depot_tablet_volume_refusals_total Volume requests a tablet maintainer refused to its client, by reason.
+# TYPE rivet_depot_tablet_volume_refusals_total counter
+rivet_depot_tablet_volume_refusals_total{reason="not_maintainer"} 2
+rivet_depot_tablet_volume_refusals_total{reason="volume_not_found"} 2
+# HELP rivet_tokio_worker_busy_duration_seconds_total Seconds a worker has spent polling tasks. Its rate against wall clock time is the worker's busy fraction, which separates a saturated runtime from one whose workers are parked.
+# TYPE rivet_tokio_worker_busy_duration_seconds_total counter
+rivet_tokio_worker_busy_duration_seconds_total{worker="0"} 112.96711697400002
+rivet_tokio_worker_busy_duration_seconds_total{worker="1"} 118.10155486800004
+rivet_tokio_worker_busy_duration_seconds_total{worker="2"} 110.47840451199994
+# HELP rivet_state_machine_durable_stale_alarm_deliveries_total Durable state machine alarm deliveries for a revision no longer armed, acknowledged without firing.
+# TYPE rivet_state_machine_durable_stale_alarm_deliveries_total counter
+rivet_state_machine_durable_stale_alarm_deliveries_total{machine="actor"} 3
+# HELP rivet_topology_discovery_heartbeat_reads_total Storage heartbeats seen by discovery listings: read again (read) or reused because the listed ETag was unchanged (reused).
+# TYPE rivet_topology_discovery_heartbeat_reads_total counter
+rivet_topology_discovery_heartbeat_reads_total{result="read"} 258
+# HELP rivet_topology_heartbeat_gc_passes_total Cleanup passes over both heartbeat prefixes: completed, or clock_unknown when topology had no store clock evidence yet.
+# TYPE rivet_topology_heartbeat_gc_passes_total counter
+rivet_topology_heartbeat_gc_passes_total{result="completed"} 1

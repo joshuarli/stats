@@ -321,8 +321,12 @@ pnpm --dir cloudflare -s test:metrics
 
 ## Unverified assumptions
 
-- INF-2 names, labels and the port rule come from the campaign brief, not a scrape. RivetKit and
-  Engine exposition names and labels are unverified.
+- Captures confirm the `rivet_rivetkit_` and `rivet_` prefixes and the Worker identity
+  labels. The v1 catalog includes only observed families and closed observed label values.
+  No captured family establishes registration failures, alarm delivery retries, Engine
+  object-store or namespace retries, or lease degradation; these remain gaps. Heartbeat
+  reads and stale alarm deliveries are present and admitted.
+  Families and label values absent from the captures require new evidence before admission.
 - OpenOrange may reject a new SQLite class under the generated `v1` migration tag
   (`generate.mts:77`). An Engine holding actors whose class the runner lacks may not stay quiet.
 - The cost of a scrape on the Worker event loop is unmeasured. STA-128 thresholds apply before
