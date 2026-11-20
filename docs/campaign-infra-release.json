@@ -11,12 +11,13 @@
   },
   "production": {
     "writer": "threadripper standby VM (native-stats)",
-    "release": "accd14a0364c app; runtime rt-3abd20d29960",
-    "checkedAt": "2026-11-20T17:43:00Z",
+    "release": "46ac80216376 app; runtime rt-a26798107529",
+    "checkedAt": "2026-11-20T19:20:00Z",
     "watchdog": "stats-recovery-vm-watchdog on threadripper since 2026-11-20",
-    "runtime": "rt-3abd20d29960 open-orange 1.0.2-laputa.1",
-    "previousRuntime": "rt-13b896622da5",
-    "rolloutJournal": "~/.local/state/openorange/rollouts/83a31437381647c29cb9034ca32c5046"
+    "runtime": "rt-a26798107529 open-orange 1.0.2-laputa.1 without @rivet-dev/services",
+    "previousRuntime": "rt-3abd20d29960",
+    "rolloutJournal": "~/.local/state/openorange/rollouts/58dfe686ce674848873f5173cf4a6350",
+    "infraMetrics": "stats-infra-collector on the standby; engine:live, worker:stats:0, worker:stats-observe:1"
   },
   "incidents": [
     {
@@ -62,12 +63,13 @@
     },
     {
       "id": "INF-4",
-      "state": "accepted-branch",
+      "state": "promoted",
       "repo": "stats",
       "branch": "campaign/drop-services",
       "acceptance": "make orange-test + packaged image evidence",
       "attempts": [
-        "campaign/drop-services 01302b7: orange-test 6/6; linux image without services"
+        "campaign/drop-services 01302b7: orange-test 6/6; linux image without services",
+        "stats 97cdf2b services drop; rollout 58dfe686: rt-a26798107529 promoted, 20 checks ok"
       ]
     },
     {
@@ -89,13 +91,15 @@
     },
     {
       "id": "INF-7",
-      "state": "slice-1-landed",
+      "state": "live-standby",
       "dependsOn": [
         "INF-2"
       ],
       "attempts": [
         "rfc c8cb9c4",
-        "stats 516a19a 43bc01a: catalog, parser, codec, store"
+        "stats 516a19a 43bc01a: catalog, parser, codec, store",
+        "stats 46ac802 ingest route, MetricStore, collector",
+        "stats 0b31213 standby collector; 3 sources ok"
       ]
     },
     {
@@ -118,12 +122,13 @@
       ],
       "attempts": [
         "stuff d1eef39 engine",
-        "stuff 4dff3f6 native adapter (lane failed 3x; parent implemented)"
+        "stuff 4dff3f6 native adapter (lane failed 3x; parent implemented)",
+        "stuff 868479a oo-containers adapter"
       ]
     },
     {
       "id": "INF-10",
-      "state": "promoted-recovery-drill-open",
+      "state": "promoted",
       "dependsOn": [
         "INF-9"
       ],
@@ -132,16 +137,19 @@
         "stuff npm generation 9231c809: open-orange@1.0.2-laputa.1",
         "stats b58a339 repo closure on owned release",
         "rollout 83a31437: promoted, 20 checks ok",
-        "in-container canary 1 flake in 3 runs (recovery stack start under emulation)"
+        "in-container canary 1 flake in 3 runs (recovery stack start under emulation)",
+        "rollout 4da37e92: drill to rt-13b896622da5, abort recovered in 4.8s"
       ]
     },
     {
       "id": "INF-11",
-      "state": "ready-after",
+      "state": "qualified-held",
       "dependsOn": [
         "INF-10"
       ],
-      "attempts": []
+      "attempts": [
+        "stuff 2a82e0b cd3b3ac 7dc8712: reproducible sha256:9c1f1c7a, cross-version opens, 10 restarts; held"
+      ]
     }
   ]
 }

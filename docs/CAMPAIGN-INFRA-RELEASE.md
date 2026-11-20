@@ -48,14 +48,32 @@ Started 2026-11-20 from Stats `7fc3ff9` and Stuff `9fb6f1d`.
   those bytes (`pass`). It was staged, promoted under the journaled
   transaction with a five-minute verification window, and the app deploy path
   accepts it. See the [runtime release record](openorange.md#runtime-release-record-2026-11-20).
-- **Held on a branch:** INF-4 `campaign/drop-services`.
+- **Recovery drill (INF-10):** a second rollout activated upstream
+  `rt-13b896622da5` on state the owned release had written; with the
+  controller killed mid-verification, `rollout abort` re-activated
+  `rt-3abd20d29960` and ended `recovered` in 4.8 s.
+- **INF-4 promoted as its own release:** `rt-a26798107529` is
+  `rt-3abd20d29960` without `@rivet-dev/services` (Stats `97cdf2b`;
+  `make orange-artifact-test` from `cff96db`). Rollout `58dfe686…` passed 20
+  of 20 checks and ended `promoted`. It is the production runtime.
+- **INF-7 live:** ingest route, MetricStore and collector (Stats `46ac802`);
+  the standby serves per-Worker metrics and runs the collector (`0b31213`).
+  Engine and both Worker sources report every round. The dashboard does not
+  show them yet, and the release gate does not read them yet.
+- **INF-9 oo-containers adapter** for Lisa's containers (Stuff `868479a`).
+- **INF-11 qualified, held:** the private Engine patches build
+  byte-identically offline (`sha256:9c1f1c7a…`), pass their regression
+  suites, and open each other's data in both directions over ten restarts
+  (Stuff `2a82e0b`, `cd3b3ac`, `7dc8712`;
+  `docs/openorange-engine-qualification.md`). Production is held: the
+  evidence is a short fixed workload, and no rollout adapter replaces the
+  standby's Engine container.
 - **Open:**
-  - A live recovery drill back to `rt-13b896622da5`.
   - INF-6: the independent observer and alerting (needs owner).
-  - INF-7: the ingest route, MetricStore actor and collector, then enabling
-    `RIVETKIT_METRICS_PORT` on the standby.
-  - INF-11: Engine patch qualification.
-  - The oo-containers adapter for Lisa.
+  - INF-7: dashboard display and feeding the source evidence to
+    `statsctl verify release`.
+  - INF-11: an Engine-replacement adapter and a sustained soak before
+    promotion.
   - The in-container canary's recovery stack failed to start once in three
     runs under amd64 emulation.
 
@@ -69,14 +87,14 @@ the item is listed under Needs environment.
 | INF-1 | 5 | `statsctl verify release`: offline evidence bundle that yields `pass`, `reject`, `pending` or `inconclusive`, with stable reasons and replay | Stats | `pnpm --dir cloudflare -s test:cli` with `verify-release.test.ts` | landed |
 | INF-2 | 3 | OpenOrange serves RivetKit metrics for every Worker, with Worker identity and start time | OpenOrange downstream | `tests/orange-serve.test.ts` two-Worker case | accepted (patch) |
 | INF-3 | 1–2 | Source ownership registry, release manifest schema `openorange-release-manifest/1`, read-only `release-inspect` | Stuff | `test_sources.py`, `test_release_inspect.py`, `bin/sources verify` | landed |
-| INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | accepted (branch) |
+| INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | promoted (`rt-a26798107529`) |
 | INF-5 | 2 | Import INF-2 as the first OpenOrange downstream patch; build an identified release (package tarball and manifest) from a clean checkout with the network disabled after acquisition | Stuff | `bin/sources verify` and a release build that reproduces its digest | landed |
 | INF-6 | 3 | Independent observer: a pinned Node/SQLite Stats instance on a host that shares neither the candidate's Engine nor its storage, plus external health alerting | Stats + Stuff | Observer ingests host and service events; stopping the writer raises an alert | needs owner (alert channel) |
-| INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | slice 1 landed |
+| INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | live on the standby; dashboard and gate reads open |
 | INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | landed |
-| INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | landed (engine, native adapter) |
-| INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | promoted; live recovery drill open |
-| INF-11 | 8 | Qualify the existing private Rivet Engine patches through the loop | Stuff | INF-1 `pass` on the Engine release class | after INF-10 |
+| INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | landed (engine, native and oo-containers adapters) |
+| INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | promoted; live recovery drill `recovered` |
+| INF-11 | 8 | Qualify the existing private Rivet Engine patches through the loop | Stuff | INF-1 `pass` on the Engine release class | qualified; production held |
 | STA-130 | ops | Supervise the standby VM; alert on Stats downtime | Stats | See TODO.md | open |
 
 ## Rulings
@@ -98,8 +116,7 @@ the item is listed under Needs environment.
 
 ## Needs environment
 
-- INF-6, INF-8 and INF-10 live steps need a host that is neither Lisa nor
-  Threadripper, plus capacity for two isolated stacks.
+- INF-6 needs a host that is neither Lisa nor Threadripper.
 - INF-11 needs every registered consumer of the shared Engine (Stats, Discover,
   Tansu, Stuff) to have a representative contract check.
 
