@@ -122,6 +122,30 @@ The same steps then deployed merged `master` as `stats-1d26d0c28223`;
 releases. Roll back by copying the four entries back from `releases/` and
 restarting.
 
+### Engine load record (2026-11-19)
+
+Lisa's Engine used 1.7 cores with idle applications. Its Prometheus endpoint
+(`172.29.80.11:6430/metrics`) and per-app stop tests attributed the load:
+
+- About 1.05 cores came from the `discover-wine` space alarm. Wine queued
+  `page.published` and `page.withdrawn` outbox rows that nothing delivers, so
+  each re-arm landed in the past and the alarm re-fired about 1.4 times a
+  second from the first publications on 2026-11-18. Discover
+  [#49](https://github.com/joshuarli/discover/pull/49) (`discover-wine:8d6580a4ea6d`)
+  removed the rows and the loop; Engine CPU fell to 0.65 cores.
+- About 0.35 cores came from alarms of Stats actors in namespaces with no Stats
+  runner on Lisa, which the Engine retries forever. The Nov 14 rehearsal
+  namespaces `stats` and `stats-r1` were archived (irreversible in this Engine),
+  leaving 0.33 cores.
+- `stats-prod` still holds 17 such actors, the pre-failover Stats copy kept
+  for failback. Failback to Lisa ends their retries; if Stats stays off Lisa,
+  archive `stats-prod` once the sealed copy under
+  `/var/lib/openorange/recovery/stats-live-failover-20261118/engine` is no
+  longer needed.
+
+Stats shows the Engine's share on Lisa's host page and the `oo-engine`
+service's Resources section.
+
 ## Back up and restore
 
 The application export is the recovery contract; it does not depend on the
