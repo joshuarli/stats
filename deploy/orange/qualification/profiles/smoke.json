@@ -1,0 +1,11 @@
+{
+  "name": "smoke",
+  "warmupMs": 0,
+  "measureMs": 1,
+  "maxEvidenceAgeMs": 3600000,
+  "minimumRequests": 10,
+  "requestMix": { "hostIngest": 1, "hostReplay": 1, "history": 1, "eventIngest": 1, "eventReplay": 1, "eventConflict": 1, "eventRead": 1, "capabilities": 1, "hosts": 1, "services": 1 },
+  "absolute": { "maxErrorShare": 0, "p95Ms": 5000, "p99Ms": 5000, "maxLostWrites": 0, "maxHistoryMismatches": 0, "maxCpuSecondsPerKRequests": 10000, "maxMemoryPeakBytes": 4294967296, "maxRestarts": 0 },
+  "regression": { "latency": { "maxRelativeIncreasePercent": 300, "absoluteFloorMs": 1000 }, "maxCpuRelativeIncreasePercent": 500, "maxMemoryRelativeIncreasePercent": 300 },
+  "requiredSources": [{ "source": "stats", "producer": "stats-self", "families": [] }]
+}

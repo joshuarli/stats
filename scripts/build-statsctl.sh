@@ -27,6 +27,7 @@ out="$repo/dist/statsctl-$version.mjs"
 
 # Make executable
 chmod +x "$out"
+ln -sf "$(basename "$out")" "$repo/dist/statsctl.mjs"
 
 # Generate SHA256
 if command -v sha256sum >/dev/null 2>&1; then

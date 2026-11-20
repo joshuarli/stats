@@ -8,6 +8,7 @@ import { generate } from "../generate.mts";
 import { freePort, startSession } from "../session.mts";
 import type { Stack } from "./stack.mts";
 import { workload } from "./workload.mts";
+import { compareHistory, expectedHistory, type Sample } from "./history.mts";
 
 const root = resolve(import.meta.dirname, "../../..");
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
@@ -40,61 +41,71 @@ export function source(rows: Row[], release: string, start: number, end: number)
   const last = deliveries.filter(d => d.atMs >= end && d.queued === 0).at(-1);
   if (!first || !last) throw new Error(`missing delivery boundary for ${release}`);
   const received = new Set(deliveries.filter(d => d.sequence > first.accepted && d.sequence <= last.accepted).map(d => d.sequence)).size;
-  return { source: "stats", producer: "stats-self", releaseId: release, lastSeenMs: last.atMs, sequenceStart: checkpoint(first), sequenceEnd: checkpoint(last), received };
-}
-export function resources(stack: Stack) {
-  if ("containerName" in stack.session) {
-    const value = execFileSync("docker", ["exec", stack.session.containerName, "sh", "-c", "cat /sys/fs/cgroup/cpu.stat; cat /sys/fs/cgroup/memory.current"], { encoding: "utf8" });
-    const cpuSeconds = Number(value.match(/usage_usec (\d+)/)?.[1]) / 1e6;
-    const memoryPeakBytes = Number(value.trim().split("\n").at(-1));
-    if (!cpuSeconds || !memoryPeakBytes) throw new Error("container resources unavailable");
-    return { cpuSeconds, memoryPeakBytes, restarts: 0 };
-  }
-  const rows = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,time="], { encoding: "utf8" }).trim().split("\n").map(line => line.trim().split(/\s+/u));
-  const pids = new Set([stack.session.child.pid!]);
-  for (let changed = true; changed;) { changed = false; for (const row of rows) if (pids.has(Number(row[1])) && !pids.has(Number(row[0]))) { pids.add(Number(row[0])); changed = true; } }
-  let cpuSeconds = 0, memoryPeakBytes = 0;
-  for (const row of rows) if (pids.has(Number(row[0]))) { memoryPeakBytes += Number(row[2]) * 1024; const parts = row[3]!.split(":").map(Number); cpuSeconds += parts.reduce((a, b) => a * 60 + b, 0); }
-  if (!cpuSeconds || !memoryPeakBytes) throw new Error("process resources unavailable");
-  return { cpuSeconds, memoryPeakBytes, restarts: 0 };
+  return { source: "stats", producer: "stats-self", releaseId: release, lastSeenMs: last.atMs, sequenceStart: checkpoint(first), sequenceEnd: checkpoint(last), received, families: {} };
 }
 export function monitorResources(stack: Stack) {
-  let latest = resources(stack);
-  let peak = latest.memoryPeakBytes;
-  const sample = () => { latest = resources(stack); peak = Math.max(peak, latest.memoryPeakBytes); };
-  const timer = setInterval(sample, 250);
+  if (!("containerName" in stack.session) || !("metricsPort" in stack.session)) return () => ({ cpuSeconds: null, memoryPeakBytes: null, restarts: null });
+  const { containerName, metricsPort, engineName } = stack.session;
+  const script = `const fs=require("fs"); (async()=>{const cpu=Number(fs.readFileSync("/sys/fs/cgroup/cpu.stat","utf8").match(/usage_usec (\\d+)/)[1]);let memory=0;try{memory=Number(fs.readFileSync("/sys/fs/cgroup/memory.current","utf8"))}catch{}const processes=[];let rss=0;for(const pid of fs.readdirSync("/proc").filter(x=>/^\\d+$/.test(x))){try{if(Number(pid)===process.pid)continue;const status=fs.readFileSync("/proc/"+pid+"/status","utf8");rss+=Number(status.match(/^VmRSS:\\s+(\\d+)/m)?.[1]??0)*1024;const stat=fs.readFileSync("/proc/"+pid+"/stat","utf8");const close=stat.lastIndexOf(")");const name=stat.slice(stat.indexOf("(")+1,close);const fields=stat.slice(close+2).split(" ");if(name==="node"||name==="node-MainThread"||name==="rivet-engine")processes.push(pid+":"+fields[19]);}catch(error){if(error.code!=="ENOENT")throw error;}}if(!memory)memory=rss;if(!memory)throw Error("memory unavailable");const workers=process.argv[1] === "engine" ? [] : await Promise.all([0,1].map(async i=>{const text=await(await fetch("http://127.0.0.1:"+(Number(process.argv[1])+i)+"/metrics")).text();const m=text.match(/^openorange_worker_start_time_seconds ([\\d.]+)$/m);if(!m)throw Error("worker incarnation missing");return m[1]}));console.log(JSON.stringify({cpu,memory,processes:processes.sort(),workers}));})().catch(error=>{console.error(error.message);process.exit(1)})`;
+  type Sample = { cpu: number; memory: number; processes: string[]; workers: string[] };
+  const read = (): Sample => {
+    const worker = JSON.parse(execFileSync("docker", ["exec", containerName, "node", "-e", script, String(metricsPort)], { encoding: "utf8", timeout: 5000 })) as Sample;
+    const engine = JSON.parse(execFileSync("docker", ["exec", engineName, "node", "-e", script, "engine"], { encoding: "utf8", timeout: 5000 })) as Sample;
+    return { cpu: worker.cpu + engine.cpu, memory: worker.memory + engine.memory, processes: [...worker.processes.map(pid => `w:${pid}`), ...engine.processes.map(pid => `e:${pid}`)], workers: worker.workers };
+  };
+  let first: Sample | undefined, previous: Sample | undefined, peak = 0, restarts = 0, failed = false;
+  const sample = () => { try { const current = read(); first ??= current; if (previous) { restarts += previous.processes.filter(pid => !current.processes.includes(pid)).length; restarts += previous.workers.filter((value, index) => value !== current.workers[index]).length; } previous = current; peak = Math.max(peak, current.memory); } catch (error) { if (!failed) console.error(`resource sample failed: ${error instanceof Error ? error.message : String(error)}`); failed = true; } };
+  sample();
+  const timer = setInterval(sample, 2000);
   timer.unref();
-  return () => { clearInterval(timer); sample(); return { ...latest, memoryPeakBytes: peak }; };
+  return () => { clearInterval(timer); sample(); if (failed || !first || !previous || previous.cpu < first.cpu) return { cpuSeconds: null, memoryPeakBytes: null, restarts: null }; return { cpuSeconds: (previous.cpu - first.cpu) / 1e6, memoryPeakBytes: peak, restarts }; };
 }
-export async function recover(candidate: Stack, baseline: Stack, directory: string, result: { historyPath: string; historyBytes: Uint8Array; eventReadPath: string; event: unknown }) {
+type HistoryRun = { historyPath: string; historyBytes: Uint8Array; eventReadPath: string; event: unknown; hostId: string; samples: Sample[]; ledger: { history: { phases: { phase: string; expected: number; verified: number; missing: number; mismatched: number }[] } } };
+export async function recover(candidate: Stack, baseline: Stack, directory: string, result: HistoryRun | readonly HistoryRun[]): Promise<{ method: string; verifiedAtMs: number; previousRelease: string; readbackVerified: boolean }> {
+  if (candidate !== baseline && !baseline.recovered && baseline.historyRuns.length) await recover(baseline, baseline, `${directory}-baseline`, baseline.historyRuns as HistoryRun[]);
   await candidate.stop();
   cpSync(candidate.stateDir, directory, { recursive: true });
   generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers["X-Stats-Gateway-Secret"] ?? Object.values(baseline.headers)[0]!, nowMs: null });
   const port = await freePort();
   const session = "containerName" in baseline.session ? await startContainerSession(directory, port, baseline.runtimeRoot) : await startSession(directory, port, { runtimeRoot: baseline.runtimeRoot });
   try {
-    const history = await fetch(session.origin + result.historyPath, { headers: { ...baseline.headers, "accept-encoding": "identity" } });
-    const bytes = new Uint8Array(await history.arrayBuffer());
-    const events = await fetch(session.origin + result.eventReadPath, { headers: baseline.headers });
-    const body = await events.json() as { events: { event: unknown }[] };
-    return { method: "state-copy", verifiedAtMs: Date.now(), previousRelease: baseline.release, readbackVerified: history.status === 200 && Buffer.from(bytes).equals(result.historyBytes) && events.status === 200 && JSON.stringify(body.events[0]?.event) === JSON.stringify(result.event) };
+    let verified = true;
+    for (const entry of Array.isArray(result) ? result : [result]) {
+      const history = await fetch(session.origin + entry.historyPath, { headers: { ...baseline.headers, "accept-encoding": "identity" } }).catch(() => null);
+      if (history === null) { verified = false; continue; }
+      const bytes = new Uint8Array(await history.arrayBuffer());
+      let phase: ReturnType<typeof compareHistory> | null = null;
+      if (history.status === 200) { try { phase = compareHistory(bytes, entry.hostId, expectedHistory(entry.samples), "after"); entry.ledger.history.phases.push(phase); } catch {} }
+      const events = await fetch(session.origin + entry.eventReadPath, { headers: baseline.headers }).catch(() => null);
+      let matched = false;
+      if (events?.status === 200) { try { const body = await events.json() as { events: { event: unknown }[] }; matched = body.events.some(item => JSON.stringify(item.event) === JSON.stringify(entry.event)); } catch {} }
+      verified = verified && phase !== null && phase.missing === 0 && phase.mismatched === 0 && matched;
+    }
+    candidate.recovered = true;
+    return { method: "state-copy", verifiedAtMs: Date.now(), previousRelease: baseline.release, readbackVerified: verified };
   } finally { await session.stop(); }
 }
-export function writeBundle(directory: string, baseline: Stack, candidate: Stack, ledgers: { baseline: any; candidate: any }, observations: { baseline: any; candidate: any }, recovery: unknown, start: number, end: number) {
-  mkdirSync(directory, { recursive: true });
+export function writeBundle(directory: string, baseline: Stack, candidate: Stack, ledgers: { baseline: any; candidate: any }, observations: { baseline: any; candidate: any }, recovery: unknown, start: number, end: number, options?: { definitionBytes: Buffer; baselineManifest: unknown; candidateManifest: unknown }) {
+  mkdirSync(directory);
   const write = (name: string, value: unknown) => { const text = `${JSON.stringify(value, null, 2)}\n`; writeFileSync(join(directory, name), text); return text; };
   const components = (stack: Stack) => ({ ...Object.fromEntries([["orange-package", join(stack.runtimeRoot, "package.json")], ["orange-lock", join(stack.runtimeRoot, "pnpm-lock.yaml")], ["orange-bin", join(stack.runtimeRoot, "node_modules/open-orange/dist/bin.js")], ["workspace-lock", join(root, "pnpm-lock.yaml")], ["stats-bundle", join(STATS_OUTPUT, "bundle/index.js")], ["observe-bundle", join(OBSERVE_OUTPUT, "bundle/index.js")]].map(([name, path]) => [name, hash(readFileSync(path!))])), ...("closureDigest" in stack ? { "runtime-closure": stack.closureDigest } : {}) });
   const workloadBytes = write("workload.json", workload);
-  write("baseline.manifest.json", { releaseId: baseline.release, components: components(baseline) });
-  write("candidate.manifest.json", { releaseId: candidate.release, components: components(candidate) });
-  write("policy.json", { schema: "stats-release-policy/1", id: "local-canary", baselineRelease: baseline.release, candidateRelease: candidate.release, workloadId: workload.id, workloadSha256: hash(workloadBytes), requiredSources: [{ source: "stats", producer: "stats-self" }], windows: { startMs: start, warmupMs: 0, measureMs: end - start }, minRequests: 1, maxEvidenceAgeMs: 300_000, limits: { maxErrorShare: 0, latency: { p95Ms: 1e9, p99Ms: 1e9, maxRelativeIncreasePercent: 1e9, absoluteFloorMs: 1e9 }, maxCpuRelativeIncreasePercent: 1e9, maxMemoryRelativeIncreasePercent: 1e9, maxRestarts: 0, maxQueueDepth: 0 }, histogramMaxRelativeError: 0.01, recovery: { required: true, method: "state-copy" } });
+  const manifest = (stack: Stack) => {
+    const entries = Object.fromEntries(Object.entries(components(stack)).map(([name, digest]) => [name, digest.startsWith("sha256:") ? digest : `sha256:${digest}`]));
+    return { releaseId: stack.release, artifactDigest: entries["runtime-closure"] ?? entries["orange-bin"], components: entries };
+  };
+  write("baseline.manifest.json", options?.baselineManifest ?? manifest(baseline));
+  write("candidate.manifest.json", options?.candidateManifest ?? manifest(candidate));
+  const definitionBytes = options?.definitionBytes ?? readFileSync(join(root, "deploy/orange/qualification/profiles/smoke.json"));
+  const profile = JSON.parse(definitionBytes.toString("utf8"));
+  write("policy.json", { schema: "stats-release-policy/2", id: profile.name === "promotion" ? "orange-promotion" : "local-canary", profile: { name: profile.name, definitionSha256: hash(definitionBytes) }, baselineRelease: baseline.release, candidateRelease: candidate.release, workloadId: workload.id, workloadSha256: hash(workloadBytes), requiredSources: profile.requiredSources, windows: { startMs: start - (options ? profile.warmupMs : 0), warmupMs: options ? profile.warmupMs : 0, measureMs: end - start }, minimums: { measureMs: profile.measureMs, requests: profile.minimumRequests }, maxEvidenceAgeMs: profile.maxEvidenceAgeMs, absolute: profile.absolute, regression: profile.regression, histogramMaxRelativeError: 0.01, recovery: { required: true, method: "state-copy" } });
   for (const ledger of Object.values(ledgers)) { ledger.windowStartMs = start; ledger.windowEndMs = end; }
   write("ledger.json", { schema: "stats-release-evidence/1", ...ledgers });
   write("observations.json", { schema: "stats-release-evidence/1", ...observations });
   write("recovery.json", recovery);
   const command = spawnSync("pnpm", ["--dir", "cloudflare", "-s", "statsctl", "verify", "release", "--evidence", directory, "--json"], { cwd: root, encoding: "utf8" });
   if (![0, 5, 6, 7].includes(command.status ?? -1)) throw new Error(`verify failed ${command.status}: ${command.stderr} ${command.stdout}`);
-  const decision = JSON.parse(command.stdout).payload;
+  const decision = (JSON.parse(command.stdout) as { payload: { verdict: string; evaluatedAtMs: number; reasons: { code: string }[] } }).payload;
   write("decision.json", { evaluatedAtMs: decision.evaluatedAtMs, verdict: decision.verdict, reasonCodes: decision.reasons.map((r: {code: string}) => r.code) });
   return { decision, status: command.status };
 }

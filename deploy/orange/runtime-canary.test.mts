@@ -73,7 +73,7 @@ async function metrics(root: string, directory: string) {
   } finally { await stop(serve); await stop(engine); }
 }
 
-await test("owned runtime passes the release canary and exposes both worker metrics", { timeout: 300_000 }, async () => {
+await test("upstream runtime without worker metrics holds qualification and owned runtime exposes both metrics", { timeout: 600_000 }, async () => {
   const scratch = mkdtempSync(resolve(".work/tmp/runtime-canary-"));
   let baseline: Stack | undefined, candidate: Stack | undefined;
   try {
@@ -84,7 +84,11 @@ await test("owned runtime passes the release canary and exposes both worker metr
     writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
     const install = spawnSync("pnpm", ["install"], { cwd: closure, encoding: "utf8", timeout: 120_000 });
     assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
-    const diff = spawnSync("diff", ["-u", join(ORANGE_ROOT, "pnpm-lock.yaml"), join(closure, "pnpm-lock.yaml")], { encoding: "utf8" });
+    const normalizedBaseline = join(scratch, "normalized-baseline"); mkdirSync(normalizedBaseline);
+    for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) copyFileSync(join(ORANGE_ROOT, name), join(normalizedBaseline, name));
+    const normalize = spawnSync("pnpm", ["install", "--lockfile-only", "--ignore-scripts"], { cwd: normalizedBaseline, encoding: "utf8", timeout: 120_000 });
+    assert.equal(normalize.status, 0, `${normalize.stdout}\n${normalize.stderr}`);
+    const diff = spawnSync("diff", ["-u", join(normalizedBaseline, "pnpm-lock.yaml"), join(closure, "pnpm-lock.yaml")], { encoding: "utf8" });
     assert.equal(diff.status, 1, diff.stderr);
     const changed = diff.stdout.split("\n").filter(line => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line));
     assert.equal(changed.length, 11, diff.stdout);
@@ -94,28 +98,37 @@ await test("owned runtime passes the release canary and exposes both worker metr
       const result = spawnSync(process.execPath, [bin(dir!), "--version"], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout.trim(), version); console.log("orange version", version);
     }
-    baseline = await startStack(join(scratch, "baseline"), "baseline", false, closure);
-    candidate = await startStack(join(scratch, "candidate"), "candidate");
+    const linuxRoots = [closure, ORANGE_ROOT].map((input, index) => {
+      const target = join(scratch, `linux-${index}`); mkdirSync(target);
+      for (const name of ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]) copyFileSync(join(input, name), join(target, name));
+      const result = spawnSync("docker", ["run", "--rm", "-v", `${target}:/work`, "-w", "/work", "node@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5", "sh", "-ec", "npm install -g pnpm@12.21.0 >/dev/null && pnpm install --frozen-lockfile --prod --ignore-scripts"], { encoding: "utf8", timeout: 120_000 });
+      assert.equal(result.status, 0, result.stderr);
+      return target;
+    });
+    baseline = await startStack(join(scratch, "baseline"), "baseline", false, linuxRoots[0], true);
+    candidate = await startStack(join(scratch, "candidate"), "candidate", false, linuxRoots[1], true);
     assert.notEqual(baseline.runtimeRoot, candidate.runtimeRoot);
     const from = Date.now() - 60_000;
     const [bc, cc] = await Promise.all([prepare(baseline), prepare(candidate)]);
     await Promise.all([waitCheckpoint(baseline, from, from), waitCheckpoint(candidate, from, from)]);
+    const start = Date.now();
     const br = monitorResources(baseline), cr = monitorResources(candidate);
-    const start = Date.now() + 1; while (Date.now() <= start) await delay(5);
     const [left, right] = await Promise.all([runWorkload(baseline, bc, baseline.origin), runWorkload(candidate, cc, candidate.origin)]);
+    const leftResources = br(), rightResources = cr();
     const end = Date.now();
     await Promise.all([fetch(`${baseline.origin}/api/v1/capabilities`, { headers: baseline.headers }), fetch(`${candidate.origin}/api/v1/capabilities`, { headers: candidate.headers })]);
     const [lo, ro] = await Promise.all([waitCheckpoint(baseline, from, end), waitCheckpoint(candidate, from, end)]);
-    const observations = { baseline: { observer: { status: "ok", checkedAtMs: lo.checkedAtMs }, sources: [source(lo.rows, baseline.release, start, end)], truncated: lo.truncated, hostConfounded: false, resources: br() }, candidate: { observer: { status: "ok", checkedAtMs: ro.checkedAtMs }, sources: [source(ro.rows, candidate.release, start, end)], truncated: ro.truncated, hostConfounded: false, resources: cr() } };
+    const observations = { baseline: { observer: { status: "ok", checkedAtMs: lo.checkedAtMs }, sources: [source(lo.rows, baseline.release, start, end)], truncated: lo.truncated, hostConfounded: false, resources: leftResources }, candidate: { observer: { status: "ok", checkedAtMs: ro.checkedAtMs }, sources: [source(ro.rows, candidate.release, start, end)], truncated: ro.truncated, hostConfounded: false, resources: rightResources } };
     const recovery = await recover(candidate, baseline, join(scratch, "recovery"), right);
     assert.equal(recovery.readbackVerified, true);
     const bundle = join(scratch, "evidence");
     const result = writeBundle(bundle, baseline, candidate, { baseline: left.ledger, candidate: right.ledger }, observations, recovery, start, end);
-    assert.equal(result.status, 0, JSON.stringify(result.decision)); assert.equal(result.decision.verdict, "pass");
+    assert.equal(result.status, 6, JSON.stringify(result.decision)); assert.equal(result.decision.verdict, "inconclusive");
+    assert.ok(result.decision.reasons.some(reason => reason.code === "resources-missing"));
     const manifests = ["baseline", "candidate"].map(name => JSON.parse(readFileSync(join(bundle, `${name}.manifest.json`), "utf8")));
     for (const key of ["orange-package", "orange-lock", "orange-bin"]) assert.notEqual(manifests[0].components[key], manifests[1].components[key]);
     const replay = spawnSync("pnpm", ["--dir", "cloudflare", "-s", "statsctl", "verify", "release", "--evidence", bundle, "--replay", "--json"], { encoding: "utf8" });
-    assert.equal(replay.status, 0, replay.stderr); assert.equal(JSON.parse(replay.stdout).payload.verdict, "pass");
+    assert.equal(replay.status, 6, replay.stderr); assert.equal(JSON.parse(replay.stdout).payload.verdict, "inconclusive");
     console.log("manifests", JSON.stringify(manifests)); console.log("verdict", JSON.stringify(result.decision)); console.log("replay", replay.stdout.trim());
     await metrics(ORANGE_ROOT, join(scratch, "metrics"));
   } finally { await candidate?.stop(); await baseline?.stop(); rmSync(scratch, { recursive: true, force: true }); }

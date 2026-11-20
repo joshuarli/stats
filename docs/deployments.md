@@ -262,14 +262,78 @@ Primary API references:
 - https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/get/
 - https://developers.cloudflare.com/workers/versions-and-deployments/
 
-## Offline release promotion gate
+## Offline release qualification
 
-Run the [local canary pair](testing.md#run-the-local-canary-pair) to exercise the gate with isolated OpenOrange stacks.
+`smoke` exercises the gate and recovery with a short workload. Its verdict does
+not establish promotion readiness. `promotion` uses a 60-second warm-up and a
+600-second measurement window at ten requests per second. It requires at least
+5,400 measured requests. Both definitions are frozen in
+`deploy/orange/qualification/profiles/`; the policy records the SHA-256 of the
+exact definition bytes.
 
-An external rollout controller saves a `stats-release-policy/1` policy and a `stats-release-evidence/1` bundle, then runs `statsctl verify release --evidence DIR --json`. Only a `pass` authorizes promotion. The directory contains `policy.json`, `baseline.manifest.json`, `candidate.manifest.json`, `workload.json`, `ledger.json`, `observations.json`, and `recovery.json`. The policy's workload SHA-256 covers the exact bytes of `workload.json`. Source checkpoints are producer delivery snapshots `{startedAtMs, atMs, accepted, dropped, queued}` (see [the producer contract](integration.md)) and must bracket the measurement window. Delivery is complete only when both checkpoints belong to one producer session (`startedAtMs`), `received` counts the distinct sequences in `(start.accepted, end.accepted]` and equals their difference (retransmissions cannot conceal a gap), `dropped` did not change, and both boundary queues are empty, as in Stats' service comparison. `dropped` already counts invalid records, evictions and exhausted or permanently rejected sends.
+The promotion definition proposes a maximum error share of 0.001, p95 of 500 ms, p99 of one second, 100 CPU seconds per 1,000 requests, and a
+1.5 GiB sampled memory peak. It permits no lost writes, history mismatches, or observed
+restarts. Paired latency regressions require both a 25% increase and a 10 ms
+increase. CPU per 1,000 requests and peak memory may rise by at most 25%.
 
-The verdict reports every gate and reason, the independent improvement claim, evaluation time, and file hashes. Exit codes are 0 for pass, 7 for reject, 6 for inconclusive, and 5 for pending. Save `{evaluatedAtMs, verdict, reasonCodes}` in `decision.json` and use `--replay` to recompute offline at the recorded time; a mismatch exits 4. Use `statsctl help verify release` for the full command contract.
+These limits are provisional and need owner review before a promotion run. One
+short `smoke` rehearsal made 30 measured requests per cohort without failures
+and verified all six host points before and after recovery. The candidate's
+histogram upper bounds were 22.006 ms at p95 and 23.014 ms at p99. Its measured
+CPU delta was 0.662 seconds, or about 22.1 seconds per 1,000 requests, and the
+sampled process RSS peak was about 1.07 GB. The limits leave headroom over that
+one small run. Its mix, duration, load and collector-family coverage do not
+establish promotion capacity or a tail-latency distribution. The 25% regression
+limit and 10 ms latency floor are initial guardrails, not statistically derived
+thresholds. Compare a full promotion run with production conditions before
+relying on them.
 
-The policy names `id`, `baselineRelease`, `candidateRelease`, `workloadId`, `workloadSha256`, and `requiredSources` (pairs of `source` and `producer`). `windows` has `startMs`, `warmupMs`, and `measureMs`; the measurement interval starts after warmup. It also sets `minRequests`, `maxEvidenceAgeMs`, `histogramMaxRelativeError`, `recovery` (`required: true`, `method`), and `limits`: `maxErrorShare` (a fraction), `latency` (`p95Ms`, `p99Ms`, `maxRelativeIncreasePercent`, `absoluteFloorMs`), `maxCpuRelativeIncreasePercent`, `maxMemoryRelativeIncreasePercent`, `maxRestarts`, and `maxQueueDepth`. An optional `improvement` has `metric` (`p95Ms`, `p99Ms`, `cpuSeconds`, `memoryPeakBytes`, or `errorShare`), `direction` (`increase` or `decrease`), and `minChangePercent`.
+On native Linux with Docker, build both Worker bundles and supply two runtime
+artifact directories, each containing `runtime.tar` and `manifest.json`. The
+receipt's artifact digest identifies the exact copied archive bytes. The
+components also identify the canonical runtime manifest, Workers, Engine image,
+and collector. If the input manifest declares `tar_sha256`, the runner checks
+it against the copied archive. Otherwise it records the archive and manifest
+hashes independently; the rollout must establish that they correspond.
 
-Each manifest has `releaseId` and a `components` map of opaque digests. The workload has `id`, `corpusSha256`, integer `seed`, `requestMix` (counts by stable name), integer `concurrency`, and `payloadSizes` (integer bytes). The ledger and observations files each contain `schema`, `baseline`, and `candidate`. Each ledger cohort has `releaseId`, `workloadId`, `attempted`, `succeeded`, `failures` (counts by code), `bodyMismatches`, `acknowledgedWrites`, `readbackVerified`, `lostWrites`, `duplicateMismatches`, `histogram` (`relativeError` and `buckets` of `[upperBoundUs, count]`), `windowStartMs`, `windowEndMs`, and `truncated`. Each observation cohort has `observer` (`status`, `checkedAtMs`), `sources`, `truncated`, `hostConfounded`, and `resources` (`cpuSeconds`, `memoryPeakBytes`, `restarts`). Each source has `source`, `producer`, `releaseId`, `lastSeenMs`, `sequenceStart`, `sequenceEnd`, and `received`. `maxQueueDepth` applies to the boundary `queued` values; producers report no high-water mark, so a queue that filled and drained between checkpoints is visible only through `dropped`. Recovery has `method`, `verifiedAtMs`, `previousRelease`, and boolean `readbackVerified`. All objects are strict; unknown fields and wrong types are rejected.
+```sh
+TMPDIR="$PWD/.work/tmp" node deploy/orange/qualification/promotion.mts \
+  --baseline BASELINE_DIR --candidate CANDIDATE_DIR --out EVIDENCE_DIR
+make build-statsctl
+node dist/statsctl.mjs verify release --evidence EVIDENCE_DIR --receipt-out RECEIPT.json --json
+node dist/statsctl.mjs verify release --evidence EVIDENCE_DIR --replay --json
+```
+
+The runner accepts `--profile FILE` for a shortened definition named `smoke`.
+A definition named `promotion` must match the frozen promotion file. The runner
+starts both Workers and a separate Engine, builds the INF-7 collector, and reads
+its source evidence. Collector delivery evidence is derived from its live process
+and the reconciled checkpoints for all three targets. A missing source or
+family is inconclusive. The source
+reader's family status is integrated after the INF-7 source-read change lands.
+
+The release policy is `stats-release-policy/2`; no `/1` policy is accepted.
+Candidate absolute limits reject independently of baseline quality. Paired
+regression limits apply only when both cohorts have sufficient evidence. A
+window that is too short, too few measured requests, unavailable resources,
+missing sources, unusable required families, or incomplete history cannot pass.
+Open windows are pending. Candidate history mismatches reject. CPU is a window
+delta, memory is the highest sample in that window, and restart evidence uses
+process identity and Worker incarnation samples.
+
+`ledger.json` includes every acknowledged host sample and the before and after
+history comparisons. The oracle compares the expected undownsampled history
+points using the sample wall time and the protocol's same-boot delta rules.
+`observations.json` records source delivery checkpoints and family status.
+`recovery.json` records the state-copy recovery. The remaining bundle files are
+`policy.json`, the two release manifests, `workload.json`, and `decision.json`.
+Unexpected files are rejected.
+
+The built evaluator writes `stats-qualification-receipt/1` with the profile,
+release, policy, workload, evaluator, observation, input and decision identities.
+The receipt path must be outside the evidence directory and must not already
+exist. The source CLI refuses receipt output. Replay evaluates at the recorded
+instant and compares verdict and reason codes. Exit codes are pass 0, reject 7,
+inconclusive 6, pending 5, replay mismatch 4, and invalid input 2. A rollout
+controller must compare the evidence file set and hashes with the receipt, then
+run replay before accepting the receipt.

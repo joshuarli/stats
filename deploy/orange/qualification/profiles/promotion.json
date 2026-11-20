@@ -1,0 +1,17 @@
+{
+  "name": "promotion",
+  "warmupMs": 60000,
+  "measureMs": 600000,
+  "maxEvidenceAgeMs": 300000,
+  "minimumRequests": 5400,
+  "requestRatePerSecond": 10,
+  "requestMix": { "hostIngest": 1, "hostReplay": 1, "history": 1, "eventIngest": 1, "eventReplay": 1, "eventConflict": 1, "eventRead": 1, "capabilities": 1, "hosts": 1, "services": 1 },
+  "absolute": { "maxErrorShare": 0.001, "p95Ms": 500, "p99Ms": 1000, "maxLostWrites": 0, "maxHistoryMismatches": 0, "maxCpuSecondsPerKRequests": 100, "maxMemoryPeakBytes": 1610612736, "maxRestarts": 0 },
+  "regression": { "latency": { "maxRelativeIncreasePercent": 25, "absoluteFloorMs": 10 }, "maxCpuRelativeIncreasePercent": 25, "maxMemoryRelativeIncreasePercent": 25 },
+  "requiredSources": [
+    { "source": "worker:stats:0", "producer": "infra", "families": ["openorange_worker_info", "openorange_worker_start_time_seconds"] },
+    { "source": "worker:stats-observe:1", "producer": "infra", "families": ["openorange_worker_info", "openorange_worker_start_time_seconds"] },
+    { "source": "engine:live", "producer": "infra", "families": ["rivet_topology_discovery_heartbeat_reads_total"] },
+    { "source": "collector:infra", "producer": "infra", "families": ["delivery"] }
+  ]
+}
