@@ -97,7 +97,7 @@ await test("owned runtime passes the release canary and exposes both worker metr
     assert.equal(result.status, 0, JSON.stringify(result.decision)); assert.equal(result.decision.verdict, "pass");
     const evidenceManifests = ["baseline", "candidate"].map(name => JSON.parse(readFileSync(join(bundle, `${name}.manifest.json`), "utf8")));
     assert.equal(evidenceManifests[1].components["runtime-closure"], manifests[1].closure_digest);
-    for (const key of ["orange-package", "orange-lock", "orange-bin"]) assert.notEqual(evidenceManifests[0].components[key], evidenceManifests[1].components[key]);
+    assert.notEqual(evidenceManifests[0].components["runtime-closure"], evidenceManifests[1].components["runtime-closure"]);
     const replay = spawnSync("pnpm", ["--dir", "cloudflare", "-s", "statsctl", "verify", "release", "--evidence", bundle, "--replay", "--json"], { encoding: "utf8" });
     assert.equal(replay.status, 0, replay.stderr); assert.equal(JSON.parse(replay.stdout).payload.verdict, "pass");
     console.log("manifests", JSON.stringify(manifests)); console.log("verdict", JSON.stringify(result.decision)); console.log("replay", replay.stdout.trim());

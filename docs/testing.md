@@ -518,7 +518,7 @@ read the absolute times as inflated and the ratios as indicative.
 
 The development-loop test runs OpenOrange with isolated persisted state; local stack tests retain Miniflare for Cloudflare producer coverage.
 
-`make orange-test` runs the native OpenOrange regression suite against generated descriptors. `make check` requires it; frontend-only checks remain independent. The local runtime exercises concurrent ingest, restart persistence, cross-worker observation, backup and platform diagnostics. It does not prove production actor idle eviction and wake, alarm delivery, rolling release replacement, or draining in-flight work during shutdown.
+`make orange-test` runs the native OpenOrange regression suite against generated descriptors. `make orange-artifact-test` builds the linux-x64-musl runtime artifacts of `RUNTIME_BASELINE_REF` (default `HEAD~1`) and the working tree in a pinned Alpine container, then runs the paired canary against those exact bytes; it needs Docker with linux/amd64. `make check` requires it; frontend-only checks remain independent. The local runtime exercises concurrent ingest, restart persistence, cross-worker observation, backup and platform diagnostics. It does not prove production actor idle eviction and wake, alarm delivery, rolling release replacement, or draining in-flight work during shutdown.
 
 A logical-restore target omits the `APPLICATION_EVENTS_RELEASE` binding until
 import completes. Self-observation would otherwise populate the empty target

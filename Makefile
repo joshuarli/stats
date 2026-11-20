@@ -9,7 +9,7 @@ ORANGE_HOST ?= lisa
 export STATS_DOMAIN
 export STATS_URL
 
-.PHONY: dev dev-doctor bench-dev
+.PHONY: orange-artifact-test dev dev-doctor bench-dev
 dev: work-ready node-ready
 	cd cloudflare && TMPDIR='$(CURDIR)/.work/tmp' node scripts/dev.ts $(DEV_ARGS)
 
@@ -43,7 +43,18 @@ orange-pilot: work-ready orange-ready worker-bundle observe-bundle
 	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/pilot.test.mts
 
 orange-test: work-ready orange-ready worker-bundle observe-bundle
-	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test --test-concurrency=1 deploy/orange/*.test.mts
+	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test --test-concurrency=1 $(filter-out deploy/orange/runtime-artifact.test.mts,$(wildcard deploy/orange/*.test.mts))
+
+# Builds the musl runtime artifact of the previous commit's closure (baseline) and the working tree's (candidate), then canaries the exact bytes.
+RUNTIME_BASELINE_REF ?= HEAD~1
+orange-artifact-test: work-ready orange-ready worker-bundle observe-bundle
+	@set -eu; \
+	tmp='$(CURDIR)/.work/tmp'; base="$$tmp/artifact-ref"; rm -rf "$$base" "$$tmp/artifact-baseline" "$$tmp/artifact-A"; \
+	git worktree add -q --detach "$$base" '$(RUNTIME_BASELINE_REF)'; \
+	trap 'git worktree remove --force "$$base"' EXIT; \
+	(cd "$$base" && sh deploy/orange/runtime-artifact/build.sh --out "$$tmp/artifact-baseline"); \
+	sh deploy/orange/runtime-artifact/build.sh --out "$$tmp/artifact-A"; \
+	TMPDIR="$$tmp" node --experimental-strip-types --test deploy/orange/runtime-artifact.test.mts
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs
