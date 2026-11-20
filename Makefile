@@ -252,3 +252,11 @@ test-ci: fixtures agent-test cloudflare-test agent-e2e node-e2e smoke-local
 test: test-ci dashboard-test $(OFFLINE_SANDBOX_CHECK)
 
 check: fixtures agent-test release orange-test cloudflare-test agent-e2e node-e2e smoke-local dashboard-test lint $(OFFLINE_SANDBOX_CHECK)
+
+.PHONY: bench bench-check bench-list
+bench:
+	TMPDIR='$(CURDIR)/.work/tmp' node bench/run.mjs $(BENCH_ARGS)
+bench-check:
+	TMPDIR='$(CURDIR)/.work/tmp' node bench/run.mjs --check $(BENCH_ARGS)
+bench-list:
+	node bench/run.mjs --list

@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 11
+Next: 12
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier Calibration). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -117,6 +117,34 @@ kept the transactional ingest, bounded producer queues, runtime adapters and
 browser lifecycle machinery because their observable guarantees have active
 consumers; no live feature or public contract removal is proposed.
 
+**Bench.** The local benchmark map covers harness accounting (Edit),
+captured collection and producer queue counts (Change), local Workerd,
+ingest and dashboard scenarios, and manual Linux agent and private observation
+studies. `make bench-list`, `make bench-check`, and `make bench` now select
+these workloads; unknown and empty selections fail, Full requires an explicit
+flag, and private host studies are excluded with reasons. A dry run wrote no
+run directory and an unmet command prerequisite failed before execution. The
+Edit harness passed 10 tests; the small collection replay completed with 268
+rows in the new window and zero in the repeat, and returned 7,560, 71,240 and
+165,536 bytes for its three history windows. This is completion evidence,
+not a timing comparison. Full was not run. The host gate reported busy;
+absolute performance and the dashboard focus change's paired comparison are
+Needs environment. DSLP-11 records the P3 attribution and preflight gap.
+
+**Scorecard and limits.** No whole-repository before/after line or branch
+coverage, paired suite-cost comparison, or escaped-regression count was
+measured. Historical bounded coverage and mutation counts are linked above;
+they are not a whole-suite score. The type scan counted 291 TypeScript and
+257 Rust matching escape-hatch lines with no source typing change. The dead
+code change removed private declarations and no dependencies. One P2 focus
+finding was fixed; one P3 type finding and one P3 bench gap remain. No live
+Cloudflare, Linux BPF, external fleet checkout, or private performance host
+was exercised. The focused browser failure discovered a race that a single
+passing run had missed; the repeated run and attachment diagnostic were more
+informative than coverage alone. Knip's default entry detection misidentified
+real entrypoints and test consumers, so its configured results are retained
+with explicit exclusions. No shared fleet or skill file was changed.
+
 ## Tickets
 
 ### DSLP-9 · P3 · Preserve large retry ceilings in Rust producer
@@ -127,4 +155,13 @@ consumers; no live feature or public contract removal is proposed.
 - **Recommendation:** Clamp or compare Duration values without truncating the configured ceiling, and cover the boundary through the producer retry behavior.
 - **Fix with:** typing-audit
 - **Effort:** S
+
+### DSLP-11 · P3 · Complete benchmark attribution and scenario preflight
+
+- **Area:** bench · observability
+- **Where:** bench/run.mjs; bench/README.md
+- **Problem:** The local collection replay supplies CPU and work counts, but dashboard and ingest scenarios lack a unified cross-process attribution and automatic freshness check for every external artifact. Native observation and agent studies require named hosts and private fixtures.
+- **Recommendation:** Add representative cross-process CPU, allocation and I/O attribution and validate external fixture and artifact identities before scenario runs; retain separate instrumented and timed runs.
+- **Fix with:** bench-pyramid
+- **Effort:** M
 

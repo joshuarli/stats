@@ -309,3 +309,27 @@ The [Lisa read results](results/2026-11-14-lisa-read-performance/README.md)
 record captured-event HTTP replay, CPU, memory and Worker sizes for the native
 application-summary query. The replay separates SQLite read cost from production
 Rivet routing, queueing and disk latency.
+
+## Local benchmark selection
+
+`make bench-list` lists the available workloads and manual exclusions.
+`make bench` runs the deterministic harness tests (Edit). For a captured
+collection replay (Change), run `make bench BENCH_ARGS="--tier change --name collection-small"`. Use `make bench-check BENCH_ARGS="--tier change --name collection-small"` to check its Node version, command and fixture before
+running. Add `--dry-run` to print a selection without writing a run. Select a
+workload with `--name`, an area with `--area`, and exclude a workload with
+`--skip`. Unknown or empty selections fail. `--tier scenario` includes the
+local workerd, ingest and dashboard scenarios; these need their installed
+build and browser prerequisites and may take minutes. Full requires explicit
+`--tier full --full`; native and agent studies are listed as exclusions and
+must be run separately on their named hosts under the instructions above.
+
+The runner writes logs and a summary under `.work/tmp/bench-*`. The summary
+records source revision, dirty state, platform, host readiness before and after,
+workload exits, elapsed time and exclusions. Completion is not a performance
+verdict. Use the paired and host-gated methods above for a performance claim.
+The harness test run took about one second and the small collection replay a
+few seconds on the busy macOS host; those are observations, not budgets. The
+latter replays a captured collection, checks and reports rows and response
+bytes, and reports process CPU; it is not Workerd or deployed Cloudflare CPU.
+Cross-process attribution and stronger external artifact preflight remain
+DSLP-11 in the deslop backlog.
