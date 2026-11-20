@@ -11,7 +11,7 @@ S3 backup work remains deferred as P1 in shared-infrastructure ticket STUF-75.
 | Stats | `stats:1ea3e6af2dc3`, Orange node version 20 |
 | OpenOrange | `open-orange` 1.0.2 |
 | RivetKit | 3.1.2-rc.1 |
-| Native services package | `@rivet-dev/services` 0.2.5 |
+| Native services package | `@rivet-dev/services` 0.2.5 (removed from the closure on 2026-11-20; see [dependencies](dependencies.md)) |
 | Engine OCI index | `sha256:6e585002b700dd4d3630808eb67884aa15d1a602d83781984edac47023b6d40f` |
 | Engine AMD64 manifest | `sha256:66de9f77cde47be3cd7af2c001e8083784f6b91ca58b0ab5d7878677cff5bd5d` |
 | Native version self-report | 3.1.1, expected for this package and image closure |

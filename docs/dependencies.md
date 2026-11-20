@@ -129,10 +129,16 @@ The owner selected self-hosted OpenOrange on 2026-11-13. `make dev` uses
 Orange locally. Production runs on Linux x86_64 on `lisa` behind the tailnet
 gateway. Deployment and recovery commands are in [openorange.md](openorange.md).
 
-`deploy/orange/package.json` and its lockfile isolate open-orange 1.0.2,
-rivetkit 3.1.2-rc.1, and `@rivet-dev/services` 0.2.5. The application image
-pins Node 26.13.1 Debian by digest. Rivet's services binary requires glibc,
-so the application image uses Debian even though the host runs Alpine.
+`deploy/orange/package.json` and its lockfile isolate open-orange 1.0.2-laputa.1 (the owned build from the Stuff registry) and
+rivetkit 3.1.2-rc.1. `pnpm-workspace.yaml` lists `@rivet-dev/services` in
+`ignoredOptionalDependencies`, so rivetkit's optional dependency on it is not
+installed. OpenOrange starts the services binary only beside a local Engine
+with tail consumers, and the generated descriptors drop every tail consumer.
+The package is UNLICENSED with no available source. The application image
+pins Node 26.13.1 Debian by digest. The Alpine standby already runs
+`@rivetkit/rivetkit-napi-linux-x64-musl`. Musl qualification of the rest of
+the closure, including the gnu-only `@rivet-dev/agentos-runtime-sidecar`, is
+unproven, so the image stays on Debian.
 The shared Engine and object-store image pins belong to
 `stuff/deploy/openorange/images.lock.json`.
 

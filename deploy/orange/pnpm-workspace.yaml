@@ -1,4 +1,6 @@
 packages: []
+ignoredOptionalDependencies:
+  - '@rivet-dev/services'
 allowBuilds:
   '@google/genai': false
   better-sqlite3: false
