@@ -99,8 +99,8 @@ final commit.
 **Dead code.** Knip 6.45.1, configured with the Worker, Node, dashboard,
 CLI, bridge, producer, script and test entries, passed its default scan.
 The five documented allowlist entries cover captured fixtures, three host
-binaries, two externally consumed observation interfaces, and a deliberate
-alias for distinct bucket concepts. Production mode reports four test-only
+binaries, two observation interfaces retained at an external integration
+boundary, and a deliberate alias for distinct bucket concepts. Production mode reports four test-only
 exports and the observation budget measurement module; tests and measurement
 scripts are their consumers, so they remain. `cargo rustc --offline --locked
 --manifest-path agent/Cargo.toml --bin stats -- -W unreachable_pub` passed;
