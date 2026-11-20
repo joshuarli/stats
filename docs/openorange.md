@@ -201,6 +201,10 @@ Lisa's Engine used 1.7 cores with idle applications. Its Prometheus endpoint
 Stats shows the Engine's share on Lisa's host page and the `oo-engine`
 service's Resources section.
 
+### Runtime artifacts
+
+Build a baseline with `TMPDIR="$PWD/.work/tmp" sh deploy/orange/runtime-artifact/build.sh --out .work/tmp/artifact-baseline`. Build the candidate with `TMPDIR="$PWD/.work/tmp" sh deploy/orange/runtime-artifact/build.sh --candidate /path/to/open-orange-1.0.2-laputa.1.tgz --out .work/tmp/artifact-A`. The builder reads Stuff's rollout adapter from `origin/main` in `/Users/josh/repos/stats/.work/tmp/stuff`; fetch that checkout before building. Build the Worker bundles with `make worker-bundle observe-bundle`, then run `TMPDIR="$PWD/.work/tmp" node --experimental-strip-types --test deploy/orange/runtime-artifact.test.mts`. The test consumes these two archives, saves its evidence path, and checks the release verdict and replay. After qualification, pass the same `runtime.tar` to Stuff's `deploy/openorange/bin/rollout stage --target-kind native --host HOST --ssh-config CONFIG --archive .work/tmp/artifact-A/runtime.tar --source SOURCE`. Compare the returned digest with `artifact.json` and the qualified `runtime-closure` before promotion. See the [artifact results](../bench/results/2026-11-20-musl-runtime-artifact/README.md) for the recorded build and verification.
+
 ## Back up and restore
 
 The application export is the recovery contract; it does not depend on the

@@ -1,3 +1,4 @@
+import { startContainerSession } from "./container.mts";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -42,6 +43,13 @@ export function source(rows: Row[], release: string, start: number, end: number)
   return { source: "stats", producer: "stats-self", releaseId: release, lastSeenMs: last.atMs, sequenceStart: checkpoint(first), sequenceEnd: checkpoint(last), received };
 }
 export function resources(stack: Stack) {
+  if ("containerName" in stack.session) {
+    const value = execFileSync("docker", ["exec", stack.session.containerName, "sh", "-c", "cat /sys/fs/cgroup/cpu.stat; cat /sys/fs/cgroup/memory.current"], { encoding: "utf8" });
+    const cpuSeconds = Number(value.match(/usage_usec (\d+)/)?.[1]) / 1e6;
+    const memoryPeakBytes = Number(value.trim().split("\n").at(-1));
+    if (!cpuSeconds || !memoryPeakBytes) throw new Error("container resources unavailable");
+    return { cpuSeconds, memoryPeakBytes, restarts: 0 };
+  }
   const rows = execFileSync("ps", ["-axo", "pid=,ppid=,rss=,time="], { encoding: "utf8" }).trim().split("\n").map(line => line.trim().split(/\s+/u));
   const pids = new Set([stack.session.child.pid!]);
   for (let changed = true; changed;) { changed = false; for (const row of rows) if (pids.has(Number(row[1])) && !pids.has(Number(row[0]))) { pids.add(Number(row[0])); changed = true; } }
@@ -62,7 +70,8 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
   await candidate.stop();
   cpSync(candidate.stateDir, directory, { recursive: true });
   generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers["X-Stats-Gateway-Secret"] ?? Object.values(baseline.headers)[0]!, nowMs: null });
-  const session = await startSession(directory, await freePort(), { runtimeRoot: baseline.runtimeRoot });
+  const port = await freePort();
+  const session = "containerName" in baseline.session ? await startContainerSession(directory, port, baseline.runtimeRoot) : await startSession(directory, port, { runtimeRoot: baseline.runtimeRoot });
   try {
     const history = await fetch(session.origin + result.historyPath, { headers: { ...baseline.headers, "accept-encoding": "identity" } });
     const bytes = new Uint8Array(await history.arrayBuffer());
@@ -74,7 +83,7 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
 export function writeBundle(directory: string, baseline: Stack, candidate: Stack, ledgers: { baseline: any; candidate: any }, observations: { baseline: any; candidate: any }, recovery: unknown, start: number, end: number) {
   mkdirSync(directory, { recursive: true });
   const write = (name: string, value: unknown) => { const text = `${JSON.stringify(value, null, 2)}\n`; writeFileSync(join(directory, name), text); return text; };
-  const components = (stack: Stack) => Object.fromEntries([["orange-package", join(stack.runtimeRoot, "package.json")], ["orange-lock", join(stack.runtimeRoot, "pnpm-lock.yaml")], ["orange-bin", join(stack.runtimeRoot, "node_modules/open-orange/dist/bin.js")], ["workspace-lock", join(root, "pnpm-lock.yaml")], ["stats-bundle", join(STATS_OUTPUT, "bundle/index.js")], ["observe-bundle", join(OBSERVE_OUTPUT, "bundle/index.js")]].map(([name, path]) => [name, hash(readFileSync(path!))]));
+  const components = (stack: Stack) => ({ ...Object.fromEntries([["orange-package", join(stack.runtimeRoot, "package.json")], ["orange-lock", join(stack.runtimeRoot, "pnpm-lock.yaml")], ["orange-bin", join(stack.runtimeRoot, "node_modules/open-orange/dist/bin.js")], ["workspace-lock", join(root, "pnpm-lock.yaml")], ["stats-bundle", join(STATS_OUTPUT, "bundle/index.js")], ["observe-bundle", join(OBSERVE_OUTPUT, "bundle/index.js")]].map(([name, path]) => [name, hash(readFileSync(path!))])), ...("closureDigest" in stack ? { "runtime-closure": stack.closureDigest } : {}) });
   const workloadBytes = write("workload.json", workload);
   write("baseline.manifest.json", { releaseId: baseline.release, components: components(baseline) });
   write("candidate.manifest.json", { releaseId: candidate.release, components: components(candidate) });
