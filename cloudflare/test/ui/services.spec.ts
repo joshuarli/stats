@@ -140,7 +140,7 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   const table = page.getByRole("table", { name: "Services" });
   await expect(table.getByRole("link", { name: "web", exact: true })).toBeVisible();
   const web = table.getByRole("row", { name: /^web\b/u });
-  await expect(web).toContainText("not probed yet");
+  await expect(web).toContainText("100% up");
   await expect(web).toContainText("0.50");
   await expect(web).toContainText("1.1.0");
   const batch = table.getByRole("row", { name: /^batch\b/u });
@@ -464,8 +464,9 @@ test("native projects show service deployments, application requests, errors and
   const reads: string[] = [];
   page.on("request", request => { if (request.url().includes("/api/")) reads.push(new URL(request.url()).pathname); });
   await page.goto(`${origin}/#/projects?range=6h`);
-  await expect(page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true })).toBeVisible();
-  await page.getByRole("table", { name: "Projects" }).getByRole("link", { name: "web", exact: true }).click();
+  await expect(page.getByRole("table", { name: "Services" }).getByRole("link", { name: "web", exact: true })).toBeVisible();
+  await page.getByRole("table", { name: "Services" }).getByRole("link", { name: "web", exact: true }).click();
+  reads.length = 0;
   await expect(page.getByRole("heading", { name: "Application overview" })).toBeVisible();
   await expect(page.getByText("GET notes", { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: /^HTTP requests per minute/u })).toBeVisible();

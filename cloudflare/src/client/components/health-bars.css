@@ -1,0 +1,9 @@
+.health-bars { display: flex; flex-direction: column; gap: var(--space-2xs); min-width: 0; }
+.health-bar-strip { display: flex; align-items: stretch; gap: 2px; height: 28px; }
+.health-bars.compact .health-bar-strip { height: 18px; gap: 1px; min-width: 120px; }
+.health-bar { flex: 1; min-width: 2px; border-radius: 1px; background: var(--line); }
+.health-bar.up { background: var(--ok); }
+.health-bar.degraded { background: var(--warn); }
+.health-bar.down { background: var(--bad); }
+.health-bar:hover { filter: brightness(1.15); }
+.health-bar-summary { display: flex; gap: var(--space-sm); font-size: var(--fs-meta); color: var(--text-2); }

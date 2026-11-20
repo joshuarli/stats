@@ -36,6 +36,13 @@ function isTyping(target: EventTarget | null): boolean {
   );
 }
 
+function rangeInUrl(url: string): Range {
+  const hash = new URL(url).hash;
+  const query = hash.indexOf("?");
+  const requested = query < 0 ? null : new URLSearchParams(hash.slice(query + 1)).get("range");
+  return ranges.find(candidate => candidate === requested) ?? DEFAULT_RANGE;
+}
+
 export function Shell(props: ParentProps): JSX.Element {
   const lists = createListState();
   const [range, setRange] = createSignal<Range>(ranges.find(candidate => candidate === readParam("range")) ?? DEFAULT_RANGE);
@@ -46,11 +53,8 @@ export function Shell(props: ParentProps): JSX.Element {
   const query = createMemo<HistoryQuery>(() => views.view() ?? liveQuery());
   const location = useLocation();
   const onHashChange = (event: HashChangeEvent) => {
-    const hash = new URL(event.newURL).hash;
-    const query = hash.indexOf("?");
-    const requested = query < 0 ? null : new URLSearchParams(hash.slice(query + 1)).get("range");
-    const next = ranges.find(candidate => candidate === requested) ?? DEFAULT_RANGE;
-    if (next === range()) return;
+    const next = rangeInUrl(event.newURL);
+    if (next === rangeInUrl(event.oldURL) || next === range()) return;
     views.resetZoom();
     setRange(next);
   };

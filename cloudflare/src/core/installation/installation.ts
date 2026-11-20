@@ -30,6 +30,7 @@ import { etagMatches, failure, frameResponse, historyEtag, historyWindowKey, jso
 import { migrate, retentionDelayMs, UPSERT_ROLLUP } from "./schema.ts";
 import { authenticateDeployToken, authenticateIngestToken, createService, deleteService, listServices, listServicesWithDeployments, MARKERS_LISTED, MAX_MARKER_BODY_BYTES, MAX_SERVICE_BODY_BYTES, purgeServiceDeployments, readService, readServiceDeployments, recordMarker, rotateServiceDeployToken, rotateServiceIngestToken, serviceProbeOwner, updateService } from "./services.ts";
 import { hostServiceResources, resourceWindow } from "./service-resources.ts";
+import { healthWindow, serviceHealthHistory } from "./service-health.ts";
 import { compareServiceDeployment, SERVICE_PROBE_NAME, type MinuteRollup } from "../../deployments/service-compare.ts";
 import { runProbes, type ProbeFetch } from "../../projects/probes.ts";
 
@@ -782,6 +783,13 @@ export class InstallationCore {
       }
       const comparison = /^\/services\/([^/]+)\/deployments\/([^/]+)\/comparison$/u.exec(path);
       if (comparison !== null) return await this.serviceComparison(request, sql, comparison[1]!, comparison[2]!);
+      const health = /^\/services\/([^/]+)\/health$/u.exec(path);
+      if (health !== null && request.method === "GET") {
+        if (readService(sql, health[1]!) === null) return failure("not_found", "service not found", 404);
+        const window = healthWindow(new URL(request.url).searchParams, this.now());
+        if (window === null) return failure("invalid_request", "fromMs and toMs must be epoch milliseconds with fromMs before toMs inside retention", 400);
+        return json(serviceHealthHistory(sql, health[1]!, window));
+      }
       const service = /^\/services\/([^/]+)(\/deployments)?$/u.exec(path);
       if (service !== null) return await this.serviceRoute(request, sql, service[1]!, service[2] !== undefined);
       return failure("not_found", "unknown object route", 404);

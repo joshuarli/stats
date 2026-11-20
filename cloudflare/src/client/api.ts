@@ -8,6 +8,7 @@ import { decodeProject, type ProjectSummary } from "./project-model.ts";
 import { decodeServices } from "../deployments/service-decode.ts";
 import type { Service } from "../core/installation/services.ts";
 import { decodeHostServiceResources, type HostServiceResources } from "../core/installation/service-resources-model.ts";
+import { decodeServiceHealthHistory, type ServiceHealthHistory } from "../core/installation/service-health-model.ts";
 import { decodeIssues } from "../observe/client/decode.ts";
 import type { IssueSummary, Page } from "../observe/core/store.ts";
 import type { ApplicationSummary, ApplicationTelemetry } from "../observe/application/telemetry.ts";
@@ -427,6 +428,10 @@ export function getHostHistories(hostId: string, query: HistoryQuery, signal: Ab
 
 export function getFleetHistories(hostId: string, query: HistoryQuery, signal: AbortSignal): Promise<FleetHistories> {
   return getHistory(`${historyUrl(hostId, query)}&kinds=summary,disks,nets,filesystems`, decodeFleetHistories, fleetCache, signal);
+}
+
+export function getServiceHealth(service: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<ServiceHealthHistory> {
+  return getJson(`/api/v1/services/${encodeURIComponent(service)}/health?fromMs=${Math.floor(fromMs)}&toMs=${Math.ceil(toMs)}`, value => decodeServiceHealthHistory(value, service), signal);
 }
 
 export function getHostServiceResources(hostId: string, fromMs: number, toMs: number, signal: AbortSignal): Promise<HostServiceResources> {

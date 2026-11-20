@@ -12,7 +12,11 @@ import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../../state";
 import { routeWithRange, readParam, writeParam } from "../../urlState";
 import { age, bytes, count, errorMessage, milliseconds } from "../../format";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
-import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView } from "../../components/ServiceResources";
+import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView, type ResourceRow } from "../../components/ServiceResources";
+import { combinedPoints, NEVER_IDLE_CORES, neverIdle, selectedWindow } from "../../service-metrics";
+import { createServiceHealth, HealthBars } from "../../components/HealthBars";
+import { Sparkline } from "../../components/Sparkline";
+import type { ResourcePoint } from "../../../core/installation/service-resources-model";
 import { createUpdateEffect } from "../../effect";
 import { RETENTION_MS } from "../../../observe/core/limits";
 import { getApplicationSummary, getApplicationTelemetry, type Service } from "../../api";
@@ -41,15 +45,17 @@ export function NativeServicesPage(): JSX.Element {
   const hostIds = createMemo(() => [...new Set(services().flatMap(service => service.hostIds))].sort());
   const resources = createServiceResources(hostIds);
   const usage = createMemo(() => {
-    const totals = new Map<string, { cpu: number | null; memory: number | null }>();
+    const byService = new Map<string, ResourceRow[]>();
     for (const row of resourceRows(resources.results() ?? [])) {
-      const service = services().find(candidate => candidate.name === row.service);
-      if (service === undefined || !service.hostIds.includes(row.hostId)) continue;
-      const current = totals.get(row.service) ?? { cpu: null, memory: null };
-      totals.set(row.service, {
-        cpu: row.cpuMean === null ? current.cpu : (current.cpu ?? 0) + row.cpuMean,
-        memory: row.memoryNow === null ? current.memory : (current.memory ?? 0) + row.memoryNow
-      });
+      if (!services().some(service => service.name === row.service && service.hostIds.includes(row.hostId))) continue;
+      byService.set(row.service, [...(byService.get(row.service) ?? []), row]);
+    }
+    const totals = new Map<string, ServiceUsage>();
+    for (const [name, rows] of byService) {
+      const points = combinedPoints(rows);
+      const cpu = points.map(point => point.cpuCores).filter((value): value is number => value !== null);
+      const memory = points.map(point => point.memoryBytes).filter((value): value is number => value !== null);
+      totals.set(name, { points, cpu: cpu.length === 0 ? null : cpu.reduce((sum, value) => sum + value, 0) / cpu.length, memory: memory.at(-1) ?? null, neverIdle: neverIdle(points) });
     }
     return totals;
   });
@@ -74,19 +80,19 @@ export function NativeServicesPage(): JSX.Element {
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
     <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Show when={resources.error()}>{message => <Notice tone="warn">Resource use could not be read: {message()}</Notice>}</Show>
-    <Widget id="services" title="Services" bodyClass="flush" meta={<span class="cell-note">CPU is the mean over the selected window; memory is the latest reading</span>}><Show when={services().length} fallback={<EmptyState title="No services are configured." detail="Create one with statsctl service create; see docs/operations.md." />}>
+    <Widget id="services" title="Services" bodyClass="flush" meta={<span class="cell-note">Health bars and trends cover the selected window; CPU is its mean, memory the latest reading</span>}><Show when={services().length} fallback={<EmptyState title="No services are configured." detail="Create one with statsctl service create; see docs/operations.md." />}>
       <div class="table-scroll" role="region" aria-label="Services table"><table class="data-table services-table" aria-label="Services"><thead><tr>
         <SortHeader label="Service" sortKey="service" sort={sort()} onSort={sortBy} />
         <SortHeader label="Health" sortKey="health" sort={sort()} onSort={sortBy} />
-        <SortHeader label="CPU" sortKey="cpu" sort={sort()} onSort={sortBy} class="numeric" />
-        <SortHeader label="Memory" sortKey="memory" sort={sort()} onSort={sortBy} class="numeric" />
+        <SortHeader label="CPU" sortKey="cpu" sort={sort()} onSort={sortBy} />
+        <SortHeader label="Memory" sortKey="memory" sort={sort()} onSort={sortBy} />
         <SortHeader label="Last deploy" sortKey="deploy" sort={sort()} onSort={sortBy} />
       </tr></thead><tbody>
         <For each={sorted()} keyed={service => service.name}>{service => <tr>
           <td><EntityCell marker={<span class={`status-dot tone-${healthTone(service().health)}`} aria-hidden="true" />} name={service().name} href={routeWithRange(`#/service/${encodeURIComponent(service().name)}`, range())} id={service().unit ?? `${service().hostIds.length} ${service().hostIds.length === 1 ? "host" : "hosts"}`} /></td>
-          <td><HealthCell service={service()} now={now()} /></td>
-          <td class="numeric">{resources.results() === null ? "…" : cores(usage().get(service().name)?.cpu ?? null)}</td>
-          <td class="numeric">{resources.results() === null ? "…" : bytes(usage().get(service().name)?.memory ?? undefined)}</td>
+          <td><HealthCell service={service()} /></td>
+          <td><UsageCell usage={usage().get(service().name)} loading={resources.results() === null} kind="cpu" label={service().name} /></td>
+          <td><UsageCell usage={usage().get(service().name)} loading={resources.results() === null} kind="memory" label={service().name} /></td>
           <td><Show when={(() => { const latest = service().latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback={<span class="cell-note">none recorded</span>}>{latest => <span class="cell-stack"><span class="mono">{deploymentTitle(latest(), latest().deployment, "service")}</span><span class="cell-note">{age(latest().deployment.atMs, now())}</span></span>}</Show></td>
         </tr>}</For>
       </tbody></table></div>
@@ -105,20 +111,52 @@ function ServiceResourcesSection(props: { readonly service: Service }): JSX.Elem
   const { hosts } = useTelemetry();
   const resources = createServiceResources(() => props.service.hostIds);
   const hostName = (hostId: string) => hosts().find(host => host.hostId === hostId)?.name ?? hostId;
-  return <ServiceResourcesView results={resources.results()} error={resources.error()} only={props.service.name} hostName={hostName}
-    empty={<NoServiceResources detail={`No host agent reports a cgroup service named ${props.service.name}. Add {"name": "${props.service.name}", "unit": ...} to the services list in the agent configuration on its hosts.`} />} />;
+  const health = createServiceHealth(() => props.service.healthUrl === null ? null : props.service.name);
+  return <>
+    <Widget id="service-health" title="Health" meta={<span class="cell-note mono">{props.service.healthUrl ?? "no health URL"}</span>}>
+      <Show when={props.service.healthUrl !== null} fallback={<p class="cell-note">This service has no health URL. Set one with statsctl service update --health-url.</p>}>
+        <Show when={health.error()}>{message => <Notice tone="warn">{message()}</Notice>}</Show>
+        <Show when={health.history()} fallback={<Skeleton rows={1} />}>{history => <HealthBars history={history()} label={`${props.service.name} health`} />}</Show>
+      </Show>
+    </Widget>
+    <ServiceResourcesView results={resources.results()} error={resources.error()} only={props.service.name} hostName={hostName}
+      empty={<NoServiceResources detail={`No host agent reports a cgroup service named ${props.service.name}. Add {"name": "${props.service.name}", "unit": ...} to the services list in the agent configuration on its hosts.`} />} />
+  </>;
 }
 
 function healthTone(health: Service["health"]): "ok" | "bad" | "neutral" {
   return health?.status === "up" ? "ok" : health?.status === "down" ? "bad" : "neutral";
 }
 
-function HealthCell(props: { readonly service: Service; readonly now: number }): JSX.Element {
-  const health = () => props.service.health;
+interface ServiceUsage {
+  readonly points: readonly ResourcePoint[];
+  readonly cpu: number | null;
+  readonly memory: number | null;
+  readonly neverIdle: boolean;
+}
+
+function UsageCell(props: { readonly usage: ServiceUsage | undefined; readonly loading: boolean; readonly kind: "cpu" | "memory"; readonly label: string }): JSX.Element {
+  const { range, view, now } = useTelemetry();
+  const window = createMemo(() => selectedWindow(range(), view(), now()));
+  const values = () => props.usage?.points.map(point => props.kind === "cpu" ? point.cpuCores : point.memoryBytes) ?? [];
+  const value = () => props.kind === "cpu" ? cores(props.usage?.cpu ?? null) : bytes(props.usage?.memory ?? undefined);
+  return <Show when={!props.loading} fallback={<span class="cell-note">…</span>}>
+    <Show when={props.usage !== undefined} fallback={<span class="cell-note">no cgroup data</span>}>
+      <div class="cell-stack">
+        <div class="cpu-cell">
+          <span class="metric-value-small">{value()}</span>
+          <Sparkline series={[{ values: values() }]} times={props.usage!.points.map(point => point.atMs)} window={window()} label={`${props.label} ${props.kind === "cpu" ? "CPU" : "memory"} trend`} class="spark-inline" zeroBased />
+        </div>
+        <Show when={props.kind === "cpu" && props.usage!.neverIdle}><span class="cell-note tone-warn" title={`CPU stayed at or above ${NEVER_IDLE_CORES} cores for the whole window`}>never idle</span></Show>
+      </div>
+    </Show>
+  </Show>;
+}
+
+function HealthCell(props: { readonly service: Service }): JSX.Element {
+  const health = createServiceHealth(() => props.service.healthUrl === null ? null : props.service.name);
   return <Show when={props.service.healthUrl !== null} fallback={<span class="cell-note">no health URL</span>}>
-    <Show when={(() => { const value = health(); return value !== undefined && value.status !== "unprobed" ? value : null; })()} fallback={<span class="cell-note" title={props.service.healthUrl ?? ""}>not probed yet</span>}>{value => (
-      <span class="cell-stack" title={props.service.healthUrl ?? ""}><span>{value().status === "up" ? "up" : "down"}{value().ms === null ? "" : ` · ${milliseconds(value().ms!)}`}</span><span class="cell-note">{age(value().atMs, props.now)}</span></span>
-    )}</Show>
+    <Show when={health.history()} fallback={<span class="cell-note">{health.error() ?? "…"}</span>}>{history => <HealthBars history={history()} label={`${props.service.name} health`} compact />}</Show>
   </Show>;
 }
 
@@ -220,7 +258,7 @@ function NativeProject(props: { readonly service: Service }): JSX.Element {
       </div>
     </PageHeader>
     <div class="project-layout">
-      <nav class="project-sidebar" aria-label="Project sections"><For each={sections.filter(item => item !== "platform" || serviceName === "stats")}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "platform" ? "sampled platform operations" : item === "overview" ? "application activity" : item === "resources" ? "CPU, memory and disk by host" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
+      <nav class="project-sidebar" aria-label="Project sections"><For each={sections.filter(item => item !== "platform" || serviceName === "stats")}>{item => <div class={`project-nav-entry${section() === item ? " open" : ""}`}><button class={`project-nav-item project-section-head${section() === item ? " active" : ""}`} type="button" aria-current={section() === item ? "page" : undefined} onClick={() => showSection(item)}><span class="project-nav-title">{item === "deploys" ? "Deployments" : item[0]!.toUpperCase() + item.slice(1)}</span><span class="project-nav-summary">{item === "platform" ? "sampled platform operations" : item === "overview" ? "application activity" : item === "resources" ? "health, CPU, memory and disk" : item === "deploys" ? "release markers and comparison" : item === "requests" ? "HTTP and work events" : item === "signals" ? "events, status and wall time" : "issues and diagnostics"}</span></button></div>}</For></nav>
       <div class="project-content">
         <Show when={section() === "deploys"}><ServiceDeploySummary service={props.service} deployments={deployments} /></Show>
         <Show when={section() === "errors"}><Loading fallback={<Skeleton rows={4} />}><IssuesWidget observe={observe} /></Loading></Show>

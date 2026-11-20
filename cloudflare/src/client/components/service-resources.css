@@ -1,2 +1,3 @@
 .series-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: var(--radius-xs); vertical-align: middle; }
 .service-health { display: inline-flex; align-items: center; gap: 6px; }
+.cell-note.tone-warn { color: var(--warn); font-weight: 500; }
