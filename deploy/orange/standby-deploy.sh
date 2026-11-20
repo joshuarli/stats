@@ -46,7 +46,7 @@ guest "set -e; mkdir -p $releases/$previous; [ -e $releases/$previous/stats.json
 
 swap() {
     guest "set -e; rm -rf $app/stats $app/observe; cp -a $1/stats $1/observe $1/stats.jsonc $1/observe.jsonc $app/; rc-service native-stats restart >/dev/null;
-        i=0; until wget -q -T 2 -O /dev/null http://127.0.0.1:8080/health; do i=\$((i+1)); [ \$i -lt 60 ] || exit 1; sleep 2; done;
+        i=0; until wget -q -T 2 -O /dev/null http://127.0.0.1:8080/health 2>/dev/null; do i=\$((i+1)); [ \$i -lt 60 ] || exit 1; sleep 2; done;
         grep -q '$2' $app/stats.jsonc"
 }
 echo "activating $release (previous $current)"
