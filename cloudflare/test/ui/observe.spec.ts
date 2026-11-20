@@ -458,6 +458,18 @@ test("a deployment link opens already zoomed to that rollout", async ({ page }) 
   await expect(page).toHaveURL(/range=7d/u);
 });
 
+test("a stale hash change from before the deployment zoom does not undo it", async ({ page }) => {
+  await setup(page);
+  await page.goto(`/#/project/stats?range=24h&section=deploys&deployment=${SCENARIO_ROLLOUTS.v13}`);
+  await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
+  await page.evaluate(() => {
+    const stale = window.location.href.replace(/range=7d/u, "range=24h");
+    window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL: stale, newURL: stale }));
+  });
+  await expect(page).toHaveURL(/range=7d/u);
+  await expect(page.getByRole("button", { name: "Reset" })).toBeVisible();
+});
+
 test("a deploy marker opens that deployment in a modal, and its issues open on top with a way back", async ({ page }) => {
   await setup(page);
   await page.goto(`/#/project/stats?range=24h&section=requests&route=${encodeURIComponent(HISTORY_ROUTE)}`);

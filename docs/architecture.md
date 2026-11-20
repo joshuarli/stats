@@ -591,6 +591,12 @@ Each point carries `cpuCores`, `memoryBytes` (mean `memory.current`) and
 `ioBytesPerSec` (read plus write), or `null` where the agent reported nothing.
 Names are the agent's service names, so a registered service's resources are
 the series with its name on its hosts.
+
+`GET /api/v1/services/:name/health?fromMs=&toMs=` answers the service's probe
+history as at most 60 bars: five-minute probe samples for windows inside their
+seven-day retention, hourly rollups (whose `up` is the hour's minimum) beyond.
+Each bar has `probes`, `up` and `meanMs`; a bar with no probe result has
+`probes: 0` and `meanMs: null`.
 Both shapes carry an optional `latestDeployment` with the latest retained
 deployment summary. It is `{ status: "none" }` when no retained deployment
 exists, `{ status: "unavailable" }` when the summary could not be computed,
@@ -1141,9 +1147,11 @@ collector cron, while the manual Refresh button is immediate. Routes are `/`
 for hosts, `#/projects`, `#/host/:hostId`, `#/project/:projectId`, `#/services`,
 and `#/service/:name`. When `projectSource` is `services`, the primary
 navigation has no Projects entry: `#/projects` and `#/project/:id` redirect to
-`#/services` and `#/service/:id`, the services list shows health, window-mean
-CPU and latest memory per service, and a service page has Overview, Resources
-(per-host cgroup CPU, memory and disk I/O), Deployments (release facts, marker
+`#/services` and `#/service/:id`, the services list shows an uptime bar strip,
+window-mean CPU and latest memory with Hosts-style sparklines per service, and
+marks a service "never idle" when its CPU stayed at or above 0.2 cores for the
+whole window (at least ten points), and a service page has Overview, Resources
+(health bars, then per-host cgroup CPU, memory and disk I/O), Deployments (release facts, marker
 comparison, application work and open issues), Errors, Requests and Signals.
 A host page whose agent reports cgroup services lists them with their CPU,
 memory and I/O before the host charts. The

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEPLOYMENT_BUCKET_MS } from "../../src/deployments/compare.ts";
 import type { HostServiceResources } from "../../src/core/installation/service-resources-model.ts";
+import type { ServiceHealthHistory } from "../../src/core/installation/service-health-model.ts";
 import type { Service } from "../../src/core/installation/services.ts";
 import { openNodeInstallation } from "../../src/node/installation.ts";
 import { HostSeries, SAMPLE_STEP_MS, SAMPLES_PER_BUCKET, type HostLevels } from "../support/service-data.ts";
@@ -110,6 +111,41 @@ await test("the service list reports the latest fresh health probe, and unprobed
     assert.deepEqual(await health(), { probed: "down", silent: "unprobed" });
     now += HOUR;
     assert.deepEqual(await health(), { probed: "unprobed", silent: "unprobed" });
+  } finally {
+    installation.close();
+  }
+});
+
+await test("service health history buckets probe results into bars, counting failures and leaving unprobed bars empty", async () => {
+  const directory = scratchDirectory("service-health-bars");
+  let now = NOW_MS;
+  let status = 200;
+  const installation = openNodeInstallation({ path: `${directory}/stats.sqlite`, projects: "[]", clock: { now: () => now }, probeFetch: async () => ({ status, body: null }) });
+  try {
+    const host = await installation.core.createHost("lisa");
+    assert.ok(host.ok);
+    assert.equal((await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ name: "web", hostIds: [host.value.hostId], healthUrl: "https://web.example.com/up" }) }))).status, 201);
+    const fromMs = now;
+    for (const code of [200, 200, 503, 200]) {
+      status = code;
+      await installation.core.collectServiceProbes(async () => ({ status, body: null }));
+      now += DEPLOYMENT_BUCKET_MS;
+    }
+    const read = async (search: string) => installation.core.fetch(new Request(`https://installation/services/web/health?${search}`));
+    const response = await read(`fromMs=${fromMs}&toMs=${now + HOUR}`);
+    assert.equal(response.status, 200);
+    const history = await response.json() as ServiceHealthHistory;
+    assert.equal(history.stepMs, DEPLOYMENT_BUCKET_MS);
+    const probed = history.bars.filter(bar => bar.probes > 0);
+    assert.deepEqual(probed.map(bar => bar.up), [1, 1, 0, 1]);
+    assert.ok(probed.every(bar => bar.meanMs !== null));
+    assert.ok(history.bars.some(bar => bar.probes === 0 && bar.meanMs === null), "bars after the last probe stay empty");
+
+    const wide = await (await read(`fromMs=${now - 20 * 24 * HOUR}&toMs=${now}`)).json() as ServiceHealthHistory;
+    assert.equal(wide.stepMs % HOUR, 0, "windows beyond sample retention read hourly rollups");
+    assert.ok(wide.bars.length <= 60);
+    assert.equal((await read(`fromMs=${now}&toMs=${fromMs}`)).status, 400);
+    assert.equal((await installation.core.fetch(new Request(`https://installation/services/missing/health?fromMs=${fromMs}&toMs=${now}`))).status, 404);
   } finally {
     installation.close();
   }

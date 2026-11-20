@@ -4,12 +4,13 @@ import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
 import { getHostServiceResources } from "../api";
 import type { HostServiceResources, ResourcePoint } from "../../core/installation/service-resources-model";
 import { bytes, errorMessage, rate } from "../format";
-import { rangeMs, useTelemetry } from "../state";
+import { useTelemetry } from "../state";
 import { compareSortValues, createSort, SortHeader } from "./sort";
 import { Notice, Widget } from "./ui";
 import { PanelChart, PanelLabel } from "../pages/host/shared";
 import type { ChartSeries } from "./TimeChart";
 import "./service-resources.css";
+import { selectedWindow } from "../service-metrics";
 
 const SERIES_COLORS = 8;
 
@@ -70,8 +71,7 @@ export function createServiceResources(hostIds: () => readonly string[]) {
   createEffect(() => ({ hosts: hostIds().join(","), range: range(), view: view(), refresh: `${tick()}:${manualTick()}` }), query => {
     const selection = `${query.hosts}:${query.range}:${query.view?.fromMs ?? ""}:${query.view?.toMs ?? ""}`;
     if (loadedSelection !== selection) setResults(null);
-    const end = query.view?.toMs ?? now();
-    const start = query.view?.fromMs ?? end - rangeMs[query.range];
+    const { fromMs: start, toMs: end } = selectedWindow(query.range, query.view, now());
     const controller = new AbortController();
     void Promise.all(hostIds().map(hostId => getHostServiceResources(hostId, start, end, controller.signal))).then(value => {
       if (controller.signal.aborted) return;
