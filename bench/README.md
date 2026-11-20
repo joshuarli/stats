@@ -325,7 +325,8 @@ must be run separately on their named hosts under the instructions above.
 
 The runner writes logs and a summary under `.work/tmp/bench-*`. The summary
 records source revision, dirty state, platform, host readiness before and after,
-workload exits, elapsed time and exclusions. Completion is not a performance
+workload exits, elapsed time and exclusions. A workload has a ten-minute
+deadline and its process group is stopped on timeout or interruption. Completion is not a performance
 verdict. Use the paired and host-gated methods above for a performance claim.
 The harness test run took about one second and the small collection replay a
 few seconds on the busy macOS host; those are observations, not budgets. The

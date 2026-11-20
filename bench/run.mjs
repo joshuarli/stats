@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -18,6 +18,38 @@ const workloads = [
   { name: "native-recovery", area: "observe", tier: "full", excluded: "Needs an authorized recovery cohort and private fixture described in bench/README.md." },
   { name: "application-summary", area: "observe", tier: "full", excluded: "Needs the named Linux production-image host and private application fixture." }
 ];
+async function runWorkload(command) {
+  const child = spawn(command[0], command.slice(1), { cwd: root, detached: true, env: { ...process.env, TMPDIR: join(root, ".work/tmp") }, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "", reason, interrupted, escalation;
+  const killGroup = signal => { if (child.pid !== undefined) { try { process.kill(-child.pid, signal); } catch {} } };
+  const stop = why => {
+    reason ??= why;
+    killGroup("SIGTERM");
+    escalation ??= setTimeout(() => killGroup("SIGKILL"), 2000);
+  };
+  const timer = setTimeout(() => stop("workload timed out"), 600_000);
+  const onInt = () => { interrupted = "SIGINT"; stop("interrupted"); };
+  const onTerm = () => { interrupted = "SIGTERM"; stop("terminated"); };
+  process.once("SIGINT", onInt);
+  process.once("SIGTERM", onTerm);
+  const collect = chunk => {
+    if (output.length + chunk.length > 32 * 1024 * 1024) stop("workload output exceeded 32 MiB");
+    else output += chunk;
+  };
+  child.stdout.on("data", collect);
+  child.stderr.on("data", collect);
+  const result = await new Promise(resolveResult => {
+    child.once("error", error => resolveResult({ exit: 1, output: `${output}\n${error.message}` }));
+    child.once("close", (code, signal) => resolveResult({ exit: reason || signal ? 1 : code, output: `${output}${reason ? `\n${reason}\n` : ""}` }));
+  });
+  clearTimeout(timer);
+  if (escalation !== undefined) clearTimeout(escalation);
+  process.removeListener("SIGINT", onInt);
+  process.removeListener("SIGTERM", onTerm);
+  killGroup("SIGTERM");
+  if (interrupted) { process.kill(process.pid, interrupted); }
+  return result;
+}
 const usage = `usage: node bench/run.mjs [--list | --check | --dry-run] [--tier edit|change|scenario|full] [--name NAME] [--area AREA] [--skip NAME] [--full]\n\nSelect one workload: node bench/run.mjs --tier change --name collection-small\nList workloads: node bench/run.mjs --list\nFull requires --full and remains manual; excluded external studies have their own documented commands.\n`;
 const args = process.argv.slice(2);
 let mode = "run", tier = "edit", name, area, skip, full = false;
@@ -66,10 +98,10 @@ try {
   const results = [];
   for (const w of runnable) {
     const start = performance.now();
-    const child = spawnSync(w.command[0], w.command.slice(1), { cwd: root, encoding: "utf8", env: { ...process.env, TMPDIR: join(root, ".work/tmp") }, maxBuffer: 32 * 1024 * 1024 });
-    writeFileSync(join(dir, `${w.name}.log`), (child.stdout ?? "") + (child.stderr ?? ""));
-    results.push({ name: w.name, exit: child.status, durationMs: Math.round(performance.now() - start), timing: "completion only; no performance verdict" });
-    console.log(`${w.name}: exit ${child.status}; log ${join(dir, `${w.name}.log`)}`);
+    const child = await runWorkload(w.command);
+    writeFileSync(join(dir, `${w.name}.log`), child.output);
+    results.push({ name: w.name, exit: child.exit, durationMs: Math.round(performance.now() - start), timing: "completion only; no performance verdict" });
+    console.log(`${w.name}: exit ${child.exit}; log ${join(dir, `${w.name}.log`)}`);
   }
   const endReady = spawnSync("perf-gate-ready", ["-1"], { encoding: "utf8" });
   const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).stdout?.trim();

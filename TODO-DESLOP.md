@@ -145,6 +145,16 @@ informative than coverage alone. Knip's default entry detection misidentified
 real entrypoints and test consumers, so its configured results are retained
 with explicit exclusions. No shared fleet or skill file was changed.
 
+**Completion review.** The cumulative diff from `7fc3ff9` was reviewed
+against its callers, package entries and the available tests. Review found the
+benchmark runner could wait indefinitely; it now bounds workloads and stops
+the process group. With a temporary 3000 ms deadline, a deliberately stalled
+workload exited 1 and its child was absent; the runner was restored byte for
+byte. Edit and Change workloads both passed after the fix. No independent
+reviewer was used because this lane is explicitly a leaf. No further defect
+was demonstrated. The final full test and lint results belong to the handoff;
+performance comparison remains Needs environment.
+
 ## Tickets
 
 ### DSLP-9 · P3 · Preserve large retry ceilings in Rust producer
