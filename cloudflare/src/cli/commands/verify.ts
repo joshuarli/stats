@@ -138,6 +138,7 @@ export function createVerifyCommand(deps: VerifyDeps): Command {
     name: "verify",
     summary: "decide whether a deployment used fewer resources for the same work, or (--service) changed a service's resource levels",
     description: [
+      "For the offline promotion gate, see `statsctl help verify release`.",
       "Applies a pre-registered policy to the exact before and after windows of one deployment and prints a verdict: improved, unchanged, confounded, insufficient-data, pending, or regressed.",
       "Read-only. It never runs `check ingest`; run that yourself inside the deployment warm-up and pass its saved --json output with --safety-check-file. A missing, failed, or pre-deploy check never passes.",
       "",
