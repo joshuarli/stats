@@ -264,6 +264,8 @@ Primary API references:
 
 ## Offline release promotion gate
 
+Run the [local canary pair](testing.md#run-the-local-canary-pair) to exercise the gate with isolated OpenOrange stacks.
+
 An external rollout controller saves a `stats-release-policy/1` policy and a `stats-release-evidence/1` bundle, then runs `statsctl verify release --evidence DIR --json`. Only a `pass` authorizes promotion. The directory contains `policy.json`, `baseline.manifest.json`, `candidate.manifest.json`, `workload.json`, `ledger.json`, `observations.json`, and `recovery.json`. The policy's workload SHA-256 covers the exact bytes of `workload.json`. Source checkpoints are producer delivery snapshots `{startedAtMs, atMs, accepted, dropped, queued}` (see [the producer contract](integration.md)) and must bracket the measurement window. Delivery is complete only when both checkpoints belong to one producer session (`startedAtMs`), `received` counts the distinct sequences in `(start.accepted, end.accepted]` and equals their difference (retransmissions cannot conceal a gap), `dropped` did not change, and both boundary queues are empty, as in Stats' service comparison. `dropped` already counts invalid records, evictions and exhausted or permanently rejected sends.
 
 The verdict reports every gate and reason, the independent improvement claim, evaluation time, and file hashes. Exit codes are 0 for pass, 7 for reject, 6 for inconclusive, and 5 for pending. Save `{evaluatedAtMs, verdict, reasonCodes}` in `decision.json` and use `--replay` to recompute offline at the recorded time; a mismatch exits 4. Use `statsctl help verify release` for the full command contract.

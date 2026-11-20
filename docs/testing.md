@@ -407,6 +407,19 @@ all hosts appear in global order. Run baseline and candidate alternately at
 least five times, with `perf-gate-ready` before and `perf-gate-ready -1` after
 each run; discard runs that overlap load.
 
+## Run the local canary pair
+
+Build the OpenOrange dependencies and Worker bundles, then run the canary test:
+
+```sh
+pnpm install --frozen-lockfile --offline
+pnpm --dir cloudflare install --frozen-lockfile --offline
+make orange-ready worker-bundle observe-bundle
+TMPDIR="$PWD/.work/tmp" node --experimental-strip-types --test --test-concurrency=1 deploy/orange/canary.test.mts
+```
+
+The test starts separate local stacks and judges saved evidence with `statsctl verify release`. It checks a passing pair, a modified response, missing self-observation, state-copy recovery, and decision replay. It samples each process tree for CPU and peak RSS. It removes its temporary state and bundles after the run.
+
 ## Screenshot goldens
 
 `cloudflare/test/ui/replay.spec.ts` serves the captures in
