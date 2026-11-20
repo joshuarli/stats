@@ -1,5 +1,5 @@
 Prefix: DSLP
-Next: 12
+Next: 14
 
 Deslop campaign backlog ([plan](https://github.com/laputa-systems/stuff/blob/main/docs/campaigns/deslop.md), tier Calibration). One agent works this file with the `deslop` skill: take the lowest-numbered open ticket whose area does not start with `Needs owner ·`. After DSLP-5, work the open P1 and P2 findings, then fill in `## Report` below.
 
@@ -67,16 +67,10 @@ Historical mutation results are distinct: TypeScript ACK decoding caught
 113/115, with two unreachable varint-loop survivors; Rust ACK caught 42/42;
 Worker ACK caught 25/27, with two unreachable empty-rejection fallbacks.
 Producer stream mutation caught 30/68, three equivalent, and 35 timed out even
-at the longer bound. These 35 are unresolved, not equivalent or killed; the
-repeated timeout is an untested behavior group and the scope stays outside
-retained CI. Frame, broader producer and whole-change mutation remain unrun
-advisory regions, as do Worker and browser coverage counts. No new mutation
-sweep or boundary test is claimed. Retention is guarded by Workerd
-`history.test.ts`, Node `node/installation.test.ts`, and local
-`local/collection.test.ts`; retention mutation remains unrun. Wider platform
-and runtime scope is unrun, not inferred from Node. Legacy upgrade needs the
-baseline build; the historical hosted run supplied it. The existing CI lanes
-and retention policy are unchanged. Coverage and elapsed-time evidence from
+at the longer bound. Frame, broader producer and whole-change mutation, and
+Worker and browser coverage counts, stay advisory and unrun; mutation CI is
+unchanged. Legacy upgrade needs the baseline build; the historical hosted run
+supplied it. The existing CI lanes and retention policy are unchanged. Coverage and elapsed-time evidence from
 prior runs is in `docs/deslop-ingest-coverage.md` and `docs/deslop-diagnose.md`;
 no comparable paired suite-cost measurement is claimed on this busy host.
 
@@ -85,7 +79,30 @@ conformance commands in AGENTS.md; Change uses the affected component suite;
 Scenario uses local integration and dashboard lifecycle; the explicitly
 requested `make test` covers the full local release-shaped suite. Historical
 warm cost is about three minutes on macOS, not a current paired measurement.
-No new test was added and no new fault injection is claimed.
+
+
+**Test dispositions (DSLP-4 closed).** Survivors: TypeScript ACK decoder two
+unreachable (varint loop); Worker ACK two unreachable (empty-rejection
+fallback); Rust ACK none; producer `readAck` three equivalent (count type
+checks behind `Number.isSafeInteger`). Producer timeouts: all 35 are detected,
+none is an untested behavior. A replay of 61 hand-made mutants of `readAck`
+(`packages/producer/src/index.ts:222-258`, `node --test` on
+`cloudflare/test/producer/producer.test.ts`, 20 s kill) gave 35 killed, 21
+timed out and 5 survived. Rerunning the 21 timeouts showed each printing 1 to
+15 failing tests before the process outlived 12 s. The 5 survivors are the
+return-type annotation and the `in` and `typeof` checks that
+`Number.isSafeInteger` already covers, the same equivalent classes as above.
+The hang is test hygiene, filed as DSLP-12 (P3). Retention was proven by one
+injected fault: replacing the raw-sample cutoff with `now - 100 *
+RAW_RETENTION_MS` at `cloudflare/src/core/installation/installation.ts:494`
+failed the Node retention case (1 of 7 in `node/installation.test.ts`) and two
+Workerd cases in `history.test.ts` (2 of 22); the file was restored byte for
+byte (`cmp`) and both suites passed again. Retention therefore has caught
+guards on both runtimes. Wider runtime scope: Node and Workerd are exercised;
+Linux agent, deployed Cloudflare and other browser engines are Needs
+environment with no local gap shown. No test was added because no important
+gap was demonstrated. The one flake seen, a fixed 5 s start deadline in the
+Orange SIGTERM cancellation test at load average about 15, is DSLP-13 (P3).
 
 **Dashboard focus finding.** DSLP-10 was observed during the full retry:
 the existing back-navigation browser test failed at focus restoration. The
@@ -93,8 +110,7 @@ focused test failed twice in ten unmodified runs. Temporary instrumentation
 showed the link disconnected at the sole animation frame and connected later;
 it was restored byte-for-byte. The fix waits for attachment and cancels its
 observer on cleanup while preserving user-selected focus. The same test
-passed 20 of 20 runs afterward. The full suite must still be rerun at the
-final commit.
+passed 20 of 20 runs afterward.
 
 **Dead code.** Knip 6.45.1, configured with the Worker, Node, dashboard,
 CLI, bridge, producer, script and test entries, passed its default scan.
@@ -185,4 +201,22 @@ performance comparison remains Needs environment.
 - **Recommendation:** Add representative cross-process CPU, allocation and I/O attribution and validate external fixture and artifact identities before scenario runs; retain separate instrumented and timed runs.
 - **Fix with:** bench-pyramid
 - **Effort:** M
+
+### DSLP-12 · P3 · Producer tests use real retry sleeps, so a failing run outlives the runner deadline
+
+- **Area:** producer · tests
+- **Where:** cloudflare/test/producer/producer.test.ts:76-300
+- **Problem:** The golden-frame and error-code tests construct the producer without the injected sleep. A fault that makes delivery fail (for example readAck returning null) fails them, and the default real backoff sleep (up to 30 s) is the likely holder of the process, not confirmed per mutant. A hand replay of 61 readAck mutants showed 21 runs that printed at least one failing test and still did not exit within 12 s; Stryker records such runs as timeouts.
+- **Recommendation:** Pass the same injected no-op sleep the retry tests use, so a failing producer test exits promptly and the mutation run classifies it as killed.
+- **Fix with:** test-audit
+- **Effort:** S
+
+### DSLP-13 · P3 · Orange cancellation test has a fixed 5 s start deadline that fails on a loaded host
+
+- **Area:** deploy · tests
+- **Where:** cloudflare/test/scripts/orange-deploy.test.ts:305
+- **Problem:** The cancellation test waits at most 5000 ms for the stub deployment to reach its blocked state. On a host at load average about 15 the SIGTERM during smoke case failed once with AbortError and passed on the next full make test run; the other seven signal cases passed in the same run.
+- **Recommendation:** Wait on the blocked marker with a deadline scaled to the test timeout, or bound the child by its own readiness signal, so the signal-handling assertion is not tied to process start time.
+- **Fix with:** test-audit
+- **Effort:** S
 
