@@ -35,7 +35,7 @@ await test("the topology runs both built Workers with their SQLite Durable Objec
   assert.deepEqual(rest, []);
   assert.equal(stats?.name, "stats");
   assert.equal(observe?.name, "stats-observe");
-  assert.deepEqual(stats?.durableObjects, { INSTALLATION: { className: "Installation", useSQLite: true } });
+  assert.deepEqual(stats?.durableObjects, { INSTALLATION: { className: "Installation", useSQLite: true }, METRICS: { className: "MetricStore", useSQLite: true } });
   assert.deepEqual(observe?.durableObjects, { STORE: { className: "ObservationStore", useSQLite: true } });
   assert.deepEqual(stats?.serviceBindings, { ANALYTICS_SQL: { name: "analytics-provider", entrypoint: "Analytics" }, OBSERVE: "stats-observe" });
   assert.deepEqual(stats?.tails, ["stats-observe"]);

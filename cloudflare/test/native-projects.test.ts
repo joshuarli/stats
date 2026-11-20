@@ -9,7 +9,7 @@ const data: ApplicationTelemetry = { provenance: "application", fromMs: 1000, to
 
 describe("native project telemetry", () => {
   it("selects the declared project source independently of provider availability", () => {
-    const capabilities: RuntimeCapabilities = { projectSource: "services", applicationEvents: true, analyticsCollection: false, cloudflareDeployments: false, tailEvents: false };
+    const capabilities: RuntimeCapabilities = { projectSource: "services", applicationEvents: true, analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, infraMetrics: false };
     expect(nativeProjects(capabilities)).toBe(true);
     expect(nativeProjects({ ...capabilities, projectSource: "cloudflare" })).toBe(false);
     expect(decodeCapabilities(capabilities)).toEqual(capabilities);

@@ -4,6 +4,7 @@ export interface RuntimeCapabilities {
   readonly cloudflareDeployments: boolean;
   readonly tailEvents: boolean;
   readonly applicationEvents: boolean;
+  readonly infraMetrics: boolean;
 }
 
 export function decodeCapabilities(value: unknown): RuntimeCapabilities {
@@ -14,5 +15,13 @@ export function decodeCapabilities(value: unknown): RuntimeCapabilities {
   for (const key of ["analyticsCollection", "cloudflareDeployments", "tailEvents", "applicationEvents"]) {
     if (typeof data[key] !== "boolean") throw new Error("invalid capabilities");
   }
-  return { projectSource, analyticsCollection: data["analyticsCollection"] as boolean, cloudflareDeployments: data["cloudflareDeployments"] as boolean, tailEvents: data["tailEvents"] as boolean, applicationEvents: data["applicationEvents"] as boolean };
+  if (data["infraMetrics"] !== undefined && typeof data["infraMetrics"] !== "boolean") throw new Error("invalid capabilities");
+  return {
+    infraMetrics: data["infraMetrics"] === true,
+    projectSource,
+    analyticsCollection: data["analyticsCollection"] as boolean,
+    cloudflareDeployments: data["cloudflareDeployments"] as boolean,
+    tailEvents: data["tailEvents"] as boolean,
+    applicationEvents: data["applicationEvents"] as boolean
+  };
 }

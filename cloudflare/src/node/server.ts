@@ -1,3 +1,5 @@
+import { INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts";
+import { constantTimeEqual, tokenHash } from "../auth.ts";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -10,6 +12,8 @@ import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly metricsVerifier?: string | undefined;
+  readonly metrics?: (request: Request) => Promise<Response>;
   readonly installation: (request: Request) => Promise<Response>;
   readonly observe?: ObserveService;
   readonly assets: AssetReader;
@@ -83,9 +87,12 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
-      capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true },
+      metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""),
+      ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
+      capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? "") },
       authorize: request => Promise.resolve(tailscaleDecision(peer, request.headers)),
       authorizeIngest: async (service, token) => {
+        if (service === INFRA_SERVICE) return options.metricsVerifier !== undefined && /^[a-f0-9]{64}$/u.test(options.metricsVerifier) && constantTimeEqual(await tokenHash(token), options.metricsVerifier);
         const response = await options.installation(new Request("https://installation/ingest/observe-auth", {
           method: "POST", headers: { "x-observe-service": service, authorization: `Bearer ${token}` }
         }));

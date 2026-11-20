@@ -310,6 +310,6 @@ await test("capabilities require trusted identity and disclose only runtime supp
     assert.equal((await forged.fetch("/api/v1/capabilities", { headers: login(ALLOWED) })).status, 401);
     const reply = await served.fetch("/api/v1/capabilities", { headers: login(ALLOWED) });
     assert.equal(reply.status, 200);
-    assert.deepEqual(JSON.parse(reply.text), { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true });
+    assert.deepEqual(JSON.parse(reply.text), { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false });
   } finally { await served.close(); await forged.close(); }
 });

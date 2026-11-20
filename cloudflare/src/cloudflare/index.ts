@@ -1,4 +1,5 @@
 import { constantTimeEqual, tokenHash } from "../auth.ts";
+import { INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts";
 import { PLATFORM_SERVICE } from "../../../packages/platform-bridge/src/contract.ts";
 import { gatewayDecision } from "./gateway.ts";
 import { Installation } from "./installation.ts";
@@ -18,9 +19,17 @@ import type { BrowserJourney } from "../observe/application/journey.ts";
 import type { RuntimeCapabilities } from "../core/capabilities.ts";
 
 export { Installation };
+export { MetricStore } from "./metric-store.ts";
 
 function capabilities(env: Env): RuntimeCapabilities {
-  return { projectSource: env.PROJECT_SOURCE, analyticsCollection: env.ANALYTICS_SQL !== undefined, cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""), tailEvents: env.ANALYTICS_SQL !== undefined, applicationEvents: true };
+  return {
+    projectSource: env.PROJECT_SOURCE,
+    analyticsCollection: env.ANALYTICS_SQL !== undefined,
+    cloudflareDeployments: /^[a-f0-9]{32}$/i.test(env.DEPLOYMENTS_ACCOUNT_ID ?? "") && Boolean(env.DEPLOYMENTS_API_TOKEN) && !/[\r\n]/u.test(env.DEPLOYMENTS_API_TOKEN ?? ""),
+    tailEvents: env.ANALYTICS_SQL !== undefined,
+    applicationEvents: true,
+    infraMetrics: /^[a-f0-9]{64}$/u.test(env.INFRA_METRICS_TOKEN_SHA256 ?? "")
+  };
 }
 
 async function forwardProjectRollouts(env: Env, store: DurableObjectStub<Installation>, project: string, service: string): Promise<void> {
@@ -53,6 +62,10 @@ export default {
       capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
+        if (service === INFRA_SERVICE) {
+          const verifier = env.INFRA_METRICS_TOKEN_SHA256;
+          return verifier !== undefined && /^[a-f0-9]{64}$/u.test(verifier) && constantTimeEqual(await tokenHash(token), verifier);
+        }
         if (service === PLATFORM_SERVICE) {
           const verifier = env.PLATFORM_BRIDGE_TOKEN_SHA256;
           return verifier !== undefined && /^[a-f0-9]{64}$/u.test(verifier) && constantTimeEqual(await tokenHash(token), verifier);
@@ -67,6 +80,8 @@ export default {
         const response = await env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(new Request(`https://installation/services/${encodeURIComponent(service)}`));
         return response.status === 200;
       },
+      metricsAvailable: /^[a-f0-9]{64}$/u.test(env.INFRA_METRICS_TOKEN_SHA256 ?? ""),
+      metrics: internal => env.METRICS.get(env.METRICS.idFromName(INFRA_SERVICE)).fetch(internal),
       installation: internal => env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(internal),
       assets: asset => env.ASSETS.fetch(asset),
       observe: (target, init) => env.OBSERVE.fetch(target, init),

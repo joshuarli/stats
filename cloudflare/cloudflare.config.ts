@@ -92,11 +92,13 @@ export default defineConfig({
     compatibilityFlags: ["nodejs_compat"],
     entrypoint,
     exports: {
-      Installation: exports.durableObject({ storage: "sqlite" })
+      Installation: exports.durableObject({ storage: "sqlite" }),
+      MetricStore: exports.durableObject({ storage: "sqlite" })
     },
     env: {
       ENVIRONMENT: bindings.text("production"),
       INSTALLATION: bindings.durableObject({ worker: WORKER_NAME, exportName: "Installation" }),
+      METRICS: bindings.durableObject({ worker: WORKER_NAME, exportName: "MetricStore" }),
       ASSETS: bindings.assets(),
       ANALYTICS_SQL: bindings.analytics(),
       PROJECTS: bindings.text(PROJECTS_JSON),

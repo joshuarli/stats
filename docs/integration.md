@@ -378,3 +378,19 @@ Both 0.2.0 packages are published. To publish a new version, use
 `make publish-producer` and `make publish-producer-crate` with the native Stuff
 CLI and protected publishing-service credentials. Pulls are public; publishing
 uses the private tailnet endpoint. The versions above define this contract.
+
+## Infrastructure metrics
+
+The private native-host collector uses a reserved `stats-infra` credential.
+Configure its `INFRA_COLLECTOR_CONFIG` environment variable with the path to a
+JSON file containing `name`, `targets` (loopback URLs with Worker or Engine
+IDs), `releaseFile`, `tokenFile`, and the Stats ingest `endpoint`. The release
+file contains `runtime` and `app` identifiers. The token can instead be provided
+as `INFRA_METRICS_TOKEN`. The receiver takes the SHA-256 verifier in
+`INFRA_METRICS_TOKEN_SHA256`. Tokens do not belong in command arguments.
+
+The collector posts typed batches to `/ingest/metrics/v1/batches`. Authorized
+readers query `/api/observe/stats-infra/metrics/sources` with `from`, `to`, and
+`release=runtime` or `release=app`. Metrics have a separate store and are not
+included in logical backups. Scrape failures and queue drops remain visible in
+the source evidence.

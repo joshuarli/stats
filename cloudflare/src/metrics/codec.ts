@@ -1,5 +1,11 @@
-import { catalog } from "./catalog.ts";
-import { isDecimal, isU64, type Drops, type Histogram, type Values } from "./exposition.ts";
+import { catalog, CATALOG_VERSION } from "./catalog.ts";
+import { isDecimal, isU64, MAX_SCRAPE_BYTES, type Drops, type Histogram, type Values } from "./exposition.ts";
+
+export const INFRA_METRICS_SCHEMA = "stats-infra-metrics/1";
+export const MAX_METRIC_BATCH_BYTES = 65536;
+export const MAX_METRIC_TARGETS = 16;
+export const MAX_METRIC_QUEUE = 32;
+export const MAX_METRIC_PAYLOAD_BYTES = 8192;
 
 export type Scrape = {
   target: string; sequence: number; atMs: number; monoMs: number; outcome: string;
@@ -7,7 +13,7 @@ export type Scrape = {
   process: { startTime: string | null }; dropped: Drops; values: Values;
 };
 export type Batch = {
-  schema: "stats-infra-metrics/1"; catalog: 1;
+  schema: typeof INFRA_METRICS_SCHEMA; catalog: typeof CATALOG_VERSION;
   collector: { name: string; instance: string; startedAtMs: number };
   expected: string[];
   delivery: { queued: number; queueHigh: number; dropped: number; retries: number; rejected: number };
@@ -54,30 +60,30 @@ function validateValues(input: unknown): void {
 }
 export function validateBatch(input: unknown): Batch {
   const b = record(input, ["schema", "catalog", "collector", "expected", "delivery", "scrapes"]);
-  if (b.schema !== "stats-infra-metrics/1" || b.catalog !== 1) fail();
+  if (b.schema !== INFRA_METRICS_SCHEMA || b.catalog !== CATALOG_VERSION) fail();
   const collector = record(b.collector, ["name", "instance", "startedAtMs"]);
   text(collector.name, /^[a-z][a-z0-9-]{0,31}$/u);
   text(collector.instance, /^[a-f0-9]{16}$/u);
   count(collector.startedAtMs);
-  if (!Array.isArray(b.expected) || b.expected.length > 16 || new Set(b.expected).size !== b.expected.length) fail();
+  if (!Array.isArray(b.expected) || b.expected.length > MAX_METRIC_TARGETS || new Set(b.expected).size !== b.expected.length) fail();
   for (const target of b.expected) text(target, targetPattern);
   const delivery = record(b.delivery, ["queued", "queueHigh", "dropped", "retries", "rejected"]);
   for (const value of Object.values(delivery)) count(value);
-  if ((delivery.queued as number) > 32 || (delivery.queueHigh as number) > 32) fail();
-  if (!Array.isArray(b.scrapes) || b.scrapes.length > 16) fail();
+  if ((delivery.queued as number) > MAX_METRIC_QUEUE || (delivery.queueHigh as number) > MAX_METRIC_QUEUE) fail();
+  if (!Array.isArray(b.scrapes) || b.scrapes.length > MAX_METRIC_TARGETS) fail();
   const pairs = new Set<string>();
   for (const item of b.scrapes) {
     const s = record(item, ["target", "sequence", "atMs", "monoMs", "outcome", "durationUs", "bytes", "release", "process", "dropped", "values"]);
     text(s.target, targetPattern);
     if (!b.expected.includes(s.target)) fail();
     for (const key of ["sequence", "atMs", "monoMs", "durationUs", "bytes"]) count(s[key]);
-    if (s.sequence === 0 || (s.bytes as number) > 1024 * 1024) fail();
+    if (s.sequence === 0 || (s.bytes as number) > MAX_SCRAPE_BYTES) fail();
     const pair = `${s.target}:${String(s.sequence)}`;
     if (pairs.has(pair)) fail();
     pairs.add(pair);
     if (!["ok", "timeout", "refused", "http_status", "too_large", "parse_error", "identity_mismatch"].includes(s.outcome as string)) fail();
     const release = record(s.release, ["runtime", "app"]);
-    text(release.runtime, /^oor-[a-f0-9]{16}$/u);
+    text(release.runtime, /^rt-[a-f0-9]{12}$/u);
     if (s.target.startsWith("engine:")) { if (release.app !== null) fail(); }
     else text(release.app, /^[a-f0-9]{12}$/u);
     const process = record(s.process, ["startTime"]);
@@ -93,17 +99,17 @@ export function validateBatch(input: unknown): Batch {
       const start = values.openorange_worker_start_time_seconds;
       if (identity?.length !== 1 || identity[0]?.[0].worker !== worker || identity[0]?.[0].index !== index || identity[0]?.[1] !== "1" || start?.length !== 1 || start[0]?.[1] !== process.startTime) fail();
     }
-    if (new TextEncoder().encode(JSON.stringify({ values: s.values, dropped: s.dropped, durationUs: s.durationUs, bytes: s.bytes })).length > 8192) fail();
+    if (new TextEncoder().encode(JSON.stringify({ values: s.values, dropped: s.dropped, durationUs: s.durationUs, bytes: s.bytes })).length > MAX_METRIC_PAYLOAD_BYTES) fail();
   }
   return input as Batch;
 }
 export function encodeBatch(batch: Batch): string {
   validateBatch(batch);
   const json = JSON.stringify(batch);
-  if (new TextEncoder().encode(json).length > 65536) fail();
+  if (new TextEncoder().encode(json).length > MAX_METRIC_BATCH_BYTES) fail();
   return json;
 }
 export function decodeBatch(json: string): Batch {
-  if (new TextEncoder().encode(json).length > 65536) fail();
+  if (new TextEncoder().encode(json).length > MAX_METRIC_BATCH_BYTES) fail();
   try { return validateBatch(JSON.parse(json)); } catch { return fail(); }
 }

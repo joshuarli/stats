@@ -1,5 +1,7 @@
 import { catalog } from "./catalog.ts";
 
+export const MAX_SCRAPE_BYTES = 4 * 1024 * 1024;
+
 export type Labels = Record<string, string>;
 export type Histogram = { buckets: string[]; count: string; sum: string };
 export type Values = Record<string, [Labels, string | Histogram][]>;
@@ -26,7 +28,7 @@ function parseLabels(text: string): Labels {
 }
 
 export function parseExposition(body: string): { values: Values; dropped: Drops } {
-  if (new TextEncoder().encode(body).length > 1024 * 1024) throw new Error("body too large");
+  if (new TextEncoder().encode(body).length > MAX_SCRAPE_BYTES) throw new Error("body too large");
   const types = new Map<string, string>();
   const seen = new Set<string>();
   const raw = new Map<string, { labels: Labels; samples: Map<string, string> }>();

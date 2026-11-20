@@ -15,9 +15,11 @@ RivetKit package pin and native self-report separately.
 Orange routes several logical methods through the same native `onRequest`
 handler. These spans do not identify methods such as `applicationSummary`.
 The validated Orange path supplies no separate outbound actor-RPC spans.
-Runtime gauges are not collected. With multiple Workers, the documented metrics
-port covers only the first Worker, so that endpoint would omit ObservationStore.
-The dashboard marks those capabilities unavailable.
+A separate native-host collector reads allowlisted Worker and Engine metrics and
+writes successful samples to the independent MetricStore. Worker ports are
+consecutive from `RIVETKIT_METRICS_PORT`. The source read reports identity,
+delivery and restart gaps. The dashboard does not yet display these metrics.
+Scrapes over 4 MiB are recorded as `too_large` drops.
 
 The Engine persists actor data in its filesystem tier. The separate S3-compatible
 store is not that persistence path. This feature changes neither storage backend.

@@ -73,7 +73,7 @@ export async function runWorkload(stack: Stack, credentials: Credentials, origin
   const eventReadPath = `/api/observe/canary/external?from=${now - 60_000}&to=${now + 60_000}`;
   const eventOk = await call(eventReadPath, { headers: stack.headers }, 200, b => { const rows = json(b).events; return Array.isArray(rows) && rows.length === 1 && isDeepStrictEqual(rows[0].event, event); });
   if (eventAck) eventOk ? ledger.readbackVerified++ : ledger.lostWrites++;
-  await call("/api/v1/capabilities", { headers: stack.headers }, 200, b => isDeepStrictEqual(json(b), { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true }));
+  await call("/api/v1/capabilities", { headers: stack.headers }, 200, b => isDeepStrictEqual(json(b), { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false }));
   await call("/api/v1/hosts", { headers: stack.headers }, 200, b => json(b).hosts.length === 1 && json(b).hosts[0].hostId === host.hostId);
   await call("/api/v1/services", { headers: stack.headers }, 200, b => json(b).services.some((s: {name: string}) => s.name === "canary"));
   ledger.histogram.buckets = [...buckets].sort((a, b) => a[0] - b[0]);

@@ -22,7 +22,7 @@ await test("the Stats Workers run on OpenOrange with gateway identity, exact ing
   const generated = generate(stateDir, { kind: "dev", release: "pilot", gatewaySecret: secret, nowMs: String(NOW_MS) });
   assert.deepEqual(generated.dropped.map(entry => entry.item).sort(), ["ANALYTICS_SQL (analytics)", "tail consumer stats-observe"]);
   const statsDescriptor = JSON.parse(readFileSync(generated.stats, "utf8")) as { vars: Record<string, string>; durable_objects: { bindings: { name: string; class_name: string }[] }; services: { binding: string; service: string }[] };
-  assert.deepEqual(statsDescriptor.durable_objects.bindings, [{ name: "INSTALLATION", class_name: "Installation" }]);
+  assert.deepEqual(statsDescriptor.durable_objects.bindings, [{ name: "INSTALLATION", class_name: "Installation" }, { name: "METRICS", class_name: "MetricStore" }]);
   assert.deepEqual(statsDescriptor.services, [{ binding: "OBSERVE", service: "stats-observe" }]);
 
   const identity = { [GATEWAY_SECRET_HEADER]: secret, [GATEWAY_IDENTITY_HEADER]: "user:pilot@example.com" };

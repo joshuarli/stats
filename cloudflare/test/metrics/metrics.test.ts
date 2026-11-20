@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { catalog } from "../../src/metrics/catalog.ts";
 import { decodeBatch, encodeBatch, type Batch } from "../../src/metrics/codec.ts";
-import { parseExposition } from "../../src/metrics/exposition.ts";
+import { MAX_SCRAPE_BYTES, parseExposition } from "../../src/metrics/exposition.ts";
 import { MetricStore } from "../../src/metrics/store.ts";
 import { decideRelease } from "../../src/cli/verify/release-decide.ts";
 import type { ReleaseEvidence } from "../../src/cli/verify/release-evidence.ts";
@@ -23,7 +23,7 @@ function batch(sequence: number, values = peer.values): Batch {
     delivery: { queued: 0, queueHigh: 0, dropped: 0, retries: 0, rejected: 0 },
     scrapes: [{ target: "worker:serve-peer:1", sequence, atMs: start + (sequence - 1) * 15000,
       monoMs: sequence * 15000, outcome: "ok", durationUs: 10, bytes: 27000,
-      release: { runtime: "oor-0123456789abcdef", app: "0123456789ab" },
+      release: { runtime: "rt-0123456789ab", app: "0123456789ab" },
       process: { startTime: incarnation }, dropped: peer.dropped, values }]
   };
 }
@@ -41,12 +41,17 @@ void test("parser rejects malformed input and drops a family with unknown labels
   const unknown = parseExposition("# TYPE rivet_depot_alarm_discovery_rows_total counter\nrivet_depot_alarm_discovery_rows_total{new=\"x\"} 1\n");
   assert.equal(unknown.values.rivet_depot_alarm_discovery_rows_total, undefined);
   assert.equal(unknown.dropped.unlisted_label, 1);
-  assert.throws(() => parseExposition(" ".repeat(1024 * 1024 + 1)));
+  assert.throws(() => parseExposition(" ".repeat(MAX_SCRAPE_BYTES + 1)));
 });
 void test("batch codec is strict and preserves exact values", () => {
   const input = batch(1);
   input.scrapes[0]!.values.rivet_rivetkit_envoy_client_actor_queued_requests_overloaded_total = [[{}, "18446744073709551615"]];
   assert.deepEqual(decodeBatch(encodeBatch(input)), input);
+  const largestScrape = structuredClone(input);
+  largestScrape.scrapes[0]!.bytes = MAX_SCRAPE_BYTES;
+  assert.equal(decodeBatch(encodeBatch(largestScrape)).scrapes[0]!.bytes, MAX_SCRAPE_BYTES);
+  largestScrape.scrapes[0]!.bytes++;
+  assert.throws(() => encodeBatch(largestScrape));
   assert.throws(() => decodeBatch(encodeBatch(input).replace('"catalog":1', '"catalog":2')));
   assert.throws(() => decodeBatch(encodeBatch(input).replace('18446744073709551615', '18446744073709551616')));
   assert.throws(() => decodeBatch(encodeBatch(input).replace('"catalog":1', '"extra":0,"catalog":1')));
@@ -70,7 +75,7 @@ void test("store deduplicates, retains histogram buckets and records restart and
     assert.equal(result[0]!.detail.scrapeFailures.timeout, 1);
     assert.equal(result[0]!.evidence.received, 3);
     assert.ok(result[0]!.evidence.sequenceEnd.dropped > result[0]!.evidence.sequenceStart.dropped);
-    const row = store.db.prepare("SELECT payload FROM metric_scrapes WHERE sequence=1").get() as { payload: string };
+    const row = store.connection.prepare("SELECT payload FROM metric_scrapes WHERE sequence=1").get() as { payload: string };
     const parsed = JSON.parse(row.payload) as { values: Record<string, Array<[object, { buckets: string[] }]>> };
     assert.ok(parsed.values.rivet_rivetkit_envoy_client_actor_start_seconds![0]![1].buckets.length > 1);
     assert.deepEqual(store.sources(start, start + 30000, "runtime", start + 86430001).map((r: unknown) => (r as { evidence: unknown }).evidence), [null]);
@@ -109,19 +114,19 @@ void test("counter resets are gaps and histogram deltas stay per incarnation", (
 void test("ingest removes expired rows and evicts over the row budget", () => {
   const store = new MetricStore();
   try {
-    const insert = store.db.prepare(`INSERT INTO metric_scrapes VALUES
+    const insert = store.connection.prepare(`INSERT INTO metric_scrapes VALUES
       ('seed', '0000000000000000', 'engine:seed', ?, ?, ?, ?, ?, 'ok',
-       'oor-0123456789abcdef', NULL, NULL, 1, '{}')`);
-    store.db.exec("BEGIN");
+       'rt-0123456789ab', NULL, NULL, 1, '{}')`);
+    store.connection.exec("BEGIN");
     for (let i = 1; i <= 20001; i++) insert.run(i, start - 1000, i, start - 1000, start + 100000);
-    store.db.exec("COMMIT");
+    store.connection.exec("COMMIT");
     store.ingest(batch(1, structuredClone(peer.values)), start);
-    const rows = store.db.prepare("SELECT count(*) AS n FROM metric_scrapes").get() as { n: number };
-    const evicted = store.db.prepare("SELECT value FROM metric_meta WHERE key='evicted'").get() as { value: string };
+    const rows = store.connection.prepare("SELECT count(*) AS n FROM metric_scrapes").get() as { n: number };
+    const evicted = store.connection.prepare("SELECT value FROM metric_meta WHERE key='evicted'").get() as { value: string };
     assert.equal(rows.n, 20000);
     assert.equal(evicted.value, "2");
     store.ingest(batch(2, structuredClone(peer.values)), start + 86430000);
-    const expired = store.db.prepare("SELECT count(*) AS n FROM metric_scrapes WHERE expires_at <= ?").get(start + 86430000) as { n: number };
+    const expired = store.connection.prepare("SELECT count(*) AS n FROM metric_scrapes WHERE expires_at <= ?").get(start + 86430000) as { n: number };
     assert.equal(expired.n, 19936);
   } finally {
     store.close();
@@ -144,7 +149,7 @@ void test("failed scrape changes the exact gate checkpoint shape", () => {
     const end = evidence.sequenceEnd as { dropped: number };
     assert.deepEqual(Object.keys(begin).sort(), ["accepted", "atMs", "dropped", "queued", "startedAtMs"]);
     assert.equal(end.dropped - begin.dropped, 1);
-    const releaseId = "oor-0123456789abcdef";
+    const releaseId = "rt-0123456789ab";
     const cohort = { releaseId, workloadId: "load", attempted: 1, succeeded: 1, failures: {}, bodyMismatches: 0,
       acknowledgedWrites: 0, readbackVerified: 0, lostWrites: 0, duplicateMismatches: 0,
       histogram: { relativeError: 0.01, buckets: [[1000, 1]] }, windowStartMs: start,
@@ -186,4 +191,15 @@ void test("codec rejects invalid histograms, unknown labels and oversized batche
   const tooMany = batch(1, structuredClone(peer.values));
   tooMany.scrapes = Array.from({ length: 17 }, (_, index) => ({ ...tooMany.scrapes[0]!, sequence: index + 1 }));
   assert.throws(() => encodeBatch(tooMany));
+});
+
+void test("same-millisecond deliveries count toward the collector rate limit", () => {
+  const store = new MetricStore();
+  try {
+    const input = batch(1);
+    for (let index = 0; index < 12; index++) store.ingest(input, start);
+    assert.throws(() => store.ingest(input, start), /rate_limit/);
+  } finally {
+    store.close();
+  }
 });

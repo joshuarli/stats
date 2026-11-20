@@ -1,6 +1,6 @@
 # RFC INF-7: typed infrastructure metrics
 
-Status: proposed, design only, 2026-11-20. Campaign item INF-7 in the
+Status: receiver and native collector implemented, 2026-11-20. Campaign item INF-7 in the
 [infrastructure release campaign](../CAMPAIGN-INFRA-RELEASE.md). Depends on INF-2 (one metrics
 port per Worker) and INF-3 (`openorange-release-manifest/1`).
 
@@ -105,7 +105,7 @@ application process.
 - Target ids are `worker:<worker>:<index>` (index 0 to 15) or `engine:<name>`. A Worker scrape
   whose `openorange_worker_info{worker,index}` does not match its id records `identity_mismatch`
   and discards the values, which catches port shifts.
-- Scrapes run every 15 s with 1 s jitter, one in flight per target, a 2 s deadline, a 1 MiB body
+- Scrapes run every 15 s with 1 s jitter, one in flight per target, a 2 s deadline, a 4 MiB body
   cap and no retry. A failure is recorded with outcome `timeout`, `refused`, `http_status`,
   `too_large`, `parse_error` or `identity_mismatch`.
 - Delivery queues at most 32 batches, one per scrape round (about 8 minutes), and drops the oldest
@@ -166,7 +166,7 @@ strict. Integers are JSON numbers up to 2^53-1, and metric values are strings.
   "delivery": { "queued": 2, "queueHigh": 3, "dropped": 0, "retries": 1, "rejected": 0 },
   "scrapes": [{ "target": "worker:stats-observe:1", "sequence": 1842,
     "atMs": 1763650012000, "monoMs": 912000, "outcome": "ok", "durationUs": 8123, "bytes": 48211,
-    "release": { "runtime": "oor-0123456789abcdef", "app": "accd14a0364c" },
+    "release": { "runtime": "rt-0123456789ab", "app": "accd14a0364c" },
     "process": { "startTime": "1763640000.123" },
     "dropped": { "unlisted_family": 812, "unlisted_label": 3, "non_finite": 0, "series_cap": 0 },
     "values": {
@@ -175,7 +175,7 @@ strict. Integers are JSON numbers up to 2^53-1, and metric values are strings.
 ```
 
 `sequence` is contiguous per `(collector.instance, target)` from 1 and includes failed scrapes.
-`release.runtime` matches `^oor-[0-9a-f]{16}$`. `release.app` is the 12-hex Stats release, or null
+`release.runtime` is the runtime release id and matches `^rt-[0-9a-f]{12}$`. `release.app` is the 12-hex Stats release, or null
 for an Engine target. The collector rereads both from the release file at each scrape. A `u64`
 value is canonical decimal from 0 to 2^64-1. A `decimal` value is a finite Prometheus float token
 of at most 32 characters, stored verbatim, and its deltas use scaled-integer arithmetic.
@@ -246,9 +246,15 @@ gives the Engine nothing to retry.
 
 Raw scrapes are kept 24 hours at a 15 s interval: 17,280 rows a day for three targets, about
 35 MiB at an expected 2 KiB each and 141 MiB at the 8 KiB cap. `ObservationStore` keeps 200,000
-invocations under 512 B each for comparison (`docs/observe.md:239`, `:257`). Slice 1 measures real
-payloads, and the cap is revised before slice 2. One-minute rollups for 7 days come later and
-follow the host rules (`docs/architecture.md:793-799`).
+invocations under 512 B each for comparison (`docs/observe.md:239`, `:257`). One-minute rollups
+for 7 days come later and follow the host rules (`docs/architecture.md:793-799`).
+
+The production Engine exposed 1,421,880 bytes across 302 families. In the native
+rehearsal, the active external Engine exposed 1,175,390 bytes. The collector
+filters lines while streaming and retains only catalog samples. A Linux arm64
+probe with a 64 MiB cgroup limit completed one 16-target round of 4,147,780-byte
+synthetic scrapes, with four scrapes in flight, without an OOM. This probe does
+not cover sustained queue saturation or TLS.
 
 ### Reads for the release gate
 
@@ -341,3 +347,7 @@ pnpm --dir cloudflare -s test:metrics
 - The `stats-infra` credential is reserved like `stats-platform`. Failed
   scrapes count as drops. The allowlist admits a family only after a captured
   real scrape contains it.
+- The raw scrape cap is 4 MiB. The production Engine exposed 1,421,880 bytes;
+  the active rehearsal Engine exposed 1,175,390 bytes. The collector filters
+  lines while streaming and aborts larger bodies as `too_large`. The batch cap
+  remains 64 KiB. The 64 MiB cgroup probe is recorded under retention and budgets.

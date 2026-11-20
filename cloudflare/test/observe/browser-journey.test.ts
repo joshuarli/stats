@@ -16,7 +16,7 @@ await test("browser observations reject arbitrary fields, forged trace IDs and u
 await test("browser admission requires auth, same-origin JSON and a bounded valid body", async () => {
   const admitted: BrowserJourney[] = [];
   const target: StatsTarget = {
-    capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true },
+    capabilities: { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false },
     authorize: async request => request.headers.get("test-auth") === "yes" ? { ok: true } : { ok: false, status: 401, message: "unauthorized" },
     authorizeIngest: async () => false, serviceExists: async () => false,
     installation: async () => { throw new Error("browser telemetry must not enter Installation"); }, assets: async () => new Response(), observe: null,

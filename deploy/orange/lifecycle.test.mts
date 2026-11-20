@@ -19,6 +19,8 @@ await test("fixture: native actor eviction, overdue alarm and interrupted identi
   const generated = generate(state, { kind: "dev", release: "lifecycle", gatewaySecret: secret, nowMs: null });
   const descriptor = JSON.parse(readFileSync(generated.stats, "utf8"));
   descriptor.main = fixture;
+  descriptor.durable_objects.bindings = descriptor.durable_objects.bindings.filter((binding: { name: string }) => binding.name !== "METRICS");
+  descriptor.migrations[0].new_sqlite_classes = ["Installation"];
   descriptor.vars.MARKER = marker;
   writeFileSync(generated.stats, JSON.stringify(descriptor));
   const headers = { "Stats-Gateway-Secret": secret, "Stats-Tailnet-Identity": "user:lifecycle@example.com", "Content-Type": "application/json" };

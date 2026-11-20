@@ -1,5 +1,9 @@
+import { INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts";
 import type { Server, ServerResponse } from "node:http";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { mkdirSync } from "node:fs";
+import { MetricStore } from "../metrics/store.ts";
+import { handleMetricRequest } from "../metrics/http.ts";
 import { BUILT_ASSETS, openAssets } from "./assets.ts";
 import { nodeConfig, NodeConfigError, type Listen } from "./config.ts";
 import { DatabaseInUseError, openNodeInstallation, type NodeInstallation } from "./installation.ts";
@@ -27,7 +31,18 @@ async function main(): Promise<void> {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
   }
+  const directory = `${config.databasePath}.metrics`;
+  let metrics: MetricStore | undefined;
+  const metricStore = () => {
+    if (metrics === undefined) {
+      mkdirSync(directory, { recursive: true });
+      metrics = new MetricStore(join(directory, `${INFRA_SERVICE}.sqlite`));
+    }
+    return metrics;
+  };
   const server = createStatsServer({
+    metricsVerifier: process.env["INFRA_METRICS_TOKEN_SHA256"],
+    metrics: request => handleMetricRequest(request, metricStore()),
     installation: request => installation.core.fetch(request),
     observe: observeHandler(installation),
     assets,
@@ -57,6 +72,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ event: "stopping", signal }));
     server.close(error => {
       installation.close();
+      metrics?.close();
       if (error !== undefined) {
         console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
         process.exitCode = 1;

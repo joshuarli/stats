@@ -1,3 +1,5 @@
+import { INFRA_METRICS_INGEST_PATH, INFRA_METRICS_MEDIA_TYPE, INFRA_SERVICE } from "../../../packages/infra-collector/src/contract.ts";
+import { MAX_METRIC_BATCH_BYTES } from "../metrics/codec.ts";
 import type { RuntimeCapabilities } from "./capabilities.ts";
 import { bearerToken } from "../auth.ts";
 import { HISTORY_CONTENT_TYPE } from "../binary/history.ts";
@@ -22,6 +24,8 @@ export interface StatsTarget {
   readonly authorize: (request: Request) => Promise<AuthDecision>;
   readonly authorizeIngest: (service: string, token: string) => Promise<boolean>;
   readonly serviceExists: (service: string) => Promise<boolean>;
+  readonly metricsAvailable?: boolean;
+  readonly metrics?: (request: Request) => Promise<Response>;
   readonly installation: (request: Request) => Promise<Response>;
   readonly assets: (request: Request) => Promise<Response>;
   readonly observe: ObserveService | null;
@@ -192,6 +196,23 @@ async function maintainObject(request: Request, target: StatsTarget, suffix: str
 export async function handleStatsRequest(request: Request, target: StatsTarget): Promise<Response> {
   const path = new URL(request.url).pathname;
   if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
+  if (path === INFRA_METRICS_INGEST_PATH) {
+    if (request.method !== "POST") return error(405, "invalid_request", "POST required");
+    if (!target.metricsAvailable || target.metrics === undefined) return error(503, "unavailable", "infrastructure metrics unavailable");
+    const token = bearerToken(request.headers.get("authorization"));
+    if (token === null || !await target.authorizeIngest(INFRA_SERVICE, token)) return error(401, "unauthorized", "ingest credential rejected");
+    if ((request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase() !== INFRA_METRICS_MEDIA_TYPE) return error(415, "unsupported_media_type", "metrics content type required");
+    const body = await readLimitedText(request, MAX_METRIC_BATCH_BYTES);
+    if (body === null) return error(413, "too_large", "batch exceeds the body cap");
+    return secure(await target.metrics(new Request("https://metrics/batches", { method: "POST", body })));
+  }
+  if (path === `/api/observe/${INFRA_SERVICE}/metrics/sources`) {
+    if (request.method !== "GET") return error(405, "invalid_request", "GET required");
+    const decision = await target.authorize(request);
+    if (!decision.ok) return denied(decision);
+    if (!target.metricsAvailable || target.metrics === undefined) return error(503, "unavailable", "infrastructure metrics unavailable");
+    return secure(await target.metrics(new Request(`https://metrics/sources${new URL(request.url).search}`)));
+  }
   if (path.startsWith(`${OBSERVE_PREFIX}/`)) return observe(request, target, path);
   if (RETIRED_INGEST_PATHS.has(path)) {
     logIngestRejection("gone");

@@ -26,7 +26,7 @@ function requestOperation(request: Request): string {
 /** Records response-header wall time using bounded route labels, without URLs, bodies or credentials. */
 export async function captureApplicationRequest(request: Request, run: () => Promise<Response>, options: ApplicationEventSinkOptions & { readonly monotonic: () => number }): Promise<Response> {
   const path = new URL(request.url).pathname;
-  if (path === "/health" || path === UI_JOURNEY_PATH || path.startsWith("/ingest/observe/")) return run();
+  if (path === "/health" || path === UI_JOURNEY_PATH || (path.startsWith("/ingest/observe/") || path.startsWith("/ingest/metrics/"))) return run();
   const started = options.monotonic();
   const atMs = options.now();
   let status = 500;
