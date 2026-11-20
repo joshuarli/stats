@@ -200,8 +200,14 @@ artifact.
   five-minute window passed, and the run ended `promoted`. Public health
   answered 200 throughout. All five hosts reported within two minutes
   afterwards, and `standby-deploy.sh --check` reports matching runtime pins.
-- Not yet exercised live: a recovery to `rt-13b896622da5`. It is proven
-  against a simulated guest and in the local canary only.
+- Recovery drill (17:56 UTC): a second rollout activated `rt-13b896622da5`
+  (upstream 1.0.2) as the candidate against `rt-3abd20d29960`, with
+  reverse-direction artifact canary evidence (`pass`). The previous runtime
+  started on the state the owned release had written and passed two checks.
+  The controller was then killed with SIGKILL mid-verification. `rollout
+  abort --run …/4da37e92a8f54c83932b74e1b1a7aee6` reconciled the orphaned
+  run, re-activated `rt-3abd20d29960` and ended `recovered` (exit 3) in 4.8 s.
+  Public health stayed 200 and all five hosts kept reporting.
 - `RIVETKIT_METRICS_PORT` is not set on the standby, so the per-Worker
   metrics are not served yet. Enabling them belongs with the INF-7 collector.
 

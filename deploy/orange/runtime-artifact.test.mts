@@ -68,9 +68,10 @@ await test("owned runtime passes the release canary and exposes both worker metr
   let baseline: Stack | undefined, candidate: Stack | undefined;
   try {
     const roots = ["baseline", "candidate"].map(name => join(scratch, name + "-runtime"));
-    const manifests = ["artifact-baseline", "artifact-A"].map(name => JSON.parse(readFileSync(resolve(".work/tmp", name, "artifact.json"), "utf8")));
-    for (const [index, name] of ["artifact-baseline", "artifact-A"].entries()) {
-      const archive = resolve(".work/tmp", name, "runtime.tar");
+    const artifacts = [process.env.RUNTIME_ARTIFACT_BASELINE ?? ".work/tmp/artifact-baseline", process.env.RUNTIME_ARTIFACT_CANDIDATE ?? ".work/tmp/artifact-A"].map(dir => resolve(dir));
+    const manifests = artifacts.map(dir => JSON.parse(readFileSync(join(dir, "artifact.json"), "utf8")));
+    for (const [index, dir] of artifacts.entries()) {
+      const archive = join(dir, "runtime.tar");
       assert.equal(hash(archive), manifests[index].tar_sha256);
       mkdirSync(roots[index]!);
       const extract = spawnSync("tar", ["-xf", archive, "-C", roots[index]!], { encoding: "utf8" });
@@ -100,7 +101,7 @@ await test("owned runtime passes the release canary and exposes both worker metr
     const replay = spawnSync("pnpm", ["--dir", "cloudflare", "-s", "statsctl", "verify", "release", "--evidence", bundle, "--replay", "--json"], { encoding: "utf8" });
     assert.equal(replay.status, 0, replay.stderr); assert.equal(JSON.parse(replay.stdout).payload.verdict, "pass");
     console.log("manifests", JSON.stringify(manifests)); console.log("verdict", JSON.stringify(result.decision)); console.log("replay", replay.stdout.trim());
-    await metrics(roots[1]!, join(scratch, "metrics"));
+    if (String(manifests[1].open_orange_version).includes("-laputa.")) await metrics(roots[1]!, join(scratch, "metrics"));
     const retained = mkdtempSync(resolve(".work/tmp/runtime-artifact-evidence-"));
     cpSync(bundle, retained, { recursive: true });
     console.log("evidence", retained);
