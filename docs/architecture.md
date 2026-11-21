@@ -167,28 +167,8 @@ tells an agent how to authenticate and read the API. A Vite plugin in
 into the assets as `/docs/protocol.md` and `/docs/architecture.md`, the two
 files `llms.txt` links to; no other doc is served.
 
-Routes under `/api/v1/` (handled in `src/core/installation/installation.ts`):
-
-- `GET /hosts`, `GET /hosts/:hostId/latest`, `GET /hosts/:hostId/system`
-  (404 until the agent has reported).
-- `GET /hosts/:hostId/history?range=1h|6h|24h|7d|30d&kind=summary|disks|nets|filesystems|block`.
-  Pass `from` and `to` (epoch milliseconds, at most 30 days apart) instead of
-  `range` for an explicit window; the response then omits `range`. Pass
-  `kinds=summary,disks,nets` instead of `kind` to receive several kinds at once
-  as a bundle.
-- `GET /projects` and `GET /projects/:id/history?range=1h|6h|24h|7d|30d&kind=worker|routes|durable-objects|r2|d1|d1-statements|probes|collector`. `from=<ms>&to=<ms>` replaces `range` (both, `from` before now, at most 30 days apart); a windowed frame carries no `range`. The bucket width is the smallest that gives at most 900 points for the span, except that a window starting before the fine samples' 7-day retention is served from hourly rows.
-  Pass `kinds=worker,r2,collector` instead of `kind` to receive several
-  kinds at once as a bundle (see [Cloudflare projects](#cloudflare-projects)).
-  Both history routes answer in the [history frame](#history-frames); every
-  other route and every error answers in JSON.
-- `POST /admin/hosts`, `GET /admin/hosts`, `POST /admin/hosts/:hostId/rotate`,
-  `DELETE /admin/hosts/:hostId` (revoke), `DELETE /admin/hosts/:hostId/purge`
-  (409 `conflict` while a service lists the host).
-- `POST /admin/services`, `GET /services`, `GET /services/:name`,
-  and `GET /services/:name/deployments`; the marker `POST` is
-  `/ingest/services/:name/deployments` (see [Services and deploy markers](#services-and-deploy-markers)),
-  and `GET /services/:name/deployments/:id/comparison?window=1h|6h|24h`
-  (see [Service comparison](#service-comparison)).
+The `/api/v1/` routes are defined in `cloudflare/src/core/installation/installation.ts`.
+History routes return [history frames](#history-frames); other responses use JSON.
 
 Two authorization boundaries:
 

@@ -12,12 +12,6 @@ agent sends no other format, and nothing negotiates between them. An agent
 built before v2 cannot deliver to a v2 server; `POST /ingest/v1/batches`
 answers `410 Gone`.
 
-Agent → server batches and success acknowledgments are binary. Stored sample
-payloads, rollups, and the STC1 dashboard-history responses are unchanged:
-the server converts each decoded sample to the same canonical JSON it stored
-under v1, and every rate, gap, duplicate, and rollup rule below works on those
-values.
-
 ## Transport
 
 HTTPS with system trust roots. The agent sends

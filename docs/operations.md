@@ -22,15 +22,6 @@ an `.elf.txt` program-header dump per binary. Older artifacts are left in
 place. It fails if an ELF has `PT_INTERP` or `NEEDED`. Each container compiles
 into `.work/llvm-agent-build/target-<arch>`, never `agent/target`.
 
-Recorded 2026-11-01: 1,984,688 bytes x86_64 and 1,760,912 bytes aarch64,
-stripped; two builds produced identical SHA-256 digests.
-
-Recorded 2026-11-04 with the current toolchain, at `9ee3319` (JSON ingest) and
-after the binary ingest change: x86_64 2,918,104 → 2,819,632 bytes, aarch64
-2,563,256 → 2,471,568 bytes, macOS arm64 (`cargo build --release`) 2,631,120 →
-2,553,120 bytes. The Worker bundle grew from 175,074 to 190,494 bytes (42,756
-to 46,633 gzipped).
-
 ## Deployment
 
 `deploy/hosts.json` is the host inventory: SSH target, musl target, init
