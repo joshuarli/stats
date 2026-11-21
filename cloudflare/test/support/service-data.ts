@@ -76,6 +76,10 @@ export class HostSeries {
     };
   }
 
+  sampleFrame(atMs: number, levels: HostLevels): Uint8Array<ArrayBuffer> {
+    return encodeFrame({ hostId: this.hostId, bootId: BOOT_ID, samples: [this.sample(atMs, levels)] });
+  }
+
   bucketFrame(bucketMs: number, levels: HostLevels): Uint8Array<ArrayBuffer> {
     const samples = Array.from({ length: SAMPLES_PER_BUCKET }, (_, offset) => this.sample(bucketMs + offset * SAMPLE_STEP_MS, levels));
     return encodeFrame({ hostId: this.hostId, bootId: BOOT_ID, samples });
