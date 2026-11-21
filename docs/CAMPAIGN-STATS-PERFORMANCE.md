@@ -1,5 +1,10 @@
 # Stats performance campaign
 
+The active [simplification and self-optimization campaign](CAMPAIGN-SIMPLIFICATION.md)
+builds on this work. Its new sequence preserves this campaign's acceptance
+thresholds, protected fixtures, failed attempts and the
+[resumption record](STATS-PERFORMANCE-RESUMPTION.md).
+
 ## Current resumption
 
 The owner resumed STA-128 and STUF-87, followed by the remaining campaign.

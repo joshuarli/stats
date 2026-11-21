@@ -63,4 +63,5 @@ Which suite covers each subsystem: [testing](docs/testing.md#where-each-subsyste
 | Optional block latency | [README: agent config](README.md) |
 | Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |
 | Infrastructure release campaign: owned runtime builds, canaries, promotion | [Campaign](docs/CAMPAIGN-INFRA-RELEASE.md) |
+| Active simplification and self-optimization sequence | [Campaign](docs/CAMPAIGN-SIMPLIFICATION.md) |
 | Open work, including Linux power | [TODO](TODO.md) |

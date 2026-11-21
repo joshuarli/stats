@@ -1,5 +1,10 @@
 # Infrastructure release campaign
 
+For the active follow-on implementation sequence, see
+[Stats simplification and self-optimization](CAMPAIGN-SIMPLIFICATION.md).
+This file retains release contracts, qualification evidence and owner rulings;
+the follow-on campaign reuses this machinery and does not reset unresolved gates.
+
 Goal: take a small OpenOrange or Rivet patch from a clean checkout to production
 through one loop. The patch is built into an identified release, evaluated as an
 isolated candidate against a verified baseline under deterministic traffic, and
