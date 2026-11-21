@@ -72,8 +72,8 @@ Started 2026-11-20 from Stats `7fc3ff9` and Stuff `9fb6f1d`.
   `rt-2c70c316ce8d` (`open-orange 1.0.2-laputa.2`) is the production
   runtime. See [qualification and unattended recovery](#qualification-and-unattended-recovery-2026-11-20).
 - **Open:**
-  - INF-6: the observer runs from the workstation; an independent host and
-    an alert destination remain owner decisions.
+  - INF-6: the observer runs on Threadripper's host, outside the standby VM.
+    Alert delivery is out of scope for now.
   - INF-7: dashboard display.
   - INF-11: an Engine-replacement adapter and a sustained soak before
     promotion. The Engine stays held.
@@ -176,10 +176,13 @@ Each was fixed with a regression test:
 
 ### Remaining dependencies
 
-- **Observer host and alert destination (owner).** The workstation is not
-  Lisa or Threadripper, but it sleeps and is not a service host. Independent
-  observation is not complete until the owner names a host and an alert
-  destination; no sender is configured.
+- **Observer host (owner ruling, 2026-11-21).** The observer moved from the
+  workstation to Threadripper's host, outside the standby VM. It runs as the
+  unprivileged `stats-observer` user, which cannot read the VM's directory.
+  The owner accepted the shared-fate risk: an outage of Threadripper itself
+  stops both the writer and its observer, and nothing reports it. Alert
+  delivery is out of scope for now; the outbox records
+  `delivery: unconfigured`. See [OpenOrange](openorange.md#independent-observer).
 - **Engine (INF-11) stays held.** It needs sustained qualification on the
   promotion profile and an Engine-replacement adapter.
 - **RivetKit and N-API rebuild.** Production still runs
@@ -210,7 +213,7 @@ the item is listed under Needs environment.
 | INF-3 | 1–2 | Source ownership registry, release manifest schema `openorange-release-manifest/1`, read-only `release-inspect` | Stuff | `test_sources.py`, `test_release_inspect.py`, `bin/sources verify` | landed |
 | INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | promoted (`rt-a26798107529`) |
 | INF-5 | 2 | Import INF-2 as the first OpenOrange downstream patch; build an identified release (package tarball and manifest) from a clean checkout with the network disabled after acquisition | Stuff | `bin/sources verify` and a release build that reproduces its digest | landed |
-| INF-6 | 3 | Independent observer: a pinned Node/SQLite Stats instance on a host that shares neither the candidate's Engine nor its storage, plus external health alerting | Stats + Stuff | Observer ingests host and service events; stopping the writer raises an alert | implemented; runs from the workstation; needs owner (host, alert destination) |
+| INF-6 | 3 | Independent observer: a pinned Node/SQLite Stats instance on a host that shares neither the candidate's Engine nor its storage, plus external health alerting | Stats + Stuff | Observer ingests host and service events; stopping the writer raises an alert | runs on Threadripper's host (shared-fate risk accepted); alert delivery out of scope |
 | INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | live on the standby; dashboard and gate reads open |
 | INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | landed |
 | INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | landed; receipt-bound, watchdog recovery shown live |
@@ -237,11 +240,9 @@ the item is listed under Needs environment.
 
 ## Needs environment
 
-- INF-6 needs a host that is neither Lisa nor Threadripper.
 - INF-11 needs every registered consumer of the shared Engine (Stats, Discover,
   Tansu, Stuff) to have a representative contract check.
 
 ## Needs owner
 
-- INF-6: the destination for downtime alerts, and which host runs the
-  independent observer (now running from the workstation as an interim).
+- None open for INF-6; alert delivery is deferred by the owner.

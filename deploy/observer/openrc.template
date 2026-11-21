@@ -1,4 +1,13 @@
 #!/sbin/openrc-run
+description="Stats independent observer"
+supervisor=supervise-daemon
 @COMMAND@
-command_background=true
-pidfile=/run/stats-observer.pid
+command_user=stats-observer:stats-observer
+output_log=/var/log/stats-observer/observer.log
+error_log=/var/log/stats-observer/observer.log
+respawn_delay=10
+respawn_max=0
+
+depend() {
+    need net
+}

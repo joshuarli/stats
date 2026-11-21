@@ -39,13 +39,22 @@ function command(file, args) {
     child.on('close', code => { clearTimeout(timer); let value; try { value = JSON.parse(output); } catch {} const payload = value?.payload; const valid = args[1] === 'ingest' ? payload?.ok === true : Array.isArray(payload?.hosts); resolveResult({ ok: code === 0 && valid, result: value }); });
   });
 }
+export function stateOutsideCandidate(state, candidate) {
+  const statePath = realpathSync(state);
+  let candidatePath;
+  try { candidatePath = realpathSync(candidate); } catch (error) {
+    if (error.code !== 'EACCES') throw error;
+    candidatePath = resolve(candidate);
+  }
+  if (statePath === candidatePath || statePath.startsWith(candidatePath + sep)) throw new Error('state directory must be outside candidate stack');
+  return statePath;
+}
 export async function main(args) {
   const config = Object.fromEntries(args.reduce((pairs, value, index) => { if (index % 2 === 0) pairs.push([value.replace(/^--/, ''), args[index + 1]]); return pairs; }, []));
   const { 'state-dir': state, 'candidate-dir': candidate, statsctl, hosts, health, 'credential-file': credential, 'interval-s': interval } = config;
   if (![state, candidate, statsctl, hosts, health, credential, interval].every(Boolean) || !Number.isFinite(Number(interval)) || Number(interval) <= 0) throw new Error('all paths and options are required');
   mkdirSync(state, { recursive: true, mode: 0o700 });
-  const statePath = realpathSync(state), candidatePath = realpathSync(candidate);
-  if (statePath === candidatePath || statePath.startsWith(candidatePath + sep)) throw new Error('state directory must be outside candidate stack');
+  const statePath = stateOutsideCandidate(state, candidate);
   const outbox = new Outbox(statePath);
   let lastIngest = 0;
   try {

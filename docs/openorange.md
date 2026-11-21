@@ -486,9 +486,43 @@ The rollout policy can invoke `deploy/orange/functional-check.mjs` with
 `STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL`). Pass them as arguments when a
 supervised watchdog runs recovery, since it does not inherit the operator's
 environment. The controller supplies `ROLLOUT_RELEASE` and `ROLLOUT_DIGEST`. The check verifies target identity
-before and after the synthetic ingest, including process continuity. The
-observer under `deploy/observer/` runs independently on another host; install
-its service template with explicit executable, state, candidate, credential and
-endpoint paths. Its fsynced evidence and alert outbox must reside outside the
-candidate stack. Alert transitions record unconfigured delivery; no sender is
-provided.
+before and after the synthetic ingest, including process continuity.
+
+## Independent observer
+
+`deploy/observer/observer.mjs` checks public health and host freshness every
+round, and synthetic ingest with exact readback every 5 minutes. Its fsynced
+evidence and alert outbox must reside outside the candidate stack. Alert
+transitions record `delivery: unconfigured`; no sender is provided.
+
+It runs on Threadripper's host, outside the standby VM, as the OpenRC service
+`stats-observer` under `supervise-daemon`, which respawns it after 10 s. The
+owner accepted that an outage of Threadripper itself stops both the writer and
+the observer. Layout:
+
+| Path | Contents |
+| --- | --- |
+| `/opt/stats-observer/node-v26.13.1-linux-x64-musl/` | Node from unofficial-builds; `.tar.xz` SHA-256 `1b8a8a393c7fa5b2f66eaf0314aaa23c2f3cd3a3be14d5c7bac011bf9de236ea` |
+| `/opt/stats-observer/tools/` | `observer.mjs`, the bundled `statsctl-0.1.0.mjs` and its `statsctl` wrapper |
+| `/etc/stats-observer/synthetic-check.json` | synthetic-check host credential, `stats-observer` mode 0600 |
+| `/var/lib/stats-observer/` | `evidence.jsonl`, `alerts.jsonl` |
+| `/var/log/stats-observer/observer.log` | stdout and stderr |
+
+The candidate directory is the VM's recovery directory from
+`/etc/conf.d/stats-recovery-vm`. The `stats-observer` user cannot traverse it,
+so the containment check compares paths lexically. Install or update with
+the target's Node, then `rc-service stats-observer restart`:
+
+```sh
+sh deploy/observer/install.sh openrc deploy/observer/openrc.template stats-observer.initd \
+  /opt/stats-observer/node-v26.13.1-linux-x64-musl/bin/node /opt/stats-observer/tools/observer.mjs \
+  /var/lib/stats-observer /home/josh/.local/share/stats-live-recovery/20261118 \
+  /opt/stats-observer/tools/statsctl lisa,threadripper https://stats.17166969.xyz/health \
+  /etc/stats-observer/synthetic-check.json 60
+doas install -m 755 stats-observer.initd /etc/init.d/stats-observer
+```
+
+Run only one observer per synthetic credential. The workstation's launchd
+observer is retired; its evidence through 2026-11-21 01:08 UTC stays in
+`~/.local/state/stats-observer/`.
+
