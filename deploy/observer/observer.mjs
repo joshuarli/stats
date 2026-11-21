@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -49,10 +50,44 @@ export function stateOutsideCandidate(state, candidate) {
   if (statePath === candidatePath || statePath.startsWith(candidatePath + sep)) throw new Error('state directory must be outside candidate stack');
   return statePath;
 }
+const RESERVED = new Set(['hosts', 'health', 'ingest']);
+export function parseTargets(value, kind) {
+  if (value === undefined) return [];
+  const names = new Set();
+  return value.split(',').map(entry => {
+    const at = entry.indexOf('=');
+    const name = entry.slice(0, at), target = entry.slice(at + 1);
+    if (at < 1 || !/^[a-z][a-z0-9-]*$/.test(name) || RESERVED.has(name) || names.has(name)) throw new Error(`invalid --${kind} check name in ${JSON.stringify(entry)}`);
+    names.add(name);
+    if (kind === 'http') {
+      let url;
+      try { url = new URL(target); } catch { throw new Error(`invalid --http URL for ${name}`); }
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error(`invalid --http URL for ${name}`);
+      return [name, target];
+    }
+    const match = /^(.+):(\d{1,5})$/.exec(target);
+    if (!match || Number(match[2]) < 1 || Number(match[2]) > 65535) throw new Error(`invalid --tcp address for ${name}`);
+    return [name, { host: match[1], port: Number(match[2]) }];
+  });
+}
+export async function httpCheck(url) {
+  try { const response = await fetch(url, { signal: AbortSignal.timeout(15000), redirect: 'manual' }); return { ok: response.ok }; } catch { return { ok: false }; }
+}
+export function tcpCheck({ host, port }) {
+  return new Promise(resolveResult => {
+    const socket = connect({ host, port, timeout: 10000 });
+    const finish = ok => { socket.destroy(); resolveResult({ ok }); };
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
 export async function main(args) {
   const config = Object.fromEntries(args.reduce((pairs, value, index) => { if (index % 2 === 0) pairs.push([value.replace(/^--/, ''), args[index + 1]]); return pairs; }, []));
   const { 'state-dir': state, 'candidate-dir': candidate, statsctl, hosts, health, 'credential-file': credential, 'interval-s': interval } = config;
   if (![state, candidate, statsctl, hosts, health, credential, interval].every(Boolean) || !Number.isFinite(Number(interval)) || Number(interval) <= 0) throw new Error('all paths and options are required');
+  const httpTargets = parseTargets(config.http, 'http'), tcpTargets = parseTargets(config.tcp, 'tcp');
+  if (new Set([...httpTargets, ...tcpTargets].map(([name]) => name)).size !== httpTargets.length + tcpTargets.length) throw new Error('--http and --tcp check names must be distinct');
   mkdirSync(state, { recursive: true, mode: 0o700 });
   const statePath = stateOutsideCandidate(state, candidate);
   const outbox = new Outbox(statePath);
@@ -66,9 +101,8 @@ export async function main(args) {
     }
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   for (;;) {
-    const checks = [['hosts', () => command(statsctl, ['check', 'hosts', '--hosts', hosts, '--json'])], ['health', async () => {
-      try { const response = await fetch(health, { signal: AbortSignal.timeout(15000), redirect: 'manual' }); return { ok: response.ok }; } catch { return { ok: false }; }
-    }]];
+    const checks = [['hosts', () => command(statsctl, ['check', 'hosts', '--hosts', hosts, '--json'])], ['health', () => httpCheck(health)],
+      ...httpTargets.map(([name, url]) => [name, () => httpCheck(url)]), ...tcpTargets.map(([name, address]) => [name, () => tcpCheck(address)])];
     if (Date.now() - lastIngest >= 300000) {
       checks.push(['ingest', () => {
         lastIngest = Date.now();
