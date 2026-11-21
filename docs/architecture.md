@@ -1162,7 +1162,7 @@ section or modal first opens. On the Cloudflare adapter, health and issue counts
 for the header pills stay eager. Its initial cost ledger already renders charts, so uPlot
 is required there. During the completed frontend work, the owner set its payload
 budget to 95% of the recorded baseline. Later accepted integration growth is
-recorded in the [integration milestone](dashboard-integration-milestone.md).
+recorded in the [frontend measurements](frontend-efficiency.md#dashboard-integration-record).
 Preserve the useful default ledger selection rather than reviving the obsolete
 uPlot-exclusion gate. [Frontend measurements](frontend-efficiency.md) explain the
 original budget and rejected deferral experiments.

@@ -159,7 +159,7 @@ It retains the version/lock/policy diff, inventory, report and logs under
 The `cloudflare compatibility candidate` workflow runs this command daily and
 on manual dispatch. It uploads the proposal and results for review. It creates
 no notification task and does not deploy. See the implementation constraints
-and measured evidence in [development-loop verification](dev-loop-results.md).
+and measured evidence in the [development loop data](dev-loop/comparison.json).
 
 ### OpenOrange runtime
 

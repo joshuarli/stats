@@ -408,3 +408,11 @@ It prints both loopback origins and the capture clock. Use each origin with
 Run `bench-native-retention.mjs --base CANDIDATE_URL --now CLOCK` for the
 30-cycle memory gate. Stop the replay with SIGINT/SIGTERM; it closes its servers
 and removes its isolated database. It does not mutate production.
+
+## Dashboard integration record
+
+The owner accepted the dashboard package integration on 2026-11-10. The
+0.9.0 rerun retained the accepted cost-disclosure payload growth. Warm route
+readiness stayed within the measured spread; several cold routes exceeded it.
+The measurements used a captured fixture and do not establish production
+throughput. Screenshots are in [dashboard integration](dashboard-integration/).

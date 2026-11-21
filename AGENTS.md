@@ -54,7 +54,6 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Tests and screenshot verification | [Testing](docs/testing.md) |
 | Local development and build ownership | [Development](docs/development.md) |
 | Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
-| Recorded development and dashboard verification | [Dev loop](docs/dev-loop-results.md), [dashboard baseline](docs/dashboard-integration-baseline.md), [dashboard verification](docs/dashboard-integration-milestone.md) |
 | Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |
 | Optional block latency | [README: agent config](README.md) |
 | Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |
