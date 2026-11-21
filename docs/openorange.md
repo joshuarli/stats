@@ -463,9 +463,9 @@ events carry paired query and actor-call timings. Stats batches its own events
 through the existing private observation binding.
 
 The [hardening audit](runtime-hardening.md) records installed artifacts,
-compatibility evidence, measured results and unresolved gaps. The
-[deployment handoff](runtime-hardening-handoff.md) contains validation and
-rollback commands. The Engine, persistence backend and credentials are unchanged.
+compatibility evidence, measured results and unresolved gaps. Its
+[validation and rollback](runtime-hardening.md#validate-or-roll-back-the-hardening-release)
+section has the commands. The Engine, persistence backend and credentials are unchanged.
 
 ### Standby mutation leases
 
