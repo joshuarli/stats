@@ -491,7 +491,10 @@ before and after the synthetic ingest, including process continuity.
 ## Independent observer
 
 `deploy/observer/observer.mjs` checks public health and host freshness every
-round, and synthetic ingest with exact readback every 5 minutes. Its fsynced
+round, and synthetic ingest with exact readback every 5 minutes. Optional
+`--http NAME=URL,...` and `--tcp NAME=HOST:PORT,...` lists add named checks;
+on Threadripper they cover the Niceforge forge's public health (`niceforge`)
+and its Git SSH port (`niceforge-ssh`). Its fsynced
 evidence and alert outbox must reside outside the candidate stack. Alert
 transitions record `delivery: unconfigured`; no sender is provided.
 
@@ -518,7 +521,9 @@ sh deploy/observer/install.sh openrc deploy/observer/openrc.template stats-obser
   /opt/stats-observer/node-v26.13.1-linux-x64-musl/bin/node /opt/stats-observer/tools/observer.mjs \
   /var/lib/stats-observer /home/josh/.local/share/stats-live-recovery/20261118 \
   /opt/stats-observer/tools/statsctl lisa,threadripper https://stats.17166969.xyz/health \
-  /etc/stats-observer/synthetic-check.json 60
+  /etc/stats-observer/synthetic-check.json 60 \
+  --http niceforge=https://niceforge.17166969.xyz/api/forge/v1/health \
+  --tcp niceforge-ssh=100.98.145.91:12222
 doas install -m 755 stats-observer.initd /etc/init.d/stats-observer
 ```
 
