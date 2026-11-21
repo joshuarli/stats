@@ -7,10 +7,6 @@ the server, durable SQLite state and a dashboard reachable only on the tailnet.
 The agent runs on ordinary Debian and Alpine hosts without root, systemd,
 containers, or a language runtime.
 
-Niceforge may link a registered runner to a telemetry host; that association
-lives in the Niceforge repository, and Niceforge execution never depends on
-telemetry.
-
 Provisioning hosts: [operations](docs/operations.md#deployment).
 Service telemetry, deployment markers, and the application contract:
 [`docs/integration.md`](docs/integration.md).
