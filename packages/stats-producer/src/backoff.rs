@@ -3,12 +3,19 @@ use std::time::Duration;
 pub fn backoff_delay(attempt: u32, base: Duration, jitter: f64, ceiling: Duration) -> Duration {
     let factor = 2_f64.powi(attempt.min(20) as i32);
     let millis = base.as_millis() as f64 * factor * (0.5 + jitter.clamp(0.0, 1.0) * 0.5);
-    Duration::from_millis((millis.round() as u64).min(ceiling.as_millis() as u64))
+    Duration::from_millis((millis.round() as u64).min(ceiling.as_millis().min(u64::MAX as u128) as u64))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backoff_preserves_a_ceiling_above_u64_milliseconds() {
+        let ceiling = Duration::from_millis(u64::MAX) + Duration::from_millis(1);
+        assert_eq!(backoff_delay(0, Duration::from_millis(100), 1.0, ceiling), Duration::from_millis(100));
+        assert_eq!(backoff_delay(0, Duration::from_millis(100), 1.0, Duration::MAX), Duration::from_millis(100));
+    }
 
     #[test]
     fn backoff_doubles_and_stays_inside_the_jitter_band() {
