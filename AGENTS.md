@@ -24,6 +24,7 @@ pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_
 See [testing](docs/testing.md) for e2e, local-stack and producer checks, and
 [operations](docs/operations.md) for deployment and CLI recipes. `make node-ready`
 enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
+Which suite covers each subsystem: [testing](docs/testing.md#where-each-subsystem-is-tested).
 
 ## Invariants
 

@@ -27,6 +27,25 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.
 
+## Where each subsystem is tested
+
+`make test` takes about 3 minutes warm on macOS after `make orange-ready`.
+Linux CI runs `make test-ci`: everything except the macOS-rendered dashboard
+goldens, which the macOS `dashboard` job runs, and without the separate
+offline `integration-local` gate. That gate needs macOS, or Linux with
+user and network namespaces enabled.
+
+| Subsystem | Tests |
+| --- | --- |
+| Agent CLI, config and exit behavior | `agent/tests/`, `agent/src/config.rs`; installer: `cloudflare/test/scripts/installer.test.ts` |
+| statsctl flags, exit codes and outputs | `cloudflare/test/cli/`, `cloudflare/test/cli-worker.test.ts` |
+| Producer APIs (TypeScript and Rust) | `cloudflare/test/producer/`, `packages/stats-producer/` tests; fleet consumers: discover and tansu |
+| STB2/STA2 wire and stored history | `fixtures/v2/`, `agent/tests/conformance.rs`, `cloudflare/test/ingest/`, `cloudflare/test/binary/` |
+| Ingest, auth, health, history, projects and observation endpoints | `cloudflare/test/api.test.ts`, `cloudflare/test/node/`, `cloudflare/test/observe-e2e/` |
+| Config, migration and persisted state | `cloudflare/test/migration.test.ts`, `cloudflare/test/local/upgrade.test.ts` (needs the baseline build) |
+| Dashboard behavior and assets | `cloudflare/test/ui/` |
+| Performance | `make ingest-bench`, `make dashboard-bench`, [benchmarks](../bench/README.md) |
+
 ## Process shutdown diagnostics
 
 `cloudflare/test/scripts/orange-deploy.test.ts` checks that cancellation terminates
