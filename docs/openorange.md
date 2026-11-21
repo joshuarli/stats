@@ -213,6 +213,12 @@ limits.
   restarts the VM, and gives up after three restarts within an hour, logging
   through syslog tag `stats-recovery-vm-watchdog`. A stopped VM stays stopped,
   so planned stops and the graceful guest poweroff are unchanged.
+- **Service telemetry.** Since 2026-11-21 the `stats` service is assigned to
+  `threadripper` with unit `openrc.stats-recovery-vm`. Threadripper's agent
+  (`/etc/stats/agent.json`, previous copy `agent.json.pre-services-20261121`)
+  reports that cgroup as `stats`, so its CPU and memory cover the whole guest,
+  Engine included. It also reports `agentctl-node` from `openrc.agentctl-node`.
+  On failback, move the service and the agent entry back to Lisa.
 - **Failback.** Native Stats on Lisa with its own Engine remains a planned
   migration: production units, the ingress move, a soak and a fenced handoff
   are still gated in [native Lisa](native-lisa.md). Until then the standby is
