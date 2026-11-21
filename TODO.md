@@ -12,13 +12,13 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** root-cause
 - **Effort:** M
 
-### STA-130 · P1 · Supervise the standby writer and alert when Stats is down
+### STA-130 · P3 · Deliver observer alerts
 
 - **Area:** Operations
-- **Where:** deploy/orange/recovery/stats-recovery-vm.openrc; docs/openorange.md standby record; docs/CAMPAIGN-INFRA-RELEASE.md
-- **Problem:** On 2026-11-20 the standby guest's qemu exited at about 13:51 UTC with no recorded cause. `stats-recovery-vm` starts qemu with `start-stop-daemon --daemonize`, so nothing restarted it, and no observer outside Stats noticed the 1 h 50 min outage. The same outage exposed Lisa's DHCP client overwriting MagicDNS, now disabled.
-- **Recommendation:** Run the guest under a supervisor that restarts it after an unexpected exit while keeping the graceful guest poweroff on stop, and install it at the next planned stop. Add an external health check on a host other than Threadripper and Lisa that alerts on sustained public-health failure. Record the qemu exit cause if it recurs (keep console.log and the host log).
-- **Fix with:** root-cause
+- **Where:** deploy/observer/observer.mjs; docs/openorange.md#independent-observer
+- **Problem:** The observer on Threadripper's host records alert transitions with `delivery: unconfigured`, so a sustained health, host or ingest failure reaches nobody. The VM crash watchdog (`673975b`) restarts the standby guest. The owner accepted that a Threadripper outage stops both the writer and the observer, and deferred alert delivery on 2026-11-21.
+- **Recommendation:** When the owner names a destination, deliver each outbox transition durably with retry, keeping the token out of argv. A hosted dead-man check would also cover a Threadripper outage.
+- **Fix with:** error-model
 - **Effort:** S
 
 ### STA-128 · P2 · Measure observation overhead after the tenfold fixture is usable

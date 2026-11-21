@@ -526,3 +526,30 @@ Run only one observer per synthetic credential. The workstation's launchd
 observer is retired; its evidence through 2026-11-21 01:08 UTC stays in
 `~/.local/state/stats-observer/`.
 
+
+
+## Rollout control
+
+Runtime rollouts run on Threadripper's host, beside the VM. The watchdog only
+recovers runs whose controller wrote its own journal directory, so the
+controller and the watchdog share that host. A Threadripper outage stops the
+target too, so the watchdog loses nothing by sharing its fate.
+
+| Path | Contents |
+| --- | --- |
+| `/opt/openorange-rollout/stuff-49b03cc2/deploy/openorange/` | Stuff's rollout tree, extracted with `git archive` at one commit |
+| `~/.local/state/openorange/rollout/journals/` | controller journals |
+| `~/.local/state/openorange/rollout/policy-standby.json` | rollout policy; the functional check takes every input as an argument |
+| `~/.local/state/openorange/rollout/tools/` | `functional-check-f7d2d65.mjs`, bundled `statsctl` and its wrapper |
+| `~/.config/stats/standby/` | guest key, pinned host key and `ssh_config` (`stats-standby`, direct to `127.0.0.1:49177`) |
+| `~/.config/stats/synthetic-check.json` | synthetic-check host credential, mode 0600 |
+
+The watchdog is the OpenRC service `openorange-rollout-watchdog`. It runs as
+`josh` under `supervise-daemon`, which respawns it after 10 s, and logs to
+`~/.local/state/openorange/rollout/watchdog.log`. Render it with Stuff's
+`deploy/openorange/watchdog/install --kind openrc --user josh`. Start
+rollouts with that tree's `bin/rollout` and `--policy` on Threadripper, never
+from the workstation. To pin a new Stuff commit, extract it beside the old
+tree, then re-render the service and update the policy's `--rollout`. The
+workstation's journals through 2026-11-20 and its retired launchd plist
+remain in `~/.local/state/openorange/rollout/`.

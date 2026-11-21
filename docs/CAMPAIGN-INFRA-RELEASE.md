@@ -183,6 +183,11 @@ Each was fixed with a regression test:
   stops both the writer and its observer, and nothing reports it. Alert
   delivery is out of scope for now; the outbox records
   `delivery: unconfigured`. See [OpenOrange](openorange.md#independent-observer).
+- **Rollout control moved to Threadripper (2026-11-21).** The controller and
+  watchdog now run on Threadripper's host, because the watchdog reads only
+  its own host's journals. The watchdog runs under `supervise-daemon` as of
+  Stuff `49b03cc2`; its OpenRC template had backgrounded it as root with no
+  restart. See [OpenOrange](openorange.md#rollout-control).
 - **Engine (INF-11) stays held.** It needs sustained qualification on the
   promotion profile and an Engine-replacement adapter.
 - **RivetKit and N-API rebuild.** Production still runs
