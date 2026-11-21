@@ -1,7 +1,25 @@
 Prefix: STA
-Next: 135
+Next: 137
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-135 · P1 · Keep the standby Engine out of its alarm retry loop under host CPU contention
+
+- **Area:** Operations · Engine
+- **Where:** docs/openorange.md#standby-incident-2026-11-21; the guest's `live-stats-engine` container; deploy/orange/recovery/stats-recovery-vm.openrc
+- **Problem:** On 2026-11-21 Threadripper reached load 68 on 32 cores from unrelated builds plus an 8.5 GB copy onto its 95%-full disk. At 02:10:00 the Engine's storage host refused volume alarms as overloaded; the alarm frontier filled (16 of 16), alarm callbacks and envoy registration missed their deadlines, and three Engine workers spun at full CPU. Ingest returned 503 from 02:10:51 to 03:33. Engine restarts, an Engine CPU cap, and raising qemu's priority did not clear it while the host stayed saturated; once host load fell to 12 the Engine went idle and `native-stats` registered on the first start. The envoy-lost pattern also occurred on 2026-11-20 at 02:41, 09:28 and 10:35.
+- **Recommendation:** Reserve CPU for the standby VM on Threadripper (a persistent qemu priority or cgroup weight; the 03:01 `renice -10` on its threads is not persistent), keep bulk copies and builds off its disk and cores during service, and reproduce the loop under controlled host contention to decide whether the Engine's alarm and cold-read limits or its retry backoff need changing under INF-11.
+- **Fix with:** root-cause
+- **Effort:** M
+
+### STA-136 · P3 · Report depot deadlines on the marker route as unavailable and show server errors in statsctl
+
+- **Area:** CLI · API
+- **Where:** cloudflare/src/cli/commands/services.ts; the deployment marker route behind `/ingest/services/NAME/deployments`
+- **Problem:** During STA-135 the marker route answered HTTP 400 with body `{"code":"request_deadline_exceeded","group":"depot"}`, while ingest maps the same condition to 503 `storage_unavailable`. `statsctl deploy mark` printed only "answered 400" and the `usage` error code, hiding the server's code, so a transient storage outage looked like a malformed request.
+- **Recommendation:** Map the installation storage deadline to 503 with `Retry-After` on the marker route as ingest does, and include the server's error code in statsctl's transport errors. Cover both with a route test and a CLI test.
+- **Fix with:** error-model
+- **Effort:** S
 
 ### STA-129 · P1 · Investigate deployment stall and interrupted rollback
 

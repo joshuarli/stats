@@ -131,6 +131,21 @@ the same leased step. The workstation then checks the public health route; if
 that fails, a second leased step (`stats-deploy-rollback`) restores the
 previous release.
 
+### Standby incident (2026-11-21)
+
+Ingest returned 503 `storage_unavailable` from 02:10:51 to 03:33 UTC, and the
+dashboard returned 502 from 02:53. Threadripper was saturated (load up to 68 on
+32 cores) by unrelated builds and an 8.5 GB copy onto its disk. The Engine's
+volume alarms were refused as overloaded, filled their frontier and kept
+missing deadlines, and envoys could not register. Engine-only restarts relapsed
+within seconds, and with the app stopped three Engine workers still spun. A
+2-CPU cap on the Engine container did not let `native-stats` register within its
+30 s limit. When host load fell to 12, the Engine went idle and one supervised
+start under the guest lease recovered service, confirmed by synthetic ingest
+with exact readback. Recovery order: stop `native-stats`, let the Engine settle
+until its CPU drops, then start `native-stats`. The qemu threads were reniced to
+`-10` at 03:01; that does not survive a VM restart. Follow-up is STA-135.
+
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in
