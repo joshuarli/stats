@@ -30,15 +30,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** make-it-fast
 - **Effort:** M
 
-### STA-131 · P3 · Preserve large retry ceilings in Rust producer
-
-- **Area:** producer · retry
-- **Where:** packages/stats-producer/src/backoff.rs:6
-- **Problem:** A nonzero max_retry_after whose millisecond count exceeds u64::MAX wraps when cast, so a ceiling of u64::MAX + 1 milliseconds becomes zero and eliminates the intended backoff. Config accepts arbitrary nonzero Duration values.
-- **Recommendation:** Clamp or compare Duration values without truncating the configured ceiling, and cover the boundary through the producer retry behavior.
-- **Fix with:** typing-audit
-- **Effort:** S
-
 ### STA-132 · P3 · Complete benchmark attribution and scenario preflight
 
 - **Area:** bench · observability
@@ -47,21 +38,3 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** Add representative cross-process CPU, allocation and I/O attribution and validate external fixture and artifact identities before scenario runs; retain separate instrumented and timed runs.
 - **Fix with:** bench-pyramid
 - **Effort:** M
-
-### STA-133 · P3 · Producer tests use real retry sleeps, so a failing run outlives the runner deadline
-
-- **Area:** producer · tests
-- **Where:** cloudflare/test/producer/producer.test.ts:76-300
-- **Problem:** The golden-frame and error-code tests construct the producer without the injected sleep. A fault that makes delivery fail (for example readAck returning null) fails them, and the default real backoff sleep (up to 30 s) is the likely holder of the process, not confirmed per mutant. A hand replay of 61 readAck mutants showed 21 runs that printed at least one failing test and still did not exit within 12 s; Stryker records such runs as timeouts.
-- **Recommendation:** Pass the same injected no-op sleep the retry tests use, so a failing producer test exits promptly and the mutation run classifies it as killed.
-- **Fix with:** test-audit
-- **Effort:** S
-
-### STA-134 · P3 · Orange cancellation test has a fixed 5 s start deadline that fails on a loaded host
-
-- **Area:** deploy · tests
-- **Where:** cloudflare/test/scripts/orange-deploy.test.ts:305
-- **Problem:** The cancellation test waits at most 5000 ms for the stub deployment to reach its blocked state. On a host at load average about 15 the SIGTERM during smoke case failed once with AbortError and passed on the next full make test run; the other seven signal cases passed in the same run.
-- **Recommendation:** Wait on the blocked marker with a deadline scaled to the test timeout, or bound the child by its own readiness signal, so the signal-handling assertion is not tied to process start time.
-- **Fix with:** test-audit
-- **Effort:** S

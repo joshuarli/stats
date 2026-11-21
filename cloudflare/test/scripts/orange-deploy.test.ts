@@ -263,7 +263,7 @@ await test("command cancellation also terminates an owned grandchild", { timeout
   if (failures.length > 1) throw new AggregateError(failures, "process-tree assertion and cleanup failed");
 });
 
-for (const during of ["smoke", "restart"] as const) for (const signal of ["SIGHUP", "SIGINT", "SIGTERM", "SIGQUIT"] as const) await test(`Orange cancellation during ${during} completes rollback and dies by ${signal}`, { timeout: 15000 }, async () => {
+for (const during of ["smoke", "restart"] as const) for (const signal of ["SIGHUP", "SIGINT", "SIGTERM", "SIGQUIT"] as const) await test(`Orange cancellation during ${during} completes rollback and dies by ${signal}`, { timeout: 15000 }, async t => {
   const directory = mkdtempSync(join(root, ".work/tmp/orange-cancel-"));
   let child: ChildProcessByStdio<null, Readable, Readable> | undefined;
   try {
@@ -299,7 +299,7 @@ fs.writeFileSync(path,JSON.stringify(s));
     child.stdout.on("data", chunk => { output += chunk; }); child.stderr.on("data", chunk => { output += chunk; });
     const closed = new Promise(resolveDone => child!.once("close", (code, death) => resolveDone({ code, death })));
     const { watch } = await import("node:fs/promises");
-    const watching = watch(directory, { signal: AbortSignal.timeout(5000) });
+    const watching = watch(directory, { signal: t.signal });
     try {
       while (true) {
         const event = await Promise.race([watching.next(), closed.then((): never => { throw new Error(`deployment exited before the blocked smoke: ${output}`); })]);
