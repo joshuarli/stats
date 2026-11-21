@@ -14,6 +14,16 @@ failure, cancellation, or missing rendered data for the next selection.
 Those failures therefore remain unclassified. Further accepted overhead
 comparisons need a new owner allowance.
 
+A later re-read of the cohort, recorded in
+[the attempt ledger](attempt-ledger.json), finds that both failures follow the
+slowest uncached read retained for that browser: 8,716 ms for client 6 and
+8,712 ms for client 9, both HTTP 200 with an exact digest. The error names the
+next uncached range, so the failing phase produced no sample. All four host
+gates, exact ingestion and collector counters were clean. The recorded probe
+did not retain `failedPhase`, so the cause is still unclassified and no code
+change follows. The current probe retains that metadata and the current driver
+uses distinct per-round documents.
+
 ## Diagnostic source
 
 [The diagnostic patch](diagnostic.patch) applies to Engine source

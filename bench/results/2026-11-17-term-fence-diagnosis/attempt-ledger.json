@@ -27,7 +27,33 @@
         "failedPhaseRetained": false
       }
     ],
-    "cause": "unclassified: failed event and response metadata were not retained"
+    "cause": "unclassified: failed event and response metadata were not retained",
+    "classification": {
+      "method": "re-read the retained cohort, the recorded probe SHA-256 and the current instrumented probe",
+      "precedingReads": [
+        {
+          "client": 6,
+          "range": "1h",
+          "cached": false,
+          "journeyMs": 8716,
+          "latencyMs": 8657.700000047684,
+          "status": 200,
+          "digestExact": true
+        },
+        {
+          "client": 9,
+          "range": "6h",
+          "cached": false,
+          "journeyMs": 8711.899999976158,
+          "latencyMs": 8712.599999964237,
+          "status": 200,
+          "digestExact": true
+        }
+      ],
+      "finding": "each failure follows the slowest uncached read in that browser's retained sample set; the error names the next uncached range, so the failing phase produced no sample. Host gates, exact ingestion and collector counters were all clean. The recorded probe (4ff2df9702bd48ba159db7ec83ef198642fe8578bfe5a72e1bb53cb892f65257) did not retain failedPhase, so HTTP failure, cancellation and missing rendered DOM remain indistinguishable.",
+      "instrumentationClosed": "current probe b58bbc24fb7beb9e5f229b59f05e40570831afc78de8f286c881412a90e9c1f3 retains failedPhase; current driver uses distinct ?variant=&round= documents, which fixed an independently demonstrated stale-document and delivery-counter state",
+      "conclusion": "no code change follows from this classification; a valid overhead comparison still needs a new owner allowance and five complete pairs"
+    }
   },
   "recoveryAcceptance": "nine passes followed by tenth TERM exit 1; no retry or new acceptance cohort",
   "campaignP6FullRunsUsed": 0,
