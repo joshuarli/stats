@@ -1,1 +1,6 @@
 .services-basis { color: var(--muted); font-size: var(--fs-meta); }
+.services-table tr.services-host th { padding-top: var(--space-md); text-align: left; font-weight: 600; border-bottom: 1px solid var(--line-strong); }
+.services-host-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); }
+.services-host-name { color: inherit; }
+.usage-share { display: block; width: 100%; max-width: 120px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.usage-share > span { display: block; height: 100%; background: var(--accent); }

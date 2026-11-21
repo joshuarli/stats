@@ -139,15 +139,46 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   await page.goto(`${origin}/#/services`);
   const table = page.getByRole("table", { name: "Services" });
   await expect(table.getByRole("link", { name: "web", exact: true })).toBeVisible();
-  const web = table.getByRole("row", { name: /^web\b/u });
+  const web = table.getByRole("row", { name: /^web\s/u });
   await expect(web).toContainText("100% up");
   await expect(web).toContainText("0.50");
   await expect(web).toContainText("1.1.0");
-  const batch = table.getByRole("row", { name: /^batch\b/u });
+  const batch = table.getByRole("row", { name: /^batch\s/u });
   await expect(batch).toContainText("no health URL");
   await expect(batch).toContainText("2.1.0");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.locator("main.content")).toHaveScreenshot("services-list.webp");
+});
+
+test("the Services page groups each service under its hosts, busiest host first, on one CPU scale", async ({ page }) => {
+  const hosts = (await (await page.request.get(`${origin}/api/v1/hosts`)).json() as { hosts: { hostId: string; name: string }[] }).hosts;
+  const web = hosts.find(host => host.name === "web-1")!.hostId;
+  const batch = hosts.find(host => host.name === "batch-1")!.hostId;
+  const cpu: Record<string, Record<string, number>> = { [web]: { web: 0.5, cache: 0.1 }, [batch]: { batch: 2, cache: 0.3 } };
+  await page.route("**/api/v1/services", async route => {
+    const body = await (await route.fetch()).json() as { services: { name: string; hostIds: string[]; unit: string | null }[] };
+    const template = body.services.find(service => service.name === "batch")!;
+    await route.fulfill({ json: { services: [...body.services, { ...template, name: "cache", unit: null, hostIds: [web, batch] }] } });
+  });
+  await page.route(/\/api\/v1\/hosts\/[^/]+\/services\?/u, async route => {
+    const url = new URL(route.request().url());
+    const hostId = url.pathname.split("/")[4]!;
+    const toMs = Number(url.searchParams.get("toMs"));
+    const services = Object.entries(cpu[hostId] ?? {}).map(([name, cores]) => ({ name, points: [2, 1].map(back => ({ atMs: toMs - back * 60_000, cpuCores: cores, memoryBytes: 1_048_576, ioBytesPerSec: 0 })) }));
+    await route.fulfill({ json: { hostId, fromMs: Number(url.searchParams.get("fromMs")), toMs, stepMs: 60_000, resolution: "1m", services } });
+  });
+  await page.goto(`${origin}/#/services`);
+  const table = page.getByRole("table", { name: "Services" });
+  const groups = table.locator("tbody");
+  await expect(groups).toHaveCount(2);
+  await expect(groups.nth(0)).toHaveAccessibleName("batch-1 services");
+  await expect(groups.nth(0).getByRole("rowheader")).toContainText("2 services · 2.30 cores");
+  await expect(groups.nth(1)).toHaveAccessibleName("web-1 services");
+  const shares = async (group: number) => await groups.nth(group).getByRole("meter").evaluateAll(meters => meters.map(meter => [meter.getAttribute("aria-label"), meter.getAttribute("aria-valuenow")]));
+  expect(await shares(0)).toEqual([["batch on batch-1 CPU relative to the busiest service", "100"], ["cache on batch-1 CPU relative to the busiest service", "15"]]);
+  expect(await shares(1)).toEqual([["web on web-1 CPU relative to the busiest service", "25"], ["cache on web-1 CPU relative to the busiest service", "5"]]);
+  await groups.nth(0).getByRole("link", { name: "batch-1" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/host/${batch}`, "u"));
 });
 
 test("the Services list does not load the project search stylesheet", async ({ page }) => {
@@ -271,7 +302,7 @@ test("the services list renders the latest deployment from the list summary and 
   let deploymentRequests = 0;
   page.on("request", request => { if (/\/api\/v1\/services\/[^/]+\/deployments$/u.test(new URL(request.url()).pathname)) deploymentRequests += 1; });
   await page.goto(`${origin}/#/services`);
-  const row = page.getByRole("table", { name: "Services" }).getByRole("row", { name: /^web\b/u });
+  const row = page.getByRole("table", { name: "Services" }).getByRole("row", { name: /^web\s/u });
   await expect(row).toContainText("1.1.0");
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(row).toContainText("1.1.0");

@@ -594,7 +594,9 @@ mark with the token; the readback stays on `/api/v1` and needs identity.
 
 Once a service has two markers more than the window apart and its hosts have
 reported across both, the dashboard's Services page and `statsctl verify` compare
-them. The Services page is `#/services`; a service page is `#/service/NAME`, with
+them. The Services page is `#/services`. It groups services by host, with the
+busiest host first and one CPU scale across hosts, so a service on two hosts
+appears under each. A service page is `#/service/NAME`, with
 the deployments timeline and the before and after table. A source the service
 lacks (no health URL, no host data in a window) shows as unavailable, never zero.
 

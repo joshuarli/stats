@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barState, combinedPoints, NEVER_IDLE_CORES, neverIdle, selectedWindow, uptime } from "../src/client/service-metrics";
+import { barState, NEVER_IDLE_CORES, neverIdle, selectedWindow, uptime } from "../src/client/service-metrics";
 import type { ResourcePoint } from "../src/core/installation/service-resources-model";
 
 const point = (atMs: number, cpuCores: number | null, memoryBytes: number | null = null): ResourcePoint => ({ atMs, cpuCores, memoryBytes, ioBytesPerSec: null });
@@ -11,11 +11,6 @@ describe("service metrics", () => {
     expect(neverIdle([...steady.slice(0, 11), point(11, 0.01)])).toBe(false);
     expect(neverIdle(steady.slice(0, 5))).toBe(false);
     expect(neverIdle([...steady, point(12, null)])).toBe(true);
-  });
-
-  it("sums a service's hosts point by point and keeps gaps where no host reported", () => {
-    const combined = combinedPoints([{ points: [point(0, 0.5, 100), point(1, null, null)] }, { points: [point(0, 0.25, 50), point(1, null, null)] }]);
-    expect(combined).toEqual([point(0, 0.75, 150), point(1, null, null)]);
   });
 
   it("classifies health bars and computes uptime over probes, not bars", () => {

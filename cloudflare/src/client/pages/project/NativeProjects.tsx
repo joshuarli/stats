@@ -12,8 +12,8 @@ import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../../state";
 import { routeWithRange, readParam, writeParam } from "../../urlState";
 import { age, bytes, count, errorMessage, milliseconds } from "../../format";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
-import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView, type ResourceRow } from "../../components/ServiceResources";
-import { combinedPoints, NEVER_IDLE_CORES, neverIdle, selectedWindow } from "../../service-metrics";
+import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView } from "../../components/ServiceResources";
+import { NEVER_IDLE_CORES, neverIdle, selectedWindow } from "../../service-metrics";
 import { createServiceHealth, HealthBars } from "../../components/HealthBars";
 import { Sparkline } from "../../components/Sparkline";
 import type { ResourcePoint } from "../../../core/installation/service-resources-model";
@@ -38,64 +38,94 @@ function summaryOnly(value: ApplicationSummary | ApplicationTelemetry): Applicat
   return { provenance: value.provenance, fromMs: value.fromMs, toMs: value.toMs, stepMs: value.stepMs, totals: value.totals, openIssues: value.openIssues, buckets: value.buckets, operations: value.operations, moreOperations: value.moreOperations };
 }
 
+interface Placement {
+  readonly key: string;
+  readonly service: Service;
+  readonly usage: ServiceUsage | undefined;
+}
+
+interface HostGroup {
+  readonly hostId: string | null;
+  readonly name: string;
+  readonly placements: readonly Placement[];
+  readonly cpu: number | null;
+  readonly memory: number | null;
+}
+
+const sumKnown = (values: readonly (number | null)[]): number | null => {
+  const known = values.filter((value): value is number => value !== null);
+  return known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0);
+};
+
 export function NativeServicesPage(): JSX.Element {
-  const { range, now, tick, manualTick } = useTelemetry();
+  const { range, now, tick, manualTick, hosts } = useTelemetry();
   const { data: services, error: listError } = createListQuery(loadServices);
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   const hostIds = createMemo(() => [...new Set(services().flatMap(service => service.hostIds))].sort());
   const resources = createServiceResources(hostIds);
   const usage = createMemo(() => {
-    const byService = new Map<string, ResourceRow[]>();
-    for (const row of resourceRows(resources.results() ?? [])) {
-      if (!services().some(service => service.name === row.service && service.hostIds.includes(row.hostId))) continue;
-      byService.set(row.service, [...(byService.get(row.service) ?? []), row]);
-    }
-    const totals = new Map<string, ServiceUsage>();
-    for (const [name, rows] of byService) {
-      const points = combinedPoints(rows);
-      const cpu = points.map(point => point.cpuCores).filter((value): value is number => value !== null);
-      const memory = points.map(point => point.memoryBytes).filter((value): value is number => value !== null);
-      totals.set(name, { points, cpu: cpu.length === 0 ? null : cpu.reduce((sum, value) => sum + value, 0) / cpu.length, memory: memory.at(-1) ?? null, neverIdle: neverIdle(points) });
-    }
-    return totals;
+    const byPlacement = new Map<string, ServiceUsage>();
+    for (const row of resourceRows(resources.results() ?? [])) byPlacement.set(row.key, { points: row.points, cpu: row.cpuMean, memory: row.memoryNow, neverIdle: neverIdle(row.points) });
+    return byPlacement;
   });
   const { sort, sortBy } = createSort<"service" | "health" | "cpu" | "memory" | "deploy">({ key: "cpu", direction: -1 });
-  const sorted = createMemo(() => {
+  const order = (placements: readonly Placement[]): Placement[] => {
     const key = sort().key;
-    const value = (service: Service): number | string | null => {
+    const value = ({ service, usage }: Placement): number | string | null => {
       if (key === "service") return service.name;
       if (key === "health") return service.health === undefined || service.health.status === "unprobed" ? null : service.health.status === "down" ? 0 : 1;
-      if (key === "cpu") return usage().get(service.name)?.cpu ?? null;
-      if (key === "memory") return usage().get(service.name)?.memory ?? null;
+      if (key === "cpu") return usage?.cpu ?? null;
+      if (key === "memory") return usage?.memory ?? null;
       const latest = service.latestDeployment;
       return latest?.status === "available" ? latest.deployment.atMs : null;
     };
-    return [...services()].sort((left, right) => {
+    return [...placements].sort((left, right) => {
       const leftValue = value(left);
       const rightValue = value(right);
-      if (leftValue === null || rightValue === null) return leftValue === rightValue ? left.name.localeCompare(right.name) : leftValue === null ? 1 : -1;
-      return compareSortValues(leftValue, rightValue) * sort().direction || left.name.localeCompare(right.name);
+      if (leftValue === null || rightValue === null) return leftValue === rightValue ? left.service.name.localeCompare(right.service.name) : leftValue === null ? 1 : -1;
+      return compareSortValues(leftValue, rightValue) * sort().direction || left.service.name.localeCompare(right.service.name);
     });
+  };
+  const groups = createMemo((): HostGroup[] => {
+    const hostName = (hostId: string) => hosts().find(host => host.hostId === hostId)?.name ?? hostId;
+    const group = (hostId: string | null, name: string, placed: readonly Service[]): HostGroup => {
+      const placements = placed.map(service => ({ key: `${hostId ?? ""}/${service.name}`, service, usage: hostId === null ? undefined : usage().get(`${hostId}/${service.name}`) }));
+      return { hostId, name, placements: order(placements), cpu: sumKnown(placements.map(p => p.usage?.cpu ?? null)), memory: sumKnown(placements.map(p => p.usage?.memory ?? null)) };
+    };
+    const placed = hostIds().map(hostId => group(hostId, hostName(hostId), services().filter(service => service.hostIds.includes(hostId))));
+    placed.sort((left, right) => (right.cpu ?? -1) - (left.cpu ?? -1) || left.name.localeCompare(right.name));
+    const unplaced = services().filter(service => service.hostIds.length === 0);
+    return unplaced.length === 0 ? placed : [...placed, group(null, "No host assigned", unplaced)];
   });
+  const hottest = createMemo(() => Math.max(0, ...groups().flatMap(group => group.placements.map(p => p.usage?.cpu ?? 0))));
+  const loading = () => resources.results() === null;
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
     <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
     <Show when={resources.error()}>{message => <Notice tone="warn">Resource use could not be read: {message()}</Notice>}</Show>
-    <Widget id="services" title="Services" bodyClass="flush" meta={<span class="cell-note">Health bars and trends cover the selected window; CPU is its mean, memory the latest reading</span>}><Show when={services().length} fallback={<EmptyState title="No services are configured." detail="Create one with statsctl service create; see docs/operations.md." />}>
+    <Widget id="services" title="Services" bodyClass="flush" meta={<span class="cell-note">Grouped by host, busiest first; CPU bars share one scale. Trends cover the selected window; CPU is its mean, memory the latest reading</span>}><Show when={services().length} fallback={<EmptyState title="No services are configured." detail="Create one with statsctl service create; see docs/operations.md." />}>
       <div class="table-scroll" role="region" aria-label="Services table"><table class="data-table services-table" aria-label="Services"><thead><tr>
         <SortHeader label="Service" sortKey="service" sort={sort()} onSort={sortBy} />
         <SortHeader label="Health" sortKey="health" sort={sort()} onSort={sortBy} />
         <SortHeader label="CPU" sortKey="cpu" sort={sort()} onSort={sortBy} />
         <SortHeader label="Memory" sortKey="memory" sort={sort()} onSort={sortBy} />
         <SortHeader label="Last deploy" sortKey="deploy" sort={sort()} onSort={sortBy} />
-      </tr></thead><tbody>
-        <For each={sorted()} keyed={service => service.name}>{service => <tr>
-          <td><EntityCell marker={<span class={`status-dot tone-${healthTone(service().health)}`} aria-hidden="true" />} name={service().name} href={routeWithRange(`#/service/${encodeURIComponent(service().name)}`, range())} id={service().unit ?? `${service().hostIds.length} ${service().hostIds.length === 1 ? "host" : "hosts"}`} /></td>
-          <td><HealthCell service={service()} /></td>
-          <td><UsageCell usage={usage().get(service().name)} loading={resources.results() === null} kind="cpu" label={service().name} /></td>
-          <td><UsageCell usage={usage().get(service().name)} loading={resources.results() === null} kind="memory" label={service().name} /></td>
-          <td><Show when={(() => { const latest = service().latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback={<span class="cell-note">none recorded</span>}>{latest => <span class="cell-stack"><span class="mono">{deploymentTitle(latest(), latest().deployment, "service")}</span><span class="cell-note">{age(latest().deployment.atMs, now())}</span></span>}</Show></td>
-        </tr>}</For>
-      </tbody></table></div>
+      </tr></thead>
+        <For each={groups()} keyed={group => group.hostId ?? ""}>{group => <tbody aria-label={`${group().name} services`}>
+          <tr class="services-host"><th scope="rowgroup" colspan="5">
+            <span class="services-host-head">
+              <Show when={group().hostId} fallback={<span class="services-host-name">{group().name}</span>}>{hostId => <a class="services-host-name" href={routeWithRange(`#/host/${hostId()}`, range())}>{group().name}</a>}</Show>
+              <span class="cell-note">{group().placements.length} {group().placements.length === 1 ? "service" : "services"}<Show when={!loading() && group().cpu !== null}> · {cores(group().cpu)} cores</Show><Show when={!loading() && group().memory !== null}> · {bytes(group().memory ?? undefined)}</Show></span>
+            </span>
+          </th></tr>
+          <For each={group().placements} keyed={placement => placement.key}>{placement => <tr>
+            <td><EntityCell marker={<span class={`status-dot tone-${healthTone(placement().service.health)}`} aria-hidden="true" />} name={placement().service.name} href={routeWithRange(`#/service/${encodeURIComponent(placement().service.name)}`, range())} id={placement().service.unit ?? `${placement().service.hostIds.length} ${placement().service.hostIds.length === 1 ? "host" : "hosts"}`} /></td>
+            <td><HealthCell service={placement().service} /></td>
+            <td><UsageCell usage={placement().usage} loading={loading()} kind="cpu" label={`${placement().service.name} on ${group().name}`} share={hottest() > 0 ? (placement().usage?.cpu ?? 0) / hottest() : undefined} /></td>
+            <td><UsageCell usage={placement().usage} loading={loading()} kind="memory" label={`${placement().service.name} on ${group().name}`} /></td>
+            <td><Show when={(() => { const latest = placement().service.latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback={<span class="cell-note">none recorded</span>}>{latest => <span class="cell-stack"><span class="mono">{deploymentTitle(latest(), latest().deployment, "service")}</span><span class="cell-note">{age(latest().deployment.atMs, now())}</span></span>}</Show></td>
+          </tr>}</For>
+        </tbody>}</For>
+      </table></div>
     </Show></Widget>
   </Loading></Errored>;
 }
@@ -135,7 +165,7 @@ interface ServiceUsage {
   readonly neverIdle: boolean;
 }
 
-function UsageCell(props: { readonly usage: ServiceUsage | undefined; readonly loading: boolean; readonly kind: "cpu" | "memory"; readonly label: string }): JSX.Element {
+function UsageCell(props: { readonly usage: ServiceUsage | undefined; readonly loading: boolean; readonly kind: "cpu" | "memory"; readonly label: string; readonly share?: number | undefined }): JSX.Element {
   const { range, view, now } = useTelemetry();
   const window = createMemo(() => selectedWindow(range(), view(), now()));
   const values = () => props.usage?.points.map(point => props.kind === "cpu" ? point.cpuCores : point.memoryBytes) ?? [];
@@ -147,6 +177,7 @@ function UsageCell(props: { readonly usage: ServiceUsage | undefined; readonly l
           <span class="metric-value-small">{value()}</span>
           <Sparkline series={[{ values: values() }]} times={props.usage!.points.map(point => point.atMs)} window={window()} label={`${props.label} ${props.kind === "cpu" ? "CPU" : "memory"} trend`} class="spark-inline" zeroBased />
         </div>
+        <Show when={props.share}>{share => <span class="usage-share" role="meter" aria-label={`${props.label} CPU relative to the busiest service`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share() * 100)}><span style={{ width: `${Math.max(share() * 100, 1)}%` }} /></span>}</Show>
         <Show when={props.kind === "cpu" && props.usage!.neverIdle}><span class="cell-note tone-warn" title={`CPU stayed at or above ${NEVER_IDLE_CORES} cores for the whole window`}>never idle</span></Show>
       </div>
     </Show>
