@@ -297,10 +297,6 @@ Triggers in tests.
 
 ## Ingest conformance
 
-The acknowledgment corpus is exercised by `cloudflare/test/ingest/acks.test.ts`
-and `agent/tests/conformance.rs`. The malformed-frame suite also checks strict
-prefixes. Coverage counts from a particular run do not establish mutation coverage.
-
 `fixtures/v2/` holds the cross-language corpus for the binary ingest format.
 `scripts/fixture-sources.mjs` deterministically writes the semantic sources
 (`sources/*.json`, the stored sample shape) and `manifest.json` with each
