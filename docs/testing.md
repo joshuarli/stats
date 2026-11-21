@@ -22,7 +22,7 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 | `make dashboard-test` | Dashboard build, Playwright tests (including one against the Node server), and the tracked-PNG check |
 | `make lint` | Type-aware Oxlint |
 | `make preview` | Built dashboard served from captures on `http://127.0.0.1:4174/` |
-| `make dashboard-bench` | Paint and transfer medians from the preview |
+| `make dashboard-bench` | Paint and transfer medians from the legacy preview profile; the production capture has history only for lisa, so its Fleet page renders no rows |
 
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.

@@ -91,7 +91,7 @@ dashboard-test: work-ready
 dashboard-bench: work-ready node-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry build
 	@set -eu; \
-	TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/scripts/preview.mjs > .work/tmp/preview-bench.log 2>&1 & \
+	PREVIEW_PROFILE=legacy TMPDIR='$(CURDIR)/.work/tmp' node cloudflare/scripts/preview.mjs > .work/tmp/preview-bench.log 2>&1 & \
 	pid=$$!; \
 	trap 'kill $$pid 2>/dev/null || true' EXIT; \
 	node -e 'const url = (process.env.BASE ?? `http://127.0.0.1:$${process.env.PREVIEW_PORT ?? 4174}`) + "/api/v1/hosts"; const deadline = Date.now() + 10000; (async () => { while (Date.now() < deadline) { try { const r = await fetch(url); if (r.ok) process.exit(0); } catch {} await new Promise(r => setTimeout(r, 25)); } console.error("preview did not become ready:", url); process.exit(1); })();'; \

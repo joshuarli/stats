@@ -325,12 +325,33 @@ must be run separately on their named hosts under the instructions above.
 
 The runner writes logs and a summary under `.work/tmp/bench-*`. The summary
 records source revision, dirty state, platform, host readiness before and after,
-workload exits, elapsed time and exclusions. A workload has a ten-minute
-deadline and its process group is stopped on timeout or interruption. Completion is not a performance
-verdict. Use the paired and host-gated methods above for a performance claim.
+workload exits, elapsed time, exclusions, artifact identities and resource use.
+A workload has a ten-minute deadline and its process group is stopped on
+timeout or interruption. Completion is not a performance verdict. Use the
+paired and host-gated methods above for a performance claim.
 The harness test run took about one second and the small collection replay a
 few seconds on the busy macOS host; those are observations, not budgets. The
 latter replays a captured collection, checks and reports rows and response
 bytes, and reports process CPU; it is not Workerd or deployed Cloudflare CPU.
-Cross-process attribution and stronger external artifact preflight remain
-STA-132 in the deslop backlog.
+
+Before any run, `--check` and the runner verify each workload's artifacts and
+refuse stale ones. Tracked fixtures, such as `fixtures/v2` and the collection
+capture, must match `HEAD`, including untracked files under them. Installed
+dependencies must match `pnpm-lock.yaml`. The dashboard needs the Chromium
+build that the locked Playwright resolves. Each workload's tools must be on
+`PATH`. The summary records the fixture's Git object, the lockfile's Git object
+and the browser executable.
+
+`bench/rusage.py` wraps every workload. It records user and system CPU, the
+largest single-process RSS, and block input and output counts. These cover
+the workload and every descendant whose parent waited for it. A process that
+outlives its parent is excluded, for example the preview server that
+`make dashboard-bench` starts in the background. The wrapper adds no
+sampling, so the elapsed time stays comparable to earlier runs.
+
+`--attribute` makes a separate instrumented run. Every 500 ms it samples
+the workload's process group with `ps`. It reports CPU and peak RSS for each
+command, and the peak combined RSS of the group, including orphaned members.
+Sampled CPU is a lower bound. It misses work after the last sample and
+processes shorter than one interval. Linux `ps` reports whole seconds.
+Do not compare elapsed time from an attributed run.
