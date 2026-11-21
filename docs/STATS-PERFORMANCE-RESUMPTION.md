@@ -227,5 +227,6 @@ rollback verifies image and runtime node version.
 Twenty-five deployment cases pass on both macOS and Linux. Smoke and existing
 signal cases pass on macOS, and typecheck and lint pass. The preflight rejects
 the observed production mismatch without building or changing production.
-STA-129 retains the required owner choice and live qualification. The exact
+STA-129 closed as superseded once Stats moved to the standby writer; see the
+[deployment investigation](DEPLOYMENT-STALL-INVESTIGATION.md). The exact
 original stalled request remains unproven.
