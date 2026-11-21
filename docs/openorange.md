@@ -155,6 +155,19 @@ vCPUs shared one build thread's share), `memory.min 5G` with
 `io.latency` target of 10 ms on the disk that holds `stats.qcow2`, derived at
 start because the controller rejects partitions.
 
+A drill at 03:46–03:56 added 64 busy shell loops and repeated 8 GB direct
+writes to the image's disk on top of other builds, holding host load at 76–81.
+Every probe passed: public health answered in under 0.45 s, and synthetic
+ingest with exact readback took 0.34–1.3 s, matching the unloaded baseline. The
+Engine logged no warnings. Rerun the drill whenever this reservation changes.
+
+At 03:57 the guest restarted with 8 vCPUs (`-smp 8`, previously 4), with 55 s
+of downtime. Its Engine container `live-stats-engine` was created by hand on
+2026-11-18 and has no tracked definition. Its Docker limits are 3 GiB of memory
+and 4 CPUs (`docker update --cpus 4`, set at 03:08), so the Engine cannot take
+the cores the app needs to register. Recreating the container must keep both
+limits.
+
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in

@@ -48,7 +48,7 @@ start() {
         return 1
     fi
     start-stop-daemon --start --user "$recovery_user" --chdir "$recovery_dir" \
-        --pidfile "$pidfile" --exec "$qemu" -- -enable-kvm -cpu host -smp 4 -m 4096 \
+        --pidfile "$pidfile" --exec "$qemu" -- -enable-kvm -cpu host -smp 8 -m 4096 \
         -drive file=stats.qcow2,format=qcow2,if=virtio -cdrom seed.iso \
         -nic "$forward" -display none -serial file:console.log -monitor none \
         -pidfile qemu.pid -daemonize && guest_running
