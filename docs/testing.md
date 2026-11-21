@@ -27,6 +27,16 @@ Run the narrowest target while iterating, `make test` for every local suite, and
 `make agent-test` on macOS does not compile the Linux-only readers. Run it on
 Linux before changing them.
 
+## Process shutdown diagnostics
+
+`cloudflare/test/scripts/orange-deploy.test.ts` checks that cancellation terminates
+an owned grandchild even when it ignores SIGTERM.
+
+If the development shutdown test reports a remaining PID, compare the captured
+process state, parent and start time before diagnosing a leak. A zombie or reused
+PID can make an existence check misleading. The cause of the recorded Linux
+shutdown failure was not established.
+
 ## Local stack
 
 `pnpm run test:local` obtains fresh matching outputs and runs the Cloudflare
