@@ -530,8 +530,10 @@ before and after the synthetic ingest, including process continuity.
 `deploy/observer/observer.mjs` checks public health and host freshness every
 round, and synthetic ingest with exact readback every 5 minutes. Optional
 `--http NAME=URL,...` and `--tcp NAME=HOST:PORT,...` lists add named checks;
-on Threadripper they cover the Niceforge forge's public health (`niceforge`)
-and its Git SSH port (`niceforge-ssh`). Its fsynced
+on Threadripper they cover the Niceforge forge's public health (`niceforge`),
+its Git SSH port (`niceforge-ssh`), and one public read from each Stuff
+registry Lisa serves (`crates`, `npm`, `pypi`, `mirror`), added after the
+2026-11-21 registry outage. Its fsynced
 evidence and alert outbox must reside outside the candidate stack. Alert
 transitions record `delivery: unconfigured`; no sender is provided.
 
@@ -559,7 +561,7 @@ sh deploy/observer/install.sh openrc deploy/observer/openrc.template stats-obser
   /var/lib/stats-observer /home/josh/.local/share/stats-live-recovery/20261118 \
   /opt/stats-observer/tools/statsctl lisa,threadripper https://stats.17166969.xyz/health \
   /etc/stats-observer/synthetic-check.json 60 \
-  --http niceforge=https://niceforge.17166969.xyz/api/forge/v1/health \
+  --http niceforge=https://niceforge.17166969.xyz/api/forge/v1/health,crates=https://crates.17166969.xyz/current/registry/config.json,npm=https://npm.17166969.xyz/current/,pypi=https://pypi.17166969.xyz/current/simple/,mirror=https://mirror.17166969.xyz/current/SHA256SUMS \
   --tcp niceforge-ssh=100.98.145.91:12222
 doas install -m 755 stats-observer.initd /etc/init.d/stats-observer
 ```
