@@ -12,15 +12,6 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Fix with:** root-cause
 - **Effort:** M
 
-### STA-136 · P3 · Report depot deadlines on the marker route as unavailable and show server errors in statsctl
-
-- **Area:** CLI · API
-- **Where:** cloudflare/src/cli/commands/services.ts; the deployment marker route behind `/ingest/services/NAME/deployments`
-- **Problem:** During STA-135 the marker route answered HTTP 400 with body `{"code":"request_deadline_exceeded","group":"depot"}`, while ingest maps the same condition to 503 `storage_unavailable`. `statsctl deploy mark` printed only "answered 400" and the `usage` error code, hiding the server's code, so a transient storage outage looked like a malformed request.
-- **Recommendation:** Map the installation storage deadline to 503 with `Retry-After` on the marker route as ingest does, and include the server's error code in statsctl's transport errors. Cover both with a route test and a CLI test.
-- **Fix with:** error-model
-- **Effort:** S
-
 ### STA-129 · P1 · Investigate deployment stall and interrupted rollback
 
 - **Area:** Deployment

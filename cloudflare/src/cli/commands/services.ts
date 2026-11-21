@@ -203,11 +203,14 @@ function isHtml(response: Response, body: Uint8Array): boolean {
   return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
 
-function errorCode(body: Uint8Array): string {
+function serverError(body: Uint8Array): string {
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(body)) as { error?: { code?: unknown; message?: unknown } };
-    const message = parsed.error?.message;
-    return typeof message === "string" && /^[\x20-\x7e]{1,200}$/u.test(message) ? `: ${message}` : "";
+    type Problem = { code?: unknown; message?: unknown };
+    const parsed = JSON.parse(new TextDecoder().decode(body)) as Problem & { error?: Problem };
+    const problem = parsed.error ?? parsed;
+    const code = typeof problem.code === "string" && /^[a-z0-9_.]{1,64}$/u.test(problem.code) ? `: ${problem.code}` : "";
+    const message = typeof problem.message === "string" && /^[\x20-\x7e]{1,200}$/u.test(problem.message) ? `: ${problem.message}` : "";
+    return code + message;
   } catch {
     return "";
   }
@@ -238,11 +241,11 @@ async function postMarker(context: CommandContext, service: string, token: strin
   const { status } = response;
   const challenged = (status >= 300 && status < 400) || ((status === 200 || status === 401 || status === 403) && isHtml(response, bytes));
   if (challenged) throw authError("access_challenge", `${path} answered ${status}, a redirect or login page, so the request never reached Stats at ${context.origin}`);
-  if (status === 401 || status === 403) throw authError("marker_unauthorized", `${path} answered ${status}${errorCode(bytes)}; the deploy token was refused`);
-  if (status === 409) throw new CommandError(EXIT.usage, "marker_conflict", `${path} answered 409${errorCode(bytes)}; this marker id was recorded with a different version, message, host set, or at-ms; use a new --marker-id`);
-  if (status === 400 || status === 413 || status === 415) throw usageError(`${path} answered ${status}${errorCode(bytes)}`);
+  if (status === 401 || status === 403) throw authError("marker_unauthorized", `${path} answered ${status}${serverError(bytes)}; the deploy token was refused`);
+  if (status === 409) throw new CommandError(EXIT.usage, "marker_conflict", `${path} answered 409${serverError(bytes)}; this marker id was recorded with a different version, message, host set, or at-ms; use a new --marker-id`);
+  if (status === 400 || status === 413 || status === 415) throw usageError(`${path} answered ${status}${serverError(bytes)}`);
   if (status === 404) throw transportError("not_found", `${path} answered 404`);
-  if (status !== 200 && status !== 201) throw transportError(`http_${status}`, `${path} answered ${status}${errorCode(bytes)}`);
+  if (status !== 200 && status !== 201) throw transportError(`http_${status}`, `${path} answered ${status}${serverError(bytes)}`);
   if (bytes.length > MAX_MARKER_REPLY_BYTES) throw transportError("body_too_large", `${path} reply is larger than ${MAX_MARKER_REPLY_BYTES} bytes`);
   try {
     return { status, value: { created: status === 201, marker: decodeServiceMarker(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)), service) } };

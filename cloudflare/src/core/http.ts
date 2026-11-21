@@ -138,7 +138,7 @@ async function markDeployment(request: Request, target: StatsTarget, path: strin
     logMarkerRejection("too_large");
     return error(413, "too_large", "marker exceeds the body cap");
   }
-  return secure(await target.installation(internal(request, path.slice("/ingest".length))));
+  return secure(await installationResponse(await target.installation(internal(request, path.slice("/ingest".length)))));
 }
 
 async function observe(request: Request, target: StatsTarget, path: string): Promise<Response> {

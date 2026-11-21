@@ -56,7 +56,7 @@ await test("deploy mark against a fake origin", async t => {
       bodies.push(body);
       if (status === 201 || status === 200) return sendJson(response, markerReply("web", body.markerId, body.version, body.hostIds), status);
       if (status === 302) { response.writeHead(302, { location: "https://team.cloudflareaccess.com/login" }); return response.end(); }
-      return sendJson(response, { error: { code: "x", message: "refused by the service" } }, status);
+      return sendJson(response, { error: { code: "storage_unavailable", message: "telemetry storage missed an upstream deadline" } }, status);
     });
   };
   const origin = await fakeOrigin(handler);
@@ -113,10 +113,12 @@ await test("deploy mark against a fake origin", async t => {
       assert.match(run.stderr, /never reached Stats/u);
     });
 
-    await t.test("a server error exits 4", async () => {
-      status = 500;
+    await t.test("a server error exits 4 and names the server's error code", async () => {
+      status = 503;
       const run = await mark([]);
       assert.equal(run.code, 4, run.stdout + run.stderr);
+      assert.equal((JSON.parse(run.stdout) as Document).error?.code, "http_503");
+      assert.match(run.stderr, /answered 503: storage_unavailable: telemetry storage missed an upstream deadline/u);
     });
 
     await t.test("a token file problem exits 3 before any request", async () => {
