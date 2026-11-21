@@ -109,7 +109,7 @@ attempt and defines when to report a result as blocked.
 Production runs `stats:6cc06db247a3` on Orange node version 24, built from code
 revision `af4890a3bb5`. The rollback image is `stats:03d3d4f1fcb8` on node
 version 23. Earlier images are unsuitable rollback targets after rollup creation;
-see [the handoff](runtime-hardening-handoff.md). This matched master at the
+see [the handoff](runtime-hardening.md#validate-or-roll-back-the-hardening-release). This matched master at the
 original handoff. Later runtime changes mean that equivalence no longer holds.
 
 | ID | State | Remaining work |
@@ -348,4 +348,4 @@ implementing them, and verify them with their affected callers.
 - [Maintained rollups and the soak procedure](../bench/results/2026-11-15-maintained-rollups/README.md)
 - [Tenfold fixture tailnet route](../bench/results/2026-11-15-scale-ingress/README.md)
 - [Runtime capabilities and gaps](runtime-hardening.md)
-- [Production validation and rollback](runtime-hardening-handoff.md)
+- [Production validation and rollback](runtime-hardening.md#validate-or-roll-back-the-hardening-release)
