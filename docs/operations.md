@@ -112,7 +112,7 @@ pnpm --dir cloudflare -s statsctl verify --service stats --deployment DEPLOYMENT
 ```
 
 Native deployments use registered services and application events. See
-[project telemetry](openorange.md#project-telemetry) for request and signal reads.
+[project telemetry](openorange.md#service-telemetry) for request and signal reads.
 The retained Cloudflare adapter uses project histories instead:
 
 ```sh
