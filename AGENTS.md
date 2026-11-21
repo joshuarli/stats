@@ -18,6 +18,7 @@ make check             # release gate; offline sandbox requires macOS or Linux n
 make stats-deploy      # deploy stats; observation receiver must already be compatible
 pnpm --dir cloudflare -s statsctl help workflow
 pnpm --dir cloudflare -s statsctl service inspect --service stats --json
+pnpm --dir cloudflare -s statsctl services usage --window 1h   # services by host, hottest first
 pnpm --dir cloudflare -s statsctl verify --service NAME --deployment DEPLOYMENT_ID --policy POLICY.json --json
 ```
 

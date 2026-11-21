@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { EmptyState, Skeleton } from "@laputa-systems/ui-dashboard";
 import { getHostServiceResources } from "../api";
 import type { HostServiceResources, ResourcePoint } from "../../core/installation/service-resources-model";
+import { latestLevel, meanLevel, peakLevel } from "../../core/installation/service-placement";
 import { bytes, errorMessage, rate } from "../format";
 import { useTelemetry } from "../state";
 import { compareSortValues, createSort, SortHeader } from "./sort";
@@ -26,35 +27,17 @@ export interface ResourceRow {
   readonly ioMean: number | null;
 }
 
-function latest(points: readonly ResourcePoint[], pick: (point: ResourcePoint) => number | null): number | null {
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    const value = pick(points[index]!);
-    if (value !== null) return value;
-  }
-  return null;
-}
-
-function mean(points: readonly ResourcePoint[], pick: (point: ResourcePoint) => number | null): number | null {
-  const values = points.map(pick).filter((value): value is number => value !== null);
-  return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function peak(points: readonly ResourcePoint[], pick: (point: ResourcePoint) => number | null): number | null {
-  const values = points.map(pick).filter((value): value is number => value !== null);
-  return values.length === 0 ? null : Math.max(...values);
-}
-
-export function resourceRows(results: readonly HostServiceResources[], only?: string): ResourceRow[] {
+function resourceRows(results: readonly HostServiceResources[], only?: string): ResourceRow[] {
   return results.flatMap(result => result.services.filter(service => only === undefined || service.name === only).map(service => ({
     key: `${result.hostId}/${service.name}`,
     service: service.name,
     hostId: result.hostId,
     points: service.points,
-    cpuNow: latest(service.points, point => point.cpuCores),
-    cpuMean: mean(service.points, point => point.cpuCores),
-    cpuPeak: peak(service.points, point => point.cpuCores),
-    memoryNow: latest(service.points, point => point.memoryBytes),
-    ioMean: mean(service.points, point => point.ioBytesPerSec)
+    cpuNow: latestLevel(service.points, point => point.cpuCores),
+    cpuMean: meanLevel(service.points, point => point.cpuCores),
+    cpuPeak: peakLevel(service.points, point => point.cpuCores),
+    memoryNow: latestLevel(service.points, point => point.memoryBytes),
+    ioMean: meanLevel(service.points, point => point.ioBytesPerSec)
   })));
 }
 

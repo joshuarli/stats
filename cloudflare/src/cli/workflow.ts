@@ -9,6 +9,9 @@ All times are UTC. A window is half-open: [fromMs, toMs).
    pnpm --dir cloudflare -s statsctl health --project stats --json
    health judges collector freshness, deployment sync, and observe health separately.
    Fix anything unhealthy or unavailable before trusting a cost or verdict.
+   pnpm --dir cloudflare -s statsctl services usage --window 1h --json
+   services usage groups services by host, busiest host first, with each service's mean and
+   peak cgroup CPU, latest memory, and CPU share of the busiest service on any host.
 
 2. Find a bottleneck and drill into it
    pnpm --dir cloudflare -s statsctl cost --project stats --window 1h --json

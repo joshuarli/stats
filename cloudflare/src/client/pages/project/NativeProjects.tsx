@@ -12,7 +12,8 @@ import { PROJECT_REFRESH_TICKS, rangeMs, useTelemetry } from "../../state";
 import { routeWithRange, readParam, writeParam } from "../../urlState";
 import { age, bytes, count, errorMessage, milliseconds } from "../../format";
 import { compareSortValues, createSort, SortHeader } from "../../components/sort";
-import { cores, createServiceResources, NoServiceResources, resourceRows, ServiceResourcesView } from "../../components/ServiceResources";
+import { cores, createServiceResources, NoServiceResources, ServiceResourcesView } from "../../components/ServiceResources";
+import { placeServices, type ServicePlacement } from "../../../core/installation/service-placement";
 import { NEVER_IDLE_CORES, neverIdle, selectedWindow } from "../../service-metrics";
 import { createServiceHealth, HealthBars } from "../../components/HealthBars";
 import { Sparkline } from "../../components/Sparkline";
@@ -41,21 +42,9 @@ function summaryOnly(value: ApplicationSummary | ApplicationTelemetry): Applicat
 interface Placement {
   readonly key: string;
   readonly service: Service;
+  readonly placement: ServicePlacement;
   readonly usage: ServiceUsage | undefined;
 }
-
-interface HostGroup {
-  readonly hostId: string | null;
-  readonly name: string;
-  readonly placements: readonly Placement[];
-  readonly cpu: number | null;
-  readonly memory: number | null;
-}
-
-const sumKnown = (values: readonly (number | null)[]): number | null => {
-  const known = values.filter((value): value is number => value !== null);
-  return known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0);
-};
 
 export function NativeServicesPage(): JSX.Element {
   const { range, now, tick, manualTick, hosts } = useTelemetry();
@@ -63,11 +52,6 @@ export function NativeServicesPage(): JSX.Element {
   createUpdateEffect(() => `${Math.floor(tick() / PROJECT_REFRESH_TICKS)}:${manualTick()}`, () => { void refresh(services); });
   const hostIds = createMemo(() => [...new Set(services().flatMap(service => service.hostIds))].sort());
   const resources = createServiceResources(hostIds);
-  const usage = createMemo(() => {
-    const byPlacement = new Map<string, ServiceUsage>();
-    for (const row of resourceRows(resources.results() ?? [])) byPlacement.set(row.key, { points: row.points, cpu: row.cpuMean, memory: row.memoryNow, neverIdle: neverIdle(row.points) });
-    return byPlacement;
-  });
   const { sort, sortBy } = createSort<"service" | "health" | "cpu" | "memory" | "deploy">({ key: "cpu", direction: -1 });
   const order = (placements: readonly Placement[]): Placement[] => {
     const key = sort().key;
@@ -86,18 +70,14 @@ export function NativeServicesPage(): JSX.Element {
       return compareSortValues(leftValue, rightValue) * sort().direction || left.service.name.localeCompare(right.service.name);
     });
   };
-  const groups = createMemo((): HostGroup[] => {
+  const groups = createMemo(() => {
+    const byName = new Map(services().map(service => [service.name, service]));
     const hostName = (hostId: string) => hosts().find(host => host.hostId === hostId)?.name ?? hostId;
-    const group = (hostId: string | null, name: string, placed: readonly Service[]): HostGroup => {
-      const placements = placed.map(service => ({ key: `${hostId ?? ""}/${service.name}`, service, usage: hostId === null ? undefined : usage().get(`${hostId}/${service.name}`) }));
-      return { hostId, name, placements: order(placements), cpu: sumKnown(placements.map(p => p.usage?.cpu ?? null)), memory: sumKnown(placements.map(p => p.usage?.memory ?? null)) };
-    };
-    const placed = hostIds().map(hostId => group(hostId, hostName(hostId), services().filter(service => service.hostIds.includes(hostId))));
-    placed.sort((left, right) => (right.cpu ?? -1) - (left.cpu ?? -1) || left.name.localeCompare(right.name));
-    const unplaced = services().filter(service => service.hostIds.length === 0);
-    return unplaced.length === 0 ? placed : [...placed, group(null, "No host assigned", unplaced)];
+    return placeServices(services(), resources.results() ?? [], hostName).map(group => ({
+      ...group,
+      placements: order(group.services.map((placement): Placement => ({ key: `${group.hostId ?? ""}/${placement.service}`, service: byName.get(placement.service)!, placement, usage: placement.reported ? { points: placement.points, cpu: placement.cpuMeanCores, memory: placement.memoryBytes, neverIdle: neverIdle(placement.points) } : undefined })))
+    }));
   });
-  const hottest = createMemo(() => Math.max(0, ...groups().flatMap(group => group.placements.map(p => p.usage?.cpu ?? 0))));
   const loading = () => resources.results() === null;
   return <Errored fallback={(error, reset) => <ErrorState error={error()} retry={reset} />}><Loading fallback={<Skeleton rows={2} />}>
     <Show when={listError() !== null}><Notice tone="warn">{errorMessage(listError())}</Notice></Show>
@@ -114,13 +94,13 @@ export function NativeServicesPage(): JSX.Element {
           <tr class="services-host"><th scope="rowgroup" colspan="5">
             <span class="services-host-head">
               <Show when={group().hostId} fallback={<span class="services-host-name">{group().name}</span>}>{hostId => <a class="services-host-name" href={routeWithRange(`#/host/${hostId()}`, range())}>{group().name}</a>}</Show>
-              <span class="cell-note">{group().placements.length} {group().placements.length === 1 ? "service" : "services"}<Show when={!loading() && group().cpu !== null}> · {cores(group().cpu)} cores</Show><Show when={!loading() && group().memory !== null}> · {bytes(group().memory ?? undefined)}</Show></span>
+              <span class="cell-note">{group().placements.length} {group().placements.length === 1 ? "service" : "services"}<Show when={!loading() && group().cpuMeanCores !== null}> · {cores(group().cpuMeanCores)} cores</Show><Show when={!loading() && group().memoryBytes !== null}> · {bytes(group().memoryBytes ?? undefined)}</Show></span>
             </span>
           </th></tr>
           <For each={group().placements} keyed={placement => placement.key}>{placement => <tr>
             <td><EntityCell marker={<span class={`status-dot tone-${healthTone(placement().service.health)}`} aria-hidden="true" />} name={placement().service.name} href={routeWithRange(`#/service/${encodeURIComponent(placement().service.name)}`, range())} id={placement().service.unit ?? `${placement().service.hostIds.length} ${placement().service.hostIds.length === 1 ? "host" : "hosts"}`} /></td>
             <td><HealthCell service={placement().service} /></td>
-            <td><UsageCell usage={placement().usage} loading={loading()} kind="cpu" label={`${placement().service.name} on ${group().name}`} share={hottest() > 0 ? (placement().usage?.cpu ?? 0) / hottest() : undefined} /></td>
+            <td><UsageCell usage={placement().usage} loading={loading()} kind="cpu" label={`${placement().service.name} on ${group().name}`} share={placement().placement.cpuShareOfBusiest ?? undefined} /></td>
             <td><UsageCell usage={placement().usage} loading={loading()} kind="memory" label={`${placement().service.name} on ${group().name}`} /></td>
             <td><Show when={(() => { const latest = placement().service.latestDeployment; return latest?.status === "available" ? latest : null; })()} fallback={<span class="cell-note">none recorded</span>}>{latest => <span class="cell-stack"><span class="mono">{deploymentTitle(latest(), latest().deployment, "service")}</span><span class="cell-note">{age(latest().deployment.atMs, now())}</span></span>}</Show></td>
           </tr>}</For>
