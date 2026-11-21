@@ -43,6 +43,8 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | --- | --- |
 | Agent installation, configuration and dashboard use | [README](README.md) |
 | OpenOrange deployment, backup/restore, cutover record and rollback | [OpenOrange](docs/openorange.md) |
+| Lisa recovery and native deployment | [Recovery](docs/lisa-operational-recovery.md), [native deployment](docs/native-lisa.md) |
+| Runtime hardening and release rollback | [Runtime hardening](docs/runtime-hardening.md) |
 | Host wire format, validation and rate semantics | [Protocol](docs/protocol.md) |
 | Binary ingest and history rationale, measurements and limits | [Ingest](docs/binary-ingest.md), [history](docs/binary-history.md) |
 | Components, routes, auth, storage, rollups and frontend constraints | [Architecture](docs/architecture.md) |
@@ -54,6 +56,7 @@ enforces Node/pnpm pins. Scratch and `TMPDIR` belong under `.work/tmp`.
 | Tests and screenshot verification | [Testing](docs/testing.md) |
 | Local development and build ownership | [Development](docs/development.md) |
 | Benchmarks and frontend measurement record | [Benchmarks](bench/README.md), [frontend](docs/frontend-efficiency.md) |
+| Performance acceptance and remaining work | [Performance campaign](docs/CAMPAIGN-STATS-PERFORMANCE.md), [resumption](docs/STATS-PERFORMANCE-RESUMPTION.md) |
 | Tracing and profiling | [Tracing](docs/TRACING.md), [profiling](docs/profiling.md) |
 | Optional block latency | [README: agent config](README.md) |
 | Observability design and costs | [Observe](docs/observe.md), [billing](docs/observe-billing.md) |

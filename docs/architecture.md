@@ -170,7 +170,7 @@ files `llms.txt` links to; no other doc is served.
 The `/api/v1/` routes are defined in `cloudflare/src/core/installation/installation.ts`.
 History routes return [history frames](#history-frames); other responses use JSON.
 
-Two authorization boundaries:
+Authorization boundaries:
 
 - **Humans and tagged machines** reach Stats only through the tailnet gateway
   (`stuff/deploy/openorange/`). The gateway listens on the ingress machine's
