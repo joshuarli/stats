@@ -4,7 +4,7 @@ The owner approved the native OpenRC migration on November 17, 2026.
 Production Stats is temporarily writable on Threadripper, with the
 original Docker app fenced on Lisa. The fresh backup and restore gate
 governs the production cutover. See the
-[live failover record](native-lisa-retro.md#live-stats-failover) for the
+[live failover record](lisa-operational-recovery.md#live-stats-failover) for the
 authority and failback requirements.
 
 ## Rehearsal progress
