@@ -1,9 +1,22 @@
 #!/sbin/openrc-run
 
-description="OpenOrange recovery VM"
+description="Stats recovery writer VM"
 qemu=/usr/bin/qemu-system-x86_64
 pidfile="${recovery_dir}/qemu.pid"
 forward="user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:${recovery_ssh_port}-:22"
+
+recovery_io_device() {
+    n=$(stat -c %d "$recovery_dir/stats.qcow2" 2>/dev/null) || return 1
+    block="/sys/dev/block/$(( (n >> 8) & 0xfff )):$(( (n & 0xff) | ((n >> 12) & 0xfff00) ))"
+    [ -f "$block/partition" ] && block="$block/.."
+    cat "$block/dev" 2>/dev/null
+}
+
+recovery_io=$(recovery_io_device)
+rc_cgroup_settings="cpu.weight 10000
+memory.min 5G
+memory.swap.max 0
+${recovery_io:+io.latency $recovery_io target=10000}"
 
 depend() {
     need localmount
@@ -25,7 +38,7 @@ guest_control() {
 }
 
 start() {
-    ebegin "Starting recovery VM"
+    ebegin "Starting Stats recovery VM"
     if guest_running; then
         eend 0
         return
@@ -43,7 +56,7 @@ start() {
 }
 
 stop() {
-    ebegin "Shutting down recovery VM"
+    ebegin "Shutting down Stats recovery VM"
     if ! guest_running; then
         eend 0
         return

@@ -146,6 +146,15 @@ with exact readback. Recovery order: stop `native-stats`, let the Engine settle
 until its CPU drops, then start `native-stats`. The qemu threads were reniced to
 `-10` at 03:01; that does not survive a VM restart. Follow-up is STA-135.
 
+Since 03:45 the VM's OpenRC cgroup reserves its resources against host load,
+set live and persisted in `deploy/orange/recovery/stats-recovery-vm.openrc`
+through `rc_cgroup_settings`: `cpu.weight 10000` (loose root-cgroup build
+threads each weigh as much as a default cgroup, so at weight 100 the VM's four
+vCPUs shared one build thread's share), `memory.min 5G` with
+`memory.swap.max 0` (the host had swapped 600 MB of guest memory), and an
+`io.latency` target of 10 ms on the disk that holds `stats.qcow2`, derived at
+start because the controller rejects partitions.
+
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in
