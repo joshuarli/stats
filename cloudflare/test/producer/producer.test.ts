@@ -88,7 +88,7 @@ await test("the producer encodes the golden frame exactly and accepts a duplicat
     json(response, { accepted: 0, duplicate: 2 });
   });
   try {
-    const producer = createProducer(configure(server.endpoint, { batchSize: 2, now: () => manifest.nowMs }));
+    const producer = createProducer(configure(server.endpoint, { batchSize: 2, now: () => manifest.nowMs, sleep: noSleep }));
     for (const event of decoded.batch.events) {
       producer.record({
         operation: event.operation,
@@ -119,7 +119,7 @@ await test("the producer encodes the failing golden frame with its error codes e
   assert.deepEqual(decoded.batch.events.map(event => event.error?.code), ["db.timeout", "upstream-unavailable", undefined]);
   const server = await serve((_request, _index, response) => json(response, { accepted: 3, duplicate: 0 }));
   try {
-    const producer = createProducer(configure(server.endpoint, { batchSize: 3, now: () => manifest.nowMs }));
+    const producer = createProducer(configure(server.endpoint, { batchSize: 3, now: () => manifest.nowMs, sleep: noSleep }));
     for (const event of decoded.batch.events) {
       producer.record({
         operation: event.operation,
@@ -148,7 +148,7 @@ await test("the producer encodes the failing golden frame with its error codes e
 await test("an error code on an ok event or outside its pattern is dropped without a request", async () => {
   const server = await serve((_request, _index, response) => json(response, { accepted: 1, duplicate: 0 }));
   try {
-    const producer = createProducer(configure(server.endpoint, { batchSize: 1 }));
+    const producer = createProducer(configure(server.endpoint, { batchSize: 1, sleep: noSleep }));
     const rejected = [
       { outcome: "ok", errorCode: "db.timeout" },
       { outcome: "error", errorCode: "" },
