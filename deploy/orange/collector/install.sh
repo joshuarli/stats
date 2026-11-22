@@ -1,9 +1,11 @@
 #!/bin/sh
-# Installs the infrastructure metrics collector on the native Stats standby (see docs/openorange.md).
+# Provisions the infrastructure metrics collector on the native Stats standby (see docs/openorange.md).
 #   deploy/orange/collector/install.sh
-# Idempotent. Creates the stats-infra credential on the guest when absent and writes only its
-# SHA-256 verifier and RIVETKIT_METRICS_PORT into /etc/conf.d/native-stats. Those take effect on
-# the next native-stats restart, which also (re)starts the collector.
+# Idempotent. Installs the service account, collector.json and OpenRC unit, creates the
+# stats-infra credential on the guest when absent and writes only its SHA-256 verifier and
+# RIVETKIT_METRICS_PORT into /etc/conf.d/native-stats. The collector code ships in each app
+# release (deploy/orange/standby-deploy.mts). Configuration takes effect on the next
+# native-stats restart, which also restarts the collector.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
 config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
@@ -14,7 +16,6 @@ fail() { echo "collector-install: $*" >&2; exit 1; }
 [ -r "$config" ] || fail "missing SSH config $config"
 work=$(mktemp -d "$root/.work/tmp/collector.XXXXXX")
 trap 'rm -rf "$work"' EXIT
-node "$root/cloudflare/scripts/build-infra-collector.mjs" --out "$work/bundle" >/dev/null || fail "collector build failed"
 
 cat >"$work/collector.json" <<EOF
 {"name":"standby","releaseFile":"/run/stats-infra/release.json","tokenFile":"/etc/stats-infra/token",
@@ -24,14 +25,12 @@ cat >"$work/collector.json" <<EOF
   {"id":"worker:stats-observe:1","url":"http://127.0.0.1:$((metrics_port + 1))/metrics"}]}
 EOF
 cp "$root/deploy/orange/collector/stats-infra-collector.openrc" "$work/"
-tar -C "$work" -czf "$work/install.tgz" bundle/main.mjs bundle/manifest.json collector.json stats-infra-collector.openrc
+tar -C "$work" -czf "$work/install.tgz" collector.json stats-infra-collector.openrc
 
 cat >"$work/install-guest.sh" <<'GUEST'
 set -eu; stage=$(mktemp -d); trap 'rm -rf $stage' EXIT; tar -C $stage -xzf -
     getent group stats-infra >/dev/null || addgroup -S stats-infra
     id stats-infra >/dev/null 2>&1 || adduser -S -D -H -h /var/empty -s /sbin/nologin -G stats-infra stats-infra
-    install -d -o root -g root -m 0755 /opt/stats-infra-collector
-    install -o root -g root -m 0644 $stage/bundle/main.mjs $stage/bundle/manifest.json /opt/stats-infra-collector/
     install -d -o root -g stats-infra -m 0750 /etc/stats-infra
     install -o root -g stats-infra -m 0640 $stage/collector.json /etc/stats-infra/collector.json
     if [ ! -s /etc/stats-infra/token ]; then
@@ -51,11 +50,6 @@ set -eu; stage=$(mktemp -d); trap 'rm -rf $stage' EXIT; tar -C $stage -xzf -
     install -o root -g root -m 0755 $stage/stats-infra-collector.openrc /etc/init.d/stats-infra-collector
     rc-update add stats-infra-collector default >/dev/null
 GUEST
-if [ "${1:-}" = --prepare ]; then
-    cp "$work/install.tgz" "$2/collector.tgz"
-    cp "$work/install-guest.sh" "$2/collector-install.sh"
-    exit 0
-fi
 stage=/var/lib/stats-deploy/collector-$(basename "$work")
 ssh -F "$config" stats-standby "rm -rf '$stage'; mkdir -p '$stage'; cat >'$stage/collector.tgz'" <"$work/install.tgz" || fail "cannot upload the collector"
 ssh -F "$config" stats-standby "cat >'$stage/collector-install.sh'" <"$work/install-guest.sh" || fail "cannot upload the collector"
@@ -63,4 +57,4 @@ status=0
 "$STATS_ROLLOUT" lease run --target-kind native --host stats-standby --ssh-config "$config" --operation collector-install --bound-s 300 -- sh -c 'sh "$1/collector-install.sh" <"$1/collector.tgz"' sh "$stage" || status=$?
 ssh -F "$config" stats-standby "rm -rf '$stage'" || :
 [ "$status" -eq 0 ] || fail "lease unavailable or installation failed"
-echo "collector installed; restart native-stats (or run standby-deploy.sh) to activate"
+echo "collector provisioned; restart native-stats (or deploy an app release) to apply it"

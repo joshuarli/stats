@@ -136,7 +136,7 @@ STA-129 closed on 2026-11-21 as superseded. The November 18 ordered restart
 aligned Lisa's selection to the running `stats:c9a71b2ba127`. Stats then
 moved to the Threadripper standby writer and left Lisa's Docker runlevel
 (see [Lisa recovery](lisa-operational-recovery.md#live-stats-failover)).
-The standby deploys through `deploy/orange/standby-deploy.sh`, and failback
+The standby deploys through `make standby-deploy`, and failback
 targets native Stats on Lisa ([native Lisa](native-lisa.md)). The Docker
 deployment command has no remaining production target to qualify.
 The exact request that stalled originally remains unproven. No deployment

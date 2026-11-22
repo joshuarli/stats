@@ -103,7 +103,7 @@ preview: work-ready node-ready
 
 lint: node-ready
 	pnpm --filter @stats/telemetry lint
-	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts' '$(CURDIR)/deploy/orange/recovery/check-capabilities.mts'
+	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts' '$(CURDIR)/deploy/orange/standby-deploy.mts' '$(CURDIR)/deploy/orange/recovery/check-capabilities.mts'
 
 auth-ready:
 	ssh '$(ORANGE_HOST)' 'test -x /opt/openorange/bin/oo && doas -n true'
@@ -127,6 +127,13 @@ stats-deploy-check: work-ready node-ready
 
 stats-deploy worker-deploy: work-ready node-ready
 	deploy/orange/deploy.sh '$(ORANGE_HOST)'
+
+.PHONY: standby-deploy-check standby-deploy
+standby-deploy-check: work-ready node-ready
+	node --experimental-strip-types deploy/orange/standby-deploy.mts --check
+
+standby-deploy: work-ready node-ready
+	node --experimental-strip-types deploy/orange/standby-deploy.mts
 
 observe-sourcemap: node-ready
 	@test -n '$(VERSION)' || { echo 'VERSION is the stats Worker version ID' >&2; exit 1; }

@@ -9,6 +9,7 @@ const config = options['ssh-config'] ?? process.env.STANDBY_SSH_CONFIG;
 const host = options.host ?? process.env.STATS_ROLLOUT_HOST;
 const credential = options['credential-file'] ?? process.env.STATS_CHECK_CREDENTIAL_FILE;
 const statsctl = options.statsctl ?? process.env.STATSCTL;
+const targetKind = options['target-kind'];
 const release = process.env.ROLLOUT_RELEASE;
 const digest = process.env.ROLLOUT_DIGEST;
 const steps = [];
@@ -22,8 +23,9 @@ function run(name, executable, args) {
   return value;
 }
 function observe(name) {
-  const value = run(name, rollout, ['observe', '--target-kind', 'native', '--host', host, '--ssh-config', config, '--json']);
+  const value = run(name, rollout, ['observe', '--target-kind', targetKind, '--host', host, '--ssh-config', config, '--json']);
   const valid = value.selected === release && value.running === release && value.digest === digest && value.healthy === true &&
+    (targetKind !== 'native-app' || value.collector_running === release) &&
     Array.isArray(value.processes) && value.processes.length === 1 && Number.isInteger(value.processes[0].pid) &&
     typeof value.processes[0].started_at === 'number';
   if (!valid) throw new Error(`${name} identity mismatch`);
@@ -32,6 +34,7 @@ function observe(name) {
 let ok = false;
 try {
   if (![rollout, config, host, credential, statsctl, release, digest].every(value => typeof value === 'string' && value.length)) throw new Error('missing required input');
+  if (targetKind !== 'native' && targetKind !== 'native-app') throw new Error('target kind must be native or native-app');
   const before = observe('observe-before');
   checks.identity = true;
   const result = run('ingest', statsctl, ['check', 'ingest', '--credential-file', credential, '--json']);

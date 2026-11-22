@@ -111,25 +111,42 @@ While Threadripper's standby VM holds write authority, `make stats-deploy`
 refuses Lisa. Deploy the committed tree to the standby instead:
 
 ```sh
-deploy/orange/standby-deploy.sh --check   # access, authority and runtime pins only
-deploy/orange/standby-deploy.sh
+make standby-deploy-check   # app identity, writer authority and runtime pins; changes nothing
+make standby-deploy
 ```
 
-The script reaches the guest through the SSH configuration named by
-`STANDBY_SSH_CONFIG` (host alias `stats-standby`, jumping through
-Threadripper with the pinned guest host key). It refuses unless Lisa's
-recovery route names the standby as writer and `deploy/orange/package.json`
-and `pnpm-lock.yaml` match `/opt/native-rehearsal/orange`. It builds with
-`deploy/orange/build-context.sh` and uploads the app and the matching INF-7
-collector to `/var/lib/stats-deploy/<release>` on the guest, which changes no
-running state. Under the `stats-deploy` lease it then keeps the running
-release in `/opt/native-rehearsal/releases/<release>`, swaps in the new one
-(keeping the `.open-orange` runtime state), reinstalls the collector, restarts
-OpenRC `native-stats`, and requires the guest health route and the new release
-in the descriptor. A local failure restores the previous app and collector in
-the same leased step. The workstation then checks the public health route; if
-that fails, a second leased step (`stats-deploy-rollback`) restores the
-previous release.
+Both need `STANDBY_SSH_CONFIG` (host alias `stats-standby`, jumping through
+Threadripper with the pinned guest host key) and `STATS_ROLLOUT`, Stuff's
+`deploy/openorange/bin/rollout`. Deploying also needs
+`STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL` for the functional check
+(currently `~/.config/stats/synthetic-check.json` and
+`~/.local/state/openorange/rollout/tools/statsctl`).
+
+`deploy/orange/standby-deploy.mts` refuses unless the standby's running app is
+its selected app, Lisa's recovery route names the standby as writer, and
+`deploy/orange/package.json` and `pnpm-lock.yaml` match the selected runtime.
+From a clean tree it runs the admission checks `build` (`build-context.sh`),
+`collector-build` and `cloudflare-test` (`make cloudflare-test`, about two
+minutes), assembles the app release (both Workers, their descriptors and the
+collector) and stages it with `rollout stage --target-kind native-app`, which
+changes no running state. It then writes a `stats-app-admission/1` receipt
+binding the staged digest, the selected runtime digest and the check logs,
+plus a policy with a 120 s verification window, to
+`~/.local/state/openorange/apps/<app>/<time>/`, and runs `rollout start
+--target-kind native-app`. One lease covers writer-authority recheck,
+activation, verification and conditional recovery; recovery reactivates the
+previous app only while this run's candidate is still selected. Exit codes are
+the controller's: 0 promoted, 3 rejected or recovered, 4 lease held, 5 needs
+an operator. Journals are in `~/.local/state/openorange/rollouts/`. The
+adapter, release layout and conversion are documented in Stuff's
+[rollout transactions](https://github.com/laputa-systems/stuff/blob/main/docs/openorange-rollouts.md#stats-app-releases-native-app).
+Admission establishes an admissible release, not a qualified or improved one.
+
+App releases live in `/opt/native-rehearsal/apps/app-<hex>/`; `app/current`
+selects one and `app/.open-orange` keeps runtime state. The first deployment
+converts the in-place app and collector into the baseline release. Directories
+under `/opt/native-rehearsal/releases/` are from the retired in-place
+deployment script and are not used for recovery.
 
 ### Standby incident (2026-11-21)
 
@@ -143,7 +160,11 @@ within seconds, and with the app stopped three Engine workers still spun. A
 30 s limit. When host load fell to 12, the Engine went idle and one supervised
 start under the guest lease recovered service, confirmed by synthetic ingest
 with exact readback. Recovery order: stop `native-stats`, let the Engine settle
-until its CPU drops, then start `native-stats`. The qemu threads were reniced to
+until its CPU drops, then start `native-stats` and `stats-infra-collector`,
+each through `rollout lease run`. Stopping `native-stats` also stops the
+collector, which needs it, and starting `native-stats` does not start it
+again; after the 22:40 UTC recovery on 2026-11-21 infrastructure metrics were
+missing until the collector was started at 23:15. The qemu threads were reniced to
 `-10` at 03:01; that does not survive a VM restart. Follow-up is STA-135.
 
 Since 03:45 the VM's OpenRC cgroup reserves its resources against host load,
@@ -171,8 +192,8 @@ limits.
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in
-  `~/.config/stats/standby/` on the workstation; `deploy/orange/standby-deploy.sh`
-  uses them.
+  `~/.config/stats/standby/` on the workstation; `make standby-deploy` uses
+  them.
 - **Reboot.** `rc-service stats-recovery-vm stop` shut the guest down
   gracefully, `qemu-img snapshot -c pre-reboot-20261120 stats.qcow2` recorded a
   rollback point, and `rc-service stats-recovery-vm start` booted it. Docker,
@@ -246,7 +267,7 @@ artifact.
   `native-stats` restart and health wait, 5 s. Twenty checks over the
   five-minute window passed, and the run ended `promoted`. Public health
   answered 200 throughout. All five hosts reported within two minutes
-  afterwards, and `standby-deploy.sh --check` reports matching runtime pins.
+  afterwards, and the standby deployment check reported matching runtime pins.
 - Recovery drill (17:56 UTC): a second rollout activated `rt-13b896622da5`
   (upstream 1.0.2) as the candidate against `rt-3abd20d29960`, with
   reverse-direction artifact canary evidence (`pass`). The previous runtime
@@ -265,8 +286,10 @@ artifact.
 
 ### Infrastructure metrics on the standby
 
-`deploy/orange/collector/install.sh` installs the INF-7 collector on the
-standby guest; it is idempotent. It runs as OpenRC `stats-infra-collector`
+`deploy/orange/collector/install.sh` provisions the INF-7 collector on the
+standby guest: its account, `/etc/stats-infra/collector.json`, credential and
+OpenRC unit. It is idempotent. The collector code ships in each app release
+and `/opt/stats-infra-collector` links to `app/current/collector`. It runs as OpenRC `stats-infra-collector`
 (user `stats-infra`, log `/var/log/stats-infra-collector.log`) and scrapes
 `engine:live` (`127.0.0.1:6430`), `worker:stats:0` (`:9100`) and
 `worker:stats-observe:1` (`:9101`) every 15 s, posting to the local
@@ -275,8 +298,8 @@ the guest in `/etc/stats-infra/token` and writes only its SHA-256 verifier
 (`INFRA_METRICS_TOKEN_SHA256`, added to `ORANGE_WORKER_SECRETS`) and
 `RIVETKIT_METRICS_PORT=9100` into `/etc/conf.d/native-stats`. The first run
 kept the previous file as `native-stats.pre-infra-metrics`. The collector
-needs `native-stats`, so every runtime rollout and `standby-deploy.sh` restart
-restarts it, and its `start_pre` rewrites `/run/stats-infra/release.json` from
+needs `native-stats`, so every runtime or app rollout restarts it (app
+activation waits for it to start on the new release), and its `start_pre` rewrites `/run/stats-infra/release.json` from
 the `orange` symlink and the deployed descriptor.
 
 Read the sources over the tailnet:
@@ -513,18 +536,20 @@ section has the commands. The Engine, persistence backend and credentials are un
 ### Standby mutation leases
 
 Set `STATS_ROLLOUT` to the rollout executable and `STANDBY_SSH_CONFIG` to the
-SSH configuration before running standby mutations. `standby-deploy.sh` takes
-`stats-deploy` for the guest app swap, collector installation, restart, and
-rollback. `collector/install.sh` takes `collector-install` for a standalone
-installation. Restart `native-stats` through `rollout lease run --target-kind
+SSH configuration before running standby mutations. `make standby-deploy`
+stages under a `stage` lease and activates through a `rollout start`
+transaction, which holds the `deployment` lease through verification and any
+recovery. `collector/install.sh` takes `collector-install` for provisioning. Restart `native-stats` through `rollout lease run --target-kind
 native --host stats-standby --ssh-config FILE --operation native-stats-restart
 --bound-s 300 -- rc-service native-stats restart`. The backup fence uses the
 application API and does not mutate the host, so it does not take the host
 lease. Writer handoff on Lisa is outside the standby guest lease and is owned
-by Stuff. `standby-deploy.sh --check` is read-only and takes no lease.
+by Stuff. `make standby-deploy-check` is read-only and takes no lease.
 
 The rollout policy can invoke `deploy/orange/functional-check.mjs` with
-`--rollout`, `--ssh-config`, `--host`, `--credential-file`, and `--statsctl`
+`--target-kind` (`native` for runtime releases, `native-app` for app releases,
+which also requires the collector on the release), `--rollout`, `--ssh-config`,
+`--host`, `--credential-file`, and `--statsctl`
 (or `STATS_ROLLOUT`, `STANDBY_SSH_CONFIG`, `STATS_ROLLOUT_HOST`,
 `STATS_CHECK_CREDENTIAL_FILE` and `STATSCTL`). Pass them as arguments when a
 supervised watchdog runs recovery, since it does not inherit the operator's
