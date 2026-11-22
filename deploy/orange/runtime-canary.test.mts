@@ -92,9 +92,13 @@ await test("upstream runtime without worker metrics holds qualification and owne
     assert.equal(diff.status, 1, diff.stderr);
     const changed = diff.stdout.split("\n").filter(line => /^[+-]/.test(line) && !/^(---|\+\+\+)/.test(line));
     assert.equal(changed.length, 11, diff.stdout);
-    assert.ok(changed.every(line => /open-orange|tarballs\/b91f7db61b53b677|specifier: 1\.0\.2|version: 1\.0\.2|resolution: \{integrity: sha512-(?:6n2i|uR99)|version: 1\.0\.2-laputa\.1/.test(line)), diff.stdout);
+    const owned = { tarball: JSON.parse(readFileSync(join(ORANGE_ROOT, "package.json"), "utf8")).dependencies["open-orange"] as string, version: JSON.parse(readFileSync(join(ORANGE_ROOT, "node_modules/open-orange/package.json"), "utf8")).version as string };
+    const ownedIntegrity = readFileSync(join(ORANGE_ROOT, "pnpm-lock.yaml"), "utf8").match(/open-orange@https:[^\n]*:\n\s+resolution: \{integrity: (sha512-[A-Za-z0-9+/=]+)/)?.[1];
+    assert.ok(owned.tarball.startsWith("https://npm.17166969.xyz/") && /^1\.0\.2-laputa\.\d+$/.test(owned.version) && ownedIntegrity, "the pinned owned open-orange is unexpected");
+    const allowed = [owned.tarball, `version: ${owned.version}`, `integrity: ${ownedIntegrity}`, "specifier: 1.0.2", "version: 1.0.2(", "open-orange@1.0.2", "integrity: sha512-6n2iAtsEdHFh"];
+    assert.ok(changed.every(line => allowed.some(fragment => line.includes(fragment))), diff.stdout);
     console.log("lockfile diff", diff.stdout);
-    for (const [dir, version] of [[closure, "1.0.2"], [ORANGE_ROOT, "1.0.2-laputa.1"]]) {
+    for (const [dir, version] of [[closure, "1.0.2"], [ORANGE_ROOT, owned.version]]) {
       const result = spawnSync(process.execPath, [bin(dir!), "--version"], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout.trim(), version); console.log("orange version", version);
     }
