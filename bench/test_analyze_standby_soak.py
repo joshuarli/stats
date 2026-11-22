@@ -23,7 +23,7 @@ def series():
         restarted = at > FAULT_AT + 30_000
         guest = {"identity": {"app": "app-1", "runtime": "rt-1", "engineImage": "sha256:e", "engineConfigSha256": "c", "engineStartedAt": "t0",
                               "engineRestartCount": 0, "engineOomKilled": False},
-                 "app": {"rssBytes": 800, "oldestStart": 2 if restarted else 1}, "engine": {"memoryBytes": 2000},
+                 "app": {"rssBytes": 800, "oldestStart": 2 if restarted else 1}, "engine": {"memoryBytes": 2000, "anonBytes": 1500},
                  "disk": {"freeBytes": 5 << 30}, "warnings": {"refusedConnect": 0, "deadline": 0},
                  "engineMetrics": {"rivet_depot_tablet_store_queue_depth": 0, "rivet_depot_volume_log_client_queued_requests": 0,
                                    "rivet_depot_alarm_parked": 0, "rivet_depot_tablet_group_reads_queued": 0},

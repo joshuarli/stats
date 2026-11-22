@@ -144,7 +144,7 @@ def analyze(records, faults, definition, definition_sha):
     final = [s for s in steady if s["atMs"] - anchor >= half * HOUR_MS and "unavailable" not in s["guest"]]
     prior = [s for s in steady if (half // 2) * HOUR_MS <= s["atMs"] - anchor < half * HOUR_MS and "unavailable" not in s["guest"]]
     plateau = {}
-    for name, select in (("appRss", lambda s: s["guest"]["app"]["rssBytes"]), ("engineMemory", lambda s: s["guest"]["engine"]["memoryBytes"])):
+    for name, select in (("appRss", lambda s: s["guest"]["app"]["rssBytes"]), ("engineAnon", lambda s: s["guest"]["engine"]["anonBytes"])):
         if not prior or not final:
             missing.append("missing plateau windows")
             break

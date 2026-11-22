@@ -3,8 +3,9 @@
 #   deploy/orange/recovery/engine-pressure-drill.sh NAME FAULT OUT_DIR
 # FAULT is one of
 #   stall      throttle the guest's disk through QEMU (DRILL_IOPS, DRILL_BPS) for the pressure phase
-#   warm-read  copy the live depot on the guest's own disk while the Engine serves (the 2026-11-22
-#              capture trigger), throttled like stall when DRILL_IOPS is set
+#   warm-read  read the whole live depot on the guest's own disk while the Engine serves, throttled
+#              like stall when DRILL_IOPS is set; DRILL_COPY=1 also writes the copy to the same disk,
+#              as the 2026-11-22 capture did (it needs the depot's size free on the guest)
 #   none       load only; with DRILL_FREE_BYTES this is the small log-budget case
 # DRILL_FREE_BYTES, when set, first fills the guest's root filesystem with a ballast file until that
 # many bytes stay free and restarts the Engine and app, so the Engine sizes its log shard and cold
@@ -51,7 +52,7 @@ cleanup() {
     trap - EXIT INT TERM
     for pid in $load $proxy $tunnel; do kill "$pid" 2>/dev/null || :; done
     throttle 0 0 2>/dev/null || :
-    [ -z "$copy" ] || guest "pkill -x rsync; rm -rf /var/lib/live-stats-recovery/drill-copy" 2>/dev/null || :
+    [ -z "$copy" ] || guest "pkill -x rsync; [ ! -s /run/drill-read.pid ] || { pkill -P \$(cat /run/drill-read.pid); kill \$(cat /run/drill-read.pid); rm -f /run/drill-read.pid; }; rm -rf /var/lib/live-stats-recovery/drill-copy" 2>/dev/null || :
     rm -f "$out/.gateway-secret"
     exit "$status"
 }
@@ -105,12 +106,17 @@ while [ "$cycle" -le "$cycles" ]; do
     stall) throttle "${bps:-1048576}" "${iops:-20}" ;;
     warm-read)
         [ -z "$iops" ] || throttle "${bps:-0}" "$iops"
-        guest "rm -rf /var/lib/live-stats-recovery/drill-copy; nohup rsync -a /var/lib/live-stats/ /var/lib/live-stats-recovery/drill-copy/ >/dev/null 2>&1 &"; copy=1 ;;
+        if [ "${DRILL_COPY:-0}" = 1 ]; then
+            guest "rm -rf /var/lib/live-stats-recovery/drill-copy; nohup rsync -a /var/lib/live-stats/ /var/lib/live-stats-recovery/drill-copy/ >/dev/null 2>&1 &"
+        else
+            guest "nohup sh -c 'while :; do tar -cf - -C /var/lib/live-stats log objects | cat >/dev/null; done' >/dev/null 2>&1 & echo \$! > /run/drill-read.pid"
+        fi
+        copy=1 ;;
     none) ;;
     esac
     run_phase pressure "$pressure_s"
     [ "$fault" = none ] || throttle 0 0
-    [ -z "$copy" ] || { guest "pkill -x rsync; rm -rf /var/lib/live-stats-recovery/drill-copy" || :; copy=; }
+    [ -z "$copy" ] || { guest "pkill -x rsync; [ ! -s /run/drill-read.pid ] || { pkill -P \$(cat /run/drill-read.pid); kill \$(cat /run/drill-read.pid); rm -f /run/drill-read.pid; }; rm -rf /var/lib/live-stats-recovery/drill-copy" || :; copy=; }
     released=$(ms)
     log "{\"at\":\"$(now)\",\"cycle\":$cycle,\"event\":\"released\"}"
     recovered_ms= good=0 checked=false

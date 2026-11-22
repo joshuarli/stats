@@ -68,7 +68,8 @@ for name, procs in users.items():
                 "oldestStart": min((p["start"] for p in procs), default=None), "pids": sorted(p["pid"] for p in procs)}
 cg = "/sys/fs/cgroup/docker/" + inspect["Id"]
 cpu = dict(l.split() for l in open(cg + "/cpu.stat"))
-out["engine"] = {"memoryBytes": int(open(cg + "/memory.current").read()), "cpuSeconds": int(cpu["usage_usec"]) / 1e6,
+mem = dict(l.split() for l in open(cg + "/memory.stat"))
+out["engine"] = {"memoryBytes": int(open(cg + "/memory.current").read()), "anonBytes": int(mem["anon"]), "fileBytes": int(mem["file"]), "cpuSeconds": int(cpu["usage_usec"]) / 1e6,
                  "throttledSeconds": int(cpu.get("throttled_usec", 0)) / 1e6}
 vfs = os.statvfs("/")
 out["disk"] = {"freeBytes": vfs.f_bavail * vfs.f_frsize, "logShardsBytes": tree("/var/lib/live-stats/log/shards"),

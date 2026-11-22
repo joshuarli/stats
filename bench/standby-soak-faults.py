@@ -5,8 +5,9 @@
 
 Runs on Threadripper's host beside bench/standby-soak.py. Each fault in the definition starts at
 its offset from --started-at-ms (the sampler's start), runs under the shared rollout lease when it
-touches the guest, and is followed by synthetic ingest checks 20 s apart (the check host is admitted
-six frames a minute) until one passes or recoveryLimitS elapses. Every check's sequence is recorded
+touches the guest, and is followed by synthetic ingest checks 30 s apart until one passes or
+recoveryLimitS elapses: the check host is admitted six frames a minute, each check sends up to two,
+and the sampler's own check shares the host. Every check's sequence is recorded
 so the final ledger readback can prove acknowledged writes survived. Host faults run in their own
 cgroups under doas, never inside the production VM's cgroup. One fsynced JSON line per event.
 """
@@ -88,6 +89,10 @@ def run_fault(fault):
         result = leased("soak-app-restart", 300, "rc-service native-stats restart >/dev/null")
     elif kind == "engine-restart":
         result = leased("soak-engine-restart", 300, ENGINE_RESTART)
+    elif kind == "depot-warm-read":
+        # Reads the whole depot from the disk that holds it while the Engine serves; nothing is
+        # written, so the guest's free space is unchanged.
+        result = leased("soak-depot-read", fault["boundS"] + 30, f"timeout {fault['boundS']} tar -cf - -C /var/lib/live-stats log objects | cat >/dev/null")
     elif kind == "host-cpu":
         host_cpu(fault)
         return None
@@ -132,7 +137,7 @@ with open(args.output, "x", encoding="utf-8") as output:
             if ok:
                 recovered = round((now_ms() - record["endedAtMs"]) / 1000, 1)
                 break
-            stop.wait(20)
+            stop.wait(30)
         record["recoveredAfterS"] = recovered
         emit(record)
     due = args.started_at_ms + int(definition["durationHours"] * 3_600_000) + 300_000
