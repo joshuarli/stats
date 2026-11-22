@@ -209,6 +209,17 @@ drift. Replacing the live Engine still needs a journaled, conditional
 replacement adapter, and recreation on a disposable guest has not run. The
 exited `rollback-engine` container from 2026-11-18 is not part of it.
 
+### Recreating the standby guest
+
+`deploy/orange/recovery/guest/` is the tracked build of this guest: package
+list, the `native-stats` unit and `provision.sh`, which restores a sealed
+capture onto a fresh Alpine 3.24 cloud guest without network access and
+installs the declared Engine, runtime and app. `recreate.sh` runs it on a
+disposable guest and checks ingest, history, duplicates, the app identity and
+Engine drift before and after a reboot. It has not passed end to end yet, and
+it must not run on the host whose disk holds this writer
+([record](../bench/results/2026-11-22-guest-recreation/README.md)).
+
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in

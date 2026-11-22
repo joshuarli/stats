@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+supervisor=supervise-daemon
+directory=/opt/native-rehearsal/app
+command=/usr/bin/node
+command_args="/opt/native-rehearsal/orange/node_modules/open-orange/dist/bin.js serve --ip 127.0.0.1 --port 8080 --config stats.jsonc --config observe.jsonc"
+command_user=native-stats
+output_log=/var/log/native-stats.log
+error_log=/var/log/native-stats.log
+retry=TERM/30/KILL/5
+depend() { need docker; }
+export RIVET_ENDPOINT RIVET_NAMESPACE RIVET_TOKEN RIVET_NODE_VERSION NODE_ENV GATEWAY_SECRET ORANGE_WORKER_SECRETS HOME
+
+start_pre() {
+    elapsed=0
+    until /usr/bin/wget -q -T 2 -O /dev/null http://127.0.0.1:6420/health; do
+        if [ "$elapsed" -ge 60 ]; then
+            eerror "Stats recovery Engine did not answer /health"
+            return 1
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+}

@@ -1,6 +1,8 @@
 #!/bin/sh
 # Provisions the infrastructure metrics collector on the native Stats standby (see docs/openorange.md).
-#   deploy/orange/collector/install.sh
+#   deploy/orange/collector/install.sh            provision the standby guest under the rollout lease
+#   deploy/orange/collector/install.sh --bundle DIR  write collector.tgz and collector-install.sh
+#                                                     to DIR for deploy/orange/recovery/guest
 # Idempotent. Installs the service account, collector.json and OpenRC unit, creates the
 # stats-infra credential on the guest when absent and writes only its SHA-256 verifier and
 # RIVETKIT_METRICS_PORT into /etc/conf.d/native-stats. The collector code ships in each app
@@ -8,12 +10,16 @@
 # native-stats restart, which also restarts the collector.
 set -eu
 root=$(CDPATH='' cd -- "$(dirname "$0")/../../.." && pwd)
-config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
-: "${STATS_ROLLOUT:?STATS_ROLLOUT is required}"
 metrics_port=9100
 fail() { echo "collector-install: $*" >&2; exit 1; }
-
-[ -r "$config" ] || fail "missing SSH config $config"
+bundle=
+case "${1:-}" in
+    --bundle) bundle=${2:?--bundle needs a directory}; [ -d "$bundle" ] || fail "$bundle is not a directory" ;;
+    "") config=${STANDBY_SSH_CONFIG:?STANDBY_SSH_CONFIG is required}
+        : "${STATS_ROLLOUT:?STATS_ROLLOUT is required}"
+        [ -r "$config" ] || fail "missing SSH config $config" ;;
+    *) echo "usage: deploy/orange/collector/install.sh [--bundle DIR]" >&2; exit 2 ;;
+esac
 work=$(mktemp -d "$root/.work/tmp/collector.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -50,6 +56,11 @@ set -eu; stage=$(mktemp -d); trap 'rm -rf $stage' EXIT; tar -C $stage -xzf -
     install -o root -g root -m 0755 $stage/stats-infra-collector.openrc /etc/init.d/stats-infra-collector
     rc-update add stats-infra-collector default >/dev/null
 GUEST
+if [ -n "$bundle" ]; then
+    cp "$work/install.tgz" "$bundle/collector.tgz"
+    cp "$work/install-guest.sh" "$bundle/collector-install.sh"
+    exit 0
+fi
 stage=/var/lib/stats-deploy/collector-$(basename "$work")
 ssh -F "$config" stats-standby "rm -rf '$stage'; mkdir -p '$stage'; cat >'$stage/collector.tgz'" <"$work/install.tgz" || fail "cannot upload the collector"
 ssh -F "$config" stats-standby "cat >'$stage/collector-install.sh'" <"$work/install-guest.sh" || fail "cannot upload the collector"
