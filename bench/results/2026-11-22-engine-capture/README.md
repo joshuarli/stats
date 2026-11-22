@@ -50,9 +50,8 @@ stopped-copied, not usable as a recovery point); the guest has 4.2 GiB free.
 
 `capture-engine.sh` no longer copies the depot while the Engine runs. It
 stops the app and Engine, copies once with a 300 s bound (lease 900 s), and
-restarts. The stopped duration therefore grows by the full copy time; the
-copy time of 3.7 GiB on this disk is unmeasured. This version has not run in
-production.
+restarts. The stopped duration therefore grows by the full copy time; it ran
+in production at 02:36 (below).
 
 
 ## Relapse after the failed capture (01:45–02:22 UTC)
