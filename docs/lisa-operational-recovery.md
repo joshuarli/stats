@@ -60,6 +60,37 @@ compare its `stats-prod` actor counts with production's. Logical export
 remains separate from a physical capture. Ingress and writer-handoff operations are outside the
 guest lease.
 
+A capture refuses before stopping anything when its copy would leave less than
+2 GiB free on the guest's root, which also holds the depot. Earlier on-guest
+captures count against that space; move verified ones off-host before
+deleting them. Services a capture starts no longer inherit its lock, which on
+2026-11-22 had left the lock held by `supervise-daemon` after the 02:36
+capture.
+
+The Engine's log shard and cold cache have declared sizes (Stuff
+`deploy/openorange/standby/stats-engine.json`: 1 GiB and 512 MiB). Left
+unset, the Engine sized them from free disk at each start, and a start with
+too little free space left a log it could not write to: the STA-135
+registration failure ([record](../bench/results/2026-11-22-engine-degradation/README.md)).
+With declared sizes, an Engine that no longer fits refuses to start. To apply
+a changed declaration, run `deploy/orange/recovery/apply-engine-config.sh
+NAME` with the capture's variables plus `STUFF_ROOT`. Under the lease
+(operation `engine-config`), `engine-config.sh` records the previous
+configuration and the running services in `/var/lib/live-stats/.config-intent`,
+writes the new file only while the Engine is stopped, and refuses unless the
+Engine logs the declared capacities. On failure it restores the previous file
+and services; `engine-config.sh recover` does the same after an interruption.
+The receipt `~/.local/state/openorange/engine-config/NAME.json` is `applied`
+only when the functional check passed within 120 s and `standby-engine
+inspect` shows no drift. On 2026-11-22 it took 18 s.
+
+To prove a capture restores, recreate the writer on a disposable guest with
+`deploy/orange/recovery/guest/recreate.sh NAME CAPTURE_DIR`
+([record](../bench/results/2026-11-22-guest-recreation/README.md)). On
+Threadripper, set `GUEST_ROOT` to tmpfs and `GUEST_CGROUP` to a cgroup with an
+`io.max` limit: the recreation writes about 12 GB, and writes to the shared
+disk have degraded production.
+
 ### Incident changes
 
 On November 18, 2026, the Stats writer moved to Threadripper. All five
