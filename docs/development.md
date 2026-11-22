@@ -104,6 +104,8 @@ The Nanoshop checkout route requires `NANOSHOP_DIR` and
 
 ## Build the agent
 
+Run `make clean` to remove this checkout’s Cargo agent output and release builds (`./agent/target`, `./agent/dist` and `./dist`). It refuses symlinked output paths and leaves local state and `.work` intact.
+
 Run `make agent-build` for both static Linux targets, or `make agent-build-macos`
 on a Mac. The cross-build requirements and release artifacts are in
 [operations](operations.md#release-build).

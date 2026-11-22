@@ -267,3 +267,13 @@ bench-check:
 	TMPDIR='$(CURDIR)/.work/tmp' node bench/run.mjs --check $(BENCH_ARGS)
 bench-list:
 	node bench/run.mjs --list
+
+.PHONY: clean
+clean:
+	@if test -L ./agent; then printf '%s\n' 'make clean: ./agent must be a local directory' >&2; exit 1; fi
+	@for artifact in ./agent/target ./agent/dist ./dist; do \
+	  if test -L "$$artifact" || { test -e "$$artifact" && ! test -d "$$artifact"; }; then \
+	    printf '%s\n' "make clean: $$artifact must be a local build directory" >&2; exit 1; \
+	  fi; \
+	done
+	rm -rf -- ./agent/target ./agent/dist ./dist
