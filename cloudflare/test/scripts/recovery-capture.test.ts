@@ -30,11 +30,12 @@ await test("Engine capture restarts its container after a failed stopped copy, a
       timeout: 'shift\nexec "$@"',
       rsync: 'test "$CAPTURE_COPY_FAILS" = 0',
       wget: 'test ! -e "$CAPTURE_TEST/stopped"',
+      df: 'printf "Filesystem 1024-blocks Used Available Capacity Mounted\\nfs 100 0 %s 0%% /\\n" "$CAPTURE_FREE_KB"',
       "rc-service": 'exit 3'
     })) writeFileSync(join(bin, name), `#!/bin/sh\n${contents}\n`, { mode: 0o700 });
     writeFileSync(join(directory, "engine.json"), "{}");
     const env = (locked: boolean, copyFails: boolean) => ({ ...process.env, PATH: `${bin}:${process.env.PATH}`,
-      CAPTURE_TEST: directory, CAPTURE_LOCKED: locked ? "1" : "0", CAPTURE_COPY_FAILS: copyFails ? "1" : "0" });
+      CAPTURE_TEST: directory, CAPTURE_LOCKED: locked ? "1" : "0", CAPTURE_COPY_FAILS: copyFails ? "1" : "0", CAPTURE_FREE_KB: process.env["CAPTURE_FREE_KB"] ?? String(8 * 1024 * 1024) });
     const script = join(root, "deploy/orange/recovery/capture-engine.sh");
     const run = (output: string, locked = false, copyFails = false) => spawnSync("sh", [
       script, "capture", "fixture-engine", join(directory, "state"), join(directory, output)
@@ -44,6 +45,13 @@ await test("Engine capture restarts its container after a failed stopped copy, a
     assert.equal(rejected.status, 1);
     assert.match(rejected.stderr, /already owns/u);
     assert.equal(existsSync(join(directory, "trace")), false);
+    process.env["CAPTURE_FREE_KB"] = String(1024 * 1024);
+    const full = run("full");
+    delete process.env["CAPTURE_FREE_KB"];
+    assert.equal(full.status, 1);
+    assert.match(full.stderr, /would leave less than/u);
+    assert.equal(existsSync(join(directory, "trace")), false);
+    assert.equal(existsSync(join(directory, "full.partial")), false);
     assert.equal(run("failed", false, true).status, 1);
     assert.equal(existsSync(join(directory, "failed")), false);
     assert.equal(existsSync(join(directory, "failed.partial", "captured-at")), true);

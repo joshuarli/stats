@@ -12,6 +12,10 @@
 set -eu
 
 engine_health=http://127.0.0.1:6420/health
+# The copy shares the Engine's filesystem, and the Engine refuses to start when its declared log and
+# cache capacities no longer fit, so a capture that would leave less than this free is refused
+# before anything stops.
+free_floor_kb=$((2 * 1024 * 1024))
 app_services="stats-infra-collector native-stats"
 
 usage() { echo "usage: capture-engine.sh capture CONTAINER STATE_DIRECTORY OUTPUT_DIRECTORY | recover STATE_DIRECTORY" >&2; exit 2; }
@@ -70,6 +74,13 @@ for leaf in log objects; do
     test "$mount" = "$state/$leaf" || { echo "unexpected Engine mount for $leaf" >&2; exit 1; }
 done
 test "$(docker inspect --format '{{.State.Running}}' "$container")" = true
+need_kb=$(du -sk "$state/log" "$state/objects" | awk '{n += $1} END {print n}')
+free_kb=$(df -Pk "$output_parent" | awk 'NR == 2 {print $4}')
+if [ $((free_kb - need_kb)) -lt "$free_floor_kb" ]; then
+    rmdir "$partial/depot" "$partial"
+    echo "capture needs ${need_kb} KiB and would leave less than ${free_floor_kb} KiB free of ${free_kb} KiB" >&2
+    exit 1
+fi
 docker inspect --format '{{.Config.Image}} {{.Image}}' "$container" > "$partial/image"
 engine_config=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/rivet/config.json"}}{{.Source}}{{end}}{{end}}' "$container")
 test -f "$engine_config"
