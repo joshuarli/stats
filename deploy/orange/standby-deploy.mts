@@ -6,6 +6,9 @@ import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const HOST = "stats-standby", ROUTE_HOST = "lisa", BOUND_S = 300, DEADLINE_S = 300;
+// The standby's health route answers before ingest does: on 2026-11-22 a restart
+// accepted synthetic ingest about 50 s after it began.
+const READY_S = 120;
 const LIMITS = { observe: 120000, authority: 30000, remote: 30000, build: 600000, test: 900000, stage: 600000, start: 1800000 };
 const EXIT = { promoted: 0, notPromoted: 3, lockHeld: 4, needsOperator: 5 } as const;
 const APP_PARTS = ["stats", "observe", "stats.jsonc", "observe.jsonc"] as const;
@@ -139,7 +142,7 @@ export function deployStandby(effects: StandbyEffects): Outcome {
   const receipt = admissionReceipt({ baseline: { releaseId: baseline, artifactDigest: baselineDigest }, candidate: { releaseId: candidate, artifactDigest: digest, components: { runtime } }, source: { repository: "joshuarli/stats", commit }, checks }, join(record, "evidence"), effects.now());
   writeFileSync(join(record, "receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
   const policy = {
-    max_age_s: 3600, observation_s: 120, check_interval_s: 30,
+    max_age_s: 3600, ready_s: READY_S, observation_s: 120, check_interval_s: 30,
     functional_check: { argv: [effects.node, join(record, "tools/functional-check.mjs"), "--target-kind", "native-app", "--ssh-config", sshConfig, "--host", HOST, "--credential-file", credential, "--statsctl", statsctl, "--rollout", rollout], timeout_s: 120 },
     authority_check: { argv: [effects.node, join(record, "tools/writer-authority.mjs"), "--route-host", ROUTE_HOST], timeout_s: 30 },
   };

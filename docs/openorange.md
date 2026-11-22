@@ -131,10 +131,12 @@ minutes), assembles the app release (both Workers, their descriptors and the
 collector) and stages it with `rollout stage --target-kind native-app`, which
 changes no running state. It then writes a `stats-app-admission/1` receipt
 binding the staged digest, the selected runtime digest and the check logs,
-plus a policy with a 120 s verification window, to
+plus a policy, to
 `~/.local/state/openorange/apps/<app>/<time>/`, and runs `rollout start
---target-kind native-app`. One lease covers writer-authority recheck,
-activation, verification and conditional recovery; recovery reactivates the
+--target-kind native-app`. The policy allows 120 s for the restarted app to
+pass the functional check (synthetic ingest with readback), then requires
+every check over a 120 s window, every 30 s. One lease covers
+writer-authority recheck, activation, verification and conditional recovery; recovery reactivates the
 previous app only while this run's candidate is still selected. Exit codes are
 the controller's: 0 promoted, 3 rejected or recovered, 4 lease held, 5 needs
 an operator. Journals are in `~/.local/state/openorange/rollouts/`. The
@@ -184,10 +186,25 @@ Engine logged no warnings. Rerun the drill whenever this reservation changes.
 
 At 03:57 the guest restarted with 8 vCPUs (`-smp 8`, previously 4), with 55 s
 of downtime. Its Engine container `live-stats-engine` was created by hand on
-2026-11-18 and has no tracked definition. Its Docker limits are 3 GiB of memory
-and 4 CPUs (`docker update --cpus 4`, set at 03:08), so the Engine cannot take
-the cores the app needs to register. Recreating the container must keep both
-limits.
+2026-11-18. Its Docker limits are 3 GiB of memory and 4 CPUs (`docker update
+--cpus 4`, set at 03:08), so the Engine cannot take the cores the app needs to
+register. Recreating the container must keep both limits.
+
+Since 2026-11-21 the container is declared in Stuff's
+`deploy/openorange/standby/stats-engine.json`: image digest, entrypoint,
+user, host networking, restart policy, CPU and memory limits, mounts, the
+configuration file's content, listeners 6420 and 6430, namespace and guest
+vCPUs. The admin token is declared only by name. Compare the guest with it
+read-only:
+
+```sh
+deploy/openorange/bin/standby-engine inspect --host stats-standby \
+  --ssh-config ~/.config/stats/standby/ssh_config   # in the Stuff checkout
+```
+
+It matched at 23:50 UTC. The declaration does not yet recreate the container:
+replacing the Engine needs a journaled, conditional replacement adapter. The
+exited `rollback-engine` container from 2026-11-18 is not part of it.
 
 ### Standby operations record (2026-11-20)
 

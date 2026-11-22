@@ -139,6 +139,7 @@ test('deploy starts one native-app transaction bound to the staged digest, runti
     assert.equal(start.includes('--evaluator'), false);
     const policy = JSON.parse(readFileSync(flag('policy'), 'utf8'));
     assert.deepEqual(policy.functional_check.argv.slice(2, 4), ['--target-kind', 'native-app']);
+    assert.equal(policy.ready_s, 120);
     assert.deepEqual(policy.authority_check.argv.slice(2), ['--route-host', 'lisa']);
     assert.ok(existsSync(policy.functional_check.argv[1]) && existsSync(policy.authority_check.argv[1]));
     const receipt = JSON.parse(readFileSync(flag('receipt'), 'utf8'));
