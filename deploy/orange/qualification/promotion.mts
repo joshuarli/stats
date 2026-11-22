@@ -169,4 +169,7 @@ try {
   const result = writeBundle(resolve(values.out), baseline, candidate, { baseline: merge(runs[0], allRuns[0]), candidate: merge(runs[1], allRuns[1]) }, { baseline: { ...observed[0], resources: resources[0] }, candidate: { ...observed[1], resources: resources[1] } }, recovery, start, end, { definitionBytes, baselineManifest: leftArtifact.manifest, candidateManifest: rightArtifact.manifest });
   console.log(JSON.stringify({ verdict: result.decision.verdict, evidence: resolve(values.out) }));
   process.exitCode = result.status;
-} finally { await candidate?.stop(); await baseline?.stop(); rmSync(scratch, { recursive: true, force: true }); }
+} finally {
+  await candidate?.stop(); await baseline?.stop();
+  try { rmSync(scratch, { recursive: true, force: true }); } catch (error) { console.error(`qualification scratch ${scratch} was not removed: ${error instanceof Error ? error.message : String(error)}`); }
+}
