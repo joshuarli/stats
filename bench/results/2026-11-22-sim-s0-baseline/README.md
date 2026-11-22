@@ -45,16 +45,18 @@ workstation (`.work/tmp/s0/timings.sh`):
 | Dependency preparation, new worktree | 0.7 | 113 packages linked from the warm pnpm store; no download |
 | Dependency preparation, warm | 0.1, 0.1, 0.1 | |
 | App release build (`app-release.mts`) | 5.6, 2.1, 2.3 | first run cold for the Worker build cache |
-| `make cloudflare-test` | 210.6, 188.0, 206.2 | **failed every run at `d085e516cb4`** (below); earlier admission run 112 s |
+| `make cloudflare-test` at `d085e516cb4` | 210.6, 188.0, 206.2 | **failed every run** (below) |
+| `make cloudflare-test` at `9696114d902`, fresh worktree | 128, 118, 118 | 1,040 tests, 0 failures |
+| Runtime build (`build-runtime-artifact`, `runtime-candidate-laputa.2.json`, Docker on the workstation) | 31, 25, 25 | every build reproduced production's manifest digest `sha256:2c70c316…`; the two warm builds produced the same archive `sha256:ce1e7c93…`, which differs from production's older `sha256:6cb79216…` |
 
 `make cloudflare-test` was red at the baseline commit:
 
 - `recovery-capture.test.ts` still called the pre-lease capture interface;
   fixed in `d92ecf87a83`.
-- `development.test.ts` fails in a fresh worktree (`orange dev` exits with
-  `MODULE_NOT_FOUND` before ready) and passes in the primary checkout, so
-  `make dev` depends on something untracked that a new checkout lacks. Open;
-  a clean-checkout reproduction gap for S4.
+- `development.test.ts` failed in a fresh worktree (`orange dev` exited with
+  `MODULE_NOT_FOUND`): it runs the OpenOrange closure from
+  `deploy/orange/node_modules`, which only `make orange-ready` installs, and
+  `cloudflare-test` did not depend on it. Fixed in `9696114d902`.
 
 Idle production resources (2026-11-22 14:40 UTC, `bench/standby-soak.py`
 probe): app 3 processes, 824 MB RSS; collector 72 MB; Engine 2.0 GB of its
@@ -63,8 +65,16 @@ guest free disk 5.6 GB; log shards 135 MB, cold cache 896 MB of a 936 MB
 auto-sized budget, objects 1.6 GB. The cache had evicted 65 GB since its
 02:36 start. Representative-load resources come from the sustained soak.
 
-Readiness after a disposable recreation (cached inputs): provisioning 2 m 16 s,
-first functional check 7 s later ([guest recreation](../2026-11-22-guest-recreation/README.md)).
+Readiness samples added on 2026-11-22: a disposable recreation provisioned in
+2 m 16 s with its first functional check 7 s later
+([guest recreation](../2026-11-22-guest-recreation/README.md)); production's
+app restart at 15:59:50 was functional 11 s later, and its Engine
+configuration apply at 16:00 completed in 18 s with the functional check 12 s
+after the restart ([Engine degradation](../2026-11-22-engine-degradation/README.md)).
+Staging is the 245 s runtime transfer above; app rollback is the 3 s recovery
+in the [standby app transaction](../2026-11-22-standby-app-transaction/README.md).
+Neither was repeated: staging and rollback change production, which the soak
+holds fixed.
 
 ## Frozen recovery budgets
 
@@ -88,7 +98,8 @@ standby writer. Stricter existing limits still apply.
 - New diagnostic profiles of this campaign and their own runs are recorded with
   STA-135 ([Engine degradation drills](../2026-11-22-engine-degradation/README.md)).
 
-## Still open for S0
+## Limits of this baseline
 
-- Runtime build and staging timings (not repeated in this pass).
-- The `make dev` clean-checkout gap above.
+- Backend edit-to-ready in `make dev` is not timed; S4 owns that loop and
+  measures it before changing it.
+- Staging and rollback have one sample each, for the reason above.
