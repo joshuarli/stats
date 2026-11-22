@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { OBSERVE_OUTPUT, STATS_OUTPUT } from "../../../cloudflare/local/topology.ts";
 import { generate } from "../generate.mts";
 import { freePort, startSession } from "../session.mts";
-import type { Stack } from "./stack.mts";
+import { appOutputs, type Stack } from "./stack.mts";
 import { workload } from "./workload.mts";
 import { compareHistory, expectedHistory, type Sample } from "./history.mts";
 
@@ -65,7 +65,7 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
   if (candidate !== baseline && !baseline.recovered && baseline.historyRuns.length) await recover(baseline, baseline, `${directory}-baseline`, baseline.historyRuns as HistoryRun[]);
   await candidate.stop();
   cpSync(candidate.stateDir, directory, { recursive: true });
-  generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers["X-Stats-Gateway-Secret"] ?? Object.values(baseline.headers)[0]!, nowMs: null });
+  generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers["X-Stats-Gateway-Secret"] ?? Object.values(baseline.headers)[0]!, nowMs: null }, "in-place", appOutputs(baseline.appRoot));
   const port = await freePort();
   const session = "containerName" in baseline.session ? await startContainerSession(directory, port, baseline.runtimeRoot) : await startSession(directory, port, { runtimeRoot: baseline.runtimeRoot });
   try {

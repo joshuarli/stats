@@ -7,11 +7,13 @@ import { GATEWAY_IDENTITY_HEADER, GATEWAY_SECRET_HEADER } from "../../../cloudfl
 import { ORANGE_ROOT, generate } from "../generate.mts";
 import { freePort, startSession } from "../session.mts";
 
+/** Worker outputs a stack serves: its app release's, or the working tree's built Workers. */
+export const appOutputs = (appRoot: string | undefined) => appRoot === undefined ? { stats: STATS_OUTPUT, observe: OBSERVE_OUTPUT } : { stats: join(appRoot, "stats"), observe: join(appRoot, "observe") };
+
 /** Starts one canary stack. `appRoot` is an app release directory (deploy/orange/app-release.mts); without it the stack serves the working tree's built Workers. */
 export async function startStack(stateDir: string, release: string, suppress = false, runtimeRoot = ORANGE_ROOT, container = false, infraVerifier?: string, appRoot?: string) {
   const secret = randomBytes(32).toString("hex");
-  const outputs = appRoot === undefined ? { stats: STATS_OUTPUT, observe: OBSERVE_OUTPUT } : { stats: join(appRoot, "stats"), observe: join(appRoot, "observe") };
-  const generated = generate(stateDir, { kind: "dev", release, gatewaySecret: secret, nowMs: null }, "in-place", outputs);
+  const generated = generate(stateDir, { kind: "dev", release, gatewaySecret: secret, nowMs: null }, "in-place", appOutputs(appRoot));
   if (suppress || infraVerifier !== undefined) {
     const descriptor = JSON.parse(readFileSync(generated.stats, "utf8"));
     if (suppress) delete descriptor.vars.APPLICATION_EVENTS_RELEASE;
