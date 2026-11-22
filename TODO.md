@@ -34,8 +34,8 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 
 - **Area:** qualification harness
 - **Where:** deploy/orange/canary/*.mts, deploy/orange/qualification/promotion.mts, deploy/orange/tsconfig.json
-- **Problem:** deploy/orange/tsconfig.json includes neither the canary modules nor promotion.mts, so type errors there go unnoticed: a probe that includes promotion.mts reports 217 errors across its import graph, including in evidence.mts and workload.mts. One is a live defect: recover() in canary/evidence.mts reads the gateway secret as headers["X-Stats-Gateway-Secret"], but stack headers are keyed Stats-Gateway-Secret, so it works only through its fallback to the first header value and would send the identity header as the secret if the order changed.
-- **Recommendation:** Fix the recover() header lookup with a regression test, then add the canary and qualification modules to the deploy/orange typecheck and repair the errors it reports, without changing harness behaviour.
+- **Problem:** deploy/orange/tsconfig.json includes neither the canary modules nor promotion.mts, so type errors there go unnoticed. A probe including qualification/promotion.mts and canary/*.mts reports 8 errors in those files (evidence.mts: engineName on the narrowed session, a spawn overload, an unknown digest; fault-proxy.mts and workload.mts: Uint8Array<ArrayBufferLike> where ArrayBuffer is required; promotion.mts: a spawn overload and a never-typed collector child) and 4 in cloudflare/src/history-frame.ts, whose extensionless relative imports fail under the deploy tsconfig's NodeNext resolution. The misnamed gateway-secret header in recover() was fixed on 2026-11-22; it was the one live defect found.
+- **Recommendation:** Choose how deploy/orange typechecks imported cloudflare sources (their own bundler-resolution project reference, or explicit extensions), then add the canary and qualification modules to the deploy/orange typecheck and repair the 8 harness errors without changing harness behaviour.
 - **Fix with:** typing-audit
 - **Effort:** M
 
