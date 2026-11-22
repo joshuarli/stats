@@ -1,0 +1,29 @@
+{
+  "schema": "stats-standby-soak-definition/1",
+  "target": "native Stats standby writer on Threadripper (stats-standby), ordinary ingress https://stats.17166969.xyz",
+  "durationHours": 24,
+  "intervalSeconds": 60,
+  "checkEverySamples": 5,
+  "recoveryS": 120,
+  "recoveryLimitS": 600,
+  "minSteadyCheckSuccess": 0.99,
+  "latencyMs": {"ingest": {"p95": 500, "p99": 1000}, "latest": {"p95": 500, "p99": 1000}},
+  "restartingFaults": ["app-restart", "engine-restart"],
+  "maxWarningRunSamples": 3,
+  "maxMedianMemoryChange": 0.05,
+  "maxQueueSlopePerHour": 0.5,
+  "maxActorRelativeSlopePerHour": 0.02,
+  "minFreeBytes": 2147483648,
+  "requiredSources": {
+    "worker:stats:0": ["openorange_worker_info", "openorange_worker_start_time_seconds", "rivet_rivetkit_actor_active_count", "rivet_rivetkit_actor_connections_total", "rivet_rivetkit_actor_sqlite_vfs_commit_total", "rivet_rivetkit_sqlite_worker_queue_depth"],
+    "worker:stats-observe:1": ["openorange_worker_info", "openorange_worker_start_time_seconds", "rivet_rivetkit_actor_active_count", "rivet_rivetkit_actor_connections_total", "rivet_rivetkit_actor_sqlite_vfs_commit_total", "rivet_rivetkit_sqlite_worker_queue_depth"],
+    "engine:live": ["rivet_topology_discovery_heartbeat_reads_total", "rivet_depot_cold_store_unflushed_bytes", "rivet_depot_tablet_store_queue_depth"]
+  },
+  "faults": [
+    {"name": "app-restart", "kind": "app-restart", "atHours": 3},
+    {"name": "engine-restart", "kind": "engine-restart", "atHours": 7},
+    {"name": "depot-warm-read", "kind": "depot-warm-read", "atHours": 11, "boundS": 300},
+    {"name": "host-cpu", "kind": "host-cpu", "atHours": 15, "loops": 64, "durationS": 600},
+    {"name": "host-disk-write", "kind": "host-disk-write", "atHours": 19, "bytes": 4294967296, "writeBytesPerSecond": 104857600}
+  ]
+}

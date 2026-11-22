@@ -87,3 +87,42 @@ node --experimental-strip-types cloudflare/src/cli/statsctl.ts verify release --
 ```
 
 Root-owned canary scratch still needs a root container to remove.
+
+## Promotion profile with complete source coverage (2026-11-22 16:30 UTC)
+
+The smoke run's 1 ms window could not evidence any infrastructure source. This
+run used the frozen promotion profile (`profiles/promotion.json`: 60 s warmup,
+600 s measured, 10 requests a second, four required sources) on Threadripper,
+from Stats `6f9a260022c`, with both stacks' scratch on tmpfs
+(`--scratch /tmp/stats-qual/scratch`), so production's disk was not written.
+
+- Baseline app: `app-5091917968f7` (production's, `stats-30a64ac4fac6`).
+- Candidate app: `app-7a554c6a3b1c`, built from a clean tree at `d085e516cb4`.
+- Runtime on both sides: `rt-2c70c316ce8d` (archive `sha256:6cb79216…`).
+
+| | Baseline | Candidate |
+| --- | --- | --- |
+| Requests attempted / succeeded / body mismatches | 6,000 / 6,000 / 0 | 6,000 / 6,000 / 0 |
+| Acknowledged writes / read back / lost | 1,320 / 1,320 / 0 | 1,320 / 1,320 / 0 |
+| CPU s / peak memory / restarts | 163.3 / 1,423 MiB / 0 | 162.3 / 1,401 MiB / 0 |
+
+Every required source was evidenced on both sides and attributed to that
+side's app release: `engine:live`, `worker:stats:0`, `worker:stats-observe:1`
+and `collector:infra`, 40 collector deliveries received each, every required
+family usable. The only unusable family, the baseline Engine's
+`rivet_state_machine_durable_stale_alarm_deliveries_total`, is not required.
+Recovery restarted the baseline app on the candidate's state copy and read back
+exactly. `statsctl verify release --replay` judged `pass` with no reasons.
+
+This is admissibility of a distinct app build with complete source coverage,
+not an improvement claim: the two builds differ only in their descriptors, and
+`hostConfounded` is still written as `false` rather than measured.
+
+Two defects surfaced on the way, both fixed: an app release outside the
+checkout was not mounted into the containers (Stats `6f9a260022c`), and app
+directories copied from macOS carried AppleDouble files, which the harness
+correctly refused.
+
+Evidence: `~/.local/state/openorange/qualifications/sim-s5-coverage-20261122/`
+on the workstation (`evidence/`, `evidence.sha256`, `run.log`).
+
