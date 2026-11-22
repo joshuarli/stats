@@ -35,17 +35,60 @@ The readiness samples range from 2.7 s to 113 s; four samples are not a
 distribution and are not a budget. The 113 s sample followed an Engine
 restart; the others followed app restarts only.
 
-## Open for S0
+## Measured on 2026-11-22 (second pass)
 
-- Clean and warm timings for dependency preparation, Worker builds, focused
-  tests, runtime build and staging, each repeated as the campaign prescribes.
-- Idle and representative-load CPU, memory, disk growth, latency and verified
-  work counts; observation-overhead status stays as STA-128 records it.
-- Frozen detection, recovery-to-safe-writes, backup data-age and restore-time
-  budgets. No current verified capture exists (the 2026-11-22 capture failed
-  safely); the last protected copy is `threadripper-20261118T035957Z`.
-- Preserved failed depots and attempt allowances inventory.
+Repeated timings, from a fresh worktree of Stats `d085e516cb4` on the
+workstation (`.work/tmp/s0/timings.sh`):
 
-Records: [standby app transaction](../2026-11-22-standby-app-transaction/README.md),
-[Engine capture](../2026-11-22-engine-capture/README.md),
-[two-build qualification](../2026-11-22-two-build-qualification/README.md).
+| Step | Runs (s) | Note |
+| --- | --- | --- |
+| Dependency preparation, new worktree | 0.7 | 113 packages linked from the warm pnpm store; no download |
+| Dependency preparation, warm | 0.1, 0.1, 0.1 | |
+| App release build (`app-release.mts`) | 5.6, 2.1, 2.3 | first run cold for the Worker build cache |
+| `make cloudflare-test` | 210.6, 188.0, 206.2 | **failed every run at `d085e516cb4`** (below); earlier admission run 112 s |
+
+`make cloudflare-test` was red at the baseline commit:
+
+- `recovery-capture.test.ts` still called the pre-lease capture interface;
+  fixed in `d92ecf87a83`.
+- `development.test.ts` fails in a fresh worktree (`orange dev` exits with
+  `MODULE_NOT_FOUND` before ready) and passes in the primary checkout, so
+  `make dev` depends on something untracked that a new checkout lacks. Open;
+  a clean-checkout reproduction gap for S4.
+
+Idle production resources (2026-11-22 14:40 UTC, `bench/standby-soak.py`
+probe): app 3 processes, 824 MB RSS; collector 72 MB; Engine 2.0 GB of its
+3 GiB limit, CPU in bursts between 1% and 140% of one core with no warnings;
+guest free disk 5.6 GB; log shards 135 MB, cold cache 896 MB of a 936 MB
+auto-sized budget, objects 1.6 GB. The cache had evicted 65 GB since its
+02:36 start. Representative-load resources come from the sustained soak.
+
+Readiness after a disposable recreation (cached inputs): provisioning 2 m 16 s,
+first functional check 7 s later ([guest recreation](../2026-11-22-guest-recreation/README.md)).
+
+## Frozen recovery budgets
+
+Fixed on 2026-11-22 before recovery qualification, for the Threadripper
+standby writer. Stricter existing limits still apply.
+
+| Budget | Limit | Measured so far |
+| --- | --- | --- |
+| Detection: an observer alert opens | 5 min | 35 s (`hosts`) and 2 m 23 s (`ingest`) for the 01:45 relapse; delivery stays deferred, which is why that relapse went unnoticed for 37 minutes |
+| Recovery to safe writes after a restart or after pressure ends | 120 s to a passing functional check | 2.7–113 s readiness samples |
+| Backup data age (RPO) | 24 h, verified off-host | `sim-20261122T0236Z`, verified off-host 2026-11-22 |
+| Restore time: sealed off-host capture to a functional check on a fresh guest | 30 min | about 17 min: 14 m 39 s capture upload at 2.6 MB/s, 2 m 23 s provisioning and check |
+
+## Preserved state and allowances
+
+- Protected captures: `threadripper-20261118T035957Z` (off-host, and on the
+  guest's disk) and `sim-20261122T0236Z` (off-host, verified; on the guest's
+  disk). The partial `sim-20261122T0135Z` was deleted on 2026-11-22.
+- The tenfold fixture and the STA-128 and P8 allowances are unchanged; see
+  the [resumption record](../../../docs/STATS-PERFORMANCE-RESUMPTION.md).
+- New diagnostic profiles of this campaign and their own runs are recorded with
+  STA-135 ([Engine degradation drills](../2026-11-22-engine-degradation/README.md)).
+
+## Still open for S0
+
+- Runtime build and staging timings (not repeated in this pass).
+- The `make dev` clean-checkout gap above.
