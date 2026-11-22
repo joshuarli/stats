@@ -138,7 +138,7 @@ entry into a new campaign framework.
 | S2 | Reproduce and repair the Engine degradation mechanism | Stuff + Stats workload | planned |
 | S3 | Queryable causal evidence and truthful resource comparisons | Stats | planned |
 | S4 | Smaller production serve closure and faster edit/build/start loop | Stuff + Stats build integration | planned |
-| S5 | App/runtime/Engine improvement experiments through one qualification path | Stats + Stuff | in progress: `promotion.mts` takes independent app releases per side and names the changed layer; end-to-end run pending |
+| S5 | App/runtime/Engine improvement experiments through one qualification path | Stats + Stuff | in progress: `promotion.mts` takes independent app releases per side and names the changed layer; a smoke run qualified two different app builds on one runtime (`pass`, replayed). No improvement experiment has run. [Record](../bench/results/2026-11-22-two-build-qualification/README.md) |
 | S6 | Portability/recovery rehearsal and sustained operational acceptance | Stats + Stuff | planned |
 
 Start S0 and the focused S1 race regression immediately. Bring forward the

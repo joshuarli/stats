@@ -1,5 +1,5 @@
 Prefix: STA
-Next: 137
+Next: 138
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
 
@@ -29,3 +29,13 @@ Production measurements quoted below are dated evidence, not a fresh account aud
 - **Recommendation:** When the owner names a destination, deliver each outbox transition durably with retry, keeping the token out of argv. A hosted dead-man check would also cover a Threadripper outage.
 - **Fix with:** error-model
 - **Effort:** S
+
+### STA-137 · P3 · Typecheck the canary and qualification harness
+
+- **Area:** qualification harness
+- **Where:** deploy/orange/canary/*.mts, deploy/orange/qualification/promotion.mts, deploy/orange/tsconfig.json
+- **Problem:** deploy/orange/tsconfig.json includes neither the canary modules nor promotion.mts, so type errors there go unnoticed: a probe that includes promotion.mts reports 217 errors across its import graph, including in evidence.mts and workload.mts. One is a live defect: recover() in canary/evidence.mts reads the gateway secret as headers["X-Stats-Gateway-Secret"], but stack headers are keyed Stats-Gateway-Secret, so it works only through its fallback to the first header value and would send the identity header as the secret if the order changed.
+- **Recommendation:** Fix the recover() header lookup with a regression test, then add the canary and qualification modules to the deploy/orange typecheck and repair the errors it reports, without changing harness behaviour.
+- **Fix with:** typing-audit
+- **Effort:** M
+
