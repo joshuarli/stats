@@ -3,8 +3,10 @@
 Simplification campaign S1 case 6 and the first-checkpoint "valid
 representative Engine capture". The capture ran through
 `deploy/orange/recovery/capture-standby.sh` (Stats `e775b8de248`) under the
-shared rollout lease. It **failed safely**: no capture was published, every
-service was restored and the app passed the functional check. It also
+shared rollout lease. The first run **failed safely**: no capture was
+published, every service was restored and the app passed the functional
+check. The Engine relapsed into the STA-135 loop eight minutes later. A
+stopped-copy capture at 02:36 succeeded and was validated (below). It also
 produced STA-135 evidence: a warm copy of the depot made the app lose its
 Engine registration while the Engine was running.
 
@@ -52,8 +54,58 @@ restarts. The stopped duration therefore grows by the full copy time; the
 copy time of 3.7 GiB on this disk is unmeasured. This version has not run in
 production.
 
-## Not established
 
-No valid capture exists yet. Running the stopped-copy capture costs a planned
-writer outage of the copy time plus app readiness (113 s here, 2.7 s and
-about 50 s in earlier samples); host agents buffer about four minutes.
+## Relapse after the failed capture (01:45–02:22 UTC)
+
+The Engine looked settled from 01:40 to 01:43, and the check stopped at 01:42:50.
+At 01:45:03 it entered the STA-135 loop: about 400% CPU (its 4-CPU cap),
+`refusing envoy connect that storage could not register`, `Envoy connection
+closed` and roughly 40 warnings a minute, with the data API returning 503.
+Nothing alerted; it was found at 02:18 when the leftover partial copy was
+deleted (the delete did not start it). Recovery under the lease: stopping
+`native-stats` (and its collector) at 02:20:59 dropped Engine CPU to 1% by
+02:21:46; starting both at 02:22:04 passed synthetic ingest at 02:22:10.
+Outage: about 37 minutes.
+
+For about three minutes afterwards the Engine logged bursts of `volume alarm
+callback failed; the unacknowledged alarm will retry`, `depot command failed
+with an unstructured error`, flush-slot waits and one `log shard disk is near
+its capacity` warning (200 MB of a 257 MB `storage.log_shard.max_disk_bytes`
+budget, 75% watermark), then went quiet with CPU bursting between 1% and 120%.
+
+## Stopped-copy capture (02:36 UTC): captured
+
+After three quiet samples (Engine below 20% CPU) and with a watcher alerting on
+warning bursts or non-200 responses, `capture-standby.sh sim-20261122T0236Z`
+(Stats `cffb0fa98d5`) ran:
+
+| UTC | Event |
+| --- | --- |
+| 02:36:46 | Lease `engine-capture` acquired |
+| 02:36:47 | Collector and `native-stats` stopped, then the Engine (clean stop in 3 s, exit 0) |
+| 02:36:50 | Stopped copy started |
+| 02:36:55 | Copy done; Engine started and healthy; `native-stats` and collector started |
+| 02:37:13 | Functional check passed (8 s after the restore); receipt `captured` |
+
+The writer was unavailable for about 16 seconds. The watcher saw only the
+expected 502 at 02:37:01 and no warnings over the following 20 minutes.
+
+- Capture: `/var/lib/live-stats-recovery/sim-20261122T0236Z` on the guest,
+  792 files, 2.3 GiB, `depot.sha256` digest
+  `sha256:84d48d41d769312ad019586936b79746c6292eee9ac325e50b8cadc975eaba4b`,
+  Engine image `rivetdev/engine@sha256:6e585002…`.
+- Off-host copy: `~/backups/openorange/stats/standby-sim-20261122T0236Z/`
+  on the workstation (owner-only), copied with `rsync --bwlimit=8000` in
+  14 m 49 s with no Engine warnings; all 792 files verified against
+  `depot.sha256`.
+- Validation: the pinned Engine image started on a scratch copy of it
+  (linux/amd64, loopback only, a validation-only admin token) and answered
+  health within 4 s, read its tablet manifests and started 18 state machines
+  with no `ManifestMissing`, corruption or panic. The namespace list was
+  intact, and `stats-prod` held the same actors as production:
+  `installation-917ceba9` 1, `observation-store-13f29dce` 14,
+  `metric-store-e8ed0a9e` 1, none destroyed.
+
+Not yet established: application-level readback of the copy (history and
+events through `native-stats` on restored state), which needs a full app
+stack on it.

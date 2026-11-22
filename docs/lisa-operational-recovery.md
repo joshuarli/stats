@@ -51,10 +51,13 @@ then requires the functional check (synthetic ingest with readback) within
 120 s and writes `~/.local/state/openorange/captures/NAME.json`, whose
 `outcome` is `captured` only when the copy completed, the services are back
 and the check passed. Exit codes: 0 captured, 1 failed, 4 lease held with
-nothing changed. Copy the sealed depot and protected runtime configuration
-off-host, verify `depot.sha256`, and validate it by starting an isolated
-Engine on it before relying on it; logical export remains separate from a
-physical capture. Ingress and writer-handoff operations are outside the
+nothing changed. On 2026-11-22 the stopped window was about 16 seconds for a
+2.3 GiB depot. Copy the sealed directory off-host with a bandwidth limit
+(`rsync --bwlimit=8000`; reading the guest disk faster has cost the app its
+Engine registration), verify every file against `depot.sha256`, and validate
+it before relying on it: start the pinned Engine image on a scratch copy and
+compare its `stats-prod` actor counts with production's. Logical export
+remains separate from a physical capture. Ingress and writer-handoff operations are outside the
 guest lease.
 
 ### Incident changes
