@@ -202,8 +202,11 @@ deploy/openorange/bin/standby-engine inspect --host stats-standby \
   --ssh-config ~/.config/stats/standby/ssh_config   # in the Stuff checkout
 ```
 
-It matched at 23:50 UTC. The declaration does not yet recreate the container:
-replacing the Engine needs a journaled, conditional replacement adapter. The
+It matched at 23:50 UTC. `standby-engine create-args --env-file FILE` prints
+the `docker create` argv for the declared container, with the admin token
+only in the env file; a locally created container from it has no container
+drift. Replacing the live Engine still needs a journaled, conditional
+replacement adapter, and recreation on a disposable guest has not run. The
 exited `rollback-engine` container from 2026-11-18 is not part of it.
 
 ### Standby operations record (2026-11-20)
