@@ -26,7 +26,7 @@ wait_health() {
 
 start_services() {
     for service in native-stats stats-infra-collector; do
-        if grep -qx "started $service" "$1"; then rc-service "$service" start >/dev/null || { echo "cannot start $service" >&2; return 1; }; fi
+        if grep -qx "started $service" "$1"; then rc-service "$service" start >/dev/null 9>&- || { echo "cannot start $service" >&2; return 1; }; fi
     done
 }
 
@@ -41,7 +41,7 @@ restore() {
         cat "$previous" > "$config"
     fi
     if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != true ]; then
-        docker start "$container" >/dev/null || { echo "cannot start $container" >&2; return 1; }
+        docker start "$container" >/dev/null 9>&- || { echo "cannot start $container" >&2; return 1; }
     fi
     wait_health || return 1
     start_services "$intent" || return 1
@@ -63,6 +63,8 @@ esac
 container=$2 config=$3 new=$4 state=$(realpath "$5")
 intent="$state/.config-intent"
 umask 077
+# Services started below run under supervise-daemon, which would inherit this descriptor and hold
+# the lock long after the operation ends; every start closes it.
 exec 9>"$state/.capture.lock"
 flock -n 9 || { echo "an Engine capture or configuration change already owns $state" >&2; exit 1; }
 [ ! -e "$intent" ] || { echo "an interrupted configuration change left $intent; run recover first" >&2; exit 1; }
@@ -110,7 +112,7 @@ docker stop --time 20 "$container" >/dev/null
 test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" -eq 0
 cat "$new" > "$config"
 started=$(date -u +%FT%TZ)
-docker start "$container" >/dev/null
+docker start "$container" >/dev/null 9>&-
 wait_health
 # The Engine logs the capacities it resolved; configured values must be the declared ones, so a
 # configuration that did not take effect is refused rather than reported as applied.

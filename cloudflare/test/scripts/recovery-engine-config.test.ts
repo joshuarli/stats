@@ -19,7 +19,7 @@ await test("Engine configuration change writes the declared config only while st
       *".State.Running"*) if [ -e "$T/stopped" ]; then echo false; else echo true; fi ;;
       *".State.ExitCode"*) echo 0 ;;
       stop*) echo stop >> "$T/trace"; : > "$T/stopped" ;;
-      start*) echo "start $(cat "$T/live-engine.json")" >> "$T/trace"; rm -f "$T/stopped" ;;
+      start*) [ ! -e /dev/fd/9 ] || echo inherited-lock >> "$T/trace"; echo "start $(cat "$T/live-engine.json")" >> "$T/trace"; rm -f "$T/stopped" ;;
       logs*) if [ "$ENGINE_IGNORES" = 1 ]; then printf 'message="resolved storage disk capacities" log_disk_bytes=136319336 log_configured=false cache_directory=/c cache_bytes=136319336 cache_configured=false\\n';
              else printf 'message="resolved storage disk capacities" log_disk_bytes=1073741824 log_configured=true cache_directory=/c cache_bytes=536870912 cache_configured=true\\n'; fi ;;
       *) exit 99 ;;
@@ -28,7 +28,7 @@ await test("Engine configuration change writes the declared config only while st
       docker,
       flock: "exit 0",
       wget: 'test ! -e "$T/stopped"',
-      "rc-service": 'case "$2" in status) exit 0 ;; *) echo "$1 $2" >> "$T/trace" ;; esac'
+      "rc-service": 'case "$2" in status) exit 0 ;; start) [ ! -e /dev/fd/9 ] || echo inherited-lock >> "$T/trace"; echo "$1 $2" >> "$T/trace" ;; *) echo "$1 $2" >> "$T/trace" ;; esac'
     })) writeFileSync(join(bin, name), `#!/bin/sh\n${contents}\n`, { mode: 0o700 });
     const declared = '{"storage":{"log_shard":{"max_disk_bytes":1073741824},"cold_store":{"disk_cache_bytes":536870912}}}';
     writeFileSync(join(directory, "new.json"), declared);

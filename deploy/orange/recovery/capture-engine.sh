@@ -24,7 +24,7 @@ restore() {
     intent=$1
     container=$(sed -n 's/^container //p' "$intent")
     if grep -qx "running $container" "$intent" && [ "$(docker inspect --format '{{.State.Running}}' "$container")" != true ]; then
-        docker start "$container" >/dev/null || { echo "cannot start $container" >&2; return 1; }
+        docker start "$container" >/dev/null 9>&- || { echo "cannot start $container" >&2; return 1; }
     fi
     if grep -qx "running $container" "$intent"; then
         i=0
@@ -35,7 +35,7 @@ restore() {
     fi
     for service in native-stats stats-infra-collector; do
         if grep -qx "started $service" "$intent"; then
-            rc-service "$service" start >/dev/null || { echo "cannot start $service" >&2; return 1; }
+            rc-service "$service" start >/dev/null 9>&- || { echo "cannot start $service" >&2; return 1; }
         fi
     done
     rm -f "$intent"
@@ -63,6 +63,8 @@ case "$output/" in "$state/"*) echo "capture output must be outside the depot" >
 partial="$output.partial"
 intent="$state/.capture-intent"
 umask 077
+# Services started below run under supervise-daemon, which would inherit this descriptor and hold
+# the lock long after the operation ends; every start closes it.
 exec 9>"$state/.capture.lock"
 flock -n 9 || { echo "an Engine capture already owns $state" >&2; exit 1; }
 [ ! -e "$intent" ] || { echo "an interrupted capture left $intent; run recover first" >&2; exit 1; }

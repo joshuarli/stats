@@ -21,7 +21,7 @@ await test("Engine capture restarts its container after a failed stopped copy, a
       *".State.ExitCode"*) echo 0 ;;
       *".Config.Image"*) echo 'test:engine sha256:test' ;;
       stop*) echo stop >> "$CAPTURE_TEST/trace"; : > "$CAPTURE_TEST/stopped" ;;
-      start*) echo start >> "$CAPTURE_TEST/trace"; rm -f "$CAPTURE_TEST/stopped" ;;
+      start*) [ ! -e /dev/fd/9 ] || echo inherited-lock >> "$CAPTURE_TEST/trace"; echo start >> "$CAPTURE_TEST/trace"; rm -f "$CAPTURE_TEST/stopped" ;;
       *) exit 99 ;;
     esac`;
     for (const [name, contents] of Object.entries({
