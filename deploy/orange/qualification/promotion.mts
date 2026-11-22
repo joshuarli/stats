@@ -10,9 +10,9 @@ import { prepare, runWorkload, spec } from "../canary/workload.mts";
 import { monitorResources, observe, recover, source, waitCheckpoint, writeBundle } from "../canary/evidence.mts";
 
 const root = resolve(import.meta.dirname, "../../..");
-const { values } = parseArgs({ options: { baseline: { type: "string" }, candidate: { type: "string" }, "baseline-app": { type: "string" }, "candidate-app": { type: "string" }, out: { type: "string" }, profile: { type: "string" } } });
+const { values } = parseArgs({ options: { baseline: { type: "string" }, candidate: { type: "string" }, "baseline-app": { type: "string" }, "candidate-app": { type: "string" }, out: { type: "string" }, profile: { type: "string" }, scratch: { type: "string" } } });
 if (process.platform !== "linux") throw new Error("qualification requires native Linux and Docker");
-if (!values.baseline || !values.candidate || !values["baseline-app"] || !values["candidate-app"] || !values.out) throw new Error("usage: node promotion.mts --baseline RUNTIME_DIR --candidate RUNTIME_DIR --baseline-app APP_DIR --candidate-app APP_DIR --out DIR [--profile FILE]\nPass the same directory for both sides of the layer an experiment holds constant.");
+if (!values.baseline || !values.candidate || !values["baseline-app"] || !values["candidate-app"] || !values.out) throw new Error("usage: node promotion.mts --baseline RUNTIME_DIR --candidate RUNTIME_DIR --baseline-app APP_DIR --candidate-app APP_DIR --out DIR [--profile FILE] [--scratch DIR]\nPass the same directory for both sides of the layer an experiment holds constant.\n--scratch holds both stacks' runtimes and state (default .work/tmp); on a host whose disk also holds a production writer, point it at tmpfs.");
 const definitionBytes = readFileSync(resolve(values.profile ?? join(root, "deploy/orange/qualification/profiles/promotion.json")));
 const profile = JSON.parse(definitionBytes.toString("utf8")) as { name: string; warmupMs: number; measureMs: number; requestMix: Record<string, number>; requestRatePerSecond?: number; requiredSources: { source: string; producer: string; families: string[] }[] };
 if (!["smoke", "promotion"].includes(profile.name) || !Number.isSafeInteger(profile.measureMs) || !Number.isSafeInteger(profile.warmupMs) || profile.measureMs < 1 || profile.warmupMs < 0 || (profile.name === "promotion" && (profile.warmupMs < 60_000 || profile.measureMs < 600_000))) throw new Error("invalid qualification profile");
@@ -28,8 +28,9 @@ const digestFile = (file: string) => {
   return hash.digest("hex");
 };
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
-mkdirSync(join(root, ".work/tmp"), { recursive: true });
-const scratch = mkdtempSync(join(root, ".work/tmp/qualification-"));
+const scratchRoot = resolve(values.scratch ?? join(root, ".work/tmp"));
+mkdirSync(scratchRoot, { recursive: true, mode: 0o700 });
+const scratch = mkdtempSync(join(scratchRoot, "qualification-"));
 let baseline: Stack | undefined, candidate: Stack | undefined;
 try {
   const extract = (dir: string, name: string) => {
