@@ -73,12 +73,18 @@ try {
   const verifier = digest(Buffer.from(token));
   baseline = await startStack(join(scratch, "baseline"), leftArtifact.manifest.releaseId, false, leftArtifact.runtime, true, verifier, leftArtifact.app);
   candidate = await startStack(join(scratch, "candidate"), rightArtifact.manifest.releaseId, false, rightArtifact.runtime, true, verifier, rightArtifact.app);
+  const sides = new Map<Stack, { runtime: string; app: string }>([
+    [baseline, { runtime: left.artifact.releaseId, app: left.appArtifact.artifactDigest.replace(/^sha256:/, "").slice(0, 12) }],
+    [candidate, { runtime: right.artifact.releaseId, app: right.appArtifact.artifactDigest.replace(/^sha256:/, "").slice(0, 12) }],
+  ]);
+  const sideOf = (stack: Stack) => sides.get(stack)!;
   const launchCollector = (stack: Stack) => {
     if (!("containerName" in stack.session) || !("metricsPort" in stack.session)) throw new Error("collector requires a container session");
     const tokenFile = join(stack.stateDir, "collector-token"), releaseFile = join(stack.stateDir, "collector-release.json"), config = join(stack.stateDir, "collector.json");
     writeFileSync(tokenFile, token, { mode: 0o600 });
     if (stack.appRoot === undefined) throw new Error("qualification stacks serve an app release");
-    writeFileSync(releaseFile, JSON.stringify({ runtime: stack.release, app: appDigest(stack.appRoot).replace(/^sha256:/, "").slice(0, 12) }));
+    const side = sideOf(stack);
+    writeFileSync(releaseFile, JSON.stringify({ runtime: side.runtime, app: side.app }));
     const port = new URL(stack.origin).port;
     writeFileSync(config, JSON.stringify({ name: "infra", releaseFile, tokenFile, endpoint: `http://127.0.0.1:${port}/ingest/metrics/v1/batches`, targets: [{ id: "worker:stats:0", url: `http://127.0.0.1:${String(stack.session.metricsPort)}/metrics` }, { id: "worker:stats-observe:1", url: `http://127.0.0.1:${String(Number(stack.session.metricsPort) + 1)}/metrics` }, { id: "engine:live", url: "http://127.0.0.1:6544/metrics" }] }));
     return spawn("docker", ["exec", "-e", `INFRA_COLLECTOR_CONFIG=${config}`, stack.session.containerName, "node", join(stack.appRoot, "collector/main.mjs")], { stdio: ["ignore", "ignore", "inherit"] });
@@ -114,7 +120,13 @@ try {
   const end = Date.now();
   const getSources = async (stack: Stack, child: typeof collectors[number]) => {
     const last = requireSelf ? await waitCheckpoint(stack, from, end).catch(() => observe(stack, from).catch(() => null)) : null;
+    const side = sideOf(stack);
     const response = await fetch(`${stack.origin}/api/observe/stats-infra/metrics/sources?from=${start}&to=${end}&release=runtime`, { headers: stack.headers }).catch(() => null);
+    const appLabels = new Map<string, string>();
+    if (identity.layer !== "runtime") {
+      const byApp = await fetch(`${stack.origin}/api/observe/stats-infra/metrics/sources?from=${start}&to=${end}&release=app`, { headers: stack.headers }).catch(() => null);
+      if (byApp?.ok) { try { for (const row of (await byApp.json() as { sources: { evidence: { source: string; releaseId: string } | null }[] }).sources) if (row.evidence) appLabels.set(row.evidence.source, row.evidence.releaseId); } catch {} }
+    }
     type Family = { okSamples: number; usable: boolean; reason: string | null };
     type MetricSource = Omit<ReturnType<typeof source>, "families"> & { families?: Record<string, Family> };
     let rows: { evidence: MetricSource | null; detail?: { families?: Record<string, Family> } }[] = [];
@@ -122,7 +134,11 @@ try {
     if (response?.ok) {
       try { const body = await response.json() as { sources: typeof rows }; if (Array.isArray(body.sources)) { rows = body.sources; observerOk = true; } } catch {}
     }
-    const infra = rows.flatMap(row => row.evidence ? [{ ...row.evidence, families: row.detail?.families ?? {} }] : []);
+    // Each side has its own collector, Engine and metric store, so a source that reports this side's
+    // runtime release (and, for Worker targets in an app or combined experiment, its app release)
+    // belongs to this side's deployment and carries the experiment identity the evaluator compares.
+    const attributable = (evidence: { source: string; releaseId: string }) => evidence.releaseId === side.runtime && (identity.layer === "runtime" || evidence.source.startsWith("engine:") || appLabels.get(evidence.source) === side.app);
+    const infra = rows.flatMap(row => row.evidence && attributable(row.evidence) ? [{ ...row.evidence, releaseId: stack.release, families: row.detail?.families ?? {} }] : []);
     const sample = infra[0];
     if (sample && infra.length === 3 && child.exitCode === null && infra.every(item => item.sequenceStart.startedAtMs === sample.sequenceStart.startedAtMs && item.sequenceEnd.startedAtMs === sample.sequenceStart.startedAtMs && item.sequenceStart.atMs <= start && item.sequenceEnd.atMs >= end && item.sequenceEnd.accepted - item.sequenceStart.accepted === item.received && item.sequenceEnd.dropped === item.sequenceStart.dropped && item.sequenceStart.queued === 0 && item.sequenceEnd.queued === 0)) {
       const okSamples = Math.min(...infra.map(item => item.received));
