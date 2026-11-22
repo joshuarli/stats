@@ -6,5 +6,5 @@
     "types": ["node"],
     "typeRoots": ["../../cloudflare/node_modules/@types"]
   },
-  "include": ["command.mts", "deploy.mts", "standby-deploy.mts", "recovery/check-capabilities.mts"]
+  "include": ["command.mts", "deploy.mts", "standby-deploy.mts", "app-release.mts", "qualification/manifest.mts", "qualification/identity.mts", "recovery/check-capabilities.mts"]
 }

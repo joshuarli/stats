@@ -4,6 +4,7 @@ import { closeSync, copyFileSync, cpSync, lstatSync, mkdirSync, mkdtempSync, ope
 import { homedir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { buildApp } from "./app-release.mts";
 
 const HOST = "stats-standby", ROUTE_HOST = "lisa", BOUND_S = 300, DEADLINE_S = 300;
 // The standby's health route answers before ingest does: on 2026-11-22 a restart
@@ -11,7 +12,6 @@ const HOST = "stats-standby", ROUTE_HOST = "lisa", BOUND_S = 300, DEADLINE_S = 3
 const READY_S = 120;
 const LIMITS = { observe: 120000, authority: 30000, remote: 30000, build: 600000, test: 900000, stage: 600000, start: 1800000 };
 const EXIT = { promoted: 0, notPromoted: 3, lockHeld: 4, needsOperator: 5 } as const;
-const APP_PARTS = ["stats", "observe", "stats.jsonc", "observe.jsonc"] as const;
 
 export interface Run { readonly status: number; readonly stdout: string }
 export interface RunOptions { readonly timeoutMs: number; readonly log?: string }
@@ -120,14 +120,12 @@ export function deployStandby(effects: StandbyEffects): Outcome {
     checks.push({ name, argv: [...argv], exitCode: result.status, log });
     if (result.status !== 0) throw new Error(`admission check ${name} failed; see ${join(evidence, log)}`);
   };
-  admit("build", ["sh", "deploy/orange/build-context.sh", context, commit.slice(0, 12)], LIMITS.build);
-  if (!readFileSync(join(context, "app/stats.jsonc"), "utf8").includes(`"APPLICATION_EVENTS_RELEASE": "${release}"`)) throw new Error(`built descriptor does not name ${release}`);
-  for (const part of APP_PARTS) cpSync(join(context, "app", part), join(app, part), { recursive: true });
-  admit("collector-build", [effects.node, "cloudflare/scripts/build-infra-collector.mjs", "--out", join(app, "collector")], LIMITS.build);
+  const built = buildApp(step => admit(step.name, step.argv, LIMITS.build), effects.node, context, app, commit);
   admit("cloudflare-test", ["make", "cloudflare-test"], LIMITS.test);
 
   const staged = json(run(rollout, ["stage", "--target-kind", "native-app", "--host", HOST, "--ssh-config", sshConfig, "--dir", app, "--source", `stats@${commit}`, "--bound-s", String(BOUND_S)], { timeoutMs: LIMITS.stage }), "staging the app release");
   const candidate = text(staged.release, "the staged release"), digest = text(staged.digest, "the staged digest");
+  if (candidate !== built.release || digest !== built.digest) throw new Error(`the guest staged ${candidate} (${digest}), not the local build ${built.release} (${built.digest})`);
   rmSync(context, { recursive: true, force: true });
   if (candidate === baseline) {
     report(`standby already runs ${candidate} (${release})`);

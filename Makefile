@@ -43,7 +43,7 @@ orange-pilot: work-ready orange-ready worker-bundle observe-bundle
 	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test deploy/orange/pilot.test.mts
 
 orange-test: work-ready orange-ready worker-bundle observe-bundle
-	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test --test-concurrency=1 $(wildcard deploy/orange/*.test.mts)
+	TMPDIR='$(CURDIR)/.work/tmp' node --experimental-strip-types --test --test-concurrency=1 $(wildcard deploy/orange/*.test.mts deploy/orange/qualification/*.test.mts)
 
 fixtures: node-ready
 	node scripts/check-fixtures.mjs
@@ -103,7 +103,7 @@ preview: work-ready node-ready
 
 lint: node-ready
 	pnpm --filter @stats/telemetry lint
-	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts' '$(CURDIR)/deploy/orange/standby-deploy.mts' '$(CURDIR)/deploy/orange/recovery/check-capabilities.mts'
+	pnpm --dir cloudflare exec oxlint --type-aware '$(CURDIR)/deploy/orange/command.mts' '$(CURDIR)/deploy/orange/deploy.mts' '$(CURDIR)/deploy/orange/standby-deploy.mts' '$(CURDIR)/deploy/orange/app-release.mts' '$(CURDIR)/deploy/orange/recovery/check-capabilities.mts'
 
 auth-ready:
 	ssh '$(ORANGE_HOST)' 'test -x /opt/openorange/bin/oo && doas -n true'

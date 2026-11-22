@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, mkdirSync
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { deployStandby, type Run, type RunOptions, type StandbyEffects } from './standby-deploy.mts';
+import { appDigest, appReleaseId } from './qualification/manifest.mts';
 
 test('collector provisioning refuses mutation without rollout lease', () => {
   const dir = mkdtempSync(resolve('.work/tmp/lease-'));
@@ -36,15 +37,27 @@ test('held lease prevents collector provisioning', () => {
 const COMMIT = 'abcdef0123456789abcdef0123456789abcdef01';
 const RUNTIME = `sha256:${'1'.repeat(64)}`;
 const BASELINE_DIGEST = `sha256:${'2'.repeat(64)}`;
-const CANDIDATE_DIGEST = `sha256:${'3'.repeat(64)}`;
 const sha = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
+
+function writeBuiltContext(app: string) {
+  mkdirSync(join(app, 'stats/bundle'), { recursive: true }); mkdirSync(join(app, 'observe'), { recursive: true });
+  writeFileSync(join(app, 'stats/bundle/index.js'), 'stats');
+  writeFileSync(join(app, 'stats.jsonc'), `{"vars":{"APPLICATION_EVENTS_RELEASE": "stats-${COMMIT.slice(0, 12)}"}}`);
+  writeFileSync(join(app, 'observe.jsonc'), '{}');
+}
+function writeCollector(dir: string) { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'main.mjs'), 'collector'); }
+const CANDIDATE_DIGEST = (() => {
+  const dir = mkdtempSync(resolve('.work/tmp/standby-expected-'));
+  try { writeBuiltContext(dir); writeCollector(join(dir, 'collector')); return appDigest(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+})();
+const CANDIDATE = appReleaseId(CANDIDATE_DIGEST);
 
 interface Fixture { readonly root: string; readonly calls: string[][]; readonly effects: (overrides?: Partial<Behaviour>) => StandbyEffects }
 interface Behaviour {
   readonly observed: Record<string, unknown>;
   readonly authorityOk: boolean;
   readonly failCheck: string | undefined;
-  readonly stagedRelease: string;
+  readonly stagedDigest: string | undefined;
   readonly startStatus: number;
 }
 
@@ -54,7 +67,7 @@ function fixture(): Fixture {
   for (const name of ['package.json', 'pnpm-lock.yaml', 'functional-check.mjs', 'writer-authority.mjs']) writeFileSync(join(root, 'deploy/orange', name), name);
   const calls: string[][] = [];
   const effects = (overrides: Partial<Behaviour> = {}): StandbyEffects => {
-    const behaviour: Behaviour = { observed: { selected: 'app-aaaaaaaaaaaa', running: 'app-aaaaaaaaaaaa', digest: BASELINE_DIGEST, components: { runtime: RUNTIME } }, authorityOk: true, failCheck: undefined, stagedRelease: 'app-bbbbbbbbbbbb', startStatus: 0, ...overrides };
+    const behaviour: Behaviour = { observed: { selected: 'app-aaaaaaaaaaaa', running: 'app-aaaaaaaaaaaa', digest: BASELINE_DIGEST, components: { runtime: RUNTIME } }, authorityOk: true, failCheck: undefined, stagedDigest: undefined, startStatus: 0, ...overrides };
     const run = (file: string, args: readonly string[], { log }: RunOptions): Run => {
       calls.push([file, ...args]);
       if (log) writeFileSync(log, `log of ${file}\n`, { flag: 'wx' });
@@ -66,20 +79,15 @@ function fixture(): Fixture {
       const check = args[0] === 'deploy/orange/build-context.sh' ? 'build' : args[0] === 'cloudflare/scripts/build-infra-collector.mjs' ? 'collector-build' : file === 'make' ? 'cloudflare-test' : undefined;
       if (check !== undefined) {
         if (check === behaviour.failCheck) return { status: 2, stdout: '' };
-        if (check === 'build') {
-          const app = join(args[1]!, 'app');
-          mkdirSync(join(app, 'stats/bundle'), { recursive: true }); mkdirSync(join(app, 'observe'), { recursive: true });
-          writeFileSync(join(app, 'stats/bundle/index.js'), 'stats');
-          writeFileSync(join(app, 'stats.jsonc'), `{"vars":{"APPLICATION_EVENTS_RELEASE": "stats-${COMMIT.slice(0, 12)}"}}`);
-          writeFileSync(join(app, 'observe.jsonc'), '{}');
-        }
-        if (check === 'collector-build') { mkdirSync(args[2]!, { recursive: true }); writeFileSync(join(args[2]!, 'main.mjs'), 'collector'); }
+        if (check === 'build') writeBuiltContext(join(args[1]!, 'app'));
+        if (check === 'collector-build') writeCollector(args[2]!);
         return ok();
       }
       if (file === 'rollout' && args[0] === 'stage') {
         const dir = args[args.indexOf('--dir') + 1]!;
         assert.deepEqual(readdirSync(dir).sort(), ['collector', 'observe', 'observe.jsonc', 'stats', 'stats.jsonc']);
-        return ok(JSON.stringify({ release: behaviour.stagedRelease, digest: CANDIDATE_DIGEST }));
+        const digest = behaviour.stagedDigest ?? appDigest(dir);
+        return ok(JSON.stringify({ release: appReleaseId(digest), digest }));
       }
       if (file === 'rollout' && args[0] === 'start') return { status: behaviour.startStatus, stdout: '{"run_id":"r","run":"/journals/r"}\n{"state":"x"}\n' };
       throw new Error(`unexpected command ${file} ${args.join(' ')}`);
@@ -121,7 +129,7 @@ test('a failed admission check stops before staging', () => {
 test('an unchanged app release is not started', () => {
   const { root, calls, effects } = fixture();
   try {
-    assert.equal(deployStandby(effects({ stagedRelease: 'app-aaaaaaaaaaaa' })), 'unchanged');
+    assert.equal(deployStandby(effects({ observed: { selected: CANDIDATE, running: CANDIDATE, digest: CANDIDATE_DIGEST, components: { runtime: RUNTIME } } })), 'unchanged');
     assert.deepEqual(mutating(calls).map(call => call[1]), ['stage']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -134,7 +142,7 @@ test('deploy starts one native-app transaction bound to the staged digest, runti
     const flag = (name: string) => start[start.indexOf(`--${name}`) + 1]!;
     assert.equal(flag('target-kind'), 'native-app');
     assert.equal(flag('baseline'), 'app-aaaaaaaaaaaa');
-    assert.equal(flag('candidate'), 'app-bbbbbbbbbbbb');
+    assert.equal(flag('candidate'), CANDIDATE);
     assert.equal(flag('artifact'), CANDIDATE_DIGEST);
     assert.equal(start.includes('--evaluator'), false);
     const policy = JSON.parse(readFileSync(flag('policy'), 'utf8'));
@@ -145,12 +153,20 @@ test('deploy starts one native-app transaction bound to the staged digest, runti
     const receipt = JSON.parse(readFileSync(flag('receipt'), 'utf8'));
     assert.equal(receipt.schema, 'stats-app-admission/1');
     assert.deepEqual(receipt.baseline, { releaseId: 'app-aaaaaaaaaaaa', artifactDigest: BASELINE_DIGEST });
-    assert.deepEqual(receipt.candidate, { releaseId: 'app-bbbbbbbbbbbb', artifactDigest: CANDIDATE_DIGEST, components: { runtime: RUNTIME } });
+    assert.deepEqual(receipt.candidate, { releaseId: CANDIDATE, artifactDigest: CANDIDATE_DIGEST, components: { runtime: RUNTIME } });
     assert.deepEqual(receipt.source, { repository: 'joshuarli/stats', commit: COMMIT });
     assert.deepEqual(receipt.checks.map((check: { name: string; exitCode: number }) => [check.name, check.exitCode]), [['build', 0], ['collector-build', 0], ['cloudflare-test', 0]]);
     assert.deepEqual(receipt.inputs.map((item: { path: string }) => item.path), ['build.log', 'cloudflare-test.log', 'collector-build.log']);
     for (const item of receipt.inputs) assert.equal(sha(readFileSync(join(flag('evidence-dir'), item.path))), item.sha256);
     assert.equal(receipt.decision.verdict, 'admitted');
     assert.deepEqual(readdirSync(join(root, '.work/tmp')), []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a guest that staged different bytes stops the deploy before start', () => {
+  const { root, calls, effects } = fixture();
+  try {
+    assert.throws(() => deployStandby(effects({ stagedDigest: `sha256:${'9'.repeat(64)}` })), /not the local build/);
+    assert.deepEqual(mutating(calls).map(call => call[1]), ['stage']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

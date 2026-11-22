@@ -296,9 +296,20 @@ and collector. If the input manifest declares `tar_sha256`, the runner checks
 it against the copied archive. Otherwise it records the archive and manifest
 hashes independently; the rollout must establish that they correspond.
 
+Each side also takes an app release directory built by
+`node --experimental-strip-types deploy/orange/app-release.mts --out DIR` (both
+Workers, their descriptors and the collector; the same directory `make
+standby-deploy` stages). Pass the same directory to both sides for the layer an
+experiment holds constant. The changed layer names the result: a runtime change
+keeps runtime release IDs and digests, an app change uses app release IDs and
+`stats-app-manifest/1` digests, and a change to both is attributed to the
+`RUNTIME+APP` pair, which no single rollout promotes. Identical artifacts on both
+sides are refused. Each side runs its own app release's collector.
+
 ```sh
 TMPDIR="$PWD/.work/tmp" node deploy/orange/qualification/promotion.mts \
-  --baseline BASELINE_DIR --candidate CANDIDATE_DIR --out EVIDENCE_DIR
+  --baseline BASELINE_DIR --candidate CANDIDATE_DIR \
+  --baseline-app BASELINE_APP_DIR --candidate-app CANDIDATE_APP_DIR --out EVIDENCE_DIR
 make build-statsctl
 node dist/statsctl.mjs verify release --evidence EVIDENCE_DIR --receipt-out RECEIPT.json --json
 node dist/statsctl.mjs verify release --evidence EVIDENCE_DIR --replay --json

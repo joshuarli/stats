@@ -1,17 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { closeSync, copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { parseArgs } from "node:util";
-import { manifestDigest, treeManifest } from "./manifest.mts";
+import { appDigest, appReleaseId, manifestDigest, treeManifest } from "./manifest.mts";
+import { experimentIdentity } from "./identity.mts";
 import { startStack, type Stack } from "../canary/stack.mts";
 import { prepare, runWorkload, spec } from "../canary/workload.mts";
 import { monitorResources, observe, recover, source, waitCheckpoint, writeBundle } from "../canary/evidence.mts";
 
 const root = resolve(import.meta.dirname, "../../..");
-const { values } = parseArgs({ options: { baseline: { type: "string" }, candidate: { type: "string" }, out: { type: "string" }, profile: { type: "string" } } });
+const { values } = parseArgs({ options: { baseline: { type: "string" }, candidate: { type: "string" }, "baseline-app": { type: "string" }, "candidate-app": { type: "string" }, out: { type: "string" }, profile: { type: "string" } } });
 if (process.platform !== "linux") throw new Error("qualification requires native Linux and Docker");
-if (!values.baseline || !values.candidate || !values.out) throw new Error("usage: node promotion.mts --baseline DIR --candidate DIR --out DIR [--profile FILE]");
+if (!values.baseline || !values.candidate || !values["baseline-app"] || !values["candidate-app"] || !values.out) throw new Error("usage: node promotion.mts --baseline RUNTIME_DIR --candidate RUNTIME_DIR --baseline-app APP_DIR --candidate-app APP_DIR --out DIR [--profile FILE]\nPass the same directory for both sides of the layer an experiment holds constant.");
 const definitionBytes = readFileSync(resolve(values.profile ?? join(root, "deploy/orange/qualification/profiles/promotion.json")));
 const profile = JSON.parse(definitionBytes.toString("utf8")) as { name: string; warmupMs: number; measureMs: number; requestMix: Record<string, number>; requestRatePerSecond?: number; requiredSources: { source: string; producer: string; families: string[] }[] };
 if (!["smoke", "promotion"].includes(profile.name) || !Number.isSafeInteger(profile.measureMs) || !Number.isSafeInteger(profile.warmupMs) || profile.measureMs < 1 || profile.warmupMs < 0 || (profile.name === "promotion" && (profile.warmupMs < 60_000 || profile.measureMs < 600_000))) throw new Error("invalid qualification profile");
@@ -45,33 +46,42 @@ try {
     execFileSync("python3", ["-c", extractor, archive, runtime], { stdio: "pipe" });
     if (manifestDigest(treeManifest(runtime)) !== manifestHash) throw new Error(`${name} extracted runtime differs from its manifest`);
     if (build.release_id !== `rt-${manifestHash.slice(0, 12)}`) throw new Error(`${name} release id differs from its manifest digest`);
-    return { runtime, manifest: { releaseId: build.release_id, artifactDigest: `sha256:${manifestHash}`, components: { "runtime-archive": `sha256:${archiveHash}` } } };
+    return { runtime, artifact: { releaseId: build.release_id, artifactDigest: `sha256:${manifestHash}` }, archive: `sha256:${archiveHash}` };
   };
-  const leftArtifact = extract(values.baseline, "baseline"), rightArtifact = extract(values.candidate, "candidate");
-  if (leftArtifact.manifest.releaseId === rightArtifact.manifest.releaseId) throw new Error("baseline and candidate releases must differ");
-  const collectorDir = join(scratch, "collector");
-  const built = spawnSync(process.execPath, [join(root, "cloudflare/scripts/build-infra-collector.mjs"), "--out", collectorDir], { cwd: root, encoding: "utf8" });
-  if (built.status !== 0) throw new Error(`collector build failed: ${built.stderr}`);
-  const commonComponents = {
-    "stats-worker": `sha256:${digestFile(join(root, "cloudflare/.cloudflare/output/v0/workers/default/bundle/index.js"))}`,
-    "observe-worker": `sha256:${digestFile(join(root, "cloudflare/observe-worker/.cloudflare/output/v0/workers/default/bundle/index.js"))}`,
-    "infra-collector": `sha256:${digestFile(join(collectorDir, "main.mjs"))}`,
+  const copyApp = (dir: string, name: string) => {
+    const input = resolve(dir), app = join(scratch, `${name}-app`), declared = appDigest(input);
+    cpSync(input, app, { recursive: true, verbatimSymlinks: true });
+    if (appDigest(app) !== declared) throw new Error(`${name} app release changed while it was copied`);
+    return { app, appArtifact: { releaseId: appReleaseId(declared), artifactDigest: declared } };
+  };
+  const left = { ...extract(values.baseline, "baseline"), ...copyApp(values["baseline-app"], "baseline") };
+  const right = { ...extract(values.candidate, "candidate"), ...copyApp(values["candidate-app"], "candidate") };
+  const identity = experimentIdentity({ runtime: left.artifact, app: left.appArtifact }, { runtime: right.artifact, app: right.appArtifact });
+  const manifestFor = (side: typeof left, artifact: { releaseId: string; artifactDigest: string }) => ({ ...artifact, components: {
+    "runtime-archive": side.archive,
+    "runtime-manifest": side.artifact.artifactDigest,
+    "app-release": side.appArtifact.artifactDigest,
+    "stats-worker": `sha256:${digestFile(join(side.app, "stats/bundle/index.js"))}`,
+    "observe-worker": `sha256:${digestFile(join(side.app, "observe/bundle/index.js"))}`,
+    "infra-collector": `sha256:${digestFile(join(side.app, "collector/main.mjs"))}`,
     "container-image": "sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5"
-  };
-  Object.assign(leftArtifact.manifest.components, commonComponents);
-  Object.assign(rightArtifact.manifest.components, commonComponents);
+  } });
+  const leftArtifact = { runtime: left.runtime, app: left.app, manifest: manifestFor(left, identity.baseline) };
+  const rightArtifact = { runtime: right.runtime, app: right.app, manifest: manifestFor(right, identity.candidate) };
+  console.error(`qualifying a ${identity.layer} change: ${identity.baseline.releaseId} -> ${identity.candidate.releaseId}`);
   const token = `nft_${randomBytes(32).toString("base64url")}`;
   const verifier = digest(Buffer.from(token));
-  baseline = await startStack(join(scratch, "baseline"), leftArtifact.manifest.releaseId, false, leftArtifact.runtime, true, verifier);
-  candidate = await startStack(join(scratch, "candidate"), rightArtifact.manifest.releaseId, false, rightArtifact.runtime, true, verifier);
+  baseline = await startStack(join(scratch, "baseline"), leftArtifact.manifest.releaseId, false, leftArtifact.runtime, true, verifier, leftArtifact.app);
+  candidate = await startStack(join(scratch, "candidate"), rightArtifact.manifest.releaseId, false, rightArtifact.runtime, true, verifier, rightArtifact.app);
   const launchCollector = (stack: Stack) => {
     if (!("containerName" in stack.session) || !("metricsPort" in stack.session)) throw new Error("collector requires a container session");
     const tokenFile = join(stack.stateDir, "collector-token"), releaseFile = join(stack.stateDir, "collector-release.json"), config = join(stack.stateDir, "collector.json");
     writeFileSync(tokenFile, token, { mode: 0o600 });
-    writeFileSync(releaseFile, JSON.stringify({ runtime: stack.release, app: digest(readFileSync(join(root, "cloudflare/.cloudflare/output/v0/workers/default/bundle/index.js"))).slice(0, 12) }));
+    if (stack.appRoot === undefined) throw new Error("qualification stacks serve an app release");
+    writeFileSync(releaseFile, JSON.stringify({ runtime: stack.release, app: appDigest(stack.appRoot).replace(/^sha256:/, "").slice(0, 12) }));
     const port = new URL(stack.origin).port;
     writeFileSync(config, JSON.stringify({ name: "infra", releaseFile, tokenFile, endpoint: `http://127.0.0.1:${port}/ingest/metrics/v1/batches`, targets: [{ id: "worker:stats:0", url: `http://127.0.0.1:${String(stack.session.metricsPort)}/metrics` }, { id: "worker:stats-observe:1", url: `http://127.0.0.1:${String(Number(stack.session.metricsPort) + 1)}/metrics` }, { id: "engine:live", url: "http://127.0.0.1:6544/metrics" }] }));
-    return spawn("docker", ["exec", "-e", `INFRA_COLLECTOR_CONFIG=${config}`, stack.session.containerName, "node", join(collectorDir, "main.mjs")], { stdio: ["ignore", "ignore", "inherit"] });
+    return spawn("docker", ["exec", "-e", `INFRA_COLLECTOR_CONFIG=${config}`, stack.session.containerName, "node", join(stack.appRoot, "collector/main.mjs")], { stdio: ["ignore", "ignore", "inherit"] });
   };
   const collectors = [launchCollector(baseline), launchCollector(candidate)];
   const pools = await Promise.all([baseline, candidate].map(async stack => {
