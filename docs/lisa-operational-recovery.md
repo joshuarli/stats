@@ -33,13 +33,15 @@ To capture another point while this standby is authoritative, run
 `deploy/orange/recovery/capture-standby.sh NAME` from the workstation with
 `STANDBY_SSH_CONFIG`, `STATS_ROLLOUT`, `STATS_CHECK_CREDENTIAL_FILE` and
 `STATSCTL` set. It runs `capture-engine.sh` on the guest under the shared
-rollout lease (operation `engine-capture`, 600 s bound), so a capture cannot
-overlap a rollout or another leased mutation. The guest script copies the
-depot warm, records which of `native-stats`, `stats-infra-collector` and the
-Engine are running in `/var/lib/live-stats/.capture-intent`, stops the app and
-collector before the Engine, bounds the stopped copy to 55 seconds, starts the
+rollout lease (operation `engine-capture`, 900 s bound), so a capture cannot
+overlap a rollout or another leased mutation. The guest script records which
+of `native-stats`, `stats-infra-collector` and the Engine are running in
+`/var/lib/live-stats/.capture-intent`, stops the app and collector before the
+Engine, copies the depot only while both are stopped (300 s bound), starts the
 Engine, waits for its health route, and starts only the services that were
-running. The sealed directory `/var/lib/live-stats-recovery/NAME` holds the
+running. The writer is down for the whole copy. Do not copy the depot while
+the Engine runs: on 2026-11-22 a warm copy made the app lose its Engine
+registration ([record](../bench/results/2026-11-22-engine-capture/README.md)). The sealed directory `/var/lib/live-stats-recovery/NAME` holds the
 depot, `depot.sha256`, the image identity, `engine.json` and timestamps.
 
 After any failure or interruption the driver runs `capture-engine.sh recover`

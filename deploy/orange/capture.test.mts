@@ -39,7 +39,7 @@ case "$2" in
 esac`);
   fake('wget', '[ "$(cat "$sim/engine")" = running ]');
   fake('flock', 'exit 0');
-  fake('rsync', `case "$*" in *--checksum*) [ ! -e "$sim/fail-final-copy" ] || exit 23 ;; esac; exec /usr/bin/rsync "$@"`);
+  fake('rsync', `echo "rsync engine=$(cat "$sim/engine")" >>"$sim/calls"; [ ! -e "$sim/fail-final-copy" ] || exit 23; exec /usr/bin/rsync "$@"`);
   return { dir, state, output: join(dir, 'captures/one'), env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } };
 }
 
@@ -56,6 +56,8 @@ test('capture stops the app before the Engine, restarts in reverse order and sea
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(mutations(g), ['rc-service stats-infra-collector stop', 'rc-service native-stats stop', 'docker stop --time 20 live-stats-engine', 'docker start live-stats-engine', 'rc-service native-stats start', 'rc-service stats-infra-collector start']);
     assert.deepEqual(running(g), { engine: 'running', app: true, collector: true });
+    const copies = readFileSync(sim(g, 'calls'), 'utf8').split('\n').filter(line => line.startsWith('rsync'));
+    assert.ok(copies.length > 0 && copies.every(line => line === 'rsync engine=stopped'), copies.join('; '));
     assert.equal(readFileSync(join(g.output, 'depot/objects/b/object'), 'utf8'), 'object');
     assert.match(readFileSync(join(g.output, 'depot.sha256'), 'utf8'), /\.\/log\/a\/000001\.log\n.*\.\/objects\/b\/object\n$/s);
     assert.equal(existsSync(join(g.state, '.capture-intent')), false);
@@ -135,7 +137,7 @@ test('the capture driver records a capture only after the app passes its functio
   const { dir, result, calls, receipt } = driver(0);
   try {
     assert.equal(result.status, 0, result.stderr);
-    assert.match(calls, /lease run --target-kind native --host stats-standby .*--operation engine-capture --bound-s 600 -- sh \/var\/lib\/live-stats-recovery\/.capture-engine.sh capture live-stats-engine \/var\/lib\/live-stats \/var\/lib\/live-stats-recovery\/one/);
+    assert.match(calls, /lease run --target-kind native --host stats-standby .*--operation engine-capture --bound-s 900 -- sh \/var\/lib\/live-stats-recovery\/.capture-engine.sh capture live-stats-engine \/var\/lib\/live-stats \/var\/lib\/live-stats-recovery\/one/);
     assert.doesNotMatch(calls, /engine-capture-recover/);
     assert.equal(receipt.outcome, 'captured');
     assert.equal(receipt.depotManifestSha256, 'sha256:abc123');

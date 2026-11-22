@@ -5,8 +5,10 @@
 # Run on the guest under the shared rollout lease (deploy/orange/recovery/capture-standby.sh).
 # capture records which of native-stats, its collector and the Engine are running in
 # STATE_DIRECTORY/.capture-intent before stopping anything, stops the app before the Engine,
-# copies the depot, then starts the Engine, waits for its health route and starts the app again.
-# A capture that cannot restore leaves the intent in place; recover restores it.
+# copies the depot only while both are stopped, then starts the Engine, waits for its health
+# route and starts the app again. A capture that cannot restore leaves the intent in place;
+# recover restores it. The depot is not copied while the Engine runs: on 2026-11-22 a warm
+# copy on the same disk made the app lose its Engine registration within 70 seconds.
 set -eu
 
 engine_health=http://127.0.0.1:6420/health
@@ -73,10 +75,6 @@ engine_config=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "
 test -f "$engine_config"
 cp "$engine_config" "$partial/engine.json"
 
-warm_status=0
-timeout 180 rsync -aH --numeric-ids "$state/log" "$state/objects" "$partial/depot/" || warm_status=$?
-case "$warm_status" in 0|24) ;; *) exit "$warm_status" ;; esac
-
 {
     echo "container $container"
     echo "running $container"
@@ -111,7 +109,7 @@ done
 docker stop --time 20 "$container" >/dev/null
 test "$(docker inspect --format '{{.State.ExitCode}}' "$container")" -eq 0
 date -u +%FT%TZ > "$partial/captured-at"
-timeout 55 rsync -aH --numeric-ids --checksum --delete "$state/log" "$state/objects" "$partial/depot/"
+timeout 300 rsync -aH --numeric-ids "$state/log" "$state/objects" "$partial/depot/"
 restore "$intent"
 date -u +%FT%TZ > "$partial/restarted-at"
 (cd "$partial/depot" && find . -type f -exec sha256sum {} + | LC_ALL=C sort -k 2) > "$partial/depot.sha256"
