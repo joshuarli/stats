@@ -30,15 +30,30 @@ real hosts and passed a new canary ingest, history read, and duplicate
 replay. Keep the archive owner-only.
 
 To capture another point while this standby is authoritative, run
-`deploy/orange/recovery/capture-engine.sh live-stats-engine
-/var/lib/live-stats /var/lib/live-stats-recovery/<new-directory>`
-inside the active guest. It takes a per-depot capture lock, bounds the
-stopped copy to 55 seconds, and restarts the same Engine after a copy
-failure or interruption. Verify fresh host receipts before joining a
-second operation. Copy the sealed depot and protected runtime
-configuration off-host, verify hashes, and export logically from an
-isolated restore. The per-depot lock covers this capture command.
-Engine, deploy, and ingress operations still need a shared lock.
+`deploy/orange/recovery/capture-standby.sh NAME` from the workstation with
+`STANDBY_SSH_CONFIG`, `STATS_ROLLOUT`, `STATS_CHECK_CREDENTIAL_FILE` and
+`STATSCTL` set. It runs `capture-engine.sh` on the guest under the shared
+rollout lease (operation `engine-capture`, 600 s bound), so a capture cannot
+overlap a rollout or another leased mutation. The guest script copies the
+depot warm, records which of `native-stats`, `stats-infra-collector` and the
+Engine are running in `/var/lib/live-stats/.capture-intent`, stops the app and
+collector before the Engine, bounds the stopped copy to 55 seconds, starts the
+Engine, waits for its health route, and starts only the services that were
+running. The sealed directory `/var/lib/live-stats-recovery/NAME` holds the
+depot, `depot.sha256`, the image identity, `engine.json` and timestamps.
+
+After any failure or interruption the driver runs `capture-engine.sh recover`
+under a new lease (`engine-capture-recover`), which restores the recorded
+intent; a capture refuses to start while an intent is left over. The driver
+then requires the functional check (synthetic ingest with readback) within
+120 s and writes `~/.local/state/openorange/captures/NAME.json`, whose
+`outcome` is `captured` only when the copy completed, the services are back
+and the check passed. Exit codes: 0 captured, 1 failed, 4 lease held with
+nothing changed. Copy the sealed depot and protected runtime configuration
+off-host, verify `depot.sha256`, and validate it by starting an isolated
+Engine on it before relying on it; logical export remains separate from a
+physical capture. Ingress and writer-handoff operations are outside the
+guest lease.
 
 ### Incident changes
 
