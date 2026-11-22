@@ -1,6 +1,6 @@
 # Stats simplification and self-optimization campaign
 
-Status: planned; implementation and qualification have not run under this campaign.
+Status: in progress since 2026-11-22 (S0 and S1 started); no step is complete.
 Owner direction: 2026-11-21. Review baseline: Stats
 `73a576e4fc6d20f1f083b52225293be2c6517fb4`, Stuff
 `501db1136f4c64c478401fc92201fb44671cb386`. These are source-review identities,
@@ -133,8 +133,8 @@ entry into a new campaign framework.
 
 | Step | Deliverable | Owner | State |
 | --- | --- | --- | --- |
-| S0 | Refresh actual topology, baseline and protected-evidence inventory | Stats + Stuff | planned |
-| S1 | One deployment/capture ownership path and reproducible standby definition | Stuff, Stats adapters | planned |
+| S0 | Refresh actual topology, baseline and protected-evidence inventory | Stats + Stuff | in progress: standby identities, limits and one restart-to-readiness sample recorded; timings, resource baseline and budgets open |
+| S1 | One deployment/capture ownership path and reproducible standby definition | Stuff, Stats adapters | in progress: app and collector deploy through the transaction, cases 1–5 tested, promoted in production; Engine declared with a drift check; capture (case 6) and recreation (case 7) open. [Record](../bench/results/2026-11-22-standby-app-transaction/README.md) |
 | S2 | Reproduce and repair the Engine degradation mechanism | Stuff + Stats workload | planned |
 | S3 | Queryable causal evidence and truthful resource comparisons | Stats | planned |
 | S4 | Smaller production serve closure and faster edit/build/start loop | Stuff + Stats build integration | planned |
