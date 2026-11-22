@@ -8,7 +8,8 @@ const image = "node@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6
 const repo = resolve(import.meta.dirname, "../../..");
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function startContainerSession(stateDir: string, port: number, runtimeRoot: string) {
+/** `appRoot`, when given, is the app release the stack serves; it may live outside the repository, for example on tmpfs. */
+export async function startContainerSession(stateDir: string, port: number, runtimeRoot: string, appRoot?: string) {
   const name = `stats-canary-${randomBytes(8).toString("hex")}`;
   const engineDir = join(stateDir, "engine");
   mkdirSync(join(engineDir, "log"), { recursive: true });
@@ -24,7 +25,8 @@ export async function startContainerSession(stateDir: string, port: number, runt
   writeFileSync(statsConfig, JSON.stringify(descriptor), { mode: 0o600 });
   const envFile = join(stateDir, "engine.env");
   writeFileSync(envFile, [`ORANGE_WORKER_SECRETS=${workerSecrets.map(([name]) => name).join(",")}`, ...workerSecrets.map(([name, value]) => `${name}=${value}`), "RIVET__API_PEER__HOST=127.0.0.1", "RIVET__API_PEER__PORT=6542", `RIVET__AUTH__ADMIN_TOKEN=${token}`, "RIVET__GUARD__HOST=127.0.0.1", "RIVET__GUARD__PORT=6543", "RIVET__METRICS__HOST=127.0.0.1", "RIVET__METRICS__PORT=6544", "RIVET__PEGBOARD__NODE_LOST_THRESHOLD=7000", `RIVET__OBJECT_STORAGE__PRIMARY__FILE_SYSTEM__PATH=${join(engineDir, "objects")}`, "RIVET__STORAGE__AUTO_PROVISION_PARTITIONS=1", "RIVET__STORAGE__BALANCING__ENABLED=false", "RIVET__STORAGE__COLD_STORE__DISK_CACHE_BYTES=0", `RIVET__STORAGE__LOG_DIRECTORY=${join(engineDir, "log")}`, "RIVET__STORAGE__LOG_SHARD__MAX_DISK_BYTES=1073741824", `RIVET_ENDPOINT=http://default:${token}@127.0.0.1:6543`, `RIVETKIT_METRICS_PORT=${metricsPort}`, `PORT=${port}`].join("\n") + "\n", { mode: 0o600 });
-  const mounts = [repo, stateDir, runtimeRoot].map((path, i) => ["--mount", `type=bind,src=${path},dst=${path}${i === 1 ? "" : ",readonly"}`]).flat();
+  const readonly = [repo, runtimeRoot, ...(appRoot === undefined ? [] : [resolve(appRoot)])];
+  const mounts = [...readonly.map(path => ["--mount", `type=bind,src=${path},dst=${path},readonly`]), ["--mount", `type=bind,src=${stateDir},dst=${stateDir}`]].flat();
   const packages = readdirSync(join(runtimeRoot, "node_modules/.pnpm"));
   const arch = packages.some(entry => entry.startsWith("@rivetkit+engine-cli-linux-x64-musl@")) ? "amd64" : packages.some(entry => entry.startsWith("@rivetkit+engine-cli-linux-arm64-musl@")) ? "arm64" : undefined;
   if (arch === undefined) throw new Error("runtime lacks a Linux Engine binary");

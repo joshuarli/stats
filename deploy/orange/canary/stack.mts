@@ -21,7 +21,7 @@ export async function startStack(stateDir: string, release: string, suppress = f
     writeFileSync(generated.stats, JSON.stringify(descriptor));
   }
   const port = await freePort();
-  const session = container ? await startContainerSession(stateDir, port, runtimeRoot) : await startSession(stateDir, port, { runtimeRoot });
+  const session = container ? await startContainerSession(stateDir, port, runtimeRoot, appRoot) : await startSession(stateDir, port, { runtimeRoot });
   return { stateDir, release, runtimeRoot, appRoot, historyRuns: [] as unknown[], recovered: false, infraEnabled: infraVerifier !== undefined, origin: session.origin, session, headers: { [GATEWAY_SECRET_HEADER]: secret, [GATEWAY_IDENTITY_HEADER]: "user:canary@example.com" }, stop: session.stop };
 }
 export type Stack = Awaited<ReturnType<typeof startStack>>;

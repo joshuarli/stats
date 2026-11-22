@@ -68,7 +68,7 @@ export async function recover(candidate: Stack, baseline: Stack, directory: stri
   cpSync(candidate.stateDir, directory, { recursive: true });
   generate(directory, { kind: "dev", release: baseline.release, gatewaySecret: baseline.headers[GATEWAY_SECRET_HEADER], nowMs: null }, "in-place", appOutputs(baseline.appRoot));
   const port = await freePort();
-  const session = "containerName" in baseline.session ? await startContainerSession(directory, port, baseline.runtimeRoot) : await startSession(directory, port, { runtimeRoot: baseline.runtimeRoot });
+  const session = "containerName" in baseline.session ? await startContainerSession(directory, port, baseline.runtimeRoot, baseline.appRoot) : await startSession(directory, port, { runtimeRoot: baseline.runtimeRoot });
   try {
     let verified = true;
     for (const entry of Array.isArray(result) ? result : [result]) {
