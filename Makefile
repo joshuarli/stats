@@ -79,7 +79,7 @@ add-host: add-host-check
 	$(MAKE) --no-print-directory "$$build"; \
 	deploy/add-host.sh '$(NAME)' '$(SSH)'
 
-cloudflare-test: work-ready
+cloudflare-test: work-ready orange-ready
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry typecheck
 	TMPDIR='$(CURDIR)/.work/tmp' pnpm --filter @stats/telemetry test
 
