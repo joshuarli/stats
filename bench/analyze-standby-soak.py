@@ -174,13 +174,22 @@ def analyze(records, faults, definition, definition_sha):
         failed.append("guest free disk below the floor")
 
     # Source coverage: every hourly export has every declared source attributed with usable families.
+    # A planned collector restart leaves no attributable evidence for the hour that contains it, so
+    # an export overlapping a restarting fault must report the restart and is listed apart.
     exports = [s["guest"]["sources"] for s in samples if isinstance(s["guest"].get("sources"), dict)]
-    gaps = []
+    restarting = [(f["startedAtMs"], f["endedAtMs"]) for f in planned if f["name"] in restarts and f.get("endedAtMs")]
+    gaps, excused = [], []
     if len(exports) < definition["durationHours"]:
         missing.append("fewer hourly source exports than hours")
     for export in exports:
         if "unavailable" in export:
             gaps.append({"fromMs": None, "unavailable": export["unavailable"]})
+            continue
+        if any(begin <= export["toMs"] and end >= export["fromMs"] for begin, end in restarting):
+            statuses = sorted({r["detail"]["status"] for r in export["runtime"]})
+            excused.append({"fromMs": export["fromMs"], "statuses": statuses})
+            if any(r["detail"]["status"] not in ("ok", "collector-restart") for r in export["runtime"]):
+                gaps.append({"fromMs": export["fromMs"], "statuses": statuses})
             continue
         rows = {r["detail"]["source"]: r for r in export["runtime"]}
         for source, families in definition["requiredSources"].items():
@@ -189,6 +198,7 @@ def analyze(records, faults, definition, definition_sha):
             if not row or not row["evidence"] or unusable:
                 gaps.append({"fromMs": export["fromMs"], "source": source, "evidence": bool(row and row["evidence"]), "unusable": unusable})
     result["sourceGaps"] = gaps
+    result["sourceHoursWithPlannedRestart"] = excused
     if gaps:
         missing.append(f"{len(gaps)} hourly source gaps")
 

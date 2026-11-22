@@ -79,9 +79,12 @@ reported separately and still count in the inclusive totals.
    queue, parked alarms, queued group reads): an hourly-median slope no more
    than 0.5 a hour; actor populations grow less than 2% a hour.
 10. Bounded storage: guest free disk never below 2 GiB.
-11. Complete source coverage: every hourly export attributes `engine:live`,
-    `worker:stats:0` and `worker:stats-observe:1` to a release with each
-    declared family usable.
+11. Complete source coverage: every hourly export of the soak attributes
+    `engine:live`, `worker:stats:0` and `worker:stats-observe:1` to a release
+    with each declared family usable. A planned collector restart leaves no
+    attributable evidence for the hour that contains it, so an export that
+    overlaps `app-restart` or `engine-restart` must instead report each source
+    as `ok` or `collector-restart`, and is listed separately.
 
 A missing interval or missing evidence makes the run **inconclusive**, not a
 pass. Known coverage gaps, which are not treated as plateaued: runtime inbox
@@ -89,6 +92,17 @@ depth, native export-loss counters, actor lifecycle timestamps, and
 application producer queues other than through delivered observations. If the
 run is invalidated, it is restarted once with a fresh output path; a second
 invalidation blocks the soak.
+
+## Starts
+
+- `standby-20261122`, started 2026-11-22 16:34:03 UTC and stopped after two
+  samples: its first hourly source export covered the hour before the soak,
+  which held the 16:00 configuration apply, and the definition had no rule
+  for the hours that contain a planned collector restart, so the run could only
+  have ended inconclusive. The sampler now exports from the soak's first hour
+  and criterion 11 says how restart hours are judged. This consumed the soak's
+  one allowed restart: another invalidation blocks the soak.
+- `standby-20261122b` is the soak.
 
 ## Result
 

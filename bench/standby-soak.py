@@ -188,8 +188,9 @@ with open(args.output, "x", encoding="utf-8") as output:
                   "latenessSeconds": round(max(0, elapsed - index * args.interval), 3)}
         try:
             # Source evidence needs a collector delivery after the window ends, so each hourly export
-            # covers the hour that closed two minutes ago; it is frozen here before metric retention ends.
-            record["guest"] = probe(args.interval, record["atMs"] - 120_000 if index % 60 == 0 else 0)
+            # covers the hour that closed two minutes ago; it is frozen here before metric retention
+            # ends. The first export covers the soak's first hour, not the hour before it.
+            record["guest"] = probe(args.interval, record["atMs"] - 120_000 if index and index % 60 == 0 else 0)
         except Exception as error:
             record["guest"] = {"unavailable": type(error).__name__, "detail": str(error)[:200]}
         if index % args.check_every == 0:

@@ -28,9 +28,9 @@ def series():
                  "engineMetrics": {"rivet_depot_tablet_store_queue_depth": 0, "rivet_depot_volume_log_client_queued_requests": 0,
                                    "rivet_depot_alarm_parked": 0, "rivet_depot_tablet_group_reads_queued": 0},
                  "application": {}, "actors": {"observation-store": {"states": {"pending": 14}, "truncated": False}}}
-        if index % 60 == 0:
+        if index and index % 60 == 0:
             guest["sources"] = {"fromMs": at - 3_720_000, "toMs": at - 120_000,
-                                "runtime": [{"evidence": {"releaseId": "rt-1"}, "detail": {"source": s, "families": {f: {"usable": True} for f in fams}}} for s, fams in SOURCES.items()]}
+                                "runtime": [{"evidence": {"releaseId": "rt-1"}, "detail": {"source": s, "status": "ok", "families": {f: {"usable": True} for f in fams}}} for s, fams in SOURCES.items()]}
         row = {"kind": "sample", "index": index, "atMs": at, "latenessSeconds": 0.1, "guest": guest}
         if index % 5 == 0:
             row["check"] = {"ok": True, "seq": str(at + 7), "steps": [{"name": "ingest", "ok": True, "ms": 90}]}
@@ -81,6 +81,17 @@ class StandbySoakTests(unittest.TestCase):
         self.assertEqual(judge(rows[:-1] + [{"kind": "end", "complete": False}], faults)["verdict"], "inconclusive")
         rows, faults = series()
         self.assertEqual(judge(rows, faults[:-1])["verdict"], "inconclusive")
+
+    def test_an_hour_with_a_planned_collector_restart_is_excused_but_other_gaps_are_not(self):
+        rows, faults = series()
+        restart_hour = rows[1 + 240]["guest"]["sources"]
+        for row in restart_hour["runtime"]:
+            row["evidence"], row["detail"]["status"] = None, "collector-restart"
+        result = judge(rows, faults)
+        self.assertEqual(result["verdict"], "pass", result)
+        self.assertEqual(len(result["sourceHoursWithPlannedRestart"]), 1)
+        rows[1 + 600]["guest"]["sources"]["runtime"][0]["evidence"] = None
+        self.assertEqual(judge(rows, faults)["verdict"], "inconclusive")
 
     def test_a_fault_that_does_not_recover_in_time_fails(self):
         rows, faults = series()
