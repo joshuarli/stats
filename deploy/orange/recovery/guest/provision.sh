@@ -2,7 +2,7 @@
 # Provisions a Stats standby writer guest from a verified Engine capture (see docs/lisa-operational-recovery.md).
 #   sh provision.sh BUNDLE
 # Runs as root on an Alpine 3.24 cloud guest without network access. BUNDLE holds:
-#   packages, apks/ (a local repository with APKINDEX.tar.gz), native-stats.openrc
+#   packages, apks/ (a local repository with APKINDEX.tar.gz), native-stats.openrc, sshd-forward.conf
 #   standby-engine, stats-engine.json and oomanifest.py from Stuff's deploy/openorange
 #   engine-image.tar (docker save of the declared Engine image)
 #   runtime.tar (an OpenOrange runtime closure with its openorange.manifest_digest PAX header)
@@ -123,6 +123,12 @@ fi
 for part in observe observe.jsonc stats stats.jsonc; do [ -L "$opt/app/$part" ] || point "current/$part" "$opt/app/$part"; done
 [ -L /opt/stats-infra-collector ] || point native-rehearsal/app/current/collector /opt/stats-infra-collector
 [ -e "$opt/apps/.previous" ] || echo "$app" > "$opt/apps/.previous"
+
+echo "ingress forward"
+# Lisa's stats-direct tunnel reaches the app only through an SSH local forward to 127.0.0.1:8080,
+# which the image's sshd refuses by default.
+install -o root -g root -m 0644 "$b/sshd-forward.conf" /etc/ssh/sshd_config.d/01-rehearsal-forward.conf
+rc-service sshd reload >/dev/null
 
 echo "services"
 install -o root -g root -m 0755 "$b/native-stats.openrc" /etc/init.d/native-stats

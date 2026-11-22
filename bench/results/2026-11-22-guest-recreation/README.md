@@ -2,9 +2,11 @@
 
 Simplification campaign S1 case 7: "A clean disposable guest can recreate,
 reboot and recover the declared deployment, then ingest, read history and
-replay duplicates correctly." **Not yet passed.** The tracked build exists and
-each failure it found is fixed, but the final run was stopped because the
-recreation's disk writes degraded the production writer on the same host.
+replay duplicates correctly." **Passed on 2026-11-22 at 14:22 UTC** (run
+`s1c7-20261122k`, below), after the earlier runs found seven gaps in the
+tracked definition. The first attempts were stopped because the recreation's
+disk writes degraded the production writer on the same host; the passing runs
+kept every bulk write in RAM.
 
 ## Decision
 
@@ -71,7 +73,7 @@ in the tracked definition or the tooling, now fixed:
    and the host and guest both require the restored file set to equal
    `depot.sha256` exactly.
 
-## Why it stopped
+## Why the first runs stopped
 
 - At 04:45:22 UTC, while run 7's guest restored 2.3 GB and loaded images, the
   production Engine logged a late topology heartbeat, failed start reports and
@@ -93,3 +95,67 @@ runtime archive; the capture must be copied again.
 
 Diagnostics of the failed runs are in `~/.local/state/openorange/guests/` on
 the workstation.
+
+## Rerun with every bulk write in RAM (2026-11-22 13:30–14:22 UTC)
+
+Threadripper has one NVMe disk, shared by production, Stuff's primary VM and
+CI, and `/tmp` there is tmpfs. `recreate.sh` gained `GUEST_ROOT` (the host
+directory for the guest, its overlay disk, staged inputs and cache; set to
+`/tmp/stats-guest`) and `GUEST_CGROUP` (every host-side command and QEMU run
+in a cgroup; `guest-recreate` had `io.max` `259:0 rbps=40 MiB/s wbps=20 MiB/s`).
+Cached inputs are hard-linked, the host bundle is removed once the guest has
+it, and the guest trims its copy after provisioning. Peak tmpfs use was about
+10 GB. The capture was streamed from the workstation's off-host copy (14 m 39 s
+at about 2.6 MB/s) and verified against `depot.sha256` on arrival. The
+cgroup's `io.stat` showed no NVMe I/O. A watcher on the workstation ran
+synthetic ingest against production every 45 s, sampled Engine warnings, and
+would have killed the run after two failed samples; production recorded no
+Engine warning and its host-side `/health` stayed at 11–15 ms throughout.
+
+Two more gaps appeared, so the declaration now has seven:
+
+6. Each run's ingest check returned 502 on every attempt. `recreate.sh`
+   deleted `statsctl`'s output with its scratch, so the cause was unrecorded
+   in run `h`. Run `i` kept it (502 from the local gateway proxy), and a probe
+   of the SSH tunnel to the guest's app got no response while the app answered
+   inside the guest. The
+   image's sshd has `AllowTcpForwarding no`, and production works only because
+   of a **third hand-made production fact**,
+   `/etc/ssh/sshd_config.d/01-rehearsal-forward.conf` (`AllowTcpForwarding
+   local`, `PermitOpen 127.0.0.1:8080`). Lisa's `stats-direct-tunnel` reaches
+   the app through exactly that forward, so ingress depends on it. It is now
+   `guest/sshd-forward.conf`, installed by `provision.sh`.
+7. The check retried every 5 s, but the synthetic host is admitted six frames
+   a minute and each attempt sends up to two, so retries after one early
+   failure would all be refused as `rate_limited`. Attempts are now 20 s apart
+   (12 attempts), and every attempt's output is kept in
+   `~/.local/state/openorange/guests/NAME.ingest-PHASE*.json`.
+
+Run `s1c7-20261122k` (inputs as above; Stats working tree on `d92ecf87a83`):
+
+| Phase (UTC) | Ingest, readback, duplicate replay | App and collector identity | Engine drift |
+| --- | --- | --- | --- |
+| Provisioned 14:21:28 | pass on the first attempt | `app-5091917968f7` selected, running, collector | none |
+| Rebooted 14:22:30 | pass (ingest 92 ms, latest 62 ms, replay 30 ms) | same | none |
+
+Provisioning took 2 m 16 s after the guest started (14:19:05–14:21:21).
+Result: `~/.local/state/openorange/guests/s1c7-20261122k.json`. The guest was
+kept (`GUEST_KEEP=1`) for the Engine degradation drills (S2) and is destroyed
+with `recreate.sh --destroy s1c7-20261122k`.
+
+The same run's wrangler log writes fail with EACCES on `/home/native-stats`,
+the service account's home, which `adduser -H` does not create. Production has
+the same account and the same missing home, so the recreation matches it.
+
+Reproduce (from a clean Stats checkout, on a Linux host with QEMU and Docker):
+
+```sh
+GUEST_HOST=threadripper GUEST_ROOT=/tmp/stats-guest GUEST_CGROUP=/sys/fs/cgroup/guest-recreate \
+BASE_IMAGE=PATH_ON_HOST/alpine-3.24.4-x86_64-cloudinit-r0.qcow2 STUFF_ROOT=~/repos/laputa-systems/stuff \
+RUNTIME_DIR=~/.local/state/openorange/releases/rt-2c70c316ce8d APP_DIR=APP_RELEASE_DIR \
+STATS_CHECK_CREDENTIAL_FILE=~/.config/stats/synthetic-check.json STATSCTL=~/.local/state/openorange/rollout/tools/statsctl \
+  deploy/orange/recovery/guest/recreate.sh NAME ~/backups/openorange/stats/standby-sim-20261122T0236Z
+```
+
+Create the cgroup first with `doas mkdir /sys/fs/cgroup/guest-recreate` and
+write its `io.max`; the base image needs its `.sha512` beside it.
