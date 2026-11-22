@@ -133,7 +133,7 @@ entry into a new campaign framework.
 
 | Step | Deliverable | Owner | State |
 | --- | --- | --- | --- |
-| S0 | Refresh actual topology, baseline and protected-evidence inventory | Stats + Stuff | in progress: standby identities, limits and one restart-to-readiness sample recorded; timings, resource baseline and budgets open |
+| S0 | Refresh actual topology, baseline and protected-evidence inventory | Stats + Stuff | in progress: topology, identities, limits and first timings recorded ([partial baseline](../bench/results/2026-11-22-sim-s0-baseline/README.md)); repeated timings, resource baseline and recovery budgets open |
 | S1 | One deployment/capture ownership path and reproducible standby definition | Stuff, Stats adapters | in progress: app and collector deploy through the transaction, cases 1–5 tested, promoted in production; Engine declared, drift-checked and rendered by `standby-engine create-args`; capture runs under the lease and restores its recorded service intent (case 6, tested); the first production capture failed safely and no valid capture exists yet ([record](../bench/results/2026-11-22-engine-capture/README.md)). Recreation (case 7) parked: the guest's packages, users, units and `conf.d` secrets are untracked and the adapters have no fresh-install path; retry once a guest build is tracked, or the writer moves to Stuff's `oo` platform. [Record](../bench/results/2026-11-22-standby-app-transaction/README.md) |
 | S2 | Reproduce and repair the Engine degradation mechanism | Stuff + Stats workload | planned |
 | S3 | Queryable causal evidence and truthful resource comparisons | Stats | planned |
