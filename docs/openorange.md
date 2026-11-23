@@ -220,6 +220,13 @@ Engine drift before and after a reboot. It has not passed end to end yet, and
 it must not run on the host whose disk holds this writer
 ([record](../bench/results/2026-11-22-guest-recreation/README.md)).
 
+The `native-stats` unit overrides the guest's `rc.conf` limit of 5 respawns per
+30 minutes. It retries without limit, with delays growing from 5 s to 60 s, so
+a slow Engine recovery cannot leave the app stopped. A running supervisor keeps
+the arguments it started with, so a changed unit takes effect at the next
+service start. `deploy/orange/recovery/guest/test-native-stats-respawn.sh`
+checks this policy under the guest's OpenRC version and needs Docker.
+
 ### Standby operations record (2026-11-20)
 
 - **Access.** The guest key, pinned host key and SSH config live in

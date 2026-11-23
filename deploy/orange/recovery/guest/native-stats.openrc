@@ -7,6 +7,10 @@ command_user=native-stats
 output_log=/var/log/native-stats.log
 error_log=/var/log/native-stats.log
 retry=TERM/30/KILL/5
+# Overrides rc.conf's limit of 5 respawns per 30 minutes: Engine recovery can outlast it, and backoff limits registration pressure.
+respawn_max=0
+respawn_delay=5
+supervise_daemon_args="--respawn-delay-step 10 --respawn-delay-cap 60"
 depend() { need docker; }
 export RIVET_ENDPOINT RIVET_NAMESPACE RIVET_TOKEN RIVET_NODE_VERSION NODE_ENV GATEWAY_SECRET ORANGE_WORKER_SECRETS HOME
 
