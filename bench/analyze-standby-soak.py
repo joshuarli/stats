@@ -149,6 +149,10 @@ def analyze(records, faults, definition, definition_sha):
             missing.append("missing plateau windows")
             break
         old, new = statistics.median(select(s) for s in prior), statistics.median(select(s) for s in final)
+        if old <= 0:
+            plateau[name] = {"priorMedian": old, "finalMedian": new, "relativeChange": None}
+            missing.append(f"{name} has no measured baseline")
+            continue
         plateau[name] = {"priorMedian": old, "finalMedian": new, "relativeChange": new / old - 1}
         if abs(new / old - 1) > definition["maxMedianMemoryChange"]:
             failed.append(f"{name} did not plateau")

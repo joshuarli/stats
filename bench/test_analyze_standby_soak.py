@@ -93,6 +93,19 @@ class StandbySoakTests(unittest.TestCase):
         rows[1 + 600]["guest"]["sources"]["runtime"][0]["evidence"] = None
         self.assertEqual(judge(rows, faults)["verdict"], "inconclusive")
 
+    def test_an_unmeasured_memory_baseline_is_inconclusive_and_keeps_other_failures(self):
+        rows, faults = series()
+        for row in rows[1:-1]:
+            row["guest"]["app"]["rssBytes"] = 0
+        result = judge(rows, faults)
+        self.assertEqual(result["verdict"], "inconclusive", result)
+        self.assertIn("appRss has no measured baseline", result["missing"])
+        self.assertIsNone(result["plateau"]["appRss"]["relativeChange"])
+        faults[-1]["found"] = faults[-1]["found"][:-1]
+        result = judge(rows, faults)
+        self.assertEqual(result["verdict"], "fail")
+        self.assertIn("lost acknowledged writes", result["failed"])
+
     def test_a_fault_that_does_not_recover_in_time_fails(self):
         rows, faults = series()
         faults[0]["recoveredAfterS"] = 150

@@ -1,7 +1,16 @@
 Prefix: STA
-Next: 138
+Next: 139
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-138 · P1 · Keep the standby app restarting until it registers after an Engine restart
+
+- **Area:** Operations · Engine
+- **Where:** the guest's `/etc/init.d/native-stats`; bench/standby-soak-faults.py; bench/results/2026-11-22-standby-soak/README.md#outage
+- **Problem:** On 2026-11-22 at 23:36 UTC the soak's Engine restart left production returning 502 for about 18 h 22 min. The app repeatedly missed RivetKit's 30 s registration limit while the Engine refused envoy connects, and its supervisor stopped retrying at 23:39. `rc-service native-stats start` had already returned success, so the fault runner recorded no error. A single leased start at 17:58 UTC on 2026-11-23 recovered service with no acknowledged write lost.
+- **Recommendation:** Reproduce on a disposable guest from the restored capture. Declare a respawn policy that outlasts Engine recovery in the tracked unit, and make Engine restarts wait for a functional ingest check rather than the service manager's exit status. Then run a new soak under a new definition, including a working app RSS probe. Deliver outage alerts through STA-130.
+- **Fix with:** root-cause
+- **Effort:** M
 
 ### STA-135 · P1 · Keep the standby Engine out of its alarm retry loop under host CPU contention
 

@@ -1,0 +1,267 @@
+{
+  "samples": 1441,
+  "steadySamples": 1416,
+  "identity": {
+    "app": "app-5091917968f7",
+    "runtime": "rt-2c70c316ce8d",
+    "engineImage": "sha256:6e585002b700dd4d3630808eb67884aa15d1a602d83781984edac47023b6d40f",
+    "engineStartedAt": "2026-11-22T16:00:13.369593319Z",
+    "engineRestartCount": 0,
+    "engineOomKilled": false,
+    "engineConfigSha256": "ef114edfe1cc62c3abd27abe2ac9e4827eb55425f1b58ce491bd76f4ed0b0bc1"
+  },
+  "coverageGaps": [
+    "runtime inbox depth unavailable",
+    "native export-loss counters unavailable",
+    "actor lifecycle timestamps do not establish state",
+    "application producer queues visible only through delivered observations"
+  ],
+  "availability": {
+    "checks": 289,
+    "failedChecks": 206,
+    "steadyChecks": 282,
+    "steadyFailed": 199
+  },
+  "latency": {
+    "ingest": {
+      "p95": 279.8,
+      "p99": 564.9,
+      "max": 564.9
+    },
+    "latest": {
+      "p95": 97.2,
+      "p99": 208.7,
+      "max": 208.7
+    }
+  },
+  "faults": [
+    {
+      "name": "app-restart",
+      "recoveredAfterS": 30.2,
+      "error": null
+    },
+    {
+      "name": "engine-restart",
+      "recoveredAfterS": null,
+      "error": null
+    },
+    {
+      "name": "depot-warm-read",
+      "recoveredAfterS": null,
+      "error": null
+    },
+    {
+      "name": "host-cpu",
+      "recoveredAfterS": null,
+      "error": null
+    },
+    {
+      "name": "host-disk-write",
+      "recoveredAfterS": null,
+      "error": null
+    }
+  ],
+  "unplannedChanges": [
+    {
+      "index": 423,
+      "fault": null
+    },
+    {
+      "index": 424,
+      "fault": null
+    }
+  ],
+  "engineWarningRunSamples": 2,
+  "plateau": {
+    "appRss": {
+      "priorMedian": 0.0,
+      "finalMedian": 0.0,
+      "relativeChange": null
+    },
+    "engineAnon": {
+      "priorMedian": 679018496.0,
+      "finalMedian": 965552128.0,
+      "relativeChange": 0.4219820721938037
+    },
+    "tabletStoreQueue": {
+      "hourlyMedians": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slopePerHour": 0.0,
+      "relativeSlope": 0
+    },
+    "logClientQueue": {
+      "hourlyMedians": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slopePerHour": 0.0,
+      "relativeSlope": 0
+    },
+    "alarmParked": {
+      "hourlyMedians": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slopePerHour": 0.0,
+      "relativeSlope": 0
+    },
+    "groupReadsQueued": {
+      "hourlyMedians": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "slopePerHour": 0.0,
+      "relativeSlope": 0
+    }
+  },
+  "disk": {
+    "minFreeBytes": 5348634624,
+    "first": 5860144128,
+    "last": 5774143488
+  },
+  "sourceGaps": [
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    },
+    {
+      "fromMs": null,
+      "unavailable": "URLError"
+    }
+  ],
+  "sourceHoursWithPlannedRestart": [
+    {
+      "fromMs": 1795376061014,
+      "statuses": [
+        "collector-restart"
+      ]
+    }
+  ],
+  "verdict": "fail",
+  "failed": [
+    "engineAnon did not plateau",
+    "fault depot-warm-read did not recover within 120 s",
+    "fault engine-restart did not recover within 120 s",
+    "fault host-cpu did not recover within 120 s",
+    "fault host-disk-write did not recover within 120 s",
+    "steady availability below the limit",
+    "unplanned restart or deployment change"
+  ],
+  "missing": [
+    "1009 steady samples with unavailable groups",
+    "19 hourly source gaps",
+    "appRss has no measured baseline",
+    "no final ledger readback",
+    "shorter than the declared duration"
+  ]
+}

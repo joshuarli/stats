@@ -106,4 +106,46 @@ invalidation blocks the soak.
 
 ## Result
 
-Pending.
+**Fail.** `standby-20261122b` collected 1,441 of 1,441 samples from
+2026-11-22 16:36 to 2026-11-23 16:36 UTC. [`verdict.json`](verdict.json) is the
+analyzer's output against the frozen definition (SHA-256 `a4d58326…`). The
+deployment is not qualified, and the failure consumed this soak: a new soak
+needs a new definition and output path.
+
+Failed criteria:
+
+- **Fault recovery.** `app-restart` recovered in 30.2 s. `engine-restart` never
+  recovered, so the three later faults could not recover either.
+- **Steady availability.** 199 of 282 steady checks failed.
+- **Unplanned changes.** App identity changed at samples 423 and 424, during
+  the failed registration restarts.
+- **Bounded memory.** The Engine's median anonymous memory rose 42.2%, from
+  679 MiB to 966 MiB, against a 5% limit. Most of the final window had no
+  running app, so this does not characterize normal serving.
+
+Missing evidence: 1,009 steady samples with unavailable groups, 19 hourly source
+gaps, no app RSS baseline (the probe read 0 throughout), no ledger readback
+during the run, and a sample span 478 ms short of 24 hours. The span is left
+as a miss because the definition requires at least 24 hours.
+
+### Outage
+
+The `engine-restart` fault began at 23:36:21 UTC. Its command reported success
+after about 7 s because `rc-service native-stats start` returned before the app
+registered. The app then repeatedly failed RivetKit's 30 s Engine registration
+limit while the Engine refused envoy connects with
+`request_deadline_exceeded`. The last attempt was at 23:39, after which its
+supervisor left `native-stats` stopped. Production returned 502 until the service
+was started under the rollout lease at 17:58 UTC on 2026-11-23, about 18 h 22 min
+later. The observer records alerts without delivering them (STA-130).
+
+The Engine was idle when the app was restarted, and one supervised start
+registered. After restoration, 18 of 18 synthetic checks over eight minutes
+passed ingest, readback and duplicate replay.
+
+### Post-restoration ledger
+
+The soak's own ledger read failed with a 502, so `verdict.json` has no durability
+result. After restoration, `bench/standby-soak-ledger.mts` read the same window
+from the `soak-check` host's history. All 84 acknowledged writes were present,
+none lost. This is separate evidence and does not change the verdict.
