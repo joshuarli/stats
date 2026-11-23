@@ -83,6 +83,45 @@ await test("backup export resumes a verified prefix and skips finished objects",
   }
 });
 
+await test("backup export retries server failures on manifest and row reads", async () => {
+  const scratch = resolve(import.meta.dirname, "../../../.work/tmp");
+  mkdirSync(scratch, { recursive: true });
+  const directory = mkdtempSync(join(scratch, "backup-retry-"));
+  const sha256 = createHash("sha256").update("[1]\n").digest("hex");
+  const failures = new Set(["manifest", "rows"]);
+  const reads: string[] = [];
+  const server = await fakeOrigin((request, response) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const read = url.pathname.split("/").at(-1) ?? "";
+    if (url.pathname === "/api/v1/admin/objects") {
+      sendJson(response, { objects: ["installation"] });
+      return;
+    }
+    reads.push(read);
+    if (failures.delete(read)) sendJson(response, { error: "fixture server failure" }, 500);
+    else if (read === "manifest") {
+      sendJson(response, {
+        format: "stats-export/1", object: "installation", schema: { sha256: "0".repeat(64) }, alarmAtMs: null, exportedAtMs: 1,
+        tables: [{ name: "samples", columns: ["id"], key: ["id"], sql: "CREATE TABLE samples(id INTEGER PRIMARY KEY)", rows: 1, sha256 }]
+      });
+    } else sendJson(response, { rows: [[1]], next: null });
+  });
+  try {
+    const destination = join(directory, "backup");
+    let stderr = "";
+    const exit = await main(["backup", "export", "--out", destination], {
+      env: { STATS_URL: server.origin, STATSCTL_TARGET: "orange" },
+      io: { stdout: () => undefined, stderr: text => { stderr += text; }, isTty: false }
+    });
+    assert.equal(exit, 0, stderr);
+    assert.deepEqual(reads, ["manifest", "manifest", "rows", "rows"]);
+    assert.deepEqual(verifyBackup(destination), [{ object: "installation", rows: 1 }]);
+  } finally {
+    await server.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 await test("reopening attempts later objects and reports replies that did not prove the new state", async () => {
   const objects = ["installation", "observe:stats", "observe:stuff"];
   const origin = await fakeOrigin((request, response) => {

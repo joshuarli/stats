@@ -38,17 +38,22 @@ async function eachLimited<T, R>(items: readonly T[], limit: number, work: (item
   return results;
 }
 
-async function withRetry<T>(attempt: () => Promise<T>): Promise<T> {
+async function retryWhile<T>(attempt: () => Promise<T>, retryable: (error: CommandError) => boolean): Promise<T> {
   for (let tries = 1; ; tries += 1) {
     try {
       return await attempt();
     } catch (error) {
-      const retryable = error instanceof CommandError && error.exit === EXIT.transport && error.code !== "contract";
-      if (!retryable || tries >= ROW_ATTEMPTS) throw error;
+      if (!(error instanceof CommandError) || !retryable(error) || tries >= ROW_ATTEMPTS) throw error;
       await new Promise(wake => setTimeout(wake, Math.min(30_000, 500 * 2 ** tries)));
     }
   }
 }
+
+const withRetry = <T>(attempt: () => Promise<T>): Promise<T> =>
+  retryWhile(attempt, error => error.exit === EXIT.transport && error.code !== "contract");
+
+const withReadRetry = <T>(attempt: () => Promise<T>): Promise<T> =>
+  retryWhile(attempt, error => error.code === "network" || error.code === "timeout" || /^http_5\d\d$/u.test(error.code));
 
 interface BackupIndex {
   readonly format: typeof BACKUP_FORMAT;
@@ -161,7 +166,7 @@ function snapshotIdentity(manifest: ObjectManifest): string {
 }
 
 async function exportObject(context: CommandContext, object: string, directory: string, resumeFrom: string | undefined): Promise<{ readonly object: string; readonly tables: number; readonly rows: number }> {
-  const fetched = await context.http.getJson(`${objectPath(object)}/export/manifest`, decodeManifest, { bodyLimit: HISTORY_BODY_LIMIT });
+  const fetched = await withReadRetry(() => context.http.getJson(`${objectPath(object)}/export/manifest`, decodeManifest, { bodyLimit: HISTORY_BODY_LIMIT }));
   if (fetched.kind !== "ok") throw transportError("contract", `${object} manifest was not returned`);
   const manifest = fetched.value;
   if (manifest.object !== object) throw transportError("contract", `${object} answered with the manifest of ${manifest.object}`);
@@ -196,7 +201,7 @@ async function exportObject(context: CommandContext, object: string, directory: 
       }
       if (saved === undefined || after !== null) for (;;) {
         const query = new URLSearchParams({ table: table.name, limit: String(MAX_PAGE_ROWS), ...(after === null ? {} : { after: JSON.stringify(after) }) });
-        const page = await context.http.getJson(`${objectPath(object)}/export/rows?${query}`, decodePage, { bodyLimit: HISTORY_BODY_LIMIT });
+        const page = await withReadRetry(() => context.http.getJson(`${objectPath(object)}/export/rows?${query}`, decodePage, { bodyLimit: HISTORY_BODY_LIMIT }));
         if (page.kind !== "ok") throw transportError("contract", `${object} ${table.name} page was not returned`);
         const data = new TextEncoder().encode(page.value.rows.map(row => `${JSON.stringify(row)}\n`).join(""));
         writeFileSync(descriptor, data);
