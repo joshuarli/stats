@@ -1,12 +1,28 @@
 # Stats on OpenOrange
 
-Stats runs on OpenOrange on `lisa`, reachable only from the tailnet at
-`https://stats.17166969.xyz` (a DNS-only A record to `lisa`'s Tailscale
-address). The shared host stack (Rivet Engine, S3 store, Caddy ingress with
-ACME DNS-01, whois identity sidecar, OpenRC units, backups) is defined in
+Stats is reachable at `https://stats.17166969.xyz` (a DNS-only A record to
+`lisa`'s Tailscale address). Since 2026-11-18 the writer is the native Stats
+app in the `stats-recovery-vm` guest on Threadripper. `lisa` supplies only the
+edge: Caddy terminates TLS and sends Stats to `127.0.0.1:18489`, a supervised
+SSH forward to the guest app. Lisa's Docker Stats app was removed from the
+default runlevel and is fenced by `stats.mode: writer` in
+`/etc/openorange/recovery-routes.json`; see
+[live failover](lisa-operational-recovery.md#live-stats-failover). The shared
+host stack (Rivet Engine, S3 store, Caddy ingress with ACME DNS-01, whois
+identity sidecar, OpenRC units, backups) is defined in
 [`stuff/deploy/openorange/`](https://github.com/laputa-systems/stuff/tree/main/deploy/openorange)
 and its [shared-stack runbook](https://github.com/laputa-systems/stuff/blob/main/docs/openorange-runtime.md).
 This page covers what Stats owns.
+
+## Host DNS (2026-11-24)
+
+On Alpine hosts `unbound` owns `127.0.0.1:53`, so tailscaled cannot install
+MagicDNS there. The shared `~/usr/host/dns/unbound.conf` forwards `ts.net.` to
+`100.100.100.100`, and `~/usr/host/dns/resolv.conf` carries
+`search tailcf741.ts.net`. This is what keeps the Lisa-to-Threadripper SSH
+jumps resolving after a `~/usr` sync; do not remove either entry. Verified on
+Lisa: `getent hosts threadripper` → `100.98.145.91` with
+`nameserver 127.0.0.1` in `/etc/resolv.conf`.
 
 ## What runs
 
