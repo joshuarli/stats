@@ -280,7 +280,7 @@ checks this policy under the guest's OpenRC version and needs Docker.
   On failback, move the service and the agent entry back to Lisa.
 - **Failback.** Native Stats on Lisa with its own Engine remains a planned
   migration: production units, the ingress move, a soak and a fenced handoff
-  are still gated in [native Lisa](native-lisa.md). Until then the standby is
+  are still gated in [native Lisa](roadmap.md#campaign-native-lisa-deployment). Until then the standby is
   the supported writer, and `stats-prod` on Lisa keeps its 17 stranded actors.
 
 ### Runtime release record (2026-11-20)
@@ -391,8 +391,8 @@ service's Resources section.
   the archive SHA-256 it staged (`6cb79216…`). Rollout
   `4130c23316344b789076ccb401d55e04` passed 13 of 13 adapter and functional
   checks over 600 s and ended `promoted`. `rt-a26798107529` stays as the
-  recovery artifact. The full record is in the
-  [campaign](CAMPAIGN-INFRA-RELEASE.md#qualification-and-unattended-recovery-2026-11-20).
+  recovery artifact. The [roadmap](roadmap.md#campaign-infrastructure-release)
+  retains the remaining qualification work.
 
 ### Runtime artifacts
 

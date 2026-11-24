@@ -87,7 +87,7 @@ describe the server, protected credentials and driver. The original repaired
 depot remains unchanged. The copied rehearsal container is stopped.
 
 The single fresh preparation allowed in
-[the resumption record](../../../docs/STATS-PERFORMANCE-RESUMPTION.md)
+[the resumption record](../../../docs/roadmap.md#campaign-performance)
 completed with all 203,950 events and exact reference checks.
 [The preparation receipt](fresh-preparation.json) and
 [fixture proof](fresh-fixture.json) preserve the result. Full overhead and
@@ -125,4 +125,4 @@ attempt ledger or replace the failed evidence. The protected raw CPU profiles
 remain under `fresh/cpu-enabled-0/` and `fresh/cpu-disabled-0/` there. The
 committed workload receipts and source digests preserve conclusions without
 requiring those scratch profiles. Use the original attempt conditions in
-[the resumption record](../../../docs/STATS-PERFORMANCE-RESUMPTION.md).
+[the resumption record](../../../docs/roadmap.md#campaign-performance).

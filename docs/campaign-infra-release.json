@@ -1,7 +1,7 @@
 {
   "schema": "stats-campaign-record/1",
   "campaign": "infra-release",
-  "doc": "docs/CAMPAIGN-INFRA-RELEASE.md",
+  "doc": "docs/roadmap.md",
   "started": "2026-11-20",
   "baseline": {
     "stats": "7fc3ff9ca9dd1d072aa8f6a90a5755da38184ea9",

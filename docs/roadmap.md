@@ -1,12 +1,41 @@
-# Stats simplification and self-optimization campaign
+# Roadmap
 
-Status: in progress since 2026-11-22; no step is complete.
-Owner direction: 2026-11-21. Review baseline: Stats
-`73a576e4fc6d20f1f083b52225293be2c6517fb4`, Stuff
-`501db1136f4c64c478401fc92201fb44671cb386`. These are source-review identities,
-not a fresh inspection of production.
+This is the single plan for this repository: all current and future work, and the handoff for resuming it. Campaigns are sections below, and their items interleave in **Sequence**. "Resume the roadmap" means continue from **Status**.
 
-## Outcome
+## Status
+
+- Active: simplification and self-optimization, S1, S2 and S5; S0 is complete.
+- Last accepted repository revision: `c5855db751141c82e9a90bfa3fe6644ab56c4a14`; integration green at this revision is not established. S0 recorded a green fresh-checkout `make cloudflare-test`.
+- S1 app and collector use the rollout transaction; capture and disposable guest recreation were exercised. S2's log-shard mechanism was repaired; the CPU spin remains open (STA-135).
+- S5 compared two builds, but host confounding remains asserted and no improvement experiment has run. The S6 soak failed after an Engine restart (STA-138); no valid 24-hour soak is established.
+- Performance P6–P9 remain unqualified. The fresh fixture preparation and first overhead study are consumed; the tenth Engine shutdown failed (STUF-90).
+- INF-11 Engine promotion is held pending its adapter, representative consumers and sustained qualification. Observer alert delivery is deferred (STA-130).
+- Parked performance drafts `feat/perf-overview`, `fix/perf-producer-drain`, `test/perf-live-reads`, `test/perf-native-recovery`, `test/preview-production`, and `test/native-dashboard-bench` are unreviewed retained drafts; consult them only if the corresponding work needs missing material. Their individual parking causes are not recorded here.
+- Other checked-out lanes: `deslop/acc-sandbox`, `deslop/finish`, `deslop/diagnose-core`, `deslop/ingest-types`, `fix/command-tree-cancel`, `fix/development-shutdown`, `refactor/btree-to-hash`, `chore/solid-2-stable`, `upgrade/npm-deps`, `upgrade-the-world/stats`, `upgrade-the-world/todos`, and `repomod/fix/7ec736dab90843dcbce1f6d6870e7b22`.
+- Checked-out release lanes: `campaign/drop-services`, `campaign/musl-artifact`, `campaign/release-gate`. Lane owners, parking causes and retry conditions are not established by this checkout; preserve these worktrees and reconcile with their owners before reuse.
+- Next: exercise STA-138 on a disposable guest and continue S1/S2, bringing forward only the S3 measurements needed for diagnosis.
+
+## Charter
+
+Preserve exact acknowledged data, authentication, bounded queues and gap semantics. Keep failed fixtures and consumed attempt budgets. Time measurements require clear host gates before and after each run. Use the existing rollout transaction and do not treat this roadmap as authority for shared Engine changes, writer transfer or destructive resets.
+
+## Sequence
+
+| ID | Campaign | Owned files | Prerequisites | Acceptance command |
+| --- | --- | --- | --- | --- |
+| STA-138 | Simplification S1/S6 | `deploy/orange/recovery/guest/`, `bench/standby-soak-faults.py` | Restored disposable capture and functional ingest check | `deploy/orange/recovery/guest/test-native-stats-respawn.sh`; real-app restart and new soak also required |
+| STA-135 | Simplification S2 | Stuff Engine configuration and `deploy/orange/recovery/` | Validated capture and isolated reproduction | `deploy/orange/recovery/contention-drill.sh start`; reproduce the spin and verify the repair |
+| S3 | Simplification | `cloudflare/src/metrics/`, release evaluator | Bring forward the measurements needed by S2 | `make cloudflare-test`; verify the investigation scenarios below |
+| S4 | Simplification | `deploy/orange/`, Stuff runtime build | Isolated runtime baseline | `make orange-test`; compare edit-to-ready and closure against baseline |
+| STA-128 | Performance W4 | `bench/observation-overhead*.mjs` | Classify original browser failure, preserve attempt ledger; no new allowance is implied | `node --test bench/observation-overhead-analysis.test.mjs`; full five-pair study requires its original conditions |
+
+## Campaign: Simplification and self-optimization
+
+### Goal and state
+
+Make Stats, OpenOrange and Rivet straightforward to change, diagnose and recover. S0 is complete; S1 and S5 are in progress, and the unreproduced part of S2 remains open. The ticket backlog is [TODO.md](../TODO.md).
+
+### Outcome
 
 Make Stats, OpenOrange and Rivet straightforward to change, diagnose and recover.
 Stats must supply enough trustworthy evidence to identify a dominant cost or
@@ -20,14 +49,13 @@ improvements. Collecting more metrics or completing more infrastructure work is
 useful only when it advances those outcomes.
 
 This is the active implementation sequence for that outcome. The
-[infrastructure release campaign](CAMPAIGN-INFRA-RELEASE.md) remains the evidence
+[infrastructure release campaign](roadmap.md#campaign-infrastructure-release) remains the evidence
 record for completed releases and the owner of its established release contracts.
-The [performance campaign](CAMPAIGN-STATS-PERFORMANCE.md) and
-[resumption record](STATS-PERFORMANCE-RESUMPTION.md) retain their thresholds,
+The [performance campaign](roadmap.md#campaign-performance) retains its thresholds,
 protected fixtures, failed attempts and unresolved acceptance. This document
 does not mark their open work complete or reset their consumed attempt budgets.
 
-## Decisions
+### Decisions
 
 1. **Keep the current OpenOrange/Rivet deployment while reducing its operating
    surface.** Begin with the supported Threadripper standby writer. A move back
@@ -60,11 +88,11 @@ replacing Rivet, merging all actors, and removing the VM/container boundary are
 separate architectural decisions, justified only by measured benefit and
 durability/recovery proof. They are not prerequisites for this campaign.
 
-## What the current evidence actually establishes
+### What the current evidence actually establishes
 
 | Finding | Evidence at the review baseline | Consequence |
 | --- | --- | --- |
-| Full runtime identity, bound receipts, two owned OpenOrange patches and unattended recovery exist | [INF qualification record](CAMPAIGN-INFRA-RELEASE.md#qualification-and-unattended-recovery-2026-11-20) | Extend these mechanisms; preserve their negative controls. |
+| Full runtime identity, bound receipts, two owned OpenOrange patches and unattended recovery exist | [INF qualification record](openorange.md#runtime-release-record-2026-11-20) | Extend these mechanisms; preserve their negative controls. |
 | Standby app deployment has a separate activation/rollback implementation | [standby-deploy.sh](../deploy/orange/standby-deploy.sh) reads selection before the lease, checks public health after releasing it, and obtains a new lease for unconditional rollback | A failed deployment can restore its old selection after another deployment has taken ownership. This is a source-level race, not an attributed incident cause. |
 | The supported standby Engine has manually maintained configuration | [standby incident record](openorange.md#standby-incident-2026-11-21) records an untracked Engine definition and manually applied limits | Reproduction and recovery currently depend on facts outside the checkout. |
 | The November 21 alarm/registration failure is unresolved | [STA-135](../TODO.md), [Stuff degradation investigation](https://github.com/laputa-systems/stuff/blob/501db1136f4c64c478401fc92201fb44671cb386/docs/openorange-engine-degradation.md) | CPU contention alone did not reproduce it; the latest drill substituted a fresh depot after the copied depot proved inconsistent. |
@@ -73,20 +101,20 @@ durability/recovery proof. They are not prerequisites for this campaign.
 | The qualification harness asserts no host confounding | [promotion.mts](../deploy/orange/qualification/promotion.mts) writes `hostConfounded: false`; [resource sampling](../deploy/orange/canary/evidence.mts) synchronously invokes Docker from the load-driver process | Small CPU/latency gains are not established by this harness without stronger controls. |
 | The fast profile is deliberately small | [promotion profile](../deploy/orange/qualification/profiles/promotion.json): 60-second warmup, 600-second measurement, 10 requests/second, 25% relative resource tolerances | Retain its useful functional checks; add representative and failure-specific qualification. Do not label a pass as a performance win. |
 | Metric history has a different recovery contract | [metric store](../cloudflare/src/metrics/store-core.ts) retains 24 hours; [logical backup](../cloudflare/src/cli/commands/backup.ts) covers Installation and observations | Freeze optimization evidence independently of metric retention; explicitly define metrics recovery before claiming all-state portability. |
-| Observation overhead is still unqualified | [STA-128](../TODO.md), [resumption](STATS-PERFORMANCE-RESUMPTION.md) | Preserve the <3% CPU and <5% latency targets and the failed-study record. The 38.8% insertion-batching component win does not close this gate. |
+| Observation overhead is still unqualified | [STA-128](../TODO.md), [resumption](roadmap.md#campaign-performance) | Preserve the <3% CPU and <5% latency targets and the failed-study record. The 38.8% insertion-batching component win does not close this gate. |
 
 The November 18 clocksource/HPET incident has a separate recorded mechanism.
 Do not use it to claim the November 21 spin is explained. Native deployment also
-reproduced a depot/registration failure, as recorded in [native Lisa](native-lisa.md).
+reproduced a depot/registration failure, as recorded in [native Lisa](roadmap.md#campaign-native-lisa-deployment).
 Deleting Docker or increasing timeouts is not evidence of fixing that failure.
 
-## Target operating model
+### Target operating model
 
 An operator or agent should need to know the target and proposed change, then
 use one supported path to inspect, build, compare, qualify, activate and recover.
 The implementation can retain separate components and narrow adapters.
 
-### One inspectable deployment
+#### One inspectable deployment
 
 Extend the existing release records with a small deployment description that
 references immutable components: app Worker bundles/assets, OpenOrange/RivetKit
@@ -108,7 +136,7 @@ operation owner/deadline, last functional check, telemetry freshness, backup
 capture age and independently verified restoration age. Missing facts are
 unknown. Historical documents must not supply live-state answers.
 
-### A small path from evidence to action
+#### A small path from evidence to action
 
 1. Observe a bottleneck or failure with exact release/workload/source identity.
 2. Record one falsifiable hypothesis and one primary objective.
@@ -124,28 +152,7 @@ resource evidence, evaluator, qualification receipt and recovery journal must
 survive the candidate's failure outside its storage. Reuse the current host
 observer and evidence files; a second full Stats installation is unnecessary.
 
-## Execution order and progress
-
-The table is the single progress index for this campaign. Keep detailed run
-evidence in the existing benchmark/release locations and incident issues in their
-owning repository. Do not create another status database or duplicate every
-entry into a new campaign framework.
-
-| Step | Deliverable | Owner | State |
-| --- | --- | --- | --- |
-| S0 | Refresh actual topology, baseline and protected-evidence inventory | Stats + Stuff | complete: topology, identities, limits, repeated build/test/runtime-build timings, readiness samples, idle resources, preserved state and the frozen detection, safe-write recovery, RPO and restore budgets ([baseline](../bench/results/2026-11-22-sim-s0-baseline/README.md)); `make cloudflare-test` is green from a fresh checkout. Edit-to-ready is left to S4; representative-load resources come from the soak |
-| S1 | One deployment/capture ownership path and reproducible standby definition | Stuff, Stats adapters | in progress: app and collector deploy through the transaction, cases 1–5 tested, promoted in production; Engine declared, drift-checked and rendered by `standby-engine create-args`; capture runs under the lease and restores its recorded service intent (case 6, tested); the first production capture failed safely; a stopped-copy capture on 2026-11-22 succeeded with a 16 s outage and was verified off-host and validated by an isolated Engine with production's actor inventory ([record](../bench/results/2026-11-22-engine-capture/README.md)). Recreation (case 7) **passed** on 2026-11-22 with every bulk write in RAM: ingest, readback, duplicate replay, app identity and Engine drift before and after a reboot; the runs found seven definition gaps, including the ingress sshd forward ([record](../bench/results/2026-11-22-guest-recreation/README.md)). A capture lock inherited by started services, found by the first config apply, is fixed. [Record](../bench/results/2026-11-22-standby-app-transaction/README.md) |
-| S2 | Reproduce and repair the Engine degradation mechanism | Stuff + Stats workload | repaired in production: a startup-sized log shard reproduced the registration failure twice on the restored capture; declared capacities survived three of three cycles, a stall and a warm read; applied at 2026-11-22 16:00 UTC ([record](../bench/results/2026-11-22-engine-degradation/README.md)). The 400% CPU spin is unreproduced; STA-135 stays open for it |
-| S3 | Queryable causal evidence and truthful resource comparisons | Stats | planned |
-| S4 | Smaller production serve closure and faster edit/build/start loop | Stuff + Stats build integration | planned |
-| S5 | App/runtime/Engine improvement experiments through one qualification path | Stats + Stuff | in progress: `promotion.mts` takes independent app releases per side and names the changed layer; the frozen promotion profile qualified two app builds with complete source coverage on both sides (four sources attributed, 6,000 requests and 1,320 acknowledged writes each, none lost; `pass`, replayed), with scratch on tmpfs. `hostConfounded` is still asserted, not measured, and no improvement experiment has run. [Record](../bench/results/2026-11-22-two-build-qualification/README.md) |
-| S6 | Portability/recovery rehearsal and sustained operational acceptance | Stats + Stuff | planned |
-
-Start S0 and the focused S1 race regression immediately. Bring forward the
-minimum S3 measurements needed to diagnose S2. S4 can proceed independently on
-an isolated runtime. Do not wait for dashboard work to diagnose the Engine.
-
-### S0 — Refresh truth and set the baseline
+#### S0 — Refresh truth and set the baseline
 
 Read current `AGENTS.md`, the runtime/recovery runbooks, existing campaign
 records and the referenced Stuff investigations. Inspect authorized hosts
@@ -189,7 +196,7 @@ Acceptance: another agent can identify the current supported target and reproduc
 the isolated baseline without a developer home directory, guessed branch head,
 production secrets, or an undocumented Engine recreation command.
 
-### S1 — Consolidate deployment and capture ownership
+#### S1 — Consolidate deployment and capture ownership
 
 Extend Stuff's `oorollout` native adapter and existing manifest/receipt format.
 Use one renewable lease across authority recheck, prepare, activation, functional
@@ -239,7 +246,7 @@ Focused acceptance cases:
 7. A clean disposable guest can recreate, reboot and recover the declared
    deployment, then ingest, read history and replay duplicates correctly.
 
-### S2 — Explain and repair Engine degradation
+#### S2 — Explain and repair Engine degradation
 
 Close STA-135 through a prediction, reproduction and fix. Preserve the original
 failure state and current availability mitigations while doing this privately.
@@ -292,7 +299,7 @@ Lisa Engine additionally needs contract checks for every registered consumer.
 Stats-only evidence cannot authorize a shared Engine promotion. Existing held
 Engine artifacts stay held until the applicable conditions pass.
 
-### S3 — Make observations useful for diagnosis and comparison
+#### S3 — Make observations useful for diagnosis and comparison
 
 Build a narrow vertical slice using the existing collector, metric catalog,
 MetricStoreCore, application events, platform bridge and `statsctl`.
@@ -388,7 +395,7 @@ action without parsing ad hoc logs. Demonstrate this for Engine pressure, a slow
 application operation, and missing telemetry. Add a compact dashboard view over
 the same queries after the CLI/evaluator slice works.
 
-### S4 — Shrink production startup and the development loop
+#### S4 — Shrink production startup and the development loop
 
 The pinned OpenOrange [deployment builder](https://github.com/rivet-dev/open-orange/blob/1cabf2e9db300361c9f0b751c7723da7eb706f5e/src/commands/deploy.ts)
 already conditionally omits sandbox/Worker Loader dependencies from generated
@@ -440,7 +447,7 @@ or startup bottleneck; use that target to select experiments, not to weaken
 correctness or force an unnecessary rewrite. Retire the superseded production
 entrypoint only after the new one is qualified.
 
-### S5 — Turn the existing release loop into an improvement loop
+#### S5 — Turn the existing release loop into an improvement loop
 
 Allow baseline and candidate to select independent immutable app, runtime and
 Engine/config inputs. `generate` already accepts an output root; pass per-side
@@ -519,7 +526,7 @@ recovery after controller interruption.
 Choose focused fault tests; avoid expanding broad test/mutation suites without
 a concrete remaining risk.
 
-### S6 — Prove portability, recovery and sustained operation
+#### S6 — Prove portability, recovery and sustained operation
 
 Preserve the existing import boundary test and extend it to keep direct
 OpenOrange/Rivet dependencies out of portable cores. Run the shared service/store
@@ -581,52 +588,297 @@ restore an old database snapshot over newer acknowledged writes to simplify
 rollback. Irreversible state changes require their own verified migration and
 recovery plan before activation.
 
-## Completion, autonomy and reporting
 
-The enabling campaign is complete only when:
+### Acceptance and execution boundary
 
-- The supported target is reproducible and current state is inspectable.
-- App/runtime/collector deployment and physical capture use shared ownership;
-  stale rollback and controller interruption controls pass.
-- The Engine failure is explained and repaired. Resource reservations alone
-  do not satisfy this condition.
-- Infrastructure history and evidence-quality information are usable from the
-  CLI/evaluator; observation overhead has a valid result under its original
-  conditions, and the additional shipped instrumentation has qualified overhead.
-- Separate Stats builds and infrastructure builds have completed valid
-  experiments through the same path, with at least two adopted improvements
-  across application/infrastructure and valid Rivet stability/optimization proof.
-- The selected deployment passes sustained operation and state-safe recovery;
-  portability evidence states exactly which environments were exercised.
-- Superseded state machines and production recipes are retired; one concise
-  current runbook links to historical evidence. Operating complexity and
-  iteration time are lower than the refreshed baseline, with measured results.
+Complete the campaign only when the supported target is reproducible; deployment and capture share ownership; the Engine failure is explained and repaired; observations and overhead are qualified; two improvements across application and infrastructure have valid comparisons; sustained operation, recovery and portability pass; and complexity and iteration time decrease against baseline. Unexplained Engine failure or unqualified overhead prevents closure. The existing transaction and authorizations remain binding.
 
-An unmet requirement keeps this campaign open or blocked. In particular,
-unexplained Engine failure or unqualified observation overhead prevents closure;
-partial implementation still retains its own verified results.
+### Needs environment and reference
 
-Use existing owner authorization, repository workflows and release rules.
-Routine source changes, focused tests and isolated experiments should proceed
-autonomously. Keep production promotion within the established authority and
-receipt-bound transaction. This campaign does not expand authority for a shared
-Engine, writer handoff, destructive state reset, DNS change or upstream action.
-Finish available implementation/qualification before presenting a concrete
-environment or owner dependency; do not repeatedly ask about settled decisions.
+Use isolated state for stress and recovery. A real Cloudflare staging rehearsal needs an available, authorized account; local workerd parity does not establish production readiness. Read the [S0 baseline](../bench/results/2026-11-22-sim-s0-baseline/README.md), [standby soak](../bench/results/2026-11-22-standby-soak/README.md), [incident record](openorange.md), and [metrics RFC](rfc/INF-7-infrastructure-metrics.md).
 
-When a measurement fails, preserve its state and explain the missing evidence.
-Fix the cause, improve a specific diagnostic, or continue another unblocked
-step. Changing the evaluator, workload, threshold or sampling contract creates
-a new comparison identity and cannot retroactively qualify old results.
+## Campaign: Infrastructure release
 
-At each checkpoint, update this progress table and provide: the user-visible
-problem addressed, code/configuration removed or consolidated, measured result,
-qualification scope, remaining blockers and the exact next command or task.
-Distinguish implemented, locally verified, privately qualified and promoted.
-Never report the whole campaign complete while Engine stability, evidence
-quality or required recovery remains unproven.
+### Goal and state
 
-Once these enabling conditions pass, continued optimization is open-ended:
-select the largest measured cost or operational burden, propose one small
-change, and repeat the established loop. Keep extending evidence and reducing
-operating work; avoid accumulating another campaign framework around it.
+Qualify exact owned OpenOrange and Rivet artifacts against a verified baseline, promote only bound receipts, and recover unattended. INF-1–5 and INF-8–10 landed or were promoted; INF-7 metrics are live but dashboard and gate reads remain open. INF-11 is held pending an Engine-replacement adapter, sustained qualification and representative checks for Stats, Discover, Tansu and Stuff. The Threadripper-host observer shares fate with the host; alert delivery is deferred under STA-130.
+
+### Baseline and reference
+
+The original review started from Stats `7fc3ff9` and Stuff `9fb6f1d`. The bound-receipt promotion and unattended recovery are documented in [OpenOrange operations](openorange.md#runtime-release-record-2026-11-20); the [metrics RFC](rfc/INF-7-infrastructure-metrics.md) remains the contract. RivetKit and the N-API addon still need owned rebuilds.
+
+### Deliverables and backlog
+
+Priority order. Each item has one acceptance command, which runs locally unless
+the item is listed under Needs environment.
+
+| ID | Phase | Deliverable | Owner repo | Acceptance | State |
+| --- | --- | --- | --- | --- | --- |
+| INF-1 | 5 | `statsctl verify release`: offline evidence bundle that yields `pass`, `reject`, `pending` or `inconclusive`, with stable reasons and replay | Stats | `pnpm --dir cloudflare -s test:cli` with `verify-release.test.ts` | landed |
+| INF-2 | 3 | OpenOrange serves RivetKit metrics for every Worker, with Worker identity and start time | OpenOrange downstream | `tests/orange-serve.test.ts` two-Worker case | accepted (patch) |
+| INF-3 | 1–2 | Source ownership registry, release manifest schema `openorange-release-manifest/1`, read-only `release-inspect` | Stuff | `test_sources.py`, `test_release_inspect.py`, `bin/sources verify` | landed |
+| INF-4 | 2 | Drop `@rivet-dev/services` from the Stats runtime closure, with a packaged-runtime proof | Stats | `make orange-test` plus packaged image evidence | promoted (`rt-a26798107529`) |
+| INF-5 | 2 | Import INF-2 as the first OpenOrange downstream patch; build an identified release (package tarball and manifest) from a clean checkout with the network disabled after acquisition | Stuff | `bin/sources verify` and a release build that reproduces its digest | landed |
+| INF-6 | 3 | Independent observer: a pinned Node/SQLite Stats instance on a host that shares neither the candidate's Engine nor its storage, plus external health alerting | Stats + Stuff | Observer ingests host and service events; stopping the writer raises an alert | runs on Threadripper's host (shared-fate risk accepted); alert delivery out of scope |
+| INF-7 | 3 | Typed infrastructure metrics path: allowlisted OpenOrange, RivetKit and Engine Prometheus series stored with counter, gauge or histogram semantics, Worker identity and reset detection | Stats | ingest and readback tests over real scrapes of INF-2 output | live on the standby; dashboard and gate reads open |
+| INF-8 | 4 | Isolated baseline and candidate stacks (separate Engine, depot, namespace, credentials, ports) and a deterministic workload driver with an independent request ledger that validates response bodies | Stats + Stuff | A wrong HTTP-200 body fails the workload; both cohorts reconcile every durable result | landed |
+| INF-9 | 6 | Resumable rollout transaction (`staged` → `qualified` → `prepared` → `activated` → `verifying` → `promoted` / `recovering`), host maintenance lock, journal outside Stats and Rivet, watchdog | Stuff | Interrupt-and-resume tests at every transition; concurrent lock refusal | landed; receipt-bound, watchdog recovery shown live |
+| INF-10 | 7 | State-safe promotion and recovery: previous runtime reads candidate-written state, one authoritative writer, bounded write pause | Stats + Stuff | Good candidate promotes, bad one rejected pre-production, post-activation failure recovers without losing acknowledged writes | promoted `rt-2c70c316ce8d`; unattended watchdog recovery shown |
+| INF-11 | 8 | Qualify the existing private Rivet Engine patches through the loop | Stuff | INF-1 `pass` on the Engine release class | qualified; production held |
+| STA-130 | ops | Supervise the standby VM; alert on Stats downtime | Stats | See TODO.md | open |
+
+### Rulings
+
+- Runtime promotion targets the current writer, the native standby. Native
+  failback to Lisa stays a separate, fenced migration.
+
+- Only `pass` from INF-1 authorizes promotion. `verify --service` remains an
+  improvement judgment and is not a promotion gate.
+- Synthetic traffic uses isolated service identities. It is never relabelled
+  as organic.
+- A Stats-only pass qualifies only Stats' deployment scope, never a shared
+  Engine promotion.
+- The standby deploy refuses runtime-closure changes. INF-4 and INF-5 land on
+  master only once INF-9 can deploy runtime releases, or with an explicit
+  runtime upgrade of the standby.
+- The observation-overhead objectives (STA-128) remain targets needing fresh
+  qualification.
+
+### Needs environment
+
+- INF-11 needs every registered consumer of the shared Engine (Stats, Discover,
+  Tansu, Stuff) to have a representative contract check.
+
+
+## Campaign: Performance
+
+### Goal and state
+
+The original campaign closed with blocked goals; later authorized work continues without resetting its thresholds or budgets. P1 and P3 passed only for the recorded production cohorts, P4 for its observed cohort, P5 for local cases, and browser heap for its recorded cohort. Tenfold P6, observation overhead P7, native soak P8 and repeated recovery P9 remain unqualified. P2 natural sleep still needs positive sleep evidence (STUF-86).
+
+The fresh fixture contains 203,950 verified rows. Its fresh preparation allowance is consumed. The first complete overhead study aborted on two incomplete browser journeys; classify that failure before a further accepted comparison, and do not infer a new allowance. Native insertion batching is component evidence, not P6/P7 acceptance. Nine recovery cycles passed; the tenth TERM failed before restart. Preserve the stopped failed depot at `/home/josh/.work/stats-perf-campaign/sta128-20261117/fresh/`; copy the entire stopped root and rewrite both storage paths before reopening. Resolve STUF-90 before another ten-cycle acceptance cohort. P8 needs STUF-88 and complete queue coverage.
+
+### Decisions and baseline
+
+Keep the frozen corpus, failed receipts and existing attempt budgets. W2 has at most three full runs, W3 two attempts, W4 one study and W5 one investigation; diagnostics do not reset consumed allowances. The seven-day test requires a complete window through ordinary tailnet ingress. Do not use the retention-clamped historical endpoint as seven-day evidence. The pre-rollup ten-client 24-hour HTTP p95 was 5,513 ms; maintained rollups measured 398 ms. These do not establish combined browser and ingest performance.
+
+### Next acceptance
+
+STA-128 requires five interleaved enabled/disabled pairs, ten real browsers, representative ingestion, separate Stats and Engine CPU, exact outputs, and collector-failure parity. Report inconclusive when same-variant spread exceeds 3% CPU or 5% latency. P9 requires ten ordinary restart cycles with exact acknowledged state and readiness below 15 seconds. P8 needs a valid representative 24-hour soak and complete queue coverage. See [STA-128](../TODO.md), the [overhead evidence](../bench/results/2026-11-17-observation-overhead/README.md), [fence diagnosis](../bench/results/2026-11-17-term-fence-diagnosis/README.md), and [closeout evidence](../bench/results/2026-11-16-campaign-closeout/README.md).
+
+### Acceptance goals
+
+| ID | Outcome | Passing evidence |
+| --- | --- | --- |
+| P1 | Instant cached ranges | Selection to complete charts p95 <50 ms and p99 <100 ms. Zero summary fetches within the valid generation |
+| P2 | Fast uncached ranges | Awake actor, empty client range cache: 1h, 6h and 24h p95 <750 ms. After actor sleep: p95 <1,500 ms. Seven-day views p95 <2,000 ms |
+| P3 | Fast navigation | Initial project navigation to useful health p95 <1,000 ms and complete overview charts p95 <2,000 ms |
+| P4 | Explain slow journeys | Browser input, fetch, server, actor, SQL, decode and render phases correlate. At least 99% of delivered journeys over one second identify the dominant phase. Missing phases stay explicit and do not count as successful attribution |
+| P5 | Actionable overview | Scripted healthy, failing, slow, stale and post-deployment incidents expose state, onset and a useful investigation target within ten seconds |
+| P6 | Maintain performance at scale | P1–P3 pass against ten times the frozen production corpus, with representative ingestion and ten concurrent dashboard clients. Acknowledged samples remain exact and duplicate handling remains correct |
+| P7 | Cheap self-observation | Events queryable p95 <5,000 ms. Enabled instrumentation adds <3% CPU and <5% request latency against disabled instrumentation. Collector failure does not change application outcomes |
+| P8 | Stable resource use | Retained browser heap grows <5 MiB after 200 warmed navigation and range cycles. During a 24-hour representative soak, memory, actor counts and queue depths plateau |
+| P9 | Proven native recovery | Repeated ordinary restart, idle eviction, overdue alarms and interrupted requests preserve acknowledged state. Ordinary restart readiness <15 seconds |
+
+A goal fails if it relies on any of the following: a cache hit substituted for
+a cold read, an empty response, a missing event, a relaxed durability boundary
+or a rejected request. The seven-day target uses the actual retention window.
+
+### Measurement contract
+
+The tenfold fixture is derived from a frozen, checksummed capture of the retained
+corpus. It preserves size, operation mix, outcomes and time distribution, and it
+assigns independent event identities
+([corpus](../bench/results/2026-11-15-tenfold-corpus/README.md)).
+
+Measure complete browser journeys from the Mac over the normal tailnet route,
+with a fixed viewport, browser build and device settings. Record request, asset
+and response bytes. A journey ends when useful health and every expected chart
+show committed data for the new window. Errors and cancellations stay in the
+result set.
+
+Cached, awake uncached, actor-sleep and process-start conditions are measured
+separately. Never flush Lisa's caches to simulate coldness. Resource figures
+separate Stats from the shared Engine.
+
+Comparisons use at least five interleaved rounds. Percentile acceptance needs
+at least 200 successful journeys per condition, keeps per-range distributions
+separate, and reports counts, spread, p50, p95 and p99. Timing gates must pass
+before and after each accepted run. Results from a busy host are diagnostics
+only. Profiling runs stay out of timing comparisons.
+
+### Execution boundary
+
+There is no Engine upgrade, credential rotation, durable-data migration, new
+database, orchestrator or trace backend. S3 backups remain deferred as STUF-75
+P1. Explain candidate API, schema, permission or transaction changes before
+implementing them, and verify them with their affected callers.
+
+
+## Campaign: Native Lisa deployment
+
+### Goal and state
+
+Native failback to Lisa is a separate fenced migration. Threadripper remains the supported writer until a fresh verified export, transfer of newer writes, rollback proof and soak pass. Isolated restore and Docker readback were demonstrated; production cutover was not established. The historical rehearsal details remain in [Lisa recovery](lisa-operational-recovery.md#native-lisa-rehearsal).
+
+### Decisions and baseline
+
+Keep network trust boundaries, single-writer authority and a verified rollback. The earlier all-Docker Lisa inventory was a historical baseline, not current production state. Native startup does not itself repair the Engine registration or depot failure.
+
+### What native means here
+
+No container runtime in the serving path. OpenRC supervises host binaries
+directly. Docker may remain for offline builds (`make agent-build` already
+does this) and for image creation during the transition only. The plan assumes
+Alpine stays (not a glibc reinstall): every component has a musl path.
+
+Costs ~2–4 days of engineering plus rehearsal and a soak; touches every app on
+the host, not just Stats. It is a platform change owned in the `stuff` repo
+(`deploy/openorange/`), with `stats` gaining a native deploy path.
+
+### Component by component
+
+| Component | Native candidate | Notes |
+| --- | --- | --- |
+| Rivet Engine | `@rivetkit/engine-cli-linux-x64-musl@3.1.2-rc.1` (static-pie Rust, `libc: [glibc, musl]`, published on npm; pin sha256) | open-orange declares Linux x64/arm64 musl a supported host and resolves this package at runtime. Engine command is `rivet-engine --config /etc/rivet/config.json` with `RIVET__AUTH__ADMIN_TOKEN`. Data dirs unchanged → no state migration. Verify `--version` prints 3.1.1 and `/health` answers before trusting it; the deployed glibc image reports the same, so version string cannot distinguish them — pin by npm tarball sha256 + verify report, not `--version`. Re-check what the **image** actually ships: the musl build is a few MB, the image is Debian; the engines differ only by libc, but that is unproven until run. |
+| versitygw | Go binary; no apk package; build with `apk add go` or pin a release/static build + sha256 | codelist pins it by image digest today; native replaces digest pin with binary sha256 in `images.lock.json` equivalent. posix backend paths unchanged. |
+| Caddy ingress | xcaddy build (caddy 2.11.9 + caddy-dns/cloudflare v0.2.4), static musl; `apk caddy` 2.11.4 lacks the module | `cap_net_bind_service=ep` on the binary or uid 10001; binds only 100.68.104.43:443 and the public 127.0.0.1:18480 listener. The xcaddy build is reproducible today; the ingress Dockerfile does exactly this, minus the musl target. |
+| identity sidecar | `apk add python3` (stdlib only) | Already a plain script; runs native with `--network none` semantics replaced by "only listens on /run/openorange/identity/identity.sock, no egress" (tailscaled LocalAPI whois probing stays). |
+| CoreDNS | `apk add coredns` 1.15.0 (static Go) | Corefile unchanged. |
+| cloudflared | no apk package; pin GitHub release binary + sha256, or build from tag | Same config; health is the tunnel's own metrics. |
+| Platform collector and Rivet dashboard | Package their existing entry points and assets for OpenRC | Preserve Stats observation delivery and the authenticated Rivet operator route. |
+| Node apps | `apk add nodejs-current` 26.13.1-r0 (edge/community) — exact match to the image's Node 26.13.1 | `orange serve --config stats.jsonc --config observe.jsonc`. The app closure installs on lisa with `pnpm install --prod --ignore-workspace` (same lockfile as the image), assets come from the Mac-side build (build-image.sh minus the docker build), synced to `/opt/openorange/app-releases/stats/<sha>`; `/opt/openorange/apps/stats` is a symlink switched atomically. |
+| Tansu, stats-perf | already native | unchanged |
+
+### Layout and networking
+
+- Loopback only: engine `127.0.0.1:6420`, store `127.0.0.1:7070`, each app
+  `127.0.0.1:808x`. No bridge, no static IPs, no per-app /24 reservation.
+- Caddy binds the tailnet HTTPS address and the loopback public origin.
+  Split DNS continues to bind the tailnet address on port 53. Caddy's app
+  upstreams move to loopback as each app moves.
+- Unix sockets for host IPC that already uses them (identity).
+- `/etc/openorange`, `/var/lib/openorange`, `/var/log/openorange`,
+  `/run/openorange` unchanged; engine/store state paths unchanged.
+- Preserve the current network trust boundaries. Use distinct service UIDs
+  and private credentials, drop capabilities and apply cgroup resource limits.
+  Loopback listeners restrict incoming connections. Apply and verify separate
+  egress controls for apps currently confined by the internal Docker bridge.
+
+### OpenRC and tooling changes (stuff repo)
+
+- `deploy/openorange/openrc/*`: drop the `docker run` command, exec the
+  binary directly as the service user. Keep supervise-daemon, respawn limits,
+  `output_log`, and `oo_wait` readiness gates.
+- `lib/oolib.py`: `run_args` produces `env`+`exec` plans instead of docker
+  argv. `bin/pin-verify` grows a `binaries.lock.json` (sha256 per binary)
+  replacing image digest checks; keep `images.lock.json` until cutover is
+  complete.
+- Engine unit: `--user rivet` equivalent, `ulimit -n 1048576`, tmpfs /var/lib/rivet
+  equivalent is unnecessary since state dirs are host paths already.
+- `oo render` unchanged in behavior (same files it writes today), plus it
+  rewrites app upstreams to loopback.
+- Stats repo: `deploy/orange/deploy.mts` becomes build+rsync+`swap` (symlink
+  switch, restart `oo-app.stats`, health/smoke) instead of image build+set-image.
+  `make stats-deploy` is unchanged from the operator's point of view.
+- `oo set-image`/`record-deployment` become `oo set-release`/markers; the
+  deployment-marker contract (`docs/deployments.md`) is preserved — a native
+  release id `<git-sha>` replaces the image tag, carried the same way.
+
+### Rollout
+
+1. **Back up the current writer.** Identify the authority before copying
+   data. While Threadripper owns writes, use the
+   [current writer capture procedure](lisa-operational-recovery.md#current-writer-backup)
+   and verify logical export on an isolated copy. Seal and transfer the
+   newer writes during the final handoff.
+2. **Rehearsal on a scratch Alpine VM or spare host** (x86_64): install the
+   native stack with the rehearsal overlay (demo app, demo bucket/namespace),
+   verify ingest→actors→dashboard end-to-end with fixtures, then rehearse
+   *restore from the fenced export* into the native stack. This is the one
+   step that proves the plan; don't skip it.
+   Check `Max open files` in `/proc/<engine-pid>/limits` before the rehearsal.
+   Lisa's SSH shell inherited a soft limit of 1,024. The native Engine hit
+   `EMFILE` during an isolated import and fail-stopped. Both the planned
+   native value and Lisa's production Docker Engine use 1,048,576. Set
+   that limit before starting the unit or the isolated rehearsal.
+3. **Cutover, separate windows, on lisa:** (a) store+engine first with stats
+   fenced, apps stopped, units swapped; verify engine `/health`, store
+   multipart probe, then apps; (b) stats app next (`make stats-deploy` native
+   path); (c) remaining apps, platform collector, Rivet dashboard, ingress,
+   DNS, identity and tunnel last. To roll back a step, restore the fence,
+   swap its units back to Docker and start them. Verify application reads and
+   resume writes after the rollback passes.
+4. **Soak 2 weeks** (docker units and images kept), then delete the image
+   references, and only then retire `images.lock.json` and the docker paths.
+
+The first cutover window must preserve reachability for applications still
+on the internal Docker bridge. Rehearse restricted listeners on the existing
+bridge addresses during the transition, or move the shared runtime and its
+remaining clients in the same window. A loopback-only Engine and store
+cannot serve the existing container network.
+
+### Known risks / unknowns
+
+- **The engine-musl path is unproven in production** (musl binary exists and
+  open-orange supports it, but the tested/rehearsed production engine is the
+  glibc image). Mitigation: step 2, plus engine cutover with instant docker
+  rollback and pre-staged verification.
+- **Ops tooling parity**: every `docker inspect`-based check (`deploy.mts`
+  verify, bench harnesses, `docs/openorange.md`) must be reimplemented;
+  incomplete parity fails loudly but expensively. Inventory:
+  `rg -n "docker (inspect|run|ps|exec)"` in both repos.
+- **Niceforge co-tenancy** is unchanged in shape but now invisible to docker;
+  make sure ops tooling does not assume `docker ps` covers host capacity.
+- **The 2026-11-17 class of failure (ENOSPC) is unaffected** by this plan.
+  If this work is ordered to fix that outage, it will not. Disk budgets,
+  alerting, and the niceforge cleanup are the actual fix.
+- caddy-dns/cloudflare musl static build needs re-verification of ACME
+  DNS-01 against the real zone before cutover.
+
+### Decision gates
+
+1. Do the step-2 rehearsal with the engine-musl binary and restore-from-export
+   before committing to the cutover. If that fails, stop: either stay on
+   docker/OpenOrange, or move lisa to a glibc distro and keep the same native
+   layout (that path needs no musl trust).
+2. Cutover only after a fenced full backup verifies by import into the
+   rehearsal environment.
+3. Native cutover on lisa only with the stats fence procedure rehearsed and
+   a tested rollback to docker.
+
+### Ship the fixes in order
+
+The targets are proposals for the first drill. Adjust them with the owner
+after measuring the available restore paths. Report time to detection,
+time to degraded reads, time to safe writes, and data age separately.
+
+| Order | Owner and work | Acceptance evidence |
+| --- | --- | --- |
+| 1. Detect failures | OpenOrange and app owners. Add external capability probes and one incident status view. Separate ingress, Engine liveness, runner registration, stateful application reads, accepted ingest age and fallback snapshot age. Classify and retain upstream error codes. Stats owns the misleading HTTP 400 mapping. | With Engine `/health` green and runner registration blocked, alert within two minutes. Cover an actual crate download, Stats ingest and readback, Agentctl hosts, Discover search and operator readiness. A dated snapshot shows degraded status even when all read requests return 200. A synthetic storage deadline reports upstream unavailability. |
+| 2. Enforce incident ownership | OpenOrange. Add a shared maintenance lock spanning changes to the Engine, deployments, fence and ingress. Give the operator a read-only incident preflight and a handoff with start time, command, owner, deadline, success check and escape path. Keep a separate channel for status updates. | Start two competing recovery commands in the drill. One acquires ownership and the other reports the active owner and operation. Interrupt the first during a simulated restart and recover its state without a blind second mutation. |
+| 3. Make deploy and rollback predictable | Stats and OpenOrange. Extend the STA-129 preflight to reconcile selected, running, supervisor and persisted node version before mutation. Retain the active and last verified rollback images in a recovery-accessible store. Bound startup and verify the selected and restored runtime over a real request. | Reproduce stale `starting`, a surviving orphan container, a missing selected image, interrupted activation and rollback. Preflight refuses ambiguity while the current path remains available. A clean rollback survives signalled cancellation and verifies the previous data reads. |
+| 4. Make degraded recovery a supported operation | OpenOrange, Stuff, Stats and Discover. Build pinned reader bundles and prepare a warm standby with supervised startup, scoped access to storage, timestamp labeling, and a rollback command. Represent incident routes as inputs to the normal renderer. Keep the original write authority explicit. | In a black-box Engine outage, restore registry pulls and published reads within 15 minutes using only the documented operator entry point. Re-render ingress and reboot the standby during the drill. Protected paths and unsafe methods stay denied. Disable each fallback independently without affecting the others. |
+| 5. Verify backups and restore | OpenOrange and Stats. Implement a bounded Engine-only capture and an independently stored full physical and logical recovery set. Carry bucket data, release identities, protected configuration and deployment receipts. Make logical export resume by object and verified page. Disable self-observation before the first restore boot. Track STUF-75 in Stuff. | The drill starts from a fresh copy on a spare host, verifies every table and required bucket hash, and accepts new data. A failed export page never publishes a complete index and never leaves writers fenced. Establish a daily verified off-host recovery point as the interim target. Measure the recovery point and time for each dataset against an owner-approved data-loss budget. |
+| 6. Protect host capacity and the release supply chain | Lisa and Stuff operators. Separate build and depot capacity, set disk reservations for startup and verified copies, record co-tenant workload, and retain recovery binaries without a live registry dependency. Pin tools and artifacts before an incident. | Fill the build allocation in a drill. Engine, store and off-host backup can still start and complete. Restore artifacts from their protected copies while the package mirrors are offline. Set alerts from the measured requirement for a full copy and Engine startup. |
+| 7. Diagnose the Engine failure and reduce coupling | OpenOrange. Compare paired Lisa and standby trials from identical stopped state at the same image, Node version, limits and workload. Change one environmental variable per trial. Preserve registration failures, lease events, command admission and task scheduling evidence. Check STUF-88 and STUF-90 for relevant previous evidence. Give package pulls a serving path independent of publication coordination. | Produce a failing baseline and a working control for the demonstrated mechanism. Exercise a controlled graceful restart under production-like load. Hold the coordinator offline and verify package pulls and published HQ reads without granting a second writer. Close the root-cause item only when the explanation predicts the original failure and the regression catches it. |
+| 8. Rehearse failover, then resume native cutover | OpenOrange with all app owners. Rehearse failover and reverse transfer with real state and isolated receivers. Capture recovery time and loss by dataset. Then return to the [native deployment gates](roadmap.md#campaign-native-lisa-deployment). | Complete a clean drill from an unavailable primary through protected snapshot restoration, read-only service, verified writes under a single authority, and reverse transfer. Propose a 60-minute live recovery target for the first drill. Preserve actual timings and gaps. The native drill still requires the fresh verified export, rollback proof and soak. |
+
+### Close the incident
+
+- Publish per-app verification with probe time, release identity, active
+  authority, data freshness and any intentionally offline hosts.
+- Record the outage window per Stats host and reconcile acknowledged
+  samples against available history. Keep gaps visible where recovery
+  cannot restore the missing samples.
+- Retire the temporary routes, credentials and VM after the restored
+  services pass their checks and the recovery artifacts are archived.
+- Convert the proposed targets to agreed budgets and run a second drill
+  with a different operator. Track any unproven checks as open work.
+
+
+## Later
+
+- STA-130: deliver observer alerts when the owner names a destination.
+- STA-137: typecheck the canary and qualification harness.
+- STUF-75: resume shared S3 backup work when it returns to scope.

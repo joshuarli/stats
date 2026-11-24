@@ -1,7 +1,7 @@
 # RFC INF-7: typed infrastructure metrics
 
 Status: receiver and native collector implemented, 2026-11-20. Campaign item INF-7 in the
-[infrastructure release campaign](../CAMPAIGN-INFRA-RELEASE.md). Depends on INF-2 (one metrics
+[infrastructure release campaign](../roadmap.md#campaign-infrastructure-release). Depends on INF-2 (one metrics
 port per Worker) and INF-3 (`openorange-release-manifest/1`).
 
 ## Decision
@@ -45,8 +45,8 @@ an older Stats release keeps serving, exporting and importing exactly as it does
 - The Engine retries alarms forever for Stats actors without a runner, which cost 0.35 cores on
   2026-11-19 (`docs/openorange.md:191-196`). `ObservationStore` arms alarms
   (`cloudflare/src/observe/cloudflare/store-object.ts:56-63`).
-- Native hosts bind the Engine metrics and Stats listeners to loopback (`docs/native-lisa.md:39-41`,
-  `:299-300`). On Docker Lisa the bridge is its own container (`docs/native-lisa.md:257`), while a
+- The [native Lisa design](../roadmap.md#campaign-native-lisa-deployment) binds Engine metrics and Stats listeners to loopback.
+  On Docker Lisa the bridge is its own container, while a
   Worker's port is on its own container loopback.
 
 ## Criteria, fixed before comparison

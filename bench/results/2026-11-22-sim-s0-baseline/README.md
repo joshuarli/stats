@@ -94,7 +94,7 @@ standby writer. Stricter existing limits still apply.
   guest's disk) and `sim-20261122T0236Z` (off-host, verified; on the guest's
   disk). The partial `sim-20261122T0135Z` was deleted on 2026-11-22.
 - The tenfold fixture and the STA-128 and P8 allowances are unchanged; see
-  the [resumption record](../../../docs/STATS-PERFORMANCE-RESUMPTION.md).
+  the [resumption record](../../../docs/roadmap.md#campaign-performance).
 - New diagnostic profiles of this campaign and their own runs are recorded with
   STA-135 ([Engine degradation drills](../2026-11-22-engine-degradation/README.md)).
 

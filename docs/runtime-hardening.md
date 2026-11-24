@@ -63,7 +63,7 @@ Measurements, workload boundaries and rejected-index evidence are in the
 The later native profile, genuine covering index, write costs and compatibility
 proofs are in the [index record](../bench/results/2026-11-15-covering-index/README.md).
 Current browser and scale acceptance belongs to the
-[performance campaign](CAMPAIGN-STATS-PERFORMANCE.md).
+[performance campaign](roadmap.md#campaign-performance).
 The local batching result is not a claim that Lisa's page loads improve by
 the same ratio. Live delivery verifies one producer, shared batching and zero
 reported drops for the test burst and concurrent page request.

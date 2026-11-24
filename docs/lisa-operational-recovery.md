@@ -1,10 +1,7 @@
-# Lisa operational recovery plan
+# Lisa operational recovery
 
 Use the [incident retrospective](#lisa-openorange-outage-retrospective) for the evidence,
-the timeline, and the current temporary routes. This plan closes the
-incident and makes the next recovery executable. The owning repositories
-below indicate proposed responsibility. At incident handoff, name the
-operator and reviewer for each work item.
+the timeline, and the current temporary routes. Use the [roadmap](roadmap.md) for remaining recovery work.
 
 ## Execution record
 
@@ -307,35 +304,6 @@ and both direct producer paths.
    fallbacks still work. Keep the depot, backups and incident receipts
    until the owner confirms recovery and data reconciliation.
 
-## Ship the fixes in order
-
-The targets are proposals for the first drill. Adjust them with the owner
-after measuring the available restore paths. Report time to detection,
-time to degraded reads, time to safe writes, and data age separately.
-
-| Order | Owner and work | Acceptance evidence |
-| --- | --- | --- |
-| 1. Detect failures | OpenOrange and app owners. Add external capability probes and one incident status view. Separate ingress, Engine liveness, runner registration, stateful application reads, accepted ingest age and fallback snapshot age. Classify and retain upstream error codes. Stats owns the misleading HTTP 400 mapping. | With Engine `/health` green and runner registration blocked, alert within two minutes. Cover an actual crate download, Stats ingest and readback, Agentctl hosts, Discover search and operator readiness. A dated snapshot shows degraded status even when all read requests return 200. A synthetic storage deadline reports upstream unavailability. |
-| 2. Enforce incident ownership | OpenOrange. Add a shared maintenance lock spanning changes to the Engine, deployments, fence and ingress. Give the operator a read-only incident preflight and a handoff with start time, command, owner, deadline, success check and escape path. Keep a separate channel for status updates. | Start two competing recovery commands in the drill. One acquires ownership and the other reports the active owner and operation. Interrupt the first during a simulated restart and recover its state without a blind second mutation. |
-| 3. Make deploy and rollback predictable | Stats and OpenOrange. Extend the STA-129 preflight to reconcile selected, running, supervisor and persisted node version before mutation. Retain the active and last verified rollback images in a recovery-accessible store. Bound startup and verify the selected and restored runtime over a real request. | Reproduce stale `starting`, a surviving orphan container, a missing selected image, interrupted activation and rollback. Preflight refuses ambiguity while the current path remains available. A clean rollback survives signalled cancellation and verifies the previous data reads. |
-| 4. Make degraded recovery a supported operation | OpenOrange, Stuff, Stats and Discover. Build pinned reader bundles and prepare a warm standby with supervised startup, scoped access to storage, timestamp labeling, and a rollback command. Represent incident routes as inputs to the normal renderer. Keep the original write authority explicit. | In a black-box Engine outage, restore registry pulls and published reads within 15 minutes using only the documented operator entry point. Re-render ingress and reboot the standby during the drill. Protected paths and unsafe methods stay denied. Disable each fallback independently without affecting the others. |
-| 5. Verify backups and restore | OpenOrange and Stats. Implement a bounded Engine-only capture and an independently stored full physical and logical recovery set. Carry bucket data, release identities, protected configuration and deployment receipts. Make logical export resume by object and verified page. Disable self-observation before the first restore boot. Track STUF-75 in Stuff. | The drill starts from a fresh copy on a spare host, verifies every table and required bucket hash, and accepts new data. A failed export page never publishes a complete index and never leaves writers fenced. Establish a daily verified off-host recovery point as the interim target. Measure the recovery point and time for each dataset against an owner-approved data-loss budget. |
-| 6. Protect host capacity and the release supply chain | Lisa and Stuff operators. Separate build and depot capacity, set disk reservations for startup and verified copies, record co-tenant workload, and retain recovery binaries without a live registry dependency. Pin tools and artifacts before an incident. | Fill the build allocation in a drill. Engine, store and off-host backup can still start and complete. Restore artifacts from their protected copies while the package mirrors are offline. Set alerts from the measured requirement for a full copy and Engine startup. |
-| 7. Diagnose the Engine failure and reduce coupling | OpenOrange. Compare paired Lisa and standby trials from identical stopped state at the same image, Node version, limits and workload. Change one environmental variable per trial. Preserve registration failures, lease events, command admission and task scheduling evidence. Check STUF-88 and STUF-90 for relevant previous evidence. Give package pulls a serving path independent of publication coordination. | Produce a failing baseline and a working control for the demonstrated mechanism. Exercise a controlled graceful restart under production-like load. Hold the coordinator offline and verify package pulls and published HQ reads without granting a second writer. Close the root-cause item only when the explanation predicts the original failure and the regression catches it. |
-| 8. Rehearse failover, then resume native cutover | OpenOrange with all app owners. Rehearse failover and reverse transfer with real state and isolated receivers. Capture recovery time and loss by dataset. Then return to the [native deployment gates](native-lisa.md). | Complete a clean drill from an unavailable primary through protected snapshot restoration, read-only service, verified writes under a single authority, and reverse transfer. Propose a 60-minute live recovery target for the first drill. Preserve actual timings and gaps. The native drill still requires the fresh verified export, rollback proof and soak. |
-
-## Close the incident
-
-- Publish per-app verification with probe time, release identity, active
-  authority, data freshness and any intentionally offline hosts.
-- Record the outage window per Stats host and reconcile acknowledged
-  samples against available history. Keep gaps visible where recovery
-  cannot restore the missing samples.
-- Retire the temporary routes, credentials and VM after the restored
-  services pass their checks and the recovery artifacts are archived.
-- Convert the proposed targets to agreed budgets and run a second drill
-  with a different operator. Track any unproven checks as open work.
-
 ## Lisa OpenOrange outage retrospective
 
 The first verified public registry recovery came about **56 minutes** after
@@ -351,7 +319,7 @@ Recovery was partial. Package pulls and the HQ reader recovered through
 temporary routes. Stats displayed a dated snapshot while live ingestion
 remained unavailable. Agentctl recovered against the original Engine.
 The incident stayed open for telemetry freshness, Stuff publishing and
-Discover's stateful private operations. The [operational recovery plan](#lisa-operational-recovery-plan)
+Discover's stateful private operations. The [operational recovery plan](#lisa-operational-recovery)
 defines the ownership, dependencies and evidence for closing those gaps.
 
 The November 17 maintenance session began with Stuff already unavailable.
@@ -615,3 +583,223 @@ The confirmed failure was the Engine's stateful request and registration
 path missing deadlines. The earlier disk incident, later observations of
 alarm pressure, and success on Threadripper inform the next experiments.
 They do not establish one root cause for the entire outage.
+
+## Native Lisa rehearsal
+
+An x86_64 Alpine 3.24.4 VM on Threadripper runs Rivet Engine, versitygw and
+both Stats Workers as unprivileged OpenRC services. The Engine and store
+health routes returned HTTP 200. The Stats hosts API returned HTTP 401
+directly and HTTP 200 through a private test gateway. The dashboard also
+returned HTTP 200 through that gateway.
+
+The VM used Stats release `c9a71b2ba127`, Node `26.13.1` and
+`pnpm install --frozen-lockfile --prod --ignore-scripts --ignore-workspace`
+with the release's lockfile. The Engine came from the published
+`@rivetkit/engine-cli-linux-x64-musl@3.1.2-rc.1` tarball. Its SHA-512
+integrity matched the lockfile, its binary SHA-256 was
+`6240078a9f3df8c0a746bf3bb614892c76bcb5df0815e15e5f6f338ad67d6200`,
+and it reported Rivet 3.1.1. The static versitygw v1.11.0 binary from the
+pinned store image had SHA-256
+`e7e173e1297abf444302383f8d00bb5936d648f294a7095f4c27922c466fee05`.
+
+To reproduce the build from a committed checkout, use the pinned Node and
+pnpm and generate a fresh context. `app/` holds the two Workers and the
+dashboard. `orange/` holds the locked runtime installation inputs.
+
+```sh
+make work-ready node-ready
+bundle=$(mktemp -d "$PWD/.work/tmp/native-stats.XXXXXX")
+TMPDIR="$PWD/.work/tmp" sh deploy/orange/build-context.sh "$bundle" "$(git rev-parse --short=12 HEAD)"
+```
+
+On the isolated VM, create the Engine's log and object directories before
+starting it. Create each log with its service user's ownership before
+starting OpenRC. Bind the Engine guard, peer API, metrics, store and Stats
+listeners to loopback. Provision the fresh namespace and its `default`
+and `services` pools before starting `orange serve`. Give Stats a writable
+`.open-orange` directory and a private home. Use temporary credentials
+supplied through protected service configuration.
+
+To rehearse a restore, delete `vars.APPLICATION_EVENTS_RELEASE` from the
+rehearsal copy of `app/stats.jsonc` before the first boot. The first import
+attempt returned HTTP 409 because Stats self-observation had populated
+`observe_external_events`. Use a fresh namespace, expose it through the
+existing test gateway over loopback and run `statsctl backup import` against
+that gateway. Keep the production bundle unchanged.
+
+The clean retry imported the November 14 historical export into the native
+stack. The CLI verified all manifests and table hashes and reported 627,253
+rows across 10 objects. The authenticated hosts API returned six restored
+hosts. The native Stats endpoint then accepted both samples from the
+`linux-normal` STB2 fixture and served their host history. The native
+store passed all required checks in Stuff's `bin/s3-conformance`, including
+multipart upload and byte-for-byte download. It returned HTTP 400 on the
+optional `GET ?partNumber=2` probe.
+
+The backup listing returned HTTP 503 on the original Lisa app before
+and after a same-image Engine restart. It now lists all 14 objects on
+the temporary writer. A serial export of the earlier 01:24 UTC Lisa
+copy verified 842,207 rows across all 14 objects. A separate loopback
+OpenOrange runtime restored that archive and passed the host history
+and test ingest checks. The
+[recovery execution record](lisa-operational-recovery.md#execution-record)
+locates that archive. A subsequent capture at 04:00:12 UTC sealed a
+fresh physical copy of the current writer and a verified 14-object
+logical export. The
+[current writer backup record](lisa-operational-recovery.md#current-writer-backup)
+locates it. A final write-fenced handoff will require the data received
+after that capture.
+
+Lisa has the pinned Node.js 26.13.1 package and the hashed
+`c9a71b2ba127` runtime under `/opt/openorange/native-releases/stats/`.
+The release is staged outside the production routing and startup paths.
+In a private network namespace on Lisa, the captured depot passed Engine
+`/health` but failed Stats runner registration with
+`depot.request_deadline_exceeded`. A retest with the production limit
+of 1,048,576 open files reproduced four registration deadlines and
+reported no descriptor exhaustion. On the same host, a fresh depot
+provisioned its namespace and served the authenticated hosts API after
+startup settled. Production unit changes, ingress migration and the
+soak remain gated on a verified logical restore on Lisa, restart and
+rollback proof, and a safe writer handoff.
+
+The current archive imported into a fresh native Engine namespace on
+Threadripper. All 853,605 rows verified, and a canary passed ingest,
+history readback and replay deduplication. The pinned Docker Engine
+reopened that native-written depot and returned the canary's latest
+sample. On Lisa, the staged native versitygw passed all required
+conformance checks in a private namespace. Its optional multipart
+`GET ?partNumber=2` returned HTTP 400.
+
+The platform artifact set is staged under
+`/opt/openorange/native-releases/platform/from-lisa-20261118T035957Z`.
+It contains Caddy 2.11.9 with the Cloudflare DNS module, CoreDNS 1.15.0,
+cloudflared 2026.10.7, the Python identity service, and the Rivet
+dashboard files. Each file matches the recorded SHA-256 manifest.
+The compressed copy and its checksum are in
+`~/backups/openorange/stats/20261118-recovery-images/` on the workstation.
+The native Caddy validated the current ingress configuration inside a
+private network namespace. ACME issuance against the real zone,
+production service units, and a full ingress and identity cutover
+still need their own checks.
+
+The logical restore to a fresh depot on Lisa verified the installation
+and resumed the Stats observation object to completion. A separate
+canary on that isolated installation read the five archived host
+receipts, then verified new ingest, history readback, and duplicate
+replay. The much larger Stuff observation object encountered a
+volume fence, loss of quorum and a subsequent progress-read timeout
+under the corrected descriptor limit. This is the Stats observation
+object for Stuff. The original publishing coordinator uses a different
+namespace and remains a separate recovery item.
+
+The original run last observed 225,193 of 296,819 rows before repeated
+status timeouts. Its stopped depot and logs remain under
+`/var/lib/openorange/native-rehearsal/logical-20261118T035957Z/`.
+
+### Resume the Lisa checkpoint
+
+On November 18, 2026, a cold boot from a copy of the stopped depot
+reported 262,684 durable rows for `observe:stuff`. An immediate restart
+and resume failed with HTTP 503 while the installation already reported
+`open`. A second attempt allowed the object to become readable and then
+resumed in the same Engine session with the standard 500-row page limit.
+`backup import` verified all 296,819 rows against the archive and opened
+the object. The other objects were already open. The resumed trial checked
+all 14 maintenance states and read the five archived host receipts. A
+canary passed ingest, history readback, and duplicate replay. A subsequent
+cold Engine and app restart preserved the five receipts and the canary.
+The resumed run re-verified the full Stuff manifest. Its checks of
+previously opened objects did not rehash every table.
+
+The stopped resumed depot and the `engine-checkpoint-*.log` and
+`stats-checkpoint-*.log` files are under
+`/var/lib/openorange/native-rehearsal/checkpoint-copy-20261118T0600Z/`.
+The earlier failed run filled its stream buffer before the first reported
+`QuorumUnavailable`. The read-only probe later encountered a
+`dependent_failed` worker lease fence during teardown. The trigger for the
+original import stall remains open.
+
+To repeat the resume, copy the stopped depot and boot it in private mount
+and network namespaces with a 1,048,576 descriptor limit. Bind the copy
+over the original path inside the private mount namespace so the Engine's
+absolute data paths resolve to the copy. Use the isolated test gateway.
+Poll `statsctl backup status --object observe:stuff --json` to confirm
+`importing` and recover the offsets. In the same Engine session, run
+`statsctl backup import --in ARCHIVE --object observe:stuff`. Confirm
+all objects report `open`, check the restored receipts and run an ingest
+canary before and after a cold restart. For a fresh all-object trial use
+`statsctl backup import --in ARCHIVE --serial`.
+
+### Verify the full archive from an empty depot
+
+A separate trial started with an empty native depot and the verified
+04:00 UTC archive. The first serial import verified and reopened each
+object preceding `observe:stuff`. Its 45-minute client deadline expired
+while importing that object. The restarted Engine reported 181,500
+durable `observe_external_events` rows. The continuation checked the
+completion receipts for `observe:stuff` (296,819 rows), `observe:tansu`
+(18 rows), and `observe:usr-memories` (194 rows) against their manifests.
+The two sessions completed all 853,605 archive rows across 14 objects.
+All objects reported `open` with empty import progress. The five archived
+host receipts and a new ingest canary survived a cold Engine and app
+restart. The canary passed history readback and duplicate replay.
+
+The stopped depot is under
+`/var/lib/openorange/native-rehearsal/fresh-serial-20261118T0624Z-b/`.
+The neighboring `.receipt.log` and `.continuation.log` record both
+sessions. The protected launchers are under
+`/var/lib/openorange/recovery/native-serial-cli-026b82dae33/` and
+`/var/lib/openorange/recovery/native-resume-cli-40026dc2c55/`.
+For a new isolated trial, use the serial import command above and preserve
+the stopped depot if the client exits before every object verifies.
+Resume the remaining objects in archive order after the first unfinished
+object's progress endpoint responds.
+
+### Reopen the restored Lisa depot with Docker
+
+Lisa's pinned Docker Engine opened a stopped copy of the native-written
+depot from the full serial trial. Run the container without networking
+and with the production Engine UID and GID, 10001:10001. Give the copy
+the same ownership. Mount the cloned depot at `/var/lib/rivet` so the
+filesystem store can acquire `objects.rivet-store-lock` beside the
+`objects` directory. An initial run with separate child mounts failed
+because that parent path was on the read-only container filesystem.
+
+The native app started in the container's private network namespace.
+It read the five archived host receipts and the exact canary sequence
+`1794986895749` from the Docker Engine. The test depot and logs are
+under `/var/lib/openorange/native-rehearsal/docker-rollback-20261118T0729Z/`.
+This verifies Engine compatibility on Lisa. The OpenRC unit and ingress
+switch still needs rehearsal before a live rollback.
+
+### Retest the physical backup on Lisa
+
+Two separate copies of the same archive reached Engine `/health` but
+failed the OpenOrange runner's 30-second registration deadline before
+the app began listening. The first Engine logged 83 failed alarm callbacks.
+The second copy set `storage.alarms.max_callbacks` to 4 and logged 21
+failed callbacks. Runner registration still timed out. Keep the default
+configuration for production. The next comparison needs the same archive
+and runtime under controlled host load, with runner admission and the
+first storage deadline recorded independently of `/health`.
+
+The logs are under
+`/var/lib/openorange/native-rehearsal/physical-recheck-20261118T0617Z/`
+and
+`/var/lib/openorange/native-rehearsal/physical-alarm-cap-20261118T0621Z/`.
+
+The rehearsal exceeded the default agent queue window. The production
+handoff needs a verified way to carry the newer host and producer
+writes across the transfer. Threadripper is still the current writer.
+
+The Engine rollback rehearsal stopped the native services and booted a
+separate VM disk overlay with the same state. It ran the deployed Engine
+image at digest
+`sha256:6e585002b700dd4d3630808eb67884aa15d1a602d83781984edac47023b6d40f`
+against the cloned native data paths. The authenticated Engine namespace
+list reopened, and the native Stats worker read the same seven host IDs
+and the fixture history from the Docker Engine. The SHA-256 of the sorted
+host IDs was `4c414fdbfc4b092051900de9d23535827e40aa977a031fa0decbf3cdbf8e4534`
+before and after. The production OpenRC unit switch and rollback for the
+remaining services still need rehearsal.
