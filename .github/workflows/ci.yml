@@ -31,15 +31,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install jaq and ripgrep
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ripgrep
-          mkdir -p .work/tmp/tool-bin
-          curl -fsSL -o .work/tmp/tool-bin/jaq https://github.com/01mf02/jaq/releases/download/v3.1.2/jaq-aarch64-unknown-linux-gnu
-          echo '1aa1b9c0a3b73f016f6a8d407fa21a89174d01a8e4b9df449eaad49603426734  .work/tmp/tool-bin/jaq' | sha256sum -c -
-          chmod +x .work/tmp/tool-bin/jaq
-          echo "$PWD/.work/tmp/tool-bin" >> "$GITHUB_PATH"
+      - uses: laputa-systems/buildlib/setup@1cd9d482a684e72c68ac6fea7f4ee3a3e9c4a161 # v0.3.1
+        with:
+          tools: jaq rg
+          lock: .github/tools.lock.json
 
       - name: Check out legacy baseline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
