@@ -265,7 +265,25 @@ not clear the loop: an 8-CPU Engine cap (spin stayed near four cores),
 back at its declared 4-CPU/3-GiB limits with the declared configuration, and
 the writer VM's threads are at `-10`. Current Engine logs show tablet
 maintainer fencing, repeated volume unload/reload and a near-capacity alarm
-frontier. The root cause remains STA-135 and the site still returned 502. Rerun
+frontier. The root cause remains STA-135. A 20 s perf profile of the spinning process
+(99 Hz, both frame-pointer and DWARF unwinds) put the dominant userspace cost
+in SlateDB row-iterator initialization (`slatedb::sst_iter::FilterIterator::init`),
+`sqlite_prefetch::overflow::OverflowMap::covering`, repeated
+`BTreeMap<u32, …>::insert`/`remove`, `depot_fs_core::keys::slatedb::decode_key`,
+`foundationdb_tuple::pack::parse_slice` and `rivet_topology::Topology::permits_worker`.
+That is a read/decode-heavy loop, not an idle epoll or futex wait, and explains
+why no command-timeout, cold-read, alarm-slot or CPU-cap lever changed it.
+
+The site recovered at about 08:34 UTC after roughly 19 minutes of unlimited
+supervised app retries: `/`, `/health` and `/api/v1/hosts` returned 200, a
+synthetic `check ingest` passed all seven steps with exact readback and no
+warnings, and all five expected hosts had fresh receipts. Engine CPU fell from
+about 394% to 30–160% with the app registered. No data was replaced: the
+temporary 2026-11-22 depot restore was reverted and the client-side RivetKit
+timeout patches were reverted. The Engine container is the declared image with
+its declared configuration and 4-CPU/3-GiB limits; its recreation also restored
+the hand-created container's `--read-only`, `no-new-privileges` and
+`/var/lib/rivet` tmpfs flags, which the generated create argv omitted. Rerun
 `deploy/orange/recovery/contention-drill.sh start` after the renice persistence
 change and a real repair of the spin.
 

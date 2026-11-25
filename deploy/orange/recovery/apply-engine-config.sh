@@ -46,16 +46,9 @@ digest=$(printf '%s' "$observed" | jaq -r '.digest // empty')
 [ -n "$release" ] && [ "$release" = "$(printf '%s' "$observed" | jaq -r '.selected // empty')" ] || fail "the standby's running app is unknown"
 guest "cat >$script" <"$root/deploy/orange/recovery/engine-config.sh" || fail "cannot upload the configuration script"
 jaq .config "$declaration" | guest "umask 077; cat >$staged" || fail "cannot stage the declared configuration"
-sha256_digest() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256
-    else
-        sha256sum
-    fi
-}
 declared_config=$(jaq -c .config "$declaration") || fail "cannot read the declared configuration"
 digest_line=$(
-    sha256_digest <<EOF
+    sha256sum <<EOF
 $declared_config
 EOF
 )
