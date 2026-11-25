@@ -53,6 +53,7 @@ export async function withWorkspace<T>(use: (workspace: Workspace) => Promise<T>
     writeFileSync(join(tree, "agent", "contrib", "openrc", "stats"), UNIT);
     symlinkSync(findOnPath("jaq"), join(bin, "jaq"));
     symlinkSync(findOnPath("rg"), join(bin, "rg"));
+    symlinkSync(findOnPath("sha256sum"), join(bin, "sha256sum"));
     const log = join(state, "log");
     const blocked = join(state, "blocked");
     writeFileSync(log, "");

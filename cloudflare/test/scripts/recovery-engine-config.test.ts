@@ -26,7 +26,6 @@ await test("Engine configuration change writes the declared config only while st
     esac`;
     for (const [name, contents] of Object.entries({
       docker,
-      flock: "exit 0",
       wget: 'test ! -e "$T/stopped"',
       "rc-service": 'case "$2" in status) exit 0 ;; start) [ ! -e /dev/fd/9 ] || echo inherited-lock >> "$T/trace"; echo "$1 $2" >> "$T/trace" ;; *) echo "$1 $2" >> "$T/trace" ;; esac'
     })) writeFileSync(join(bin, name), `#!/bin/sh\n${contents}\n`, { mode: 0o700 });

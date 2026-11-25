@@ -26,7 +26,7 @@ await test("Engine capture restarts its container after a failed stopped copy, a
     esac`;
     for (const [name, contents] of Object.entries({
       docker,
-      flock: 'test "$CAPTURE_LOCKED" = 0',
+      python3: 'case "$*" in *fcntl.flock*) [ "$CAPTURE_LOCKED" = 0 ] || exit 1 ;; esac\nexec /usr/bin/python3 "$@"',
       timeout: 'shift\nexec "$@"',
       rsync: 'test "$CAPTURE_COPY_FAILS" = 0',
       wget: 'test ! -e "$CAPTURE_TEST/stopped"',

@@ -122,8 +122,8 @@ tar -C "$work/bundle" -cf - . | on_host "tar -C $remote/bundle -xf -"
 # The runtime archive and the capture are large, so the host keeps them in an owner-only cache
 # keyed by their digests and copies them from this machine only when absent.
 cache=$guest_root/cache
-runtime_key=$(shasum -a 256 "$runtime/runtime.tar" | cut -d' ' -f1)
-capture_key=$(shasum -a 256 "$capture/depot.sha256" | cut -d' ' -f1)
+runtime_key=$(sha256sum "$runtime/runtime.tar" | cut -d' ' -f1)
+capture_key=$(sha256sum "$capture/depot.sha256" | cut -d' ' -f1)
 on_host "umask 077; mkdir -p $cache"
 if ! on_host "[ -s $cache/runtime-$runtime_key.tar ]"; then
     tar -C "$runtime" -cf - runtime.tar | on_host "tar -C $cache -xf - && mv $cache/runtime.tar $cache/runtime-$runtime_key.tar"

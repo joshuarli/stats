@@ -30,10 +30,6 @@ chmod +x "$out"
 ln -sf "$(basename "$out")" "$repo/dist/statsctl.mjs"
 
 # Generate SHA256
-if command -v sha256sum >/dev/null 2>&1; then
-  (cd "$repo/dist" && sha256sum "$(basename "$out")") >> "$repo/dist/SHA256SUMS.statsctl" 2>/dev/null || (cd "$repo/dist" && sha256sum "$(basename "$out")" > SHA256SUMS.statsctl)
-elif command -v shasum >/dev/null 2>&1; then
-  (cd "$repo/dist" && shasum -a 256 "$(basename "$out")") >> "$repo/dist/SHA256SUMS.statsctl" 2>/dev/null || (cd "$repo/dist" && shasum -a 256 "$(basename "$out")" > SHA256SUMS.statsctl)
-fi
+(cd "$repo/dist" && sha256sum "$(basename "$out")") >> "$repo/dist/SHA256SUMS.statsctl" 2>/dev/null || (cd "$repo/dist" && sha256sum "$(basename "$out")" > SHA256SUMS.statsctl)
 
 echo "Built $out"
