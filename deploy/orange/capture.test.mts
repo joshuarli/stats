@@ -38,7 +38,6 @@ case "$2" in
   stop) rm -f "$sim/svc-$1" ;;
 esac`);
   fake('wget', '[ "$(cat "$sim/engine")" = running ]');
-  fake('flock', 'exit 0');
   fake('rsync', `echo "rsync engine=$(cat "$sim/engine")" >>"$sim/calls"; [ ! -e "$sim/fail-final-copy" ] || exit 23; exec /usr/bin/rsync "$@"`);
   return { dir, state, output: join(dir, 'captures/one'), env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } };
 }

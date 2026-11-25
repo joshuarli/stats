@@ -26,7 +26,9 @@ for (const os of ["Linux", "Darwin"]) {
         const manifest = failure === "missing" ? `${digest} other` : failure === "malformed" ? `bad ${asset}` : failure === "mismatch" ? `${"0".repeat(64)} ${asset}` : `${digest} ${asset}${failure === "duplicate" ? `\n${digest} ${asset}` : ""}`;
         writeFileSync(join(scratch, "manifest"), manifest);
         stub("curl", `case "$4" in *SHA256SUMS) ${failure === "download" ? "exit 22" : `/bin/cat '${scratch}/manifest' > "$3"`};; *) printf binary > "$3";; esac`);
-        if (failure !== "verifier") symlinkSync("/usr/bin/shasum", join(bin, "shasum"));
+        const sha256sum = (process.env["PATH"] ?? "").split(":").map(directory => join(directory, "sha256sum")).find(existsSync);
+        assert.ok(sha256sum, "sha256sum must be available to the installer test");
+        if (failure !== "verifier") symlinkSync(sha256sum, join(bin, "sha256sum"));
         const result = spawnSync("/bin/sh", [join(root, "install.sh")], { env: { ...process.env, PATH: bin, TMPDIR: scratch, STATS_VERSION: "v1.0.0", STATS_INSTALL_DIR: join(scratch, "install"), STATS_CONFIG_DIR: join(scratch, "config") }, encoding: "utf8" });
         assert.equal(existsSync(join(scratch, "installed")), failure === "none", result.stdout + result.stderr);
         assert.equal(result.status, failure === "none" ? 99 : failure === "download" ? 22 : 1, result.stderr);

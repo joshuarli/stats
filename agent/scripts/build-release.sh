@@ -8,11 +8,7 @@ version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$agent/Cargo.toml" | head -n 1
 test -n "$version"
 
 hash_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
+  sha256sum "$1" | cut -d' ' -f1
 }
 
 mkdir -p "$dist"

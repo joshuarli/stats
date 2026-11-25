@@ -66,7 +66,7 @@ umask 077
 # Services started below run under supervise-daemon, which would inherit this descriptor and hold
 # the lock long after the operation ends; every start closes it.
 exec 9>"$state/.capture.lock"
-flock -n 9 || { echo "an Engine capture or configuration change already owns $state" >&2; exit 1; }
+python3 -I -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null || { echo "an Engine capture or configuration change already owns $state" >&2; exit 1; }
 [ ! -e "$intent" ] || { echo "an interrupted configuration change left $intent; run recover first" >&2; exit 1; }
 [ ! -e "$state/.capture-intent" ] || { echo "an interrupted capture left $state/.capture-intent; recover it first" >&2; exit 1; }
 python3 -I -c 'import json, sys; json.load(open(sys.argv[1]))' "$new" || { echo "$new is not JSON" >&2; exit 1; }

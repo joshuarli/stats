@@ -51,14 +51,7 @@ download() {
 sha256_check() {
   file="$1"
   expected="$2"
-  if command -v sha256sum >/dev/null 2>&1; then
-    actual=$(sha256sum "$file" | cut -d' ' -f1)
-  elif command -v shasum >/dev/null 2>&1; then
-    actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
-  else
-    echo "sha256sum or shasum required" >&2
-    return 1
-  fi
+  actual=$(sha256sum "$file" | cut -d' ' -f1)
   [ "$actual" = "$expected" ]
 }
 

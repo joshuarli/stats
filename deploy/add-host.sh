@@ -193,11 +193,7 @@ tail_log() {
 }
 
 hash_file() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  else
-    shasum -a 256 "$1" | cut -d' ' -f1
-  fi
+  sha256sum "$1" | cut -d' ' -f1
 }
 
 api() {
@@ -266,7 +262,7 @@ case "$platform" in
 esac
 
 local_hash=$(hash_file "$artifact")
-remote_hash=$(remote_output "if [ -f '$remote_bin' ]; then if command -v sha256sum >/dev/null 2>&1; then sha256sum '$remote_bin'; else shasum -a 256 '$remote_bin'; fi | cut -d' ' -f1; fi") || die "cannot read $remote_bin"
+remote_hash=$(remote_output "if [ -f '$remote_bin' ]; then sha256sum '$remote_bin' | cut -d' ' -f1; fi") || die "cannot read $remote_bin"
 binary_changed=0
 [ "$local_hash" = "$remote_hash" ] || binary_changed=1
 
