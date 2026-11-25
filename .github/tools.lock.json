@@ -5,23 +5,23 @@
       "assets": {
         "aarch64-apple-darwin": {
           "name": "jaq-aarch64-apple-darwin.tar.xz",
-          "sha256": "714b7f4bc1d032041971a3ff31e493767d6e0ab36ae49deeffe95bff64619728",
-          "size": 997792
+          "sha256": "1c669f5e9b8ed2468c3a07456c9c56fbf5a5fc5ebf0d4ec04ecafe83f71f44ed",
+          "size": 999360
         },
         "aarch64-unknown-linux-musl": {
           "name": "jaq-aarch64-unknown-linux-musl.tar.xz",
-          "sha256": "b17a8d41058d15fad21eee822a8952dc40bf6f465f6ebf246f3ae67bb7d461a0",
-          "size": 818484
+          "sha256": "27e723b7c95775511070d9e9c88206ed1b3fbec8ef1bc35d7b083d357b1a28ed",
+          "size": 820844
         },
         "x86_64-unknown-linux-musl": {
           "name": "jaq-x86_64-unknown-linux-musl.tar.xz",
-          "sha256": "3a24a3dc32dd19cb4e72ef70fcd9f1253b2804ff92222ca91491e32653a5faa2",
-          "size": 957652
+          "sha256": "47ab25725dd0dc99643bd3151b88fed7105a1ff45da247619f6debde17bd6765",
+          "size": 959540
         }
       },
       "product": "jaq",
       "repository": "laputa-systems/jaq",
-      "tag": "release-545e3f7ba20beed0f77031dcc9aa74eb0ef0ba14",
+      "tag": "release-477b0407d558e61531336f9ac5040d200cf5d728",
       "version": ""
     },
     "rg": {
