@@ -247,13 +247,27 @@ now lives in `start_post()` in
 watchdog restart restores the priority that the 03:46 drill validated. No
 process was stopped to apply it.
 
-The running `/opt/native-rehearsal/live-engine.json` has drifted from Stuff's
-declared `stats-engine.json`: `storage.log_shard.max_disk_bytes` (1 GiB) and
-`storage.cold_store.disk_cache_bytes` (512 MiB) are absent. Applying that
-declaration needs an Engine stop under `rollout lease run`, which was not
-authorized during this incident; leave the Engine limits unchanged when it is
-applied. Rerun `deploy/orange/recovery/contention-drill.sh start` after the
-engine config and the renice persistence change.
+The declared `storage.log_shard.max_disk_bytes` (1 GiB) and
+`storage.cold_store.disk_cache_bytes` (512 MiB) were already present in
+`/opt/native-rehearsal/live-engine.json` (mtime 2026-11-22 16:00), and
+`standby-engine inspect` reported no drift. An `apply-engine-config.sh` attempt
+therefore found the configuration already applied and changed nothing; it
+recorded a `failed` receipt only because this Linux host has no `shasum`, so the
+driver's digest pipeline silently produced an empty hash.
+
+Recovery under `rollout lease run`: stopped `native-stats` and the collector,
+restarted the Engine (it relapsed to about 400% CPU within seconds), then
+started both services again (the app still missed RivetKit's 30 s limit). Three
+bounded trials, each staged with a backup and reverted after about 75 s, did
+not clear the loop: an 8-CPU Engine cap (spin stayed near four cores),
+`storage.command_timeout_ms: 30000` and
+`storage.max_background_cold_reads: 16`. All three were reverted; the Engine is
+back at its declared 4-CPU/3-GiB limits with the declared configuration, and
+the writer VM's threads are at `-10`. Current Engine logs show tablet
+maintainer fencing, repeated volume unload/reload and a near-capacity alarm
+frontier. The root cause remains STA-135 and the site still returned 502. Rerun
+`deploy/orange/recovery/contention-drill.sh start` after the renice persistence
+change and a real repair of the spin.
 
 ### Recreating the standby guest
 
