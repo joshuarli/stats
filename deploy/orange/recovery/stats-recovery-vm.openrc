@@ -58,10 +58,15 @@ start() {
 start_post() {
     read -r pid < "$pidfile" || return 1
     case "$pid" in ""|*[!0-9]*) return 1 ;; esac
+    rc=0
     for tid in /proc/"$pid"/task/*; do
         [ -d "$tid" ] || continue
-        renice -n -10 "${tid##*/}" >/dev/null || eerror "could not raise recovery VM priority"
+        if ! renice -n -10 "${tid##*/}" >/dev/null; then
+            eerror "could not raise recovery VM priority"
+            rc=1
+        fi
     done
+    return "$rc"
 }
 
 stop() {
