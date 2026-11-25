@@ -225,6 +225,36 @@ drift. Replacing the live Engine still needs a journaled, conditional
 replacement adapter, and recreation on a disposable guest has not run. The
 exited `rollback-engine` container from 2026-11-18 is not part of it.
 
+### Load contention (2026-11-25)
+
+Threadripper ran at load 74–99 on 32 cores from unrelated Chromium and `xsh`
+builds. `/` and `/health` answered 200, but `/api/v1/hosts` returned 503 after
+5 s with `depot.request_deadline_exceeded`. The guest Engine was at 394% CPU
+with `volume alarm callback failed`, `command_capacity` and
+`filesystem_overloaded` refusals, and `refusing envoy connect that storage
+could not register`; `native-stats` logged the same depot deadline. This is the
+STA-135 loop, not plain CPU starvation: the Engine spins while registration
+keeps missing deadlines. At 04:06:52 UTC the writer VM exited; the host
+`stats-recovery-vm-watchdog` restarted it (1 of 3 within 3600 s). After boot
+`native-stats` still missed RivetKit's 30 s registration limit and the site
+stayed 502. Its supervisor kept retrying without limit, as STA-138 requires.
+
+The documented 03:01 renice was lost at the 03:57 VM restart, so the running
+VM and all 28 of its threads were reniced to `-10` live. The persistent part
+now lives in `start_post()` in
+`deploy/orange/recovery/stats-recovery-vm.openrc` and in the live
+`/etc/init.d/stats-recovery-vm`: each start re-nices every qemu thread, so a
+watchdog restart restores the priority that the 03:46 drill validated. No
+process was stopped to apply it.
+
+The running `/opt/native-rehearsal/live-engine.json` has drifted from Stuff's
+declared `stats-engine.json`: `storage.log_shard.max_disk_bytes` (1 GiB) and
+`storage.cold_store.disk_cache_bytes` (512 MiB) are absent. Applying that
+declaration needs an Engine stop under `rollout lease run`, which was not
+authorized during this incident; leave the Engine limits unchanged when it is
+applied. Rerun `deploy/orange/recovery/contention-drill.sh start` after the
+engine config and the renice persistence change.
+
 ### Recreating the standby guest
 
 `deploy/orange/recovery/guest/` is the tracked build of this guest: package

@@ -55,6 +55,15 @@ start() {
     eend $?
 }
 
+start_post() {
+    read -r pid < "$pidfile" || return 1
+    case "$pid" in ""|*[!0-9]*) return 1 ;; esac
+    for tid in /proc/"$pid"/task/*; do
+        [ -d "$tid" ] || continue
+        renice -n -10 "${tid##*/}" >/dev/null || eerror "could not raise recovery VM priority"
+    done
+}
+
 stop() {
     ebegin "Shutting down Stats recovery VM"
     if ! guest_running; then
