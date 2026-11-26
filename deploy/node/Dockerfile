@@ -3,6 +3,6 @@ WORKDIR /app/cloudflare
 COPY cloudflare/main.mjs ./src/node/main.mjs
 COPY cloudflare/.cloudflare/output/v0/workers/default/assets ./.cloudflare/output/v0/workers/default/assets
 USER node
-ENV STATS_DATA_DIR=/data STATS_LISTEN=unix:/run/stats/stats.sock
+ENV STATS_DATA_DIR=/data STATS_LISTEN=unix:/run/stats/stats.sock STATS_AUTH=tailscale
 STOPSIGNAL SIGTERM
 CMD ["node", "src/node/main.mjs"]

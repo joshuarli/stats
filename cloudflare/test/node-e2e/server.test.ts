@@ -32,7 +32,7 @@ function launch(env: Record<string, string>): { child: ChildProcess; output: () 
 }
 
 async function start(dataDir: string, extra: Record<string, string> = {}): Promise<Started> {
-  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", ...extra });
+  const launched = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_AUTH: "tailscale", ...extra });
   const port = await new Promise<number>((resolvePort, reject) => {
     const timer = setTimeout(() => reject(new Error(`server did not report a port: ${launched.output()}`)), 10_000);
     launched.child.stdout!.on("data", () => {
@@ -130,7 +130,8 @@ await test("the Node server refuses to start without its allowlist or data direc
   const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-config-"));
   try {
     for (const [env, message] of [
-      [{}, /STATS_DATA_DIR is required/u]
+      [{ STATS_AUTH: "tailscale" }, /STATS_DATA_DIR is required/u],
+      [{ STATS_DATA_DIR: dataDir }, /STATS_AUTH is required/u]
     ] as const) {
       const launched = launch(env);
       assert.equal(await launched.exited(), 2, launched.output());
@@ -146,7 +147,7 @@ await test("a second Node server on the same data directory exits 2 and leaves t
   try {
     const first = await start(dataDir);
     try {
-      const second = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0" });
+      const second = launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: "127.0.0.1:0", STATS_AUTH: "tailscale" });
       assert.equal(await second.exited(), 2, second.output());
       assert.match(second.output(), /stats: STATS_DATA_DIR .* is in use by another server/u);
       assert.equal((await fetch(`${first.origin}/health`)).status, 200);
@@ -160,7 +161,7 @@ await test("a second Node server on the same data directory exits 2 and leaves t
 });
 
 function socketServer(dataDir: string, socket: string) {
-  return launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: `unix:${socket}` });
+  return launch({ STATS_DATA_DIR: dataDir, STATS_LISTEN: `unix:${socket}`, STATS_AUTH: "tailscale" });
 }
 
 function overSocket(socket: string, path: string, headers: Record<string, string> = {}): Promise<number> {

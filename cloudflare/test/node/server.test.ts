@@ -275,7 +275,7 @@ await test("observe answers unavailable on Node after auth, and a history frame 
 await test("the Node configuration fails loudly on a missing or invalid value and defaults the listen address to loopback", () => {
   const directory = scratchDirectory("node-config");
   try {
-    const valid = { STATS_DATA_DIR: directory };
+    const valid = { STATS_DATA_DIR: directory, STATS_AUTH: "tailscale" };
     const config = nodeConfig(valid);
     assert.equal(config.databasePath, join(directory, DATABASE_FILE));
     assert.deepEqual(config.auth, { kind: "tailscale" });
@@ -291,6 +291,7 @@ await test("the Node configuration fails loudly on a missing or invalid value an
       [{ ...valid, STATS_AUTH: "gateway" }, /STATS_GATEWAY_SECRET_FILE/u],
       [{ ...valid, STATS_AUTH: "gateway", STATS_GATEWAY_SECRET_FILE: join(directory, "absent") }, /STATS_GATEWAY_SECRET_FILE/u],
       [{ ...valid, STATS_DATA_DIR: undefined }, /STATS_DATA_DIR is required/u],
+      [{ ...valid, STATS_AUTH: undefined }, /STATS_AUTH is required/u],
       [{ ...valid, STATS_DATA_DIR: join(directory, "absent") }, /does not exist/u],
       [{ ...valid, STATS_LISTEN: "localhost:18791" }, /STATS_LISTEN/u],
       [{ ...valid, STATS_LISTEN: "127.0.0.1:70000" }, /STATS_LISTEN/u],

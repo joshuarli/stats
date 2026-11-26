@@ -61,7 +61,8 @@ function listen(value: string | undefined): Listen {
 }
 
 function auth(env: Readonly<Record<string, string | undefined>>): NodeAuth {
-  const mode = env["STATS_AUTH"] ?? "tailscale";
+  const mode = env["STATS_AUTH"];
+  if (mode === undefined || mode === "") throw new NodeConfigError("STATS_AUTH is required: tailscale or gateway");
   if (mode === "tailscale") return { kind: "tailscale" };
   if (mode !== "gateway") throw new NodeConfigError("STATS_AUTH must be tailscale or gateway");
   const path = env["STATS_GATEWAY_SECRET_FILE"];
