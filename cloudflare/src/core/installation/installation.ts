@@ -46,6 +46,7 @@ const COMPARISON_METRICS_SQL = "SELECT metric, bucket_ms, value FROM project_sam
 export interface InstallationPorts {
   readonly sql: SqlScopes;
   readonly clock: Clock;
+  readonly monotonic?: () => number;
   readonly scheduler: Scheduler;
   readonly operations: OperationSink;
   readonly probesServices: boolean;
@@ -133,7 +134,7 @@ export class InstallationCore {
   }
 
   operationRun(): OperationRun {
-    const now = (): number => this.ports.clock.now();
+    const now = this.ports.monotonic ?? (() => this.ports.clock.now());
     return new OperationRun(this.ports.sql.open(), this.ports.operations, now);
   }
 

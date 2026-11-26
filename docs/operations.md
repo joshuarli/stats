@@ -393,6 +393,7 @@ cd cloudflare && \
 | Variable | Meaning |
 | --- | --- |
 | `STATS_DATA_DIR` | Required. An existing directory; the database is `stats.sqlite` inside it. Only one server may use it at a time: the server holds an exclusive SQLite lock, and a second one exits 2 with `stats: STATS_DATA_DIR ... is in use by another server`. |
+| `APPLICATION_EVENTS_RELEASE` | Enables Node application observations when set to a valid release identifier. Events are buffered in process and written to the `stats` observation store. |
 | `STATS_AUTH` | `tailscale` (default) or `gateway`. Gateway mode requires the trusted proxy to strip identity headers and assert its secret and tailnet identity. |
 | `STATS_GATEWAY_SECRET_FILE` | In gateway mode, path to a readable file containing the shared single-line secret. |
 | `STATS_LISTEN` | `IPV4:PORT`, `[IPV6]:PORT`, or `unix:/absolute/path.sock`. Default `127.0.0.1:18791`; port `0` picks a free one. A socket's directory must exist; a stale socket file is replaced, a live one stops startup with exit 2, and the socket is `0600` and removed on shutdown. |

@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const assets = await openAssets(BUILT_ASSETS);
   let installation: NodeInstallation;
   try {
-    installation = openNodeInstallation({ path: config.databasePath, projects: "[]" });
+    installation = openNodeInstallation({ path: config.databasePath, projects: "[]", release: process.env["APPLICATION_EVENTS_RELEASE"] });
   } catch (error) {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
@@ -42,6 +42,7 @@ async function main(): Promise<void> {
   };
   const server = createStatsServer({
     auth: config.auth,
+    application: installation.application,
     metricsVerifier: process.env["INFRA_METRICS_TOKEN_SHA256"],
     metrics: request => handleMetricRequest(request, metricStore()),
     installation: request => installation.core.fetch(request),
@@ -62,7 +63,7 @@ async function main(): Promise<void> {
   try {
     await listenOn(server, config.listen);
   } catch (error) {
-    installation.close();
+    await installation.shutdown();
     throw error;
   }
   const address = server.address();
@@ -72,7 +73,7 @@ async function main(): Promise<void> {
     draining = true;
     console.log(JSON.stringify({ event: "stopping", signal }));
     server.close(error => {
-      installation.close();
+      void installation.shutdown().then(() => {
       metrics?.close();
       if (error !== undefined) {
         console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
         return;
       }
       console.log(JSON.stringify({ event: "stopped" }));
+      }).catch((failure: unknown) => { console.error(JSON.stringify({ event: "stop_failed", name: failure instanceof Error ? failure.name : typeof failure })); process.exitCode = 1; });
     });
     for (const outgoing of inFlight) if (!outgoing.headersSent) outgoing.shouldKeepAlive = false;
     server.closeIdleConnections();

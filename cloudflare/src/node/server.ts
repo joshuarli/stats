@@ -9,11 +9,13 @@ import { gatewayDecision } from "../core/gateway.ts";
 import type { NodeAuth } from "./config.ts";
 import { handleStatsRequest, type ObserveService, type StatsTarget } from "../core/http.ts";
 import { handleApi } from "../observe/http/api.ts";
+import type { NodeApplicationEvents } from "./application.ts";
 import type { NodeInstallation } from "./installation.ts";
 import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly application?: NodeApplicationEvents | undefined;
   readonly auth?: NodeAuth | undefined;
   readonly metricsVerifier?: string | undefined;
   readonly metrics?: (request: Request) => Promise<Response>;
@@ -111,7 +113,8 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
         outgoing.writeHead(400, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ error: { code: "invalid_request", message: "malformed request" } }));
         return;
       }
-      await respond(outgoing, await handleStatsRequest(request, target), request.method);
+      const run = () => handleStatsRequest(request, target);
+      await respond(outgoing, await (options.application === undefined ? run() : options.application.run(request, run)), request.method);
     })().catch((error: unknown) => failed(outgoing, error));
   };
 }

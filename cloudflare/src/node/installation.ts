@@ -4,16 +4,11 @@ import { InstallationCore } from "../core/installation/installation.ts";
 import { APPLICATION_EVENT_READ_LIMIT } from "../deployments/service-compare.ts";
 import { NodeObservations } from "./observations.ts";
 import { initializeStore } from "../observe/core/store.ts";
-import type { OperationSink } from "../operations.ts";
+import { NodeApplicationEvents } from "./application.ts";
 import { systemClock, TimerScheduler } from "./ports.ts";
 import type { ProbeFetch } from "../projects/probes.ts";
 import { scheduleServiceProbes } from "./probes.ts";
 import { nodeSqlScopes } from "./sql.ts";
-
-const unobservedOperations: OperationSink = {
-  invocation: () => {},
-  operation: () => {}
-};
 
 export class DatabaseInUseError extends Error {
   override readonly name = "DatabaseInUseError";
@@ -31,6 +26,7 @@ function lockExclusively(db: DatabaseSync): void {
 }
 
 export interface NodeInstallationOptions {
+  readonly release?: string | undefined;
   readonly path: string;
   readonly projects: string;
   readonly clock?: Clock;
@@ -38,10 +34,12 @@ export interface NodeInstallationOptions {
 }
 
 export interface NodeInstallation {
+  readonly application: NodeApplicationEvents | undefined;
   readonly core: InstallationCore;
   readonly observe: NodeObservations;
   readonly now: () => number;
   close(): void;
+  shutdown(): Promise<void>;
 }
 
 export function openNodeInstallation(options: NodeInstallationOptions): NodeInstallation {
@@ -57,9 +55,10 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
     const sql = nodeSqlScopes(db);
     initializeStore(sql.open());
     observe = new NodeObservations(db, options.path, clock);
+    const application = options.release === undefined ? undefined : new NodeApplicationEvents(observe, options.release);
     core = new InstallationCore(
       {
-        sql, clock, scheduler, operations: unobservedOperations, probesServices: true,
+        sql, clock, monotonic: () => performance.now(), scheduler, operations: application?.operations ?? { invocation: () => {}, operation: () => {} }, probesServices: true,
         readApplicationEvents: async (service, fromMs, toMs) => {
           const events = await observe!.forService(service).external(service, { fromMs, toMs, limit: APPLICATION_EVENT_READ_LIMIT });
           return { events, truncated: events.length >= APPLICATION_EVENT_READ_LIMIT };
@@ -75,8 +74,16 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
     });
     return {
       core,
+      application,
       observe,
       now: () => clock.now(),
+      async shutdown(): Promise<void> {
+        probes.stop();
+        scheduler.stop();
+        await application?.shutdown();
+        observe!.close();
+        db.close();
+      },
       close(): void {
         probes.stop();
         scheduler.stop();
