@@ -50,4 +50,3 @@ export function createStatsHealth(options: { readonly installation: (request: Re
     return Response.json(body, { status: body.status === "down" ? 503 : 200, headers: { "Cache-Control": "no-store" } });
   };
 }
-
