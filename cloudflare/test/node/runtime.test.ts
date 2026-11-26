@@ -67,3 +67,35 @@ await test("runtime remains readable when a sample cannot be exported", async ()
     error.mock.restore();
   }
 });
+
+await test("runtime counts active requests, streams and delivered response bytes", async () => {
+  const runtime = new NodeRuntime(() => { throw new Error("unused"); });
+  let finish: (() => void) | undefined;
+  const server = createStatsServer({ installation: async () => new Response(null), transport: "tcp", runtime, assets: async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("first"));
+      finish = () => { finish = undefined; controller.enqueue(new TextEncoder().encode("last")); controller.close(); };
+    }
+  })) });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const response = await fetch(`${origin}/`, { headers: { "tailscale-user-login": "owner@example.com" } });
+    const active = runtime.snapshot();
+    assert.equal(active.activeRequests, 1);
+    assert.equal(active.inflightStreams, 1);
+    assert.equal(active.responseBytes, 5);
+    finish!();
+    assert.equal(await response.text(), "firstlast");
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const complete = runtime.snapshot();
+    assert.equal(complete.activeRequests, 0);
+    assert.equal(complete.inflightStreams, 0);
+    assert.equal(complete.responseBytes, 9);
+  } finally {
+    finish?.();
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    runtime.stop();
+  }
+});
