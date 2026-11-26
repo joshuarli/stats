@@ -85,8 +85,12 @@ async function respond(outgoing: ServerResponse, response: Response, method: str
   finally { runtime?.streamFinished(); }
 }
 
-function failed(outgoing: ServerResponse, error: unknown): void {
-  console.error(JSON.stringify({ event: "request_failed", name: error instanceof Error ? error.name : typeof error }));
+function failed(incoming: IncomingMessage, outgoing: ServerResponse, error: unknown): void {
+  const path = (incoming.url ?? "").split("?", 1)[0]!.slice(0, 256);
+  const detail = error instanceof Error
+    ? { name: error.name, message: error.message.slice(0, 200), stack: (error.stack ?? "").split("\n").slice(1, 6).map(line => line.trim().slice(0, 200)) }
+    : { name: typeof error };
+  console.error(JSON.stringify({ event: "request_failed", method: incoming.method, path, headersSent: outgoing.headersSent, ...detail }));
   if (outgoing.headersSent) {
     outgoing.destroy();
     return;
@@ -136,7 +140,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
         outgoing.once("close", () => { if (!finished) complete(true); });
       }
       await respond(outgoing, response, request.method, options.runtime);
-    })().catch((error: unknown) => failed(outgoing, error));
+    })().catch((error: unknown) => failed(incoming, outgoing, error));
     options.trackRequest?.(task);
   };
 }

@@ -352,3 +352,41 @@ await test("capabilities require trusted identity and disclose only runtime supp
     assert.deepEqual(JSON.parse(reply.text), { projectSource: "services", analyticsCollection: false, cloudflareDeployments: false, tailEvents: false, applicationEvents: true, infraMetrics: false });
   } finally { await served.close(); await forged.close(); }
 });
+
+void test("a failed response names its request and error without the query string", async () => {
+  const assets = scratchDirectory("node-failed-assets");
+  writeFileSync(join(assets, "index.html"), INDEX);
+  const listener = statsRequestListener({
+    installation: async () => new Response(new ReadableStream({ pull(controller) { controller.error(new Error("store went away")); } }), { headers: { "Content-Type": "application/json" } }),
+    assets: await openAssets(assets),
+    transport: "tcp",
+    release: "test-release"
+  });
+  const server = createServer((incoming: IncomingMessage, outgoing: ServerResponse) => {
+    Object.defineProperty(incoming.socket, "remoteAddress", { value: "127.0.0.1", configurable: true });
+    listener(incoming, outgoing);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const log = mock.method(console, "error", () => {});
+  try {
+    await new Promise<void>(resolve => {
+      const outgoing = httpRequest({ host: "127.0.0.1", port: (server.address() as AddressInfo).port, path: "/api/v1/hosts?token=never-logged", headers: login("someone@example.com") }, incoming => {
+        incoming.resume();
+        incoming.on("close", resolve);
+      });
+      outgoing.on("error", () => resolve());
+      outgoing.end();
+    });
+    const lines = log.mock.calls.map(call => String(call.arguments[0])).filter(line => line.includes("request_failed"));
+    assert.equal(lines.length, 1);
+    const record = JSON.parse(lines[0]!) as Record<string, unknown>;
+    assert.equal(record["method"], "GET");
+    assert.equal(record["path"], "/api/v1/hosts");
+    assert.equal(record["message"], "store went away");
+    assert.ok(Array.isArray(record["stack"]));
+    assert.doesNotMatch(lines[0]!, /never-logged/u);
+  } finally {
+    log.mock.restore();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
