@@ -27,6 +27,12 @@ await test("runtime samples are stored, expose unavailable data honestly, and re
     assert.equal(sample.sqlite["installation"]!.rowsRead, null);
     assert.ok(sample.sqlite["installation"]!.statements > 0);
     assert.ok(metrics.connection.prepare("SELECT COUNT(*) AS n FROM native_runtime_samples").get()!.n as number > 0);
+    const rss = metrics.nativeSeries("rss_bytes", sample.atMs - 10_000, sample.atMs + 10_000);
+    assert.equal(rss.length, 1);
+    assert.ok(typeof rss[0]!.value === "number" && rss[0]!.value > 0);
+    const statements = metrics.nativeSeries("sqlite_statements", sample.atMs - 10_000, sample.atMs + 10_000);
+    assert.ok((statements[0]!.value as Record<string, number>)["installation"]! > 0);
+    assert.throws(() => metrics.nativeSeries("sqlite_rows_read", 0, Date.now()), RangeError);
     assert.equal((await fetch(`${origin}/api/v1/runtime`)).status, 401);
     const response = await fetch(`${origin}/api/v1/runtime`, { headers: { "tailscale-user-login": "owner@example.com" } });
     assert.equal(response.status, 200);

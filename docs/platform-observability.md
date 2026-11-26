@@ -155,7 +155,8 @@ journeys use the same bounded, authenticated admission as the Worker.
 Node samples process CPU, memory, event-loop delay and utilization, garbage
 collection, request and stream activity, response bytes, application delivery,
 and SQLite timings every 10 seconds. MetricStore retains samples for up to 24
-hours and 8,640 records. The authenticated `GET /api/v1/runtime` route remains
+hours and 8,640 records. MetricStore provides individual native family series.
+The authenticated `GET /api/v1/runtime` route remains
 available if sample storage fails. File descriptor counts are unavailable
 outside Linux. SQLite rows read are unavailable. Database sizes, lock failures,
 statement and transaction elapsed time, retention lateness, and checkpoint

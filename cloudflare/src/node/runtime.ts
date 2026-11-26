@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from "node:fs";
 import { constants, monitorEventLoopDelay, performance, PerformanceObserver } from "node:perf_hooks";
+import type { NativeMetricName, NativeMetricValue } from "../metrics/catalog.ts";
 import type { MetricStore } from "../metrics/store.ts";
 import type { NodeApplicationEvents } from "./application.ts";
 
@@ -119,12 +120,34 @@ export class NodeRuntime {
     };
   }
 
+  private families(snapshot: ReturnType<NodeRuntime["snapshot"]>): Record<NativeMetricName, NativeMetricValue> {
+    const databases = Object.entries(snapshot.sqlite);
+    const database = (field: "statements" | "statementUs" | "transactions" | "transactionUs" | "busy" | "mainBytes" | "walBytes" | "retentionLatenessMs") => Object.fromEntries(databases.map(([name, state]) => [name, state[field]]));
+    const checkpoint = (field: "busy" | "log" | "checkpointed") => Object.fromEntries(databases.map(([name, state]) => [name, state.checkpoint?.[field] ?? null]));
+    const gc = (field: "count" | "pauseUs") => Object.fromEntries(Object.entries(snapshot.gc).map(([kind, state]) => [kind, state[field]]));
+    return {
+      cpu_user_us: snapshot.process.cpuUserUs, cpu_system_us: snapshot.process.cpuSystemUs, rss_bytes: snapshot.process.rssBytes,
+      heap_used_bytes: snapshot.process.heapUsedBytes, heap_total_bytes: snapshot.process.heapTotalBytes, external_bytes: snapshot.process.externalBytes,
+      array_buffers_bytes: snapshot.process.arrayBuffersBytes, open_fds: snapshot.process.openFds, start_time_ms: snapshot.process.startTimeMs,
+      event_loop_delay_p50_ns: snapshot.eventLoop.delayP50Ns, event_loop_delay_p99_ns: snapshot.eventLoop.delayP99Ns,
+      event_loop_delay_max_ns: snapshot.eventLoop.delayMaxNs, event_loop_utilization: snapshot.eventLoop.utilization,
+      gc_count: gc("count"), gc_pause_us: gc("pauseUs"), active_requests: snapshot.activeRequests, inflight_streams: snapshot.inflightStreams,
+      response_bytes: snapshot.responseBytes, sqlite_statements: database("statements"), sqlite_statement_us: database("statementUs"),
+      sqlite_transactions: database("transactions"), sqlite_transaction_us: database("transactionUs"), sqlite_busy: database("busy"),
+      sqlite_main_bytes: database("mainBytes"), sqlite_wal_bytes: database("walBytes"), sqlite_retention_lateness_ms: database("retentionLatenessMs"),
+      sqlite_checkpoint_busy: checkpoint("busy"), sqlite_checkpoint_log: checkpoint("log"), sqlite_checkpoint_checkpointed: checkpoint("checkpointed"),
+      telemetry_admitted: snapshot.telemetry?.admitted ?? null, telemetry_sent: snapshot.telemetry?.sent ?? null,
+      telemetry_dropped: snapshot.telemetry?.dropped ?? null, telemetry_retried: snapshot.telemetry?.retries ?? null,
+      telemetry_queue_high: snapshot.telemetry?.queueHigh ?? null
+    };
+  }
+
   sample(): void {
     const current = performance.eventLoopUtilization();
     this.utilization = performance.eventLoopUtilization(current, this.previousUtilization).utilization;
     this.previousUtilization = current;
     const snapshot = this.snapshot();
-    try { this.store().recordNativeRuntime(snapshot.atMs, JSON.stringify(snapshot)); }
+    try { this.store().recordNativeRuntime(snapshot.atMs, JSON.stringify({ families: this.families(snapshot) })); }
     catch (error) {
       this.exportFailures += 1;
       console.error(JSON.stringify({ event: "runtime_sample_failed", name: error instanceof Error ? error.name : typeof error }));
