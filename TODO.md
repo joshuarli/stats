@@ -1,7 +1,16 @@
 Prefix: STA
-Next: 142
+Next: 143
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-142 · P3 · Design per-service disk usage
+
+- **Area:** Agent · Protocol · Design
+- **Where:** [RFC](docs/rfc/STA-142-service-disk-usage.md); agent/src/config.rs (`services`); docs/protocol.md
+- **Problem:** Stats reports disk usage per mounted filesystem only, so space a service uses on a shared filesystem cannot be attributed to it; Stuff's 20 GB had to be measured by hand. A periodic walk was rejected because its cost grows with file count.
+- **Recommendation:** Decide among project quotas, per-service volumes, filesystem accounting, change-event accounting and service-reported usage as laid out in the RFC, then implement the chosen mechanism with its protocol change.
+- **Fix with:** architect
+- **Effort:** L
 
 ### STA-141 · P3 · Repoint the parked Lisa producers at the native Stats origin
 
