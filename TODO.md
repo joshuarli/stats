@@ -1,7 +1,25 @@
 Prefix: STA
-Next: 143
+Next: 145
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-143 · P3 · Run Stats agents in the Stuff and Stats guests
+
+- **Area:** Operations · Hosts
+- **Where:** `stuff-primary` and `stats-recovery-vm` guests on threadripper; deploy/hosts.json; `make add-host`
+- **Problem:** Neither guest runs a Stats agent, so the CPU, memory, disk and I/O of Stuff and Stats themselves never reach Stats; the `stuff` service row still names the old Lisa host and no unit, and `stats` names the host-side VM unit only. Stuff's three instances run as separate OpenRC services, while a service row names one unit.
+- **Recommendation:** Enroll both guests as hosts, point `stuff` and `stats` at them, and decide how a service spanning several units (reader-a, reader-b, publisher) is attributed: a shared parent cgroup or a list of units per service.
+- **Fix with:** none
+- **Effort:** M
+
+### STA-144 · P4 · Re-enroll or retire tim
+
+- **Area:** Operations · Hosts
+- **Where:** docs/operations.md (`check hosts --hosts lisa,threadripper,sentry,tim,m1-max`); `/var/lib/stats-node/main/RESET.json`
+- **Problem:** The 2026-11-26 registration rebuild did not include `tim` (offline then and at 10:00 UTC), so the documented roster check exits 7 with `tim: missing`.
+- **Recommendation:** When tim is online, register it from its own `hostId` and token verifier as was done for m1-max; if it is retired, drop it from the roster recipe.
+- **Fix with:** none
+- **Effort:** S
 
 ### STA-142 · P3 · Design per-service disk usage
 
