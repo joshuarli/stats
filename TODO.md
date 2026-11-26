@@ -1,7 +1,16 @@
 Prefix: STA
-Next: 145
+Next: 146
 
 Production measurements quoted below are dated evidence, not a fresh account audit. Work in other repositories and owner acceptance remain open unless explicitly verified.
+
+### STA-145 · P4 · Read or stop storing native runtime series
+
+- **Area:** Metrics · Storage
+- **Where:** cloudflare/src/metrics/store-core.ts:54 (`nativeSeries`), cloudflare/src/metrics/catalog.ts (`nativeCatalog`)
+- **Problem:** Only tests read the native runtime families that commit aa0828f7 started storing, so about 8,640 samples a day are written with no consumer.
+- **Recommendation:** Add the read route and dashboard view that motivated them, or stop writing them and drop the families.
+- **Fix with:** dead-code-archaeology
+- **Effort:** S
 
 ### STA-143 · P3 · Run Stats agents in the Stuff and Stats guests
 

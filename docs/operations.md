@@ -458,7 +458,7 @@ used.
 | Unit | `/etc/init.d/stats-node` ([source](../deploy/node/stats-node.openrc)), instance `stats-node.main`, user `stats-node` |
 | Release | `/opt/stats-node/releases/<commit12>/cloudflare/src/node/main.mjs` and the built assets beside it; `MANIFEST.sha256` lists every file |
 | Configuration | `/etc/conf.d/stats-node.main` (`stats_release`, `stats_source_commit`, `stats_data`, `stats_listen`) |
-| Secrets | `/etc/stats-node/gateway-secret`, `/etc/stats-node/verifiers.env` (infra and platform token verifiers), root:stats-node 0640 |
+| Secrets | `/etc/stats-node/gateway-secret`, `/etc/stats-node/verifiers.env` (`INFRA_METRICS_TOKEN_SHA256`; its `PLATFORM_BRIDGE_TOKEN_SHA256` is read only by the Cloudflare adapter), root:stats-node 0640 |
 | Data | `/var/lib/stats-node/main/`: `stats.sqlite`, `stats.sqlite.observe/`, `stats.sqlite.metrics/`, `RESET.json` |
 
 The server runs with `STATS_AUTH=gateway` and the guest's ordinary network, so
