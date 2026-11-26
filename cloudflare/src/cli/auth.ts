@@ -8,7 +8,7 @@ export interface Deployment {
 }
 
 const DEPLOYMENTS: readonly Deployment[] = [
-  { origin: DEFAULT_ORIGIN, target: "orange" }
+  { origin: DEFAULT_ORIGIN, target: "node" }
 ];
 
 function isLoopback(hostname: string): boolean {

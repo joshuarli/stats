@@ -321,6 +321,7 @@ async function importObject(context: CommandContext, directory: string, object: 
 
 export const backupObjectsCommand = defineCommand<ObjectsPayload>({
   name: "backup objects",
+  targets: ["orange", "node"],
   summary: "list the durable objects a backup covers",
   description: ["Lists the Installation object and one observation store per known service, as named by the export and import routes."],
   access: "read",
@@ -337,6 +338,7 @@ export const backupObjectsCommand = defineCommand<ObjectsPayload>({
 
 export const backupStatusCommand = defineCommand<{ readonly objects: readonly (Progress & { readonly object: string })[] }>({
   name: "backup status",
+  targets: ["orange", "node"],
   summary: "read backup maintenance state and acknowledged import offsets",
   description: ["Reads the durable import progress for each selected object. Use a single object to inspect a running restore."],
   access: "read",
@@ -368,6 +370,7 @@ interface MaintenanceResult {
 
 export const backupFenceCommand = defineCommand<MaintenanceResult>({
   name: "backup fence",
+  targets: ["orange", "node"],
   summary: "pause or resume writes on durable objects for a consistent backup",
   description: [
     "MUTATION: --state fenced pauses every write (agents and producers receive 503 and retry) while reads continue; --state open resumes writes and re-arms maintenance alarms.",
@@ -416,6 +419,7 @@ export const backupFenceCommand = defineCommand<MaintenanceResult>({
 
 export const backupExportCommand = defineCommand<{ readonly directory: string; readonly objects: readonly { readonly object: string; readonly tables: number; readonly rows: number }[] }>({
   name: "backup export",
+  targets: ["orange", "node"],
   requestTimeoutMs: 120_000,
   summary: "export every fenced durable object to a new verified backup directory",
   description: [
@@ -471,6 +475,7 @@ export const backupExportCommand = defineCommand<{ readonly directory: string; r
 
 export const backupImportCommand = defineCommand<{ readonly objects: readonly { readonly object: string; readonly rows: number }[] }>({
   name: "backup import",
+  targets: ["orange", "node"],
   requestTimeoutMs: 120_000,
   summary: "restore a verified backup into fresh, empty durable objects",
   description: [

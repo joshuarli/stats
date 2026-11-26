@@ -1,0 +1,48 @@
+#!/sbin/openrc-run
+# Install as /etc/init.d/stats-node and link instances: ln -s stats-node /etc/init.d/stats-node.NAME
+# /etc/conf.d/stats-node.NAME sets stats_release (a directory under /opt/stats-node/releases),
+# stats_source_commit, stats_data (an existing 0700 directory) and stats_listen (IPV4:PORT).
+# /etc/stats-node/gateway-secret and /etc/stats-node/verifiers.env are root:stats-node 0640.
+
+STATS_INSTANCE="${RC_SVCNAME#stats-node.}"
+description="Stats native Node server (${STATS_INSTANCE})"
+supervisor=supervise-daemon
+command="/usr/bin/node"
+command_args="/opt/stats-node/releases/${stats_release}/cloudflare/src/node/main.mjs"
+command_user="stats-node:stats-node"
+directory="/opt/stats-node/releases/${stats_release}/cloudflare"
+output_log="/var/log/stats-node/${STATS_INSTANCE}.log"
+error_log="/var/log/stats-node/${STATS_INSTANCE}.log"
+respawn_delay=3
+respawn_max=0
+respawn_period=60
+retry="TERM/15/KILL/5"
+
+export STATS_DATA_DIR="${stats_data}"
+export STATS_LISTEN="${stats_listen}"
+export STATS_AUTH=gateway
+export STATS_GATEWAY_SECRET_FILE=/etc/stats-node/gateway-secret
+export STATS_SOURCE_COMMIT="${stats_source_commit}"
+export APPLICATION_EVENTS_RELEASE="stats-node-${stats_release}"
+
+depend() {
+	need net
+}
+
+start_pre() {
+	[ "${STATS_INSTANCE}" != "${RC_SVCNAME}" ] || { eerror "use an instance: stats-node.NAME"; return 1; }
+	[ -f "/opt/stats-node/releases/${stats_release}/cloudflare/src/node/main.mjs" ] || { eerror "missing release ${stats_release}"; return 1; }
+	checkpath --directory --owner stats-node:stats-node --mode 0750 /var/log/stats-node
+	. /etc/stats-node/verifiers.env
+}
+
+start_post() {
+	i=0
+	while [ "$i" -lt 30 ]; do
+		wget -q -T 2 -O /dev/null "http://${stats_listen}/health" && return 0
+		i=$((i + 1))
+		sleep 0.5
+	done
+	eerror "stats-node.${STATS_INSTANCE} did not become ready"
+	return 1
+}

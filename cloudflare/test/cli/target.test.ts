@@ -13,7 +13,7 @@ const ROOT = resolve(import.meta.dirname, "../..");
 const SCRATCH = resolve(ROOT, "../.work/tmp");
 
 await test("the deployment table decides the target", () => {
-  assert.equal(deploymentOf(DEFAULT_ORIGIN, {}).target, "orange");
+  assert.equal(deploymentOf(DEFAULT_ORIGIN, {}).target, "node");
   assert.equal(deploymentOf("http://127.0.0.1:18790", {}).target, "orange");
   assert.equal(deploymentOf("http://[::1]:18790", {}).target, "orange");
   assert.equal(deploymentOf("http://threadripper.tailcf741.ts.net:18790", {}).target, "node");
@@ -38,7 +38,6 @@ await test("an orange-only command against a Node origin exits 2 before any requ
   try {
     const orangeOnly = REGISTRY.commands.filter(command => !command.targets.includes("node"));
     assert.deepEqual(orangeOnly.map(command => command.name).sort(), [
-      "backup export", "backup fence", "backup import", "backup objects", "backup status",
       "compare", "cost", "deployments", "health", "observe deployment", "observe issues",
       "observe operations", "observe rollouts", "observe routes", "observe traces", "projects", "snapshot",
     ]);
