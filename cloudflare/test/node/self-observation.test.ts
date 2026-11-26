@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { openAssets } from "../../src/node/assets.ts";
 import { openNodeInstallation } from "../../src/node/installation.ts";
 import { createStatsServer, observeHandler } from "../../src/node/server.ts";
+import { OBSERVE_SERVICE, rebasedBatch } from "../support/observe-ingest.ts";
 import { scratchDirectory } from "./support.ts";
 
 await test("Node records request operations with linked trace context without observing telemetry ingest", async () => {
@@ -37,8 +38,14 @@ await test("Node records request operations with linked trace context without ob
     assert.equal(operation.work["synthetic"], 1);
     assert.equal(operation.release, "release-123");
     assert.equal(operation.work["sql_rows_read"], undefined);
-    const count = events.length;
-    await Promise.all(Array.from({ length: 40 }, () => fetch(`${origin}/ingest/observe/v1/stats/batches`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })));
+    const service = await installation.core.fetch(new Request("https://installation/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: OBSERVE_SERVICE, hostIds: [created.value.hostId] }) }));
+    assert.equal(service.status, 201);
+    const credentials = await service.json() as { ingestToken: string };
+    await installation.application!.flush();
+    const count = (await installation.observe.forService("stats").external("stats", {})).length;
+    const batch = rebasedBatch(Date.now()).text;
+    const replies = await Promise.all(Array.from({ length: 40 }, () => fetch(`${origin}/ingest/observe/v1/${OBSERVE_SERVICE}/batches`, { method: "POST", headers: { authorization: `Bearer ${credentials.ingestToken}`, "content-type": "application/json" }, body: batch })));
+    assert.ok(replies.every(reply => reply.status === 200 || reply.status === 202));
     await installation.application!.flush();
     assert.equal((await installation.observe.forService("stats").external("stats", {})).length, count);
   } finally {
