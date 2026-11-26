@@ -22,7 +22,7 @@ const AUTH_LINES = [
   "  are never followed.",
   "",
   "targets:",
-  `  ${DEFAULT_ORIGIN} and loopback origins are the orange target (the Worker on OpenOrange).`,
+  `  ${DEFAULT_ORIGIN} is the Node target (production). Loopback origins are the orange target.`,
   "  An origin whose host ends in .ts.net, or is a bare name with no dot, is a Node origin.",
   "  Any other origin needs STATSCTL_TARGET=orange or STATSCTL_TARGET=node.",
   "  Commands whose help says they support a Node origin work there. Every other command",
