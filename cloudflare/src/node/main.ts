@@ -45,7 +45,12 @@ async function main(): Promise<void> {
     if (error instanceof DatabaseInUseError) throw new NodeConfigError(`STATS_DATA_DIR ${dirname(config.databasePath)} is in use by another server`);
     throw error;
   }
+  const requests = new Set<Promise<void>>();
   const server = createStatsServer({
+    trackRequest: request => {
+      requests.add(request);
+      void request.then(() => { requests.delete(request); });
+    },
     auth: config.auth,
     runtime,
     application: installation.application,
@@ -82,16 +87,24 @@ async function main(): Promise<void> {
     draining = true;
     runtime.stop();
     console.log(JSON.stringify({ event: "stopping", signal }));
+    const forceConnections = setTimeout(() => server.closeAllConnections(), 8_000);
+    const forceExit = setTimeout(() => {
+      console.error(JSON.stringify({ event: "stop_deadline_exceeded" }));
+      process.exit(1);
+    }, 10_000);
     server.close(error => {
-      void installation.shutdown().then(() => {
-      metrics?.close();
-      if (error !== undefined) {
-        console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
+      void (async () => {
+        await Promise.all(requests);
+        await installation.shutdown();
+        metrics?.close();
+        if (error !== undefined) {
+          console.error(JSON.stringify({ event: "stop_failed", name: error.name }));
+          process.exitCode = 1;
+        } else console.log(JSON.stringify({ event: "stopped" }));
+      })().catch((failure: unknown) => {
+        console.error(JSON.stringify({ event: "stop_failed", name: failure instanceof Error ? failure.name : typeof failure }));
         process.exitCode = 1;
-        return;
-      }
-      console.log(JSON.stringify({ event: "stopped" }));
-      }).catch((failure: unknown) => { console.error(JSON.stringify({ event: "stop_failed", name: failure instanceof Error ? failure.name : typeof failure })); process.exitCode = 1; });
+      }).finally(() => { clearTimeout(forceConnections); clearTimeout(forceExit); });
     });
     for (const outgoing of inFlight) if (!outgoing.headersSent) outgoing.shouldKeepAlive = false;
     server.closeIdleConnections();

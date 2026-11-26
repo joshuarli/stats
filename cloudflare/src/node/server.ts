@@ -16,6 +16,7 @@ import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly trackRequest?: (request: Promise<void>) => void;
   readonly runtime?: NodeRuntime | undefined;
   readonly application?: NodeApplicationEvents | undefined;
   readonly auth?: NodeAuth | undefined;
@@ -114,7 +115,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
       },
       serviceExists: async service => (await options.installation(new Request(`https://installation/services/${encodeURIComponent(service)}`))).status === 200
     };
-    void (async () => {
+    const task = (async () => {
       let request: Request;
       try {
         request = requestFrom(incoming);
@@ -132,6 +133,7 @@ export function statsRequestListener(options: NodeStatsOptions): (incoming: Inco
       }
       await respond(outgoing, response, request.method, options.runtime);
     })().catch((error: unknown) => failed(outgoing, error));
+    options.trackRequest?.(task);
   };
 }
 

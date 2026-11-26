@@ -401,8 +401,7 @@ cd cloudflare && \
 A missing or invalid value stops startup with exit code 2 and a
 `stats: <variable> ...` line on stderr. Once listening, the server prints
 `{"event":"listening","host":...,"port":...}`. On SIGTERM or SIGINT it
-stops accepting connections, finishes requests in flight, closes the
-database, and exits 0.
+stops accepting connections, drains requests, stops sampling, flushes observations, and closes the databases. It closes remaining connections after eight seconds and enforces a ten-second shutdown deadline.
 
 All file-backed Node databases use WAL with exclusive locking, `synchronous=FULL`, a 1-second busy timeout, and a truncating checkpoint every 60 seconds. Checkpoint results appear in the runtime snapshot.
 

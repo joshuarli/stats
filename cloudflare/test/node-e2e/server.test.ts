@@ -243,3 +243,54 @@ await test("an acknowledged ingest survives SIGKILL with exact readback", async 
     rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+await test("SIGTERM finishes within its deadline when a client never completes a request", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-stuck-"));
+  const server = await start(dataDir);
+  const { port } = new URL(server.origin);
+  const stuck = httpRequest({ host: "127.0.0.1", port, path: "/ingest/v2/batches", method: "POST", headers: { authorization: "Bearer nft_drainDRAINdrainDRAINdrainDRAINdrainDRAIN000", "content-type": "application/vnd.stats.ingest.v2", "content-length": "100" } });
+  stuck.on("error", () => {});
+  try {
+    stuck.write("x");
+    await new Promise<void>(resolve => stuck.once("socket", socket => socket.once("connect", () => resolve())));
+    await new Promise<void>(resolve => setTimeout(resolve, 200));
+    server.child.kill("SIGTERM");
+    let timer: NodeJS.Timeout | undefined;
+    const result = await Promise.race([server.exited().then(code => ({ code })), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 12_000); })]);
+    clearTimeout(timer);
+    assert.notEqual(result, null, "server failed to stop with an incomplete request");
+    assert.equal(result!.code, 0, server.output());
+  } finally {
+    stuck.destroy();
+    if (server.child.exitCode === null && server.child.signalCode === null) { server.child.kill("SIGKILL"); await server.exited(); }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+await test("ten consecutive restarts preserve exact data and recover health within 15 seconds", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-cycles-"));
+  let server: Started | undefined;
+  try {
+    server = await start(dataDir);
+    const created = await fetch(`${server.origin}/api/v1/admin/hosts`, { method: "POST", headers: { "Tailscale-User-Login": LOGIN, "content-type": "application/json" }, body: JSON.stringify({ name: "restart" }) });
+    assert.equal(created.status, 201);
+    const host = await created.json() as { hostId: string; token: string };
+    const source = JSON.parse(readFileSync(resolve(ROOT, "../fixtures/v2/sources/minimal.json"), "utf8")) as SourceBatch;
+    const frame = encodeFrame({ ...source, hostId: host.hostId, samples: [{ ...source.samples[0]!, atMs: String(Date.now()) }] });
+    assert.equal((await fetch(`${server.origin}/ingest/v2/batches`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" }, body: frame })).status, 200);
+    const read = () => fetch(`${server!.origin}/api/v1/hosts/${host.hostId}/latest`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const expected = await (await read()).text();
+    for (let cycle = 0; cycle < 10; cycle++) {
+      const started = performance.now();
+      server.child.kill("SIGTERM");
+      assert.equal(await server.exited(), 0, server.output());
+      server = await start(dataDir);
+      assert.equal((await fetch(`${server.origin}/health`)).status, 200);
+      assert.equal(await (await read()).text(), expected);
+      assert.ok(performance.now() - started < 15_000, `restart ${cycle + 1} exceeded 15 seconds`);
+    }
+  } finally {
+    if (server !== undefined && server.child.exitCode === null && server.child.signalCode === null) { server.child.kill("SIGTERM"); await server.exited(); }
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
