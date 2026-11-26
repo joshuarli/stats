@@ -82,7 +82,8 @@ The endpoint accepts unauthenticated `GET` requests. It returns
 
 `status` is `ok`, `degraded`, or `down`. `service` equals the registered name.
 `release` is an optional string. Each named check has a status and optional non-negative integer `ms` and
-`detail` of at most 256 characters. Unknown fields are rejected. The response
+`detail` of at most 256 characters. Other fields, at the top level or in a
+check, are ignored, so a producer may add context such as a role. The response
 must never include secrets.
 Use HTTP 200 for `ok` or `degraded` and HTTP 503 for `down`.
 

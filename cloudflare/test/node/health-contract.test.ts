@@ -19,7 +19,8 @@ void test("service probes classify contract responses and bound their bodies", a
     [new Response(body("ok", "other")), "down"],
     [Response.json({ status: "ok", service: "web" }), "down"],
     [Response.json({ status: "ok", service: "web", checks: { database: { status: "ok", ms: 1.5 } } }), "down"],
-    [Response.json({ status: "ok", service: "web", checks: {}, extra: true }), "down"],
+    [Response.json({ status: "ok", service: "web", role: "reader", checks: { store: { status: "ok", ms: 3, region: "a" } } }), "ok"],
+    [Response.json({ status: "down", service: "web", checks: {} }), "down"],
     [new Response("not json"), "down"],
     [new Response("x".repeat(4097)), "down"]
   ] as const) {
@@ -36,6 +37,7 @@ void test("service probes classify contract responses and bound their bodies", a
   assert.equal(down.reason, "http 503");
   assert.deepEqual(down.checks, [{ name: "database", status: "degraded" }]);
   assert.equal((await probeService({ name: "web", url: "https://web.example/health", fetch: async () => { throw new Error("offline"); }, now: 1000 })).reason, "connection error");
+  assert.equal((await probeService({ name: "web", url: "https://web.example/health", fetch: async () => Response.json({ status: "down", service: "web", checks: {} }), now: 1000 })).reason, "reported down");
 });
 
 void test("Stats health shares computations, caches for one second and degrades stale probes", async () => {

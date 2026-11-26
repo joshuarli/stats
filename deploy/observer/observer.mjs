@@ -122,8 +122,8 @@ export async function healthCheck(url) {
     const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
     const status = x => x === 'ok' || x === 'degraded' || x === 'down';
-    const checks = object(value.checks) && Object.entries(value.checks).every(([name, check]) => name.length > 0 && object(check) && Object.keys(check).every(key => ['status', 'ms', 'detail'].includes(key)) && status(check.status) && (check.ms === undefined || (Number.isSafeInteger(check.ms) && check.ms >= 0)) && (check.detail === undefined || (typeof check.detail === 'string' && check.detail.length <= 256)));
-    return { ok: object(value) && Object.keys(value).every(key => ['status', 'service', 'release', 'checks'].includes(key)) && value.service === 'stats' && (value.status === 'ok' || value.status === 'degraded') && checks && (value.release === undefined || typeof value.release === 'string') };
+    const checks = object(value.checks) && Object.entries(value.checks).every(([name, check]) => name.length > 0 && object(check) && status(check.status) && (check.ms === undefined || (Number.isSafeInteger(check.ms) && check.ms >= 0)) && (check.detail === undefined || (typeof check.detail === 'string' && check.detail.length <= 256)));
+    return { ok: object(value) && value.service === 'stats' && (value.status === 'ok' || value.status === 'degraded') && checks && (value.release === undefined || typeof value.release === 'string') };
   } catch { return { ok: false }; }
 }
 export function parseContentTargets(text) {

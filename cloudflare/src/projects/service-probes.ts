@@ -20,10 +20,9 @@ function status(value: unknown): value is ProbeStatus {
 
 export function decodeHealthBody(value: unknown, name: string): { status: ProbeStatus; checks: ServiceProbeResult["checks"] } | null {
   if (!object(value) || value["service"] !== name || !status(value["status"]) || !object(value["checks"]) || (value["release"] !== undefined && typeof value["release"] !== "string")) return null;
-  if (Object.keys(value).some(key => !["status", "service", "release", "checks"].includes(key))) return null;
   const checks: { name: string; status: "degraded" | "down" }[] = [];
   for (const [checkName, check] of Object.entries(value["checks"])) {
-    if (checkName.length === 0 || !object(check) || Object.keys(check).some(key => !["status", "ms", "detail"].includes(key)) || !status(check["status"]) || (check["ms"] !== undefined && (!Number.isSafeInteger(check["ms"]) || (check["ms"] as number) < 0)) || (check["detail"] !== undefined && (typeof check["detail"] !== "string" || check["detail"].length > 256))) return null;
+    if (checkName.length === 0 || !object(check) || !status(check["status"]) || (check["ms"] !== undefined && (!Number.isSafeInteger(check["ms"]) || (check["ms"] as number) < 0)) || (check["detail"] !== undefined && (typeof check["detail"] !== "string" || check["detail"].length > 256))) return null;
     if (check["status"] !== "ok") checks.push({ name: checkName, status: check["status"] });
   }
   return { status: value["status"], checks };
@@ -83,7 +82,8 @@ export async function probeService(input: { readonly name: string; readonly url:
         try { result = decodeHealthBody(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown, input.name); } catch { result = null; }
       } else await Promise.race([streamReader.cancel(), aborted]);
       if (response.status !== 200) reason = `http ${response.status}`;
-      else if (result === null || result.status === "down") reason = "invalid body";
+      else if (result === null) reason = "invalid body";
+      else if (result.status === "down") reason = "reported down";
     }
   } catch {
     if (reader !== undefined) void reader.cancel().catch(() => { console.error("service probe cancellation failed"); });
