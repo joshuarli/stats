@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
-import { request as httpRequest } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
+import { Agent as HttpAgent, request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, statfsSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
@@ -114,6 +114,16 @@ export function parseContentTargets(text) {
     return { name: target.name, url: url.href, path: target.path, ...(target.sha256 ? { sha256: target.sha256 } : {}), ...(target.resolve ? { resolve: target.resolve } : {}) };
   });
 }
+const PATH_AGENTS = new Map();
+function pathAgent(target, secure) {
+  const key = `${secure ? 'https' : 'http'}:${target.path}:${target.resolve ?? ''}`;
+  let agent = PATH_AGENTS.get(key);
+  if (agent === undefined) {
+    agent = secure ? new HttpsAgent({ keepAlive: true, maxSockets: 8 }) : new HttpAgent({ keepAlive: true, maxSockets: 8 });
+    PATH_AGENTS.set(key, agent);
+  }
+  return agent;
+}
 export function contentCheck(target, timeoutMs = 120000) {
   return new Promise(resolveResult => {
     const url = new URL(target.url);
@@ -122,7 +132,7 @@ export function contentCheck(target, timeoutMs = 120000) {
     const lookup = target.resolve === undefined ? undefined : (_host, options, callback) => options?.all ? callback(null, [{ address: target.resolve, family: 4 }]) : callback(null, target.resolve, 4);
     let settled = false;
     const finish = result => { if (!settled) { settled = true; resolveResult({ path: target.path, ms: Math.round(performance.now() - started), ...result }); } };
-    const req = request(url, { method: 'GET', headers: { 'user-agent': 'stats-observer', 'accept-encoding': 'identity' }, ...(lookup ? { lookup } : {}) }, res => {
+    const req = request(url, { method: 'GET', agent: pathAgent(target, url.protocol === 'https:'), headers: { 'user-agent': 'stats-observer', 'accept-encoding': 'identity' }, ...(lookup ? { lookup } : {}) }, res => {
       const ttfbMs = Math.round(performance.now() - started);
       const hash = createHash('sha256');
       let bytes = 0;
