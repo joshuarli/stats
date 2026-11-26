@@ -114,11 +114,12 @@ async function metrics(root: string, directory: string) {
       found.push(body.match(/^openorange_worker_(?:info|start_time_seconds).*$/gm));
     }
     const headers = { "Stats-Gateway-Secret": "metrics-secret", "Stats-Tailnet-Identity": "user:metrics@example.com" };
-    const query = `${origin}/api/observe/stats-infra/metrics/sources?from=${Date.now() - 60000}&to=${Date.now() + 60000}&release=runtime`;
+    const from = Date.now() - 60000;
+    const query = () => `${origin}/api/observe/stats-infra/metrics/sources?from=${from}&to=${Date.now() + 60000}&release=runtime`;
     let sources: any[] = [];
     const until = Date.now() + 45000;
     while (Date.now() < until) {
-      const response = await fetch(query, { headers });
+      const response = await fetch(query(), { headers });
       if (response.ok) sources = (await response.json() as { sources: any[] }).sources;
       else console.log("sources response", response.status, await response.text());
       if (sources.length === 3 && sources.every(source => source.detail.lastOkAtMs !== null)) break;
@@ -170,7 +171,7 @@ async function metrics(root: string, directory: string) {
     const claim = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "stats-infra", hostIds: [host.hostId], healthUrl: "https://stats-infra.example/health" }) });
     assert.equal(claim.status, 400);
     assert.match(await claim.text(), /reserved/);
-    assert.equal((await fetch(query)).status, 401);
+    assert.equal((await fetch(query())).status, 401);
     assert.equal((await fetch(`${origin}/ingest/metrics/v1/batches`, { method: "POST", headers: { "content-type": "application/vnd.stats.infra-metrics.v2+json" }, body: "{}" })).status, 401);
     const stack = { origin, headers, release: "abcdef012345", historyRuns: [] } as unknown as Stack;
     const credentials = await prepare(stack);
@@ -222,7 +223,7 @@ async function metrics(root: string, directory: string) {
     const restarted = Date.now() + 60000;
     while (!output.includes("orange serve listening on")) { assert.equal(serve.exitCode, null, output); assert.ok(Date.now() < restarted, output); await delay(200); }
     while (Date.now() < restarted) {
-      const response = await fetch(query, { headers });
+      const response = await fetch(query(), { headers });
       if (response.ok) sources = (await response.json() as { sources: any[] }).sources;
       if (sources.some(source => source.detail.source === "worker:stats-observe:1" && source.detail.resets >= 1)) break;
       await delay(2500);
