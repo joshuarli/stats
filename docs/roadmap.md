@@ -72,6 +72,18 @@ the Rivet Engine container used about four cores continuously (STA-135). Stuff's
 application events had also been lost since 2026-11-24: its endpoint named the
 old Lisa container address. They now go to the canonical origin.
 
+The independent observer on Threadripper records the effect: from 03:00 to
+04:56 UTC synthetic ingest failed 18 of 18 rounds and host freshness 89 of 89
+while health stayed 200; after the cutover ingest passed 10 of 10 and hosts 52
+of 53, the one miss at 05:00:12 inside the deliberate ten-restart check. Stuff
+content probes over the same span (04:05–05:50, 10,948 probes on public and
+direct paths) recorded no failure. Production cannot yet demonstrate a browser
+journey: the journey fires from the project overview and native Stats has no
+projects configured; the receiver is covered by `test/node` and
+`test/node-e2e`. The observation-overhead gate (STA-128's protocol) assumes the
+Engine runtime and has not been run against the native backend; it remains
+open.
+
 ## Campaign: Simplification and self-optimization
 
 ### Goal and state
