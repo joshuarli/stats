@@ -1,0 +1,166 @@
+[
+ {
+  "name": "stuff-llms.public",
+  "url": "https://stuff.17166969.xyz/llms.txt",
+  "path": "public"
+ },
+ {
+  "name": "stuff-llms.direct",
+  "url": "https://stuff.17166969.xyz/llms.txt",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "crates-config.public",
+  "url": "https://crates.17166969.xyz/current/crates-io/config.json",
+  "path": "public"
+ },
+ {
+  "name": "crates-config.direct",
+  "url": "https://crates.17166969.xyz/current/crates-io/config.json",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "crates-index.public",
+  "url": "https://crates.17166969.xyz/current/crates-io/se/rd/serde",
+  "path": "public"
+ },
+ {
+  "name": "crates-index.direct",
+  "url": "https://crates.17166969.xyz/current/crates-io/se/rd/serde",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "crates-blob.public",
+  "url": "https://crates-blobs.17166969.xyz/blobs/4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba.crate",
+  "path": "public",
+  "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
+ },
+ {
+  "name": "crates-blob.direct",
+  "url": "https://crates-blobs.17166969.xyz/blobs/4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba.crate",
+  "path": "direct",
+  "sha256": "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "npm-packument.public",
+  "url": "https://npm.17166969.xyz/current/semver",
+  "path": "public"
+ },
+ {
+  "name": "npm-packument.direct",
+  "url": "https://npm.17166969.xyz/current/semver",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "npm-tarball.public",
+  "url": "https://npm.17166969.xyz/current/-/tarballs/f65a52494e0c972de6aedaeec0bb3578b2bafa0cdbcea78117044d8c88c4fbd2ee0e959d61cb6b4254377a3d489608bb8249e9b134673e82cff03a421ea1c827.tgz",
+  "path": "public",
+  "sha256": "c6584c324e8b1e5d0403c6c16ee2b25dd61567c13f0449a58820350c21cd71bf"
+ },
+ {
+  "name": "npm-tarball.direct",
+  "url": "https://npm.17166969.xyz/current/-/tarballs/f65a52494e0c972de6aedaeec0bb3578b2bafa0cdbcea78117044d8c88c4fbd2ee0e959d61cb6b4254377a3d489608bb8249e9b134673e82cff03a421ea1c827.tgz",
+  "path": "direct",
+  "sha256": "c6584c324e8b1e5d0403c6c16ee2b25dd61567c13f0449a58820350c21cd71bf",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "pypi-simple.public",
+  "url": "https://pypi.17166969.xyz/current/simple/",
+  "path": "public"
+ },
+ {
+  "name": "pypi-simple.direct",
+  "url": "https://pypi.17166969.xyz/current/simple/",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "pypi-project.public",
+  "url": "https://pypi.17166969.xyz/current/simple/annotated-doc/",
+  "path": "public"
+ },
+ {
+  "name": "pypi-project.direct",
+  "url": "https://pypi.17166969.xyz/current/simple/annotated-doc/",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "pypi-wheel.public",
+  "url": "https://pypi.17166969.xyz/current/wheels/annotated_doc-0.0.5-py3-none-any.whl",
+  "path": "public",
+  "sha256": "117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101"
+ },
+ {
+  "name": "pypi-wheel.direct",
+  "url": "https://pypi.17166969.xyz/current/wheels/annotated_doc-0.0.5-py3-none-any.whl",
+  "path": "direct",
+  "sha256": "117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "oci-ping.public",
+  "url": "https://oci.17166969.xyz/v2/",
+  "path": "public"
+ },
+ {
+  "name": "oci-ping.direct",
+  "url": "https://oci.17166969.xyz/v2/",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "oci-tags.public",
+  "url": "https://oci.17166969.xyz/v2/example/app/tags/list",
+  "path": "public"
+ },
+ {
+  "name": "oci-tags.direct",
+  "url": "https://oci.17166969.xyz/v2/example/app/tags/list",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "mirror-sums.public",
+  "url": "https://mirror.17166969.xyz/current/SHA256SUMS",
+  "path": "public"
+ },
+ {
+  "name": "mirror-sums.direct",
+  "url": "https://mirror.17166969.xyz/current/SHA256SUMS",
+  "path": "direct",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "mirror-artifact.public",
+  "url": "https://mirror.17166969.xyz/current/muse-install.tar.xz",
+  "path": "public",
+  "sha256": "882381728554f6b2b875a3d0279d32de17845a2f77bb11b4c95a4bee6d1f24c2"
+ },
+ {
+  "name": "mirror-artifact.direct",
+  "url": "https://mirror.17166969.xyz/current/muse-install.tar.xz",
+  "path": "direct",
+  "sha256": "882381728554f6b2b875a3d0279d32de17845a2f77bb11b4c95a4bee6d1f24c2",
+  "resolve": "100.68.104.43"
+ },
+ {
+  "name": "oci-blob.public",
+  "url": "https://oci-blobs.17166969.xyz/sha256/9ed3115c674dfca1f01c8d3235dc47f04c703aae180423982dc995e330f71010",
+  "path": "public",
+  "sha256": "9ed3115c674dfca1f01c8d3235dc47f04c703aae180423982dc995e330f71010"
+ },
+ {
+  "name": "oci-blob.direct",
+  "url": "https://oci-blobs.17166969.xyz/sha256/9ed3115c674dfca1f01c8d3235dc47f04c703aae180423982dc995e330f71010",
+  "path": "direct",
+  "sha256": "9ed3115c674dfca1f01c8d3235dc47f04c703aae180423982dc995e330f71010",
+  "resolve": "100.68.104.43"
+ }
+]

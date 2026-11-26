@@ -680,7 +680,23 @@ round, and synthetic ingest with exact readback every 5 minutes. Optional
 on Threadripper they cover the Niceforge forge's public health (`niceforge`),
 its Git SSH port (`niceforge-ssh`), and one public read from each Stuff
 registry Lisa serves (`crates`, `npm`, `pypi`, `mirror`), added after the
-2026-11-21 registry outage. Its fsynced
+2026-11-21 registry outage. `--content-file PATH` adds a separate loop
+(`--content-interval-s`, 15 s on Threadripper, at most four probes at a time)
+that downloads each target completely and records status, bytes, SHA-256,
+completeness, time to first byte, `cf-cache-status` and `x-stuff-served-by`
+to `content.jsonl`. Each target names its path: `public` goes through
+Cloudflare, `direct` pins the hostname to Lisa's tailnet Caddy
+(`100.68.104.43`) and so bypasses the edge cache. A target with `sha256`
+fails on any other digest; content-addressed artifacts carry one, mutable
+pages only need a complete 200. Threadripper's targets are
+[`stuff-content.json`](../deploy/observer/stuff-content.json): two each of
+the Cargo config, index entry and `.crate`, npm packument and tarball, PyPI
+simple, project and wheel, OCI ping, tags and a 1.9 MB blob, mirror sums and
+an artifact, and `llms.txt`. Evidence files rotate at 64 MiB into
+`NAME-TIMESTAMP.jsonl`; the new file starts with a checkpoint naming the
+rotated file and its SHA-256. With 64 rotated files, or under 512 MiB free,
+writing stops and one `content-evidence` failure is recorded: missing evidence
+blocks promotion instead of silently ageing out. Its fsynced
 evidence and alert outbox must reside outside the candidate stack. Alert
 transitions record `delivery: unconfigured`; no sender is provided.
 
@@ -694,7 +710,8 @@ the observer. Layout:
 | `/opt/stats-observer/node-v26.13.1-linux-x64-musl/` | Node from unofficial-builds; `.tar.xz` SHA-256 `1b8a8a393c7fa5b2f66eaf0314aaa23c2f3cd3a3be14d5c7bac011bf9de236ea` |
 | `/opt/stats-observer/tools/` | `observer.mjs`, the bundled `statsctl-0.1.0.mjs` and its `statsctl` wrapper |
 | `/etc/stats-observer/synthetic-check.json` | synthetic-check host credential, `stats-observer` mode 0600 |
-| `/var/lib/stats-observer/` | `evidence.jsonl`, `alerts.jsonl` |
+| `/etc/stats-observer/stuff-content.json` | content targets, root:stats-observer 0640 |
+| `/var/lib/stats-observer/` | `evidence.jsonl`, `content.jsonl` and their rotations, `alerts.jsonl` |
 | `/var/log/stats-observer/observer.log` | stdout and stderr |
 
 The candidate directory is the VM's recovery directory from
@@ -709,7 +726,8 @@ sh deploy/observer/install.sh openrc deploy/observer/openrc.template stats-obser
   /opt/stats-observer/tools/statsctl lisa,threadripper https://stats.17166969.xyz/health \
   /etc/stats-observer/synthetic-check.json 60 \
   --http niceforge=https://niceforge.17166969.xyz/api/forge/v1/health,crates=https://crates.17166969.xyz/current/registry/config.json,npm=https://npm.17166969.xyz/current/,pypi=https://pypi.17166969.xyz/current/simple/,mirror=https://mirror.17166969.xyz/current/SHA256SUMS \
-  --tcp niceforge-ssh=100.98.145.91:12222
+  --tcp niceforge-ssh=100.98.145.91:12222 \
+  --content-file /etc/stats-observer/stuff-content.json --content-interval-s 15
 doas install -m 755 stats-observer.initd /etc/init.d/stats-observer
 ```
 
