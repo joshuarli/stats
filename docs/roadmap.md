@@ -4,7 +4,7 @@ This is the single plan for this repository: all current and future work, and th
 
 ## Status
 
-- Native migration (NS): active since 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend. Production Stats runs on Node in the Threadripper guest since 04:57 UTC (fresh installation, credentials rebuilt; see [operations](operations.md#production-in-the-threadripper-guest)). Open: NS4 (24 h soak, self-improvement cycle, removal of OpenOrange/Rivet from the guest). Resume from [Campaign: Native Stats](#campaign-native-stats); shared Stuff stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff).
+- Native migration (NS): active since 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend. Production Stats runs on Node in the Threadripper guest since 04:57 UTC (fresh installation, credentials rebuilt; see [operations](operations.md#production-in-the-threadripper-guest)). Open: NS4 (24 h soak, removal of OpenOrange/Rivet from the guest after 04:57 UTC on 2026-11-27, STA-140). The post-cutover quality pass is recorded under the campaign. Resume from [Campaign: Native Stats](#campaign-native-stats); shared Stuff stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff).
 - Active: simplification and self-optimization, S1, S2 and S5; S0 is complete.
 - Last accepted repository revision: `c5855db751141c82e9a90bfa3fe6644ab56c4a14`; integration green at this revision is not established. S0 recorded a green fresh-checkout `make cloudflare-test`.
 - S1 app and collector use the rollout transaction; capture and disposable guest recreation were exercised. S2's log-shard mechanism was repaired; the CPU spin remains open (STA-135).
@@ -83,6 +83,49 @@ projects configured; the receiver is covered by `test/node` and
 `test/node-e2e`. The observation-overhead gate (STA-128's protocol) assumes the
 Engine runtime and has not been run against the native backend; it remains
 open.
+
+Post-cutover quality pass (2026-11-26, after an independent review of
+`d62a0708..master`):
+
+- **Removed:** the `synthetic-check` host and the `statsctl check ingest`
+  command (`d6de8886`). Real-host freshness from `check hosts` replaces both.
+  The deploy-verification safety check now reads a `check hosts` document.
+  The observe store dropped its `synthetic` column in one forward migration.
+- **Health checks:** mandatory and strict (`69a86f5f`, contract in
+  [integration](integration.md#4-health-semantics)):
+  - Registration requires a health URL.
+  - Probes run every 60 s with a 2 s timeout. Only a 200 with a valid body
+    counts as up.
+  - The latest result is persisted and shown in the services list, CLI and
+    dashboard.
+  - Stats' own `/health` follows the contract.
+  - stats, stuff and tansu probe `ok`. agentctl and discover-wine are `down`
+    (`invalid body`: parked apps that still answer in the old format), and
+    nine rows are `missing`.
+- **Security fixes:**
+  - Plaintext registration input shredded on the guest;
+    `restore-registrations.mjs` now takes verifiers only (`4cd581a0`).
+  - `STATS_AUTH` is now required (`f3e250d6`).
+- **Observer fixes:**
+  - It no longer stalls silently when evidence space runs out, and rotated
+    files are pruned (12 kept, about 14 days).
+  - Large artifacts are probed every 5 minutes instead of every 15 s.
+- **Backup:** the Node logical backup covers the installation only
+  (`fc59fad9`). Node observation stores never implemented export or
+  maintenance, so `backup fence` created empty stores and then failed.
+- **Hosts and memory:** `m1-max` re-registered from its own verifier.
+  `synthetic-check` purged. The guest has 2 GiB with free page reporting:
+  host residency fell from about 4.1 GiB to about 640 MiB (`e41da366`).
+- **Diagnostics:** `request_failed` records now carry the method, the path
+  and the cause (`1d18d6e6`). Two earlier processes that logged it shut down
+  slowly once; the cause is unknown until it recurs with the new detail.
+- **Credentials:** the eight credentials left unusable by the reset were
+  rotated and verified without writes (STA-139 closed). STA-141 records the
+  parked Lisa producers that still send to the retired container.
+
+Follow-ups: STA-140 (remove OpenOrange from the guest after 24 h),
+STA-141, STA-142 (disk-usage RFC), STA-143 (agents in the guests),
+STA-144 (tim), STA-145.
 
 ## Campaign: Simplification and self-optimization
 
