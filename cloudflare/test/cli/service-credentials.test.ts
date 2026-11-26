@@ -34,7 +34,7 @@ await test("service credentials are distinct, rotate independently, and are refu
     assert.equal(host.status, 201);
     const { hostId } = await host.json() as { hostId: string };
 
-    const created = await admin("/api/v1/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "web", hostIds: [hostId] }) });
+    const created = await admin("/api/v1/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "web", hostIds: [hostId], healthUrl: "https://web.example/health" }) });
     assert.equal(created.status, 201);
     const credentials = await created.json() as CreatedService;
     assert.match(credentials.deployToken, TOKEN);

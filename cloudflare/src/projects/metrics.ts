@@ -38,7 +38,7 @@ const PATTERN_AGGREGATIONS: readonly (readonly [RegExp, Aggregation])[] = [
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.ops\.(success|userError|other)$/, "sum"],
   [/^r2\.[a-z0-9][a-z0-9-]{1,62}\.(storageBytes|objects)$/, "max"],
   [/^probe\.[a-z][a-z0-9-]{0,31}\.up$/, "min"],
-  [/^probe\.[a-z][a-z0-9-]{0,31}\.ms$/, "max"],
+  [/^probe\.[a-z][a-z0-9-]{0,31}\.(ms|degraded)$/, "max"],
 ];
 
 export function aggregationOf(metric: string): Aggregation {

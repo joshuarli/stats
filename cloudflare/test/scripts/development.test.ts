@@ -143,15 +143,15 @@ int main(int argc, char **argv) {
     assert.equal(await page.evaluate("window.devLoopTestSentinel"), "present");
     assert.equal(first.statuses.slice(afterCss).filter(status => status.event === "dev-reloading").length, 0);
 
-    const source = join(workspace.root, "src/core/http.ts");
-    const good = readFileSync(source, "utf8").replace('{ ok: true, service: "stats" }', '{ ok: true, service: "stats", devProbe: "changed" }');
+    const source = join(workspace.root, "src/core/health.ts");
+    const good = readFileSync(source, "utf8").replace('...(options.release === undefined ? {} : { release: options.release })', 'release: "changed"');
     let cursor = first.statuses.length;
     const rebuildStarted = performance.now();
     writeFileSync(source, good);
     const changed = await first.wait("dev-ready", cursor);
     const rebuildMs = performance.now() - rebuildStarted;
     assert.notEqual(changed.backendPid, initial.backendPid);
-    assert.equal((await (await fetch(`${initial.origin}/health`)).json() as { devProbe: string }).devProbe, "changed");
+    assert.equal((await (await fetch(`${initial.origin}/health`)).json() as { release: string }).release, "changed");
     assert.deepEqual(await storedHosts(initial.origin), before);
     cursor = first.statuses.length;
     writeFileSync(source, "export const = ;");

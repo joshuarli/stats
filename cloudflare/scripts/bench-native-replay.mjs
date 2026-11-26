@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { openNodeInstallation } from '../src/node/installation.ts';
@@ -22,20 +23,23 @@ if (!Number.isSafeInteger(now)) throw new Error('invalid captured clock');
 const scratch = resolve(import.meta.dirname, '../../.work/tmp');
 await mkdir(scratch, { recursive: true });
 const directory = await mkdtemp(resolve(scratch, 'native-replay-'));
-let installation, backend;
+let installation, backend, healthServer;
 const proxies = [];
 async function close() {
   for (const proxy of proxies) await proxy.close();
   if (backend) { backend.closeAllConnections(); await new Promise(done => backend.close(done)); }
+  if (healthServer) { healthServer.closeAllConnections(); await new Promise(done => healthServer.close(done)); }
   installation?.close();
   await rm(directory, { recursive: true, force: true });
 }
 try {
-  installation = openNodeInstallation({ path: resolve(directory, 'stats.sqlite'), projects: '[]', clock: { now: () => now }, probeFetch: async () => ({ status: 200, body: null }) });
+  healthServer = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); response.end(JSON.stringify({ status: 'ok', service: serviceName, checks: {} })); });
+  await new Promise(done => healthServer.listen(0, '127.0.0.1', done));
+  installation = openNodeInstallation({ path: resolve(directory, 'stats.sqlite'), projects: '[]', clock: { now: () => now } });
   const host = await installation.core.createHost('captured-stats-host');
   if (!host.ok) throw new Error('replay host provisioning failed');
   const post = (route, body, token) => installation.core.fetch(new Request('https://installation' + route, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) }));
-  const service = await post('/admin/services', { name: serviceName, hostIds: [host.value.hostId] });
+  const service = await post('/admin/services', { name: serviceName, hostIds: [host.value.hostId], healthUrl: `http://127.0.0.1:${healthServer.address().port}/health` });
   if (service.status !== 201) throw new Error('replay service provisioning failed');
   const { deployToken } = await service.json();
   const marker = await post(`/services/${serviceName}/deployments`, { markerId: 'capture-release', version: 'captured', hostIds: [host.value.hostId] }, deployToken);

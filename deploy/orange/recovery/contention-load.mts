@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { GATEWAY_IDENTITY_HEADER, GATEWAY_SECRET_HEADER } from "../../../cloudflare/src/cloudflare/gateway.ts";
 import { INGEST_MEDIA_TYPE, INGEST_PATH } from "../../../cloudflare/src/ingest/http.ts";
 import { HostSeries } from "../../../cloudflare/test/support/service-data.ts";
+import { startHealthFixture } from "../../../cloudflare/test/support/health-fixture.ts";
 
 const usage = `usage: node --experimental-strip-types contention-load.mts --origin URL --gateway-secret-file FILE [--hosts N] [--services N] [--interval-ms MS] [--host-interval-ms MS] [--events N] [--duration-s S] [--prefix NAME]
 
@@ -34,9 +35,10 @@ for (let index = 0; index < hostCount; index++) {
   hosts.push({ hostId: String(created["hostId"]), token: String(created["token"]), series: new HostSeries(String(created["hostId"])), cpuPercent: 10 + 7 * index });
 }
 const services = [];
+const health = await startHealthFixture();
 for (let index = 0; index < serviceCount; index++) {
   const name = `${run}-s${index}`.slice(0, 32);
-  const created = await admin("/api/v1/admin/services", { name, hostIds: hostCount === 0 ? [] : [hosts[index % hostCount]!.hostId] });
+  const created = await admin("/api/v1/admin/services", { name, hostIds: hostCount === 0 ? [] : [hosts[index % hostCount]!.hostId], healthUrl: health.url(name) });
   services.push({ name, token: String(created["ingestToken"]), next: 0 });
 }
 
@@ -80,4 +82,5 @@ const loop = (async () => {
 })();
 await Promise.race([stopAt, loop]);
 clearInterval(reporter);
+await health.close();
 process.exit(0);

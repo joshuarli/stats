@@ -29,7 +29,7 @@ try{
  const listed=await request('/api/v1/services');assert.equal(listed.status,200);
  if(!listed.body.services.some(s=>s.name==='stats')){
  const host=await request('/api/v1/admin/hosts',{method:'POST',body:JSON.stringify({name:'native-cache-benchmark'})});assert.equal(host.status,201);
- const service=await request('/api/v1/admin/services',{method:'POST',body:JSON.stringify({name:'stats',hostIds:[host.body.hostId]})});assert.equal(service.status,201);let accepted=0;
+ const service=await request('/api/v1/admin/services',{method:'POST',body:JSON.stringify({name:'stats',hostIds:[host.body.hostId],healthUrl:active.origin+'/health'})});assert.equal(service.status,201);let accepted=0;
  for(let offset=0;offset<events.length;){const batch=[];let bytes=12;while(batch.length<128&&offset+batch.length<events.length){const event=events[offset+batch.length],n=Buffer.byteLength(JSON.stringify(event))+1;if(bytes+n>60000)break;batch.push(event);bytes+=n;}assert.ok(batch.length);const r=await request('/ingest/observe/v1/stats/batches',{method:'POST',headers:{authorization:'Bearer '+service.body.ingestToken},body:JSON.stringify({events:batch})});if(r.status===429){await pause(61000);continue;}assert.equal(r.status,202);assert.equal(r.body.accepted,batch.length);accepted+=r.body.accepted;offset+=batch.length;if(offset%1024===0)console.log(JSON.stringify({preparing:offset,total:events.length}));}assert.equal(accepted,events.length);
  }
  for(const w of windows){const r=await request(w.path);assert.equal(r.status,200);expected.set(w.hours,r.body)}assert.equal(expected.get(168).totals.events,events.length);await stop();

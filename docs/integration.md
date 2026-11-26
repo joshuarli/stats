@@ -14,7 +14,7 @@ operator reads. Its name is the path parameter in
 
 - A service name matches `^[a-z][a-z0-9-]{0,31}$`.
 - Create a service with `POST /api/v1/admin/services` and
-  `{ name, hostIds, healthUrl?, unit? }`. The `201` response carries the
+  `{ name, hostIds, healthUrl, unit? }`. The `201` response carries the
   service plus `deployToken` and `ingestToken` exactly once.
 - `GET /api/v1/services` and `GET /api/v1/services/:name` return
   `{ name, hostIds, healthUrl, unit, createdAtMs }` and never a token.
@@ -68,29 +68,40 @@ software. Use the same string for both.
 
 ## 4. Health semantics
 
-`healthUrl` is the service's own health endpoint, optional at creation. It is an
-`https:` URL, or an `http:` URL on a host ending in `.ts.net`, with no
-credentials or fragment, at most 2048 characters.
+Every service registers `healthUrl`. It is an HTTPS URL, or HTTP on a `.ts.net`
+host or loopback address. It has no credentials or fragment and is at most
+2048 characters. Existing services without a URL report `missing`.
 
-`statsctl service check --service NAME` reads the service and its marker
-history, then sends one unauthenticated `GET` to `healthUrl` with a 5 second
-timeout and redirects not followed:
+The endpoint accepts unauthenticated `GET` requests. It returns
+`Content-Type: application/json`, `Cache-Control: no-store`, and at most
+4096 bytes in this shape:
 
-- A `2xx` or `3xx` response is `up`.
-- Any other response is `down`.
-- A missing URL, a connection failure, or a timeout is `unavailable`.
+```json
+{"status":"ok","service":"example","release":"v1","checks":{"database":{"status":"ok","ms":3}}}
+```
 
-Exit `0` means up with at least one marker, `5` means unavailable or no marker,
-and `7` means the endpoint answered with a failing status. A `200` elsewhere
-never proves health.
+`status` is `ok`, `degraded`, or `down`. `service` equals the registered name.
+`release` is an optional string. Each named check has a status and optional non-negative integer `ms` and
+`detail` of at most 256 characters. Unknown fields are rejected. The response
+must never include secrets.
+Use HTTP 200 for `ok` or `degraded` and HTTP 503 for `down`.
 
-The Node server also probes each configured `healthUrl` on the five-minute
-collection boundary. Results are stored under the `service:NAME` owner as
-`probe.health.up` (1 or 0) and `probe.health.ms`; `probe.health.failure` in a
-comparison is the complement of the mean `up` share. The Cloudflare target
-runs no service probes, so there the series stays `unavailable`, never `0`,
-and `statsctl service check` is the only health signal. Health requests carry
-no Access, Tailscale, deploy, or ingest credential.
+Answer within one second. Compute the result no more than once per second and
+share a concurrent computation among requests. Bound each dependency check to
+500 milliseconds or less.
+
+Stats probes every 60 seconds with a two-second timeout and does not follow
+redirects. HTTP 200 with a valid body and matching service is `ok` or `degraded`
+according to its status. Every other response, malformed or oversized body,
+timeout, and connection failure is `down`. Rounds do not overlap. The latest
+result includes its HTTP status, latency, time, non-ok checks, and bounded reason.
+The service list, service inspect, service check, and dashboard expose it.
+
+Each five-minute bucket stores `probe.health.up` as 1 only if all probes were
+ok or degraded, `probe.health.ms` as the maximum latency, and
+`probe.health.degraded` as 1 if any probe was degraded. A missing URL fails
+service inspect and service check. Service check also requires a deployment
+marker. Health requests carry no credentials.
 
 ## 5. Telemetry protocol version
 

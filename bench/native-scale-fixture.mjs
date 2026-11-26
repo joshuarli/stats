@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { startHealthFixture } from "../cloudflare/test/support/health-fixture.ts";
 
 const { values } = parseArgs({ options: { root: { type: "string" }, mode: { type: "string", default: "prepare" }, image: { type: "string" }, listen: { type: "string", default: "127.0.0.1" }, resume: { type: "boolean", default: false }, baseline: { type: "string" }, candidate: { type: "string" }, "bundle-root": { type: "string", default: "/app" }, "runtime-auth-file": { type: "string" }, "import-delay-ms": { type: "string", default: "0" } } });
 assert.ok(values.root && ["prepare", "serve", "ingest-cost"].includes(values.mode));
@@ -140,6 +141,7 @@ async function request(path, init = {}) {
 const post = (path, body) => request(path, { method: "POST", body: JSON.stringify(body) });
 const object = "/api/v1/admin/objects/observe:stats";
 
+const health = await startHealthFixture();
 try {
   const readinessMs = [await start()];
   if (values.mode === "ingest-cost") {
@@ -161,7 +163,7 @@ try {
         await start();
         const hosts = await request("/api/v1/hosts"); assert.equal(hosts.status, 200);
         const service = `perf-${variant === "baseline" ? "b" : "c"}-${round}-${randomBytes(4).toString("hex")}`;
-        const created = await post("/api/v1/admin/services", { name: service, hostIds: [hosts.body.hosts[0].hostId] }); assert.equal(created.status, 201);
+        const created = await post("/api/v1/admin/services", { name: service, hostIds: [hosts.body.hosts[0].hostId], healthUrl: health.url(service) }); assert.equal(created.status, 201);
         const healthPath = `/api/observe/${service}/health`;
         const before = await request(healthPath); assert.equal(before.status, 200);
         const input = captured.map((event, index) => ({ ...event, service, eventId: `ingest-proof-${index}`, atMs: event.atMs + shift }));
@@ -208,7 +210,7 @@ try {
     else {
       const host = await post("/api/v1/admin/hosts", { name: "scale-fixture" }); assert.equal(host.status, 201);
       assert.ok(typeof host.body.token === "string" && typeof host.body.hostId === "string");
-      const service = await post("/api/v1/admin/services", { name: "stats", hostIds: [host.body.hostId] }); assert.equal(service.status, 201);
+      const service = await post("/api/v1/admin/services", { name: "stats", hostIds: [host.body.hostId], healthUrl: `${active.origin}/health` }); assert.equal(service.status, 201);
       auth.hostId = host.body.hostId;
       auth.hostToken = host.body.token;
       auth.ingestToken = service.body.ingestToken;
@@ -285,4 +287,4 @@ try {
     writeFileSync(join(state, "failure-resources.json"), JSON.stringify({ memory: readFileSync("/sys/fs/cgroup/memory.current", "utf8").trim(), memoryEvents: readFileSync("/sys/fs/cgroup/memory.events", "utf8"), cpu: readFileSync("/sys/fs/cgroup/cpu.stat", "utf8") }), { mode: 0o600 });
   }
   throw error;
-} finally { await stop(); }
+} finally { await stop(); await health.close(); }

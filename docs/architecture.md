@@ -522,7 +522,7 @@ Features that read Cloudflare are off. The project registry is empty, so
 `404 not_found` as the Worker does for an unregistered project, and the
 dashboard shows no projects. Service registration, deploy markers and application
 event ingest/read are supported, including application-derived issues and
-operation summaries. Node schedules service-health probes every five minutes;
+operation summaries. Node schedules service-health probes every 60 seconds;
 it has no Cloudflare tail consumer, Analytics SQL collector or deployment poll.
 
 Source runs need installed runtime dependencies. See
@@ -539,14 +539,14 @@ API on either target, so adding one needs no redeploy. The code is
 service identity, credentials, health, telemetry, rollback, and correlation is
 [the integration contract](integration.md).
 
-`POST /api/v1/admin/services` takes `{ name, hostIds, healthUrl?, unit? }`
+`POST /api/v1/admin/services` takes `{ name, hostIds, healthUrl, unit? }`
 as `application/json`, at most 8 KiB, and needs the target's human auth:
 
 | Field | Rule |
 | --- | --- |
 | `name` | The project id charset: `^[a-z][a-z0-9-]{0,31}$`. A taken name answers `409 conflict`. |
 | `hostIds` | 1 to 64 distinct ids of existing, non-revoked hosts, stored sorted. |
-| `healthUrl` | Optional. `https:`, or `http:` on a host ending in `.ts.net`, with no credentials or fragment, at most 2048 characters. |
+| `healthUrl` | Required. See the [health contract](integration.md#4-health-semantics) for URL and response rules. |
 | `unit` | Optional. A systemd unit or container name: `^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$`. |
 
 It answers `201` with the service, `deployToken`, and `ingestToken`. Both
@@ -557,15 +557,15 @@ back. `POST /api/v1/admin/services/:name/rotate` returns `{ "name", "deployToken
 `DELETE /api/v1/admin/services/:name` removes the service, both verifiers, and
 its markers. `PATCH /api/v1/admin/services/:name` takes `application/json` with any of
 `hostIds`, `healthUrl` and `unit` under the creation rules; `null` clears
-`healthUrl` or `unit`, omitted fields keep their stored values, and credentials
-and markers are unchanged. `statsctl service update` sends it. Each token authenticates only its own route.
+`unit`, while `healthUrl` cannot be cleared. Omitted fields keep their stored
+values. Credentials and markers are unchanged. `statsctl service update` sends
+this request. Each token authenticates only its own route.
 `GET /api/v1/services` answers `{ "services": [...] }`, and
-`GET /api/v1/services/:name` answers one service; neither carries a token. The list also carries `health`:
-`{ status: "unprobed" }` when the service has no health URL or no probe result
-in the last 15 minutes, else `{ status: "up" | "down", atMs, ms }` from the
-newest probe bucket. The Node server and the OpenOrange target (the Worker's
-five-minute cron when `PROJECT_SOURCE` is `services`) probe every health URL;
-the Cloudflare project collector does not.
+`GET /api/v1/services/:name` answers one service; neither carries a token.
+Both expose the latest recorded health result. A legacy service without a URL
+reports `missing`; a service without a completed probe reports `unprobed`.
+See the [health contract](integration.md#4-health-semantics) for probe timing,
+classification, and bucket aggregation.
 
 `GET /api/v1/hosts/:hostId/services?fromMs=&toMs=` reads that host's cgroup
 service counters (the agent's `services` group) from its rollups. Windows within

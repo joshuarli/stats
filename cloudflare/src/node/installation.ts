@@ -32,6 +32,7 @@ export interface NodeInstallationOptions {
   readonly path: string;
   readonly projects: string;
   readonly clock?: Clock;
+  readonly monotonic?: () => number;
   readonly probeFetch?: ProbeFetch;
 }
 
@@ -63,7 +64,7 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
     options.runtime?.attachApplication(application);
     core = new InstallationCore(
       {
-        sql, clock, monotonic: () => performance.now(), scheduler, operations: application?.operations ?? { invocation: () => {}, operation: () => {} }, probesServices: true,
+        sql, clock, monotonic: options.monotonic ?? (() => performance.now()), scheduler, operations: application?.operations ?? { invocation: () => {}, operation: () => {} }, probesServices: true,
         readApplicationEvents: async (service, fromMs, toMs) => {
           const events = await observe!.forService(service).external(service, { fromMs, toMs, limit: APPLICATION_EVENT_READ_LIMIT });
           return { events, truncated: events.length >= APPLICATION_EVENT_READ_LIMIT };

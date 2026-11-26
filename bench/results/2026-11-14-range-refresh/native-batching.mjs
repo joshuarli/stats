@@ -17,7 +17,7 @@ try{
   delete item.config.vars.APPLICATION_EVENTS_RELEASE;writeFileSync(item.root+'/stats.jsonc',JSON.stringify(item.config));
   active=await startSession(item.root,await freePort(),{environment:{OTEL_SDK_DISABLED:'true'}});
   const host=(await request(item,'/api/v1/admin/hosts',{method:'POST',body:JSON.stringify({name:'benchmark-host'})})).body;
-  const service=(await request(item,'/api/v1/admin/services',{method:'POST',body:JSON.stringify({name:'stats',hostIds:[host.hostId]})})).body;
+  const service=(await request(item,'/api/v1/admin/services',{method:'POST',body:JSON.stringify({name:'stats',hostIds:[host.hostId],healthUrl:active.origin+'/health'})})).body;
   for(let offset=0;offset<captured.length;offset+=64){const batch=captured.slice(offset,offset+64);const {body}=await request(item,'/ingest/observe/v1/stats/batches',{method:'POST',headers:{authorization:'Bearer '+service.ingestToken},body:JSON.stringify({events:batch})});assert.equal(body.accepted,batch.length)}
   await active.stop();active=undefined;item.config.vars.APPLICATION_EVENTS_RELEASE='burst-proof';writeFileSync(item.root+'/stats.jsonc',JSON.stringify(item.config));
  }

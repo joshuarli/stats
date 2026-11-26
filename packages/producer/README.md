@@ -3,6 +3,8 @@
 Bounded, non-blocking application telemetry for Stats. `record` never waits
 for the network; `flush` and `shutdown` drain the queue.
 
+Each registered service must implement the [health contract](../../docs/integration.md#4-health-semantics).
+
 ```ts
 import { createProducer } from "@stats/producer";
 

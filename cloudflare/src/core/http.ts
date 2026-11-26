@@ -20,6 +20,7 @@ export type AuthDecision =
 export type ObserveService = (target: string, init?: RequestInit) => Promise<Response>;
 
 export interface StatsTarget {
+  readonly health?: () => Promise<Response>;
   readonly capabilities: RuntimeCapabilities;
   readonly authorize: (request: Request) => Promise<AuthDecision>;
   readonly authorizeIngest: (service: string, token: string) => Promise<boolean>;
@@ -196,7 +197,7 @@ async function maintainObject(request: Request, target: StatsTarget, suffix: str
 
 export async function handleStatsRequest(request: Request, target: StatsTarget): Promise<Response> {
   const path = new URL(request.url).pathname;
-  if (path === "/health" && request.method === "GET") return secure(Response.json({ ok: true, service: "stats" }));
+  if (path === "/health" && request.method === "GET") return secure(await (target.health?.() ?? Promise.resolve(Response.json({ status: "down", service: "stats", checks: { installation: { status: "down" } } }, { status: 503 }))));
   if (path === INFRA_METRICS_INGEST_PATH) {
     if (request.method !== "POST") return error(405, "invalid_request", "POST required");
     if (!target.metricsAvailable || target.metrics === undefined) return error(503, "unavailable", "infrastructure metrics unavailable");

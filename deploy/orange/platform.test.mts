@@ -69,9 +69,9 @@ await test("native runtime spans reach Stats without recursive ingestion and col
     const hostResponse = await post("/api/v1/admin/hosts", { name: "platform-native" });
     assert.equal(hostResponse.status, 201);
     const { hostId } = await hostResponse.json() as { hostId: string };
-    const statsService = await post("/api/v1/admin/services", { name: "stats", hostIds: [hostId] });
+    const statsService = await post("/api/v1/admin/services", { name: "stats", hostIds: [hostId], healthUrl: `${session!.origin}/health` });
     assert.equal(statsService.status, 201);
-    const serviceResponse = await post("/api/v1/admin/services", { name: PLATFORM_SERVICE, hostIds: [hostId] });
+    const serviceResponse = await post("/api/v1/admin/services", { name: PLATFORM_SERVICE, hostIds: [hostId], healthUrl: "https://platform.example/health" });
     assert.equal(serviceResponse.status, 400, "platform credentials have one owner outside the service registry");
     const installation = () => spans().filter(span => /^installation-[a-f0-9]+\/onRequest$/u.test(span.name));
     const observationKeys = () => new Set(spans().filter(span => /^observation-store-[a-f0-9]+\/onRequest$/u.test(span.name)).flatMap(span => span.attributes.filter(attribute => attribute.key === "rivet.actor.key").map(attribute => attribute.value.stringValue)));

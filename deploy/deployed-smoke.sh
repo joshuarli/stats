@@ -61,7 +61,7 @@ dashboard_ok() {
 }
 
 request -fsS -D "$work/headers" -o "$work/health" "$base/health" || fail "health request failed"
-jaq -e '.ok == true and .service == "stats"' "$work/health" >/dev/null || fail "health response is not this service"
+jaq -e '(.status == "ok" or .status == "degraded") and .service == "stats"' "$work/health" >/dev/null || fail "health response is not this service"
 
 for header in \
   "content-security-policy:.*frame-ancestors 'none'" \

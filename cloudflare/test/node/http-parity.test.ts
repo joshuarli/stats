@@ -118,7 +118,7 @@ await test("the Worker on workerd and the Node server answer health, ingest, hos
 
     await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify(definition) });
     await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify({ ...definition, name: "Web" }) });
-    await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify({ name: "ghost", hostIds: ["h_00000000000000000000000000000000"] }) });
+    await both("/api/v1/admin/services", { method: "POST", headers: json, body: JSON.stringify({ name: "ghost", hostIds: ["h_00000000000000000000000000000000"], healthUrl: "https://ghost.example/health" }) });
     await both("/api/v1/admin/services", { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" });
     await both("/api/v1/admin/services", { method: "POST", headers: json, body: "{" });
     await both("/api/v1/services");

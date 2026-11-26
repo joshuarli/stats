@@ -148,13 +148,13 @@ async function metrics(root: string, directory: string) {
     };
     const schemas = await manifests();
     assert.deepEqual(schemas, [
-      { schemaSha256: "cb65656e994843070fe0a7c733b5d1ee41c51c8fa955d8f4f3dcc23b3817feaf", tables: (schemas[0] as { tables: unknown[] }).tables },
-      { schemaSha256: "547842274af34b4364f6aee6abe15c00a40590dcbac8e63fe2284457dc8504a3", tables: (schemas[1] as { tables: unknown[] }).tables }
+      { schemaSha256: "559dd48a83287dce2819935dff7b06de92f4a69a8e0d3747c6e7633d2ce835f8", tables: (schemas[0] as { tables: unknown[] }).tables },
+      { schemaSha256: "484df217758ba57b8ec79ba18f8e5ae27fcf41e037ba0fad0092d71030cad4e0", tables: (schemas[1] as { tables: unknown[] }).tables }
     ]);
     assert.deepEqual((schemas[0] as { tables: { name: string }[] }).tables.map(table => table.name), [
       "collector_runs", "host_history_versions", "host_system", "hosts", "project_deployment_coverage",
       "project_deployment_sync", "project_deployment_versions", "project_deployments", "project_hours",
-      "project_samples", "rollup_pending_hours", "rollups", "samples", "service_deployments", "services"
+      "project_samples", "rollup_pending_hours", "rollups", "samples", "service_deployments", "service_probe_results", "service_probe_round", "services"
     ]);
     assert.deepEqual((schemas[1] as { tables: { name: string }[] }).tables.map(table => table.name), [
       "observe_applied_flushes", "observe_artifacts", "observe_counts", "observe_external_events",
@@ -167,7 +167,7 @@ async function metrics(root: string, directory: string) {
     const hostResponse = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "metrics-test" }) });
     assert.equal(hostResponse.status, 201);
     const host = await hostResponse.json() as { hostId: string };
-    const claim = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "stats-infra", hostIds: [host.hostId] }) });
+    const claim = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ name: "stats-infra", hostIds: [host.hostId], healthUrl: "https://stats-infra.example/health" }) });
     assert.equal(claim.status, 400);
     assert.match(await claim.text(), /reserved/);
     assert.equal((await fetch(query)).status, 401);

@@ -12,6 +12,7 @@ import { isObservedService } from "../observe/services.ts";
 import { rolloutsFromDeployments } from "../observe/cloudflare/rollouts.ts";
 import { decodeDeploymentHistory } from "../deployments/decode.ts";
 import { handleStatsRequest } from "../core/http.ts";
+import { createStatsHealth } from "../core/health.ts";
 import { captureApplicationRequest } from "../observe/application/http.ts";
 import { bufferedApplicationPost } from "../observe/application/buffered.ts";
 import { postApplicationEvent } from "../observe/application/sink.ts";
@@ -20,6 +21,8 @@ import type { RuntimeCapabilities } from "../core/capabilities.ts";
 
 export { Installation };
 export { MetricStore } from "./metric-store.ts";
+
+const healthChecks = new WeakMap<Env, () => Promise<Response>>();
 
 function capabilities(env: Env): RuntimeCapabilities {
   return {
@@ -54,11 +57,21 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     markInvocation();
     const release = env.APPLICATION_EVENTS_RELEASE;
+    let health = healthChecks.get(env);
+    if (health === undefined) {
+      health = createStatsHealth({
+        installation: request => env.INSTALLATION.get(env.INSTALLATION.idFromName("installation")).fetch(request),
+        metrics: request => env.METRICS.get(env.METRICS.idFromName(INFRA_SERVICE)).fetch(request),
+        metricsAvailable: /^[a-f0-9]{64}$/u.test(env.INFRA_METRICS_TOKEN_SHA256 ?? ""), release
+      });
+      healthChecks.set(env, health);
+    }
     const events = release === undefined ? null : {
       release, now: () => Date.now(), monotonic: () => performance.now(), waitUntil: (promise: Promise<unknown>) => { ctx.waitUntil(promise); },
       post: bufferedApplicationPost(env.OBSERVE, release)
     };
     const run = () => handleStatsRequest(request, {
+      health,
       capabilities: capabilities(env),
       authorize: candidate => Promise.resolve(gatewayDecision(candidate.headers, env.GATEWAY_SECRET)),
       authorizeIngest: async (service, token) => {
@@ -100,12 +113,12 @@ export default {
     markInvocation();
     const store = env.INSTALLATION.get(env.INSTALLATION.idFromName("installation"));
     const [metrics] = await Promise.allSettled([
-      env.ANALYTICS_SQL === undefined
+      env.ANALYTICS_SQL === undefined || Math.floor(controller.scheduledTime / 60_000) % 5 !== 0
         ? Promise.resolve(null)
         : runCollector({ analytics: env.ANALYTICS_SQL, store, projectsJson: env.PROJECTS, storeWorker: env.WORKER_NAME, now: controller.scheduledTime, probeFetch: (url, init) => fetch(url, init) }),
       env.PROJECT_SOURCE === "services" ? store.collectServiceProbes().catch((error: unknown) => { reportError("services.probes", error); }) : Promise.resolve(),
       (async () => {
-        if (!capabilities(env).cloudflareDeployments) return;
+        if (Math.floor(controller.scheduledTime / 60_000) % 5 !== 0 || !capabilities(env).cloudflareDeployments) return;
         try {
           await collectDeployments({
             projects: parseProjects(env.PROJECTS),

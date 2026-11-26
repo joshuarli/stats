@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "./fixtures";
 import { comparisonBounds, DEPLOYMENT_BUCKET_MS } from "../../src/deployments/compare.ts";
 import { INGEST_MEDIA_TYPE } from "../../src/ingest/http.ts";
@@ -77,8 +78,8 @@ test.beforeAll(async () => {
   const root = fileURLToPath(new URL("../../../.work/tmp", import.meta.url));
   mkdirSync(root, { recursive: true });
   scratch = mkdtempSync(join(root, "playwright-services-"));
-  const probes: ProbeFetch = async () => ({ status: 200, body: null });
-  installation = openNodeInstallation({ path: join(scratch, "stats.sqlite"), projects: "[]", clock: { now: () => nowMs }, probeFetch: probes });
+  const probes: ProbeFetch = async () => Response.json({ status: "ok", service: "web", checks: {} });
+  installation = openNodeInstallation({ path: join(scratch, "stats.sqlite"), projects: "[]", clock: { now: () => nowMs }, monotonic: () => nowMs, probeFetch: probes });
 
   const host = await createHost("web-1");
   const token = await createService({ name: "web", hostIds: [host.hostId], healthUrl: "https://web.example.com/health", unit: "web.service" });
@@ -92,7 +93,7 @@ test.beforeAll(async () => {
   let currentNow = 0;
   const timed: ProbeFetch = async () => {
     nowMs = currentNow + latencyMs;
-    return { status: 200, body: null };
+    return Response.json({ status: "ok", service: "web", checks: {} });
   };
   for (const [window, latency] of [[before, 40], [after, 55]] as const) {
     latencyMs = latency;
@@ -104,10 +105,14 @@ test.beforeAll(async () => {
   }
 
   const batchHost = await createHost("batch-1");
-  const batchToken = await createService({ name: "batch", hostIds: [batchHost.hostId] });
+  const batchToken = await createService({ name: "batch", hostIds: [batchHost.hostId], healthUrl: "https://batch.example.com/health" });
   await mark("batch", batchToken, "2.0.0", [batchHost.hostId], FIRST_AT);
   await mark("batch", batchToken, "2.1.0", [batchHost.hostId], SECOND_AT);
   await installation.observe.forService("web").ingestExternal("web", [...activity(before, 40, "before"), ...activity(after, 55, "after")]);
+  installation.close();
+  const db = new DatabaseSync(join(scratch, "stats.sqlite"));
+  try { db.prepare("UPDATE services SET health_url = NULL WHERE name = 'batch'").run(); } finally { db.close(); }
+  installation = openNodeInstallation({ path: join(scratch, "stats.sqlite"), projects: "[]", clock: { now: () => nowMs }, monotonic: () => nowMs, probeFetch: probes });
   nowMs = NOW;
 
   server = createStatsServer({ installation: request => installation.core.fetch(request), observe: observeHandler(installation), assets: await openAssets(BUILT_ASSETS), transport: "tcp" });
@@ -144,10 +149,28 @@ test("the Services page lists each service with its hosts, probe, and last deplo
   await expect(web).toContainText("0.50");
   await expect(web).toContainText("1.1.0");
   const batch = table.getByRole("row", { name: /^batch\s/u });
-  await expect(batch).toContainText("no health URL");
+  await expect(batch).toContainText("missing");
   await expect(batch).toContainText("2.1.0");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.locator("main.content")).toHaveScreenshot("services-list.webp");
+});
+
+test("the Services page shows current health and a failing reason", async ({ page }) => {
+  await page.route("**/api/v1/services", async route => {
+    const response = await route.fetch();
+    const body = await response.json() as { services: Record<string, unknown>[] };
+    const web = body.services.find(service => service["name"] === "web")!;
+    const result = { httpStatus: 200, ms: 8, atMs: NOW, checks: [], reason: null };
+    body.services.push({ ...web, name: "degraded", health: { ...result, status: "degraded" } });
+    body.services.push({ ...web, name: "down", health: { ...result, status: "down", httpStatus: 302, reason: "http 302" } });
+    await route.fulfill({ json: body });
+  });
+  await page.goto(`${origin}/#/services`);
+  const table = page.getByRole("table", { name: "Services", exact: true });
+  await expect(table.getByRole("row", { name: /^web\s/u })).toContainText("ok");
+  await expect(table.getByRole("row", { name: /^degraded\s/u })).toContainText("degraded");
+  await expect(table.getByRole("row", { name: /^down\s/u })).toContainText("down: http 302");
+  await expect(table.getByRole("row", { name: /^batch\s/u })).toContainText("missing");
 });
 
 test("the Services page groups each service under its hosts, busiest host first, on one CPU scale", async ({ page }) => {
@@ -604,7 +627,7 @@ for (const section of ['services', 'projects']) {
     changed = true;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect(page.locator('.notice-warn')).toHaveCount(0);
-    await expect(row.locator('td').nth(1)).toHaveText('no health URL');
+    await expect(row.locator('td').nth(1)).toHaveText('missing');
     expect(await original!.evaluate(node => node.isConnected)).toBe(true);
   });
 }

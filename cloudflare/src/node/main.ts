@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ event: "startup_identity", ...identity }));
   const requests = new Set<Promise<void>>();
   const server = createStatsServer({
+    release: identity.release ?? undefined,
     trackRequest: request => {
       requests.add(request);
       void request.then(() => { requests.delete(request); });

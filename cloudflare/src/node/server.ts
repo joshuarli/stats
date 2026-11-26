@@ -8,6 +8,7 @@ import { createBrotliCompress, createGzip } from "node:zlib";
 import { gatewayDecision } from "../core/gateway.ts";
 import type { NodeAuth } from "./config.ts";
 import { handleStatsRequest, type ObserveService, type StatsTarget } from "../core/http.ts";
+import { createStatsHealth } from "../core/health.ts";
 import { handleApi } from "../observe/http/api.ts";
 import type { NodeRuntime } from "./runtime.ts";
 import type { NodeApplicationEvents } from "./application.ts";
@@ -16,6 +17,7 @@ import type { AssetReader } from "./assets.ts";
 import { tailscaleDecision, type Peer } from "./tailscale.ts";
 
 export interface NodeStatsOptions {
+  readonly release?: string | undefined;
   readonly trackRequest?: (request: Promise<void>) => void;
   readonly runtime?: NodeRuntime | undefined;
   readonly application?: NodeApplicationEvents | undefined;
@@ -94,12 +96,14 @@ function failed(outgoing: ServerResponse, error: unknown): void {
 
 export function statsRequestListener(options: NodeStatsOptions): (incoming: IncomingMessage, outgoing: ServerResponse) => void {
   const shared = { installation: options.installation, assets: options.assets, observe: options.observe ?? UNAVAILABLE };
+  const health = createStatsHealth({ installation: options.installation, ...(options.metrics === undefined ? {} : { metrics: options.metrics }), metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""), release: options.release });
   return (incoming, outgoing) => {
     options.runtime?.requestStarted();
     outgoing.once("close", () => options.runtime?.requestFinished());
     const peer: Peer = options.transport === "unix" ? { kind: "unix" } : { kind: "tcp", address: incoming.socket.remoteAddress };
     const target: StatsTarget = {
       ...shared,
+      health,
       ...(options.runtime === undefined ? {} : { runtime: () => options.runtime!.snapshot() }),
       ...(options.application === undefined ? {} : { recordBrowserJourney: (journey) => options.application!.recordBrowserJourney(journey) }),
       metricsAvailable: /^[a-f0-9]{64}$/u.test(options.metricsVerifier ?? ""),

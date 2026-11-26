@@ -107,7 +107,7 @@ await test("service create writes both credentials to a new owner-only file and 
     assert.equal(JSON.stringify(document).includes(OLD_INGEST), false);
 
     const textFile = join(scratch, "create-text.json");
-    const text = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", textFile, "--origin", origin.origin], {});
+    const text = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--health-url", service.healthUrl, "--credential-file", textFile, "--origin", origin.origin], {});
     assert.equal(text.code, 0, text.stdout + text.stderr);
     assert.match(text.stdout, /credentials written/u);
     assert.ok(!leaked(text), "a token reached text output");
@@ -125,19 +125,19 @@ await test("service create refuses an existing file and a symbolic link before a
   });
   try {
     const existing = credential(join(scratch, "existing.json"), { name: "web", deployToken: OLD_DEPLOY });
-    const refused = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", existing, "--origin", origin.origin, "--json"], {});
+    const refused = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--health-url", service.healthUrl, "--credential-file", existing, "--origin", origin.origin, "--json"], {});
     assert.equal(refused.code, 3, refused.stdout + refused.stderr);
     assert.equal((JSON.parse(refused.stdout) as { error: { code: string } }).error.code, "credential_file_exists");
 
     const target = credential(join(scratch, "symlink-target.json"), { name: "web" });
     const link = join(scratch, "symlink.json");
     symlinkSync(target, link);
-    const linked = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", link, "--origin", origin.origin, "--json"], {});
+    const linked = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--health-url", service.healthUrl, "--credential-file", link, "--origin", origin.origin, "--json"], {});
     assert.equal(linked.code, 3, linked.stdout + linked.stderr);
     assert.equal((JSON.parse(linked.stdout) as { error: { code: string } }).error.code, "credential_file_invalid");
     assert.equal(requests, 0);
 
-    const conflict = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", join(scratch, "conflict.json"), "--origin", origin.origin, "--json"], {});
+    const conflict = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--health-url", service.healthUrl, "--credential-file", join(scratch, "conflict.json"), "--origin", origin.origin, "--json"], {});
     assert.equal(conflict.code, 2, conflict.stdout + conflict.stderr);
     assert.equal((JSON.parse(conflict.stdout) as { error: { code: string } }).error.code, "conflict");
     assert.equal(requests, 1);
@@ -172,6 +172,24 @@ await test("service inspect reads the service and its newest marker", async () =
   } finally {
     await origin.close();
   }
+});
+
+await test("service create requires a health URL and inspect fails a missing or down health result", async () => {
+  let status = "missing";
+  const origin = await fakeOrigin((request, response) => {
+    if (request.url === "/api/v1/services/web") return sendJson(response, { ...service, healthUrl: status === "missing" ? null : service.healthUrl, health: status === "missing" ? { status } : { status: "down", httpStatus: 302, ms: 2, atMs: 1_700_000_000_000, checks: [], reason: "http 302" } });
+    if (request.url === "/api/v1/services/web/deployments") return sendJson(response, history);
+    sendJson(response, {}, 404);
+  });
+  try {
+    const missing = await runCli(["service", "create", "--name", "web", "--host", HOST_A, "--credential-file", join(scratch, "missing-health.json"), "--origin", origin.origin], {});
+    assert.notEqual(missing.code, 0);
+    for (status of ["missing", "down"]) {
+      const inspect = await runCli(["service", "inspect", "--service", "web", "--origin", origin.origin, "--json"], {});
+      assert.equal(inspect.code, 7);
+      assert.equal((JSON.parse(inspect.stdout) as { payload: { service: { health: { status: string } } } }).payload.service.health.status, status);
+    }
+  } finally { await origin.close(); }
 });
 
 await test("service token rotate replaces one token in the file and preserves the other", async () => {

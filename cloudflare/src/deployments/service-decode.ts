@@ -64,11 +64,17 @@ function decodeLatestServiceDeployment(value: unknown): LatestDeployment | undef
 
 function decodeServiceHealth(value: unknown): ServiceHealth {
   const item = record(value);
-  if (item["status"] === "unprobed") return { status: "unprobed" };
-  if (item["status"] !== "up" && item["status"] !== "down") throw new Error("invalid service health");
-  const ms = item["ms"] === null ? null : item["ms"];
-  if (ms !== null && (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0)) throw new Error("invalid service health time");
-  return { status: item["status"], atMs: time(item["atMs"]), ms };
+  if (item["status"] === "unprobed" || item["status"] === "missing") return { status: item["status"] };
+  if (item["status"] !== "ok" && item["status"] !== "degraded" && item["status"] !== "down") throw new Error("invalid service health");
+  const ms = time(item["ms"]);
+  const httpStatus = item["httpStatus"] === null ? null : time(item["httpStatus"]);
+  const reason = nullableString(item["reason"], 256);
+  const checks = list<{ name: string; status: "degraded" | "down" }>(item["checks"], 512, raw => {
+    const check = record(raw);
+    if (check["status"] !== "degraded" && check["status"] !== "down") throw new Error("invalid check status");
+    return { name: string(check["name"], 4096), status: check["status"] };
+  });
+  return { status: item["status"], atMs: time(item["atMs"]), ms, httpStatus, reason, checks };
 }
 
 export function decodeService(value: unknown): Service {

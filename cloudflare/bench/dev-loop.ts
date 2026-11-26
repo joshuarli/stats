@@ -37,7 +37,7 @@ let browser: Browser | undefined;
 let page: Page;
 const results: { scenario: string; elapsedMs: number; compilations: number; tests?: number }[] = [];
 const memory: { readonly processes: number; readonly rssKiB: number }[] = [];
-const inputs = [join(root, "src/client/styles/index.css"), join(root, "src/core/http.ts")];
+const inputs = [join(root, "src/client/styles/index.css"), join(root, "src/core/health.ts")];
 const observeInputs = [join(root, "src/observe/http/api.ts")];
 const originals = inputs.map(file => readFileSync(file, "utf8"));
 const observeOriginals = observeInputs.map(file => readFileSync(file, "utf8"));
@@ -141,11 +141,12 @@ try {
     await trial("worker-edit", async () => {
       const previous = compiled(readFileSync(running!.logPath, "utf8"));
       const source = originals[1]!;
-      assert.ok(source.includes('{ ok: true, service: "stats" }'));
-      writeFileSync(inputs[1]!, source.replace('{ ok: true, service: "stats" }', `{ ok: true, service: "stats", devLoopProbe: "${marker}" }`));
+      const needle = '...(options.release === undefined ? {} : { release: options.release })';
+      assert.ok(source.includes(needle));
+      writeFileSync(inputs[1]!, source.replace(needle, `release: "${marker}"`));
       let compilations = 0;
       if (baseline) { await stop(); compilations = await build(); await start(); }
-      await until(async () => { try { const response = await fetch(`${origin}/health`); return response.ok && (await response.json() as { devLoopProbe?: string }).devLoopProbe === marker; } catch { return false; } }, "Worker edit in successful request");
+      await until(async () => { try { const response = await fetch(`${origin}/health`); return response.ok && (await response.json() as { release?: string }).release === marker; } catch { return false; } }, "Worker edit in successful request");
       return { compilations: baseline ? compilations : compiled(readFileSync(running!.logPath, "utf8")) - previous };
     });
     await trial("observation-edit", async () => {

@@ -93,7 +93,7 @@ await test("the candidate opens state written by the build before schema version
       assert.deepEqual(new Uint8Array(await refreshed.arrayBuffer()), after.frame);
       const unchanged = await candidate.fetch(PROJECT_HISTORY, { headers: { "If-None-Match": after.etag } });
       assert.equal(unchanged.status, 304);
-      const created = await candidate.fetch("/api/v1/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "api", hostIds: [host.hostId] }) });
+      const created = await candidate.fetch("/api/v1/admin/services", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "api", hostIds: [host.hostId], healthUrl: "https://api.example/health" }) });
       assert.equal(created.status, 201, await created.clone().text());
       const services = await (await candidate.fetch("/api/v1/services")).json() as { services: { name: string }[] };
       assert.deepEqual(services.services.map(service => service.name), ["api"]);

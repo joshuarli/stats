@@ -190,7 +190,7 @@ await test("deploy mark records and repeats a marker on a real Node server, and 
     const host = await fetch(`${origin}/api/v1/admin/hosts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "web-1" }) });
     assert.equal(host.status, 201);
     const { hostId } = await host.json() as { hostId: string };
-    const created = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "web", hostIds: [hostId] }) });
+    const created = await fetch(`${origin}/api/v1/admin/services`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "web", hostIds: [hostId], healthUrl: "https://web.example/health" }) });
     assert.equal(created.status, 201);
     const file = tokenFile("node-service.json", await created.json() as object);
     const marker = ["deploy", "mark", "--service", "web", "--version", "9df651c1a2b3", "--message", "first", "--token-file", file, "--origin", origin, "--json"];
