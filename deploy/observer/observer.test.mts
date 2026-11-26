@@ -216,3 +216,26 @@ test('content scheduling slows large bodies and respects target intervals', asyn
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a main failure exits even while the content loop is active', async () => {
+  const dir = mkdtempSync(resolve('.work/tmp/observer-'));
+  const state = resolve(dir, 'state'), candidate = resolve(dir, 'candidate');
+  mkdirSync(state); mkdirSync(candidate);
+  const preload = resolve(dir, 'preload.mjs'), targets = resolve(dir, 'targets.json');
+  writeFileSync(preload, "import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module'; fs.statfsSync = () => { throw new Error('statfs failed'); }; syncBuiltinESMExports();\n");
+  const server = createServer(() => {});
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const { port } = server.address() as AddressInfo;
+  writeFileSync(targets, JSON.stringify([{ name: 'pending', path: 'public', url: `http://127.0.0.1:${port}/` }]));
+  const child = spawn(process.execPath, ['--import', preload, 'deploy/observer/observer.mjs', '--state-dir', state, '--candidate-dir', candidate, '--statsctl', '/unused', '--hosts', 'h', '--health', `http://127.0.0.1:${port}/health`, '--interval-s', '1', '--content-file', targets], { stdio: 'ignore' });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
+  try {
+    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(done => child.once('exit', (code, signal) => done({ code, signal })));
+    assert.deepEqual(result, { code: 1, signal: null });
+  } finally {
+    clearTimeout(timer);
+    server.closeAllConnections();
+    await new Promise(done => server.close(done));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

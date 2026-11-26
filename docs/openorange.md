@@ -686,15 +686,20 @@ to `content.jsonl`. Each target names its path: `public` goes through
 Cloudflare, `direct` pins the hostname to Lisa's tailnet Caddy
 (`100.68.104.43`) and so bypasses the edge cache. A target with `sha256`
 fails on any other digest; content-addressed artifacts carry one, mutable
-pages only need a complete 200. Threadripper's targets are
+pages only need a complete 200. A target may set `intervalS` in seconds.
+Without an override, an artifact larger than 256 KiB is fetched every five
+minutes after its size is observed. Threadripper's targets are
 [`stuff-content.json`](../deploy/observer/stuff-content.json): two each of
 the Cargo config, index entry and `.crate`, npm packument and tarball, PyPI
 simple, project and wheel, OCI ping, tags and a 1.9 MB blob, mirror sums and
 an artifact, and `llms.txt`. Evidence files rotate at 64 MiB into
 `NAME-TIMESTAMP.jsonl`; the new file starts with a checkpoint naming the
-rotated file and its SHA-256. With 64 rotated files, or under 512 MiB free,
-writing stops and one `content-evidence` failure is recorded: missing evidence
-blocks promotion instead of silently ageing out. Its fsynced
+rotated file and its SHA-256. `--retained-count` sets the number of rotated
+files retained per evidence stream; the default is 12. At 56 MB per day,
+12 files of 64 MiB retain approximately 14.4 days, plus the active file.
+The observer deletes the oldest rotations. It opens an `evidence-space` alert
+below 1 GiB free. Below 512 MiB, it records one exhaustion event and continues
+health checks and alert transitions. Its fsynced
 evidence and alert outbox must reside outside the candidate stack. Alert
 transitions record `delivery: unconfigured`; no sender is provided.
 
