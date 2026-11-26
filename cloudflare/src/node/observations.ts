@@ -9,6 +9,7 @@ import { createObserveService, type MaintainedService } from "../observe/core/se
 import { initializeStore } from "../observe/core/store.ts";
 import { SERVICE_SLUG, type ExternalEvent } from "../observe/ingest/model.ts";
 import { TimerScheduler } from "./ports.ts";
+import { configureSqlite, scheduleCheckpoint } from "./sqlite-policy.ts";
 import type { NodeRuntime } from "./runtime.ts";
 import { nodeSqlScopes } from "./sql.ts";
 
@@ -16,7 +17,7 @@ const MAX_OPEN_STORES = 256;
 const MAINTENANCE_MS = 3_600_000;
 
 export class NodeObservations {
-  private readonly stores = new Map<string, { db: DatabaseSync; service: MaintainedService }>();
+  private readonly stores = new Map<string, { db: DatabaseSync; service: MaintainedService; stopCheckpoint: () => void }>();
   private readonly scheduler: TimerScheduler;
   private readonly directory: string;
 
@@ -56,7 +57,7 @@ export class NodeObservations {
     const path = join(this.directory, `${name}.sqlite`);
     const db = new DatabaseSync(path);
     try {
-      db.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN IMMEDIATE; COMMIT");
+      configureSqlite(db);
       const sql = nodeSqlScopes(db, this.runtime?.database(`observe:${name}`, path)).open();
       initializeStore(sql);
       this.migrate(db, name);
@@ -68,7 +69,8 @@ export class NodeObservations {
         external: (service, filter) => { requireOwner(service); return maintained.external(name, filter); },
         externalOperations: (service, filter) => { requireOwner(service); return maintained.externalOperations(name, filter); }
       };
-      this.stores.set(name, { db, service });
+      const stopCheckpoint = scheduleCheckpoint(db, result => this.runtime?.checkpoint(`observe:${name}`, result));
+      this.stores.set(name, { db, service, stopCheckpoint });
       void this.scheduler.at(this.clock.now());
       return service;
     } catch (error) {
@@ -122,7 +124,7 @@ export class NodeObservations {
 
   close(): void {
     this.scheduler.stop();
-    for (const { db } of this.stores.values()) db.close();
+    for (const { db, stopCheckpoint } of this.stores.values()) { stopCheckpoint(); db.close(); }
     this.stores.clear();
   }
 }

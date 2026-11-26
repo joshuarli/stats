@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const metricStore = () => {
     if (metrics === undefined) {
       mkdirSync(directory, { recursive: true });
-      metrics = new MetricStore(metricPath, runtime.database("metrics:infra", metricPath));
+      metrics = new MetricStore(metricPath, runtime.database("metrics:infra", metricPath), result => runtime.checkpoint("metrics:infra", result));
     }
     return metrics;
   };

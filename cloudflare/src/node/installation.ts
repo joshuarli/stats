@@ -5,6 +5,7 @@ import { APPLICATION_EVENT_READ_LIMIT } from "../deployments/service-compare.ts"
 import { NodeObservations } from "./observations.ts";
 import { initializeStore } from "../observe/core/store.ts";
 import type { NodeRuntime } from "./runtime.ts";
+import { configureSqlite, scheduleCheckpoint } from "./sqlite-policy.ts";
 import { NodeApplicationEvents } from "./application.ts";
 import { systemClock, TimerScheduler } from "./ports.ts";
 import type { ProbeFetch } from "../projects/probes.ts";
@@ -17,8 +18,7 @@ export class DatabaseInUseError extends Error {
 
 function lockExclusively(db: DatabaseSync): void {
   try {
-    db.exec("PRAGMA locking_mode = EXCLUSIVE");
-    db.exec("BEGIN IMMEDIATE; COMMIT");
+    configureSqlite(db);
   } catch (error) {
     db.close();
     if (error instanceof Error && "errcode" in error && (error.errcode === 5 || error.errcode === 6)) throw new DatabaseInUseError("the database is locked by another server");
@@ -48,6 +48,7 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
   const clock = options.clock ?? systemClock;
   const db = new DatabaseSync(options.path);
   lockExclusively(db);
+  const stopCheckpoint = scheduleCheckpoint(db, result => options.runtime?.checkpoint("installation", result));
   let core: InstallationCore;
   const scheduler = new TimerScheduler(clock, () => core.alarm(), error => {
     console.error(JSON.stringify({ event: "alarm_rejected", name: error instanceof Error ? error.name : typeof error }));
@@ -83,6 +84,7 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
       async shutdown(): Promise<void> {
         probes.stop();
         scheduler.stop();
+        stopCheckpoint();
         await application?.shutdown();
         observe!.close();
         db.close();
@@ -90,12 +92,14 @@ export function openNodeInstallation(options: NodeInstallationOptions): NodeInst
       close(): void {
         probes.stop();
         scheduler.stop();
+        stopCheckpoint();
         observe!.close();
         db.close();
       }
     };
   } catch (error) {
     scheduler.stop();
+    stopCheckpoint();
     observe?.close();
     db.close();
     throw error;

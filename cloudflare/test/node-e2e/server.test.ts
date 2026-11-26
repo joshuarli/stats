@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
+import { encodeFrame, type SourceBatch } from "../../src/ingest/encode.ts";
 import { agentDeliversABatch } from "../agent-e2e/flow.ts";
 import { identityProxy } from "../cli/node-server.ts";
 
@@ -208,5 +209,37 @@ await test("the Node server on a Unix socket serves health and an authorized rou
     assert.ok(!existsSync(socket), "the socket is removed on shutdown");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await test("an acknowledged ingest survives SIGKILL with exact readback", async () => {
+  const dataDir = mkdtempSync(join(SCRATCH, "node-e2e-kill-"));
+  let server: Started | undefined;
+  try {
+    server = await start(dataDir);
+    const headers = { "Tailscale-User-Login": LOGIN, "content-type": "application/json" };
+    const created = await fetch(`${server.origin}/api/v1/admin/hosts`, { method: "POST", headers, body: JSON.stringify({ name: "durable" }) });
+    assert.equal(created.status, 201);
+    const host = await created.json() as { hostId: string; token: string };
+    const source = JSON.parse(readFileSync(resolve(ROOT, "../fixtures/v2/sources/minimal.json"), "utf8")) as SourceBatch;
+    const frame = encodeFrame({ ...source, hostId: host.hostId, samples: [{ ...source.samples[0]!, atMs: String(Date.now()) }] });
+    const ingest = await fetch(`${server.origin}/ingest/v2/batches`, { method: "POST", headers: { authorization: `Bearer ${host.token}`, "content-type": "application/vnd.stats.ingest.v2" }, body: frame });
+    assert.equal(ingest.status, 200);
+    const latest = () => fetch(`${server!.origin}/api/v1/hosts/${host.hostId}/latest`, { headers: { "Tailscale-User-Login": LOGIN } });
+    const before = await latest();
+    assert.equal(before.status, 200);
+    const expected = await before.text();
+    server.child.kill("SIGKILL");
+    assert.equal(await server.exited(), null);
+    server = await start(dataDir);
+    const after = await latest();
+    assert.equal(after.status, 200);
+    assert.equal(await after.text(), expected);
+  } finally {
+    if (server !== undefined && server.child.exitCode === null && server.child.signalCode === null) {
+      server.child.kill("SIGTERM");
+      await server.exited();
+    }
+    rmSync(dataDir, { recursive: true, force: true });
   }
 });

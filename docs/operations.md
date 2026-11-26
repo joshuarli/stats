@@ -404,6 +404,8 @@ A missing or invalid value stops startup with exit code 2 and a
 stops accepting connections, finishes requests in flight, closes the
 database, and exits 0.
 
+All file-backed Node databases use WAL with exclusive locking, `synchronous=FULL`, a 1-second busy timeout, and a truncating checkpoint every 60 seconds. Checkpoint results appear in the runtime snapshot.
+
 Back up the whole `STATS_DATA_DIR` while the server is stopped. Include
 `stats.sqlite`, the `stats.sqlite.observe` directory, and the `stats.sqlite.metrics` directory. The latter contains
 one database per observation service. Preserve the original observation tables
