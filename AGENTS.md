@@ -1,7 +1,8 @@
 # Stats
 
-A Linux/macOS host agent and Solid telemetry dashboard. Production runs on
-OpenOrange; `cloudflare/` also contains the portable core and reference adapters.
+A Linux/macOS host agent and Solid telemetry dashboard. Production runs on the
+Node backend (`cloudflare/src/node/`) in the Threadripper guest; `cloudflare/`
+also contains the portable core and the Cloudflare/OpenOrange adapters.
 
 ## Commands
 

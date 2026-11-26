@@ -443,6 +443,42 @@ user's device, a page on another site could otherwise drive writes. Every
 `Content-Type: application/json` and answers `415 unsupported_media_type`
 otherwise. The Worker applies the same rule behind the gateway.
 
+### Production in the Threadripper guest
+
+Since 2026-11-26 production Stats is the Node server in the
+`stats-recovery-vm` guest, behind the unchanged route: Lisa's Caddy
+(`stats.17166969.xyz`, identity sidecar, `Stats-Gateway-Secret`) →
+`127.0.0.1:18489` → `oo-stats-live-tunnel` → guest `127.0.0.1:8080`.
+OpenOrange, Rivet and the Engine container are stopped and out of the
+runlevel; their data stays on the guest disk untouched.
+
+| Piece | Location |
+| --- | --- |
+| Unit | `/etc/init.d/stats-node` ([source](../deploy/node/stats-node.openrc)), instance `stats-node.main`, user `stats-node` |
+| Release | `/opt/stats-node/releases/<commit12>/cloudflare/src/node/main.mjs` and the built assets beside it; `MANIFEST.sha256` lists every file |
+| Configuration | `/etc/conf.d/stats-node.main` (`stats_release`, `stats_source_commit`, `stats_data`, `stats_listen`) |
+| Secrets | `/etc/stats-node/gateway-secret`, `/etc/stats-node/verifiers.env` (infra and platform token verifiers), root:stats-node 0640 |
+| Data | `/var/lib/stats-node/main/`: `stats.sqlite`, `stats.sqlite.observe/`, `stats.sqlite.metrics/`, `RESET.json` |
+
+The server runs with `STATS_AUTH=gateway` and the guest's ordinary network, so
+service probes reach their health URLs. Build a release with
+`pnpm --dir cloudflare build && (cd cloudflare && node scripts/bundle-node.mjs)`,
+copy `main.mjs` to `cloudflare/src/node/` and the assets directory to
+`cloudflare/.cloudflare/output/v0/workers/default/` of a new release
+directory, point `stats_release` at it and run
+`rc-service stats-node.main restart`. A restart takes about one second to
+readiness (ten cycles measured 0.66–1.03 s).
+
+The cutover started a fresh installation: the OpenOrange installation answered
+503 on its admin and host routes, so no logical export was possible. Host IDs,
+names and token verifiers and service registrations were rebuilt from each
+producer's own configuration with
+[`restore-registrations.mjs`](../deploy/node/restore-registrations.mjs), which
+writes `RESET.json` with the restored names and any service left without a
+usable token (`agentctl-node`, `oo-platform`, `oo-tunnel` and the deploy
+tokens of `tansu`). Telemetry before 2026-11-26 04:57 UTC is not in this
+installation.
+
 ### In a container on threadripper
 
 The Vite SSR build bundles its runtime dependencies. The packaging regression

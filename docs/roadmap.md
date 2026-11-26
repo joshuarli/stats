@@ -4,7 +4,7 @@ This is the single plan for this repository: all current and future work, and th
 
 ## Status
 
-- Native migration (NS): active 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend for production Stats. Resume from [Campaign: Native Stats](#campaign-native-stats); the shared Stuff deployment stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff). Production is unchanged so far.
+- Native migration (NS): active since 2026-11-26 and supersedes Decision 1 of the simplification campaign (keep OpenOrange/Rivet) and the "reference adapter only" status of the Node backend. Production Stats runs on Node in the Threadripper guest since 04:57 UTC (fresh installation, credentials rebuilt; see [operations](operations.md#production-in-the-threadripper-guest)). Open: NS4 (24 h soak, self-improvement cycle, removal of OpenOrange/Rivet from the guest). Resume from [Campaign: Native Stats](#campaign-native-stats); shared Stuff stages are campaign NM in the [Stuff roadmap](https://github.com/laputa-systems/stuff/blob/main/docs/roadmap.md#campaign-native-stats-and-stuff).
 - Active: simplification and self-optimization, S1, S2 and S5; S0 is complete.
 - Last accepted repository revision: `c5855db751141c82e9a90bfa3fe6644ab56c4a14`; integration green at this revision is not established. S0 recorded a green fresh-checkout `make cloudflare-test`.
 - S1 app and collector use the rollout transaction; capture and disposable guest recreation were exercised. S2's log-shard mechanism was repaired; the CPU spin remains open (STA-135).
@@ -60,10 +60,17 @@ runtime does not close them as repaired.
 
 | Stage | What | Acceptance | Recovery | Status |
 | --- | --- | --- | --- | --- |
-| NS1 | Node parity: gateway auth adapter, operation sink, HTTP capture and browser journeys, runtime/SQLite observations, SQLite WAL/FULL policy, bounded shutdown, loaded identity | `pnpm --dir cloudflare run typecheck lint test:node test:observe test:node-e2e test:metrics` | n/a | In progress on `campaign/native-stats-parity` (gateway auth landed `e6bd2065`) |
-| NS2 | Guest packaging: OpenRC unit running the Node bundle as an unprivileged user with controlled egress for service probes; data, observe and metric directories; consistent stopped backup | Isolated candidate on the guest passes `/health`, ingest/readback, dashboard | Old unit untouched | Open |
-| NS3 | Cutover: archive old depot cheaply, record reset marker, stop OpenOrange unit and Engine container, start Node on `127.0.0.1:8080` behind the unchanged tunnel; restore services/tokens | Real hosts resume; `statsctl check ingest`; dashboard; ten restarts < 15 s | Restart the OpenOrange unit and Engine (disk image untouched) | Open |
-| NS4 | Soak and self-improvement cycle; then remove OpenOrange/Rivet from the guest | 24 h soak and 24 h post-cutover; one recorded hypothesis | Retained archive | Open |
+| NS1 | Node parity: gateway auth adapter, operation sink, HTTP capture and browser journeys, runtime/SQLite observations, SQLite WAL/FULL policy, bounded shutdown, loaded identity | `pnpm --dir cloudflare run typecheck lint test:node test:observe test:node-e2e test:metrics` | n/a | Done (merge `0d9d04b3`) |
+| NS2 | Guest packaging and isolated candidate | Candidate `stats-node.candidate` on `127.0.0.1:8180`: health, gateway 401 without secret, registration restore rehearsal | Old unit untouched | Done |
+| NS3 | Cutover | 04:56:54–04:57:18 UTC; synthetic ingest all seven steps pass; lisa, threadripper and sentry resumed; ten restarts 0.66–1.03 s to ready with exact readback; `statsctl` targets `node` at the canonical origin (`5b26fc4e`) | `rc-update add native-stats default && rc-service native-stats start && docker start live-stats-engine` after stopping `stats-node.main` | Done |
+| NS4 | Soak and self-improvement cycle; then remove OpenOrange/Rivet from the guest | 24 h soak and 24 h post-cutover; one recorded hypothesis | Retained OpenOrange data on the guest disk | Open |
+
+Before the cutover the OpenOrange deployment answered `/health` but returned
+503 for `/api/v1/hosts`, `/api/v1/admin/objects` and the service list, and
+Lisa's ingress logged about 60 Stats 5xx every ten minutes; inside the guest
+the Rivet Engine container used about four cores continuously (STA-135). Stuff's
+application events had also been lost since 2026-11-24: its endpoint named the
+old Lisa container address. They now go to the canonical origin.
 
 ## Campaign: Simplification and self-optimization
 
